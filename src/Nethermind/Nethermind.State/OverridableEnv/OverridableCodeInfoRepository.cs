@@ -15,10 +15,10 @@ namespace Nethermind.State.OverridableEnv;
 
 public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState) : IOverridableCodeInfoRepository
 {
-    private readonly Dictionary<Address, (ICodeInfo codeInfo, ValueHash256 codeHash)> _codeOverrides = new();
-    private readonly Dictionary<Address, (ICodeInfo codeInfo, Address initialAddr)> _precompileOverrides = new();
+    private readonly Dictionary<Address, (CodeInfo codeInfo, ValueHash256 codeHash)> _codeOverrides = new();
+    private readonly Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> _precompileOverrides = new();
 
-    public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
+    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
         if (_precompileOverrides.TryGetValue(codeSource, out var precompile)) return precompile.codeInfo;
@@ -35,15 +35,30 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
+    public CodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    {
+        if (_precompileOverrides.TryGetValue(codeSource, out var precompile))
+        {
+            return precompile.codeInfo;
+        }
+
+        if (_codeOverrides.TryGetValue(codeSource, out var result))
+        {
+            return result.codeInfo;
+        }
+
+        return codeInfoRepository.GetCachedCodeInfo(codeSource, in codeHash, vmSpec);
+    }
+
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(code, codeOwner, spec);
 
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
         Address key,
-        ICodeInfo value)
+        CodeInfo value)
     {
-        _codeOverrides[key] = (value, ValueKeccak.Compute(value.CodeSpan));
+        _codeOverrides[key] = (value, ValueKeccak.Compute(value.Code.Span));
     }
 
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)

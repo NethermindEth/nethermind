@@ -9,7 +9,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -27,7 +26,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
 
-public class JsonRpcProcessor : IJsonRpcProcessor
+public sealed class JsonRpcProcessor : IJsonRpcProcessor
 {
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly ILogger _logger;
@@ -90,7 +89,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 {
                     id = idNumber;
                 }
-                else if (decimal.TryParse(idElement.GetRawText(), out var value))
+                else if (idElement.TryGetDecimal(out var value))
                 {
                     id = value;
                 }
@@ -104,7 +103,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         string? method = null;
         if (element.TryGetProperty("method"u8, out JsonElement methodElement))
         {
-            method = methodElement.GetString();
+            method = InternMethodName(methodElement);
         }
 
         if (!element.TryGetProperty("params"u8, out JsonElement paramsElement))
@@ -121,30 +120,61 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         };
     }
 
-    private ArrayPoolList<JsonRpcRequest> DeserializeArray(JsonElement element) =>
-        new(element.GetArrayLength(), element.EnumerateArray().Select(DeserializeObject));
+    private ArrayPoolList<JsonRpcRequest> DeserializeArray(JsonElement element)
+    {
+        ArrayPoolList<JsonRpcRequest> list = new(element.GetArrayLength());
+        foreach (JsonElement item in element.EnumerateArray())
+        {
+            list.Add(DeserializeObject(item));
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// Returns a cached string constant for known engine method names to avoid allocation.
+    /// Falls back to <see cref="JsonElement.GetString"/> for unknown methods.
+    /// </summary>
+    private static string? InternMethodName(JsonElement methodElement)
+    {
+        if (methodElement.ValueEquals("engine_newPayloadV4"u8)) return "engine_newPayloadV4";
+        if (methodElement.ValueEquals("engine_forkchoiceUpdatedV3"u8)) return "engine_forkchoiceUpdatedV3";
+        if (methodElement.ValueEquals("engine_newPayloadV3"u8)) return "engine_newPayloadV3";
+        if (methodElement.ValueEquals("engine_forkchoiceUpdatedV2"u8)) return "engine_forkchoiceUpdatedV2";
+        if (methodElement.ValueEquals("engine_getPayloadV4"u8)) return "engine_getPayloadV4";
+        if (methodElement.ValueEquals("engine_getPayloadV3"u8)) return "engine_getPayloadV3";
+        if (methodElement.ValueEquals("engine_newPayloadV2"u8)) return "engine_newPayloadV2";
+        if (methodElement.ValueEquals("engine_newPayloadV1"u8)) return "engine_newPayloadV1";
+        if (methodElement.ValueEquals("engine_exchangeCapabilities"u8)) return "engine_exchangeCapabilities";
+        return methodElement.GetString();
+    }
 
     private static readonly JsonReaderOptions _socketJsonReaderOptions = new() { AllowMultipleValues = true };
 
     public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader reader, JsonRpcContext context)
     {
-        if (ProcessExit.IsCancellationRequested)
-        {
-            JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
-            yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, false)));
-        }
-
-        if (IsRecordingRequest)
-        {
-            reader = await RecordRequest(reader);
-        }
-
-        using CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
-        JsonReaderState readerState = CreateJsonReaderState(context);
-        bool freshState = true;
-        bool shouldExit = false;
+        // Engine API (authenticated) requests skip the timeout CTS entirely -- they are from
+        // trusted consensus clients, must complete for consensus, and connection drops are
+        // handled by the PipeReader. Non-engine paths still use the pooled CTS.
+        CancellationTokenSource? timeoutSource = context.IsAuthenticated ? null : _jsonRpcConfig.BuildTimeoutCancellationToken();
+        CancellationToken timeoutToken = timeoutSource?.Token ?? CancellationToken.None;
         try
         {
+            if (ProcessExit.IsCancellationRequested)
+            {
+                JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
+                yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, false)));
+                yield break;
+            }
+
+            if (IsRecordingRequest)
+            {
+                reader = await RecordRequest(reader);
+            }
+
+            JsonReaderState readerState = CreateJsonReaderState(context);
+            bool freshState = true;
+            bool shouldExit = false;
+
             while (!shouldExit)
             {
                 long startTime = Stopwatch.GetTimestamp();
@@ -152,7 +182,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 ReadResult readResult;
                 try
                 {
-                    readResult = await reader.ReadAsync(timeoutSource.Token);
+                    readResult = await reader.ReadAsync(timeoutToken);
                 }
                 catch (BadHttpRequestException e)
                 {
@@ -231,6 +261,8 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         finally
         {
             await reader.CompleteAsync();
+            if (timeoutSource is not null)
+                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeoutSource);
         }
     }
 

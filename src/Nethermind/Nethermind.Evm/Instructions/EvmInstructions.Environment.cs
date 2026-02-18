@@ -675,20 +675,27 @@ internal static partial class EvmInstructions
         {
             stack.PushZero<TTracingInst>();
         }
+        else
+        {
+            ref readonly ValueHash256 codeHash = ref state.GetCodeHash(address);
+            if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
+            {
+                stack.Push32Bytes<TTracingInst>(in codeHash);
+                return EvmExceptionType.None;
+            }
+
+            CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(address, in codeHash, spec);
+            // If the code is EOF, push the EOF-specific hash.
+            if (codeInfo is EofCodeInfo)
+            {
+                stack.PushBytes<TTracingInst>(EofHash256);
+            }
             else
             {
-                ICodeInfo codeInfo = vm.GetExtCodeInfoCached(address, spec);
-                // If the code is EOF, push the EOF-specific hash.
-                if (codeInfo is EofCodeInfo)
-                {
-                    stack.PushBytes<TTracingInst>(EofHash256);
-                }
-                else
-                {
-                    // Otherwise, push the standard code hash.
-                    stack.PushBytes<TTracingInst>(state.GetCodeHash(address).Bytes);
-                }
+                // Otherwise, push the standard code hash.
+                stack.Push32Bytes<TTracingInst>(in codeHash);
             }
+        }
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

@@ -166,7 +166,7 @@ internal static partial class EvmInstructions
             if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, vm.VmState))
                 goto OutOfGas;
 
-            ICodeInfo codeInfo = vm.GetExtCodeInfoCached(address, spec);
+            CodeInfo codeInfo = vm.GetExtCodeInfoCached(address, spec);
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
@@ -179,7 +179,7 @@ internal static partial class EvmInstructions
             }
 
             // If EOF is enabled and the code is an EOF contract, use a predefined magic value.
-            if (spec.IsEofEnabled && EofValidator.IsEof(externalCode, out _))
+            if (spec.IsEofEnabled && codeInfo is EofCodeInfo)
             {
                 externalCode = EofValidator.MAGIC;
             }
