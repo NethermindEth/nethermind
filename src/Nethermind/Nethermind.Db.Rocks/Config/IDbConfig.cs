@@ -117,4 +117,7 @@ public interface IDbConfig : IConfig
     string LogIndexStorageTopics2DbAdditionalRocksDbOptions { get; set; }
     string LogIndexStorageTopics3DbRocksDbOptions { get; set; }
     string LogIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; }
+
+    public string SnapshotsDbRocksDbOptions { get; set; }
+    public string? SnapshotsDbAdditionalRocksDbOptions { get; set; }
 }

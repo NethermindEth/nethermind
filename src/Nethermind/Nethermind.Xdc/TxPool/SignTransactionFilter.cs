@@ -34,7 +34,7 @@ internal sealed class SignTransactionFilter(ISigner signer, IBlockTree blockTree
         }
 
         UInt256 blkNumber = new UInt256(tx.Data.Span.Slice(4, 32), true);
-        if (blkNumber >= headerNumber || blkNumber <= (headerNumber - (xdcSpec.EpochLength * 2)))
+        if (blkNumber > headerNumber || blkNumber <= (headerNumber - (xdcSpec.EpochLength * 2)))
         {
             // Invalid block number in special transaction data
             return AcceptTxResult.Invalid;

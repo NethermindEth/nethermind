@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using System;
 using System.Collections.Generic;
@@ -20,6 +21,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public int Reward { get; set; }
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
+    public Address[] GenesisMasternodes { get; set; } = Array.Empty<Address>();
 
     public Address BlockSignerContract { get; set; }
     public Address RandomizeSMCBinary { get; set; }
@@ -49,6 +51,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public long BlackListHFNumber { get; set; }
     public long TipXDCX { get; set; }
     public long TIPXDCXMinerDisable { get; set; }
+    public long DynamicGasLimitBlock { get; set; }
 
     private static void CheckConfig(List<V2ConfigParams> list)
     {
@@ -65,13 +68,19 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         if (TipTrc21Fee is not null)
             blockNumbers.Add(TipTrc21Fee.Value);
     }
+
+    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+    {
+        spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
+    }
+
 }
 
 public sealed class V2ConfigParams
 {
     public ulong SwitchRound { get; init; }
     public int MaxMasternodes { get; init; }
-    public double CertThreshold { get; init; }
+    public double CertificateThreshold { get; init; }
     public int TimeoutSyncThreshold { get; init; }
     public int TimeoutPeriod { get; init; }
     public int MinePeriod { get; init; }

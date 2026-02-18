@@ -14,6 +14,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
+using System.Linq;
 
 namespace Nethermind.Xdc;
 
@@ -78,7 +79,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
         out UInt256 blobBaseFee)
     {
-        if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec))
+        if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec) || tx.IsSpecialTransaction((XdcReleaseSpec)spec))
         {
             premiumPerGas = 0;
             senderReservedGasPayment = 0;
@@ -119,6 +120,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         if (tx.RequiresSpecialHandling(spec))
         {
             return ExecuteSpecialTransaction(tx, tracer, opts);
+
         }
 
         return base.Execute(tx, tracer, opts);

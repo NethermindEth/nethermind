@@ -32,6 +32,7 @@ internal class XdcTestDepositContract(CandidateContainer candidateContainer) : I
     {
         throw new System.NotImplementedException();
     }
+
     public Address GetCandidateOwnerDuringProcessing(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
     {
         throw new System.NotImplementedException();

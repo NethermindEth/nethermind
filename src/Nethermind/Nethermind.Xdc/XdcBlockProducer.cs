@@ -29,7 +29,21 @@ internal class XdcBlockProducer : BlockProducerBase
     protected readonly ISpecProvider specProvider;
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
 
-    public XdcBlockProducer(IEpochSwitchManager epochSwitchManager, ISnapshotManager snapshotManager, IXdcConsensusContext xdcContext, ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IWorldState stateProvider, IGasLimitCalculator? gasLimitCalculator, ITimestamper? timestamper, ISpecProvider specProvider, ILogManager logManager, IDifficultyCalculator? difficultyCalculator, IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
+    public XdcBlockProducer(
+        IEpochSwitchManager epochSwitchManager,
+        ISnapshotManager snapshotManager,
+        IXdcConsensusContext xdcContext,
+        ITxSource txSource,
+        IBlockchainProcessor processor,
+        ISealer sealer,
+        IBlockTree blockTree,
+        IWorldState stateProvider,
+        IGasLimitCalculator? gasLimitCalculator,
+        ITimestamper? timestamper,
+        ISpecProvider specProvider,
+        ILogManager logManager,
+        IDifficultyCalculator? difficultyCalculator,
+        IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
     {
         this.epochSwitchManager = epochSwitchManager;
         this.snapshotManager = snapshotManager;
@@ -51,6 +65,7 @@ internal class XdcBlockProducer : BlockProducerBase
         byte[] extra = [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(new ExtraFieldsV2(currentRound, highestCert)).Bytes];
 
         Address blockAuthor = sealer.Address;
+        long gasLimit = GasLimitCalculator.GetGasLimit(parent);
         XdcBlockHeader xdcBlockHeader = new(
             parent.Hash!,
             Keccak.OfAnEmptySequenceRlp,
@@ -58,12 +73,12 @@ internal class XdcBlockProducer : BlockProducerBase
             UInt256.Zero,
             parent.Number + 1,
             //This should probably use TargetAdjustedGasLimitCalculator
-            XdcConstants.TargetGasLimit,
+            gasLimit,
             0,
             extra)
         {
             //This will BestSuggestedBody in BlockTree, which may not be needed
-            IsPostMerge = true
+            //IsPostMerge = true
         };
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader, currentRound);
