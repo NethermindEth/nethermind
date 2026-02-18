@@ -30,8 +30,8 @@ public sealed class SnapshotBundle : IDisposable
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
-    private ConcurrentDictionary<TreePath, TrieNode> _readStateNodes = new();
-    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _readStorageNodes = new();
+    private ConcurrentDictionary<TreePath, TrieNode> _readStateNodes = null!;
+    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _readStorageNodes = null!;
 
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
@@ -59,6 +59,8 @@ public sealed class SnapshotBundle : IDisposable
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
+        _readStateNodes = _transientResource.ReadStateNodes;
+        _readStorageNodes = _transientResource.ReadStorageNodes;
 
         ExpandCurrentPooledContent();
 
@@ -434,8 +436,6 @@ public sealed class SnapshotBundle : IDisposable
             snapshot.Dispose(); // Revert the lease before
 
             _transientResource.Reset();
-            _readStateNodes = null!;
-            _readStorageNodes = null!;
 
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
 
