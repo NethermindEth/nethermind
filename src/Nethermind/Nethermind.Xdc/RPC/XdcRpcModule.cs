@@ -184,11 +184,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
                 (ulong round, Hash256 hash) key = syncInfo.PoolKey();
 
                 int qcSigners = syncInfo.HighestQuorumCert?.Signatures?.Length ?? 0;
-                int tcSigners = 0;
-                if (syncInfo.HighestTimeoutCert != null)
-                {
-                    tcSigners = syncInfo.HighestTimeoutCert.Signatures?.Length ?? 0;
-                }
+                int tcSigners = syncInfo.HighestTimeoutCert?.Signatures?.Length ?? 0;
 
                 syncInfoMessage[key] = new SyncInfoTypes
                 {
