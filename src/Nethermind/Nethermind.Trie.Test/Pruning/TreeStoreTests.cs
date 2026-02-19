@@ -971,14 +971,14 @@ namespace Nethermind.Trie.Test.Pruning
                 if (i > 4)
                 {
                     fullTrieStore.WaitForPruning();
-                    
+
                     // The ReorgBoundaryReached event fires in two places:
                     // 1. PushToMainCommitSetQueue (before pruning) - may have stale value
                     // 2. SaveSnapshot (after pruning updates LastPersistedBlockNumber) - correct value
                     // The polling assertion should eventually see the correct value from #2,
                     // but we add a tiny delay to ensure the event handler has completed.
                     await Task.Delay(50);
-                    
+
                     Assert.That(() => reorgBoundary, Is.EqualTo(i - 3).After(10000, 100));
                 }
                 else
