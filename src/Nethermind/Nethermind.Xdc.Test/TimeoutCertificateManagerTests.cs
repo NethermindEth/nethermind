@@ -53,6 +53,7 @@ public class TimeoutCertificateManagerTests
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new XdcReleaseSpec() { V2Configs = [new V2ConfigParams()] });
         var tcManager = new TimeoutCertificateManager(
             new XdcConsensusContext(),
+            Substitute.For<ITimeoutTimer>(),
             Substitute.For<ISyncPeerPool>(),
             snapshotManager,
             Substitute.For<IEpochSwitchManager>(),
@@ -82,6 +83,7 @@ public class TimeoutCertificateManagerTests
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new XdcReleaseSpec() { V2Configs = [new V2ConfigParams()] });
         var tcManager = new TimeoutCertificateManager(
             new XdcConsensusContext(),
+            Substitute.For<ITimeoutTimer>(),
             Substitute.For<ISyncPeerPool>(),
             snapshotManager,
             Substitute.For<IEpochSwitchManager>(),
@@ -151,7 +153,8 @@ public class TimeoutCertificateManagerTests
         var context = new XdcConsensusContext();
         ISigner signer = Substitute.For<ISigner>();
 
-        var tcManager = new TimeoutCertificateManager(context, Substitute.For<ISyncPeerPool>(), snapshotManager, epochSwitchManager, specProvider,
+        var tcManager = new TimeoutCertificateManager(context, Substitute.For<ITimeoutTimer>(),
+            Substitute.For<ISyncPeerPool>(), snapshotManager, epochSwitchManager, specProvider,
             blockTree, signer);
 
         Assert.That(tcManager.VerifyTimeoutCertificate(timeoutCertificate, out _), Is.EqualTo(expected));
@@ -193,7 +196,9 @@ public class TimeoutCertificateManagerTests
         var context = new XdcConsensusContext() { CurrentRound = 100 };
         ISigner signer = Substitute.For<ISigner>();
 
-        var tcManager = new TimeoutCertificateManager(context, Substitute.For<ISyncPeerPool>(), snapshotManager, epochSwitchManager, specProvider,
+        var tcManager = new TimeoutCertificateManager(context,
+            Substitute.For<ITimeoutTimer>(),
+            Substitute.For<ISyncPeerPool>(), snapshotManager, epochSwitchManager, specProvider,
             blockTree, signer);
 
         var key = correctSigner ? keys.First() : keys.Last();
@@ -205,6 +210,7 @@ public class TimeoutCertificateManagerTests
     {
         return new TimeoutCertificateManager(
             ctx ?? new XdcConsensusContext(),
+            Substitute.For<ITimeoutTimer>(),
             Substitute.For<ISyncPeerPool>(),
             Substitute.For<ISnapshotManager>(),
             Substitute.For<IEpochSwitchManager>(),

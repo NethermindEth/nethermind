@@ -27,6 +27,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private readonly EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
     private static readonly TimeoutDecoder _timeoutDecoder = new();
     private readonly IXdcConsensusContext _consensusContext;
+    private readonly ITimeoutTimer _timeoutTimer;
     private readonly ISyncPeerPool _syncPeerPool;
     private readonly ISnapshotManager _snapshotManager;
     private readonly IEpochSwitchManager _epochSwitchManager;
@@ -35,15 +36,17 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private readonly ISigner _signer;
     private readonly XdcPool<Timeout> _timeouts = new();
 
-    public TimeoutCertificateManager(IXdcConsensusContext context, ISyncPeerPool syncPeerPool, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISigner signer)
+    public TimeoutCertificateManager(IXdcConsensusContext context, ITimeoutTimer timeoutTimer, ISyncPeerPool syncPeerPool, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISigner signer)
     {
         _consensusContext = context;
+        this._timeoutTimer = timeoutTimer;
         this._syncPeerPool = syncPeerPool;
         this._snapshotManager = snapshotManager;
         this._epochSwitchManager = epochSwitchManager;
         this._specProvider = specProvider;
         this._blockTree = blockTree;
         this._signer = signer;
+        _timeoutTimer.TimeoutElapsed += (s, e) => OnCountdownTimer();
     }
 
     public Task HandleTimeoutVote(Timeout timeout)
@@ -169,24 +172,37 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     public void OnCountdownTimer()
     {
-        if (!AllowedToSend())
-            return;
-
-        SendTimeout();
-        _consensusContext.TimeoutCounter++;
-
-        var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader!, _consensusContext.CurrentRound);
-
-        if (_consensusContext.TimeoutCounter % spec.TimeoutSyncThreshold == 0)
+        try
         {
-            SyncInfo syncInfo = GetSyncInfo();
-            foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
+            if (!AllowedToSend())
+                return;
+
+            SendTimeout();
+            _consensusContext.TimeoutCounter++;
+
+            var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
+            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader!, _consensusContext.CurrentRound);
+
+            if (_consensusContext.TimeoutCounter % spec.TimeoutSyncThreshold == 0)
             {
-                if (peerInfo.SyncPeer is Xdpos2ProtocolHandler xdpos2ProtocolHandler)
-                    xdpos2ProtocolHandler.SendSyncinfo(syncInfo);
+                SyncInfo syncInfo = GetSyncInfo();
+                foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
+                {
+                    if (peerInfo.SyncPeer is Xdpos2ProtocolHandler xdpos2ProtocolHandler)
+                        xdpos2ProtocolHandler.SendSyncinfo(syncInfo);
+                }
             }
         }
+        finally
+        {
+            ResetTimer();
+        }
+    }
+
+    private void ResetTimer()
+    {
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(_blockTree.Head?.Header as XdcBlockHeader, _consensusContext.CurrentRound);
+        _timeoutTimer.Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
     }
 
     public Task OnReceiveTimeout(Timeout timeout)
