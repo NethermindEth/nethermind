@@ -58,6 +58,10 @@ permissions:
   contents: read
   actions: write
 
+concurrency:
+  group: expb-reproducible-benchmarks-single-runner
+  cancel-in-progress: false
+
 jobs:
   resolve:
     runs-on: ubuntu-latest
