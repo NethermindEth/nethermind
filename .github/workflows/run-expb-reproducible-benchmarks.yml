@@ -1,0 +1,332 @@
+name: Run EXPB Reproducible Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      nethermind_branch:
+        description: Nethermind branch/ref to benchmark (for example master or feature/my-branch)
+        required: true
+        default: master
+      expb_repo:
+        description: execution-payloads-benchmarks repository in owner/repo format
+        required: false
+        default: NethermindEth/execution-payloads-benchmarks
+      expb_branch:
+        description: execution-payloads-benchmarks branch or tag
+        required: false
+        default: main
+      state_layout:
+        description: State layout mode
+        required: true
+        type: choice
+        options:
+          - halfpath
+          - flat
+        default: halfpath
+      payload_set:
+        description: Payload set mode
+        required: true
+        type: choice
+        options:
+          - realblocks
+          - superblocks
+        default: realblocks
+      delay_seconds:
+        description: Value used to replace <<DELAY>> placeholder (integer)
+        required: false
+        default: "0"
+      additional_extra_flags:
+        description: Optional extra Nethermind flags (comma or newline separated)
+        required: false
+        default: ""
+      expb_data_dir:
+        description: Directory on runner containing EXPB configs and data
+        required: true
+        default: /mnt/sda/expb-data
+  pull_request:
+    types: [labeled]
+  push:
+    branches:
+      - master
+      - codex/reproducible-benchmark-workflow
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.resolve.outputs.should_run }}
+      branch: ${{ steps.resolve.outputs.branch }}
+      clean_branch: ${{ steps.resolve.outputs.clean_branch }}
+      should_trigger_publish_docker: ${{ steps.resolve.outputs.should_trigger_publish_docker }}
+      config_file: ${{ steps.resolve.outputs.config_file }}
+      image_label: ${{ steps.resolve.outputs.image_label }}
+      expb_repo: ${{ steps.resolve.outputs.expb_repo }}
+      expb_branch: ${{ steps.resolve.outputs.expb_branch }}
+      expb_data_dir: ${{ steps.resolve.outputs.expb_data_dir }}
+      delay_seconds: ${{ steps.resolve.outputs.delay_seconds }}
+      additional_extra_flags: ${{ steps.resolve.outputs.additional_extra_flags }}
+    steps:
+      - name: Resolve branch and configuration
+        id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_LABEL: ${{ github.event.label.name }}
+          PR_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          CURRENT_REPO: ${{ github.repository }}
+          PUSH_BRANCH: ${{ github.ref_name }}
+          DISPATCH_BRANCH: ${{ inputs.nethermind_branch }}
+          DISPATCH_STATE_LAYOUT: ${{ inputs.state_layout }}
+          DISPATCH_PAYLOAD_SET: ${{ inputs.payload_set }}
+          DISPATCH_EXPB_REPO: ${{ inputs.expb_repo }}
+          DISPATCH_EXPB_BRANCH: ${{ inputs.expb_branch }}
+          DISPATCH_EXPB_DATA_DIR: ${{ inputs.expb_data_dir }}
+          DISPATCH_DELAY_SECONDS: ${{ inputs.delay_seconds }}
+          DISPATCH_ADDITIONAL_EXTRA_FLAGS: ${{ inputs.additional_extra_flags }}
+        run: |
+          set -euo pipefail
+
+          should_run="true"
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            branch="${DISPATCH_BRANCH}"
+            state_layout="${DISPATCH_STATE_LAYOUT}"
+            payload_set="${DISPATCH_PAYLOAD_SET}"
+            expb_repo="${DISPATCH_EXPB_REPO}"
+            expb_branch="${DISPATCH_EXPB_BRANCH}"
+            expb_data_dir="${DISPATCH_EXPB_DATA_DIR}"
+            delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
+            additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
+          elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            if [[ "${PR_LABEL}" != "reproducible-benchmark" ]]; then
+              should_run="false"
+            fi
+            if [[ -n "${PR_HEAD_REPO:-}" && "${PR_HEAD_REPO}" != "${CURRENT_REPO}" ]]; then
+              should_run="false"
+            fi
+            branch="${PR_HEAD_BRANCH}"
+            state_layout="halfpath"
+            payload_set="superblocks"
+            expb_repo="NethermindEth/execution-payloads-benchmarks"
+            expb_branch="main"
+            expb_data_dir="/mnt/sda/expb-data"
+            delay_seconds="0"
+            additional_extra_flags=""
+          else
+            branch="${PUSH_BRANCH}"
+            state_layout="halfpath"
+            payload_set="superblocks"
+            expb_repo="NethermindEth/execution-payloads-benchmarks"
+            expb_branch="main"
+            expb_data_dir="/mnt/sda/expb-data"
+            delay_seconds="0"
+            additional_extra_flags=""
+          fi
+
+          branch="${branch#refs/heads/}"
+          if [[ -z "${branch}" ]]; then
+            echo "Failed to resolve branch for event '${EVENT_NAME}'."
+            exit 1
+          fi
+
+          if ! [[ "${delay_seconds}" =~ ^-?[0-9]+$ ]]; then
+            echo "delay_seconds must be an integer, got '${delay_seconds}'."
+            exit 1
+          fi
+
+          clean_branch="$(echo "${branch}" | sed 's/[^a-zA-Z0-9._-]/-/g')"
+
+          should_trigger_publish_docker="true"
+          if [[ "${branch}" == "master" || "${branch}" == "paprika" || "${branch}" == release/* ]]; then
+            should_trigger_publish_docker="false"
+          fi
+
+          if [[ "${state_layout}" == "flat" && "${payload_set}" == "superblocks" ]]; then
+            config_file="github-action-compressed-mainnet-flat.yaml"
+          elif [[ "${state_layout}" == "flat" && "${payload_set}" == "realblocks" ]]; then
+            config_file="github-action-mainnet-flat.yaml"
+          elif [[ "${state_layout}" == "halfpath" && "${payload_set}" == "superblocks" ]]; then
+            config_file="github-action-compressed-mainnet.yaml"
+          else
+            config_file="github-action-mainnet.yaml"
+          fi
+
+          {
+            echo "should_run=${should_run}"
+            echo "branch=${branch}"
+            echo "clean_branch=${clean_branch}"
+            echo "should_trigger_publish_docker=${should_trigger_publish_docker}"
+            echo "config_file=${config_file}"
+            echo "image_label=nethermindeth/nethermind:${clean_branch}"
+            echo "expb_repo=${expb_repo}"
+            echo "expb_branch=${expb_branch}"
+            echo "expb_data_dir=${expb_data_dir}"
+            echo "delay_seconds=${delay_seconds}"
+            echo "additional_extra_flags<<EOF"
+            printf '%s\n' "${additional_extra_flags}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+  prepare-docker:
+    needs: [resolve]
+    if: needs.resolve.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Docker image source
+        if: needs.resolve.outputs.should_trigger_publish_docker != 'true'
+        run: |
+          echo "Skipping publish-docker.yml for auto-built branch '${{ needs.resolve.outputs.branch }}'."
+          echo "Using image '${{ needs.resolve.outputs.image_label }}'."
+
+      - name: Checkout repository
+        if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
+        uses: actions/checkout@v6
+
+      - name: Trigger publish-docker.yml
+        if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: publish-docker.yml
+          ref: ${{ needs.resolve.outputs.branch }}
+          token: ${{ github.token }}
+          inputs: '{
+            "image-name": "nethermind",
+            "tag": "${{ needs.resolve.outputs.clean_branch }}",
+            "dockerfile": "Dockerfile",
+            "build-config": "release"
+            }'
+
+      - name: Wait for publish-docker.yml to complete
+        if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_ID: publish-docker.yml
+          MAX_WAIT_MINUTES: "10"
+          INTERVAL: "10"
+          TIMEOUT: "120"
+          ORG_NAME: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          NAME_FILTER: Publish Docker image
+          REF: ${{ needs.resolve.outputs.branch }}
+        run: |
+          chmod +x scripts/wait-for-workflow.sh
+          ./scripts/wait-for-workflow.sh
+
+  benchmark:
+    needs: [resolve, prepare-docker]
+    if: needs.resolve.outputs.should_run == 'true'
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 720
+    env:
+      EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
+      CONFIG_FILE: ${{ needs.resolve.outputs.config_file }}
+      NETHERMIND_IMAGE: ${{ needs.resolve.outputs.image_label }}
+    steps:
+      - name: Print resolved inputs
+        run: |
+          echo "Event: ${{ github.event_name }}"
+          echo "Nethermind branch: ${{ needs.resolve.outputs.branch }}"
+          echo "Docker image: ${NETHERMIND_IMAGE}"
+          echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
+          echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
+
+      - name: Ensure EXPB config file exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f "${EXPB_DATA_DIR}/${CONFIG_FILE}" ]]; then
+            echo "Config file '${EXPB_DATA_DIR}/${CONFIG_FILE}' does not exist."
+            echo "Available github-action config files in '${EXPB_DATA_DIR}':"
+            ls -1 "${EXPB_DATA_DIR}"/github-action*mainnet*.yaml || true
+            exit 1
+          fi
+
+      - name: Render benchmark config
+        id: render-config
+        shell: bash
+        env:
+          SOURCE_CONFIG_FILE: ${{ env.EXPB_DATA_DIR }}/${{ env.CONFIG_FILE }}
+          RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config.yaml
+          DOCKER_TAG: ${{ needs.resolve.outputs.clean_branch }}
+          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import re
+
+          source_config_file = os.environ["SOURCE_CONFIG_FILE"]
+          rendered_config_file = os.environ["RENDERED_CONFIG_FILE"]
+          docker_tag = os.environ["DOCKER_TAG"]
+          delay_seconds = os.environ["DELAY_SECONDS"]
+          additional_extra_flags_raw = os.environ.get("ADDITIONAL_EXTRA_FLAGS", "")
+
+          with open(source_config_file, "r", encoding="utf-8") as source_file:
+              config_text = source_file.read()
+
+          config_text = config_text.replace("<<DOCKER_TAG>>", docker_tag)
+          config_text = config_text.replace("<<DELAY>>", delay_seconds)
+
+          additional_extra_flags = []
+          normalized_flags = additional_extra_flags_raw.replace("\r", "")
+          for raw_line in normalized_flags.split("\n"):
+              for part in raw_line.split(","):
+                  flag = part.strip()
+                  if flag:
+                      additional_extra_flags.append(flag)
+
+          if additional_extra_flags:
+              extra_flags_pattern = re.compile(r"^(?P<indent>[ \t]*)extra_flags:\s*$", re.MULTILINE)
+
+              def add_flags(match: re.Match[str]) -> str:
+                  indent = match.group("indent")
+                  new_flags = "".join(f"\n{indent}  - {flag}" for flag in additional_extra_flags)
+                  return f"{match.group(0)}{new_flags}"
+
+              config_text = extra_flags_pattern.sub(add_flags, config_text)
+
+          with open(rendered_config_file, "w", encoding="utf-8", newline="\n") as rendered_file:
+              rendered_file.write(config_text)
+          PY
+
+          echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install or upgrade expb
+        shell: bash
+        env:
+          EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
+          EXPB_BRANCH: ${{ needs.resolve.outputs.expb_branch }}
+        run: |
+          set -euo pipefail
+
+          if ! command -v uv >/dev/null 2>&1; then
+            echo "uv is required on runner but was not found in PATH."
+            exit 1
+          fi
+
+          expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
+          echo "Installing/upgrading expb from ${expb_source}"
+          uv tool install --upgrade --reinstall --from "${expb_source}" expb
+          echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+
+      - name: Show expb version
+        shell: bash
+        run: |
+          set -euo pipefail
+          expb --version
+
+      - name: Run expb scenarios
+        shell: bash
+        working-directory: ${{ env.EXPB_DATA_DIR }}
+        run: |
+          set -euo pipefail
+          expb execute-scenarios \
+            --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
+            --per-payload-metrics \
+            --per-payload-metrics-logs \
+            --print-logs
