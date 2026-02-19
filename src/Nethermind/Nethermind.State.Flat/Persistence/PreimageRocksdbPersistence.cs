@@ -30,9 +30,14 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
 
     public void Clear()
     {
+        using IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
         foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
         {
-            db.GetColumnDb(column).Clear();
+            IWriteBatch columnBatch = batch.GetColumnBatch(column);
+            foreach (byte[] key in db.GetColumnDb(column).GetAllKeys())
+            {
+                columnBatch.Remove(key);
+            }
         }
     }
 
