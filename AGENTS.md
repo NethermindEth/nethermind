@@ -148,6 +148,43 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Use summary timing values to derive aggregate metrics (average/mean at minimum; median/p95 when available).
 - If a run fails or is terminated, check whether cleanup grace-period handling completed cleanly.
 
+### Log structure reference
+
+- Reference run used for structure validation:
+  - Run: `https://github.com/NethermindEth/nethermind/actions/runs/22185801008`
+  - Job: `https://github.com/NethermindEth/nethermind/actions/runs/22185801008/job/64159725161`
+- Fetch logs with:
+  ```bash
+  gh run view 22185801008 --job 64159725161 --log
+  ```
+- GitHub job log lines are tab-separated in this shape:
+  - `<job-name>\t<step-name>\t<timestamp>\t<message>`
+  - Example step names in this workflow: `Print resolved inputs`, `Render benchmark config`, `Install or upgrade expb`, `Run expb scenarios`.
+- `Run expb scenarios` contains mixed streams:
+  - EXPB structured events like: `timestamp=... level=info event="..."`.
+  - K6 progress and metric blocks (`http_req_duration`, `iteration_duration`, percentiles like `p(95)`).
+  - Raw Nethermind runtime logs (received blocks, processed block timings, shutdown sequence).
+  - Per-payload metrics table near the end, marked by:
+    - `+---------+------------+-----------------+`
+    - `| payload | gas_used   | processing_ms   |`
+    - rows with payload id, gas used, processing time.
+- ANSI color codes are present; when searching/parsing, strip ANSI escape sequences first.
+- Some non-ASCII time-unit glyphs can appear mangled in plain terminal output, so prefer numeric metric fields when computing aggregates.
+
+### Mandatory log checks
+
+- Fail review if any of these appear in Nethermind logs:
+  - `Exception`
+  - `Invalid Block`
+  - `Invalid Blocks`
+- Also flag severe runtime signals if present:
+  - `Unhandled`
+  - `Fatal`
+  - `ERROR`
+- Confirm normal shutdown markers at end:
+  - `Nethermind is shut down`
+  - `event="Cleanup completed"`
+
 ### Notes for agents
 
 - The benchmark config is rendered to a temporary file and removed afterward; no source config revert is required.
