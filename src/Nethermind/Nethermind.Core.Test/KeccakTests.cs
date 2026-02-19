@@ -136,6 +136,28 @@ namespace Nethermind.Core.Test
             stream.GetHash().Bytes.ToHexString().Should().Be(expected);
         }
 
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000001", Description = "Normal increment")]
+        [TestCase("0x00000000000000000000000000000000000000000000000000000000000000ff", "0x0000000000000000000000000000000000000000000000000000000000000100", Description = "Byte boundary carry")]
+        [TestCase("0x000000000000000000000000000000000000000000000000000000000000ffff", "0x0000000000000000000000000000000000000000000000000000000000010000", Description = "Multiple byte carry")]
+        [TestCase("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", Description = "Overflow returns max")]
+        public void IncrementPath_ReturnsExpected(string inputHex, string expectedHex)
+        {
+            ValueHash256 path = new(inputHex);
+            ValueHash256 result = path.IncrementPath();
+            Assert.That(result, Is.EqualTo(new ValueHash256(expectedHex)));
+        }
+
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000000000000000000000000000000", Description = "Normal decrement")]
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000000000100", "0x00000000000000000000000000000000000000000000000000000000000000ff", Description = "Byte boundary borrow")]
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000000010000", "0x000000000000000000000000000000000000000000000000000000000000ffff", Description = "Multiple byte borrow")]
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000000", Description = "Underflow returns zero")]
+        public void DecrementPath_ReturnsExpected(string inputHex, string expectedHex)
+        {
+            ValueHash256 path = new(inputHex);
+            ValueHash256 result = path.DecrementPath();
+            Assert.That(result, Is.EqualTo(new ValueHash256(expectedHex)));
+        }
+
         public static string[][] KeccakCases =
         {
         ["0x4","f343681465b9efe82c933c3e8748c70cb8aa06539c361de20f72eac04e766393"],
