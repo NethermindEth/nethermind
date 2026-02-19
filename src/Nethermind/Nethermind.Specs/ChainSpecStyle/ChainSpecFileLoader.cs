@@ -20,7 +20,7 @@ public class ChainSpecFileLoader
 
     public ChainSpecFileLoader(IJsonSerializer serializer, ILogManager logManager)
     {
-        var jsonLoader = new ChainSpecLoader(serializer, logManager);
+        AutoDetectingChainSpecLoader jsonLoader = new(serializer, logManager);
         _chainSpecLoaders = new Dictionary<string, IChainSpecLoader>
         {
             { ".json", jsonLoader },
