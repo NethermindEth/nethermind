@@ -35,7 +35,7 @@ public class TestingRpcModule(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly IBlockchainProcessor _processor = mainProcessingContext.BlockchainProcessor;
 
-    public Task<ResultWrapper<GetPayloadV5Result?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData)
+    public Task<ResultWrapper<GetPayloadV5Result?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData, string? targetFork = null)
     {
         Block? parentBlock = blockFinder.FindBlock(parentBlockHash);
 
@@ -53,9 +53,9 @@ public class TestingRpcModule(
             {
                 GetPayloadV5Result getPayloadV5Result = new(processedBlock, feesTracer.Fees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false);
 
-                if (!getPayloadV5Result.ValidateFork(specProvider))
+                if (!ValidateFork(getPayloadV5Result, targetFork))
                 {
-                    if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
+                    if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the target fork: {targetFork ?? "prague"}");
                     return ResultWrapper<GetPayloadV5Result?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
                 }
 
@@ -116,5 +116,18 @@ public class TestingRpcModule(
         {
             yield return TxDecoder.Instance.Decode(new RlpStream(txRlp), RlpBehaviors.SkipTypedWrapping);
         }
+    }
+
+    private bool ValidateFork(GetPayloadV5Result payload, string? targetFork)
+    {
+        IReleaseSpec spec = specProvider.GetSpec(payload.ExecutionPayload.BlockNumber, payload.ExecutionPayload.Timestamp);
+
+        return targetFork?.ToLowerInvariant() switch
+        {
+            "amsterdam" => spec.IsEip7702Enabled,
+            "prague" => spec.IsEip7594Enabled,
+            null => spec.IsEip7594Enabled,
+            _ => false
+        };
     }
 }
