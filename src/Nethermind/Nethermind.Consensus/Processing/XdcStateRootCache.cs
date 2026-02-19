@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -126,19 +127,22 @@ public static class XdcStateRootCache
         {
             try
             {
-                var data = new CacheEntry
+                // Persist the FULL remote→local mapping, not just the latest entry
+                var data = new FullCacheEntry
                 {
-                    BlockNumber = blockNumber,
-                    LocalRoot = localRoot.ToString(),
-                    RemoteRoot = remoteRoot?.ToString()
+                    LastBlockNumber = blockNumber,
+                    RemoteToLocalMappings = _remoteToLocal.ToDictionary(
+                        kvp => kvp.Key.ToString(),
+                        kvp => kvp.Value.ToString()
+                    )
                 };
                 var json = JsonSerializer.Serialize(data);
                 File.WriteAllText(_persistPath, json);
                 _lastPersistedBlock = blockNumber;
             }
-            catch
+            catch (Exception ex)
             {
-                // Don't crash on persist failure
+                Console.WriteLine($"XdcStateRootCache: Persist failed: {ex.Message}");
             }
         }
     }
@@ -151,21 +155,43 @@ public static class XdcStateRootCache
         try
         {
             var json = File.ReadAllText(_persistPath);
-            var data = JsonSerializer.Deserialize<CacheEntry>(json);
-            if (data is null || data.LocalRoot is null) return;
-
-            var localRoot = new Hash256(data.LocalRoot);
-            _computedStateRoots[data.BlockNumber] = localRoot;
-
-            if (data.RemoteRoot is not null)
+            
+            // Try new format first
+            try
             {
-                var remoteRoot = new Hash256(data.RemoteRoot);
-                _remoteToLocal[remoteRoot] = localRoot;
-                _remoteRootsByBlock[data.BlockNumber] = remoteRoot;
+                var data = JsonSerializer.Deserialize<FullCacheEntry>(json);
+                if (data?.RemoteToLocalMappings is not null)
+                {
+                    foreach (var kvp in data.RemoteToLocalMappings)
+                    {
+                        var remote = new Hash256(kvp.Key);
+                        var local = new Hash256(kvp.Value);
+                        _remoteToLocal[remote] = local;
+                    }
+                    _lastPersistedBlock = data.LastBlockNumber;
+                    Console.WriteLine($"XdcStateRootCache: Loaded {_remoteToLocal.Count} mappings from disk (up to block {data.LastBlockNumber})");
+                    return;
+                }
             }
+            catch { /* Fall through to old format */ }
+            
+            // Fallback to old single-entry format for backwards compatibility
+            var oldData = JsonSerializer.Deserialize<CacheEntry>(json);
+            if (oldData?.LocalRoot is not null)
+            {
+                var localRoot = new Hash256(oldData.LocalRoot);
+                _computedStateRoots[oldData.BlockNumber] = localRoot;
 
-            _lastPersistedBlock = data.BlockNumber;
-            Console.WriteLine($"XdcStateRootCache: Loaded from disk — block {data.BlockNumber}, local={data.LocalRoot?[..18]}...");
+                if (oldData.RemoteRoot is not null)
+                {
+                    var remoteRoot = new Hash256(oldData.RemoteRoot);
+                    _remoteToLocal[remoteRoot] = localRoot;
+                    _remoteRootsByBlock[oldData.BlockNumber] = remoteRoot;
+                }
+
+                _lastPersistedBlock = oldData.BlockNumber;
+                Console.WriteLine($"XdcStateRootCache: Loaded legacy format — block {oldData.BlockNumber}");
+            }
         }
         catch (Exception ex)
         {
@@ -178,5 +204,11 @@ public static class XdcStateRootCache
         public long BlockNumber { get; set; }
         public string? LocalRoot { get; set; }
         public string? RemoteRoot { get; set; }
+    }
+    
+    private class FullCacheEntry
+    {
+        public long LastBlockNumber { get; set; }
+        public Dictionary<string, string>? RemoteToLocalMappings { get; set; }
     }
 }
