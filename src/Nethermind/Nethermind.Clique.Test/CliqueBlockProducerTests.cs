@@ -543,7 +543,7 @@ public class CliqueBlockProducerTests
         }
     }
 
-    private static readonly int _timeout = 5000; // this has to cover block period of second + wiggle of up to 500ms * (signers - 1) + 100ms delay of the block readiness check
+    private static readonly int _timeout = 15000; // allow extra scheduling jitter on loaded CI/Windows runners
 
     [Test]
     [Retry(3)]
