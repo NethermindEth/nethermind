@@ -521,20 +521,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
-    {
-        byte[]? rlp = _nodeStorage.Get(address, path, keccak, ReadFlags.None);
-
-        if (rlp is null)
-        {
-            return false;
-        }
-
-        Metrics.LoadedFromDbNodesCount++;
-
-        return true;
-    }
-
     public IReadOnlyTrieStore AsReadOnly() => new ReadOnlyTrieStore(this);
 
     public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) => DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, hash));
@@ -1767,8 +1753,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(address, in path, hash, flags);
 
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(address, in path, hash, flags);
-
-        public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => baseTrieStore.IsPersisted(address, in path, in keccak);
 
         public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
     }

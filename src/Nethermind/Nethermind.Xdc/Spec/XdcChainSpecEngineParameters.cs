@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using System;
 using System.Collections.Generic;
@@ -20,6 +21,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public int Reward { get; set; }
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
+    public Address[] GenesisMasternodes { get; set; } = Array.Empty<Address>();
 
     public Address BlockSignerContract { get; set; }
     public Address RandomizeSMCBinary { get; set; }
@@ -49,6 +51,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public long BlackListHFNumber { get; set; }
     public long TipXDCX { get; set; }
     public long TIPXDCXMinerDisable { get; set; }
+    public long? DynamicGasLimitBlock { get; set; }
 
     private static void CheckConfig(List<V2ConfigParams> list)
     {
@@ -60,6 +63,12 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
                 throw new InvalidOperationException($"Duplicate config for round {list[i].SwitchRound}.");
         }
     }
+
+    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+    {
+        spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
+    }
+
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {
         if (TipTrc21Fee is not null)
