@@ -15,6 +15,14 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
     private readonly WriteBufferAdjuster _adjuster = new(db);
     public void Flush() => db.Flush();
 
+    public void Clear()
+    {
+        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        {
+            db.GetColumnDb(column).Clear();
+        }
+    }
+
     public IPersistence.IPersistenceReader CreateReader()
     {
         IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();
@@ -64,12 +72,14 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
 
-        IWriteOnlyKeyValueStore stateTopNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags);
-        IWriteOnlyKeyValueStore stateNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags);
-        IWriteOnlyKeyValueStore storageNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags);
-        IWriteOnlyKeyValueStore fallbackNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags);
+        IWriteBatch stateTopNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags);
+        IWriteBatch stateNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags);
+        IWriteBatch storageNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags);
+        IWriteBatch fallbackNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags);
 
         BaseTriePersistence.WriteBatch trieWriteBatch = new(
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateTopNodes),
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateNodes),
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.FallbackNodes),
             stateTopNodesBatch,
@@ -82,6 +92,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
         return new BasePersistence.WriteBatch<BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
             new BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>(
                 new BaseFlatPersistence.WriteBatch(
+                    (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateNodes),
                     (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
                     stateNodesBatch,
                     storageNodesBatch,

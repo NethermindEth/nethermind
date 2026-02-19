@@ -28,6 +28,14 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
 
     public void Flush() => db.Flush();
 
+    public void Clear()
+    {
+        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        {
+            db.GetColumnDb(column).Clear();
+        }
+    }
+
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
         byte[]? bytes = kv.Get(CurrentStateKey);
@@ -96,16 +104,17 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        IWriteOnlyKeyValueStore accountBatch = _adjuster.Wrap(batch, FlatDbColumns.Account, flags);
-        IWriteOnlyKeyValueStore storageBatch = _adjuster.Wrap(batch, FlatDbColumns.Storage, flags);
-        IWriteOnlyKeyValueStore stateTopNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags);
-        IWriteOnlyKeyValueStore stateNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags);
-        IWriteOnlyKeyValueStore storageNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags);
-        IWriteOnlyKeyValueStore fallbackNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags);
+        IWriteBatch accountBatch = _adjuster.Wrap(batch, FlatDbColumns.Account, flags);
+        IWriteBatch storageBatch = _adjuster.Wrap(batch, FlatDbColumns.Storage, flags);
+        IWriteBatch stateTopNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags);
+        IWriteBatch stateNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags);
+        IWriteBatch storageNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags);
+        IWriteBatch fallbackNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags);
 
         FakeHashWriter<BaseFlatPersistence.WriteBatch> flatWriter = new(
             new BaseFlatPersistence.WriteBatch(
-                ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
+                (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Account),
+                (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
                 accountBatch,
                 storageBatch,
                 flags
@@ -113,6 +122,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
         );
 
         BaseTriePersistence.WriteBatch trieWriteBatch = new(
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateTopNodes),
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateNodes),
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.FallbackNodes),
             stateTopNodesBatch,
@@ -184,6 +195,12 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
 
         public void SetAccountRaw(Hash256 addrHash, Account account) =>
             throw new InvalidOperationException("Raw operations not available in preimage mode");
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            throw new NotSupportedException("Snap sync not supported in preimage mode");
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            throw new NotSupportedException("Snap sync not supported in preimage mode");
     }
 
     public struct FakeHashFlatReader<TFlatReader>(
