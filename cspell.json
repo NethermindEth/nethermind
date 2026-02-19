@@ -518,7 +518,7 @@
     "nodetype",
     "nofile",
 	"nongcstatic",
-	"noninteractive"
+	"noninteractive",
     "nonposdao",    
     "nonstring",
     "nops",
