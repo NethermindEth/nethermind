@@ -88,21 +88,28 @@ namespace Nethermind.Consensus.Processing
 
                     ParallelUnbalancedWork.For(
                         0,
-                        len,
+                        len + 1,
                         ParallelUnbalancedWork.DefaultOptions,
                         (block, processingOptions, stateProvider, transactionProcessors, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
                         static (i, state) =>
                         {
+                            if (i == 0)
+                            {
+                                (state.stateProvider as IBlockAccessListBuilder)?.ApplyStateChanges(state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                                return state;
+                            }
+
+                            int txIndex = i - 1;
                             ProcessTransactionParallel(
-                                state.transactionProcessors[i],
+                                state.transactionProcessors[txIndex],
                                 state.stateProvider,
                                 state.specProvider,
                                 state.block,
-                                state.txs[i],
-                                i,
-                                state.receiptsTracers[i],
+                                state.txs[txIndex],
+                                txIndex,
+                                state.receiptsTracers[txIndex],
                                 state.processingOptions);
-                            state.gasResults[i].SetResult(state.txs[i].BlockGasUsed);
+                            state.gasResults[txIndex].SetResult(state.txs[txIndex].BlockGasUsed);
                             return state;
                         });
 
@@ -196,11 +203,6 @@ namespace Nethermind.Consensus.Processing
                 currentTx.BlockAccessIndex = index + 1;
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
-
-                if (index == 0)
-                {
-                    (stateProvider as IBlockAccessListBuilder)?.ApplyStateChanges(specProvider.GetSpec(block.Header), !block.Header.IsGenesis || !specProvider.GenesisStateUnavailable);
-                }
 
                 Console.WriteLine($"[parallel] completed executing transaction with bal index {index + 1}");
             }
