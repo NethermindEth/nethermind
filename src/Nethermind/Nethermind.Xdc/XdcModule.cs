@@ -20,16 +20,16 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.TxPool;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
+using Nethermind.TxPool;
+
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Xdc;
 

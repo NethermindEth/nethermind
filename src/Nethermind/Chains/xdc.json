@@ -64,7 +64,7 @@
 
         "MergeSignRange": 15,
 
-        "DynamicGasLimitBlock": 9999999999999999999999,
+        "DynamicGasLimitBlock": 9223372036854775807,
         "tip2019Block": 1,
         "BlackListHFNumber": 38383838,
         "blackListedAddresses": [
