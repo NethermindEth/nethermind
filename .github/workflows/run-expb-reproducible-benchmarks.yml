@@ -30,7 +30,7 @@ on:
         options:
           - realblocks
           - superblocks
-        default: realblocks
+        default: superblocks
       delay_seconds:
         description: Value used to replace <<DELAY>> placeholder (integer)
         required: false
@@ -120,7 +120,7 @@ jobs:
             fi
             branch="${PR_HEAD_BRANCH}"
             state_layout="halfpath"
-            payload_set="realblocks"
+            payload_set="superblocks"
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
@@ -130,7 +130,7 @@ jobs:
           else
             branch="${PUSH_BRANCH}"
             state_layout="halfpath"
-            payload_set="realblocks"
+            payload_set="superblocks"
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
