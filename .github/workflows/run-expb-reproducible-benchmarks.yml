@@ -256,43 +256,36 @@ jobs:
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import os
-          import re
+          flags_file="$(mktemp)"
+          printf '%s' "${ADDITIONAL_EXTRA_FLAGS}" \
+            | tr '\r' '\n' \
+            | tr ',' '\n' \
+            | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+            | sed '/^$/d' \
+            > "${flags_file}"
 
-          source_config_file = os.environ["SOURCE_CONFIG_FILE"]
-          rendered_config_file = os.environ["RENDERED_CONFIG_FILE"]
-          docker_tag = os.environ["DOCKER_TAG"]
-          delay_seconds = os.environ["DELAY_SECONDS"]
-          additional_extra_flags_raw = os.environ.get("ADDITIONAL_EXTRA_FLAGS", "")
-
-          with open(source_config_file, "r", encoding="utf-8") as source_file:
-              config_text = source_file.read()
-
-          config_text = config_text.replace("<<DOCKER_TAG>>", docker_tag)
-          config_text = config_text.replace("<<DELAY>>", delay_seconds)
-
-          additional_extra_flags = []
-          normalized_flags = additional_extra_flags_raw.replace("\r", "")
-          for raw_line in normalized_flags.split("\n"):
-              for part in raw_line.split(","):
-                  flag = part.strip()
-                  if flag:
-                      additional_extra_flags.append(flag)
-
-          if additional_extra_flags:
-              extra_flags_pattern = re.compile(r"^(?P<indent>[ \t]*)extra_flags:\s*$", re.MULTILINE)
-
-              def add_flags(match: re.Match[str]) -> str:
-                  indent = match.group("indent")
-                  new_flags = "".join(f"\n{indent}  - {flag}" for flag in additional_extra_flags)
-                  return f"{match.group(0)}{new_flags}"
-
-              config_text = extra_flags_pattern.sub(add_flags, config_text)
-
-          with open(rendered_config_file, "w", encoding="utf-8", newline="\n") as rendered_file:
-              rendered_file.write(config_text)
-          PY
+          sed \
+            -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
+            -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
+            "${SOURCE_CONFIG_FILE}" \
+            | awk -v flags_file="${flags_file}" '
+                BEGIN {
+                  while ((getline flag < flags_file) > 0) {
+                    flags[++flags_count] = flag
+                  }
+                  close(flags_file)
+                }
+                {
+                  print
+                  if (flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:[[:space:]]*$/) {
+                    match($0, /^[[:space:]]*/)
+                    indent = substr($0, RSTART, RLENGTH)
+                    for (i = 1; i <= flags_count; i++) {
+                      print indent "  - " flags[i]
+                    }
+                  }
+                }
+              ' > "${RENDERED_CONFIG_FILE}"
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
