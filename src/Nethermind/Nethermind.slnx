@@ -71,6 +71,7 @@
     <Project Path="Nethermind.Shutter.Test/Nethermind.Shutter.Test.csproj" />
     <Project Path="Nethermind.Sockets.Test/Nethermind.Sockets.Test.csproj" />
     <Project Path="Nethermind.Specs.Test/Nethermind.Specs.Test.csproj" />
+    <Project Path="Nethermind.State.Flat.Test/Nethermind.State.Flat.Test.csproj" />
     <Project Path="Nethermind.State.Test/Nethermind.State.Test.csproj" />
     <Project Path="Nethermind.Synchronization.Test/Nethermind.Synchronization.Test.csproj" />
     <Project Path="Nethermind.Taiko.Test/Nethermind.Taiko.Test.csproj" />
@@ -122,6 +123,7 @@
   <Project Path="Nethermind.Shutter/Nethermind.Shutter.csproj" />
   <Project Path="Nethermind.Sockets/Nethermind.Sockets.csproj" />
   <Project Path="Nethermind.Specs/Nethermind.Specs.csproj" />
+  <Project Path="Nethermind.State.Flat/Nethermind.State.Flat.csproj" />
   <Project Path="Nethermind.State/Nethermind.State.csproj" />
   <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
   <Project Path="Nethermind.Taiko/Nethermind.Taiko.csproj" />
