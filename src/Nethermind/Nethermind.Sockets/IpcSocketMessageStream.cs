@@ -59,14 +59,7 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         if (delimiter != -1 && (delimiter + 1) < read)
         {
             _bufferedDataLength = read - delimiter - 1;
-
-            if (_bufferedData.Length < buffer.Count)
-            {
-                if (_bufferedData.Length != 0)
-                    ArrayPool<byte>.Shared.Return(_bufferedData);
-
-                _bufferedData = ArrayPool<byte>.Shared.Rent(buffer.Count);
-            }
+            EnsureBufferedDataCapacity(_bufferedDataLength);
 
             endOfMessage = true;
             buffer[(delimiter + 1)..read].CopyTo(_bufferedData);
@@ -79,35 +72,38 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
                 endOfMessage = true;
                 _bufferedDataLength = 0;
             }
-            else if (TryGetCompleteJsonMessageLength(buffer[..read], out int messageLength))
+            else
             {
-                int remainingLength = read - messageLength;
-                if (remainingLength > 0)
+                int parsedBufferOffset = buffer.Offset;
+                int parsedBufferLength = parsedBufferOffset + read;
+                ArraySegment<byte> parseBuffer = buffer;
+                if (parsedBufferOffset != 0)
                 {
-                    _bufferedDataLength = remainingLength;
+                    parseBuffer = new ArraySegment<byte>(buffer.Array!, 0, parsedBufferLength);
+                }
 
-                    if (_bufferedData.Length < buffer.Count)
+                if (TryGetCompleteJsonMessageLength(parseBuffer[..parsedBufferLength], out int messageLength))
+                {
+                    int remainingLength = parsedBufferLength - messageLength;
+                    if (remainingLength > 0)
                     {
-                        if (_bufferedData.Length != 0)
-                            ArrayPool<byte>.Shared.Return(_bufferedData);
-
-                        _bufferedData = ArrayPool<byte>.Shared.Rent(buffer.Count);
+                        _bufferedDataLength = remainingLength;
+                        EnsureBufferedDataCapacity(_bufferedDataLength);
+                        parseBuffer[messageLength..parsedBufferLength].CopyTo(_bufferedData);
+                    }
+                    else
+                    {
+                        _bufferedDataLength = 0;
                     }
 
-                    buffer[messageLength..read].CopyTo(_bufferedData);
+                    endOfMessage = true;
+                    read = messageLength - parsedBufferOffset;
                 }
                 else
                 {
+                    endOfMessage = false;
                     _bufferedDataLength = 0;
                 }
-
-                endOfMessage = true;
-                read = messageLength;
-            }
-            else
-            {
-                endOfMessage = false;
-                _bufferedDataLength = 0;
             }
         }
 
@@ -118,8 +114,6 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
             EndOfMessage = endOfMessage
         };
     }
-
-    private static readonly JsonReaderOptions _jsonReaderOptions = new() { AllowMultipleValues = true };
 
     private static bool TryGetCompleteJsonMessageLength(ArraySegment<byte> buffer, out int messageLength)
     {
@@ -144,16 +138,39 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
             return false;
         }
 
-        Utf8JsonReader jsonReader = new(jsonSpan, isFinalBlock: false, new JsonReaderState(_jsonReaderOptions));
+        Utf8JsonReader jsonReader = new(jsonSpan, isFinalBlock: false, default);
 
         try
         {
-            bool parsed = JsonDocument.TryParseValue(ref jsonReader, out JsonDocument? jsonDocument);
-            jsonDocument?.Dispose();
-            if (!parsed)
+            if (!jsonReader.Read())
             {
                 messageLength = 0;
                 return false;
+            }
+
+            if (jsonReader.TokenType is not JsonTokenType.StartObject and not JsonTokenType.StartArray)
+            {
+                messageLength = 0;
+                return false;
+            }
+
+            int depth = 1;
+            while (depth > 0)
+            {
+                if (!jsonReader.Read())
+                {
+                    messageLength = 0;
+                    return false;
+                }
+
+                if (jsonReader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray)
+                {
+                    depth++;
+                }
+                else if (jsonReader.TokenType is JsonTokenType.EndObject or JsonTokenType.EndArray)
+                {
+                    depth--;
+                }
             }
 
             messageLength = leadingWhitespaceLength + (int)jsonReader.BytesConsumed;
@@ -170,6 +187,19 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
 
     private static bool IsJsonWhitespace(byte value) =>
         value == (byte)' ' || value == (byte)'\n' || value == (byte)'\r' || value == (byte)'\t';
+
+    private void EnsureBufferedDataCapacity(int requiredLength)
+    {
+        if (_bufferedData.Length < requiredLength)
+        {
+            if (_bufferedData.Length != 0)
+            {
+                ArrayPool<byte>.Shared.Return(_bufferedData);
+            }
+
+            _bufferedData = ArrayPool<byte>.Shared.Rent(requiredLength);
+        }
+    }
 
     protected override void Dispose(bool disposing)
     {
