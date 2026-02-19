@@ -41,6 +41,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Core.Test.Modules;
 
 namespace Nethermind.Xdc.Test.Helpers;
 
@@ -228,8 +229,6 @@ public class XdcTestBlockchain : TestBlockchain
 
                 return txPool;
             })
-
-            .AddSingleton<IProcessExitSource>(new ProcessExitSource(TestContext.CurrentContext.CancellationToken))
 
             .AddSingleton<TestBlockchainUtil.Config, Configuration>((cfg) => new TestBlockchainUtil.Config(cfg.SlotTime))
 
