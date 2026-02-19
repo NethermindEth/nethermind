@@ -241,9 +241,6 @@ jobs:
     needs: [resolve, prepare-docker]
     if: needs.resolve.outputs.should_run == 'true'
     runs-on: [self-hosted, reproducible-benchmarks]
-    concurrency:
-      group: expb-reproducible-benchmark-runner-queue
-      cancel-in-progress: false
     timeout-minutes: 720
     env:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
