@@ -42,7 +42,8 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
     public IWitnessGeneratingBlockProcessingEnvScope CreateScope()
     {
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
-        WitnessCapturingTrieStore trieStore = new(readOnlyDbProvider.StateDb, readOnlyTrieStore);
+        // Safe to use readOnlyTrieStore as base store as it has no-op committer not persisting any trie nodes
+        WitnessCapturingTrieStore trieStore = new(readOnlyTrieStore);
         IStateReader stateReader = new StateReader(trieStore, readOnlyDbProvider.CodeDb, logManager);
         IWorldState worldState = new WorldState(new TrieStoreScopeProvider(trieStore, readOnlyDbProvider.CodeDb, logManager), logManager);
 
