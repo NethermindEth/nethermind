@@ -49,6 +49,14 @@ namespace Nethermind.Core.Collections
             }
         }
 
+        public static void AddOrUpdateRange<TKey, TValue>(this IDictionary<TKey, TValue> dict, IEnumerable<KeyValuePair<TKey, TValue>> items)
+        {
+            foreach (KeyValuePair<TKey, TValue> kv in items)
+            {
+                dict[kv.Key] = kv.Value;
+            }
+        }
+
         [OverloadResolutionPriority(1)]
         public static void AddRange<T>(this ICollection<T> list, IReadOnlyList<T> items)
         {

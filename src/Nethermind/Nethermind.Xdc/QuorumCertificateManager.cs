@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -55,7 +56,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         var proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
         if (proposedBlockHeader is null)
-            throw new InvalidBlockException(proposedBlockHeader, "Proposed block header not found in chain");
+            throw new IncomingMessageBlockNotFoundException(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber);
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, _context.CurrentRound);
 
