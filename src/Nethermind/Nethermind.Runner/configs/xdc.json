@@ -13,6 +13,9 @@
   "Network": {
     "P2PPort": 30300
   },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
   "Sync": {
     "FastSync": true,
     "NeedToWaitForHeader": true,

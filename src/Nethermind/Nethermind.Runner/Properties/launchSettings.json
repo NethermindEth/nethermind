@@ -114,7 +114,7 @@
     },
     "Xdc": {
       "commandName": "Project",
-      "commandLineArgs": "-c xdc --data-dir .data -l debug --Init.DiscoveryEnabled false",
+      "commandLineArgs": "-c xdc --data-dir .data -l debug",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
