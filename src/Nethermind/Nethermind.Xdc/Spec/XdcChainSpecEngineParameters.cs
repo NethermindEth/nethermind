@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using System;
 using System.Collections.Generic;
@@ -62,6 +63,12 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
                 throw new InvalidOperationException($"Duplicate config for round {list[i].SwitchRound}.");
         }
     }
+
+    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+    {
+        spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
+    }
+
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {
         if (TipTrc21Fee is not null)
