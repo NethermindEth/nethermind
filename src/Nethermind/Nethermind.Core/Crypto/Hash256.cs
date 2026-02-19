@@ -100,46 +100,6 @@ namespace Nethermind.Core.Crypto
         public UInt256 ToUInt256(bool isBigEndian = true) => new UInt256(Bytes, isBigEndian: isBigEndian);
         public Hash256 ToHash256() => new Hash256(this);
         private bool IsZero => _bytes == default;
-
-        public ValueHash256 IncrementPath()
-        {
-            ValueHash256 result = this;
-            Span<byte> bytes = result.BytesAsSpan;
-
-            for (int i = 31; i >= 0; i--)
-            {
-                if (bytes[i] < 0xFF)
-                {
-                    bytes[i]++;
-                    return result;
-                }
-                bytes[i] = 0x00;
-            }
-
-            // Overflow - return max (shouldn't happen in practice)
-            result = ValueKeccak.Zero;
-            result.BytesAsSpan.Fill(0xFF);
-            return result;
-        }
-
-        public ValueHash256 DecrementPath()
-        {
-            ValueHash256 result = this;
-            Span<byte> bytes = result.BytesAsSpan;
-
-            for (int i = 31; i >= 0; i--)
-            {
-                if (bytes[i] > 0)
-                {
-                    bytes[i]--;
-                    return result;
-                }
-                bytes[i] = 0xFF;
-            }
-
-            // Underflow - return zero (shouldn't happen in practice)
-            return ValueKeccak.Zero;
-        }
     }
 
     public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>
