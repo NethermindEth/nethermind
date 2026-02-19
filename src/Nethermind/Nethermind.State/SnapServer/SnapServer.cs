@@ -61,7 +61,7 @@ public class SnapServer : ISnapServer
         {
             _optimizedReadFlags = ReadFlags.HintReadAhead;
         }
-        _storeWithReadFlag = new TrieStoreWithReadFlags(_store.GetTrieStore(null), _optimizedReadFlags);
+        _storeWithReadFlag = new TrieStoreWithReadFlags(_store.GetTrieStore(null), NullTrieNodeResolverFactory.Instance, _optimizedReadFlags);
     }
 
     private bool IsRootMissing(Hash256 stateRoot)

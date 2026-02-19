@@ -13,7 +13,7 @@ namespace Nethermind.Synchronization.SnapSync;
 /// A simple ITrieNodeResolver that creates unknown nodes from hashes.
 /// Used for proof resolution where RLP is already provided.
 /// </summary>
-internal sealed class UnknownNodeResolver : ITrieNodeResolver
+internal sealed class UnknownNodeResolver : ITrieNodeResolver, ITrieNodeResolverFactory
 {
     public static readonly UnknownNodeResolver Instance = new();
 

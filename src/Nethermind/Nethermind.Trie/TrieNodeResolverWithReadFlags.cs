@@ -1,20 +1,23 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
+public class TrieNodeResolverWithReadFlags : ITrieNodeResolver, ITrieNodeResolverFactory
 {
     private readonly ITrieNodeResolver _baseResolver;
+    private readonly ITrieNodeResolverFactory _factory;
     private readonly ReadFlags _defaultFlags;
 
-    public TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadFlags defaultFlags)
+    public TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ITrieNodeResolverFactory factory, ReadFlags defaultFlags)
     {
         _baseResolver = baseResolver;
+        _factory = factory;
         _defaultFlags = defaultFlags;
     }
 
@@ -45,7 +48,7 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address)
     {
-        return new TrieNodeResolverWithReadFlags(_baseResolver.GetStorageTrieNodeResolver(address), _defaultFlags);
+        return new TrieNodeResolverWithReadFlags(_factory.GetStorageTrieNodeResolver(address), _factory, _defaultFlags);
     }
 
     public INodeStorage.KeyScheme Scheme => _baseResolver.Scheme;

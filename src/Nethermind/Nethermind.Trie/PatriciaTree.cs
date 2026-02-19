@@ -909,7 +909,8 @@ namespace Nethermind.Trie
             Hash256 rootHash,
             VisitingOptions? visitingOptions = null,
             Hash256? storageAddr = null,
-            Hash256? storageRoot = null
+            Hash256? storageRoot = null,
+            ITrieNodeResolverFactory? factory = null
         ) where TNodeContext : struct, INodeContext<TNodeContext>
         {
             ArgumentNullException.ThrowIfNull(visitor);
@@ -949,13 +950,15 @@ namespace Nethermind.Trie
                 }
             }
 
+            factory ??= NullTrieNodeResolverFactory.Instance;
+
             ITrieNodeResolver resolver = flags != ReadFlags.None
-                ? new TrieNodeResolverWithReadFlags(TrieStore, flags)
+                ? new TrieNodeResolverWithReadFlags(TrieStore, factory, flags)
                 : TrieStore;
 
             if (storageAddr is not null)
             {
-                resolver = resolver.GetStorageTrieNodeResolver(storageAddr);
+                resolver = factory.GetStorageTrieNodeResolver(storageAddr);
             }
 
             bool TryGetRootRef(out TrieNode? rootRef)
@@ -981,21 +984,21 @@ namespace Nethermind.Trie
                 if (TryGetRootRef(out TrieNode rootRef))
                 {
                     TreePath emptyPath = TreePath.Empty;
-                    rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
+                    rootRef?.Accept(visitor, default, resolver, factory, ref emptyPath, trieVisitContext);
                 }
             }
             // Full db scan
             else if (TrieStore.Scheme == INodeStorage.KeyScheme.Hash && visitingOptions.FullScanMemoryBudget != 0)
             {
                 visitor.VisitTree(default, rootHash);
-                BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, visitingOptions);
+                BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, factory, visitingOptions);
                 batchedTrieVisitor.Start(rootHash, trieVisitContext);
             }
             else if (TryGetRootRef(out TrieNode rootRef))
             {
                 TreePath emptyPath = TreePath.Empty;
                 visitor.VisitTree(default, rootHash);
-                rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
+                rootRef?.Accept(visitor, default, resolver, factory, ref emptyPath, trieVisitContext);
             }
         }
 

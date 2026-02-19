@@ -335,7 +335,7 @@ public class TrieNodeTests
         TrieNode node = TrieNodeFactory.CreateExtension(Bytes.FromHexString("aa"), ignore);
 
         TreePath emptyPath = TreePath.Empty;
-        node.Accept(visitor, new EmptyContext(), NullTrieNodeResolver.Instance, ref emptyPath, context);
+        node.Accept(visitor, new EmptyContext(), NullTrieNodeResolver.Instance, NullTrieNodeResolverFactory.Instance, ref emptyPath, context);
 
         visitor.Received().VisitExtension(new EmptyContext(), node);
     }
@@ -348,7 +348,7 @@ public class TrieNodeTests
         TrieNode node = new(NodeType.Unknown);
 
         TreePath emptyPath = TreePath.Empty;
-        node.Accept(visitor, new EmptyContext(), NullTrieNodeResolver.Instance, ref emptyPath, context);
+        node.Accept(visitor, new EmptyContext(), NullTrieNodeResolver.Instance, NullTrieNodeResolverFactory.Instance, ref emptyPath, context);
 
         visitor.Received().VisitMissingNode(new EmptyContext(), node.Keccak);
     }
@@ -363,7 +363,7 @@ public class TrieNodeTests
         TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
         TreePath emptyPath = TreePath.Empty;
-        node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
+        node.Accept(visitor, default, NullTrieNodeResolver.Instance, NullTrieNodeResolverFactory.Instance, ref emptyPath, context);
 
         visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())].Should().Be(1);
     }
@@ -378,7 +378,7 @@ public class TrieNodeTests
         TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
         TreePath emptyPath = TreePath.Empty;
-        node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
+        node.Accept(visitor, default, NullTrieNodeResolver.Instance, NullTrieNodeResolverFactory.Instance, ref emptyPath, context);
 
         visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())].Should().Be(1);
     }
@@ -393,7 +393,7 @@ public class TrieNodeTests
         TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
         TreePath emptyPath = TreePath.Empty;
-        node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
+        node.Accept(visitor, default, NullTrieNodeResolver.Instance, NullTrieNodeResolverFactory.Instance, ref emptyPath, context);
 
         visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())].Should().Be(1);
     }
@@ -408,7 +408,7 @@ public class TrieNodeTests
         TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
         TreePath emptyPath = TreePath.Empty;
-        node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
+        node.Accept(visitor, default, NullTrieNodeResolver.Instance, NullTrieNodeResolverFactory.Instance, ref emptyPath, context);
 
         visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())].Should().Be(1);
     }
@@ -422,7 +422,7 @@ public class TrieNodeTests
         TrieNode node = TrieNodeFactory.CreateExtension(Bytes.FromHexString("aa"), ctx.AccountLeaf);
 
         TreePath emptyPath = TreePath.Empty;
-        node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
+        node.Accept(visitor, default, NullTrieNodeResolver.Instance, NullTrieNodeResolverFactory.Instance, ref emptyPath, context);
 
         visitor.VisitExtensionReceived[(TreePath.Empty, node)].Should().Be(1);
         visitor.VisitLeafReceived[(new(new(Bytes.FromHexString("0xa000000000000000000000000000000000000000000000000000000000000000")), 1), ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
@@ -442,7 +442,7 @@ public class TrieNodeTests
 
         TreePath emptyPath = TreePath.Empty;
         node.ResolveKey(NullTrieStore.Instance, ref emptyPath);
-        node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
+        node.Accept(visitor, default, NullTrieNodeResolver.Instance, NullTrieNodeResolverFactory.Instance, ref emptyPath, context);
 
         visitor.VisitBranchReceived[(TreePath.Empty, node)].Should().Be(1);
         for (byte i = 0; i < 16; i++)
@@ -464,7 +464,7 @@ public class TrieNodeTests
         }
 
         TreePath emptyPath = TreePath.Empty;
-        node.Accept(visitor, new EmptyContext(), NullTrieNodeResolver.Instance, ref emptyPath, context);
+        node.Accept(visitor, new EmptyContext(), NullTrieNodeResolver.Instance, NullTrieNodeResolverFactory.Instance, ref emptyPath, context);
 
         visitor.Received().VisitBranch(new EmptyContext(), node);
     }
@@ -811,7 +811,7 @@ public class TrieNodeTests
         trieNode.PrunePersistedRecursively(1);
         int count = 0;
         TreePath emptyPath = TreePath.Empty;
-        trieNode.CallRecursively((n, s, p) => count++, null, ref emptyPath, NullTrieStore.Instance, skipPersisted, LimboTraceLogger.Instance);
+        trieNode.CallRecursively((n, s, p) => count++, null, ref emptyPath, NullTrieStore.Instance, NullTrieNodeResolverFactory.Instance, skipPersisted, LimboTraceLogger.Instance);
         count.Should().Be(1);
     }
 

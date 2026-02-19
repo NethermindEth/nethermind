@@ -7,8 +7,8 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public class TrieStoreWithReadFlags(IScopedTrieStore implementation, ReadFlags flags)
-    : TrieNodeResolverWithReadFlags(implementation, flags), IScopedTrieStore
+public class TrieStoreWithReadFlags(IScopedTrieStore implementation, ITrieNodeResolverFactory factory, ReadFlags flags)
+    : TrieNodeResolverWithReadFlags(implementation, factory, flags), IScopedTrieStore
 {
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         implementation.BeginCommit(root, writeFlags);

@@ -1126,7 +1126,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         // The first CallRecursive stop at two level, yielding 256 node in parallelStartNodes, which is run concurrently
         TreePath path = TreePath.Empty;
-        commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, GetTrieStoreForPruning(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
+        commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, GetTrieStoreForPruning(null), NullTrieNodeResolverFactory.Instance, true, _logger, maxPathLength: parallelBoundaryPathLength);
 
         // The amount of change in the subtrees are not balanced at all. So their writes areas buffered here
         // which get disposed in parallel instead of being disposed in `PersistNodeStartingFrom`.
@@ -1195,7 +1195,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
-        await tn.CallRecursivelyAsync(DoPersist, address2, ref path, GetTrieStoreForPruning(address2), _logger);
+        await tn.CallRecursivelyAsync(DoPersist, address2, ref path, GetTrieStoreForPruning(address2), NullTrieNodeResolverFactory.Instance, _logger);
         await disposeQueue.Writer.WriteAsync(writeBatch);
     }
 
