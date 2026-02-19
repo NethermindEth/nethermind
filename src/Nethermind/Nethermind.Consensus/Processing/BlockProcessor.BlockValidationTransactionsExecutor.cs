@@ -77,11 +77,20 @@ namespace Nethermind.Consensus.Processing
                         long totalGas = 0;
                         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
                         {
-                            int chunkEnd = System.Math.Min(chunkStart + GasValidationChunkSize, len);
+                            int chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, len);
                             for (int j = chunkStart; j < chunkEnd; j++)
+                            {
                                 totalGas += gasResults[j].Task.GetAwaiter().GetResult();
+                                long gasRemaining = block.Header.GasLimit - totalGas;
+                                bool validateStorageReads = j == chunkEnd - 1;
+                                Console.WriteLine($"[parallel] validating block access list at index {j + 1} (storage read check: {validateStorageReads})");
+                                _balBuilder?.ValidateBlockAccessList((ushort)(j + 1), gasRemaining, validateStorageReads);
+                            }
+
                             if (totalGas > block.Header.GasLimit)
+                            {
                                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {totalGas} > block gas limit {block.Header.GasLimit} after transaction index {chunkEnd - 1}.");
+                            }
                         }
                         _blockExecutionContext.Header.GasUsed = totalGas;
                     });
@@ -125,30 +134,25 @@ namespace Nethermind.Consensus.Processing
                     //     _transactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
                     // }
 
+                    long? gasRemaining = _balBuilder?.GasUsed();
+                    if (gasRemaining is not null)
+                    {
+                        _balBuilder!.ValidateBlockAccessList(0, gasRemaining.Value);
+                    }
+
                     for (int i = 0; i < block.Transactions.Length; i++)
                     {
                         _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                         Transaction currentTx = block.Transactions[i];
                         ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+
+                        if (gasRemaining is not null)
+                        {
+                            gasRemaining -= currentTx.SpentGas;
+                            _balBuilder!.ValidateBlockAccessList((ushort)(i + 1), gasRemaining!.Value);
+                        }
                     }
                     _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
-                // long? gasRemaining = _balBuilder?.GasUsed();
-                // if (gasRemaining is not null)
-                // {
-                //     _balBuilder.ValidateBlockAccessList(0, gasRemaining!.Value);
-                // }
-
-                // for (int i = 0; i < block.Transactions.Length; i++)
-                // {
-                //     _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
-                //     Transaction currentTx = block.Transactions[i];
-                //     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
-
-                //     if (gasRemaining is not null)
-                //     {
-                //         gasRemaining -= currentTx.SpentGas;
-                //         _balBuilder.ValidateBlockAccessList((ushort)(i + 1), gasRemaining!.Value);
-                //     }
                 }
 
                 return [.. receiptsTracer.TxReceipts];

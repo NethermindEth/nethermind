@@ -840,7 +840,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
     public long GasUsed()
         => _gasUsed;
 
-    public void ValidateBlockAccessList(ushort index, long gasRemaining)
+    public void ValidateBlockAccessList(ushort index, long gasRemaining, bool validateStorageReads = true)
     {
         if (_suggestedBlockAccessList is null)
         {
@@ -859,14 +859,17 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         int generatedReads = 0;
         int suggestedReads = 0;
 
-        if (generatedHead is not null)
+        if (validateStorageReads)
         {
-            generatedReads += generatedHead.Value.Reads;
-        }
+            if (generatedHead is not null)
+            {
+                generatedReads += generatedHead.Value.Reads;
+            }
 
-        if (suggestedHead is not null)
-        {
-            suggestedReads += suggestedHead.Value.Reads;
+            if (suggestedHead is not null)
+            {
+                suggestedReads += suggestedHead.Value.Reads;
+            }
         }
 
         while (generatedHead is not null || suggestedHead is not null)
@@ -882,7 +885,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
                     // keep scanning rest of suggested
                     suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
 
-                    if (suggestedHead is not null)
+                    if (validateStorageReads && suggestedHead is not null)
                     {
                         suggestedReads += suggestedHead.Value.Reads;
                     }
@@ -913,7 +916,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
                     // skip suggested with no changes
                     suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
 
-                    if (suggestedHead is not null)
+                    if (validateStorageReads && suggestedHead is not null)
                     {
                         suggestedReads += suggestedHead.Value.Reads;
                     }
@@ -932,18 +935,21 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
             generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
             suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
 
-            if (generatedHead is not null)
+            if (validateStorageReads)
             {
-                generatedReads += generatedHead.Value.Reads;
-            }
+                if (generatedHead is not null)
+                {
+                    generatedReads += generatedHead.Value.Reads;
+                }
 
-            if (suggestedHead is not null)
-            {
-                suggestedReads += suggestedHead.Value.Reads;
+                if (suggestedHead is not null)
+                {
+                    suggestedReads += suggestedHead.Value.Reads;
+                }
             }
         }
 
-        if (gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
+        if (validateStorageReads && gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
         {
             throw new InvalidBlockLevelAccessListException("Suggested block-level access list contained invalid storage reads.");
         }
