@@ -118,7 +118,7 @@ jobs:
             fi
             branch="${PR_HEAD_BRANCH}"
             state_layout="halfpath"
-            payload_set="superblocks"
+            payload_set="realblocks"
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
@@ -128,7 +128,7 @@ jobs:
           else
             branch="${PUSH_BRANCH}"
             state_layout="halfpath"
-            payload_set="superblocks"
+            payload_set="realblocks"
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
