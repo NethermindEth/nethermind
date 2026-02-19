@@ -667,4 +667,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -f "${{ steps.render-config.outputs.rendered_config_file }}" || true
+
+          # Always remove the deterministic rendered config path
+          rm -f "${RUNNER_TEMP}/rendered-expb-config.yaml" || true
+
+          # Also remove the path reported by render-config (if any and different)
+          rendered_config_file="${{ steps.render-config.outputs.rendered_config_file }}"
+          if [[ -n "${rendered_config_file}" && "${rendered_config_file}" != "${RUNNER_TEMP}/rendered-expb-config.yaml" ]]; then
+            rm -f "${rendered_config_file}" || true
+          fi
