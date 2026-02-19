@@ -105,7 +105,7 @@ public partial class DebugRpcModuleTests
 
         using (witnessState.BeginScope(parent))
         {
-            int capturedNodesBefore = capturingTrieStore.TouchedNodesRlp.Length;
+            int capturedNodesBefore = capturingTrieStore.TouchedNodesRlp.Count();
 
             // Take snapshot before modifying state
             Snapshot snapshot = witnessState.TakeSnapshot();
@@ -118,7 +118,7 @@ public partial class DebugRpcModuleTests
             witnessState.Set(in storageCell, [99]); // some random value (does not matter)
 
             // Verify no new trie nodes were captured by the trie store during Set()
-            capturingTrieStore.TouchedNodesRlp.Length.Should().Be(capturedNodesBefore,
+            capturingTrieStore.TouchedNodesRlp.Count().Should().Be(capturedNodesBefore,
                 "Set() should not traverse the trie");
 
             // Simulate tx revert by reverting the write — cached write is discarded but _storageSlots retains the slot

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -20,12 +21,8 @@ public class WitnessCollector(
 {
     public Witness GetWitnessForExistingBlock(BlockHeader parentHeader, Block block)
     {
-        using (worldState.BeginScope(parentHeader))
-        {
-            (Block processed, TxReceipt[] receipts) = blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain,
-                NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
-
-            return worldState.GetWitness(parentHeader);
-        }
+        using IDisposable? scope = worldState.BeginScope(parentHeader);
+        blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
+        return worldState.GetWitness(parentHeader);
     }
 }
