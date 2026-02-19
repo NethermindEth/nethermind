@@ -65,7 +65,7 @@ internal class XdcSealValidatorTests
             Build.A.XdcBlockHeader()
             .TestObject;
         header.Beneficiary = TestItem.AddressA;
-        yield return new TestCaseData(header, new byte[0]);
+        yield return new TestCaseData(header, Array.Empty<byte>());
         yield return new TestCaseData(header, new byte[65]);
         yield return new TestCaseData(header, new byte[66]);
         byte[] extraLongSignature = new byte[66];
@@ -217,7 +217,6 @@ internal class XdcSealValidatorTests
     private static QuorumCertificate CreateQc(BlockRoundInfo roundInfo, PrivateKey[] keys, ulong gapNumber)
     {
         EthereumEcdsa ecdsa = new EthereumEcdsa(0);
-        QuorumCertificateDecoder qcEncoder = new QuorumCertificateDecoder();
 
         //Fake the sigs by signing empty hash
         IEnumerable<Signature> signatures = keys.Select(k => ecdsa.Sign(k, Keccak.Compute(Hash256.Zero.Bytes)));
