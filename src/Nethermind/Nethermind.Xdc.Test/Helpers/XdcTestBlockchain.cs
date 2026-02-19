@@ -41,6 +41,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Core.Test.Modules;
 
 namespace Nethermind.Xdc.Test.Helpers;
 
@@ -550,7 +551,7 @@ public class XdcTestBlockchain : TestBlockchain
         var head = (XdcBlockHeader)BlockTree.Head!.Header;
         var spec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
 
-        var newHeadWaitHandle = new TaskCompletionSource();
+        var newHeadWaitHandle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         BlockTree.NewHeadBlock += OnNewHead;
         try
