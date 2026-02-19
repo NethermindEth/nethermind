@@ -32,7 +32,7 @@ public class RewardTests
     {
         var chain = await XdcTestBlockchain.Create();
         var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
-        var signingTxCache = new SigningTxCache(chain.BlockTree);
+        var signingTxCache = new SigningTxCache(chain.BlockTree, chain.SpecProvider);
         chain.ChangeReleaseSpec(spec =>
         {
             spec.EpochLength = 50;
@@ -174,7 +174,7 @@ public class RewardTests
     {
         var chain = await XdcTestBlockchain.Create();
         var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
-        var signingTxCache = new SigningTxCache(chain.BlockTree);
+        var signingTxCache = new SigningTxCache(chain.BlockTree, chain.SpecProvider);
         masternodeVotingContract
             .GetCandidateOwner(Arg.Any<BlockHeader>(), Arg.Any<Address>())
             .Returns(ci => ci.ArgAt<Address>(1));
@@ -356,7 +356,7 @@ public class RewardTests
         votingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), Arg.Any<Address>())
             .Returns(ci => ci.ArgAt<Address>(1));
 
-        var signingTxCache = new SigningTxCache(tree);
+        var signingTxCache = new SigningTxCache(tree, specProvider);
         var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, signingTxCache);
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
@@ -381,10 +381,11 @@ public class RewardTests
     {
         IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        ISigningTxCache signingTxCache = new SigningTxCache(blockTree);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        ISigningTxCache signingTxCache = new SigningTxCache(blockTree, specProvider);
         var rewardCalculator = new XdcRewardCalculator(
             Substitute.For<IEpochSwitchManager>(),
-            Substitute.For<ISpecProvider>(),
+            specProvider,
             blockTree,
             masternodeVotingContract,
             signingTxCache

@@ -63,15 +63,10 @@ internal static partial class XdcExtensions
         return addresses.ToImmutableArray();
     }
 
-    public static ulong GetRoundNumber(this XdcBlockHeader header, IXdcReleaseSpec spec)
+    public static ulong GetRoundNumber(this XdcBlockHeader header)
     {
-        if (header.Number <= spec.SwitchBlock)
-        {
-            return 0;
-        }
-
-        var extraConsensusData = header.ExtraConsensusData;
-        return extraConsensusData.BlockRound;
+        ExtraFieldsV2 extraConsensusData = header.ExtraConsensusData;
+        return extraConsensusData!.BlockRound;
     }
 
     public static bool ValidateBlockInfo(this BlockRoundInfo blockInfo, XdcBlockHeader blockHeader) =>

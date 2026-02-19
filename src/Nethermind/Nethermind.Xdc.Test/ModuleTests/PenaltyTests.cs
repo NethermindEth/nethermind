@@ -256,7 +256,7 @@ internal class PenaltyTests
             return new BlockRoundInfo(header.Hash!, (ulong)blockNumber, blockNumber);
         });
 
-        ISigningTxCache signingTxCache = new SigningTxCache(blockTree);
+        ISigningTxCache signingTxCache = new SigningTxCache(blockTree, specProvider);
         PenaltyHandler penaltyHandler = new(blockTree, specProvider, epochSwitchManager, signingTxCache);
         return new MockedPenaltyContext(blockHeaders, masternodesAddress, penaltySigner, xdcSpec, signingTxCache, penaltyHandler);
     }

@@ -33,7 +33,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         var epochNumber = (ulong)spec.SwitchEpoch + currentEpochSwitchInfo.EpochSwitchBlockInfo.Round / (ulong)spec.EpochLength;
         if (epochNumber < limit) return [];
 
-        var results = epochSwitchManager.GetBlockByEpochNumber(epochNumber - limit);
+        BlockRoundInfo results = epochSwitchManager.GetBlockByEpochNumber(epochNumber - limit);
         if (results is null) return [];
 
         var header = (XdcBlockHeader)tree.FindHeader(results.Hash, results.BlockNumber);
@@ -42,32 +42,16 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         return [.. header.PenaltiesAddress];
     }
 
-    public Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates)
+    public Address[] HandlePenalties(long number, Hash256 parentHash, Address[] candidates)
     {
-        List<Hash256> listBlockHash = [currentHash];
+        List<Hash256> listBlockHash = [parentHash];
         Dictionary<Address, int> minerStatistics = new();
 
         long parentNumber = number - 1;
-        Hash256 parentHash = currentHash;
-        ulong round = 0;
-
-        for (int timeout = 0; ; timeout++)
-        {
-            var parentHeader = (XdcBlockHeader)tree.FindHeader(parentHash, parentNumber);
-            if (parentHeader is not null)
-            {
-                IXdcReleaseSpec spec = specProvider.GetXdcSpec(parentHeader);
-                round = parentHeader.GetRoundNumber(spec);
-                break;
-            }
-
-            Task.Delay(1 * 1000).Wait();
-            if (timeout > 30) return [];
-        }
-
+        Hash256 currentHash = parentHash;
         while (parentNumber >= 0)
         {
-            var parentHeader = (XdcBlockHeader)tree.FindHeader(parentHash, parentNumber);
+            var parentHeader = (XdcBlockHeader)tree.FindHeader(currentHash, parentNumber);
             if (parentHeader is null) return [];
 
             var isEpochSwitch = epochSwitchManager.IsEpochSwitchAtBlock(parentHeader);
@@ -75,15 +59,17 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                 break;
 
             Address miner = parentHeader.Beneficiary ?? _ethereumEcdsa.RecoverAddress(new Signature(parentHeader.Validator.AsSpan(0, 64), parentHeader.Validator[64]), Keccak.Compute(_xdcHeaderDecoder.Encode(parentHeader, RlpBehaviors.ForSealing).Bytes));
-            minerStatistics[miner] = minerStatistics.TryGetValue(miner, out int count) ? count + 1 : 1;
+            minerStatistics[miner!] = minerStatistics.TryGetValue(miner, out int count) ? count + 1 : 1;
 
             parentNumber--;
-            parentHash = parentHeader.ParentHash;
-            listBlockHash.Add(parentHash);
+            currentHash = parentHeader.ParentHash;
+            listBlockHash.Add(currentHash);
         }
 
+        var header = (XdcBlockHeader)tree.FindHeader(parentHash, parentNumber);
+        ulong round = header!.GetRoundNumber();
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(number, round);
-        Address[] preMasternodes = epochSwitchManager.GetEpochSwitchInfo(currentHash)!.Masternodes;
+        Address[] preMasternodes = epochSwitchManager.GetEpochSwitchInfo(parentHash)!.Masternodes;
         var penalties = new HashSet<Address>();
 
         int minMinerBlockPerEpoch = XdcConstants.MinimumMinerBlockPerEpoch;
@@ -109,7 +95,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
 
             if (number > comebackHeight)
             {
-                Address[] prevPenalties = GetPreviousPenalties(currentHash, currentSpec, (ulong)currentSpec.LimitPenaltyEpochV2);
+                Address[] prevPenalties = GetPreviousPenalties(parentHash, currentSpec, (ulong)currentSpec.LimitPenaltyEpochV2);
                 penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
 
                 var blockHashes = new HashSet<Hash256>();
@@ -151,7 +137,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
 
                 for (long i = 0; i < limitPenaltyEpoch; i++)
                 {
-                    Address[] previousPenalties = GetPreviousPenalties(currentHash, currentSpec, (ulong)i);
+                    Address[] previousPenalties = GetPreviousPenalties(parentHash, currentSpec, (ulong)i);
                     foreach (Address previousPenalty in previousPenalties)
                     {
                         penaltyParolees[previousPenalty] = penaltyParolees.TryGetValue(previousPenalty, out var count)
