@@ -132,7 +132,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             return null;
         }
 
-        Address[] penalties = header.PenaltiesAddress.Value.ToArray();
+        Address[] penalties = ResolvePenalties(header, snap, xdcSpec);
         Address[] candidates = snap.NextEpochCandidates;
 
         var standbyNodes = Array.Empty<Address>();
@@ -154,6 +154,11 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         _epochSwitches.Set(header.Hash, epochSwitchInfo);
         return epochSwitchInfo;
+    }
+
+    protected virtual Address[] ResolvePenalties(XdcBlockHeader header, Snapshot snapshot, IXdcReleaseSpec spec)
+    {
+        return header.PenaltiesAddress.Value.ToArray();
     }
 
     public EpochSwitchInfo? GetEpochSwitchInfo(Hash256 hash)
