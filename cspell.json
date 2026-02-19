@@ -519,6 +519,7 @@
     "nofile",
     "nonposdao",
     "nongcstatic",
+    "noninteractive",
     "nonstring",
     "nops",
     "nostack",
