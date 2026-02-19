@@ -138,6 +138,8 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Installs `expb` via `uv tool install --force --from ... expb`.
 - Runs `expb execute-scenarios` with per-payload metrics and logs.
 - Handles termination gracefully with cleanup grace period.
+- On successful `master` push runs, caches per-payload timing aggregates extracted from the `processing_ms` table.
+- On labeled PR runs, restores latest cached `master` metrics and posts a PR comment with PR vs master comparison.
 
 ### What to inspect in run output
 
@@ -177,6 +179,7 @@ This repository contains a dedicated workflow for reproducible payload benchmark
   - `Exception`
   - `Invalid Block`
   - `Invalid Blocks`
+- Workflow behavior requirement: any detected `Exception` in run output must fail the workflow after reporting matching lines.
 - Also flag severe runtime signals if present:
   - `Unhandled`
   - `Fatal`

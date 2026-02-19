@@ -52,14 +52,16 @@ on:
   push:
     branches:
       - master
-      - codex/reproducible-benchmark-workflow
 
 permissions:
   contents: read
   actions: write
+  issues: write
+  pull-requests: write
 
 jobs:
   resolve:
+    if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'reproducible-benchmark' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
@@ -260,6 +262,16 @@ jobs:
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
           echo "Scenario name: ${{ needs.resolve.outputs.scenario_name }}"
 
+      - name: Restore cached master metrics
+        id: restore-master-metrics
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/expb-master-metrics-cache
+          key: expb-master-metrics-v1-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v1-
+
       - name: Ensure EXPB config file exists
         shell: bash
         run: |
@@ -343,11 +355,16 @@ jobs:
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
       - name: Run expb scenarios
+        id: run-expb
+        continue-on-error: true
         shell: bash
         working-directory: ${{ env.EXPB_DATA_DIR }}
+        env:
+          RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
         run: |
           set -euo pipefail
           expb_pid=""
+          : > "${RAW_RUN_LOG}"
 
           on_terminate() {
             echo "Termination signal received. Waiting up to ${CLEANUP_GRACE_SECONDS}s for expb cleanup."
@@ -358,7 +375,7 @@ jobs:
               while [[ "${remaining}" -gt 0 ]]; do
                 if ! kill -0 "${expb_pid}" 2>/dev/null; then
                   echo "expb exited during cleanup grace period."
-                  exit 143
+                  break
                 fi
                 sleep 1
                 remaining=$((remaining - 1))
@@ -369,6 +386,10 @@ jobs:
                 kill -KILL "${expb_pid}" 2>/dev/null || true
               fi
             fi
+
+            if [[ -f "${RAW_RUN_LOG}" ]]; then
+              cat "${RAW_RUN_LOG}"
+            fi
             exit 143
           }
 
@@ -378,10 +399,269 @@ jobs:
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
             --per-payload-metrics-logs \
-            --print-logs &
+            --print-logs \
+            > "${RAW_RUN_LOG}" 2>&1 &
           expb_pid=$!
 
+          set +e
           wait "${expb_pid}"
+          expb_exit_code=$?
+          set -e
+
+          cat "${RAW_RUN_LOG}"
+          exit "${expb_exit_code}"
+
+      - name: Analyze benchmark output
+        id: analyze
+        if: always()
+        shell: bash
+        env:
+          RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
+        run: |
+          set -euo pipefail
+
+          clean_log="${RUNNER_TEMP}/expb-run.clean.log"
+          exception_lines="${RUNNER_TEMP}/expb-exceptions.log"
+          processing_ms="${RUNNER_TEMP}/expb-processing-ms.txt"
+          processing_ms_sorted="${RUNNER_TEMP}/expb-processing-ms-sorted.txt"
+          metrics_file="${RUNNER_TEMP}/expb-metrics.env"
+
+          if [[ ! -f "${RAW_RUN_LOG}" ]]; then
+            echo "Run output log '${RAW_RUN_LOG}' was not produced."
+            exit 1
+          fi
+
+          sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${RAW_RUN_LOG}" > "${clean_log}"
+
+          grep -in "Exception" "${clean_log}" > "${exception_lines}" || true
+          exception_found="false"
+          if [[ -s "${exception_lines}" ]]; then
+            exception_found="true"
+            echo "Found Exception lines in benchmark output:"
+            head -n 40 "${exception_lines}"
+          fi
+
+          awk -F'|' '
+            /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+              value = $4
+              gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+              if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
+                print value
+              }
+            }
+          ' "${clean_log}" > "${processing_ms}"
+
+          count=$(wc -l < "${processing_ms}")
+          count="${count//[[:space:]]/}"
+          if [[ "${count}" -eq 0 ]]; then
+            echo "Could not extract per-payload processing_ms rows from benchmark output."
+            exit 1
+          fi
+
+          sort -n "${processing_ms}" > "${processing_ms_sorted}"
+
+          min=$(head -n 1 "${processing_ms_sorted}")
+          max=$(tail -n 1 "${processing_ms_sorted}")
+          avg=$(awk '{sum += $1} END {printf "%.6f", sum / NR}' "${processing_ms_sorted}")
+          mean="${avg}"
+
+          p90_index=$(( (90 * count + 99) / 100 ))
+          p95_index=$(( (95 * count + 99) / 100 ))
+          p99_index=$(( (99 * count + 99) / 100 ))
+
+          p90=$(sed -n "${p90_index}p" "${processing_ms_sorted}")
+          p95=$(sed -n "${p95_index}p" "${processing_ms_sorted}")
+          p99=$(sed -n "${p99_index}p" "${processing_ms_sorted}")
+
+          {
+            echo "COUNT=${count}"
+            echo "AVG=${avg}"
+            echo "MEAN=${mean}"
+            echo "P90=${p90}"
+            echo "P95=${p95}"
+            echo "P99=${p99}"
+            echo "MIN=${min}"
+            echo "MAX=${max}"
+          } > "${metrics_file}"
+
+          {
+            echo "exception_found=${exception_found}"
+            echo "exception_lines_file=${exception_lines}"
+            echo "metrics_file=${metrics_file}"
+            echo "count=${count}"
+            echo "avg=${avg}"
+            echo "mean=${mean}"
+            echo "p90=${p90}"
+            echo "p95=${p95}"
+            echo "p99=${p99}"
+            echo "min=${min}"
+            echo "max=${max}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Build PR comparison comment
+        id: pr-comment
+        if: always() && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          CURRENT_METRICS_FILE: ${{ steps.analyze.outputs.metrics_file }}
+          MASTER_METRICS_FILE: ${{ runner.temp }}/expb-master-metrics-cache/master-metrics.env
+          SCENARIO_NAME: ${{ needs.resolve.outputs.scenario_name }}
+          EXCEPTION_FOUND: ${{ steps.analyze.outputs.exception_found }}
+        run: |
+          set -euo pipefail
+
+          marker="<!-- expb-reproducible-benchmark-report -->"
+          comment_file="${RUNNER_TEMP}/expb-pr-comment.md"
+          : > "${comment_file}"
+
+          load_metric() {
+            local file="$1"
+            local key="$2"
+            grep -E "^${key}=" "${file}" | head -n 1 | cut -d'=' -f2-
+          }
+
+          percentage_delta() {
+            local current="$1"
+            local baseline="$2"
+            awk -v c="${current}" -v b="${baseline}" 'BEGIN { if (b == 0) { print "n/a"; } else { printf "%+.2f%%", ((c - b) / b) * 100; } }'
+          }
+
+          append_line() {
+            printf '%s\n' "$1" >> "${comment_file}"
+          }
+
+          append_blank() {
+            printf '\n' >> "${comment_file}"
+          }
+
+          if [[ ! -f "${CURRENT_METRICS_FILE}" ]]; then
+            append_line "${marker}"
+            append_line "### EXPB Benchmark Comparison"
+            append_blank
+            append_line "No current run metrics file was produced, so comparison against master could not be generated."
+          elif [[ ! -f "${MASTER_METRICS_FILE}" ]]; then
+            append_line "${marker}"
+            append_line "### EXPB Benchmark Comparison"
+            append_blank
+            append_line "No cached master baseline metrics were found yet. A baseline will be created from the next successful \`master\` push run."
+            append_blank
+            append_line "Current scenario: \`${SCENARIO_NAME}\`"
+          else
+            current_avg="$(load_metric "${CURRENT_METRICS_FILE}" "AVG")"
+            current_mean="$(load_metric "${CURRENT_METRICS_FILE}" "MEAN")"
+            current_p90="$(load_metric "${CURRENT_METRICS_FILE}" "P90")"
+            current_p95="$(load_metric "${CURRENT_METRICS_FILE}" "P95")"
+            current_p99="$(load_metric "${CURRENT_METRICS_FILE}" "P99")"
+            current_min="$(load_metric "${CURRENT_METRICS_FILE}" "MIN")"
+            current_max="$(load_metric "${CURRENT_METRICS_FILE}" "MAX")"
+
+            master_avg="$(load_metric "${MASTER_METRICS_FILE}" "AVG")"
+            master_mean="$(load_metric "${MASTER_METRICS_FILE}" "MEAN")"
+            master_p90="$(load_metric "${MASTER_METRICS_FILE}" "P90")"
+            master_p95="$(load_metric "${MASTER_METRICS_FILE}" "P95")"
+            master_p99="$(load_metric "${MASTER_METRICS_FILE}" "P99")"
+            master_min="$(load_metric "${MASTER_METRICS_FILE}" "MIN")"
+            master_max="$(load_metric "${MASTER_METRICS_FILE}" "MAX")"
+
+            append_line "${marker}"
+            append_line "### EXPB Benchmark Comparison"
+            append_blank
+            append_line "Scenario: \`${SCENARIO_NAME}\`"
+            append_blank
+            append_line "| Metric | PR | Master (cached) | Delta PR vs Master |"
+            append_line "|---|---:|---:|---:|"
+            append_line "| AVG (ms) | ${current_avg} | ${master_avg} | $(percentage_delta "${current_avg}" "${master_avg}") |"
+            append_line "| MEAN (ms) | ${current_mean} | ${master_mean} | $(percentage_delta "${current_mean}" "${master_mean}") |"
+            append_line "| P90 (ms) | ${current_p90} | ${master_p90} | $(percentage_delta "${current_p90}" "${master_p90}") |"
+            append_line "| P95 (ms) | ${current_p95} | ${master_p95} | $(percentage_delta "${current_p95}" "${master_p95}") |"
+            append_line "| P99 (ms) | ${current_p99} | ${master_p99} | $(percentage_delta "${current_p99}" "${master_p99}") |"
+            append_line "| MIN (ms) | ${current_min} | ${master_min} | $(percentage_delta "${current_min}" "${master_min}") |"
+            append_line "| MAX (ms) | ${current_max} | ${master_max} | $(percentage_delta "${current_max}" "${master_max}") |"
+          fi
+
+          if [[ "${EXCEPTION_FOUND}" == "true" ]]; then
+            append_blank
+            append_line ":warning: This run contained \`Exception\` lines and the workflow is expected to fail."
+          fi
+
+          {
+            echo "body<<EOF"
+            cat "${comment_file}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Publish PR comparison comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          COMMENT_BODY: ${{ steps.pr-comment.outputs.body }}
+        with:
+          script: |
+            const marker = '<!-- expb-reproducible-benchmark-report -->';
+            const body = process.env.COMMENT_BODY;
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) =>
+              comment.body && comment.body.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
+
+      - name: Prepare master metrics cache
+        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/expb-master-metrics-cache"
+          cp "${{ steps.analyze.outputs.metrics_file }}" "${RUNNER_TEMP}/expb-master-metrics-cache/master-metrics.env"
+
+      - name: Save master metrics cache
+        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/expb-master-metrics-cache
+          key: expb-master-metrics-v1-${{ github.run_id }}
+
+      - name: Enforce run quality gates
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
+            echo "expb execute-scenarios did not finish successfully."
+            exit 1
+          fi
+
+          if [[ "${{ steps.analyze.outputs.exception_found }}" == "true" ]]; then
+            echo "Exceptions were detected in run output. Failing workflow."
+            if [[ -f "${{ steps.analyze.outputs.exception_lines_file }}" ]]; then
+              head -n 40 "${{ steps.analyze.outputs.exception_lines_file }}"
+            fi
+            exit 1
+          fi
 
       - name: Cleanup rendered config
         if: always()
