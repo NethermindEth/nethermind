@@ -74,6 +74,7 @@ jobs:
       delay_seconds: ${{ steps.resolve.outputs.delay_seconds }}
       additional_extra_flags: ${{ steps.resolve.outputs.additional_extra_flags }}
       cleanup_grace_seconds: ${{ steps.resolve.outputs.cleanup_grace_seconds }}
+      scenario_name: ${{ steps.resolve.outputs.scenario_name }}
     steps:
       - name: Resolve branch and configuration
         id: resolve
@@ -169,6 +170,9 @@ jobs:
             config_file="github-action-mainnet.yaml"
           fi
 
+          payload_label="${payload_set%s}"
+          scenario_name="nethermind-${state_layout}-${payload_label}-${clean_branch}"
+
           {
             echo "should_run=${should_run}"
             echo "branch=${branch}"
@@ -181,6 +185,7 @@ jobs:
             echo "expb_data_dir=${expb_data_dir}"
             echo "delay_seconds=${delay_seconds}"
             echo "cleanup_grace_seconds=${cleanup_grace_seconds}"
+            echo "scenario_name=${scenario_name}"
             echo "additional_extra_flags<<EOF"
             printf '%s\n' "${additional_extra_flags}"
             echo "EOF"
@@ -250,6 +255,7 @@ jobs:
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
           echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
+          echo "Scenario name: ${{ needs.resolve.outputs.scenario_name }}"
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -270,6 +276,7 @@ jobs:
           RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config.yaml
           DOCKER_TAG: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          SCENARIO_NAME: ${{ needs.resolve.outputs.scenario_name }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
         run: |
           set -euo pipefail
@@ -284,6 +291,7 @@ jobs:
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
+            -e "s#^  nethermind:#  ${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" \
             | awk -v flags_file="${flags_file}" '
                 BEGIN {
@@ -371,3 +379,10 @@ jobs:
           expb_pid=$!
 
           wait "${expb_pid}"
+
+      - name: Cleanup rendered config
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "${{ steps.render-config.outputs.rendered_config_file }}" || true
