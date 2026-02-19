@@ -103,7 +103,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer)
     {
         IConfigProvider configProvider = new ConfigProvider();
-        configProvider.GetConfig<IBlocksConfig>().PreWarmStateOnBlockProcessing = false;
         var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
