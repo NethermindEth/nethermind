@@ -950,7 +950,7 @@ namespace Nethermind.Trie
                 }
             }
 
-            trieNodeResolverFactory ??= NullTrieNodeResolverFactory.Instance;
+            trieNodeResolverFactory ??= TrieStore as ITrieNodeResolverFactory ?? NullTrieNodeResolverFactory.Instance;
 
             ITrieNodeResolver resolver;
             if (storageAddr is not null)

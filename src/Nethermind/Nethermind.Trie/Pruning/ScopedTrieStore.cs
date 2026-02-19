@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
-public sealed class ScopedTrieStore(IScopableTrieStore fullTrieStore, Hash256? address) : IScopedTrieStore
+public sealed class ScopedTrieStore(IScopableTrieStore fullTrieStore, Hash256? address) : IScopedTrieStore, ITrieNodeResolverFactory
 {
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
         fullTrieStore.FindCachedOrUnknown(address, path, hash);
@@ -24,4 +24,7 @@ public sealed class ScopedTrieStore(IScopableTrieStore fullTrieStore, Hash256? a
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
         fullTrieStore.IsPersisted(address, path, in keccak);
+
+    ITrieNodeResolver ITrieNodeResolverFactory.GetStorageTrieNodeResolver(Hash256? storageAddress) =>
+        fullTrieStore.GetStorageTrieNodeResolver(storageAddress);
 }
