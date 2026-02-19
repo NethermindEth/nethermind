@@ -112,7 +112,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
-        public async Task With_ambigious_steps()
+        public async Task With_ambiguous_steps()
         {
             await using IContainer container = CreateNethermindEnvironment(
                 new StepInfo(typeof(StepWithLogManagerInConstructor)),
@@ -176,7 +176,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 .AddSingleton<INethermindApi, NethermindApi>()
                 .AddSingleton<NethermindApi.Dependencies>()
                 .AddSingleton<IConfigProvider>(new ConfigProvider())
-                .AddSingleton<IJsonSerializer>(new EthereumJsonSerializer())
+                .AddSingleton(new EthereumJsonSerializer())
+                .Bind<IJsonSerializer, EthereumJsonSerializer>()
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .AddSingleton<ChainSpec>(new ChainSpec())
                 .AddSingleton<ISpecProvider>(Substitute.For<ISpecProvider>())

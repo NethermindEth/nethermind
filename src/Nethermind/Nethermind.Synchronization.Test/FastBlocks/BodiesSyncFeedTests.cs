@@ -66,7 +66,7 @@ public class BodiesSyncFeedTests
         {
             FastSync = true,
             PivotHash = _pivotBlock.Hash!.ToString(),
-            PivotNumber = _pivotBlock.Number.ToString(),
+            PivotNumber = _pivotBlock.Number,
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };
@@ -191,7 +191,7 @@ public class BodiesSyncFeedTests
     {
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
-        _syncConfig.PivotNumber = (AncientBarrierInConfig + 1_000_000).ToString();
+        _syncConfig.PivotNumber = AncientBarrierInConfig + 1_000_000;
         _syncPointers.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
         if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());

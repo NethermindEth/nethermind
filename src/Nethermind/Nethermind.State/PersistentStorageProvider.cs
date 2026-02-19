@@ -10,7 +10,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -21,7 +20,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
-using Nethermind.Trie;
 
 namespace Nethermind.State;
 
@@ -115,6 +113,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return GetOrCreateStorage(address).StorageRoot;
     }
 
+    public bool IsStorageEmpty(Address address) =>
+        GetOrCreateStorage(address).IsEmpty;
+
     private HashSet<AddressAsKey>? _tempToUpdateRoots;
     /// <summary>
     /// Called by Commit
@@ -168,12 +169,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
 
             _committedThisRound.Add(change.StorageCell);
-
-            if (change.ChangeType == ChangeType.Destroy)
-            {
-                continue;
-            }
-
             int forAssertion = _intraBlockCache[change.StorageCell].Pop();
             if (forAssertion != currentPosition - i)
             {
@@ -278,6 +273,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             // We can recalculate the roots in parallel as they are all independent tries
             using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = _storages
+                // Only consider contracts that actually have pending changes
+                .Where(kv => _toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
+                // Schedule larger changes first to help balance the work
+                .OrderByDescending(kv => kv.Value.EstimatedChanges)
                 .Select((kv) => (
                     kv.Key,
                     kv.Value,
@@ -293,12 +292,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 static (i, state) =>
                 {
                     ref var kvp = ref state.storages.GetRef(i);
-                    if (!state.toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
-                    {
-                        // Wasn't updated don't recalculate
-                        return state;
-                    }
-
                     (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
                     if (writes == 0)
                     {
@@ -459,7 +452,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private sealed class PerContractState : IReturnable
     {
-        private static readonly Func<StorageCell, PerContractState, byte[]> _loadFromTreeStorageFunc = LoadFromTreeStorage;
         private IWorldStateScopeProvider.IStorageTree? _backend;
 
         private readonly DefaultableDictionary BlockChange = new();
@@ -483,6 +475,19 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             {
                 EnsureStorageTree();
                 return _backend.RootHash;
+            }
+        }
+
+        public bool IsEmpty
+        {
+            get
+            {
+                // _backend.RootHash is not reflected until after commit, but this need to be reflected before commit
+                // for SelfDestruct, since the deletion is not part of changelog, it need to be handled here.
+                if (BlockChange.HasClear) return true;
+
+                EnsureStorageTree();
+                return _backend.RootHash == Keccak.EmptyTreeHash;
             }
         }
 

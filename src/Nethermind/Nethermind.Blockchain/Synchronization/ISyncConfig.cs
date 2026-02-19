@@ -1,13 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Config;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Synchronization;
 
@@ -48,13 +45,10 @@ public interface ISyncConfig : IConfig
     string PivotTotalDifficulty { get; }
 
     [ConfigItem(Description = "The number of the pivot block for the Fast sync mode.", DefaultValue = "0")]
-    string PivotNumber { get; set; }
+    long PivotNumber { get; set; }
 
     [ConfigItem(Description = "The hash of the pivot block for the Fast sync mode.", DefaultValue = "null")]
     string? PivotHash { get; set; }
-
-    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
-    private long PivotNumberParsed => LongConverter.FromString(PivotNumber);
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
     UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
@@ -74,7 +68,7 @@ public interface ISyncConfig : IConfig
     public long AncientBodiesBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, AncientBodiesBarrier));
+    public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier));
 
     [ConfigItem(Description = $$"""
         The earliest receipt downloaded with fast sync when `{{nameof(DownloadReceiptsInFastSync)}}` is set to `true`. The actual value is determined as follows:
@@ -88,7 +82,7 @@ public interface ISyncConfig : IConfig
     public long AncientReceiptsBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+    public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
 
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }

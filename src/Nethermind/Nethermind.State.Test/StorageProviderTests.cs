@@ -16,7 +16,6 @@ using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
@@ -434,7 +433,7 @@ public class StorageProviderTests
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
         StorageCell nonAccessedStorageCell = new StorageCell(TestItem.AddressA, 2);
-        preBlockCaches.StorageCache[accessedStorageCell] = [1, 2, 3];
+        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
         provider.Get(accessedStorageCell);
         provider.Commit(Paris.Instance);
         provider.ClearStorage(TestItem.AddressA);
@@ -572,18 +571,63 @@ public class StorageProviderTests
     }
 
     [Test]
+    public void Selfdestruct_before_commit_will_mark_contract_as_empty()
+    {
+        Context ctx = new(setInitialState: false);
+        IWorldState provider = BuildStorageProvider(ctx);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.ClearStorage(TestItem.AddressA);
+            provider.DeleteAccount(TestItem.AddressA);
+            Assert.That(provider.IsStorageEmpty(TestItem.AddressA), Is.True);
+        }
+    }
+
+    [Test]
     public void Selfdestruct_persist_between_commit()
     {
         PreBlockCaches preBlockCaches = new PreBlockCaches();
         Context ctx = new(preBlockCaches);
         StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
-        preBlockCaches.StorageCache[accessedStorageCell] = [1, 2, 3];
+        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
 
         WorldState provider = BuildStorageProvider(ctx);
         provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo([1, 2, 3]);
         provider.ClearStorage(TestItem.AddressA);
         provider.Commit(Paris.Instance);
         provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+    }
+
+    [Test]
+    public void Eip161_empty_account_with_storage_does_not_throw_on_commit()
+    {
+        IWorldState worldState = new WorldState(
+            new TrieStoreScopeProvider(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), LogManager);
+
+        using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
+
+        // Create an empty account (balance=0, nonce=0, no code) and set storage on it.
+        // EIP-161 (via SpuriousDragon+) deletes empty accounts during commit, but the
+        // storage flush has already produced a non-empty storage root. The commit must
+        // handle this gracefully by skipping the storage root update for deleted accounts.
+        worldState.CreateAccount(TestItem.AddressA, 0);
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), [1, 2, 3]);
+        worldState.Commit(SpuriousDragon.Instance);
+
+        worldState.AccountExists(TestItem.AddressA).Should().BeFalse();
     }
 
     [TestCase(2)]

@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
-using MathNet.Numerics.Statistics.Mcmc;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -105,7 +104,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 curStartingPath += partitionSize;
 
-                Hash256 limitPath;
+                ValueHash256 limitPath;
 
                 // Special case for the last partition
                 if (i == _accountRangePartitionCount - 1)
@@ -115,7 +114,8 @@ namespace Nethermind.Synchronization.SnapSync
                 else
                 {
                     limitPath = new Hash256(Keccak.Zero.Bytes);
-                    BinaryPrimitives.WriteUInt32BigEndian(limitPath.Bytes, curStartingPath);
+                    BinaryPrimitives.WriteUInt32BigEndian(limitPath.BytesAsSpan, curStartingPath);
+                    limitPath = limitPath.DecrementPath(); // Limit is inclusive
                 }
 
                 partition.AccountPathLimit = limitPath;
@@ -332,7 +332,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueHash256? startingHash, in ValueHash256? hashLimit)
         {
-            _pivot.UpdatedStorages.Add(pathWithAccount.Path.ToCommitment());
+            TrackAccountToHeal(pathWithAccount.Path);
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault(), StorageHashLimit = hashLimit ?? Keccak.MaxValue });
         }
 
@@ -357,7 +357,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void EnqueueNextSlot(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash)
+        public void EnqueueNextSlot(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash, int slotCount)
         {
             ValueHash256 limitHash = parentRequest.LimitHash ?? Keccak.MaxValue;
             if (lastProcessedHash > limitHash)
@@ -369,23 +369,30 @@ namespace Nethermind.Synchronization.SnapSync
             UInt256 lastProcessed = new UInt256(lastProcessedHash.Bytes, true);
             UInt256 start = startingHash.HasValue ? new UInt256(startingHash.Value.Bytes, true) : UInt256.Zero;
 
+            // Splitting storage will cause the storage proof to not get stitched completely, causing more healing time and
+            // causes it to be tracked for healing, also, one more slot range to keep in memory.
+            // So we only split if the estimated remaining slot count is large enough. This is recursive, so large
+            // contract will continue getting split until the remaining slot count is low enough.
+            double slotSize = lastProcessed == start ? 0 : (double)(lastProcessed - start) / slotCount;
+            int estimatedRemainingSlotCount = slotSize == 0 ? 0 : (int)((double)(limit - lastProcessed) / slotSize);
+
             UInt256 fullRange = limit - start;
 
-            if (_enableStorageRangeSplit && lastProcessed < fullRange / StorageRangeSplitFactor + start)
+            if (estimatedRemainingSlotCount > 10_000_000 && _enableStorageRangeSplit && lastProcessed < fullRange / StorageRangeSplitFactor + start)
             {
                 ValueHash256 halfOfLeftHash = ((limit - lastProcessed) / 2 + lastProcessed).ToValueHash();
 
                 NextSlotRange.Enqueue(new StorageRange
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
-                    StartingHash = lastProcessedHash,
+                    StartingHash = lastProcessedHash.IncrementPath(),
                     LimitHash = halfOfLeftHash
                 });
 
                 NextSlotRange.Enqueue(new StorageRange
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
-                    StartingHash = halfOfLeftHash,
+                    StartingHash = halfOfLeftHash.IncrementPath(),
                     LimitHash = limitHash
                 });
 
@@ -398,7 +405,7 @@ namespace Nethermind.Synchronization.SnapSync
                 var storageRange = new StorageRange
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
-                    StartingHash = lastProcessedHash,
+                    StartingHash = lastProcessedHash.IncrementPath(),
                     LimitHash = limitHash
                 };
                 NextSlotRange.Enqueue(storageRange);
@@ -487,6 +494,12 @@ namespace Nethermind.Synchronization.SnapSync
         {
             _db.PutSpan(ACC_PROGRESS_KEY, ValueKeccak.MaxValue.Bytes, WriteFlags.DisableWAL);
             _db.Flush();
+        }
+
+        public void TrackAccountToHeal(ValueHash256 path)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Tracked {path} for healing");
+            _pivot.UpdatedStorages.Add(path.ToCommitment());
         }
 
         private void LogRequest(string reqType)

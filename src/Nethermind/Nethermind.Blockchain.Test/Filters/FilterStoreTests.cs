@@ -14,11 +14,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Filters;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class FilterStoreTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -103,14 +104,14 @@ public class FilterStoreTests
         get
         {
             yield return new TestCaseData(null, AddressFilter.AnyAddress);
-            yield return new TestCaseData(new[] { new AddressAsKey(TestItem.AddressA) }, new AddressFilter(TestItem.AddressA));
-            yield return new TestCaseData(new[] { new AddressAsKey(TestItem.AddressA), new AddressAsKey(TestItem.AddressB) },
+            yield return new TestCaseData(new HashSet<AddressAsKey> { new(TestItem.AddressA) }, new AddressFilter(TestItem.AddressA));
+            yield return new TestCaseData(new HashSet<AddressAsKey> { new(TestItem.AddressA), new(TestItem.AddressB) },
                 new AddressFilter([TestItem.AddressA, TestItem.AddressB]));
         }
     }
 
     [TestCaseSource(nameof(CorrectlyCreatesAddressFilterTestCases))]
-    public void Correctly_creates_address_filter(AddressAsKey[] address, AddressFilter expected)
+    public void Correctly_creates_address_filter(HashSet<AddressAsKey> address, AddressFilter expected)
     {
         BlockParameter from = new(100);
         BlockParameter to = new(BlockParameterType.Latest);
@@ -153,6 +154,7 @@ public class FilterStoreTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    [Parallelizable(ParallelScope.None)]
     public async Task CleanUps_filters()
     {
         List<int> removedFilterIds = new();

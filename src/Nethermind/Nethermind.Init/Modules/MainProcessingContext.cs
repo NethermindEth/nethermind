@@ -7,11 +7,9 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -32,30 +30,38 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IBlockTree blockTree,
         ILogManager logManager)
     {
+
+        IWorldStateScopeProvider worldState = worldStateManager.GlobalWorldState;
+        if (logManager.GetClassLogger<WorldStateScopeOperationLogger>().IsTrace)
+        {
+            worldState = new WorldStateScopeOperationLogger(worldStateManager.GlobalWorldState, logManager);
+        }
+
         ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
             builder
                 // These are main block processing specific
-                .AddSingleton<IWorldStateScopeProvider>(worldStateManager.GlobalWorldState)
+                .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddModule(blockValidationModules)
-                .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor>((branchProcessor) => new BlockchainProcessor(
-                    blockTree,
-                    branchProcessor,
-                    compositeBlockPreprocessorStep,
-                    worldStateManager.GlobalStateReader,
-                    logManager,
-                    new BlockchainProcessor.Options
+                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats>((branchProcessor, processingStats) =>
+                    new BlockchainProcessor(
+                        blockTree,
+                        branchProcessor,
+                        compositeBlockPreprocessorStep,
+                        worldStateManager.GlobalStateReader,
+                        logManager,
+                        new BlockchainProcessor.Options
+                        {
+                            StoreReceiptsByDefault = receiptConfig.StoreReceipts,
+                            DumpOptions = initConfig.AutoDump
+                        },
+                        processingStats)
                     {
-                        StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                        DumpOptions = initConfig.AutoDump
+                        IsMainProcessor = true // Manual construction because of this flag
                     })
-                {
-                    IsMainProcessor = true // Manual construction because of this flag
-                })
                 .AddScoped<IBlockchainProcessor>(ctx => ctx.Resolve<BlockchainProcessor>())
                 .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>())
                 // And finally, to wrap things up.

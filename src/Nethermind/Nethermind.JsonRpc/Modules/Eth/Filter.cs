@@ -13,13 +13,15 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 
 public class Filter : IJsonRpcParam
 {
-    public AddressAsKey[]? Address { get; set; }
+    public HashSet<AddressAsKey>? Address { get; set; }
 
-    public BlockParameter FromBlock { get; set; }
+    public BlockParameter FromBlock { get; set; } = BlockParameter.Latest;
 
-    public BlockParameter ToBlock { get; set; }
+    public BlockParameter ToBlock { get; set; } = BlockParameter.Latest;
 
     public IEnumerable<Hash256[]?>? Topics { get; set; }
+
+    public bool UseIndex { get; set; } = true;
 
     public void ReadJson(JsonElement filter, JsonSerializerOptions options)
     {
@@ -65,6 +67,16 @@ public class Filter : IJsonRpcParam
             {
                 Topics = GetTopics(topicsElement, options);
             }
+
+            if (filter.TryGetProperty("useIndex"u8, out JsonElement useIndex))
+            {
+                UseIndex = useIndex.ValueKind switch
+                {
+                    JsonValueKind.False => false,
+                    JsonValueKind.True => true,
+                    _ => UseIndex
+                };
+            }
         }
         finally
         {
@@ -72,7 +84,7 @@ public class Filter : IJsonRpcParam
         }
     }
 
-    private static AddressAsKey[]? GetAddress(JsonElement token, JsonSerializerOptions options)
+    private static HashSet<AddressAsKey>? GetAddress(JsonElement token, JsonSerializerOptions options)
     {
         switch (token.ValueKind)
         {
@@ -81,14 +93,13 @@ public class Filter : IJsonRpcParam
             case JsonValueKind.String:
                 return [new AddressAsKey(new Address(token.ToString()))];
             case JsonValueKind.Array:
-                var enumerator = token.EnumerateArray();
-                List<AddressAsKey> result = new();
-                while (enumerator.MoveNext())
+                HashSet<AddressAsKey> result = new(token.GetArrayLength());
+                foreach (JsonElement element in token.EnumerateArray())
                 {
-                    result.Add(new(new Address(enumerator.Current.ToString())));
+                    result.Add(new(new Address(element.ToString())));
                 }
 
-                return result.ToArray();
+                return result;
             default:
                 throw new ArgumentException("invalid address field");
         }
@@ -101,7 +112,7 @@ public class Filter : IJsonRpcParam
             yield break;
         }
 
-        foreach (var token in array.GetValueOrDefault().EnumerateArray())
+        foreach (JsonElement token in array.Value.EnumerateArray())
         {
             switch (token.ValueKind)
             {
@@ -112,14 +123,14 @@ public class Filter : IJsonRpcParam
                     yield return [new Hash256(token.GetString()!)];
                     break;
                 case JsonValueKind.Array:
-                    JsonElement.ArrayEnumerator enumerator = token.EnumerateArray();
-                    List<Hash256> result = new();
-                    while (enumerator.MoveNext())
+                    Hash256[] result = new Hash256[token.GetArrayLength()];
+                    int i = 0;
+                    foreach (JsonElement element in token.EnumerateArray())
                     {
-                        result.Add(new(enumerator.Current.ToString()));
+                        result[i++] = new Hash256(element.ToString());
                     }
 
-                    yield return result.ToArray();
+                    yield return result;
                     break;
                 default:
                     throw new ArgumentException("invalid topics field");

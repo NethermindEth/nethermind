@@ -106,14 +106,13 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
     public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
     {
         //In case of SocketException we log it as debug to avoid noise
-        string clientId = _session?.Node?.ToString(Node.Format.Console) ?? $"unknown {_session?.RemoteHost}";
         if (exception is SocketException)
         {
-            if (_logger.IsTrace) _logger.Trace($"Error in communication with {clientId} (SocketException): {exception}");
+            if (_logger.IsTrace) _logger.Trace($"Error in communication with {GetClientId(_session)} (SocketException): {exception}");
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Error in communication with {clientId}: {exception}");
+            if (_logger.IsDebug) _logger.Debug($"Error in communication with {GetClientId(_session)}: {exception}");
         }
 
         if (exception is IInternalNethermindException)
@@ -122,14 +121,16 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         else if (_session?.Node?.IsStatic != true)
         {
-            _session.InitiateDisconnect(DisconnectReason.Exception,
-                $"Error in communication with {clientId} ({exception.GetType().Name}): {exception.Message}");
+            _session.InitiateDisconnect(DisconnectReason.Exception, $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
         }
         else
         {
             base.ExceptionCaught(context, exception);
         }
     }
+
+    private static string GetClientId(ISession? session) =>
+        session?.Node?.ToString(Node.Format.Console) ?? $"unknown {session?.RemoteHost}";
 
     public void EnableSnappy()
     {

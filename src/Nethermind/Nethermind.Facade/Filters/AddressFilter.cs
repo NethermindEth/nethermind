@@ -7,7 +7,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Filters
 {
-    public class AddressFilter
+    public class AddressFilter(HashSet<AddressAsKey> addresses)
     {
         public static readonly AddressFilter AnyAddress = new([]);
 
@@ -17,29 +17,25 @@ namespace Nethermind.Blockchain.Filters
         {
         }
 
-        public AddressFilter(IEnumerable<AddressAsKey> addresses)
-        {
-            Addresses = addresses.ToHashSet();
-        }
-
-        public HashSet<AddressAsKey> Addresses { get; }
+        public HashSet<AddressAsKey> Addresses { get; } = addresses;
         private Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ??= CalculateBloomExtracts();
 
         public bool Accepts(Address address) => Addresses.Count == 0 || Addresses.Contains(address);
 
         public bool Accepts(ref AddressStructRef address)
         {
-            if (Addresses.Count > 0)
+            if (Addresses.Count == 0)
             {
-                foreach (var a in Addresses)
-                {
-                    if (a == address) return true;
-                }
-
-                return false;
+                return true;
             }
 
-            return true;
+            foreach (AddressAsKey a in Addresses)
+            {
+                if (a == address) return true;
+            }
+
+            return false;
+
         }
 
         public bool Matches(Bloom bloom)
@@ -48,9 +44,10 @@ namespace Nethermind.Blockchain.Filters
             {
                 return true;
             }
-            foreach (Bloom.BloomExtract index in AddressesBloomExtracts)
+
+            for (var i = 0; i < AddressesBloomExtracts.Length; i++)
             {
-                if (bloom.Matches(index))
+                if (bloom.Matches(AddressesBloomExtracts[i]))
                 {
                     return true;
                 }
@@ -65,9 +62,10 @@ namespace Nethermind.Blockchain.Filters
             {
                 return true;
             }
-            foreach (Bloom.BloomExtract index in AddressesBloomExtracts)
+
+            for (var i = 0; i < AddressesBloomExtracts.Length; i++)
             {
-                if (bloom.Matches(index))
+                if (bloom.Matches(AddressesBloomExtracts[i]))
                 {
                     return true;
                 }

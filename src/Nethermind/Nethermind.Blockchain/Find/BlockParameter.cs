@@ -45,6 +45,7 @@ namespace Nethermind.Blockchain.Find
 
         public BlockParameter(long number)
         {
+            RequireCanonical = true;
             Type = BlockParameterType.BlockNumber;
             BlockNumber = number;
         }
@@ -58,7 +59,12 @@ namespace Nethermind.Blockchain.Find
             RequireCanonical = requireCanonical;
         }
 
-        public override string ToString() => $"{Type}, {BlockNumber?.ToString() ?? BlockHash?.ToString()}";
+        public override string ToString() => Type switch
+        {
+            BlockParameterType.BlockNumber => BlockNumber?.ToString() ?? "unknown",
+            BlockParameterType.BlockHash => BlockHash?.ToString() ?? "unknown",
+            _ => Type.ToString().ToLowerInvariant()
+        };
 
         public bool Equals(BlockParameter? other)
         {

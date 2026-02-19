@@ -12,7 +12,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Dns.Test;

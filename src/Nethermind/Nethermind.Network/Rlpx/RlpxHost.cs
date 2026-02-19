@@ -6,7 +6,6 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
 using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
@@ -168,7 +167,10 @@ namespace Nethermind.Network.Rlpx
                 // Replacing to prevent double dispose which hangs
                 var bossGroup = Interlocked.Exchange(ref _bossGroup, null);
                 var workerGroup = Interlocked.Exchange(ref _workerGroup, null);
-                await Task.WhenAll(bossGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask, workerGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask);
+                await Task.WhenAll(
+                    bossGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask,
+                    workerGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask,
+                    _group.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout));
                 throw;
             }
         }
@@ -289,7 +291,8 @@ namespace Nethermind.Network.Rlpx
 
             Task closingTask = Task.WhenAll(
                 _bossGroup is not null ? _bossGroup.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout) : Task.CompletedTask,
-                _workerGroup is not null ? _workerGroup.ShutdownGracefullyAsync(_shutdownCloseTimeout, _shutdownCloseTimeout) : Task.CompletedTask);
+                _workerGroup is not null ? _workerGroup.ShutdownGracefullyAsync(_shutdownCloseTimeout, _shutdownCloseTimeout) : Task.CompletedTask,
+                _group.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout));
 
             // below comment may arise from not understanding the quiet period but the resolution is correct
             // we need to add additional timeout on our side as netty is not executing internal timeout properly, often it just hangs forever on closing

@@ -202,5 +202,23 @@ public class L1OriginStoreTests
         Action act = () => _decoder.Encode(origin);
         act.Should().Throw<RlpException>().WithMessage($"*Signature*{L1OriginDecoder.SignatureLength}*");
     }
+
+    [Test]
+    public void Encode_produces_RLP_with_correct_sequence_length(
+        [Values(false, true)] bool withBuildPayload,
+        [Values(false, true)] bool withForcedInclusion,
+        [Values(false, true)] bool withSignature)
+    {
+        int[]? buildPayloadArgsId = withBuildPayload ? Enumerable.Range(0, 8).ToArray() : null;
+        int[]? signature = withSignature ? Enumerable.Range(0, 65).ToArray() : null;
+        L1Origin origin = new(123, Hash256.Zero, 456, Hash256.Zero, buildPayloadArgsId, withForcedInclusion, signature);
+
+        Rlp encoded = _decoder.Encode(origin);
+        RlpStream stream = new(encoded.Bytes);
+        (int prefixLength, int contentLength) = stream.ReadPrefixAndContentLength();
+
+        contentLength.Should().Be(encoded.Bytes.Length - prefixLength,
+            "StartSequence must receive content length, not total length");
+    }
 }
 

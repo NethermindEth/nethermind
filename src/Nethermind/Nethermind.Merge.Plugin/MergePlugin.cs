@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -70,6 +69,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     public virtual Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
+        EthereumJsonSerializer.AddTypeInfoResolver(EngineApiJsonContext.Default);
         _syncConfig = nethermindApi.Config<ISyncConfig>();
         _blocksConfig = nethermindApi.Config<IBlocksConfig>();
         _txPoolConfig = nethermindApi.Config<ITxPoolConfig>();
@@ -155,7 +155,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
     private void EnsureJsonRpcUrl()
     {
-        if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, wwe can skip this check, but we can still working with MergePlugin
+        if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
             return;
 
         IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
@@ -214,7 +214,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
             _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
-            _api.FinalizationManager = InitializeMergeFinilizationManager();
+            _api.FinalizationManager = InitializeMergeFinalizationManager();
 
             if (_poSSwitcher.TransitionFinished)
             {
@@ -236,7 +236,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 69));
     }
 
-    protected virtual IBlockFinalizationManager InitializeMergeFinilizationManager()
+    protected virtual IBlockFinalizationManager InitializeMergeFinalizationManager()
     {
         return new MergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.FinalizationManager, _poSSwitcher);
     }

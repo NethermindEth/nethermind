@@ -11,6 +11,7 @@ namespace Nethermind.Evm.Precompiles
     {
         static virtual Address Address => Address.Zero;
         static virtual string Name => string.Empty;
+        bool SupportsCaching => true;
         long BaseGasCost(IReleaseSpec releaseSpec);
         long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 

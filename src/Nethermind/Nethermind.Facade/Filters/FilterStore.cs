@@ -4,7 +4,6 @@
 using System;
 using NonBlocking;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading;
 
@@ -123,8 +122,7 @@ namespace Nethermind.Blockchain.Filters
         public PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true) =>
             new(GetFilterId(setId));
 
-        public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock,
-            AddressAsKey[]? addresses = null, IEnumerable<Hash256[]?>? topics = null, bool setId = true) =>
+        public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null, bool setId = true) =>
             new(GetFilterId(setId),
                 fromBlock,
                 toBlock,
@@ -202,7 +200,7 @@ namespace Nethermind.Blockchain.Filters
             return AnyTopic.Instance;
         }
 
-        private static AddressFilter GetAddress(AddressAsKey[]? addresses) => addresses is null ? AddressFilter.AnyAddress : new AddressFilter(addresses);
+        private static AddressFilter GetAddress(HashSet<AddressAsKey>? addresses) => addresses is null ? AddressFilter.AnyAddress : new AddressFilter(addresses);
 
         private static FilterTopic?[]? GetFilterTopics(IEnumerable<Hash256[]?>? topics) => topics?.Select(GetTopic).ToArray();
 

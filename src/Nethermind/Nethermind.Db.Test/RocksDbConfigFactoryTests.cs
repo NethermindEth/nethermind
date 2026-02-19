@@ -1,14 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using FluentAssertions;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test;
@@ -23,7 +20,6 @@ public class RocksDbConfigFactoryTests
         var dbConfig = new DbConfig();
         var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        Console.Error.WriteLine(config.RocksDbOptions);
         config.RocksDbOptions.Should().Be(dbConfig.RocksDbOptions + dbConfig.StateDbRocksDbOptions);
     }
 
@@ -99,5 +95,25 @@ public class RocksDbConfigFactoryTests
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
         // With system limit of 1000, would be 1000 * 0.8 = 800
         config.MaxOpenFiles.Should().Be(800);
+    }
+
+    [Test]
+    public void WillApplySkipSstFileSizeChecksWhenConfigExplicitlyEnabled()
+    {
+        var dbConfig = new DbConfig();
+        dbConfig.SkipCheckingSstFileSizesOnDbOpen = true;
+        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
+        IRocksDbConfig config = factory.GetForDatabase("State0", null);
+        config.RocksDbOptions.Should().Contain("skip_checking_sst_file_sizes_on_db_open=true;");
+    }
+
+    [Test]
+    public void WillNotApplySkipSstFileSizeChecksWhenConfigExplicitlyDisabled()
+    {
+        var dbConfig = new DbConfig();
+        dbConfig.SkipCheckingSstFileSizesOnDbOpen = false;
+        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
+        IRocksDbConfig config = factory.GetForDatabase("State0", null);
+        config.RocksDbOptions.Should().NotContain("skip_checking_sst_file_sizes_on_db_open");
     }
 }

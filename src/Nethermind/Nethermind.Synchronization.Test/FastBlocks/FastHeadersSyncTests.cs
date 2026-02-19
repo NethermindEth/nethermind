@@ -67,7 +67,7 @@ public class FastHeadersSyncTests
             syncConfig: new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = "1000",
+                PivotNumber = 1000,
                 PivotHash = Keccak.Zero.ToString(),
                 PivotTotalDifficulty = "1000"
             },
@@ -101,7 +101,7 @@ public class FastHeadersSyncTests
             syncConfig: new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = pivotBlock.Number.ToString(),
+                PivotNumber = pivotBlock.Number,
                 PivotHash = pivotBlock.Hash!.ToString(),
                 PivotTotalDifficulty = pivotBlock.TotalDifficulty.ToString()!,
             },
@@ -141,7 +141,7 @@ public class FastHeadersSyncTests
             syncConfig: new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = "1000",
+                PivotNumber = 1000,
                 PivotHash = pivot.Hash!.Bytes.ToHexString(),
                 PivotTotalDifficulty = pivot.TotalDifficulty.ToString()!
             },
@@ -200,7 +200,7 @@ public class FastHeadersSyncTests
             syncConfig: new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = "500",
+                PivotNumber = 500,
                 PivotHash = pivot.Hash!.Bytes.ToHexString(),
                 PivotTotalDifficulty = pivot.TotalDifficulty!.ToString()!
             },
@@ -246,7 +246,7 @@ public class FastHeadersSyncTests
             syncConfig: new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = pivot.Number.ToString(),
+                PivotNumber = pivot.Number,
                 PivotHash = pivot.Hash!.ToString(),
                 PivotTotalDifficulty = pivot.TotalDifficulty.ToString()!,
             },
@@ -317,7 +317,7 @@ public class FastHeadersSyncTests
             syncConfig: new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = "500",
+                PivotNumber = 500,
                 PivotHash = pivot.Hash!.Bytes.ToHexString(),
                 PivotTotalDifficulty = pivot.TotalDifficulty!.ToString()!
             },
@@ -372,7 +372,7 @@ public class FastHeadersSyncTests
             syncConfig: new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = "1000",
+                PivotNumber = 1000,
                 PivotHash = Keccak.Zero.ToString(),
                 PivotTotalDifficulty = "1000"
             },
@@ -403,7 +403,7 @@ public class FastHeadersSyncTests
             new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = "1000",
+                PivotNumber = 1000,
                 PivotHash = Keccak.Zero.ToString(),
                 PivotTotalDifficulty = "1000"
             },
@@ -437,7 +437,7 @@ public class FastHeadersSyncTests
             new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = "1000",
+                PivotNumber = 1000,
                 PivotHash = Keccak.Zero.ToString(),
                 PivotTotalDifficulty = "1000"
             },
@@ -479,7 +479,7 @@ public class FastHeadersSyncTests
     {
         var peerChain = CachedBlockTreeBuilder.OfLength(1000);
         var pivotHeader = peerChain.FindHeader(998)!;
-        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number.ToString(), PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
+        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number, PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
 
         IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
         localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
@@ -535,7 +535,7 @@ public class FastHeadersSyncTests
     {
         var peerChain = CachedBlockTreeBuilder.OfLength(1000);
         var pivotHeader = peerChain.FindHeader(999)!;
-        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number.ToString(), PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
+        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number, PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
 
         IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
         localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
@@ -591,7 +591,7 @@ public class FastHeadersSyncTests
         var syncConfig = new TestSyncConfig
         {
             FastSync = true,
-            PivotNumber = pivotHeader.Number.ToString(),
+            PivotNumber = pivotHeader.Number,
             PivotHash = pivotHeader.Hash!.ToString(),
             PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()!,
             FastHeadersMemoryBudget = (ulong)100.KB(),
@@ -623,7 +623,7 @@ public class FastHeadersSyncTests
         var syncConfig = new TestSyncConfig
         {
             FastSync = true,
-            PivotNumber = pivotHeader.Number.ToString(),
+            PivotNumber = pivotHeader.Number,
             PivotHash = pivotHeader.Hash!.ToString(),
             PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()!
         };
@@ -666,7 +666,7 @@ public class FastHeadersSyncTests
             new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = "1000",
+                PivotNumber = 1000,
                 PivotHash = Keccak.Zero.ToString(),
                 PivotTotalDifficulty = "1000"
             },
@@ -737,7 +737,7 @@ public class FastHeadersSyncTests
             FastSync = true,
             DownloadBodiesInFastSync = true,
             DownloadReceiptsInFastSync = true,
-            PivotNumber = "1",
+            PivotNumber = 1,
         };
 
         blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(2).WithStateRoot(TestItem.KeccakA).TestObject);
@@ -764,7 +764,7 @@ public class FastHeadersSyncTests
             syncConfig: new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = "1000",
+                PivotNumber = 1000,
                 PivotHash = TestItem.KeccakA.ToString(),
                 PivotTotalDifficulty = "1000",
             },
@@ -797,7 +797,7 @@ public class FastHeadersSyncTests
             syncConfig: new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = "1000",
+                PivotNumber = 1000,
                 PivotHash = TestItem.KeccakA.ToString(),
                 PivotTotalDifficulty = "1000",
             },
@@ -822,7 +822,7 @@ public class FastHeadersSyncTests
             syncConfig: new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = "1000",
+                PivotNumber = 1000,
                 PivotHash = TestItem.KeccakA.ToString(),
                 PivotTotalDifficulty = "1000",
             },

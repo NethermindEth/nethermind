@@ -104,7 +104,7 @@ namespace Nethermind.State
 
         bool IAccountStateProvider.IsStorageEmpty(Address address)
         {
-            return _persistentStorageProvider.GetStorageRoot(address) == Keccak.EmptyTreeHash;
+            return _persistentStorageProvider.IsStorageEmpty(address);
         }
 
         bool IAccountStateProvider.HasCode(Address address)

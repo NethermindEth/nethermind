@@ -7,6 +7,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core.Extensions;
 
@@ -15,11 +16,11 @@ namespace Nethermind.Core.Crypto;
 /// <summary>
 /// This is a minimalistic one-way set associative cache for Keccak values.
 ///
-/// It allocates only 12MB of memory to store 128k of entries.
+/// It allocates only 16MB of memory to store 128k of entries.
 /// No misaligned reads. Everything is aligned to both cache lines as well as to boundaries so no torn reads.
-/// Requires a single CAS to lock and <see cref="Volatile.Write(ref int,int)"/> to unlock.
+/// Uses seqlock pattern for lock-free reads: read sequence, speculatively read data, verify sequence unchanged.
+/// Requires a single CAS to lock on writes and <see cref="Volatile.Write(ref int,int)"/> to unlock.
 /// On a lock failure, it just moves on with execution.
-/// When a potential hit happens, the value of the result and the value of the key are copied on the stack to release the lock ASAP.
 /// </summary>
 public static unsafe class KeccakCache
 {
@@ -31,10 +32,13 @@ public static unsafe class KeccakCache
     private const int BucketMask = 0x0001_FFFF;
     private const uint HashMask = unchecked((uint)~BucketMask);
     private const uint LockMarker = 0x0000_8000;
+    private const uint VersionMask = 0x0000_7F80;       // Bits 7-14: 8-bit version counter (0-255)
+    private const uint VersionIncrement = 0x0000_0080;  // Bit 7: increment step for version
+    private const uint HashLengthMask = HashMask | 0x7F;  // Hash (bits 17-31) + Length (bits 0-6)
 
     private const int InputLengthOfKeccak = ValueHash256.MemorySize;
     private const int InputLengthOfAddress = Address.Size;
-
+    private const int CacheLineSizeBytes = 64;
     private static readonly Entry* Memory;
 
     static KeccakCache()
@@ -69,55 +73,81 @@ public static unsafe class KeccakCache
         Debug.Assert(index < Count);
 
         ref Entry e = ref Unsafe.Add(ref Unsafe.AsRef<Entry>(Memory), index);
+        if (Sse.IsSupported)
+        {
+            // This would be a GC hole if was managed memory, but it's native.
+            // Regardless, prefetch is non-faulting so it's safe.
+            Sse.PrefetchNonTemporal((byte*)Unsafe.AsPointer(ref e) + CacheLineSizeBytes);
+        }
 
-        // Half the hash his encoded in the bucket so we only need half of it and can use other half for length.
+        // Half the hash is encoded in the bucket so we only need half of it and can use other half for length.
         // This allows to create a combined value that represents a part of the hash, the input's length and the lock marker.
         uint combined = (HashMask & (uint)hashCode) | (uint)input.Length;
 
-        // Compare with volatile read and then try to lock with CAS
-        if (Volatile.Read(ref e.Combined) == combined &&
-            Interlocked.CompareExchange(ref e.Combined, combined | LockMarker, combined) == combined)
+        // Seqlock pattern: read sequence, speculatively read data, verify sequence unchanged.
+        // This is lock-free for reads - no CAS required unless we need to write.
+        uint seq1 = Volatile.Read(ref e.Combined);
+
+        // Early exit: lock held or hash/length mismatch (ignoring version bit).
+        if ((seq1 & LockMarker) == 0 && (seq1 & HashLengthMask) == combined)
         {
-            // Combined is equal to existing, meaning that it was not locked, and both the length and the hash were equal.
-
-            // Take local copy of the payload and hash, to release the lock as soon as possible and make a key comparison without holding it.
-            // Local copy of 8+16+64 payload bytes.
-            Payload copy = e.Value;
-            // Copy Keccak256 directly to the local return variable, since we will overwrite if no match anyway.
-            keccak256 = e.Keccak256;
-
-            // Release the lock, by setting back to the combined value.
-            Volatile.Write(ref e.Combined, combined);
-
-            // Lengths are equal, the input length can be used without any additional operation.
+            // Fast path for 32-byte input - only copy the 32 bytes we need, not full 92-byte Payload
             if (input.Length == InputLengthOfKeccak)
             {
-                // Hashing UInt256 or Hash256 which is Vector256
-                if (Unsafe.As<byte, Vector256<byte>>(ref copy.Aligned32) ==
-                    Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input)))
+                // Speculative reads - copy only Vector256 at Aligned32 and the keccak result
+                Vector256<byte> copyVec = Unsafe.As<byte, Vector256<byte>>(ref e.Value.Aligned32);
+                ValueHash256 cachedKeccak = e.Keccak256;
+
+                // ARM memory barrier: ensure speculative reads complete before seq2.
+                // On x86/x64 (TSO), loads are never reordered - JIT eliminates this entirely.
+                if (!Sse.IsSupported)
+                    Thread.MemoryBarrier();
+
+                // Re-read sequence - if changed, a write occurred during our reads
+                if (seq1 == Volatile.Read(ref e.Combined) &&
+                    copyVec == Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input)))
                 {
-                    // Current keccak256 is correct hash.
+                    keccak256 = cachedKeccak;
                     return;
                 }
             }
             else if (input.Length == InputLengthOfAddress)
             {
-                // Hashing Address
-                ref byte bytes1 = ref MemoryMarshal.GetReference(input);
-                // 20 bytes which is uint+Vector128
-                if (Unsafe.As<byte, uint>(ref copy.Start) == Unsafe.As<byte, uint>(ref bytes1) &&
-                    Unsafe.As<byte, Vector128<byte>>(ref copy.Aligned32) ==
-                        Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes1, sizeof(uint))))
+                // Speculative reads for 20-byte address - copy uint + Vector128
+                uint copyStart = Unsafe.As<byte, uint>(ref e.Value.Start);
+                Vector128<byte> copyAligned = Unsafe.As<byte, Vector128<byte>>(ref e.Value.Aligned32);
+                ValueHash256 cachedKeccak = e.Keccak256;
+
+                // ARM memory barrier (see above)
+                if (!Sse.IsSupported)
+                    Thread.MemoryBarrier();
+
+                ref byte inputRef = ref MemoryMarshal.GetReference(input);
+                // Re-read sequence and compare
+                if (seq1 == Volatile.Read(ref e.Combined) &&
+                    copyStart == Unsafe.As<byte, uint>(ref inputRef) &&
+                    copyAligned == Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref inputRef, sizeof(uint))))
                 {
-                    // Current keccak256 is correct hash.
+                    keccak256 = cachedKeccak;
                     return;
                 }
             }
-            else if (MemoryMarshal.CreateReadOnlySpan(ref copy.Start, input.Length).SequenceEqual(input))
+            else
             {
-                // Non 32 byte or 20 byte input; call SequenceEqual.
-                // Current keccak256 is correct hash.
-                return;
+                // Uncommon path: copy full Payload for other lengths
+                Payload copy = e.Value;
+                ValueHash256 cachedKeccak = e.Keccak256;
+
+                // ARM memory barrier (see above)
+                if (!Sse.IsSupported)
+                    Thread.MemoryBarrier();
+
+                if (seq1 == Volatile.Read(ref e.Combined) &&
+                    MemoryMarshal.CreateReadOnlySpan(ref copy.Start, input.Length).SequenceEqual(input))
+                {
+                    keccak256 = cachedKeccak;
+                    return;
+                }
             }
         }
 
@@ -125,8 +155,13 @@ public static unsafe class KeccakCache
 
         uint existing = Volatile.Read(ref e.Combined);
 
+        // Increment 8-bit version counter (wraps after 256) to detect ABA in seqlock readers.
+        // 256 writes needed to wrap = ~8-13μs, far exceeding ~50ns read window.
+        uint newVersion = ((existing & VersionMask) + VersionIncrement) & VersionMask;
+        uint toStore = combined | newVersion;
+
         // Try to set to the combined locked state, if not already locked.
-        if ((existing & LockMarker) == 0 && Interlocked.CompareExchange(ref e.Combined, combined | LockMarker, existing) == existing)
+        if ((existing & LockMarker) == 0 && Interlocked.CompareExchange(ref e.Combined, toStore | LockMarker, existing) == existing)
         {
             e.Keccak256 = keccak256;
 
@@ -152,8 +187,8 @@ public static unsafe class KeccakCache
                 input.CopyTo(MemoryMarshal.CreateSpan(ref e.Value.Start, input.Length));
             }
 
-            // Release the lock, by setting back to the combined value.
-            Volatile.Write(ref e.Combined, combined);
+            // Release the lock, by setting to combined with new version (without lock).
+            Volatile.Write(ref e.Combined, toStore);
         }
 
         return;
@@ -174,10 +209,9 @@ public static unsafe class KeccakCache
     private struct Entry
     {
         /// <summary>
-        /// The size will make it 1.5 CPU cache entry or 0.75 which may result in some collisions.
-        /// Still, it's better to save these 32 bytes per entry and have a bigger cache.
+        /// The size will make it 2 CPU cache entries.
         /// </summary>
-        public const int Size = 96;
+        public const int Size = 128;
 
         private const int PayloadStart = sizeof(uint);
         private const int ValueStart = Size - ValueHash256.MemorySize;

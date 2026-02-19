@@ -97,7 +97,12 @@ public class DebugRpcModule(
         // enforces gas cap
         call.EnsureDefaults(jsonRpcConfig.GasCap);
 
-        Transaction tx = call.ToTransaction();
+        Result<Transaction> txResult = call.ToTransaction(validateUserInput: true);
+        if (!txResult.Success(out Transaction? tx, out string? error))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
+        }
+
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 

@@ -35,5 +35,6 @@ namespace Nethermind.Merge.Plugin
         public int NewPayloadCacheSize { get; set; } = 50;
 
         public bool SimulateBlockProduction { get; set; } = false;
+        public int? PostBlockGcDelayMs { get; set; } = null;
     }
 }

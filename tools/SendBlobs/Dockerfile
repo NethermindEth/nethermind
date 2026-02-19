@@ -21,7 +21,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   -p:DebugType=None \
   -p:DebugSymbols=false
 
-FROM mcr.microsoft.com/dotnet/runtime-deps:9.0-noble
+FROM mcr.microsoft.com/dotnet/runtime-deps:10.0-noble
 
 WORKDIR /nethermind
 
