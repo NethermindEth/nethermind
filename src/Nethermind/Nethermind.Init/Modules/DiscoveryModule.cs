@@ -56,6 +56,14 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .Bind<INodeSource, NodesLoader>()
             .AddComposite<INodeSource, CompositeNodeSource>()
 
+            // Peer randomized scoring
+            .AddSingleton<IPeerRandomizerService, IDbProvider, ILogManager>((dbProvider, logManager) =>
+            {
+                IDb metadataDb = dbProvider.MetadataDb;
+                bool isEnabled = networkConfig.DeterministicPeerPoolPortion > 0;
+                return new PeerRandomizerService(metadataDb, isEnabled, logManager);
+            })
+
             // The actual thing that uses the INodeSource(s)
             .AddSingleton<IPeerPool, PeerPool>()
             .AddSingleton<IPeerManager, PeerManager>()

@@ -37,6 +37,7 @@ namespace Nethermind.Network
         private readonly ManualResetEventSlim _peerUpdateRequested = new(false);
         private readonly PeerComparer _peerComparer = new();
         private readonly IPeerPool _peerPool;
+        private readonly IPeerRandomizerService _randomizerService;
         private readonly Lock _lock = new();
         private readonly List<PeerStats> _candidates;
         private readonly RateLimiter _outgoingConnectionRateLimiter;
@@ -63,12 +64,14 @@ namespace Nethermind.Network
             IPeerPool peerPool,
             INodeStatsManager stats,
             INetworkConfig networkConfig,
+            IPeerRandomizerService randomizedService,
             ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _randomizerService = randomizedService ?? throw new ArgumentNullException(nameof(randomizedService));
             _outgoingConnectParallelism = networkConfig.NumConcurrentOutgoingConnects;
             if (_outgoingConnectParallelism == 0)
             {
@@ -300,7 +303,7 @@ namespace Nethermind.Network
 
                     foreach (Peer peer in remainingCandidates)
                     {
-                        if (!EnsureAvailableActivePeerSlot())
+                        if (!EnsureAvailableActivePeerSlotOrMakeRoom(peer))
                         {
                             // Some new connection are in flight at this point, but statistically speaking, they
                             // are going to fail, so its fine.
@@ -399,6 +402,78 @@ namespace Nethermind.Network
             return AvailableActivePeersCount - _pending > 0;
         }
 
+        private bool EnsureAvailableActivePeerSlotOrMakeRoom(Peer peer)
+        {
+            // Quick check: if slots are available, return immediately
+            if (AvailableActivePeersCount - _pending > 0)
+            {
+                return true;
+            }
+
+            // Check if we can replace a lower-randomized peer before waiting
+            if (!peer.Node.IsStatic && CanReplaceActivePeer(peer.Node.Id))
+            {
+                if (TryMakeRoomForHigherRandomizedPeerOutgoing(peer))
+                {
+                    // Successfully made room for this peer
+                    return true;
+                }
+            }
+
+            // Once the connection was established, the active peer count will increase, but it might
+            // not pass the handshake and the status check. So we wait for a bit to see if we can get
+            // the active peer count to go down within this time window.
+            DateTimeOffset deadline = DateTimeOffset.UtcNow + Timeouts.Handshake +
+                                      TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs);
+            while (DateTimeOffset.UtcNow < deadline && (AvailableActivePeersCount - _pending) <= 0)
+            {
+                // The signal is not very reliable. So we just do like a simple pool.
+                _peerUpdateRequested.Reset();
+                _peerUpdateRequested.Wait(TimeSpan.FromMilliseconds(100));
+            }
+
+            return AvailableActivePeersCount - _pending > 0;
+        }
+
+        private bool CanReplaceActivePeer(PublicKey candidateId)
+        {
+            if (!_randomizerService.IsEnabled)
+            {
+                return false;
+            }
+
+            // Calculate randomized score for the candidate peer
+            long candidateRandomizedScore = _randomizerService.GetRandomizedScore(candidateId);
+
+            // Get all active non-static peers sorted by randomized score (ascending - lowest first)
+            // Only consider initialized peers to avoid disconnecting peers that haven't completed handshake
+            Peer[] activePeers = _peerPool.ActivePeers.Values
+                .Where(p => !p.Node.IsStatic && IsInitialized(p))
+                .OrderBy(p => p.RandomizedScore)
+                .ToArray();
+
+            if (activePeers.Length == 0)
+            {
+                return false;
+            }
+
+            // Only attempt replacement if we have enough initialized peers in the deterministic pool
+            int minRequiredPeers = (int)(MaxActivePeers * _networkConfig.DeterministicPeerPoolPortion);
+            if (activePeers.Length < minRequiredPeers)
+            {
+                return false;
+            }
+
+            // Use configured portion to determine how many high-priority peers to protect
+            int deterministicPoolSize = (int)(activePeers.Length * _networkConfig.DeterministicPeerPoolPortion);
+
+            // The threshold peer is at the boundary: we protect the last deterministicPoolSize peers (high scores)
+            // and can replace from the first (length - deterministicPoolSize) peers (low scores)
+            int thresholdIndex = activePeers.Length - deterministicPoolSize;
+            Peer thresholdPeer = activePeers[thresholdIndex];
+            return candidateRandomizedScore > thresholdPeer.RandomizedScore;
+        }
+
         private void SelectAndRankCandidates()
         {
             if (AvailableActivePeersCount <= 0)
@@ -488,6 +563,12 @@ namespace Nethermind.Network
                 if (node is null) continue;
 
                 node.CurrentReputation = peer.Stats.CurrentNodeReputation(nowUTC);
+
+                // Calculate randomized score for all candidates
+                if (_randomizerService.IsEnabled)
+                {
+                    peer.RandomizedScore = _randomizerService.GetRandomizedScore(node.Id);
+                }
             }
 
             _currentSelection.Candidates.Sort(_peerComparer);
@@ -735,9 +816,17 @@ namespace Nethermind.Network
 
             if (!session.Node.IsStatic && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin)
             {
-                if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.HardLimitTooManyPeers} {DisconnectType.Local}");
-                session.InitiateDisconnect(DisconnectReason.HardLimitTooManyPeers, $"{ActivePeersCount}");
-                return;
+                // Check if this peer can replace a lower-randomized peer
+                if (CanReplaceActivePeer(session.RemoteNodeId) && TryMakeRoomForHigherRandomizedPeer(session))
+                {
+                    // Successfully made room, continue with adding this peer
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.HardLimitTooManyPeers} {DisconnectType.Local}");
+                    session.InitiateDisconnect(DisconnectReason.HardLimitTooManyPeers, $"{ActivePeersCount}");
+                    return;
+                }
             }
 
             try
@@ -753,6 +842,80 @@ namespace Nethermind.Network
         }
 
         #endregion
+
+        private bool TryMakeRoomForHigherRandomizedPeer(ISession incomingSession)
+        {
+            // Calculate randomized score for the incoming peer
+            long incomingRandomizedScore = _randomizerService.GetRandomizedScore(incomingSession.RemoteNodeId);
+
+            return TryMakeRoomForHigherRandomizedPeerInternal(incomingRandomizedScore, incomingSession.RemoteNodeId);
+        }
+
+        private bool TryMakeRoomForHigherRandomizedPeerOutgoing(Peer outgoingPeer)
+        {
+            // Calculate randomized score for the outgoing peer
+            long outgoingRandomizedScore = _randomizerService.GetRandomizedScore(outgoingPeer.Node.Id);
+
+            return TryMakeRoomForHigherRandomizedPeerInternal(outgoingRandomizedScore, outgoingPeer.Node.Id);
+        }
+
+        private bool TryMakeRoomForHigherRandomizedPeerInternal(long candidateRandomizedScore, PublicKey candidateId)
+        {
+            // Debug assertion: active peers should be at capacity
+            System.Diagnostics.Debug.Assert(ActivePeersCount >= MaxActivePeers, "Active peers should be full when trying to make room");
+
+            // Get all active non-static peers sorted by randomized score (ascending - lowest first)
+            // Only consider initialized peers to avoid disconnecting peers that haven't completed handshake
+            Peer[] activePeers = _peerPool.ActivePeers.Values
+                .Where(p => !p.Node.IsStatic && IsInitialized(p))
+                .OrderBy(p => p.RandomizedScore)
+                .ToArray();
+
+            if (activePeers.Length == 0)
+            {
+                return false;
+            }
+
+            // Only attempt replacement if we have enough initialized peers in the deterministic pool
+            int minRequiredPeers = (int)(MaxActivePeers * _networkConfig.DeterministicPeerPoolPortion);
+            if (activePeers.Length < minRequiredPeers)
+            {
+                return false;
+            }
+
+            // Use configured portion to determine how many high-priority peers to protect
+            int deterministicPoolSize = (int)(activePeers.Length * _networkConfig.DeterministicPeerPoolPortion);
+
+            // The threshold peer is at the boundary: we protect the last deterministicPoolSize peers (high scores)
+            // and can replace from the first (length - deterministicPoolSize) peers (low scores)
+            int thresholdIndex = activePeers.Length - deterministicPoolSize;
+            Peer thresholdPeer = activePeers[thresholdIndex];
+            if (candidateRandomizedScore > thresholdPeer.RandomizedScore)
+            {
+                // Disconnect the lowest scoring peer (first in array) to make room
+                Peer lowestPeer = activePeers[0];
+
+                // Check if the peer is already disconnecting (possible due to concurrent operations)
+                bool isAlreadyDisconnecting = (lowestPeer.InSession?.IsClosing ?? false) ||
+                                             (lowestPeer.OutSession?.IsClosing ?? false);
+
+                if (isAlreadyDisconnecting)
+                {
+                    // Peer is already being disconnected, no need to make room
+                    return false;
+                }
+
+                if (_logger.IsDebug)
+                    _logger.Debug($"Disconnecting peer {lowestPeer.Node:s} (randomized: {lowestPeer.RandomizedScore}) to make room for higher randomized peer {candidateId.ToShortString()} (randomized: {candidateRandomizedScore})");
+
+                lowestPeer.InSession?.InitiateDisconnect(DisconnectReason.BetterRandomizedPeer, "making room for higher randomized peer");
+                lowestPeer.OutSession?.InitiateDisconnect(DisconnectReason.BetterRandomizedPeer, "making room for higher randomized peer");
+
+                return true;
+            }
+
+            return false;
+        }
 
         private bool CanConnectToPeer(Peer peer)
         {
@@ -912,6 +1075,13 @@ namespace Nethermind.Network
         private static bool IsConnected(Peer peer)
         {
             return !(peer.InSession?.IsClosing ?? true) || !(peer.OutSession?.IsClosing ?? true);
+        }
+
+        private static bool IsInitialized(Peer peer)
+        {
+            bool inSessionInitialized = peer.InSession?.State >= SessionState.Initialized;
+            bool outSessionInitialized = peer.OutSession?.State >= SessionState.Initialized;
+            return inSessionInitialized || outSessionInitialized;
         }
 
         private void OnDisconnected(object sender, DisconnectEventArgs e)
