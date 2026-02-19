@@ -305,7 +305,7 @@ jobs:
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
-            -e "s#^  nethermind:#  ${SCENARIO_NAME}:#g" \
+            -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" \
             | awk -v flags_file="${flags_file}" '
                 BEGIN {
