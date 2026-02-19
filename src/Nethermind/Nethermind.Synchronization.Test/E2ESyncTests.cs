@@ -29,6 +29,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -73,12 +74,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     public static IEnumerable<TestFixtureParameters> CreateTestCases()
     {
         yield return new TestFixtureParameters(DbMode.Default, false);
-        yield return new TestFixtureParameters(DbMode.Hash, false);
-        yield return new TestFixtureParameters(DbMode.NoPruning, false);
-        yield return new TestFixtureParameters(DbMode.Flat, false);
         yield return new TestFixtureParameters(DbMode.Default, true);
+        yield return new TestFixtureParameters(DbMode.Hash, false);
         yield return new TestFixtureParameters(DbMode.Hash, true);
+        yield return new TestFixtureParameters(DbMode.NoPruning, false);
         yield return new TestFixtureParameters(DbMode.NoPruning, true);
+        yield return new TestFixtureParameters(DbMode.Flat, false);
         yield return new TestFixtureParameters(DbMode.Flat, true);
     }
 
@@ -164,17 +165,20 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 {
                     IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
                     flatDbConfig.Enabled = true;
+                    flatDbConfig.VerifyWithTrie = true;
                     break;
                 }
         }
 
         var builder = new ContainerBuilder()
-            .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
+            .AddModule(new PseudoNethermindModule(spec, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {dbMode} {isPostMerge}"))
             .AddSingleton<IDisconnectsAnalyzer, ImmediateDisconnectFailure>()
             .AddSingleton<SyncTestContext>()
             .AddSingleton<ITestEnv, PreMergeTestEnv>()
-            ;
+            .AddSingleton<BlockProcessorExceptionDetector>()
+            .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Info)) // Put last or it wont work.
+            .AddDecorator<IBlockProcessor, BlockProcessorExceptionDetector.BlockProcessorInterceptor>();
 
         if (isPostMerge)
         {
@@ -218,26 +222,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         SyncTestContext serverCtx = _server.Resolve<SyncTestContext>();
         await serverCtx.StartBlockProcessing(cancellationToken);
 
-        byte[] spam = Prepare.EvmCode
-            .ForCreate2Of(
-                Prepare.EvmCode
-                    .PushData(100)
-                    .PushData(100)
-                    .Op(Instruction.SSTORE)
-                    .PushData(100)
-                    .PushData(101)
-                    .Op(Instruction.SSTORE)
-                    .PushData(100)
-                    .Op(Instruction.SLOAD)
-                    .PushData(101)
-                    .Op(Instruction.SLOAD)
-                    .PushData(102)
-                    .Done)
-            .Done;
-
         for (int i = 0; i < ChainLength; i++)
         {
-            await serverCtx.BuildBlockWithCode([spam, spam, spam], cancellationToken);
+            await serverCtx.BuildBlockWithStorage(i, cancellationToken);
         }
 
         await serverCtx.StartNetwork(cancellationToken);
@@ -270,8 +257,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     [Retry(5)]
     public async Task FastSync()
     {
-        if (dbMode == DbMode.Flat) Assert.Ignore();
-
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         PrivateKey clientKey = TestItem.PrivateKeyC;
@@ -305,7 +290,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     [Retry(5)]
     public async Task SnapSync()
     {
-        if (dbMode == DbMode.Flat) Assert.Ignore();
         if (dbMode == DbMode.Hash) Assert.Ignore("Hash db does not support snap sync");
 
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
@@ -460,15 +444,42 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IBlockProcessingQueue blockProcessingQueue,
         ITestEnv testEnv,
         IRlpxHost rlpxHost,
+        IWorldStateManager worldStateManager,
         PseudoNethermindRunner runner,
-        ImmediateDisconnectFailure immediateDisconnectFailure)
+        ImmediateDisconnectFailure immediateDisconnectFailure,
+        BlockProcessorExceptionDetector blockProcessorExceptionDetector)
     {
         // These check is really slow (it doubles the test time) so its disabled by default.
         private const bool CheckBlocksAndReceiptsContent = false;
         private const bool VerifyTrieOnFinished = false;
+        private const int DeployEveryNBlocks = 10;
 
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
         private readonly ReceiptsMessageSerializer _receiptsMessageSerializer = new(specProvider);
+
+        // Track deployed contracts for storage testing
+        private readonly List<Address> _deployedContracts = [];
+        private readonly Random _random = new(42); // Fixed seed for reproducibility
+
+        // Runtime code: SLOAD slot 0, ADD 1, SSTORE to slot 0
+        private readonly byte[] _runtimeCode = Prepare.EvmCode
+            .PushData(0)              // slot 0
+            .Op(Instruction.SLOAD)    // load current value
+            .PushData(1)              // value to add
+            .Op(Instruction.ADD)      // add 1
+            .PushData(0)              // slot 0
+            .Op(Instruction.SSTORE)   // store incremented value
+            .Op(Instruction.STOP)
+            .Done;
+
+        // Initcode: set initial value in slot 0, then return runtime code
+        private byte[]? _initCode;
+        private byte[] InitCode => _initCode ??= Prepare.EvmCode
+            .PushData(1)              // initial value
+            .PushData(0)              // slot 0
+            .Op(Instruction.SSTORE)   // set initial storage
+            .ForInitOf(_runtimeCode)  // return runtime code
+            .Done;
 
         public async Task StartBlockProcessing(CancellationToken cancellationToken)
         {
@@ -495,9 +506,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
         {
             // 1 000 000 000
-            long gasLimit = 100000;
+            long gasLimit = 1_000_000;
 
-            Hash256 stateRoot = blockTree.Head?.StateRoot!;
             nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
             IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number) + 1 ?? 0, null);
             Transaction[] txs = codes.Select((byteCode) => Build.A.Transaction
@@ -509,6 +519,46 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 .ToArray();
             nonces[nodeKey.Address] = currentNonce;
             await testEnv.BuildBlockWithTxs(txs, cancellation);
+        }
+
+        public async Task BuildBlockWithStorage(int blockNumber, CancellationToken cancellation)
+        {
+            long gasLimit = 200_000;
+
+            nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
+            IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number ?? 0) + 1, null);
+
+            Transaction tx;
+
+            if (blockNumber % DeployEveryNBlocks == 0 || _deployedContracts.Count == 0)
+            {
+                // Deploy new contract
+                tx = Build.A.Transaction
+                    .WithCode(InitCode)
+                    .WithNonce(currentNonce++)
+                    .WithGasLimit(gasLimit)
+                    .WithGasPrice(10.GWei())
+                    .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject;
+
+                // Calculate deployed address and track it
+                Address deployedAddress = ContractAddress.From(nodeKey.Address, currentNonce - 1);
+                _deployedContracts.Add(deployedAddress);
+            }
+            else
+            {
+                // Call random existing contract
+                Address target = _deployedContracts[_random.Next(_deployedContracts.Count)];
+                tx = Build.A.Transaction
+                    .WithTo(target)
+                    .WithData([])
+                    .WithNonce(currentNonce++)
+                    .WithGasLimit(gasLimit)
+                    .WithGasPrice(10.GWei())
+                    .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject;
+            }
+
+            nonces[nodeKey.Address] = currentNonce;
+            await testEnv.BuildBlockWithTxs([tx], cancellation);
         }
 
         private async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
@@ -590,12 +640,25 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         {
             await immediateDisconnectFailure.WatchForDisconnection(async (token) =>
             {
-                await runner.StartNetwork(token);
-                await ConnectTo(server, token);
-                await testEnv.SyncUntilFinished(server, token);
-                await VerifyHeadWith(server, token);
-                await VerifyAllBlocksAndReceipts(server, token);
+                await blockProcessorExceptionDetector.WatchForFailure(async (token) =>
+                {
+                    await runner.StartNetwork(token);
+                    await ConnectTo(server, token);
+                    await testEnv.SyncUntilFinished(server, token);
+                    await VerifyHeadWith(server, token);
+                    await VerifyAllBlocksAndReceipts(server, token);
+                }, token);
             }, cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // On flat, verify trie only work with persistence
+            worldStateManager.FlushCache(cancellationToken);
+
+            BlockHeader? head = blockTree.Head?.Header;
+            Console.Error.WriteLine($"On {head?.ToString(BlockHeader.Format.Short)}");
+            bool stateVerified = worldStateManager.VerifyTrie(head!, cancellationToken);
+            Assert.That(stateVerified, Is.True);
         }
     }
 
@@ -623,6 +686,59 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             {
                 if (DisconnectFailure == null) throw; // Timeout without disconnect
                 Assert.Fail($"Disconnect detected. {DisconnectFailure}");
+            }
+        }
+    }
+
+    internal class BlockProcessorExceptionDetector
+    {
+        internal static void Configure(ContainerBuilder builder)
+        {
+            builder.AddSingleton<BlockProcessorExceptionDetector>()
+                .AddDecorator<IBlockProcessor, BlockProcessorInterceptor>();
+        }
+
+        private Exception? BlockProcessingFailure;
+        private CancellationTokenSource _cts = new CancellationTokenSource();
+
+        private void ReportException(Exception exception)
+        {
+            BlockProcessingFailure = exception;
+            _cts.Cancel();
+        }
+
+        public async Task WatchForFailure(Func<CancellationToken, Task> act, CancellationToken cancellationToken)
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            try
+            {
+                await act(cts.Token);
+                if (BlockProcessingFailure != null) Assert.Fail($"Block processing failure detected. {BlockProcessingFailure}");
+            }
+            catch (OperationCanceledException)
+            {
+                if (BlockProcessingFailure == null) throw; // Timeout without disconnect
+                Assert.Fail($"Block processing failure detected. {BlockProcessingFailure}");
+            }
+        }
+
+        internal class BlockProcessorInterceptor(
+            IBlockProcessor blockProcessor,
+            BlockProcessorExceptionDetector blockProcessorExceptionDetector) : IBlockProcessor
+        {
+
+            public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
+                IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
+            {
+                try
+                {
+                    return blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                }
+                catch (Exception ex)
+                {
+                    blockProcessorExceptionDetector.ReportException(ex);
+                    throw;
+                }
             }
         }
     }
