@@ -175,6 +175,8 @@ Use `--mode=<ModeName>` to select one path. Do not use legacy `--mode=EVM`.
 | `NewPayload` | `GasNewPayloadBenchmarks` | `NewPayloadHandler` path | Real handler-side newPayload flow |
 | `NewPayloadMeasured` | `GasNewPayloadMeasuredBenchmarks` | Instrumented near-handler path | Detailed stage timing and breakdown |
 
+**Comparing with gas-benchmarks reference:** `NewPayload` mode is the closest BDN equivalent to the [gas-benchmarks](https://github.com/NethermindEth/gas-benchmarks) reference tool, which runs Nethermind as a full node processing `engine_newPayloadV4` calls. When comparing BDN results against gas-benchmarks reference values, use `NewPayload` or `NewPayloadMeasured`. Note that trivially fast scenarios (e.g., TLOAD of uninitialized storage, empty-input precompile calls) may show very large speedups (>10x) in BDN because the reference tool has fixed per-block overhead (networking, JSON-RPC, consensus) that dominates for sub-millisecond workloads.
+
 ### Running benchmarks
 
 ```bash

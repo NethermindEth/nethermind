@@ -62,7 +62,7 @@ public class GasBlockBenchmarks
             branchProcessingContext.PreBlockCaches,
             branchProcessingContext.CachePrecompiles);
 
-        BlockBenchmarkHelper.ExecuteSetupPayload(_state, txProcessor, _preBlockHeader, Scenario, pragueSpec);
+        BlockBenchmarkHelper.ExecuteSetupPayload(_state, txProcessor, _preBlockHeader, Scenario, specProvider);
 
         ReceiptConfig receiptConfig = new();
         IReceiptStorage receiptStorage = BlockBenchmarkHelper.CreateReceiptStorage(receiptConfig);

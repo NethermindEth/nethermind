@@ -115,7 +115,7 @@ public class GasNewPayloadBenchmarks
             branchProcessingContext.CachePrecompiles);
         _timedTransactionProcessor = new TimedTransactionProcessor(txProcessor, this);
 
-        BlockBenchmarkHelper.ExecuteSetupPayload(_state, _timedTransactionProcessor, _preBlockHeader, Scenario, _releaseSpec);
+        BlockBenchmarkHelper.ExecuteSetupPayload(_state, _timedTransactionProcessor, _preBlockHeader, Scenario, _specProvider);
 
         ReceiptConfig receiptConfig = new();
         IReceiptStorage receiptStorage = BlockBenchmarkHelper.CreateReceiptStorage(receiptConfig);

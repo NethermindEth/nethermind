@@ -102,7 +102,7 @@ public class GasBlockBuildingBenchmarks
             ? UInt256.Zero
             : _testHeaderTemplate.TotalDifficulty - _testHeaderTemplate.Difficulty;
 
-        BlockBenchmarkHelper.ExecuteSetupPayload(_state, txProcessor, _preBlockHeader, Scenario, pragueSpec);
+        BlockBenchmarkHelper.ExecuteSetupPayload(_state, txProcessor, _preBlockHeader, Scenario, specProvider);
         _chainParentHeader.StateRoot = _preBlockHeader.StateRoot;
 
         BlockProcessor blockProcessor = BlockBenchmarkHelper.CreateBlockBuildingProcessor(specProvider, txProcessor, _state);

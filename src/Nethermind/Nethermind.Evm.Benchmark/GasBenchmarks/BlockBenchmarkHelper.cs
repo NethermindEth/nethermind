@@ -5,6 +5,7 @@ using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Visitors;
@@ -263,22 +264,37 @@ internal static class BlockBenchmarkHelper
     public static void ExecuteSetupPayload(
         IWorldState state, ITransactionProcessor txProcessor,
         BlockHeader preBlockHeader, GasPayloadBenchmarks.TestCase scenario,
-        IReleaseSpec spec)
+        ISpecProvider specProvider)
     {
-        if (!TryLoadSetupPayload(scenario, out BlockHeader setupHeader, out Transaction[] setupTxs))
+        string setupFile = GasPayloadBenchmarks.FindSetupFile(scenario.FileName);
+        if (setupFile is null)
         {
             return;
         }
 
-        using IDisposable setupScope = state.BeginScope(preBlockHeader);
-        txProcessor.SetBlockExecutionContext(setupHeader);
-        for (int i = 0; i < setupTxs.Length; i++)
+        Block[] setupBlocks = PayloadLoader.LoadAllSetupBlocks(setupFile);
+        if (setupBlocks.Length == 0)
         {
-            txProcessor.Execute(setupTxs[i], NullTxTracer.Instance);
+            return;
         }
-        state.Commit(spec);
-        state.CommitTree(preBlockHeader.Number);
-        preBlockHeader.StateRoot = state.StateRoot;
+
+        BlockProcessor blockProcessor = CreateBlockProcessor(specProvider, txProcessor, state);
+        Block lastProcessed = null;
+
+        using (state.BeginScope(preBlockHeader))
+        {
+            for (int i = 0; i < setupBlocks.Length; i++)
+            {
+                Block setupBlock = setupBlocks[i];
+                IReleaseSpec spec = specProvider.GetSpec(setupBlock.Header);
+                (lastProcessed, _) = blockProcessor.ProcessOne(
+                    setupBlock, ProcessingOptions.None, NullBlockTracer.Instance, spec, default);
+                state.CommitTree(setupBlock.Header.Number);
+                state.Reset();
+            }
+        }
+
+        preBlockHeader.StateRoot = lastProcessed.Header.StateRoot;
     }
 
     public static void ExecuteSetupPayload(

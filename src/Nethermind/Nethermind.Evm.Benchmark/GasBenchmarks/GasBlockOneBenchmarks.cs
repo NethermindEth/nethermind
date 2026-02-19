@@ -54,7 +54,7 @@ public class GasBlockOneBenchmarks
         ITransactionProcessor txProcessor = BlockBenchmarkHelper.CreateTransactionProcessor(
             _state, blockhashProvider, specProvider);
 
-        BlockBenchmarkHelper.ExecuteSetupPayload(_state, txProcessor, _preBlockHeader, Scenario, pragueSpec);
+        BlockBenchmarkHelper.ExecuteSetupPayload(_state, txProcessor, _preBlockHeader, Scenario, specProvider);
 
         ReceiptConfig receiptConfig = new();
         IReceiptStorage receiptStorage = BlockBenchmarkHelper.CreateReceiptStorage(receiptConfig);

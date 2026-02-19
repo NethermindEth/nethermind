@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -104,7 +105,38 @@ public static class PayloadLoader
             firstLine = reader.ReadLine();
         }
 
-        using JsonDocument doc = JsonDocument.Parse(firstLine);
+        return ParseBlockFromJsonRpcLine(firstLine);
+    }
+
+    /// <summary>
+    /// Loads all engine_newPayloadV4 blocks from a setup file.
+    /// Setup files may contain multiple JSON-RPC calls (newPayload + forkchoiceUpdated pairs).
+    /// Only engine_newPayloadV4 lines are parsed; other lines (forkchoiceUpdated) are skipped.
+    /// </summary>
+    public static Block[] LoadAllSetupBlocks(string filePath)
+    {
+        string[] allLines = File.ReadAllLines(filePath);
+        List<Block> blocks = new();
+
+        for (int i = 0; i < allLines.Length; i++)
+        {
+            string line = allLines[i];
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            // Only parse engine_newPayloadV4 calls, skip forkchoiceUpdated and others
+            if (!line.Contains("\"engine_newPayloadV4\""))
+                continue;
+
+            blocks.Add(ParseBlockFromJsonRpcLine(line));
+        }
+
+        return blocks.ToArray();
+    }
+
+    private static Block ParseBlockFromJsonRpcLine(string jsonLine)
+    {
+        using JsonDocument doc = JsonDocument.Parse(jsonLine);
         JsonElement paramsArray = doc.RootElement.GetProperty("params");
         JsonElement payload = paramsArray[0];
 

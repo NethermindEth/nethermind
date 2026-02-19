@@ -100,7 +100,7 @@ public class GasNewPayloadMeasuredBenchmarks
         _timedTransactionProcessor = new TimedTransactionProcessor(txProcessor, this);
         _recoverSignatures = new RecoverSignatures(s_ecdsa, specProvider, LimboLogs.Instance);
 
-        BlockBenchmarkHelper.ExecuteSetupPayload(_state, _timedTransactionProcessor, _preBlockHeader, Scenario, pragueSpec);
+        BlockBenchmarkHelper.ExecuteSetupPayload(_state, _timedTransactionProcessor, _preBlockHeader, Scenario, specProvider);
 
         ReceiptConfig receiptConfig = new();
         IReceiptStorage receiptStorage = BlockBenchmarkHelper.CreateReceiptStorage(receiptConfig);
