@@ -21,6 +21,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     {
         TExecutionPayload executionPayload = ExecutionPayloadV3.Create<TExecutionPayload>(block);
         executionPayload.BlockAccessList = block.EncodedBlockAccessList ?? (block.BlockAccessList is null ? null : Rlp.Encode(block.BlockAccessList).Bytes);
+        executionPayload.SlotNumber = block.SlotNumber;
         return executionPayload;
     }
 
@@ -49,6 +50,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
         block.EncodedBlockAccessList = BlockAccessList;
         block.Header.BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : new(ValueKeccak.Compute(BlockAccessList).Bytes);
+        block.Header.SlotNumber = SlotNumber;
 
         return baseResult;
     }
@@ -63,4 +65,11 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     /// </summary>
     [JsonRequired]
     public sealed override byte[]? BlockAccessList { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.SlotNumber"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7843">EIP-7843</see>.
+    /// </summary>
+    [JsonRequired]
+    public sealed override ulong? SlotNumber { get; set; }
 }

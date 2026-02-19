@@ -42,7 +42,7 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.TxType = (TxType)rlpStream.ReadByte();
             }
 
-            rlpStream.ReadSequenceLength();
+            int receiptEnd = rlpStream.ReadSequenceLength() + rlpStream.Position;
             byte[] firstItem = rlpStream.DecodeByteArray();
             if (firstItem.Length == 1)
             {
@@ -59,8 +59,8 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) txReceipt.Sender = rlpStream.DecodeAddress();
             if (isStorage) txReceipt.Recipient = rlpStream.DecodeAddress();
             if (isStorage) txReceipt.ContractAddress = rlpStream.DecodeAddress();
-            if (isStorage) txReceipt.GasUsed = (long)rlpStream.DecodeUBigInt();
-            txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
+            if (isStorage) txReceipt.GasUsed = rlpStream.DecodePositiveLong();
+            txReceipt.GasUsedTotal = rlpStream.DecodePositiveLong();
             txReceipt.Bloom = rlpStream.DecodeBloom();
 
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
@@ -79,7 +79,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (!allowExtraBytes)
             {
-                if (isStorage && _supportTxHash)
+                if (isStorage && _supportTxHash && rlpStream.Position < receiptEnd)
                 {
                     // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
                     if (rlpStream.PeekByte() == MarkTxHashByte)
@@ -90,7 +90,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 // since error was added later we can only rely on it in cases where we read receipt only and no data follows, empty errors might not be serialized
-                if (rlpStream.Position != rlpStream.Length)
+                if (rlpStream.Position < receiptEnd)
                 {
                     txReceipt.Error = rlpStream.DecodeString();
                 }
@@ -117,7 +117,7 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.TxType = (TxType)decoderContext.ReadByte();
             }
 
-            decoderContext.ReadSequenceLength();
+            int receiptEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
             byte[] firstItem = decoderContext.DecodeByteArray();
             if (firstItem.Length == 1)
             {
@@ -134,8 +134,8 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) txReceipt.Sender = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.Recipient = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddress();
-            if (isStorage) txReceipt.GasUsed = (long)decoderContext.DecodeUBigInt();
-            txReceipt.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+            if (isStorage) txReceipt.GasUsed = decoderContext.DecodePositiveLong();
+            txReceipt.GasUsedTotal = decoderContext.DecodePositiveLong();
             txReceipt.Bloom = decoderContext.DecodeBloom();
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
@@ -154,7 +154,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (!allowExtraBytes)
             {
-                if (isStorage && _supportTxHash)
+                if (isStorage && _supportTxHash && decoderContext.Position < receiptEnd)
                 {
                     // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
                     if (decoderContext.PeekByte() == MarkTxHashByte)
@@ -165,7 +165,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 // since error was added later we can only rely on it in cases where we read receipt only and no data follows, empty errors might not be serialized
-                if (decoderContext.Position != decoderContext.Length)
+                if (decoderContext.Position < receiptEnd)
                 {
                     txReceipt.Error = decoderContext.DecodeString();
                 }
@@ -351,6 +351,8 @@ namespace Nethermind.Serialization.Rlp
                 item.TxType = (TxType)decoderContext.ReadByte();
             }
 
+            (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
+            int receiptEnd = decoderContext.Position + prefixLength + contentLength;
             decoderContext.ReadSequenceLength();
             ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan();
             if (firstItem.Length == 1)
@@ -371,9 +373,9 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.DecodeAddressStructRef(out item.Sender);
                 decoderContext.DecodeAddressStructRef(out item.Recipient);
                 decoderContext.DecodeAddressStructRef(out item.ContractAddress);
-                item.GasUsed = (long)decoderContext.DecodeUBigInt();
+                item.GasUsed = decoderContext.DecodePositiveLong();
             }
-            item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+            item.GasUsedTotal = decoderContext.DecodePositiveLong();
             decoderContext.DecodeBloomStructRef(out item.Bloom);
 
             (int PrefixLength, int ContentLength) =
@@ -385,7 +387,7 @@ namespace Nethermind.Serialization.Rlp
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
             if (!allowExtraBytes)
             {
-                if (isStorage && _supportTxHash)
+                if (isStorage && _supportTxHash && decoderContext.Position < receiptEnd)
                 {
                     // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
                     if (decoderContext.PeekByte() == MarkTxHashByte)
@@ -396,7 +398,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 // since error was added later we can only rely on it in cases where we read receipt only and no data follows, empty errors might not be serialized
-                if (decoderContext.Position != decoderContext.Length)
+                if (decoderContext.Position < receiptEnd)
                 {
                     item.Error = decoderContext.DecodeString();
                 }

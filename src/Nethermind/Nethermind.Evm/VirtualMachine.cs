@@ -32,6 +32,7 @@ using Nethermind.Evm.Tracing.Debugger;
 namespace Nethermind.Evm;
 
 using Int256;
+using Org.BouncyCastle.Crypto.Engines;
 
 public sealed class EthereumVirtualMachine(
     IBlockhashProvider? blockHashProvider,
@@ -120,6 +121,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
+    // should be array?
     private TxExecutionContext _txExecutionContext;
     public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
     /// <summary>
@@ -171,6 +173,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
+        // (_worldState as TracedAccessWorldState).BlockAccessIndex = 
 
         // Main execution loop: processes call frames until the top-level transaction completes.
         while (true)
@@ -199,10 +202,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 }
                 else
                 {
-                    // Start transaction tracing for non-continuation frames if tracing is enabled.
-                    if (_txTracer.IsTracingActions && !_currentState.IsContinuation)
+                    if (!_currentState.IsContinuation)
                     {
-                        TraceTransactionActionStart(_currentState);
+                        AddTransferLog(_currentState);
+
+                        // Start transaction tracing for non-continuation frames if tracing is enabled.
+                        if (_txTracer.IsTracingActions)
+                        {
+                            TraceTransactionActionStart(_currentState);
+                        }
                     }
 
                     // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
@@ -422,10 +430,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
         {
             TGasPolicy.Consume(ref _currentState.Gas, gasAvailableForCodeDeposit);
-            _worldState.Restore(previousState.Snapshot);
+            _worldState.Restore(previousState.Snapshot, TxExecutionContext.BlockAccessIndex);
             if (!previousState.IsCreateOnPreExistingAccount)
             {
-                _worldState.DeleteAccount(callCodeOwner);
+                _worldState.DeleteAccount(callCodeOwner, TxExecutionContext.BlockAccessIndex);
             }
 
             _previousCallResult = BytesZero;
@@ -457,9 +465,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// <param name="gasAvailableForCodeDeposit">
     /// The amount of gas available for covering the cost of code deposit.
     /// </param>
-    /// <param name="spec">
-    /// The release specification containing the rules and parameters that affect code deposit behavior.
-    /// </param>
     /// <param name="previousStateSucceeded">
     /// A reference flag indicating whether the previous call frame executed successfully. This flag is set to false if the deposit fails.
     /// </param>
@@ -487,7 +492,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             // Deposit the contract code into the repository.
             ReadOnlyMemory<byte> code = callResult.Output.Bytes;
-            _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
+            _codeInfoRepository.InsertCode(code, callCodeOwner, spec, TxExecutionContext.BlockAccessIndex);
 
             // Deduct the gas cost for the code deposit from the current state's available gas.
             TGasPolicy.Consume(ref _currentState.Gas, codeDepositGasCost);
@@ -505,12 +510,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             TGasPolicy.Consume(ref _currentState.Gas, gasAvailableForCodeDeposit);
 
             // Roll back the world state to its snapshot from before the creation attempt.
-            _worldState.Restore(previousState.Snapshot);
+            _worldState.Restore(previousState.Snapshot, TxExecutionContext.BlockAccessIndex);
 
             // If the contract creation did not target a pre-existing account, delete the account.
             if (!previousState.IsCreateOnPreExistingAccount)
             {
-                _worldState.DeleteAccount(callCodeOwner);
+                _worldState.DeleteAccount(callCodeOwner, TxExecutionContext.BlockAccessIndex);
             }
 
             // Reset the previous call result to indicate that no valid code was deployed.
@@ -566,7 +571,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected void HandleRevert(VmState<TGasPolicy> previousState, in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
     {
         // Restore the world state to the snapshot taken before the execution of the call.
-        _worldState.Restore(previousState.Snapshot);
+        _worldState.Restore(previousState.Snapshot, TxExecutionContext.BlockAccessIndex);
 
         // Cache the output bytes from the call result to avoid multiple property accesses.
         ReadOnlyMemory<byte> outputBytes = callResult.Output.Bytes;
@@ -623,7 +628,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         // Revert the world state to the snapshot taken at the start of the current state's execution.
-        _worldState.Restore(_currentState.Snapshot);
+        _worldState.Restore(_currentState.Snapshot, TxExecutionContext.BlockAccessIndex);
 
         // Revert any modifications specific to the Parity touch bug, if applicable.
         RevertParityTouchBugAccount();
@@ -732,7 +737,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         // Restore the world state to its snapshot before the current call execution.
-        _worldState.Restore(_currentState.Snapshot);
+        _worldState.Restore(_currentState.Snapshot, TxExecutionContext.BlockAccessIndex);
 
         // Revert any modifications that might have been applied due to the Parity touch bug.
         RevertParityTouchBugAccount();
@@ -785,6 +790,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// </returns>
     protected virtual CallResult ExecutePrecompile(VmState<TGasPolicy> currentState, bool isTracingActions, out Exception? failure, out string? substateError)
     {
+        AddTransferLog(currentState);
+
         // Report the precompile action if tracing is enabled.
         if (isTracingActions)
         {
@@ -833,7 +840,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Return the default CallResult to signal failure, with the failure exception set via the out parameter.
         return default;
     }
-
 
     protected void TraceTransactionActionStart(VmState<TGasPolicy> currentState)
     {
@@ -970,9 +976,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         if (_parityTouchBugAccount.ShouldDelete)
         {
-            if (_worldState.AccountExists(_parityTouchBugAccount.Address))
+            // potential edge case?
+            if (_worldState.AccountExists(_parityTouchBugAccount.Address, TxExecutionContext.BlockAccessIndex))
             {
-                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec);
+                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec, TxExecutionContext.BlockAccessIndex);
             }
 
             _parityTouchBugAccount.ShouldDelete = false;
@@ -991,7 +998,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         long baseGasCost = precompile.BaseGasCost(spec);
         long dataGasCost = precompile.DataGasCost(callData, spec);
 
-        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
+        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec, TxExecutionContext.BlockAccessIndex);
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
         // An additional issue was found in Parity,
@@ -1103,12 +1110,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             IReleaseSpec spec = BlockExecutionContext.Spec;
             // Ensure the executing account has sufficient balance and exists in the world state.
-            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
+            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec, TxExecutionContext.BlockAccessIndex);
 
             // For contract creation calls, increment the nonce if the specification requires it.
             if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
             {
-                _worldState.IncrementNonce(env.ExecutingAccount);
+                _worldState.IncrementNonce(env.ExecutingAccount, TxExecutionContext.BlockAccessIndex);
             }
         }
 
@@ -1207,7 +1214,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
     [SkipLocalsInit]
-    protected virtual unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
+    protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas)
         where TTracingInst : struct, IFlag
@@ -1426,7 +1433,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
     }
 
-    private unsafe static int GetAlignmentOffset(byte[] array, uint alignment)
+    private static int GetAlignmentOffset(byte[] array, uint alignment)
     {
         ArgumentNullException.ThrowIfNull(array);
         ArgumentOutOfRangeException.ThrowIfNotEqual(BitOperations.IsPow2(alignment), true, nameof(alignment));
@@ -1436,19 +1443,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
 
         uint mask = alignment - 1;
-        // address & mask is misalignment, so (–address) & mask is exactly the adjustment
-        uint adjustment = (uint)((-(nint)address) & mask);
+        // address & mask is misalignment, so (-address) & mask is exactly the adjustment
+        uint adjustment = (uint)(-(nint)address & mask);
 
         return (int)adjustment;
     }
 
-    private unsafe static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)
+    private static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)
     {
         int offset = GetAlignmentOffset(array, alignment);
         return array.AsSpan(offset, size);
     }
 
-    private unsafe static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
+    private static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
     {
         int offset = GetAlignmentOffset(array, alignment);
         return array.AsMemory(offset, size);
@@ -1465,6 +1472,44 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         _txTracer.ReportOperationRemainingGas(gasAvailable);
         _txTracer.ReportOperationError(evmExceptionType);
+    }
+
+    internal void AddLog(LogEntry logEntry)
+    {
+        VmState.AccessTracker.Logs.Add(logEntry);
+
+        // Optionally report the log if tracing is enabled.
+        if (TxTracer.IsTracingLogs)
+        {
+            TxTracer.ReportLog(logEntry);
+        }
+    }
+
+    private void AddTransferLog(VmState<TGasPolicy> currentState)
+    {
+        // DELEGATECALL: no value transfer (inherits from parent)
+        // CALLCODE: value is transferred from ExecutingAccount to ExecutingAccount (self-transfer), so no log
+        if (currentState.ExecutionType is not (ExecutionType.DELEGATECALL or ExecutionType.CALLCODE))
+        {
+            AddTransferLog(currentState.From, currentState.To, currentState.Env.Value);
+        }
+    }
+
+    internal void AddTransferLog(Address from, Address to, in UInt256 value)
+    {
+        // Self-transfers don't change balances, so don't log them
+        if (Spec.IsEip7708Enabled && !value.IsZero && from != to)
+        {
+            AddLog(TransferLog.CreateTransfer(from, to, value));
+        }
+    }
+
+    internal void AddSelfDestructLog(Address contract, in UInt256 value)
+    {
+        if (Spec.IsEip7708Enabled && !value.IsZero)
+        {
+            AddLog(TransferLog.CreateSelfDestruct(contract, value));
+        }
     }
 }
 

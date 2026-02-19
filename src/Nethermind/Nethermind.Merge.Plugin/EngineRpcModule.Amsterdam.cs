@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -22,6 +23,9 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV4 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
         => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests), EngineApiVersions.Amsterdam);
+
+    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
+        => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Amsterdam);
 
     public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(IReadOnlyList<Hash256> blockHashes)
         => _executionGetPayloadBodiesByHashV2Handler.Handle(blockHashes);

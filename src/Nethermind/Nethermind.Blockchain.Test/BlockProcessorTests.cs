@@ -40,14 +40,21 @@ namespace Nethermind.Blockchain.Test;
 public class BlockProcessorTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Prepared_block_contains_author_field()
+    public async Task Prepared_block_contains_author_field()
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new(HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(
+                stateProvider,
+                new ExecuteTransactionProcessorAdapter(transactionProcessor),
+                new BlobBaseFeeCalculator(),
+                HoodiSpecProvider.Instance,
+                Substitute.For<IBlockhashProvider>(),
+                Substitute.For<ICodeInfoRepository>(),
+                LimboLogs.Instance),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -65,7 +72,7 @@ public class BlockProcessorTests
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
-        Block[] processedBlocks = branchProcessor.Process(
+        Block[] processedBlocks = await branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.None,
@@ -83,7 +90,14 @@ public class BlockProcessorTests
             HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             new RewardCalculator(MainnetSpecProvider.Instance),
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(
+                stateProvider,
+                new ExecuteTransactionProcessorAdapter(transactionProcessor),
+                new BlobBaseFeeCalculator(),
+                HoodiSpecProvider.Instance,
+                Substitute.For<IBlockhashProvider>(),
+                Substitute.For<ICodeInfoRepository>(),
+                LimboLogs.Instance),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -101,13 +115,13 @@ public class BlockProcessorTests
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
-        Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
+        Assert.Throws<OperationCanceledException>(async () => await branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.None,
             AlwaysCancelBlockTracer.Instance));
 
-        Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
+        Assert.Throws<OperationCanceledException>(async () => await branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.None,

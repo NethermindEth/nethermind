@@ -30,42 +30,42 @@ public class CodeInfoRepository : ICodeInfoRepository
         _balBuilder = _worldState as IBlockAccessListBuilder;
     }
 
-    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
+    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress, int? blockAccessIndex = null)
     {
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource)) // _localPrecompiles have to have all precompiles
         {
             if (_balBuilder is not null && _balBuilder.TracingEnabled)
             {
-                _balBuilder.AddAccountRead(codeSource);
+                _balBuilder.AddAccountRead(codeSource, blockAccessIndex);
             }
             return _localPrecompiles[codeSource];
         }
 
-        CodeInfo cachedCodeInfo = InternalGetCachedCode(_worldState, codeSource, vmSpec);
+        CodeInfo cachedCodeInfo = InternalGetCachedCode(_worldState, codeSource, vmSpec, blockAccessIndex);
 
         if (!cachedCodeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(cachedCodeInfo.CodeSpan, out delegationAddress))
         {
             if (followDelegation)
-                cachedCodeInfo = InternalGetCachedCode(_worldState, delegationAddress, vmSpec);
+                cachedCodeInfo = InternalGetCachedCode(_worldState, delegationAddress, vmSpec, blockAccessIndex);
         }
 
         return cachedCodeInfo;
     }
 
-    private CodeInfo InternalGetCachedCode(Address codeSource, IReleaseSpec vmSpec)
+    private CodeInfo InternalGetCachedCode(Address codeSource, IReleaseSpec vmSpec, int? blockAccessIndex)
     {
-        ref readonly ValueHash256 codeHash = ref _worldState.GetCodeHash(codeSource);
-        return InternalGetCachedCode(_worldState, in codeHash, vmSpec);
+        ValueHash256 codeHash = _worldState.GetCodeHash(codeSource, blockAccessIndex);
+        return InternalGetCachedCode(_worldState, in codeHash, vmSpec, blockAccessIndex);
     }
 
-    private static CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, Address codeSource, IReleaseSpec vmSpec)
+    private static CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, Address codeSource, IReleaseSpec vmSpec, int? blockAccessIndex)
     {
-        ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
-        return InternalGetCachedCode(worldState, in codeHash, vmSpec);
+        ValueHash256 codeHash = worldState.GetCodeHash(codeSource, blockAccessIndex);
+        return InternalGetCachedCode(worldState, in codeHash, vmSpec, blockAccessIndex);
     }
 
-    private static CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    private static CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec vmSpec, int? blockAccessIndex)
     {
         CodeInfo? cachedCodeInfo = null;
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
@@ -100,11 +100,11 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, int? blockAccessIndex = null)
     {
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
         // If the code is already in the cache, we don't need to create and add it again (and reanalyze it)
-        if (_worldState.InsertCode(codeOwner, in codeHash, code, spec) &&
+        if (_worldState.InsertCode(codeOwner, in codeHash, code, spec, false, blockAccessIndex) &&
             _codeCache.Get(in codeHash) is null)
         {
             CodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
@@ -112,18 +112,18 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec, int? blockAccessIndex = null)
     {
         if (codeSource == Address.Zero)
         {
-            _worldState.InsertCode(authority, Keccak.OfAnEmptyString, Array.Empty<byte>(), spec);
+            _worldState.InsertCode(authority, Keccak.OfAnEmptyString, Array.Empty<byte>(), spec, false, blockAccessIndex);
             return;
         }
         byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
         Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
         codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
         ValueHash256 codeHash = ValueKeccak.Compute(authorizedBuffer);
-        if (_worldState.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec)
+        if (_worldState.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec, false, blockAccessIndex)
             // If the code is already in the cache, we don't need to create CodeInfo and add it again (and reanalyze it)
             && _codeCache.Get(in codeHash) is null)
         {
@@ -136,25 +136,25 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// </summary>
     /// <param name="worldState"></param>
     /// <param name="address"></param>
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
-    {
-        ValueHash256 codeHash = _worldState.GetCodeHash(address);
-        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
-        {
-            return Keccak.OfAnEmptyString.ValueHash256;
-        }
+    // public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
+    // {
+    //     ValueHash256 codeHash = _worldState.GetCodeHash(address);
+    //     if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
+    //     {
+    //         return Keccak.OfAnEmptyString.ValueHash256;
+    //     }
 
-        CodeInfo codeInfo = InternalGetCachedCode(_worldState, address, spec);
-        return codeInfo.IsEmpty
-            ? Keccak.OfAnEmptyString.ValueHash256
-            : codeHash;
-    }
+    //     CodeInfo codeInfo = InternalGetCachedCode(_worldState, address, spec, null); //todo: is used?
+    //     return codeInfo.IsEmpty
+    //         ? Keccak.OfAnEmptyString.ValueHash256
+    //         : codeHash;
+    // }
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, address, spec).CodeSpan, out delegatedAddress);
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress, int? blockAccessIndex = null) =>
+        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, address, spec, blockAccessIndex).CodeSpan, out delegatedAddress);
 
-    public bool TryGetDelegation(in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, in codeHash, spec).CodeSpan, out delegatedAddress);
+    // public bool TryGetDelegation(in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
+    //     ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, in codeHash, spec).CodeSpan, out delegatedAddress);
 
     private sealed class CodeLruCache
     {

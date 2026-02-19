@@ -17,12 +17,12 @@ namespace Nethermind.Blockchain
         public Hash256 StateRoot => BaseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
         public virtual BlockHeader? BaseBlock { get; } = baseBlock;
 
-        public bool TryGetAccount(Address address, out AccountStruct account) => _stateReader.TryGetAccount(BaseBlock, address, out account);
+        public bool TryGetAccount(Address address, out AccountStruct account, int? _ = null) => _stateReader.TryGetAccount(BaseBlock, address, out account);
 
-        public bool IsContract(Address address) => TryGetAccount(address, out AccountStruct account) && account.IsContract;
+        public bool IsContract(Address address, int? _ = null) => TryGetAccount(address, out AccountStruct account) && account.IsContract;
 
         [SkipLocalsInit]
-        public byte[]? GetCode(Address address)
+        public byte[]? GetCode(Address address, int? _ = null)
         {
             TryGetAccount(address, out AccountStruct account);
             return !account.HasCode ? [] : _stateReader.GetCode(account.CodeHash);
@@ -30,9 +30,9 @@ namespace Nethermind.Blockchain
 
         public byte[]? GetCode(in ValueHash256 codeHash) => _stateReader.GetCode(in codeHash);
 
-        public bool AccountExists(Address address) => _stateReader.TryGetAccount(BaseBlock, address, out _);
+        public bool AccountExists(Address address, int? _ = null) => _stateReader.TryGetAccount(BaseBlock, address, out AccountStruct account);
 
         [SkipLocalsInit]
-        public bool IsDeadAccount(Address address) => !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;
+        public bool IsDeadAccount(Address address, int? _ = null) => !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;
     }
 }

@@ -10,9 +10,9 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct StorageChange(ushort blockAccessIndex, UInt256 newValue) : IEquatable<StorageChange>, IIndexedChange
+public readonly struct StorageChange(int blockAccessIndex, UInt256 newValue) : IEquatable<StorageChange>, IIndexedChange
 {
-    public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
+    public int BlockAccessIndex { get; init; } = blockAccessIndex;
     [JsonConverter(typeof(UInt256Converter))]
     public UInt256 NewValue { get; init; } = newValue;
 

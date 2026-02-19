@@ -119,6 +119,8 @@ public class DisposableScopeOverridableEnvTests
     {
         public IWorldState WorldState => worldState;
 
+        public int BlockAccessIndex => throw new System.NotImplementedException();
+
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
             throw new NotImplementedException();
 

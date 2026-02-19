@@ -77,7 +77,7 @@ public class PruningTrieStateFactory(
                 logManager);
 
         IWorldStateManager stateManager = new WorldStateManager(
-            new ParallelWorldStateScopeProvider(scopeProvider),
+            new ParallelWorldStateScopeProvider(scopeProvider), //todo: check config?
             trieStore,
             dbProvider,
             logManager,

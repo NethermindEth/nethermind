@@ -36,6 +36,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin;
 using Nethermind.JsonRpc;
 using System.Reflection;
+using Nethermind.State;
 
 namespace Ethereum.Test.Base;
 
@@ -143,7 +144,7 @@ public abstract class BlockchainTestBase
         await using IContainer container = containerBuilder.Build();
 
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
-        IWorldState stateProvider = mainBlockProcessingContext.WorldState;
+        IWorldState stateProvider = (mainBlockProcessingContext.WorldState as ParallelWorldState).Inner; // directly access underlying state
         BlockchainProcessor blockchainProcessor = (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
@@ -401,10 +402,10 @@ public abstract class BlockchainTestBase
         {
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
             {
-                stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
+                stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value, -1);
             }
 
-            stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
+            stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce, -1);
             stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
         }
 

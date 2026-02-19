@@ -559,7 +559,7 @@ internal static partial class EvmInstructions
         // Charge gas for account access. If insufficient gas remains, abort.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
-        ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
+        UInt256 result = vm.WorldState.GetBalance(address, vm.TxExecutionContext.BlockAccessIndex);
         stack.PushUInt256<TTracingInst>(in result);
 
         return EvmExceptionType.None;
@@ -589,7 +589,7 @@ internal static partial class EvmInstructions
         TGasPolicy.Consume(ref gas, GasCostOf.SelfBalance);
 
         // Get balance for currently executing account.
-        ref readonly UInt256 result = ref vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
+        UInt256 result = vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex);
         stack.PushUInt256<TTracingInst>(in result);
 
         return EvmExceptionType.None;
@@ -624,14 +624,14 @@ internal static partial class EvmInstructions
 
         IWorldState state = vm.WorldState;
         // For dead accounts, the specification requires pushing zero.
-        if (state.IsDeadAccount(address))
+        if (state.IsDeadAccount(address, vm.TxExecutionContext.BlockAccessIndex))
         {
             stack.PushZero<TTracingInst>();
         }
         else
         {
             // Otherwise, push the account's code hash.
-            ref readonly ValueHash256 hash = ref state.GetCodeHash(address);
+            ValueHash256 hash = state.GetCodeHash(address, vm.TxExecutionContext.BlockAccessIndex);
             stack.Push32Bytes<TTracingInst>(in hash);
         }
 
@@ -670,13 +670,13 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
-        if (state.IsDeadAccount(address))
+        if (state.IsDeadAccount(address, vm.TxExecutionContext.BlockAccessIndex))
         {
             stack.PushZero<TTracingInst>();
         }
         else
         {
-            Memory<byte> code = state.GetCode(address);
+            Memory<byte> code = state.GetCode(address, vm.TxExecutionContext.BlockAccessIndex);
             // If the code passes EOF validation, push the EOF-specific hash.
             if (EofValidator.IsEof(code, out _))
             {
@@ -685,7 +685,7 @@ internal static partial class EvmInstructions
             else
             {
                 // Otherwise, push the standard code hash.
-                stack.PushBytes<TTracingInst>(state.GetCodeHash(address).Bytes);
+                stack.PushBytes<TTracingInst>(state.GetCodeHash(address, vm.TxExecutionContext.BlockAccessIndex).Bytes);
             }
         }
 
@@ -846,4 +846,36 @@ internal static partial class EvmInstructions
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
+
+    /// <summary>
+    /// Implements the SLOTNUM opcode.
+    /// Returns the slot number from the block header.
+    /// </summary>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack.</param>
+    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="programCounter">The program counter.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/>, or <see cref="EvmExceptionType.BadInstruction"/> if slot number not set.
+    /// </returns>
+    public static EvmExceptionType InstructionSlotNum<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        ref readonly BlockExecutionContext context = ref vm.BlockExecutionContext;
+
+        ulong? slotNumber = context.Header.SlotNumber;
+        // If the slot number is missing this opcode is invalid.
+        if (!slotNumber.HasValue) goto BadInstruction;
+
+        // Charge the base gas cost for this opcode.
+        TGasPolicy.Consume(ref gas, GasCostOf.Base);
+        stack.PushUInt64<TTracingInst>(slotNumber.Value);
+
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor.
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
+    }
+
 }

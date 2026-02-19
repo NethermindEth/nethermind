@@ -5,9 +5,9 @@ using System;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct NonceChange(ushort blockAccessIndex, ulong newNonce) : IEquatable<NonceChange>, IIndexedChange
+public readonly struct NonceChange(int blockAccessIndex, ulong newNonce) : IEquatable<NonceChange>, IIndexedChange
 {
-    public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
+    public int BlockAccessIndex { get; init; } = blockAccessIndex;
     public ulong NewNonce { get; init; } = newNonce;
 
     public readonly bool Equals(NonceChange other) =>

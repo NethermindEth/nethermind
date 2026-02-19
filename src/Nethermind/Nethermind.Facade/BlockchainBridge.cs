@@ -34,6 +34,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core.BlockAccessLists;
 
@@ -165,11 +166,11 @@ namespace Nethermind.Facade
             };
         }
 
-        public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken)
+        public Task<SimulateOutput<TTrace>> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken)
         {
             using SimulateReadOnlyBlocksProcessingScope env = lazySimulateProcessingEnv.Value.Begin(header);
             env.SimulateRequestState.Validate = payload.Validation;
-            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, specProvider, header);
+            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, env.SpecProvider, header);
             return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
         }
 

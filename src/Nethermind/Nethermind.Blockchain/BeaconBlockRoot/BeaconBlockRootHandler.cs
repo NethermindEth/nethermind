@@ -32,7 +32,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
             spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress :
             null;
 
-        if (eip4788ContractAddress is null || !stateProvider.AccountExists(eip4788ContractAddress))
+        if (eip4788ContractAddress is null || !stateProvider.AccountExists(eip4788ContractAddress, 0))
         {
             return (null, null);
         }

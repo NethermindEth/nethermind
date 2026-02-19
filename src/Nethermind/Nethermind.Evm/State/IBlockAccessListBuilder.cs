@@ -3,15 +3,22 @@
 
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Specs;
+using Nethermind.Logging;
 
 namespace Nethermind.Evm.State;
 
 public interface IBlockAccessListBuilder
 {
+    public bool IsGenesis { get; set; }
     public bool TracingEnabled { get; set; }
+    public bool ParallelExecutionEnabled { get; }
     public BlockAccessList GeneratedBlockAccessList { get; set; }
-    public void AddAccountRead(Address address);
-    public void LoadSuggestedBlockAccessList(BlockAccessList suggested, long gasUsed);
+    public void ApplyStateChanges(IReleaseSpec spec, bool shouldComputeStateRoot);
+    public void SetupGeneratedAccessLists(ILogManager logManager, int txCount);
+    public void GenerateBlockAccessList();
+    public void AddAccountRead(Address address, int? blockAccessIndex = null);
+    public void LoadSuggestedBlockAccessList(BlockAccessList? suggestedBal, long gasUsed);
     public long GasUsed();
-    public void ValidateBlockAccessList(ushort index, long gasRemaining);
+    public void ValidateBlockAccessList(ushort index, long gasRemaining, bool validateStorageReads = true);
 }

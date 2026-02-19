@@ -30,7 +30,7 @@ public class TaikoPayloadPreparationService(
 
     private readonly ILogger _logger = logManager.GetClassLogger();
 
-    private readonly ConcurrentDictionary<string, IBlockProductionContext> _payloadStorage = new();
+    private readonly ConcurrentDictionary<string, Task<IBlockProductionContext?>> _payloadStorage = new();
 
     public string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
@@ -39,11 +39,11 @@ public class TaikoPayloadPreparationService(
 
         string payloadId = payloadAttributes.GetPayloadId(parentHeader);
 
-        _payloadStorage.AddOrUpdate(payloadId, payloadId =>
+        _payloadStorage.AddOrUpdate(payloadId, async payloadId =>
             {
                 Block block = BuildBlock(parentHeader, attrs);
                 if (parentHeader.StateRoot is null) throw new InvalidOperationException("Parent state root is null");
-                block = ProcessBlock(block, parentHeader);
+                block = await ProcessBlock(block, parentHeader);
 
                 // L1Origin **MUST NOT** be null, it's a required field in PayloadAttributes.
                 L1Origin l1Origin = attrs.L1Origin ?? throw new InvalidOperationException("L1Origin is required");
@@ -93,7 +93,7 @@ public class TaikoPayloadPreparationService(
         return payloadId;
     }
 
-    private Block ProcessBlock(Block block, BlockHeader? parent, CancellationToken token = default)
+    private async Task<Block> ProcessBlock(Block block, BlockHeader? parent, CancellationToken token = default)
     {
         if (_worldStateLock.Wait(_emptyBlockProcessingTimeout))
         {
@@ -101,7 +101,7 @@ public class TaikoPayloadPreparationService(
             {
                 if (worldState.HasStateForBlock(parent))
                 {
-                    return processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, token)
+                    return await processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, token)
                         ?? throw new InvalidOperationException("Block processing failed");
                 }
             }
@@ -169,8 +169,9 @@ public class TaikoPayloadPreparationService(
 
     public ValueTask<IBlockProductionContext?> GetPayload(string payloadId, bool skipCancel = false)
     {
-        if (_payloadStorage.TryRemove(payloadId, out IBlockProductionContext? blockContext))
-            return ValueTask.FromResult<IBlockProductionContext?>(blockContext);
+        if (_payloadStorage.TryRemove(payloadId, out Task<IBlockProductionContext?>? blockContext))
+            return new(blockContext);
+            // return ValueTask.FromResult<IBlockProductionContext?>(blockContext);
 
         return ValueTask.FromResult<IBlockProductionContext?>(null);
     }

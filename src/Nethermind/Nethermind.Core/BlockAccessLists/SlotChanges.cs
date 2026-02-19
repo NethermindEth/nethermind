@@ -6,17 +6,19 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using Nethermind.Core.Collections;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public class SlotChanges(UInt256 slot, SortedList<ushort, StorageChange> changes) : IEquatable<SlotChanges>
+public class SlotChanges(UInt256 slot, SortedList<int, StorageChange> changes) : IEquatable<SlotChanges>
 {
     [JsonConverter(typeof(UInt256Converter))]
     public UInt256 Slot { get; init; } = slot;
-    public SortedList<ushort, StorageChange> Changes { get; init; } = changes;
+    public SortedList<int, StorageChange> Changes { get; init; } = changes;
 
     public SlotChanges(UInt256 slot) : this(slot, [])
     {
@@ -39,7 +41,18 @@ public class SlotChanges(UInt256 slot, SortedList<ushort, StorageChange> changes
     public static bool operator !=(SlotChanges left, SlotChanges right) =>
         !(left == right);
 
-    public bool PopStorageChange(ushort index, [NotNullWhen(true)] out StorageChange? storageChange)
+    public void Merge(SlotChanges other)
+    {
+        foreach (KeyValuePair<int, StorageChange> kv in other.Changes)
+        {
+            Changes[kv.Key] = kv.Value;
+        }
+    }
+
+    public void AddStorageChange(StorageChange storageChange)
+        => Changes.Add(storageChange.BlockAccessIndex, storageChange);
+
+    public bool PopStorageChange(int index, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         storageChange = null;
 
@@ -56,5 +69,19 @@ public class SlotChanges(UInt256 slot, SortedList<ushort, StorageChange> changes
         }
 
         return false;
+    }
+
+    public byte[] Get(int blockAccessIndex)
+    {
+        UInt256 lastValue = 0;
+        foreach (KeyValuePair<int, StorageChange> change in Changes)
+        {
+            if (change.Key >= blockAccessIndex)
+            {
+                return [.. lastValue.ToBigEndian().WithoutLeadingZeros()];
+            }
+            lastValue = change.Value.NewValue;
+        }
+        return [.. lastValue.ToBigEndian().WithoutLeadingZeros()];
     }
 }

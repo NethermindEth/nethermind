@@ -168,7 +168,7 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
         bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
+            .TryGetDelegation(codeSource, vm.Spec, out Address delegated, vm.TxExecutionContext.BlockAccessIndex);
 
         if (spec.UseHotAndColdStorage && delegated is not null)
         {
@@ -177,17 +177,17 @@ internal static partial class EvmInstructions
         }
 
         // Charge additional gas if the target account is new or considered empty.
-        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
+        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target, vm.TxExecutionContext.BlockAccessIndex))
         {
             if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
         }
-        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target))
+        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target, vm.TxExecutionContext.BlockAccessIndex))
         {
             if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
         }
 
         // Retrieve code information for the call and schedule background analysis if needed.
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec, vm.TxExecutionContext.BlockAccessIndex);
 
         // If contract is large, charge for access
         if (spec.IsEip7907Enabled)
@@ -222,7 +222,7 @@ internal static partial class EvmInstructions
 
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
-            (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue))
+            (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex) < transferValue))
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = Array.Empty<byte>();
@@ -252,9 +252,9 @@ internal static partial class EvmInstructions
         }
 
         // Take a snapshot of the state for potential rollback.
-        Snapshot snapshot = state.TakeSnapshot();
+        Snapshot snapshot = state.TakeSnapshot(blockAccessIndex: vm.TxExecutionContext.BlockAccessIndex);
         // Subtract the transfer value from the caller's balance.
-        state.SubtractFromBalance(caller, in transferValue, spec);
+        state.SubtractFromBalance(caller, in transferValue, spec, vm.TxExecutionContext.BlockAccessIndex);
 
         // Fast-path for calls to externally owned accounts (non-contracts)
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
@@ -262,6 +262,7 @@ internal static partial class EvmInstructions
             vm.ReturnDataBuffer = default;
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+            vm.AddTransferLog(caller, target, transferValue);
             return FastCall(vm, spec, in transferValue, target);
         }
 
@@ -305,7 +306,7 @@ internal static partial class EvmInstructions
         static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
         {
             IWorldState state = vm.WorldState;
-            state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
+            state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec, vm.TxExecutionContext.BlockAccessIndex);
             Metrics.IncrementEmptyCalls();
 
             vm.ReturnData = null;

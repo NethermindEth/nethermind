@@ -308,6 +308,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithSlotNumber(ulong? slotNumber)
+        {
+            TestObjectInternal.Header.SlotNumber = slotNumber;
+            return this;
+        }
+
         public BlockBuilder WithBlockAccessList(BlockAccessList? bal)
         {
             TestObjectInternal.BlockAccessList = bal;

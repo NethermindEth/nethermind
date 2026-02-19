@@ -22,6 +22,6 @@ namespace Nethermind.Core
         /// </summary>
         /// <param name="snapshot">Previously saved state.</param>
         /// <exception cref="InvalidOperationException">Thrown when snapshot cannot be restored. For example previous snapshot was already restored.</exception>
-        void Restore(TSnapshot snapshot);
+        void Restore(TSnapshot snapshot, int? blockAccessIndex = null);
     }
 }
