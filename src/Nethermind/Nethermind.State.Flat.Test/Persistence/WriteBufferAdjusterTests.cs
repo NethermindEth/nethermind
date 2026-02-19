@@ -164,6 +164,7 @@ public class WriteBufferAdjusterTests
     {
         public StubWriteBatch Inner { get; } = new();
         public IWriteBatch GetColumnBatch(FlatDbColumns key) => Inner;
+        public void Clear() => Inner.Clear();
         public void Dispose() => Inner.Dispose();
     }
 }
