@@ -191,5 +191,5 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 ### Notes for agents
 
 - The benchmark config is rendered to a temporary file and removed afterward; no source config revert is required.
-- For `pull_request` and `push` auto-runs, default mode is currently `halfpath + realblocks`.
+- For `pull_request` and `push` auto-runs, default mode is currently `halfpath + superblocks`.
 - Keep benchmark-related changes isolated to the workflow and benchmark guidance unless explicitly asked otherwise.
