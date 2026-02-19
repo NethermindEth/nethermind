@@ -63,6 +63,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
                 throw new InvalidOperationException($"Duplicate config for round {list[i].SwitchRound}.");
         }
     }
+
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {
         if (TipTrc21Fee is not null)
@@ -73,7 +74,6 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     {
         spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
     }
-
 }
 
 public sealed class V2ConfigParams

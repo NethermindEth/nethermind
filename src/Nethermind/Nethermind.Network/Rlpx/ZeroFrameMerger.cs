@@ -74,7 +74,9 @@ namespace Nethermind.Network.Rlpx
         private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
         {
             Rlp.ValueDecoderContext rlpContext = new(input.AsSpan());
-            byte rlpPacketType = (byte)rlpContext.DecodeULong();
+            ulong rlpPacketType = rlpContext.DecodeULong();
+            if (rlpPacketType > byte.MaxValue)
+                throw new NotSupportedException($"Received unsupported packet code={rlpPacketType}. We currently only support values 0-255.");
             int read = rlpContext.Position;
             input.SkipBytes(read);
             IByteBuffer content;
@@ -89,7 +91,7 @@ namespace Nethermind.Network.Rlpx
 
             _zeroPacket = new ZeroPacket(content)
             {
-                PacketType = rlpPacketType
+                PacketType = (byte)rlpPacketType
             };
 
             // If not chunked, then we already used a slice of the input,
