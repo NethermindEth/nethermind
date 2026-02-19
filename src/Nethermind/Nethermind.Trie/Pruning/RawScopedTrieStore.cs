@@ -29,8 +29,6 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(nodeStorage, address, writeFlags);
 
-    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => nodeStorage.KeyExists(address, path, keccak);
-
     ITrieNodeResolver ITrieNodeResolverFactory.GetStorageTrieNodeResolver(Hash256? storageAddress) =>
         new RawScopedTrieStore(nodeStorage, storageAddress);
 

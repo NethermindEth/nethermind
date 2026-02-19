@@ -34,7 +34,6 @@ namespace Nethermind.Trie.Pruning
         TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
-        bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
         INodeStorage.KeyScheme Scheme { get; }
 
         ITrieNodeResolver ITrieNodeResolverFactory.GetStorageTrieNodeResolver(Hash256? address) =>

@@ -32,7 +32,5 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         @base.BeginCommit(root, writeFlags);
-
-    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => @base.IsPersisted(in path, in keccak);
 }
 

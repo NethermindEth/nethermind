@@ -1044,8 +1044,6 @@ public class TrieNodeTests
         public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
         public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(this);
 
-        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => false;
-
         private class Committer(InMemoryScopedTrieStore trieStore) : ICommitter
         {
             public void Dispose()
