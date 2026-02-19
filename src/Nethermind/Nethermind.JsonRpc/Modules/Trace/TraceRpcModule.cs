@@ -94,6 +94,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(error, ErrorCodes.InvalidInput);
                 }
 
+                CapGasLimit(tx);
                 tx.Hash = new Hash256(new UInt256((ulong)i).ToValueHash());
                 ParityTraceTypes traceTypes = GetParityTypes(calls[i].TraceTypes);
                 txs[i] = tx;
@@ -111,12 +112,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
             Transaction tx = _txDecoder.Decode(new RlpStream(data), RlpBehaviors.SkipTypedWrapping);
+            CapGasLimit(tx);
             return TraceTx(tx, traceTypes, BlockParameter.Latest);
         }
 
         private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter,
             Dictionary<Address, AccountOverride>? stateOverride = null)
         {
+            CapGasLimit(tx);
+
             SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
             if (headerSearch.IsError)
             {
@@ -355,6 +359,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
             CancellationToken cancellationToken = timeout.Token;
             tracer2.Execute(block, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
+        }
+
+        private void CapGasLimit(Transaction tx)
+        {
+            if (jsonRpcConfig.GasCap is not null and not 0)
+            {
+                tx.GasLimit = long.Min(tx.GasLimit, jsonRpcConfig.GasCap.Value);
+            }
         }
 
         private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
