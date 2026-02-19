@@ -90,12 +90,13 @@ namespace Nethermind.Consensus.Processing
                         0,
                         len,
                         ParallelUnbalancedWork.DefaultOptions,
-                        (block, processingOptions, stateProvider, transactionProcessors, receiptsTracers, gasResults, txs: block.Transactions),
+                        (block, processingOptions, stateProvider, transactionProcessors, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
                         static (i, state) =>
                         {
                             ProcessTransactionParallel(
                                 state.transactionProcessors[i],
                                 state.stateProvider,
+                                state.specProvider,
                                 state.block,
                                 state.txs[i],
                                 i,
@@ -183,17 +184,23 @@ namespace Nethermind.Consensus.Processing
             private static void ProcessTransactionParallel(
                 ITransactionProcessorAdapter transactionProcessor,
                 IWorldState stateProvider,
+                ISpecProvider specProvider,
                 Block block,
                 Transaction currentTx,
                 int index,
                 BlockReceiptsTracer receiptsTracer,
                 ProcessingOptions processingOptions)
             {
-                Console.WriteLine("[parallel] started executing transaction with bal index {index}");
+                Console.WriteLine($"[parallel] started executing transaction with bal index {index + 1}");
 
                 currentTx.BlockAccessIndex = index + 1;
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+
+                if (index == 0)
+                {
+                    (stateProvider as IBlockAccessListBuilder)?.ApplyStateChanges(specProvider.GetSpec(block.Header), !block.Header.IsGenesis || !specProvider.GenesisStateUnavailable);
+                }
 
                 Console.WriteLine($"[parallel] completed executing transaction with bal index {index + 1}");
             }
