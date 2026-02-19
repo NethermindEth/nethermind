@@ -24,8 +24,6 @@ namespace Nethermind.Trie.Pruning
 
         public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp) { }
 
-        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 storageRoot) => this;
-
         public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
     }
 }

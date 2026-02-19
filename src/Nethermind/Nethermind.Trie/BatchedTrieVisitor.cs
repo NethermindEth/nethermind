@@ -62,18 +62,18 @@ public class BatchedTrieVisitor<TNodeContext>
     private readonly long _readAheadThreshold;
 
     private readonly ITrieNodeResolver _resolver;
-    private readonly ITrieNodeResolverFactory _factory;
+    private readonly ITrieNodeResolverFactory _trieNodeResolverFactory;
     private readonly ITreeVisitor<TNodeContext> _visitor;
 
     public BatchedTrieVisitor(
         ITreeVisitor<TNodeContext> visitor,
         ITrieNodeResolver resolver,
-        ITrieNodeResolverFactory factory,
+        ITrieNodeResolverFactory trieNodeResolverFactory,
         VisitingOptions visitingOptions)
     {
         _visitor = visitor;
         _resolver = resolver;
-        _factory = factory;
+        _trieNodeResolverFactory = trieNodeResolverFactory;
         if (resolver.Scheme != INodeStorage.KeyScheme.Hash)
             throw new InvalidOperationException("BatchedTrieVisitor can only be used with Hash database.");
 
@@ -465,7 +465,7 @@ public class BatchedTrieVisitor<TNodeContext>
                             TNodeContext storageContext = childContext.AddStorage(account.StorageRoot);
                             trieVisitContext.Level++;
 
-                            if (node.TryResolveStorageRoot(nodeResolver, _factory, ref emptyPath, out TrieNode? storageRoot))
+                            if (node.TryResolveStorageRoot(nodeResolver, _trieNodeResolverFactory, ref emptyPath, out TrieNode? storageRoot))
                             {
                                 nextToVisit.Add((storageRoot!, storageContext, trieVisitContext));
                             }

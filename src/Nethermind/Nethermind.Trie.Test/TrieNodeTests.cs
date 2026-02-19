@@ -1041,11 +1041,6 @@ public class TrieNodeTests
 
         public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
 
-        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
-        {
-            throw new InvalidOperationException($"{nameof(GetStorageTrieNodeResolver)} not supported");
-        }
-
         public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
         public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(this);
 

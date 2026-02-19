@@ -439,7 +439,7 @@ internal class TrieStoreDirtyNodesCache
             Key key = kv.Key;
             TreePath path = key.Path;
             Hash256? address = key.Address;
-            kv.Value.Node.CallRecursively(PersistNode, address, ref path, _trieStore.GetTrieStore(address), NullTrieNodeResolverFactory.Instance, false, _logger, resolveStorageRoot: false);
+            kv.Value.Node.CallRecursively(PersistNode, address, ref path, _trieStore.GetTrieStore(address), _trieStore, false, _logger, resolveStorageRoot: false);
         }
 
         return persistedCount;

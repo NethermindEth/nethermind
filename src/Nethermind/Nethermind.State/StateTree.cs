@@ -36,9 +36,8 @@ namespace Nethermind.State
         }
 
         public StateTree(ITrieStore? store, ILogManager? logManager)
-            : base(store?.GetTrieStore(null), Keccak.EmptyTreeHash, true, logManager, factory: store)
+            : base(store.GetTrieStore(null), logManager)
         {
-            TrieType = TrieType.State;
         }
 
         [DebuggerStepThrough]
