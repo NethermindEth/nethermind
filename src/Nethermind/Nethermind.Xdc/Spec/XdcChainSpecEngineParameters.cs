@@ -20,6 +20,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public int Reward { get; set; }
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
+    public Address[] GenesisMasternodes { get; set; } = Array.Empty<Address>();
 
     public Address BlockSignerContract { get; set; }
     public Address RandomizeSMCBinary { get; set; }
