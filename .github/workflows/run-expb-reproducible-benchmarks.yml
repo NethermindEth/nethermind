@@ -68,6 +68,7 @@ jobs:
       branch: ${{ steps.resolve.outputs.branch }}
       clean_branch: ${{ steps.resolve.outputs.clean_branch }}
       should_trigger_publish_docker: ${{ steps.resolve.outputs.should_trigger_publish_docker }}
+      image_tag: ${{ steps.resolve.outputs.image_tag }}
       config_file: ${{ steps.resolve.outputs.config_file }}
       image_label: ${{ steps.resolve.outputs.image_label }}
       expb_repo: ${{ steps.resolve.outputs.expb_repo }}
@@ -157,8 +158,11 @@ jobs:
 
           clean_branch="$(echo "${branch}" | sed 's/[^a-zA-Z0-9._-]/-/g')"
 
+          image_tag="${clean_branch}"
           should_trigger_publish_docker="true"
-          if [[ "${branch}" == "master" || "${branch}" == "paprika" || "${branch}" == release/* ]]; then
+          if [[ "${branch}" == "master" && "${EVENT_NAME}" == "push" ]]; then
+            image_tag="master-${GITHUB_SHA:0:7}"
+          elif [[ "${branch}" == "master" || "${branch}" == "paprika" || "${branch}" == release/* ]]; then
             should_trigger_publish_docker="false"
           fi
 
@@ -179,8 +183,9 @@ jobs:
             echo "branch=${branch}"
             echo "clean_branch=${clean_branch}"
             echo "should_trigger_publish_docker=${should_trigger_publish_docker}"
+            echo "image_tag=${image_tag}"
             echo "config_file=${config_file}"
-            echo "image_label=nethermindeth/nethermind:${clean_branch}"
+            echo "image_label=nethermindeth/nethermind:${image_tag}"
             echo "expb_repo=${expb_repo}"
             echo "expb_branch=${expb_branch}"
             echo "expb_data_dir=${expb_data_dir}"
@@ -216,7 +221,7 @@ jobs:
           token: ${{ github.token }}
           inputs: '{
             "image-name": "nethermind",
-            "tag": "${{ needs.resolve.outputs.clean_branch }}",
+            "tag": "${{ needs.resolve.outputs.image_tag }}",
             "dockerfile": "Dockerfile",
             "build-config": "release"
             }'
@@ -255,6 +260,7 @@ jobs:
         run: |
           echo "Event: ${{ github.event_name }}"
           echo "Nethermind branch: ${{ needs.resolve.outputs.branch }}"
+          echo "Docker tag: ${{ needs.resolve.outputs.image_tag }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
           echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
@@ -288,7 +294,7 @@ jobs:
         env:
           SOURCE_CONFIG_FILE: ${{ env.EXPB_DATA_DIR }}/${{ env.CONFIG_FILE }}
           RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config.yaml
-          DOCKER_TAG: ${{ needs.resolve.outputs.clean_branch }}
+          DOCKER_TAG: ${{ needs.resolve.outputs.image_tag }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           SCENARIO_NAME: ${{ needs.resolve.outputs.scenario_name }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
