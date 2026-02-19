@@ -39,6 +39,10 @@ on:
         description: Optional extra Nethermind flags (comma or newline separated)
         required: false
         default: ""
+      cleanup_grace_seconds:
+        description: Seconds to wait for expb self-cleanup on termination signals
+        required: false
+        default: "90"
       expb_data_dir:
         description: Directory on runner containing EXPB configs and data
         required: true
@@ -69,6 +73,7 @@ jobs:
       expb_data_dir: ${{ steps.resolve.outputs.expb_data_dir }}
       delay_seconds: ${{ steps.resolve.outputs.delay_seconds }}
       additional_extra_flags: ${{ steps.resolve.outputs.additional_extra_flags }}
+      cleanup_grace_seconds: ${{ steps.resolve.outputs.cleanup_grace_seconds }}
     steps:
       - name: Resolve branch and configuration
         id: resolve
@@ -88,6 +93,7 @@ jobs:
           DISPATCH_EXPB_DATA_DIR: ${{ inputs.expb_data_dir }}
           DISPATCH_DELAY_SECONDS: ${{ inputs.delay_seconds }}
           DISPATCH_ADDITIONAL_EXTRA_FLAGS: ${{ inputs.additional_extra_flags }}
+          DISPATCH_CLEANUP_GRACE_SECONDS: ${{ inputs.cleanup_grace_seconds }}
         run: |
           set -euo pipefail
 
@@ -101,6 +107,7 @@ jobs:
             expb_data_dir="${DISPATCH_EXPB_DATA_DIR}"
             delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
+            cleanup_grace_seconds="${DISPATCH_CLEANUP_GRACE_SECONDS:-90}"
           elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
             if [[ "${PR_LABEL}" != "reproducible-benchmark" ]]; then
               should_run="false"
@@ -116,6 +123,7 @@ jobs:
             expb_data_dir="/mnt/sda/expb-data"
             delay_seconds="0"
             additional_extra_flags=""
+            cleanup_grace_seconds="90"
           else
             branch="${PUSH_BRANCH}"
             state_layout="halfpath"
@@ -125,6 +133,7 @@ jobs:
             expb_data_dir="/mnt/sda/expb-data"
             delay_seconds="0"
             additional_extra_flags=""
+            cleanup_grace_seconds="90"
           fi
 
           branch="${branch#refs/heads/}"
@@ -135,6 +144,11 @@ jobs:
 
           if ! [[ "${delay_seconds}" =~ ^-?[0-9]+$ ]]; then
             echo "delay_seconds must be an integer, got '${delay_seconds}'."
+            exit 1
+          fi
+
+          if ! [[ "${cleanup_grace_seconds}" =~ ^[0-9]+$ ]]; then
+            echo "cleanup_grace_seconds must be a non-negative integer, got '${cleanup_grace_seconds}'."
             exit 1
           fi
 
@@ -166,6 +180,7 @@ jobs:
             echo "expb_branch=${expb_branch}"
             echo "expb_data_dir=${expb_data_dir}"
             echo "delay_seconds=${delay_seconds}"
+            echo "cleanup_grace_seconds=${cleanup_grace_seconds}"
             echo "additional_extra_flags<<EOF"
             printf '%s\n' "${additional_extra_flags}"
             echo "EOF"
@@ -225,6 +240,7 @@ jobs:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
       CONFIG_FILE: ${{ needs.resolve.outputs.config_file }}
       NETHERMIND_IMAGE: ${{ needs.resolve.outputs.image_label }}
+      CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
     steps:
       - name: Print resolved inputs
         run: |
@@ -233,6 +249,7 @@ jobs:
           echo "Docker image: ${NETHERMIND_IMAGE}"
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
           echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
+          echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -302,24 +319,55 @@ jobs:
             exit 1
           fi
 
-          expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
-          echo "Installing/upgrading expb from ${expb_source}"
-          uv tool install --upgrade --reinstall --from "${expb_source}" expb
-          echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+          if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+            expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
+          elif [[ -n "${EXPB_BRANCH}" ]]; then
+            expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
+          else
+            expb_source="git+https://github.com/${EXPB_REPO}"
+          fi
 
-      - name: Show expb version
-        shell: bash
-        run: |
-          set -euo pipefail
-          expb --version
+          echo "Installing expb from ${expb_source}"
+          uv tool install --force --from "${expb_source}" expb
+          echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
       - name: Run expb scenarios
         shell: bash
         working-directory: ${{ env.EXPB_DATA_DIR }}
         run: |
           set -euo pipefail
+          expb_pid=""
+
+          on_terminate() {
+            echo "Termination signal received. Waiting up to ${CLEANUP_GRACE_SECONDS}s for expb cleanup."
+            if [[ -n "${expb_pid}" ]] && kill -0 "${expb_pid}" 2>/dev/null; then
+              kill -TERM "${expb_pid}" 2>/dev/null || true
+
+              remaining="${CLEANUP_GRACE_SECONDS}"
+              while [[ "${remaining}" -gt 0 ]]; do
+                if ! kill -0 "${expb_pid}" 2>/dev/null; then
+                  echo "expb exited during cleanup grace period."
+                  exit 143
+                fi
+                sleep 1
+                remaining=$((remaining - 1))
+              done
+
+              if kill -0 "${expb_pid}" 2>/dev/null; then
+                echo "Cleanup grace period elapsed. Forcing expb shutdown."
+                kill -KILL "${expb_pid}" 2>/dev/null || true
+              fi
+            fi
+            exit 143
+          }
+
+          trap on_terminate TERM INT
+
           expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
             --per-payload-metrics-logs \
-            --print-logs
+            --print-logs &
+          expb_pid=$!
+
+          wait "${expb_pid}"
