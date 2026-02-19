@@ -55,11 +55,13 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [TearDown]
     public void TearDown()
     {
+        _storage?.Dispose();
         _receiptsDb.Dispose();
     }
 
     private void CreateStorage()
     {
+        _storage?.Dispose();
         _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
         _storage = new PersistentReceiptStorage(
             _receiptsDb,
@@ -363,19 +365,17 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         InsertBlock(b2a);
         InsertBlock(b2b);
 
-        // b1a
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1a, null));
+        // b1a -> canonical
+        _blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([b1a], true));
 
-        // b1b
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1b, b1a));
+        // reorg: b1b replaces b1a
+        _blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([b1b], true));
 
-        // b2a
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1a, b1b));
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b2a, null));
+        // reorg: b1a, b2a replace b1b
+        _blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([b1a, b2a], true));
 
-        // b2b
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1b, b1a));
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b2b, b2a));
+        // reorg: b1b, b2b replace b1a, b2a
+        _blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([b1b, b2b], true));
 
         _storage.FindBlockHash(tx.Hash!).Should().Be(b1b.Hash!);
     }
@@ -392,7 +392,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)
             .TestObject;
         _blockTree.FindBestSuggestedHeader().Returns(block2.Header);
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block2));
+        _blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([block2], true));
 
         if (_receiptConfig.CompactTxIndex)
         {
@@ -414,8 +414,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             .WithExtraData(new byte[1])
             .TestObject;
         _blockTree.FindBestSuggestedHeader().Returns(block4.Header);
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block3, block));
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block4, block2));
+        _blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([block3, block4], true));
 
         await Task.Delay(100);
         if (_receiptConfig.CompactTxIndex)
@@ -455,6 +454,45 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             );
         Assert.That(_storage.HasBlock(receipts[0].BlockNumber, receipts[0].BlockHash!));
     }
+
+    [Test]
+    public void OnUpdateMainChain_should_batch_commit_canonical_tx_index_for_all_blocks()
+    {
+        _receiptConfig.TxLookupLimit = 0;
+        CreateStorage();
+
+        Block block1 = Build.A.Block.WithNumber(1)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA).TestObject;
+        (block1, TxReceipt[] receipts1) = PrepareBlock(block1);
+        _storage.Insert(block1, receipts1, ensureCanonical: false);
+
+        Block block2 = Build.A.Block.WithNumber(2)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA).TestObject;
+        (block2, TxReceipt[] receipts2) = PrepareBlock(block2);
+        _storage.Insert(block2, receipts2, ensureCanonical: false);
+
+        Hash256 txHash1 = receipts1[0].TxHash!;
+        Hash256 txHash2 = receipts2[0].TxHash!;
+
+        // Before the event, no tx index entries
+        TxIndexFor(txHash1).Should().BeNull();
+        TxIndexFor(txHash2).Should().BeNull();
+
+        // Raise OnUpdateMainChain with both blocks — should batch-commit all tx indices
+        _blockTree.OnUpdateMainChain += Raise.EventWith(
+            new OnUpdateMainChainArgs(new[] { block1, block2 }, wereProcessed: true));
+
+        TxIndexFor(txHash1).Should().NotBeNull();
+        TxIndexFor(txHash2).Should().NotBeNull();
+
+        _storage.FindBlockHash(txHash1).Should().Be(block1.Hash!);
+        _storage.FindBlockHash(txHash2).Should().Be(block2.Hash!);
+    }
+
+    private byte[]? TxIndexFor(Hash256 txHash) =>
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHash.Bytes];
 
     private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
     {
