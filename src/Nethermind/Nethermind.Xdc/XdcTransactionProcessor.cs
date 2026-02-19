@@ -19,9 +19,13 @@ namespace Nethermind.Xdc;
 /// <summary>
 /// XDC-specific transaction processor that handles special system transactions.
 /// 
-/// In XDPoS, transactions to the BlockSigners contract (0x89) bypass normal
-/// EVM execution and are handled directly. This matches the behavior in 
-/// geth-xdc's ApplySignTransaction() function.
+/// In XDPoS, transactions to system contracts (0x88, 0x89, 0x90) have special handling:
+/// - BlockSigners (0x89): Bypass normal EVM execution entirely
+/// - Validator (0x88): Skip balance validation for staking operations
+/// - Randomize (0x90): Skip balance validation
+/// 
+/// This matches the behavior in geth-xdc which allows these consensus-level
+/// transactions even when the sender has insufficient balance.
 /// 
 /// Reference: https://github.com/XinFinOrg/XDPoSChain/blob/master/core/state_processor.go
 /// </summary>
@@ -68,6 +72,63 @@ public class XdcTransactionProcessor : TransactionProcessorBase
     {
         return transaction.To is not null 
             && transaction.To == XdcConstants.BlockSignersAddress;
+    }
+    
+    /// <summary>
+    /// Checks if a transaction is destined for an XDPoS system contract.
+    /// System contracts include:
+    /// - Validator (0x88): Masternode staking/voting
+    /// - BlockSigners (0x89): Block signing records  
+    /// - Randomize (0x90): Randomization for validator selection
+    /// 
+    /// XDC geth allows transactions to these contracts even when the sender
+    /// has insufficient balance, as they are consensus-level operations.
+    /// </summary>
+    private bool IsXdcSystemContractTransaction(Transaction transaction)
+    {
+        if (transaction.To is null) return false;
+        
+        return transaction.To == XdcConstants.ValidatorAddress ||
+               transaction.To == XdcConstants.BlockSignersAddress ||
+               transaction.To == XdcConstants.RandomizeAddress;
+    }
+    
+    /// <summary>
+    /// Override BuyGas to skip balance validation for XDPoS system contract transactions.
+    /// 
+    /// XDC geth allows validator staking transactions (to 0x88) even when the sender
+    /// has insufficient balance. This is because these are consensus-level operations
+    /// that transfer value as part of masternode staking, not regular user transfers.
+    /// 
+    /// This fixes the sync issue at block 1,755,834 on Apothem where a 10M XDC
+    /// validator staking tx was sent from an account with 0 balance.
+    /// 
+    /// Issue: https://github.com/AnilChinchawale/nethermind/issues/38
+    /// </summary>
+    protected override TransactionResult BuyGas(
+        Transaction tx, 
+        IReleaseSpec spec, 
+        ITxTracer tracer, 
+        ExecutionOptions opts,
+        in UInt256 effectiveGasPrice, 
+        out UInt256 premiumPerGas, 
+        out UInt256 senderReservedGasPayment, 
+        out UInt256 blobBaseFee)
+    {
+        // For XDPoS system contract transactions, skip balance validation
+        // This matches geth-xdc behavior where validator/staking operations
+        // are allowed even with insufficient sender balance
+        if (IsXdcSystemContractTransaction(tx))
+        {
+            if (Logger.IsDebug)
+                Logger.Debug($"XDC system contract tx to {tx.To}, skipping balance validation");
+            
+            // Force skip validation for XDPoS system contracts
+            opts |= ExecutionOptions.SkipValidation;
+        }
+        
+        return base.BuyGas(tx, spec, tracer, opts, in effectiveGasPrice, 
+            out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
     }
 
     /// <summary>

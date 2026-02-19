@@ -18,10 +18,19 @@ public static class XdcConstants
         new("0x0000000000000000000000000000000000000089");
     
     /// <summary>
-    /// MasternodeVoting contract address (0x88)
+    /// MasternodeVoting/Validator contract address (0x88)
+    /// Transactions to this address may bypass normal balance validation
+    /// in XDPoS consensus for masternode staking operations.
     /// </summary>
-    public static readonly Address MasternodeVotingAddress = 
+    public static readonly Address ValidatorAddress = 
         new("0x0000000000000000000000000000000000000088");
+    
+    /// <summary>
+    /// Randomize contract address (0x90)
+    /// Used for XDPoS randomization - may bypass balance validation.
+    /// </summary>
+    public static readonly Address RandomizeAddress = 
+        new("0x0000000000000000000000000000000000000090");
     
     /// <summary>
     /// Foundation wallet address (with intentional typo matching geth-xdc)
