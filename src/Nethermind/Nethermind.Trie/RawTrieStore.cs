@@ -45,11 +45,6 @@ public class RawTrieStore(INodeStorage nodeStorage) : IReadOnlyTrieStore
         return nodeStorage.Get(address, path, hash, flags);
     }
 
-    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
-    {
-        return nodeStorage.KeyExists(address, path, keccak);
-    }
-
     public INodeStorage.KeyScheme Scheme { get; } = nodeStorage.Scheme;
 
     public bool HasRoot(Hash256 stateRoot)
