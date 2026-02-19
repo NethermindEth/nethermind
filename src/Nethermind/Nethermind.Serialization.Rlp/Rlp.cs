@@ -35,9 +35,9 @@ namespace Nethermind.Serialization.Rlp
 
         internal const int DebugMessageContentLength = 2048;
 
-        public const byte NullObjectByte = 128;
+        public const byte EmptyArrayByte = 128;
 
-        public const byte EmptyArrayByte = 192;
+        public const byte NullObjectByte = 192;
 
         internal const int LengthOfNull = 1;
 
