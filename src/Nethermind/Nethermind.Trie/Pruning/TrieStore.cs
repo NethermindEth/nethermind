@@ -487,7 +487,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         _commitSetQueue.Enqueue(set);
         LatestCommittedBlockNumber = Math.Max(set.BlockNumber, LatestCommittedBlockNumber);
-        AnnounceReorgBoundaries();
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
