@@ -120,6 +120,7 @@ namespace Nethermind.State
                 if (stack.Count == 0)
                 {
                     _intraBlockCache.Remove(change.StorageCell);
+                    stack.Return();
                 }
             }
 

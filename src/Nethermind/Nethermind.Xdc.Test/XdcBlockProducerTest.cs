@@ -66,7 +66,7 @@ internal class XdcBlockProducerTest
             sealer,
             Substitute.For<IBlockTree>(),
             stateProvider,
-            Substitute.For<IGasLimitCalculator>(),
+            new XdcGasLimitCalculator(specProvider, Substitute.For<IBlocksConfig>()),
             Substitute.For<ITimestamper>(),
             specProvider,
             Substitute.For<ILogManager>(),

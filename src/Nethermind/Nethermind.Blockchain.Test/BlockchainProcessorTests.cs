@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using ConcurrentCollections;
 using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -40,11 +41,11 @@ public class BlockchainProcessorTests
         {
             private readonly ILogger _logger;
 
-            private readonly HashSet<Hash256> _allowed = new();
+            private readonly ConcurrentHashSet<Hash256> _allowed = new();
 
             internal readonly HashSet<Hash256> Processed = new();
 
-            private readonly HashSet<Hash256> _allowedToFail = new();
+            private readonly ConcurrentHashSet<Hash256> _allowedToFail = new();
 
             private readonly HashSet<Hash256> _rootProcessed = new();
 
@@ -88,7 +89,7 @@ public class BlockchainProcessorTests
                         Hash256 hash = suggestedBlock.Hash!;
                         if (!_allowed.Contains(hash))
                         {
-                            if (_allowedToFail.Remove(hash))
+                            if (_allowedToFail.TryRemove(hash))
                             {
                                 BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), []));
                                 throw new InvalidBlockException(suggestedBlock, "allowed to fail");
