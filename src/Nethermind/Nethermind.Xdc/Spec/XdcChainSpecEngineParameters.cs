@@ -22,8 +22,14 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
 
-    public Address MasternodeVotingContract { get; set; }
     public Address BlockSignerContract { get; set; }
+    public Address RandomizeSMCBinary { get; set; }
+    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
+    public Address XDCXLendingAddressBinary { get; set; }
+    public Address XDCXAddressBinary { get; set; }
+    public Address TradingStateAddressBinary { get; set; }
+
+    public Address MasternodeVotingContract { get; set; }
 
 
     private List<V2ConfigParams> _v2Configs = new();
@@ -37,6 +43,14 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             CheckConfig(_v2Configs);
         }
     }
+    public long? TipTrc21Fee { get; set; }
+    public long TIP2019Block { get; set; }
+    public long MergeSignRange { get; set; }
+    public Address[] BlackListedAddresses { get; set; }
+    public long BlackListHFNumber { get; set; }
+    public long TipXDCX { get; set; }
+    public long TIPXDCXMinerDisable { get; set; }
+    public long? DynamicGasLimitBlock { get; set; }
 
     private static void CheckConfig(List<V2ConfigParams> list)
     {
@@ -48,12 +62,20 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
                 throw new InvalidOperationException($"Duplicate config for round {list[i].SwitchRound}.");
         }
     }
+<<<<<<< fix/xdc-1559
 
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {
         spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
     }
 
+=======
+    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+    {
+        if (TipTrc21Fee is not null)
+            blockNumbers.Add(TipTrc21Fee.Value);
+    }
+>>>>>>> master
 }
 
 public sealed class V2ConfigParams

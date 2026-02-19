@@ -7,10 +7,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
-
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.Crypto
 {
@@ -28,7 +26,9 @@ namespace Nethermind.Core.Crypto
         public const int MemorySize = 32;
         public static int Length => MemorySize;
 
+        [JsonIgnore]
         public Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
+        [JsonIgnore]
         public ReadOnlySpan<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
 
         public static implicit operator ValueHash256?(Hash256? keccak) => keccak?.ValueHash256;
@@ -132,6 +132,7 @@ namespace Nethermind.Core.Crypto
 
         public ref readonly ValueHash256 ValueHash256 => ref _hash256;
 
+        [JsonIgnore]
         public Span<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _hash256), 1));
 
         public Hash256(string hexString)
