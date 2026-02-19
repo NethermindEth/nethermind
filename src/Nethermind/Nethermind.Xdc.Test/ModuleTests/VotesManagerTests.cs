@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
@@ -68,13 +69,13 @@ public class VotesManagerTests
         IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcReleaseSpec.CertThreshold.Returns(0.667);
+        xdcReleaseSpec.CertificateThreshold.Returns(0.667);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
 
         ISigner signer = Substitute.For<ISigner>();
         IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
 
-        var voteManager = new VotesManager(context, blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
+        var voteManager = new VotesManager(context, Substitute.For<ISyncPeerPool>(), blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
             specProvider, signer, forensicsProcessor);
 
         foreach (var v in votes)
@@ -107,13 +108,13 @@ public class VotesManagerTests
         IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcReleaseSpec.CertThreshold.Returns(0.667);
+        xdcReleaseSpec.CertificateThreshold.Returns(0.667);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
 
         ISigner signer = Substitute.For<ISigner>();
         IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
 
-        var voteManager = new VotesManager(context, blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
+        var voteManager = new VotesManager(context, Substitute.For<ISyncPeerPool>(), blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
             specProvider, signer, forensicsProcessor);
 
         for (var i = 0; i < keys.Length - 1; i++)
@@ -188,7 +189,7 @@ public class VotesManagerTests
         ISigner signer = Substitute.For<ISigner>();
         IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
 
-        var voteManager = new VotesManager(context, blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
+        var voteManager = new VotesManager(context, Substitute.For<ISyncPeerPool>(), blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
             specProvider, signer, forensicsProcessor);
 
         Assert.That(voteManager.FilterVote(vote), Is.EqualTo(expected));
@@ -257,10 +258,10 @@ public class VotesManagerTests
         var blockInfo = new BlockRoundInfo(headers[2].Hash!, 5, headers[2].Number);
 
         var ancestorQc = new QuorumCertificate(new BlockRoundInfo(headers[0].Hash!, 3, headers[0].Number), null, 0);
-        yield return new TestCaseData(blockTree, ancestorQc, blockInfo, true);
+        yield return new TestCaseData(Substitute.For<ISyncPeerPool>(), blockTree, ancestorQc, blockInfo, true);
 
         var nonRelatedQc = new QuorumCertificate(new BlockRoundInfo(nonRelatedHeader.Hash, 3, nonRelatedHeader.Number), null, 0);
-        yield return new TestCaseData(blockTree, nonRelatedQc, blockInfo, false);
+        yield return new TestCaseData(Substitute.For<ISyncPeerPool>(), blockTree, nonRelatedQc, blockInfo, false);
     }
 
     [TestCaseSource(nameof(ExtendingFromAncestorCases))]
@@ -297,7 +298,7 @@ public class VotesManagerTests
         ISigner signer = Substitute.For<ISigner>();
         IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
 
-        return new VotesManager(ctx, blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
+        return new VotesManager(ctx, Substitute.For<ISyncPeerPool>(), blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
             specProvider, signer, forensicsProcessor);
     }
 

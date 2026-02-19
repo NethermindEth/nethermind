@@ -286,4 +286,7 @@ public class DbConfig : IDbConfig
     public string LogIndexStorageTopics2DbAdditionalRocksDbOptions { get; set; } = "";
     public string LogIndexStorageTopics3DbRocksDbOptions { get; set; } = "";
     public string LogIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; } = "";
+
+    public string SnapshotsDbRocksDbOptions { get; set; } = "";
+    public string? SnapshotsDbAdditionalRocksDbOptions { get; set; } = "";
 }

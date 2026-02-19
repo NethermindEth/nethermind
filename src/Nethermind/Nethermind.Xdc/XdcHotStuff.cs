@@ -46,6 +46,8 @@ namespace Nethermind.Xdc
         private static readonly PayloadAttributes DefaultPayloadAttributes = new PayloadAttributes();
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
+        private bool _writeRoundInfo = true;
+        private long _highestSignTxNumber = 0;
 
 
         public XdcHotStuff(
@@ -151,8 +153,8 @@ namespace Nethermind.Xdc
             //TODO Technically we have to apply timeout exponents from spec, but they are always 1
             _timeoutTimer.Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
 
-            TimeSpan roundDuration = DateTime.UtcNow - _xdcContext.RoundStarted;
-            _logger.Info($"Round {args.NewRound} completed in {roundDuration.TotalSeconds:F2}s");
+            _logger.Info($"Round {args.PreviousRound} completed in {args.LastRoundDuration.TotalSeconds:F2}s");
+            _writeRoundInfo = true;
         }
 
         /// <summary>
@@ -238,27 +240,31 @@ namespace Nethermind.Xdc
                 return;
             }
 
-            bool isMyTurn = IsMyTurnAndTime(roundParent, currentRound, spec);
-            _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
-
-            if (isMyTurn)
-            {
-                _highestSelfMinedRound = currentRound;
-                Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
-
-            }
-
-            if (IsMasternode(epochInfo, _signer.Address)
-                && ((roundParent.Number % spec.MergeSignRange == 0)))
-            {
-                await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
-            }
-
             if (spec.SwitchBlock < roundParent.Number)
             {
                 await CommitCertificateAndVote(roundParent, epochInfo);
             }
 
+            bool isMyTurn = IsMyTurn(roundParent, currentRound, spec);
+
+            if (_writeRoundInfo)
+                _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
+
+            if (isMyTurn && IsItTimeToPropose(roundParent, currentRound, spec))
+            {
+                _highestSelfMinedRound = currentRound;
+                Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
+            }
+
+            if (_highestSignTxNumber < roundParent.Number
+                && IsMasternode(epochInfo, _signer.Address)
+                && ((roundParent.Number % spec.MergeSignRange == 0)))
+            {
+                _highestSignTxNumber = roundParent.Number;
+                await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
+            }
+
+            _writeRoundInfo = false;
         }
 
         private XdcBlockHeader GetParentForRound()
@@ -275,7 +281,8 @@ namespace Nethermind.Xdc
 
             try
             {
-                ulong parentTimestamp = parent.Timestamp;
+                XdcBlockHeader parentHeader = FindHeaderToBuildOn(_xdcContext.HighestQC) ?? parent;
+                ulong parentTimestamp = parentHeader.Timestamp;
                 ulong minTimestamp = parentTimestamp + (ulong)spec.MinePeriod;
                 ulong currentTimestamp = (ulong)new DateTimeOffset(now).ToUnixTimeSeconds();
 
@@ -292,7 +299,7 @@ namespace Nethermind.Xdc
                 }
 
                 Task<Block?> proposedBlockTask =
-                    _blockBuilder.BuildBlock(parent, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, ct);
+                    _blockBuilder.BuildBlock(parentHeader, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, ct);
 
                 Block? proposedBlock = await proposedBlockTask;
 
@@ -313,6 +320,11 @@ namespace Nethermind.Xdc
             {
                 _logger.Error($"Failed to build block in round {currentRound}", ex);
             }
+
+            XdcBlockHeader FindHeaderToBuildOn(QuorumCertificate highestQC) =>
+                _blockTree.FindHeader(
+                    highestQC.ProposedBlockInfo.Hash,
+                    highestQC.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
         }
 
         /// <summary>
@@ -367,27 +379,19 @@ namespace Nethermind.Xdc
             if (e.Block.Header is not XdcBlockHeader xdcHead)
                 throw new InvalidOperationException($"Expected an XDC header, but got {e.Block.Header.GetType().FullName}");
 
-            _logger.Debug($"New head block #{xdcHead.Number}, round={xdcHead.ExtraConsensusData?.BlockRound}");
+            _logger.Info($"New head block #{xdcHead.Number}, round={xdcHead.ExtraConsensusData?.BlockRound}, our round={_xdcContext.CurrentRound}");
 
             if (xdcHead.ExtraConsensusData is null)
                 throw new InvalidOperationException("New head block missing ExtraConsensusData");
-
-            ulong headRound = xdcHead.ExtraConsensusData.BlockRound;
-            if (headRound > _xdcContext.CurrentRound)
-            {
-                _logger.Warn($"New head block round is ahead of us.");
-                //TODO This should probably trigger a sync
-            }
 
             // Signal new round
             _lastActivityTime = DateTime.UtcNow;
         }
 
         /// <summary>
-        /// Check if the current node is the leader for the given round.
-        /// Uses epoch switch manager and spec to determine leader via round-robin rotation.
+        /// Check if it's time to propose a block for the given round.
         /// </summary>
-        private bool IsMyTurnAndTime(XdcBlockHeader parent, ulong round, IXdcReleaseSpec spec)
+        private bool IsItTimeToPropose(XdcBlockHeader parent, ulong round, IXdcReleaseSpec spec)
         {
             if (_highestSelfMinedRound >= round)
             {
@@ -406,7 +410,15 @@ namespace Nethermind.Xdc
                 //We have not reached QC vote threshold yet
                 return false;
             }
+            return true;
+        }
 
+        /// <summary>
+        /// Check if the current node is the leader for the given round.
+        /// Uses epoch switch manager and spec to determine leader via round-robin rotation.
+        /// </summary>
+        private bool IsMyTurn(XdcBlockHeader parent, ulong round, IXdcReleaseSpec spec)
+        {
             Address leaderAddress = GetLeaderAddress(parent, round, spec);
             return leaderAddress == _signer.Address;
         }
