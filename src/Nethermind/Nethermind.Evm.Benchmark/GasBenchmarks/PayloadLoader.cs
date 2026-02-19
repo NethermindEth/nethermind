@@ -200,6 +200,7 @@ public static class PayloadLoader
         {
             if (s_genesisInitialized) return;
 
+            KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
             s_dbProvider = TestMemDbProvider.Init();
             PruningConfig pruningConfig = new();
             TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
