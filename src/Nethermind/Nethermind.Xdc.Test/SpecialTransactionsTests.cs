@@ -517,7 +517,6 @@ internal class SpecialTransactionsTests
         blockChain.MainWorldState.IncrementNonce(blockChain.Signer.Address);
         var nonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
 
-
         Transaction validNonceTx = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, nonce, spec.BlockSignerContract, blockChain.Signer.Address);
 
         // damage the data field in the tx
@@ -552,8 +551,6 @@ internal class SpecialTransactionsTests
             spec.EpochLength = epochLength;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
-
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
@@ -586,14 +583,10 @@ internal class SpecialTransactionsTests
             spec.EpochLength = epochLength;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
-
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
         blockChain.MainWorldState.BeginScope(head);
-
-        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
         long lowerBound = head.Number - (spec.EpochLength * 2);
         UInt256 tooLowBlockNumber = (UInt256)lowerBound;
