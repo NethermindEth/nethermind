@@ -41,6 +41,7 @@ namespace Nethermind.Trie
         public ICappedArrayPool? _bufferPool;
 
         private readonly bool _allowCommits;
+        private readonly ITrieNodeResolverFactory? _factory;
 
         private int _isWriteInProgress;
 
@@ -80,7 +81,7 @@ namespace Nethermind.Trie
         }
 
         public PatriciaTree(ITrieStore trieStore, ILogManager logManager, ICappedArrayPool? bufferPool = null)
-            : this(trieStore.GetTrieStore(null), EmptyTreeHash, true, logManager, bufferPool: bufferPool)
+            : this(trieStore.GetTrieStore(null), EmptyTreeHash, true, logManager, bufferPool: bufferPool, factory: trieStore)
         {
         }
 
@@ -109,7 +110,8 @@ namespace Nethermind.Trie
             Hash256 rootHash,
             bool allowCommits,
             ILogManager? logManager,
-            ICappedArrayPool? bufferPool = null)
+            ICappedArrayPool? bufferPool = null,
+            ITrieNodeResolverFactory? factory = null)
         {
             _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
@@ -120,6 +122,7 @@ namespace Nethermind.Trie
             // RootRef?.MarkPersistedRecursively(_logger);
 
             _bufferPool = bufferPool;
+            _factory = factory;
         }
 
         public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
@@ -950,7 +953,7 @@ namespace Nethermind.Trie
                 }
             }
 
-            factory ??= NullTrieNodeResolverFactory.Instance;
+            factory ??= _factory ?? NullTrieNodeResolverFactory.Instance;
 
             ITrieNodeResolver resolver = flags != ReadFlags.None
                 ? new TrieNodeResolverWithReadFlags(TrieStore, factory, flags)
