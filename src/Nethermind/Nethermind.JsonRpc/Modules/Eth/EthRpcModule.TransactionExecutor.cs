@@ -27,11 +27,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override Result<Transaction> Prepare(TransactionForRpc call)
             {
-                if (_rpcConfig.GasCap is not null)
-                {
-                    call.EnsureDefaults(_rpcConfig.GasCap);
-                }
-
                 Result<Transaction> result = call.ToTransaction(validateUserInput: true);
                 if (result.IsError) return result;
 
@@ -106,11 +101,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                if (_rpcConfig.GasCap is not null)
-                {
-                    tx.GasLimit = long.Min(tx.GasLimit, _rpcConfig.GasCap.Value);
-                }
-
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
 
                 return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true), result.ExecutionReverted, result.OutputData);

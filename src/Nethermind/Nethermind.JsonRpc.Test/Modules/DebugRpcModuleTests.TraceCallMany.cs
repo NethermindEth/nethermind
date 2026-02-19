@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -15,6 +17,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -176,5 +179,39 @@ public partial class DebugRpcModuleTests
         var result = ctx.DebugRpcModule.debug_traceCallMany([simple, withOverride], BlockParameter.Latest);
 
         result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_caps_gas_to_gas_cap()
+    {
+        using Context ctx = await CreateContext();
+        long gasCap = 50_000;
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = gasCap;
+
+        // Deploy contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        // Returns gas available at start of execution as a 32-byte uint256
+        byte[] runtimeCode = Bytes.FromHexString("5a60005260206000f3");
+        byte[] initCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
+
+        UInt256 nonce = ctx.Blockchain.StateReader.GetNonce(ctx.Blockchain.BlockTree.Head!.Header, TestItem.AddressD);
+        Address contractAddress = ContractAddress.From(TestItem.AddressD, nonce);
+
+        Transaction deployTx = Build.A.Transaction
+            .SignedAndResolved(TestItem.PrivateKeyD)
+            .WithNonce(nonce)
+            .WithCode(initCode)
+            .WithGasLimit(100_000)
+            .TestObject;
+        await ctx.Blockchain.AddBlock(deployTx);
+
+        TransactionBundle bundle = CreateBundle(CreateTransaction(to: contractAddress, value: 0, gas: 100_000));
+
+        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+
+        GethLikeTxTrace trace = result.Data.First().First();
+        long gasAvailable = (long)trace.ReturnValue.ToUInt256();
+        gasAvailable.Should().BeLessThan(gasCap);
+        gasAvailable.Should().BeGreaterThan(0);
     }
 }
