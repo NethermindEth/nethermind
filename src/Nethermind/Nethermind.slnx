@@ -51,6 +51,7 @@
     <Project Path="Nethermind.Era1.Test/Nethermind.Era1.Test.csproj" />
     <Project Path="Nethermind.Ethash.Test/Nethermind.Ethash.Test.csproj" />
     <Project Path="Nethermind.EthStats.Test/Nethermind.EthStats.Test.csproj" />
+    <Project Path="Nethermind.Evm.Benchmark.Test/Nethermind.Evm.Benchmark.Test.csproj" />
     <Project Path="Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />
     <Project Path="Nethermind.Facade.Test/Nethermind.Facade.Test.csproj" />
     <Project Path="Nethermind.HealthChecks.Test/Nethermind.HealthChecks.Test.csproj" />
