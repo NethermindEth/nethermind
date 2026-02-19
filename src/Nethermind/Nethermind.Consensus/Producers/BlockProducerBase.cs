@@ -36,11 +36,11 @@ namespace Nethermind.Consensus.Producers
     {
         protected IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
+        protected readonly IGasLimitCalculator GasLimitCalculator;
         private ITimestamper Timestamper { get; }
 
         protected ISealer Sealer { get; }
         private IWorldState StateProvider { get; }
-        private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
         protected readonly ISpecProvider _specProvider;
         protected internal ITxSource TxSource { get; set; }
@@ -67,7 +67,7 @@ namespace Nethermind.Consensus.Producers
             Sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             StateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
+            GasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             Timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
@@ -217,7 +217,7 @@ namespace Nethermind.Consensus.Producers
                 blockAuthor,
                 UInt256.Zero,
                 parent.Number + 1,
-                payloadAttributes?.GetGasLimit() ?? _gasLimitCalculator.GetGasLimit(parent),
+                payloadAttributes?.GetGasLimit() ?? GasLimitCalculator.GetGasLimit(parent),
                 timestamp,
                 _blocksConfig.GetExtraDataBytes())
             {
