@@ -421,6 +421,7 @@ jobs:
 
           clean_log="${RUNNER_TEMP}/expb-run.clean.log"
           exception_lines="${RUNNER_TEMP}/expb-exceptions.log"
+          invalid_block_lines="${RUNNER_TEMP}/expb-invalid-blocks.log"
           processing_ms="${RUNNER_TEMP}/expb-processing-ms.txt"
           processing_ms_sorted="${RUNNER_TEMP}/expb-processing-ms-sorted.txt"
           metrics_file="${RUNNER_TEMP}/expb-metrics.env"
@@ -438,6 +439,14 @@ jobs:
             exception_found="true"
             echo "Found Exception lines in benchmark output:"
             head -n 40 "${exception_lines}"
+          fi
+
+          grep -Ein "invalid[[:space:]_-]*block" "${clean_log}" > "${invalid_block_lines}" || true
+          invalid_block_found="false"
+          if [[ -s "${invalid_block_lines}" ]]; then
+            invalid_block_found="true"
+            echo "Found invalid block lines in benchmark output:"
+            head -n 40 "${invalid_block_lines}"
           fi
 
           awk -F'|' '
@@ -462,7 +471,16 @@ jobs:
           min=$(head -n 1 "${processing_ms_sorted}")
           max=$(tail -n 1 "${processing_ms_sorted}")
           avg=$(awk '{sum += $1} END {printf "%.6f", sum / NR}' "${processing_ms_sorted}")
-          mean="${avg}"
+          if (( count % 2 == 1 )); then
+            median_index=$(( (count + 1) / 2 ))
+            median=$(sed -n "${median_index}p" "${processing_ms_sorted}")
+          else
+            lower_index=$(( count / 2 ))
+            upper_index=$(( lower_index + 1 ))
+            lower_value=$(sed -n "${lower_index}p" "${processing_ms_sorted}")
+            upper_value=$(sed -n "${upper_index}p" "${processing_ms_sorted}")
+            median=$(awk -v a="${lower_value}" -v b="${upper_value}" 'BEGIN {printf "%.6f", (a + b) / 2}')
+          fi
 
           p90_index=$(( (90 * count + 99) / 100 ))
           p95_index=$(( (95 * count + 99) / 100 ))
@@ -475,7 +493,7 @@ jobs:
           {
             echo "COUNT=${count}"
             echo "AVG=${avg}"
-            echo "MEAN=${mean}"
+            echo "MEDIAN=${median}"
             echo "P90=${p90}"
             echo "P95=${p95}"
             echo "P99=${p99}"
@@ -486,10 +504,12 @@ jobs:
           {
             echo "exception_found=${exception_found}"
             echo "exception_lines_file=${exception_lines}"
+            echo "invalid_block_found=${invalid_block_found}"
+            echo "invalid_block_lines_file=${invalid_block_lines}"
             echo "metrics_file=${metrics_file}"
             echo "count=${count}"
             echo "avg=${avg}"
-            echo "mean=${mean}"
+            echo "median=${median}"
             echo "p90=${p90}"
             echo "p95=${p95}"
             echo "p99=${p99}"
@@ -506,6 +526,8 @@ jobs:
           MASTER_METRICS_FILE: ${{ runner.temp }}/expb-master-metrics-cache/master-metrics.env
           SCENARIO_NAME: ${{ needs.resolve.outputs.scenario_name }}
           EXCEPTION_FOUND: ${{ steps.analyze.outputs.exception_found }}
+          INVALID_BLOCK_FOUND: ${{ steps.analyze.outputs.invalid_block_found }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
 
@@ -516,7 +538,20 @@ jobs:
           load_metric() {
             local file="$1"
             local key="$2"
-            grep -E "^${key}=" "${file}" | head -n 1 | cut -d'=' -f2-
+            grep -E "^${key}=" "${file}" | head -n 1 | cut -d'=' -f2- || true
+          }
+
+          load_metric_with_fallback() {
+            local file="$1"
+            local primary_key="$2"
+            local fallback_key="$3"
+            local value=""
+
+            value="$(load_metric "${file}" "${primary_key}")"
+            if [[ -z "${value}" ]]; then
+              value="$(load_metric "${file}" "${fallback_key}")"
+            fi
+            printf '%s' "${value}"
           }
 
           percentage_delta() {
@@ -537,17 +572,21 @@ jobs:
             append_line "${marker}"
             append_line "### EXPB Benchmark Comparison"
             append_blank
+            append_line "Run: [View workflow run](${RUN_URL})"
+            append_blank
             append_line "No current run metrics file was produced, so comparison against master could not be generated."
           elif [[ ! -f "${MASTER_METRICS_FILE}" ]]; then
             append_line "${marker}"
             append_line "### EXPB Benchmark Comparison"
+            append_blank
+            append_line "Run: [View workflow run](${RUN_URL})"
             append_blank
             append_line "No cached master baseline metrics were found yet. A baseline will be created from the next successful \`master\` push run."
             append_blank
             append_line "Current scenario: \`${SCENARIO_NAME}\`"
           else
             current_avg="$(load_metric "${CURRENT_METRICS_FILE}" "AVG")"
-            current_mean="$(load_metric "${CURRENT_METRICS_FILE}" "MEAN")"
+            current_median="$(load_metric_with_fallback "${CURRENT_METRICS_FILE}" "MEDIAN" "MEAN")"
             current_p90="$(load_metric "${CURRENT_METRICS_FILE}" "P90")"
             current_p95="$(load_metric "${CURRENT_METRICS_FILE}" "P95")"
             current_p99="$(load_metric "${CURRENT_METRICS_FILE}" "P99")"
@@ -555,7 +594,7 @@ jobs:
             current_max="$(load_metric "${CURRENT_METRICS_FILE}" "MAX")"
 
             master_avg="$(load_metric "${MASTER_METRICS_FILE}" "AVG")"
-            master_mean="$(load_metric "${MASTER_METRICS_FILE}" "MEAN")"
+            master_median="$(load_metric_with_fallback "${MASTER_METRICS_FILE}" "MEDIAN" "MEAN")"
             master_p90="$(load_metric "${MASTER_METRICS_FILE}" "P90")"
             master_p95="$(load_metric "${MASTER_METRICS_FILE}" "P95")"
             master_p99="$(load_metric "${MASTER_METRICS_FILE}" "P99")"
@@ -565,12 +604,14 @@ jobs:
             append_line "${marker}"
             append_line "### EXPB Benchmark Comparison"
             append_blank
+            append_line "Run: [View workflow run](${RUN_URL})"
+            append_blank
             append_line "Scenario: \`${SCENARIO_NAME}\`"
             append_blank
             append_line "| Metric | PR | Master (cached) | Delta PR vs Master |"
             append_line "|---|---:|---:|---:|"
             append_line "| AVG (ms) | ${current_avg} | ${master_avg} | $(percentage_delta "${current_avg}" "${master_avg}") |"
-            append_line "| MEAN (ms) | ${current_mean} | ${master_mean} | $(percentage_delta "${current_mean}" "${master_mean}") |"
+            append_line "| MEDIAN (ms) | ${current_median} | ${master_median} | $(percentage_delta "${current_median}" "${master_median}") |"
             append_line "| P90 (ms) | ${current_p90} | ${master_p90} | $(percentage_delta "${current_p90}" "${master_p90}") |"
             append_line "| P95 (ms) | ${current_p95} | ${master_p95} | $(percentage_delta "${current_p95}" "${master_p95}") |"
             append_line "| P99 (ms) | ${current_p99} | ${master_p99} | $(percentage_delta "${current_p99}" "${master_p99}") |"
@@ -581,6 +622,11 @@ jobs:
           if [[ "${EXCEPTION_FOUND}" == "true" ]]; then
             append_blank
             append_line ":warning: This run contained \`Exception\` lines and the workflow is expected to fail."
+          fi
+
+          if [[ "${INVALID_BLOCK_FOUND}" == "true" ]]; then
+            append_blank
+            append_line ":warning: This run contained \`Invalid block\` log lines and the workflow is expected to fail."
           fi
 
           {
@@ -629,7 +675,7 @@ jobs:
             }
 
       - name: Prepare master metrics cache
-        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true'
+        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -637,7 +683,7 @@ jobs:
           cp "${{ steps.analyze.outputs.metrics_file }}" "${RUNNER_TEMP}/expb-master-metrics-cache/master-metrics.env"
 
       - name: Save master metrics cache
-        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true'
+        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/expb-master-metrics-cache
@@ -658,6 +704,14 @@ jobs:
             echo "Exceptions were detected in run output. Failing workflow."
             if [[ -f "${{ steps.analyze.outputs.exception_lines_file }}" ]]; then
               head -n 40 "${{ steps.analyze.outputs.exception_lines_file }}"
+            fi
+            exit 1
+          fi
+
+          if [[ "${{ steps.analyze.outputs.invalid_block_found }}" == "true" ]]; then
+            echo "Invalid block lines were detected in run output. Failing workflow."
+            if [[ -f "${{ steps.analyze.outputs.invalid_block_lines_file }}" ]]; then
+              head -n 40 "${{ steps.analyze.outputs.invalid_block_lines_file }}"
             fi
             exit 1
           fi
