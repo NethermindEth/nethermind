@@ -756,7 +756,5 @@ public class PatriciaTreeBulkSetterTests
         public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
 
         public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None) => baseTrieStore.BeginCommit(root, writeFlags);
-
-        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => baseTrieStore.IsPersisted(in path, in keccak);
     }
 }
