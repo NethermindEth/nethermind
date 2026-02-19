@@ -172,8 +172,7 @@ jobs:
             config_file="github-action-mainnet.yaml"
           fi
 
-          payload_label="${payload_set%s}"
-          scenario_name="nethermind-${state_layout}-${payload_label}-${clean_branch}-delay${delay_seconds}s"
+          scenario_name="nethermind-${state_layout}-${payload_set}-${clean_branch}-delay${delay_seconds}s"
 
           {
             echo "should_run=${should_run}"
