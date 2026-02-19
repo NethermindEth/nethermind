@@ -13,7 +13,6 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 
-[NonParallelizable]
 public class TimeoutTests
 {
     [Test]

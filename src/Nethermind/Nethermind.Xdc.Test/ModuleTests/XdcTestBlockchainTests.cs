@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 
-[NonParallelizable]
 internal class XdcTestBlockchainTests
 {
     private XdcTestBlockchain _blockchain;

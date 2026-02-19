@@ -13,7 +13,6 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 
-[NonParallelizable]
 internal class ProposedBlockTests
 {
     [Test]
@@ -199,7 +198,7 @@ internal class ProposedBlockTests
 
         var roundCountBeforeStart = blockChain.XdcContext.CurrentRound;
 
-        //Should not cause any new vote to be cast 
+        //Should not cause any new vote to be cast
         blockChain.StartHotStuffModule();
 
         await Task.Delay(100);
