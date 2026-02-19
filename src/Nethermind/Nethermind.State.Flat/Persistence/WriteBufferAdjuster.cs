@@ -14,7 +14,7 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
     private readonly Dictionary<FlatDbColumns, long> _lastWriteBufferSize = new();
     private readonly Dictionary<FlatDbColumns, CountingWriteBatch> _activeCounters = new();
 
-    public IWriteOnlyKeyValueStore Wrap(IColumnsWriteBatch<FlatDbColumns> batch, FlatDbColumns column, WriteFlags flags)
+    public IWriteBatch Wrap(IColumnsWriteBatch<FlatDbColumns> batch, FlatDbColumns column, WriteFlags flags)
     {
         if (flags.HasFlag(WriteFlags.DisableWAL))
             return batch.GetColumnBatch(column);
