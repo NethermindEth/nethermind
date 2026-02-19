@@ -329,7 +329,7 @@ namespace Nethermind.Xdc
             // Commit/record the header's QC
             _quorumCertificateManager.CommitCertificate(head.ExtraConsensusData.QuorumCert);
 
-            _highestVotedRound = votingRound;
+            // Update highest voted round should be done after making sure to send the vote
 
             // Check if we are in the masternode set
             if (!IsMasternode(epochInfo, _signer.Address))
@@ -348,6 +348,7 @@ namespace Nethermind.Xdc
 
             try
             {
+                _highestVotedRound = votingRound;
                 BlockRoundInfo voteInfo = new BlockRoundInfo(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
                 await _votesManager.CastVote(voteInfo);
                 _lastActivityTime = DateTime.UtcNow;
