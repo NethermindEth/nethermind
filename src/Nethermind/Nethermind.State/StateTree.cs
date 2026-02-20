@@ -83,7 +83,7 @@ namespace Nethermind.State
         {
             ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
 
-            public void Set(Address key, Account account)
+            public void Set(Address key, Account? account)
             {
                 KeccakCache.ComputeTo(key.Bytes, out ValueHash256 keccak);
 
