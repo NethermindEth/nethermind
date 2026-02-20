@@ -157,6 +157,21 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     }
 
     [Test]
+    public void Verify_EmptyState_WithNullTrieStore_Succeeds()
+    {
+        Hash256 stateRoot = Keccak.EmptyTreeHash;
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        FlatTrieVerifier verifier = new FlatTrieVerifier(_logManager);
+        verifier.Verify(reader, NullTrieStore.Instance, stateRoot, CancellationToken.None);
+
+        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(0));
+        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
+        Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(0));
+        Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(0));
+    }
+
+    [Test]
     public void Verify_SingleAccount_Matches()
     {
         Address address = TestItem.AddressA;
