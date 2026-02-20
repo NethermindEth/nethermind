@@ -300,7 +300,7 @@ jobs:
             | tr ',' '\n' \
             | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
             | sed '/^$/d' \
-            | while IFS= read -r line; do
+            | while IFS= read -r line || [[ -n "${line}" ]]; do
                 # Split "--Key Value" into two lines so each becomes a separate Docker arg
                 if [[ "${line}" =~ ^(--[^[:space:]]+)[[:space:]]+(.+)$ ]]; then
                   printf '%s\n%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
