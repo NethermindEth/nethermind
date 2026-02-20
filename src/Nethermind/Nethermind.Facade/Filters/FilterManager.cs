@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Filters;
 using Nethermind.Logging;
@@ -222,24 +223,26 @@ namespace Nethermind.Blockchain.Filters
                 return;
             }
 
+            using ArrayPoolListRef<FilterLog> filteredLogs = new(txReceipt.Logs.Length);
+            for (int i = 0; i < txReceipt.Logs.Length; i++)
+            {
+                LogEntry? logEntry = txReceipt.Logs[i];
+                FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, blockTimestamp);
+                if (filterLog is not null)
+                {
+                    filteredLogs.Add(filterLog);
+                }
+            }
+
+            if (filteredLogs.Count == 0)
+            {
+                return;
+            }
+
             List<FilterLog> logs = _logs.GetOrAdd(filter.Id, static i => new List<FilterLog>());
             lock (logs)
             {
-                for (int i = 0; i < txReceipt.Logs.Length; i++)
-                {
-                    LogEntry? logEntry = txReceipt.Logs[i];
-                    FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, blockTimestamp);
-                    if (filterLog is not null)
-                    {
-                        logs.Add(filterLog);
-                    }
-                }
-
-                if (logs.Count == 0)
-                {
-                    return;
-                }
-
+                logs.AddRange(filteredLogs.AsSpan());
                 if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {logs.Count} logs.");
             }
         }
