@@ -76,10 +76,6 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.metadata_block_size=4096;" +
 
         "block_based_table_factory.filter_policy=bloomfilter:10;" +
-
-        // Makes compaction I/O sequential instead of small random reads.
-        // Compaction finishes faster and interferes less with block processing reads.
-        "compaction_readahead_size=4194304;" +   // 4MB
         "";
     public string? AdditionalRocksDbOptions { get; set; }
 
@@ -184,8 +180,8 @@ public class DbConfig : IDbConfig
         "max_bytes_for_level_base=16000000;";
     public string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong StateDbWriteBufferSize { get; set; } = (ulong)512.MB();
-    public ulong StateDbWriteBufferNumber { get; set; } = 6;
+    public ulong StateDbWriteBufferSize { get; set; } = (ulong)64.MB();
+    public ulong StateDbWriteBufferNumber { get; set; } = 4;
     public bool? StateDbVerifyChecksum { get; set; }
     public ulong? StateDbRowCacheSize { get; set; }
     public bool StateDbEnableFileWarmer { get; set; } = false;

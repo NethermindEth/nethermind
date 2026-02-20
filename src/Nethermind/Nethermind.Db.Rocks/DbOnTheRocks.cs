@@ -582,20 +582,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         #endregion
 
-        #region I/O smoothing
-
-        // Periodic sync prevents burst I/O at flush boundaries, spreading the cost more evenly.
-        options.SetBytesPerSync(32UL * 1024 * 1024); // 32 MB
-        _rocksDbNative.rocksdb_options_set_wal_bytes_per_sync(options.Handle, 32UL * 1024 * 1024); // 32 MB
-
-        // Cap WAL size to prevent sudden multi-CF flush storms when WAL gets too large.
-        options.SetMaxTotalWalSize(2UL * 1024 * 1024 * 1024); // 2 GB
-
-        // Note: enable_pipelined_write is incompatible with unordered_write (used by State DB).
-        // unordered_write is strictly more aggressive, so pipelined_write is not needed.
-
-        #endregion
-
         #region Other options
 
         if (dbConfig.RowCacheSize > 0)

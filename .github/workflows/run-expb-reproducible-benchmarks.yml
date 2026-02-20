@@ -305,14 +305,44 @@ jobs:
             | tr ',' '\n' \
             | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
             | sed '/^$/d' \
-            | while IFS= read -r line || [[ -n "${line}" ]]; do
-                # Split "--Key Value" into two lines so each becomes a separate Docker arg
-                if [[ "${line}" =~ ^(--[^[:space:]]+)[[:space:]]+(.+)$ ]]; then
-                  printf '%s\n%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-                else
-                  printf '%s\n' "${line}"
-                fi
-              done \
+            | awk '
+                function emit_pending() {
+                  if (pending != "") {
+                    print pending
+                    pending = ""
+                  }
+                }
+                {
+                  line = $0
+
+                  # Convert "--Key Value" to "--Key=Value" to avoid bare value tokens.
+                  if (match(line, /^--[^[:space:]=]+[[:space:]]+/)) {
+                    key = substr(line, 1, RLENGTH)
+                    sub(/[[:space:]]+$/, "", key)
+                    value = substr(line, RLENGTH + 1)
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                    emit_pending()
+                    print key "=" value
+                    next
+                  }
+
+                  if (line ~ /^--/) {
+                    emit_pending()
+                    pending = line
+                    next
+                  }
+
+                  if (pending != "") {
+                    print pending "=" line
+                    pending = ""
+                  } else {
+                    print line
+                  }
+                }
+                END {
+                  emit_pending()
+                }
+              ' \
             > "${flags_file}"
 
           sed \
