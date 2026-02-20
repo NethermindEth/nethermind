@@ -320,7 +320,7 @@ jobs:
                     match($0, /^[[:space:]]*/)
                     indent = substr($0, RSTART, RLENGTH)
                     for (i = 1; i <= flags_count; i++) {
-                      print indent "  - " flags[i]
+                      print indent "  - \"" flags[i] "\""
                     }
                   }
                 }
