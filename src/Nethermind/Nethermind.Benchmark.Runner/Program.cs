@@ -38,7 +38,7 @@ namespace Nethermind.Benchmark.Runner
 
     public class PrecompileBenchmarkConfig : DashboardConfig
     {
-        public PrecompileBenchmarkConfig() : base(Job.MediumRun.WithRuntime(CoreRuntime.CreateForNewVersion("net10.0", ".NET 10.0")))
+        public PrecompileBenchmarkConfig() : base(Job.MediumRun.WithRuntime(CoreRuntime.Core10_0))
         {
             AddColumnProvider(new GasColumnProvider());
         }

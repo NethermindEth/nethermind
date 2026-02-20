@@ -208,13 +208,14 @@ namespace Nethermind.Core
 
         protected int? _size = null;
 
-        // Intrinsic gas cache: _cachedIntrinsicGas.Spec is written last and acts as
-        // the sole validity indicator (non-null + ReferenceEquals ⇒ Standard/Floor valid).
-        internal struct IntrinsicGasCache
+        // Intrinsic gas cache: Spec is the last field by offset; a single struct assignment
+        // writes fields low-to-high, so concurrent readers who see Spec != null can rely on
+        // Standard/Floor being valid. Read the whole struct to a local before inspecting.
+        internal readonly struct IntrinsicGasCache(long standard, long floor, IReleaseSpec? spec)
         {
-            internal long Standard;
-            internal long Floor;
-            internal IReleaseSpec? Spec;
+            internal readonly long Standard = standard;
+            internal readonly long Floor = floor;
+            internal readonly IReleaseSpec? Spec = spec;
         }
 
         internal IntrinsicGasCache _cachedIntrinsicGas;
