@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -37,10 +38,13 @@ public class Eth68ProtocolHandler(ISession session,
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
     ISpecProvider specProvider,
-    ITxGossipPolicy? transactionsGossipPolicy = null
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+    IReceiptFinder? receiptFinder = null
     )
-    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, receiptFinder)
 {
+    private readonly IReceiptFinder? _receiptFinder = receiptFinder;
+
     private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
@@ -187,6 +191,17 @@ public class Eth68ProtocolHandler(ISession session,
             Hash256 hash = hashes[i];
             if (!_txPool.IsKnown(hash))
             {
+                Hash256? blockHash = _receiptFinder?.FindBlockHash(hash);
+                if (blockHash is not null)
+                {
+                    if (Logger.IsWarn)
+                    {
+                        Logger.Warn($"Tx hash announced by peer is in DB but missing txpool cache: txHash={hash}, blockHash={blockHash}, {GetPeerLogContext()}");
+                    }
+
+                    continue;
+                }
+
                 AnnounceResult announceResult = _txPool.NotifyAboutTx(hash, this);
                 if (announceResult is AnnounceResult.RequestRequired)
                 {

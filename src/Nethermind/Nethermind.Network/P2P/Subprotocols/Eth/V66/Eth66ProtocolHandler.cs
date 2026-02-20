@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -44,8 +45,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             IGossipPolicy gossipPolicy,
             IForkInfo forkInfo,
             ILogManager logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+            ITxGossipPolicy? transactionsGossipPolicy = null,
+            IReceiptFinder? receiptFinder = null)
+            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, receiptFinder)
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);

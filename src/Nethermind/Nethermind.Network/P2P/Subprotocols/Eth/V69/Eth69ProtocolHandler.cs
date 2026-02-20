@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -39,9 +40,10 @@ public class Eth69ProtocolHandler(
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
     ISpecProvider specProvider,
-    ITxGossipPolicy? transactionsGossipPolicy = null)
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+    IReceiptFinder? receiptFinder = null)
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer
+        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy, receiptFinder), ISyncPeer
 {
     public override string Name => "eth69";
 

@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
@@ -26,9 +27,10 @@ public class Eth67ProtocolHandler(
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
     ILogManager logManager,
-    ITxGossipPolicy? transactionsGossipPolicy = null)
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+    IReceiptFinder? receiptFinder = null)
     : Eth66ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+        gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, receiptFinder)
 {
     public override string Name => "eth67";
 

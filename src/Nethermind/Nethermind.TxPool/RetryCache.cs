@@ -33,7 +33,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
     internal int ResourcesInRetryQueue => _expiringQueueCounter;
 
-    public RetryCache(ILogManager logManager, int timeoutMs = 2500, int requestingCacheSize = 1024, int expiringQueueLimit = 10000, int maxRetryRequests = 8, CancellationToken token = default)
+    public RetryCache(ILogManager logManager, int timeoutMs = 2500, int requestingCacheSize = 1024, int expiringQueueLimit = 100_000, int maxRetryRequests = 8, CancellationToken token = default)
     {
         _logger = logManager.GetClassLogger();
 

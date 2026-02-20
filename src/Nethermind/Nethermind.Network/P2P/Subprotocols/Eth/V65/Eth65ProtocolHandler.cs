@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -38,10 +39,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         IGossipPolicy gossipPolicy,
         IForkInfo forkInfo,
         ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
+                ITxGossipPolicy? transactionsGossipPolicy = null,
+                IReceiptFinder? receiptFinder = null)
         : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy),
           IMessageHandler<PooledTransactionRequestMessage>
     {
+                private readonly IReceiptFinder? _receiptFinder = receiptFinder;
+
         public override string Name => "eth65";
 
         public override byte ProtocolVersion => EthVersions.Eth65;
@@ -245,6 +249,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 Hash256 hash = hashes[i];
                 if (!_txPool.IsKnown(hash))
                 {
+                    Hash256? blockHash = _receiptFinder?.FindBlockHash(hash);
+                    if (blockHash is not null)
+                    {
+                        if (Logger.IsWarn)
+                        {
+                            Logger.Warn($"Tx hash announced by peer is in DB but missing txpool cache: txHash={hash}, blockHash={blockHash}, {GetPeerLogContext()}");
+                        }
+
+                        continue;
+                    }
+
                     AnnounceResult announceResult = _txPool.NotifyAboutTx(hash, this);
 
                     if (announceResult is AnnounceResult.RequestRequired)
