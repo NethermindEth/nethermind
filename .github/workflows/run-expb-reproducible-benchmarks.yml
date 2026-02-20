@@ -3,10 +3,6 @@ name: Run EXPB Reproducible Benchmarks
 on:
   workflow_dispatch:
     inputs:
-      nethermind_branch:
-        description: Nethermind branch/ref to benchmark (for example master or feature/my-branch)
-        required: true
-        default: master
       expb_repo:
         description: execution-payloads-benchmarks repository in owner/repo format
         required: false
@@ -39,14 +35,6 @@ on:
         description: Optional extra Nethermind flags (comma or newline separated)
         required: false
         default: ""
-      cleanup_grace_seconds:
-        description: Seconds to wait for expb self-cleanup on termination signals
-        required: false
-        default: "90"
-      expb_data_dir:
-        description: Directory on runner containing EXPB configs and data
-        required: true
-        default: /mnt/sda/expb-data
   pull_request:
     types: [labeled]
   push:
@@ -88,29 +76,26 @@ jobs:
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           CURRENT_REPO: ${{ github.repository }}
           PUSH_BRANCH: ${{ github.ref_name }}
-          DISPATCH_BRANCH: ${{ inputs.nethermind_branch }}
           DISPATCH_STATE_LAYOUT: ${{ inputs.state_layout }}
           DISPATCH_PAYLOAD_SET: ${{ inputs.payload_set }}
           DISPATCH_EXPB_REPO: ${{ inputs.expb_repo }}
           DISPATCH_EXPB_BRANCH: ${{ inputs.expb_branch }}
-          DISPATCH_EXPB_DATA_DIR: ${{ inputs.expb_data_dir }}
           DISPATCH_DELAY_SECONDS: ${{ inputs.delay_seconds }}
           DISPATCH_ADDITIONAL_EXTRA_FLAGS: ${{ inputs.additional_extra_flags }}
-          DISPATCH_CLEANUP_GRACE_SECONDS: ${{ inputs.cleanup_grace_seconds }}
         run: |
           set -euo pipefail
 
           should_run="true"
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            branch="${DISPATCH_BRANCH}"
+            branch="${PUSH_BRANCH}"
             state_layout="${DISPATCH_STATE_LAYOUT}"
             payload_set="${DISPATCH_PAYLOAD_SET}"
             expb_repo="${DISPATCH_EXPB_REPO}"
             expb_branch="${DISPATCH_EXPB_BRANCH}"
-            expb_data_dir="${DISPATCH_EXPB_DATA_DIR}"
+            expb_data_dir="/mnt/sda/expb-data"
             delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
-            cleanup_grace_seconds="${DISPATCH_CLEANUP_GRACE_SECONDS:-90}"
+            cleanup_grace_seconds="90"
           elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
             if [[ "${PR_LABEL}" != "reproducible-benchmark" ]]; then
               should_run="false"
