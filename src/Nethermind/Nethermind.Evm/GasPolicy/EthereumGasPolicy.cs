@@ -179,14 +179,21 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
     {
-        // Volatile.Read: acquire barrier — ensures we see a fully-constructed object
-        // on all architectures (free on x64 TSO; lightweight barrier on ARM).
-        Transaction.IntrinsicGasCache? cached = Volatile.Read(ref tx._cachedIntrinsicGas);
-        if (cached is not null && ReferenceEquals(cached.Spec, spec))
+        // ── Seqlock read: check version, read data, re-check version ──────────
+        // If the version is odd a writer is active; if it changed between our two
+        // reads a write completed in between — both cases fall through to recalculation.
+        // On x86/x64 (TSO) Volatile.Read is just a compiler fence — zero CPU cost.
+        int s1 = Volatile.Read(ref tx._gasCacheSeq);
+        if ((s1 & 1) == 0)
         {
-            return new IntrinsicGas<EthereumGasPolicy>(
-                FromLong(cached.Standard),
-                FromLong(cached.Floor));
+            long packed = tx._cachedIntrinsicGasPacked;
+            IReleaseSpec? cachedSpec = tx._cachedIntrinsicGasSpec;
+            if (Volatile.Read(ref tx._gasCacheSeq) == s1 && ReferenceEquals(cachedSpec, spec))
+            {
+                return new IntrinsicGas<EthereumGasPolicy>(
+                    FromLong((uint)(packed >> 32)),
+                    FromLong((uint)packed));
+            }
         }
 
         long tokensInCallData = IGasPolicy<EthereumGasPolicy>.CalculateTokensInCallData(tx, spec);
@@ -197,9 +204,16 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
                         + AuthorizationListCost(tx, spec);
         long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, spec);
 
-        // Volatile.Write: release barrier — publishes the fully-constructed snapshot atomically.
-        // Readers always see either null or a complete IntrinsicGasCache; no torn state possible.
-        Volatile.Write(ref tx._cachedIntrinsicGas, new Transaction.IntrinsicGasCache(standard, floorCost, spec));
+        // ── Seqlock write: CAS even→odd, write data, advance to next even ────
+        // If CAS fails another writer is active — skip caching, just return the
+        // freshly computed values (harmless: next call will populate the cache).
+        int seq = Volatile.Read(ref tx._gasCacheSeq);
+        if ((seq & 1) == 0 && Interlocked.CompareExchange(ref tx._gasCacheSeq, seq + 1, seq) == seq)
+        {
+            tx._cachedIntrinsicGasPacked = ((long)(uint)standard << 32) | (uint)floorCost;
+            tx._cachedIntrinsicGasSpec = spec;
+            Volatile.Write(ref tx._gasCacheSeq, seq + 2);
+        }
 
         return new IntrinsicGas<EthereumGasPolicy>(FromLong(standard), FromLong(floorCost));
     }

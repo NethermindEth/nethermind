@@ -143,7 +143,7 @@ public class TxProcessingBenchmark
         TransactionResult result = default;
         for (int i = 0; i < N; i++)
         {
-            _simpleTx._cachedIntrinsicGas = default;
+            _simpleTx._cachedIntrinsicGasSpec = null;
             result = _processor.CallAndRestore(_simpleTx, NullTxTracer.Instance);
         }
         return result;
@@ -168,7 +168,7 @@ public class TxProcessingBenchmark
         TransactionResult result = default;
         for (int i = 0; i < N; i++)
         {
-            _dataTx._cachedIntrinsicGas = default;
+            _dataTx._cachedIntrinsicGasSpec = null;
             result = _processor.CallAndRestore(_dataTx, NullTxTracer.Instance);
         }
         return result;
@@ -193,7 +193,7 @@ public class TxProcessingBenchmark
         TransactionResult result = default;
         for (int i = 0; i < N; i++)
         {
-            _contractCallTx._cachedIntrinsicGas = default;
+            _contractCallTx._cachedIntrinsicGasSpec = null;
             result = _processor.CallAndRestore(_contractCallTx, NullTxTracer.Instance);
         }
         return result;

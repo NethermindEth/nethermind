@@ -208,18 +208,18 @@ namespace Nethermind.Core
 
         protected int? _size = null;
 
-        // Intrinsic gas cache: immutable class published via Volatile.Write so that readers on all
-        // architectures always see either null or a fully-constructed snapshot — no torn reads.
-        // Volatile.Write/Read cost zero extra CPU instructions on x86/x64 (TSO); on ARM they emit
-        // lightweight barriers. The only overhead vs a struct is one pointer dereference on the hot path.
-        internal sealed class IntrinsicGasCache(long standard, long floor, IReleaseSpec? spec)
-        {
-            internal readonly long Standard = standard;
-            internal readonly long Floor = floor;
-            internal readonly IReleaseSpec? Spec = spec;
-        }
-
-        internal IntrinsicGasCache? _cachedIntrinsicGas;
+        // Seqlock-based intrinsic gas cache: three inline fields avoid heap allocation and pointer
+        // indirection while remaining fully thread-safe.
+        //
+        // Writers acquire the seqlock via CAS (even→odd), write data, then release by advancing to
+        // the next even number via Volatile.Write.  Readers validate the sequence number before and
+        // after reading — if it changed or is odd they fall back to recalculation.
+        //
+        // On x86/x64 (TSO) Volatile.Read/Write are just compiler fences — zero extra CPU cost.
+        // On ARM they emit lightweight acquire/release barriers.
+        internal int _gasCacheSeq;
+        internal long _cachedIntrinsicGasPacked;       // high 32: standard, low 32: floor
+        internal IReleaseSpec? _cachedIntrinsicGasSpec;
 
         /// <summary>
         /// Encoded transaction length
@@ -327,7 +327,9 @@ namespace Nethermind.Core
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
                 obj._size = default;
-                obj._cachedIntrinsicGas = null;
+                obj._gasCacheSeq = 0;
+                obj._cachedIntrinsicGasPacked = 0;
+                obj._cachedIntrinsicGasSpec = null;
                 obj.AuthorizationList = default;
 
                 return true;
