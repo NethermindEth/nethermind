@@ -12,8 +12,6 @@ namespace Nethermind.Core.Specs;
 /// </summary>
 public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
 {
-    // Opcode gas costs
-    // Values verified against GasCostOf in Nethermind.Evm
     public readonly long SLoadCost;
     public readonly long BalanceCost;
     public readonly long ExtCodeCost;
@@ -24,66 +22,91 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
     public readonly long NetMeteredSStoreCost;
     public readonly long TxDataNonZeroMultiplier;
 
-    // Refund values
-    // Values verified against RefundOf in Nethermind.Evm
     public readonly long ClearReversalRefund;
     public readonly long SetReversalRefund;
     public readonly long SClearRefund;
+    public readonly long DestroyRefund;
 
-    // Blob gas (uses Eip4844Constants.GasPerBlob = 131072 from Nethermind.Core)
     public readonly ulong MaxBlobGasPerBlock;
     public readonly ulong MaxBlobGasPerTx;
     public readonly ulong TargetBlobGasPerBlock;
 
     public SpecGasCosts(IReleaseSpec spec)
     {
-        bool hotCold = spec.IsEip2929Enabled;  // EIP-2929: hot/cold storage
-        bool largeDDos = spec.IsEip1884Enabled;  // EIP-1884: repricing
-        bool shanghaiDDos = spec.IsEip150Enabled;   // EIP-150: Tangerine Whistle repricing
-        bool netIstanbul = spec.IsEip2200Enabled;  // EIP-2200: net-metered SSTORE
-        bool netConstpl = spec.IsEip1283Enabled;  // EIP-1283: net-metered SSTORE (Constantinople)
+        bool hotCold = spec.UseHotAndColdStorage;  // EIP-2929
+        bool largeDDos = spec.UseConstantinopleNetGasMetering;  // EIP-1884
+        bool shanghaiDDos = spec.UseConstantinopleNetGasMetering;   // EIP-150
+        bool netIstanbul = spec.UseIstanbulNetGasMetering;  // EIP-2200
+        bool netConstantinople = spec.UseConstantinopleNetGasMetering;  // EIP-1283
 
-        // SLOAD: 50 base → 200 (EIP-150) → 800 (EIP-1884) → 0 upfront (EIP-2929, charged via access tracker)
-        SLoadCost = hotCold ? 0L : largeDDos ? 800L : shanghaiDDos ? 200L : 50L;
-        // BALANCE: 20 base → 400 (EIP-150) → 700 (EIP-1884) → 0 upfront (EIP-2929)
-        BalanceCost = hotCold ? 0L : largeDDos ? 700L : shanghaiDDos ? 400L : 20L;
-        // EXTCODE*: 20 base → 700 (EIP-150) → 0 upfront (EIP-2929)
-        ExtCodeCost = hotCold ? 0L : shanghaiDDos ? 700L : 20L;
-        // EXTCODEHASH: 400 base → 700 (EIP-1884) → 0 upfront (EIP-2929)
-        ExtCodeHashCost = hotCold ? 0L : largeDDos ? 700L : 400L;
-        // CALL: 40 base → 700 (EIP-150) → 0 upfront (EIP-2929)
-        CallCost = hotCold ? 0L : shanghaiDDos ? 700L : 40L;
-        // EXP byte: 10 base → 50 (EIP-160)
-        ExpByteCost = spec.IsEip160Enabled ? 50L : 10L;
-        // SSTORE reset: SReset=5000, or SReset-ColdSLoad=2900 under EIP-2929
-        SStoreResetCost = hotCold ? 2900L : 5000L;
-        // Tx calldata non-zero byte multiplier (ratio to TxDataZero=4):
-        // pre-EIP-2028: 68/4=17, EIP-2028: 16/4=4
-        TxDataNonZeroMultiplier = spec.IsEip2028Enabled ? 4L : 17L;
+        ClearReversalRefund =
+            hotCold ? RefundOf.SResetReversedHotCold
+            : netIstanbul ? RefundOf.SResetReversedEip2200
+            : netConstantinople ? RefundOf.SResetReversedEip1283
+            : GasCostOf.Free;
 
-        // Net-metered SSTORE cost — 0L default is safe: only read when net metering is active
-        // WarmStateRead=100 (EIP-2929), SStoreNetMeteredEip2200=800, SStoreNetMeteredEip1283=200
-        NetMeteredSStoreCost = hotCold ? 100L : netIstanbul ? 800L : netConstpl ? 200L : 0L;
+        SetReversalRefund =
+            hotCold ? RefundOf.SSetReversedHotCold
+            : netIstanbul ? RefundOf.SSetReversedEip2200
+            : netConstantinople ? RefundOf.SSetReversedEip1283
+            : GasCostOf.Free;
 
-        // SClear refund: 15000 before EIP-3529; SReset(5000)-ColdSLoad(2100)+AccessStorageListEntry(1900)=4800 after
-        SClearRefund = spec.IsEip3529Enabled ? 4800L : 15000L;
+        SStoreResetCost = hotCold
+            ? GasCostOf.SReset - GasCostOf.ColdSLoad
+            : GasCostOf.SReset;
 
-        // Reversal refunds (verified against RefundOf in Nethermind.Evm):
-        // SSet=20000, SReset=5000, ColdSLoad=2100, WarmStateRead=100
-        // SStoreNetMeteredEip2200=800, SStoreNetMeteredEip1283=200
-        ClearReversalRefund = hotCold ? 2800L   // SReset(5000) - ColdSLoad(2100) - WarmStateRead(100)
-                            : netIstanbul ? 4200L   // SReset(5000) - SStoreNetMeteredEip2200(800)
-                            : netConstpl ? 4800L   // SReset(5000) - SStoreNetMeteredEip1283(200)
-                            : 0L;
-        SetReversalRefund = hotCold ? 19900L  // SSet(20000) - WarmStateRead(100)
-                            : netIstanbul ? 19200L  // SSet(20000) - SStoreNetMeteredEip2200(800)
-                            : netConstpl ? 19800L  // SSet(20000) - SStoreNetMeteredEip1283(200)
-                            : 0L;
+        NetMeteredSStoreCost =
+            hotCold ? GasCostOf.WarmStateRead
+            : netIstanbul ? GasCostOf.SStoreNetMeteredEip2200
+            : netConstantinople ? GasCostOf.SStoreNetMeteredEip1283
+            : GasCostOf.Free;
 
-        // Blob gas: GasPerBlob = 131072 (Eip4844Constants, in Nethermind.Core)
+        BalanceCost =
+            hotCold ? GasCostOf.Free
+            : largeDDos ? GasCostOf.BalanceEip1884
+            : shanghaiDDos ? GasCostOf.BalanceEip150
+            : GasCostOf.Balance;
+
+        SLoadCost =
+            hotCold ? GasCostOf.Free
+            : largeDDos ? GasCostOf.SLoadEip1884
+            : shanghaiDDos ? GasCostOf.SLoadEip150
+            : GasCostOf.SLoad;
+
+        ExtCodeHashCost =
+            hotCold ? GasCostOf.Free
+            : largeDDos ? GasCostOf.ExtCodeHashEip1884
+            : GasCostOf.ExtCodeHash;
+
+        ExtCodeCost =
+            hotCold ? GasCostOf.Free
+            : shanghaiDDos ? GasCostOf.ExtCodeEip150
+            : GasCostOf.ExtCode;
+
+        CallCost =
+            hotCold ? GasCostOf.Free
+            : shanghaiDDos ? GasCostOf.CallEip150
+            : GasCostOf.Call;
+
+        ExpByteCost = spec.UseExpDDosProtection
+            ? GasCostOf.ExpByteEip160
+            : GasCostOf.ExpByte;
+
         MaxBlobGasPerBlock = spec.MaxBlobCount * Eip4844Constants.GasPerBlob;
         MaxBlobGasPerTx = spec.MaxBlobsPerTx * Eip4844Constants.GasPerBlob;
         TargetBlobGasPerBlock = spec.TargetBlobCount * Eip4844Constants.GasPerBlob;
+
+        TxDataNonZeroMultiplier = spec.IsEip2028Enabled
+            ? GasCostOf.TxDataNonZeroMultiplierEip2028
+            : GasCostOf.TxDataNonZeroMultiplier;
+
+        SClearRefund = spec.IsEip3529Enabled
+            ? RefundOf.SClearAfter3529
+            : RefundOf.SClearBefore3529;
+
+        DestroyRefund = spec.IsEip3529Enabled
+            ? RefundOf.DestroyAfter3529
+            : RefundOf.DestroyBefore3529;
     }
 
     public bool Equals(SpecGasCosts? other)
@@ -102,6 +125,7 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             && ClearReversalRefund == other.ClearReversalRefund
             && SetReversalRefund == other.SetReversalRefund
             && SClearRefund == other.SClearRefund
+            && DestroyRefund == other.DestroyRefund
             && MaxBlobGasPerBlock == other.MaxBlobGasPerBlock
             && MaxBlobGasPerTx == other.MaxBlobGasPerTx
             && TargetBlobGasPerBlock == other.TargetBlobGasPerBlock;
@@ -111,5 +135,5 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
 
     public override int GetHashCode() => HashCode.Combine(
         HashCode.Combine(SLoadCost, BalanceCost, ExtCodeCost, ExtCodeHashCost, CallCost, ExpByteCost, SStoreResetCost, NetMeteredSStoreCost),
-        HashCode.Combine(TxDataNonZeroMultiplier, ClearReversalRefund, SetReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock));
+        HashCode.Combine(TxDataNonZeroMultiplier, ClearReversalRefund, SetReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock, DestroyRefund));
 }

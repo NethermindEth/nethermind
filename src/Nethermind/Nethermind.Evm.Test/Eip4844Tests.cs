@@ -6,6 +6,7 @@ using Nethermind.Specs;
 using NUnit.Framework;
 using Nethermind.Int256;
 using System.Linq;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.Test;
 
@@ -34,7 +35,7 @@ public class Eip4844Tests : VirtualMachineTestsBase
         byte[] expectedOutput = blobhashesCount > index ? hashes[index] : new byte[32];
 
         // Cost of transaction call + PUSH1 x4 + MSTORE (entry cost + 1 memory cell used)
-        const long GasCostOfCallingWrapper = GasCostOf.Transaction + GasCostOf.VeryLow * 5 + GasCostOf.Memory;
+        const long gasCostOfCallingWrapper = GasCostOf.Transaction + GasCostOf.VeryLow * 5 + GasCostOf.Memory;
 
         byte[] code = Prepare.EvmCode
             .PushData(new UInt256((ulong)index))
@@ -47,7 +48,7 @@ public class Eip4844Tests : VirtualMachineTestsBase
 
         result.StatusCode.Should().Be(StatusCode.Success);
         result.ReturnValue.SequenceEqual(expectedOutput);
-        AssertGas(result, GasCostOfCallingWrapper + GasCostOf.BlobHash);
+        AssertGas(result, gasCostOfCallingWrapper + GasCostOf.BlobHash);
     }
 
     protected override TestAllTracerWithOutput CreateTracer()
