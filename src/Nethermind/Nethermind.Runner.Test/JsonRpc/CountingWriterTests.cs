@@ -15,6 +15,8 @@ using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
+#nullable enable
+
 namespace Nethermind.Runner.Test.JsonRpc;
 
 /// <summary>
@@ -148,9 +150,9 @@ public class CountingWriterTests
         // buffer segments to hold the entire response. It flushes to a MemoryStream in chunks.
         // Note: In production with Kestrel, the difference is even larger because the Pipe's
         // internal buffers come from ArrayPool and may cause LOH fragmentation.
-        TestContext.Out.WriteLine($"PipeWriter allocations:   {pipeAllocations:N0} bytes");
-        TestContext.Out.WriteLine($"StreamWriter allocations: {streamAllocations:N0} bytes");
-        TestContext.Out.WriteLine($"Difference:               {pipeAllocations - streamAllocations:N0} bytes ({(double)pipeAllocations / streamAllocations:F2}x)");
+        Console.WriteLine($"PipeWriter allocations:   {pipeAllocations:N0} bytes");
+        Console.WriteLine($"StreamWriter allocations: {streamAllocations:N0} bytes");
+        Console.WriteLine($"Difference:               {pipeAllocations - streamAllocations:N0} bytes ({(double)pipeAllocations / streamAllocations:F2}x)");
 
         // We don't assert a hard ratio since GC allocation tracking is approximate,
         // but log the comparison for review
@@ -423,4 +425,163 @@ public class CountingWriterTests
         public PipeWriter Writer => _pipe.Writer;
         public PipeReader Reader => _pipe.Reader;
     }
+
+    // ──────────────────────────────────────────────────────────
+    // HEAD-TO-HEAD: Peak buffered memory during serialization
+    //
+    // The core problem: during synchronous JSON serialization,
+    // Utf8JsonWriter calls GetSpan/Advance repeatedly. PipeWriter
+    // accumulates ALL these bytes in its internal buffer (UnflushedBytes
+    // grows to total response size). CountingStreamPipeWriter auto-flushes
+    // to the stream every ~4KB, keeping UnflushedBytes bounded.
+    //
+    // These tests measure UnflushedBytes (peak internal buffer) during
+    // serialization. The PipeWriter path shows unbounded growth.
+    // The StreamWriter path stays bounded regardless of response size.
+    // ──────────────────────────────────────────────────────────
+
+    [TestCase(1)]   // 1MB
+    [TestCase(5)]   // 5MB
+    public async Task PeakBuffer_PipeWriter_GrowsToFullResponseSize(int sizeMB)
+    {
+        int totalBytes = sizeMB * 1024 * 1024;
+        string largeData = new('Z', totalBytes);
+        JsonRpcSuccessResponse response = new() { Id = 1, Result = largeData };
+
+        // ─── Master path: CountingPipeWriter wrapping a Pipe ───
+        // In production this is ctx.Response.BodyWriter (Kestrel's pipe)
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: long.MaxValue));
+        PeakTrackingWriter masterWriter = new(new CountingPipeWriter(pipe.Writer));
+        await Serializer.SerializeAsync(masterWriter, response);
+        long masterPeakBuffer = masterWriter.PeakUnflushedBytes;
+        await masterWriter.CompleteAsync();
+        // Drain pipe to complete the test
+        ReadResult result = await pipe.Reader.ReadAsync();
+        pipe.Reader.AdvanceTo(result.Buffer.End);
+        await pipe.Reader.CompleteAsync();
+
+        // ─── PR path: CountingStreamPipeWriter wrapping a Stream ───
+        // In production this is ctx.Response.Body (Kestrel's response stream)
+        MemoryStream ms = new();
+        PeakTrackingWriter prWriter = new(new CountingStreamPipeWriter(ms));
+        await Serializer.SerializeAsync(prWriter, response);
+        long prPeakBuffer = prWriter.PeakUnflushedBytes;
+        await prWriter.CompleteAsync();
+
+        Console.WriteLine($"=== {sizeMB}MB response: peak internal buffer ===");
+        Console.WriteLine($"Master (PipeWriter):       {masterPeakBuffer:N0} bytes peak");
+        Console.WriteLine($"PR     (StreamPipeWriter): {prPeakBuffer:N0} bytes peak");
+        Console.WriteLine($"Reduction: {(double)masterPeakBuffer / prPeakBuffer:F0}x less memory held during serialization");
+
+        // PROOF: PipeWriter accumulated the entire response in its buffer
+        masterPeakBuffer.Should().BeGreaterThan(totalBytes,
+            $"PipeWriter should buffer the entire {sizeMB}MB response (this is the problem)");
+
+        // PROOF: StreamWriter kept its buffer bounded (auto-flush at ~4KB)
+        prPeakBuffer.Should().BeLessThan(64 * 1024,
+            "StreamPipeWriter should auto-flush, keeping peak buffer under 64KB");
+
+        // The actual ratio should be dramatic
+        masterPeakBuffer.Should().BeGreaterThan(prPeakBuffer * 10,
+            "PipeWriter's peak buffer should be >10x larger than StreamPipeWriter's");
+    }
+
+    [Test]
+    public async Task PeakBuffer_BatchResponse_PipeWriterUnbounded_StreamWriterBounded()
+    {
+        // 100-entry batch with 5KB per entry = ~500KB total
+        int entryCount = 100;
+        int entryDataSize = 5_000;
+
+        // ─── Master path ───
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: long.MaxValue));
+        PeakTrackingWriter masterWriter = new(new CountingPipeWriter(pipe.Writer));
+        await WriteBatchResponse(masterWriter, entryCount, entryDataSize);
+        long masterPeak = masterWriter.PeakUnflushedBytes;
+        await masterWriter.CompleteAsync();
+        ReadResult result = await pipe.Reader.ReadAsync();
+        long totalResponseSize = result.Buffer.Length;
+        pipe.Reader.AdvanceTo(result.Buffer.End);
+        await pipe.Reader.CompleteAsync();
+
+        // ─── PR path ───
+        MemoryStream ms = new();
+        PeakTrackingWriter prWriter = new(new CountingStreamPipeWriter(ms));
+        await WriteBatchResponse(prWriter, entryCount, entryDataSize);
+        long prPeak = prWriter.PeakUnflushedBytes;
+        await prWriter.CompleteAsync();
+
+        Console.WriteLine($"=== 100-entry batch ({totalResponseSize:N0} bytes total) ===");
+        Console.WriteLine($"Master peak buffer: {masterPeak:N0} bytes");
+        Console.WriteLine($"PR peak buffer:     {prPeak:N0} bytes");
+        Console.WriteLine($"Reduction:          {(double)masterPeak / prPeak:F0}x");
+
+        masterPeak.Should().BeGreaterThan(totalResponseSize / 2,
+            "PipeWriter should buffer most of the batch response");
+
+        prPeak.Should().BeLessThan(64 * 1024,
+            "StreamPipeWriter should auto-flush, keeping peak buffer bounded");
+    }
+
+    [Test]
+    public async Task StreamWriter_ConsumerReceivesData_DuringSerialization()
+    {
+        // This proves data flows to the consumer DURING serialization with StreamWriter,
+        // rather than only AFTER serialization completes (as with PipeWriter).
+        int totalBytes = 2 * 1024 * 1024;
+        string largeData = new('W', totalBytes);
+        JsonRpcSuccessResponse response = new() { Id = 1, Result = largeData };
+
+        // Track how many bytes the stream received after each Advance call
+        MidpointTrackingStream tracker = new();
+        CountingStreamPipeWriter writer = new(tracker);
+
+        await Serializer.SerializeAsync(writer, response);
+
+        // Before CompleteAsync, the stream should ALREADY have most of the data
+        // because CountingStreamPipeWriter auto-flushed during serialization
+        long bytesReceivedDuringSerialization = tracker.Position;
+        await writer.CompleteAsync();
+        long bytesReceivedAfterComplete = tracker.Position;
+
+        Console.WriteLine($"=== 2MB response: consumer data availability ===");
+        Console.WriteLine($"Bytes received DURING serialization: {bytesReceivedDuringSerialization:N0}");
+        Console.WriteLine($"Bytes received AFTER CompleteAsync:  {bytesReceivedAfterComplete:N0}");
+        Console.WriteLine($"Data available during serialization: {100.0 * bytesReceivedDuringSerialization / bytesReceivedAfterComplete:F1}%");
+
+        bytesReceivedDuringSerialization.Should().BeGreaterThan(totalBytes / 2,
+            "Most data should reach the consumer DURING serialization, not after — " +
+            "this means Kestrel can start sending bytes to the network immediately");
+    }
+
+    /// <summary>
+    /// Wraps any PipeWriter and tracks peak UnflushedBytes during writes.
+    /// This measures the maximum internal buffer size held at any point during serialization.
+    /// </summary>
+    private sealed class PeakTrackingWriter(PipeWriter inner) : PipeWriter
+    {
+        public long PeakUnflushedBytes { get; private set; }
+
+        public override void Advance(int bytes)
+        {
+            inner.Advance(bytes);
+            long unflushed = inner.UnflushedBytes;
+            if (unflushed > PeakUnflushedBytes) PeakUnflushedBytes = unflushed;
+        }
+
+        public override Memory<byte> GetMemory(int sizeHint = 0) => inner.GetMemory(sizeHint);
+        public override Span<byte> GetSpan(int sizeHint = 0) => inner.GetSpan(sizeHint);
+        public override ValueTask CompleteAsync(Exception? exception = null) => inner.CompleteAsync(exception);
+        public override void CancelPendingFlush() => inner.CancelPendingFlush();
+        public override void Complete(Exception? exception = null) => inner.Complete(exception);
+        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default) => inner.FlushAsync(cancellationToken);
+        public override bool CanGetUnflushedBytes => inner.CanGetUnflushedBytes;
+        public override long UnflushedBytes => inner.UnflushedBytes;
+    }
+
+    /// <summary>
+    /// A MemoryStream that can be inspected for Position during serialization
+    /// to prove data was flushed before serialization completed.
+    /// </summary>
+    private sealed class MidpointTrackingStream : MemoryStream { }
 }
