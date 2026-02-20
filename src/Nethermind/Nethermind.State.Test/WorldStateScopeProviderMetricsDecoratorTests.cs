@@ -17,14 +17,16 @@ namespace Nethermind.Store.Test;
 public class WorldStateScopeProviderMetricsDecoratorTests
 {
     [Test]
-    public void Test_TracksUpdateRootHashTime()
+    public void Test_TracksMetricsAndResetsCorrectly()
     {
         TestMemDb kv = new TestMemDb();
         IWorldStateScopeProvider baseScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), new MemDb(), LimboLogs.Instance);
         WorldStateScopeProviderMetricsDecorator metricsDecorator = new(baseScopeProvider);
 
+        // Initial state should be zero
         metricsDecorator.StateMerkleizationTime.Should().Be(0);
 
+        // Test UpdateRootHash tracking and accumulation
         using (var scope = metricsDecorator.BeginScope(null))
         {
             using (var writeBatch = scope.StartWriteBatch(1))
@@ -33,84 +35,21 @@ public class WorldStateScopeProviderMetricsDecoratorTests
             }
 
             scope.UpdateRootHash();
-            metricsDecorator.StateMerkleizationTime.Should().BeGreaterThan(0);
-        }
-    }
+            double timeAfterUpdate = metricsDecorator.StateMerkleizationTime;
+            timeAfterUpdate.Should().BeGreaterThan(0);
 
-    [Test]
-    public void Test_TracksCommitTime()
-    {
-        TestMemDb kv = new TestMemDb();
-        IWorldStateScopeProvider baseScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), new MemDb(), LimboLogs.Instance);
-        WorldStateScopeProviderMetricsDecorator metricsDecorator = new(baseScopeProvider);
-
-        metricsDecorator.StateMerkleizationTime.Should().Be(0);
-
-        using (var scope = metricsDecorator.BeginScope(null))
-        {
-            using (var writeBatch = scope.StartWriteBatch(1))
-            {
-                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
-            }
-
+            // Test Commit tracking and accumulation
             scope.Commit(1);
-            metricsDecorator.StateMerkleizationTime.Should().BeGreaterThan(0);
-        }
-    }
-
-    [Test]
-    public void Test_ResetClearsMetrics()
-    {
-        TestMemDb kv = new TestMemDb();
-        IWorldStateScopeProvider baseScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), new MemDb(), LimboLogs.Instance);
-        WorldStateScopeProviderMetricsDecorator metricsDecorator = new(baseScopeProvider);
-
-        using (var scope = metricsDecorator.BeginScope(null))
-        {
-            using (var writeBatch = scope.StartWriteBatch(1))
-            {
-                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
-            }
-
-            scope.UpdateRootHash();
+            metricsDecorator.StateMerkleizationTime.Should().BeGreaterThan(timeAfterUpdate);
         }
 
-        metricsDecorator.StateMerkleizationTime.Should().BeGreaterThan(0);
+        // Test Reset clears metrics
+        double timeBeforeReset = metricsDecorator.StateMerkleizationTime;
+        timeBeforeReset.Should().BeGreaterThan(0);
         metricsDecorator.Reset();
         metricsDecorator.StateMerkleizationTime.Should().Be(0);
-    }
 
-    [Test]
-    public void Test_AccumulatesTimeAcrossMultipleOperations()
-    {
-        TestMemDb kv = new TestMemDb();
-        IWorldStateScopeProvider baseScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), new MemDb(), LimboLogs.Instance);
-        WorldStateScopeProviderMetricsDecorator metricsDecorator = new(baseScopeProvider);
-
-        using (var scope = metricsDecorator.BeginScope(null))
-        {
-            using (var writeBatch = scope.StartWriteBatch(1))
-            {
-                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
-            }
-
-            scope.UpdateRootHash();
-            double timeAfterFirstUpdate = metricsDecorator.StateMerkleizationTime;
-            timeAfterFirstUpdate.Should().BeGreaterThan(0);
-
-            scope.Commit(1);
-            metricsDecorator.StateMerkleizationTime.Should().BeGreaterThan(timeAfterFirstUpdate);
-        }
-    }
-
-    [Test]
-    public void Test_HasRootDelegates()
-    {
-        TestMemDb kv = new TestMemDb();
-        IWorldStateScopeProvider baseScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), new MemDb(), LimboLogs.Instance);
-        WorldStateScopeProviderMetricsDecorator metricsDecorator = new(baseScopeProvider);
-
-        // HasRoot should delegate to the base provider
+        // Test HasRoot delegates to base provider
         metricsDecorator.HasRoot(null).Should().Be(baseScopeProvider.HasRoot(null));
 
         Hash256 stateRoot;
@@ -118,7 +57,7 @@ public class WorldStateScopeProviderMetricsDecoratorTests
         {
             using (var writeBatch = scope.StartWriteBatch(1))
             {
-                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                writeBatch.Set(TestItem.AddressB, new Account(200, 200));
             }
             scope.Commit(1);
             stateRoot = scope.RootHash;
