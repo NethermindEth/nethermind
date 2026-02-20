@@ -313,14 +313,34 @@ jobs:
                     flags[++flags_count] = flag
                   }
                   close(flags_file)
+                  in_extra_flags = 0
+                  item_indent = ""
                 }
                 {
-                  print
-                  if (flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:[[:space:]]*$/) {
-                    match($0, /^[[:space:]]*/)
-                    indent = substr($0, RSTART, RLENGTH)
+                  if (in_extra_flags) {
+                    if ($0 ~ /^[[:space:]]*- /) {
+                      match($0, /^[[:space:]]*- /)
+                      item_indent = substr($0, RSTART, RLENGTH - 2)
+                      print
+                    } else {
+                      for (i = 1; i <= flags_count; i++) {
+                        print item_indent "- \"" flags[i] "\""
+                      }
+                      in_extra_flags = 0
+                      flags_count = 0
+                      print
+                    }
+                  } else {
+                    print
+                    if (flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:[[:space:]]*$/) {
+                      in_extra_flags = 1
+                    }
+                  }
+                }
+                END {
+                  if (in_extra_flags) {
                     for (i = 1; i <= flags_count; i++) {
-                      print indent "  - \"" flags[i] "\""
+                      print item_indent "- \"" flags[i] "\""
                     }
                   }
                 }
