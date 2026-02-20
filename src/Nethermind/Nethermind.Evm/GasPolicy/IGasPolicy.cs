@@ -268,7 +268,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     }
 
     protected static long CalculateFloorCost(long tokensInCallData, IReleaseSpec spec) =>
-        (spec.IsEip7623Enabled ? 1L : 0L) * (GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623);
+        spec.IsEip7623Enabled
+            ? GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623
+            : 0L;
 }
 
 /// <summary>
