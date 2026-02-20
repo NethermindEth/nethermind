@@ -235,7 +235,7 @@ namespace Nethermind.Evm.Test
             {
                 Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
 
-                tx._cachedIntrinsicGas.Should().BeNull();
+                tx._cachedIntrinsicGas.Spec.Should().BeNull();
             }
 
             [Test]
@@ -245,8 +245,8 @@ namespace Nethermind.Evm.Test
 
                 EthereumIntrinsicGas first = IntrinsicGasCalculator.Calculate(tx, Berlin.Instance);
 
-                tx._cachedIntrinsicGas.Should().NotBeNull();
-                ReferenceEquals(tx._cachedIntrinsicGas!.Spec, Berlin.Instance).Should().BeTrue();
+                tx._cachedIntrinsicGas.Spec.Should().NotBeNull();
+                ReferenceEquals(tx._cachedIntrinsicGas.Spec, Berlin.Instance).Should().BeTrue();
                 tx._cachedIntrinsicGas.Standard.Should().Be(first.Standard);
                 tx._cachedIntrinsicGas.Floor.Should().Be(first.FloorGas);
 
@@ -269,7 +269,7 @@ namespace Nethermind.Evm.Test
                 homesteadResult.Standard.Should().Be(21000 + 68);
 
                 // Cache should now point to Homestead
-                ReferenceEquals(tx._cachedIntrinsicGas!.Spec, Homestead.Instance).Should().BeTrue();
+                ReferenceEquals(tx._cachedIntrinsicGas.Spec, Homestead.Instance).Should().BeTrue();
                 tx._cachedIntrinsicGas.Standard.Should().Be(homesteadResult.Standard);
             }
 
@@ -284,7 +284,7 @@ namespace Nethermind.Evm.Test
                 first.FloorGas.Should().BeGreaterThan(0);
                 first.FloorGas.Should().Be(21040);
 
-                tx._cachedIntrinsicGas!.Standard.Should().Be(first.Standard);
+                tx._cachedIntrinsicGas.Standard.Should().Be(first.Standard);
                 tx._cachedIntrinsicGas.Floor.Should().Be(first.FloorGas);
 
                 EthereumIntrinsicGas second = IntrinsicGasCalculator.Calculate(tx, Prague.Instance);
@@ -300,19 +300,19 @@ namespace Nethermind.Evm.Test
                 EthereumIntrinsicGas homesteadResult = IntrinsicGasCalculator.Calculate(tx, Homestead.Instance);
                 homesteadResult.Standard.Should().Be(21000 + 76);
                 homesteadResult.FloorGas.Should().Be(0);
-                ReferenceEquals(tx._cachedIntrinsicGas!.Spec, Homestead.Instance).Should().BeTrue();
+                ReferenceEquals(tx._cachedIntrinsicGas.Spec, Homestead.Instance).Should().BeTrue();
 
                 // Berlin: repriced data costs — 2 zeros (4 each) + 1 nonzero (16) = 24
                 EthereumIntrinsicGas berlinResult = IntrinsicGasCalculator.Calculate(tx, Berlin.Instance);
                 berlinResult.Standard.Should().Be(21000 + 24);
                 berlinResult.FloorGas.Should().Be(0);
-                ReferenceEquals(tx._cachedIntrinsicGas!.Spec, Berlin.Instance).Should().BeTrue();
+                ReferenceEquals(tx._cachedIntrinsicGas.Spec, Berlin.Instance).Should().BeTrue();
 
                 // Prague: same standard as Berlin, but with floor cost
                 EthereumIntrinsicGas pragueResult = IntrinsicGasCalculator.Calculate(tx, Prague.Instance);
                 pragueResult.Standard.Should().Be(21000 + 24);
                 pragueResult.FloorGas.Should().Be(21060);
-                ReferenceEquals(tx._cachedIntrinsicGas!.Spec, Prague.Instance).Should().BeTrue();
+                ReferenceEquals(tx._cachedIntrinsicGas.Spec, Prague.Instance).Should().BeTrue();
             }
 
             [Test]
@@ -329,7 +329,7 @@ namespace Nethermind.Evm.Test
 
                 // 21000 base + 2400 (address) + 1900 (storage key) = 25300
                 first.Standard.Should().Be(25300);
-                tx._cachedIntrinsicGas!.Standard.Should().Be(first.Standard);
+                tx._cachedIntrinsicGas.Standard.Should().Be(first.Standard);
                 tx._cachedIntrinsicGas.Floor.Should().Be(first.FloorGas);
                 ReferenceEquals(tx._cachedIntrinsicGas.Spec, Berlin.Instance).Should().BeTrue();
 

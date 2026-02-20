@@ -207,23 +207,16 @@ namespace Nethermind.Core
 
         protected int? _size = null;
 
-        // Intrinsic gas cache: single reference write is inherently atomic,
-        // so concurrent readers never see a partially-updated cache.
-        internal sealed class IntrinsicGasCache
+        // Intrinsic gas cache: _cachedIntrinsicGas.Spec is written last and acts as
+        // the sole validity indicator (non-null + ReferenceEquals ⇒ Standard/Floor valid).
+        internal struct IntrinsicGasCache
         {
-            internal readonly long Standard;
-            internal readonly long Floor;
-            internal readonly IReleaseSpec Spec;
-
-            internal IntrinsicGasCache(long standard, long floor, IReleaseSpec spec)
-            {
-                Standard = standard;
-                Floor = floor;
-                Spec = spec;
-            }
+            internal long Standard;
+            internal long Floor;
+            internal IReleaseSpec? Spec;
         }
 
-        internal IntrinsicGasCache? _cachedIntrinsicGas;
+        internal IntrinsicGasCache _cachedIntrinsicGas;
 
         /// <summary>
         /// Encoded transaction length
@@ -331,7 +324,7 @@ namespace Nethermind.Core
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
                 obj._size = default;
-                obj._cachedIntrinsicGas = null;
+                obj._cachedIntrinsicGas = default;
                 obj.AuthorizationList = default;
 
                 return true;
