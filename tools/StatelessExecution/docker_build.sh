@@ -21,7 +21,6 @@ time docker run \
   --security-opt seccomp=unconfined \
   --security-opt apparmor=unconfined \
   -e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
-  #--mount type=bind,source="$parent_dir/artifacts/bin/StatelessExecution/release",target=/nethermind/bin \
   --mount type=bind,source="$current_dir",target=/nethermind/src \
   -w /nethermind/src \
   bflat-tmp "$@"
