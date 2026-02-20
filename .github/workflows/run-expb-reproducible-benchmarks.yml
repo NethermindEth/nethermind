@@ -500,10 +500,15 @@ jobs:
                     next
                   }
 
-                  print
-                  if (flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:[[:space:]]*$/) {
-                    match($0, /^[[:space:]]*/)
-                    extra_flags_indent = substr($0, RSTART, RLENGTH)
+                  line = $0
+                  if (flags_count > 0 && line ~ /^[[:space:]]*extra_flags:[[:space:]]*\[[[:space:]]*\][[:space:]]*$/) {
+                    sub(/\[[[:space:]]*\][[:space:]]*$/, "", line)
+                  }
+
+                  print line
+                  if (flags_count > 0 && line ~ /^[[:space:]]*extra_flags:[[:space:]]*$/) {
+                    match(line, /^[[:space:]]*/)
+                    extra_flags_indent = substr(line, RSTART, RLENGTH)
                     extra_flags_indent_len = length(extra_flags_indent)
                     in_extra_flags = 1
                     append_flags(extra_flags_indent)
