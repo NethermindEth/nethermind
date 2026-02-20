@@ -25,7 +25,7 @@ public class CodeInfoRepositoryTests
 
     static CodeInfoRepositoryTests()
     {
-        _releaseSpec = Substitute.For<IReleaseSpec>();
+        _releaseSpec = ReleaseSpecSubstitute.Create();
         _releaseSpec.Precompiles.Returns(FrozenSet<AddressAsKey>.Empty);
     }
 

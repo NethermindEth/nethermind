@@ -143,7 +143,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeStorageWrite(ref EthereumGasPolicy gas, bool isSlotCreation, IReleaseSpec spec)
     {
-        long cost = isSlotCreation ? GasCostOf.SSet : spec.GetSStoreResetCost();
+        long cost = isSlotCreation ? GasCostOf.SSet : spec.GasCosts.SStoreResetCost;
         return UpdateGas(ref gas, cost);
     }
 

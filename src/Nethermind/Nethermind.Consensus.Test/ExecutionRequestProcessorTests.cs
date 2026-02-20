@@ -76,7 +76,7 @@ public class ExecutionProcessorTests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        _spec = Substitute.For<IReleaseSpec>();
+        _spec = ReleaseSpecSubstitute.Create();
 
         _spec.RequestsEnabled.Returns(true);
         _spec.DepositsEnabled.Returns(true);

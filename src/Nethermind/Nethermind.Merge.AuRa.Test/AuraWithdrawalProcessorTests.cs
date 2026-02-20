@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -37,7 +38,7 @@ public class AuraWithdrawalProcessorTests
                         .WithRecipient(Address.Zero).TestObject
                 })
             .TestObject;
-        var spec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
 
         spec.WithdrawalsEnabled.Returns(true);
 
@@ -68,7 +69,7 @@ public class AuraWithdrawalProcessorTests
         var logManager = Substitute.For<ILogManager>();
         var withdrawalProcessor = new AuraWithdrawalProcessor(contract, logManager);
         var block = Build.A.Block.TestObject;
-        var spec = Substitute.For<IReleaseSpec>();
+        var spec = ReleaseSpecSubstitute.Create();
 
         spec.WithdrawalsEnabled.Returns(false);
 

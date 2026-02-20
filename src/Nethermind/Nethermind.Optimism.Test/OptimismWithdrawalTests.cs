@@ -45,7 +45,7 @@ public class OptimismWithdrawalTests
             .WithWithdrawalsRoot(withdrawalHash)
             .TestObject;
 
-        var releaseSpec = Substitute.For<IReleaseSpec>();
+        var releaseSpec = ReleaseSpecSubstitute.Create();
         var block = Build.A.Block
             .WithHeader(header)
             .WithTransactions(0, releaseSpec)
@@ -82,7 +82,7 @@ public class OptimismWithdrawalTests
         var state = TestWorldStateFactory.CreateForTest();
         using var _ = state.BeginScope(IWorldState.PreGenesis);
         var processor = new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance);
-        var releaseSpec = Substitute.For<IReleaseSpec>();
+        var releaseSpec = ReleaseSpecSubstitute.Create();
 
         // Initialize the storage root
         state.CreateAccount(PreDeploys.L2ToL1MessagePasser, 1, 1);
