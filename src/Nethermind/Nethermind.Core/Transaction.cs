@@ -17,6 +17,7 @@ using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
 [assembly: InternalsVisibleTo("Nethermind.Evm")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State")]
 namespace Nethermind.Core
