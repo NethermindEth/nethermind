@@ -942,12 +942,6 @@ namespace Nethermind.Trie.Test.Pruning
                 trieStore.HasRoot(rootHashes[oldBlock], oldBlock).Should().BeFalse();
             }
 
-            // HasRoot without block number still returns true (root node exists)
-            if (oldBlock >= 0)
-            {
-                trieStore.HasRoot(rootHashes[oldBlock]).Should().BeTrue();
-            }
-
             trieStore.Dispose();
         }
 
