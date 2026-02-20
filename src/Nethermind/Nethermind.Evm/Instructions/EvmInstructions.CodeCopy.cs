@@ -166,8 +166,7 @@ internal static partial class EvmInstructions
             if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, vm.VmState))
                 goto OutOfGas;
 
-            CodeInfo codeInfo = vm.CodeInfoRepository
-                .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+            CodeInfo codeInfo = vm.GetExtCodeInfoCached(address, spec);
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
@@ -180,7 +179,7 @@ internal static partial class EvmInstructions
             }
 
             // If EOF is enabled and the code is an EOF contract, use a predefined magic value.
-            if (spec.IsEofEnabled && EofValidator.IsEof(externalCode, out _))
+            if (spec.IsEofEnabled && codeInfo is EofCodeInfo)
             {
                 externalCode = EofValidator.MAGIC;
             }
@@ -293,20 +292,8 @@ internal static partial class EvmInstructions
             }
         }
 
-        // No optimization applied: load the account's code from storage.
-        ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
-            .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
-            .CodeSpan;
-        // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
-        if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))
-        {
-            stack.PushUInt32<TTracingInst>(2);
-        }
-        else
-        {
-            // Otherwise, push the actual code length.
-            stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
-        }
+        uint codeSize = vm.GetExtCodeSizeCached(address, spec);
+        stack.PushUInt32<TTracingInst>(codeSize);
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
