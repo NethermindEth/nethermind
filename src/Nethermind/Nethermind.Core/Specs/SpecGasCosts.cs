@@ -37,11 +37,11 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
 
     public SpecGasCosts(IReleaseSpec spec)
     {
-        bool hotCold      = spec.IsEip2929Enabled;  // EIP-2929: hot/cold storage
-        bool largeDDos    = spec.IsEip1884Enabled;  // EIP-1884: repricing
+        bool hotCold = spec.IsEip2929Enabled;  // EIP-2929: hot/cold storage
+        bool largeDDos = spec.IsEip1884Enabled;  // EIP-1884: repricing
         bool shanghaiDDos = spec.IsEip150Enabled;   // EIP-150: Tangerine Whistle repricing
-        bool netIstanbul  = spec.IsEip2200Enabled;  // EIP-2200: net-metered SSTORE
-        bool netConstpl   = spec.IsEip1283Enabled;  // EIP-1283: net-metered SSTORE (Constantinople)
+        bool netIstanbul = spec.IsEip2200Enabled;  // EIP-2200: net-metered SSTORE
+        bool netConstpl = spec.IsEip1283Enabled;  // EIP-1283: net-metered SSTORE (Constantinople)
 
         // SLOAD: 50 base → 200 (EIP-150) → 800 (EIP-1884) → 0 upfront (EIP-2929, charged via access tracker)
         SLoadCost = hotCold ? 0L : largeDDos ? 800L : shanghaiDDos ? 200L : 50L;
@@ -71,18 +71,18 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
         // Reversal refunds (verified against RefundOf in Nethermind.Evm):
         // SSet=20000, SReset=5000, ColdSLoad=2100, WarmStateRead=100
         // SStoreNetMeteredEip2200=800, SStoreNetMeteredEip1283=200
-        ClearReversalRefund = hotCold     ? 2800L   // SReset(5000) - ColdSLoad(2100) - WarmStateRead(100)
+        ClearReversalRefund = hotCold ? 2800L   // SReset(5000) - ColdSLoad(2100) - WarmStateRead(100)
                             : netIstanbul ? 4200L   // SReset(5000) - SStoreNetMeteredEip2200(800)
-                            : netConstpl  ? 4800L   // SReset(5000) - SStoreNetMeteredEip1283(200)
+                            : netConstpl ? 4800L   // SReset(5000) - SStoreNetMeteredEip1283(200)
                             : 0L;
-        SetReversalRefund   = hotCold     ? 19900L  // SSet(20000) - WarmStateRead(100)
+        SetReversalRefund = hotCold ? 19900L  // SSet(20000) - WarmStateRead(100)
                             : netIstanbul ? 19200L  // SSet(20000) - SStoreNetMeteredEip2200(800)
-                            : netConstpl  ? 19800L  // SSet(20000) - SStoreNetMeteredEip1283(200)
+                            : netConstpl ? 19800L  // SSet(20000) - SStoreNetMeteredEip1283(200)
                             : 0L;
 
         // Blob gas: GasPerBlob = 131072 (Eip4844Constants, in Nethermind.Core)
-        MaxBlobGasPerBlock    = spec.MaxBlobCount    * Eip4844Constants.GasPerBlob;
-        MaxBlobGasPerTx       = spec.MaxBlobsPerTx   * Eip4844Constants.GasPerBlob;
+        MaxBlobGasPerBlock = spec.MaxBlobCount * Eip4844Constants.GasPerBlob;
+        MaxBlobGasPerTx = spec.MaxBlobsPerTx * Eip4844Constants.GasPerBlob;
         TargetBlobGasPerBlock = spec.TargetBlobCount * Eip4844Constants.GasPerBlob;
     }
 
