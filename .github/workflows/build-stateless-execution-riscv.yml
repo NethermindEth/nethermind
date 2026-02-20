@@ -21,9 +21,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build .NET tool
-        working-directory: tools/StatelessExecution
-        run: make build-tool-local
+      # - name: Build .NET tool
+      #   working-directory: tools/StatelessExecution
+      #   run: make build-tool-local
 
       - name: Build ZISK binary
         working-directory: tools/StatelessExecution
