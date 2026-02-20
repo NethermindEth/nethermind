@@ -896,6 +896,62 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void HasRoot_with_block_number_rejects_pruned_state()
+        {
+            int pruningBoundary = 4;
+            TestPruningStrategy testPruningStrategy = new TestPruningStrategy(shouldPrune: false);
+
+            TrieStore trieStore = CreateTrieStore(
+                pruningStrategy: testPruningStrategy,
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = pruningBoundary,
+                    TrackPastKeys = false
+                });
+
+            StateTree stateTree = new(trieStore, LimboLogs.Instance);
+
+            // Commit blocks 0..9
+            Hash256[] rootHashes = new Hash256[10];
+            for (int i = 0; i < 10; i++)
+            {
+                using (trieStore.BeginBlockCommit(i))
+                {
+                    stateTree.Set(TestItem.AddressA, new Account((UInt256)(i + 1)));
+                    stateTree.Commit();
+                }
+                rootHashes[i] = stateTree.RootHash;
+            }
+
+            // Persist: sets LastPersistedBlockNumber
+            testPruningStrategy.ShouldPruneEnabled = true;
+            trieStore.SyncPruneQueue();
+            testPruningStrategy.ShouldPruneEnabled = false;
+            trieStore.LastPersistedBlockNumber.Should().BeGreaterThan(0);
+
+            long lastPersisted = trieStore.LastPersistedBlockNumber;
+
+            // Block within boundary: should return true
+            trieStore.HasRoot(rootHashes[lastPersisted], lastPersisted).Should().BeTrue();
+
+            // Block outside boundary: should return false
+            long oldBlock = lastPersisted - pruningBoundary - 1;
+            if (oldBlock >= 0)
+            {
+                trieStore.HasRoot(rootHashes[oldBlock], oldBlock).Should().BeFalse();
+            }
+
+            // HasRoot without block number still returns true (root node exists)
+            if (oldBlock >= 0)
+            {
+                trieStore.HasRoot(rootHashes[oldBlock]).Should().BeTrue();
+            }
+
+            trieStore.Dispose();
+        }
+
+        [Test]
         [Retry(3)]
         [NonParallelizable]
         public async Task Will_RemovePastKeys_OnSnapshot()

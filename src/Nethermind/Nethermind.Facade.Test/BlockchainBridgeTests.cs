@@ -26,7 +26,6 @@ using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.State;
 
 namespace Nethermind.Facade.Test;
@@ -689,64 +688,22 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void HasStateForBlock_returns_false_when_block_older_than_head_minus_pruning_boundary()
+    public void HasStateForBlock_returns_true_when_stateReader_returns_true()
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
-        _blockTree.Head.Returns(Build.A.Block.WithNumber(300).TestObject);
 
-        _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
-    }
-
-    [Test]
-    public void HasStateForBlock_returns_true_when_block_within_head_minus_pruning_boundary()
-    {
-        BlockHeader header = Build.A.BlockHeader.WithNumber(280).WithStateRoot(TestItem.KeccakA).TestObject;
-
-        _blockTree.Head.Returns(Build.A.Block.WithNumber(300).TestObject);
+        _stateReader.HasStateForBlock(header).Returns(true);
 
         _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
     }
 
     [Test]
-    public void HasStateForBlock_returns_true_when_head_is_null()
-    {
-        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
-
-        _blockTree.Head.Returns((Block?)null);
-
-        _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
-    }
-
-    [Test]
-    public void HasStateForBlock_returns_false_when_root_does_not_exist()
+    public void HasStateForBlock_returns_false_when_stateReader_returns_false()
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(250).WithStateRoot(TestItem.KeccakA).TestObject;
 
         _stateReader.HasStateForBlock(header).Returns(false);
-        _blockTree.Head.Returns(Build.A.Block.WithNumber(300).TestObject);
 
         _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
-    }
-
-    [Test]
-    public void HasStateForBlock_returns_true_for_old_block_on_archive_node()
-    {
-        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
-
-        IContainer archiveContainer = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
-            .AddSingleton(_blockTree)
-            .AddSingleton<IReceiptFinder>(_receiptStorage)
-            .AddSingleton(_timestamper)
-            .AddSingleton(Substitute.For<ILogFinder>())
-            .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
-            .AddSingleton<IPruningConfig>(new PruningConfig { Mode = PruningMode.None })
-            .AddScoped(_transactionProcessor)
-            .AddSingleton(_stateReader)
-            .Build();
-
-        IBlockchainBridge archiveBridge = archiveContainer.Resolve<IBlockchainBridge>();
-        archiveBridge.HasStateForBlock(header).Should().BeTrue();
-        archiveContainer.Dispose();
     }
 }

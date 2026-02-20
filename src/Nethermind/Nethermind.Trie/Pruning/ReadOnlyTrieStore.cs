@@ -38,6 +38,8 @@ namespace Nethermind.Trie.Pruning
 
         public bool HasRoot(Hash256 stateRoot) => _trieStore.HasRoot(stateRoot);
 
+        public bool HasRoot(Hash256 stateRoot, long blockNumber) => _trieStore.HasRoot(stateRoot, blockNumber);
+
         public void Dispose() { }
 
         private class ScopedReadOnlyTrieStore(ReadOnlyTrieStore fullTrieStore, Hash256? address) : IScopedTrieStore

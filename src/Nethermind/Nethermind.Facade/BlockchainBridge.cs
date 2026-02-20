@@ -25,7 +25,6 @@ using Nethermind.Facade.Filters;
 using Nethermind.Facade.Eth;
 using Nethermind.State;
 using Nethermind.Config;
-using Nethermind.Db;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -53,8 +52,7 @@ namespace Nethermind.Facade
         ILogFinder logFinder,
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
-        IMiningConfig miningConfig,
-        IPruningConfig pruningConfig)
+        IMiningConfig miningConfig)
         : IBlockchainBridge
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
@@ -409,21 +407,7 @@ namespace Nethermind.Facade
 
         public bool HasStateForBlock(BlockHeader? baseBlock)
         {
-            if (!stateReader.HasStateForBlock(baseBlock))
-                return false;
-
-            // Reject blocks whose state may have been partially pruned (root exists but child nodes don't)
-            if (baseBlock is not null && pruningConfig.Mode != PruningMode.None)
-            {
-                long? headNumber = blockTree.Head?.Number;
-                if (headNumber.HasValue &&
-                    baseBlock.Number < headNumber.Value - pruningConfig.PruningBoundary)
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return stateReader.HasStateForBlock(baseBlock);
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
