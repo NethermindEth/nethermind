@@ -48,6 +48,10 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.XDCXAddressBinary = chainSpecEngineParameters.XDCXAddressBinary;
         releaseSpec.TradingStateAddressBinary = chainSpecEngineParameters.TradingStateAddressBinary;
 
+        releaseSpec.LimitPenaltyEpoch = chainSpecEngineParameters.LimitPenaltyEpoch;
+        releaseSpec.LimitPenaltyEpochV2 = chainSpecEngineParameters.LimitPenaltyEpochV2;
+        releaseSpec.RangeReturnSigner = chainSpecEngineParameters.RangeReturnSigner;
+
         releaseSpec.ApplyV2Config(0);
 
         if (releaseSpec.SwitchBlock == 0)

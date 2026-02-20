@@ -33,9 +33,8 @@ public class TimeoutTests
     public async Task TestCountdownTimeoutNotToSendTimeoutMessageIfNotInMasternodeList()
     {
         var blockchain = await XdcTestBlockchain.Create();
-        // Create TCManager with a signer not in the Masternode list
-        var extraKey = blockchain.RandomKeys.First();
 
+        // Create TCManager with a signer not in the Masternode list
         blockchain.Signer.SetSigner(TestItem.PrivateKeyA);
 
         blockchain.TimeoutCertificateManager.OnCountdownTimer();
