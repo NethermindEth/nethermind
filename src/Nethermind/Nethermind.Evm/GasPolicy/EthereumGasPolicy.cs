@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -53,9 +52,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             return true;
 
         bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, chargeForWarm);
-        return notOutOfGas
-               && (delegated is null
-                   || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated, chargeForWarm));
+        return notOutOfGas && (delegated is null || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated, chargeForWarm));
     }
 
     public static bool ConsumeAccountAccessGas(ref EthereumGasPolicy gas,
@@ -180,14 +177,16 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static EthereumGasPolicy Max(in EthereumGasPolicy a, in EthereumGasPolicy b) =>
         a.Value >= b.Value ? a : b;
 
-    public static EthereumGasPolicy CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
+    public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
     {
-        long gas = GasCostOf.Transaction
-            + DataCost(tx, spec)
-            + CreateCost(tx, spec)
-            + IntrinsicGasCalculator.AccessListCost(tx, spec)
-            + AuthorizationListCost(tx, spec);
-        return new() { Value = gas };
+        long tokensInCallData = IGasPolicy<EthereumGasPolicy>.CalculateTokensInCallData(tx, spec);
+        long standard = GasCostOf.Transaction
+                        + DataCost(tx, spec, tokensInCallData)
+                        + CreateCost(tx, spec)
+                        + IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec)
+                        + AuthorizationListCost(tx, spec);
+        long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, spec);
+        return new IntrinsicGas<EthereumGasPolicy>(FromLong(standard), FromLong(floorCost));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -197,39 +196,21 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     private static long CreateCost(Transaction tx, IReleaseSpec spec) =>
         tx.IsContractCreation && spec.IsEip2Enabled ? GasCostOf.TxCreate : 0;
 
-    private static long DataCost(Transaction tx, IReleaseSpec spec)
-    {
-        long baseDataCost = tx.IsContractCreation && spec.IsEip3860Enabled
-            ? EvmCalculations.Div32Ceiling((UInt256)tx.Data.Length) * GasCostOf.InitCodeWord
-            : 0;
-
-        long tokensInCallData = CalculateTokensInCallData(tx, spec);
-        return baseDataCost + tokensInCallData * GasCostOf.TxDataZero;
-    }
-
-    private static long CalculateTokensInCallData(Transaction tx, IReleaseSpec spec)
-    {
-        long txDataNonZeroMultiplier = spec.IsEip2028Enabled
-            ? GasCostOf.TxDataNonZeroMultiplierEip2028
-            : GasCostOf.TxDataNonZeroMultiplier;
-        ReadOnlySpan<byte> data = tx.Data.Span;
-        int totalZeros = data.CountZeros();
-        return totalZeros + (data.Length - totalZeros) * txDataNonZeroMultiplier;
-    }
+    private static long DataCost(Transaction tx, IReleaseSpec spec, long tokensInCallData) =>
+        spec.GetBaseDataCost(tx) + tokensInCallData * GasCostOf.TxDataZero;
 
     private static long AuthorizationListCost(Transaction tx, IReleaseSpec spec)
     {
         AuthorizationTuple[]? authList = tx.AuthorizationList;
         if (authList is not null)
         {
-            if (!spec.IsAuthorizationListEnabled)
-                ThrowAuthorizationListNotEnabled(spec);
+            if (!spec.IsAuthorizationListEnabled) ThrowAuthorizationListNotEnabled(spec);
             return authList.Length * GasCostOf.NewAccount;
         }
         return 0;
-    }
 
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowAuthorizationListNotEnabled(IReleaseSpec spec) =>
-        throw new InvalidDataException($"Transaction with an authorization list received within the context of {spec.Name}. EIP-7702 is not enabled.");
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowAuthorizationListNotEnabled(IReleaseSpec spec) =>
+            throw new InvalidDataException($"Transaction with an authorization list received within the context of {spec.Name}. EIP-7702 is not enabled.");
+    }
 }
