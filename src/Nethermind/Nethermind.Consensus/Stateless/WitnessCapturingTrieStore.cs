@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -46,9 +45,6 @@ public class WitnessCapturingTrieStore(IKeyValueStoreWithBatching keyValueStore,
         if (rlp is not null) _rlpCollector.TryAdd(hash, rlp);
         return rlp;
     }
-
-    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) =>
-        _nodeStorage.Get(address, in path, in keccak) is not null || baseStore.IsPersisted(address, in path, in keccak);
 
     public bool HasRoot(Hash256 stateRoot) =>
         _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null || baseStore.HasRoot(stateRoot);
