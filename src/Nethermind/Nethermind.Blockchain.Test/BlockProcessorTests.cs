@@ -140,9 +140,15 @@ public class BlockProcessorTests
             AlwaysCancelBlockTracer.Instance));
     }
 
-    [TestCase(2, false)]
-    [TestCase(3, true)]
-    public void Uses_state_prewarmer_only_when_block_has_enough_transactions(int transactionCount, bool shouldPreWarm)
+    // Below threshold: no prewarm, each Process call does 2 synchronous clears
+    [TestCase(2, 1, 0, 2, 0)]
+    // At threshold: prewarm triggered, 1 clear via ExecuteSynchronously continuation
+    [TestCase(3, 1, 1, 1, 0)]
+    // Below threshold across two calls: no prewarm, 4 synchronous clears, no background scheduling
+    [TestCase(1, 2, 0, 4, 0)]
+    public void Prewarmer_and_cache_clear_depend_on_transaction_count(
+        int transactionCount, int processCalls,
+        int expectedPreWarmCalls, int expectedClearCalls, int expectedCrossThreadClearCalls)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
@@ -166,57 +172,18 @@ public class BlockProcessorTests
             .WithTransactions(transactionCount, Prague.Instance)
             .TestObject;
 
-        branchProcessor.Process(
-            parent.Header,
-            new List<Block> { block },
-            ProcessingOptions.None,
-            NullBlockTracer.Instance);
+        for (int i = 0; i < processCalls; i++)
+        {
+            branchProcessor.Process(
+                parent.Header,
+                new List<Block> { block },
+                ProcessingOptions.None,
+                NullBlockTracer.Instance);
+        }
 
-        Assert.That(preWarmer.PreWarmCalls, Is.EqualTo(shouldPreWarm ? 1 : 0));
-    }
-
-    [Test]
-    public void Does_not_schedule_background_cache_clear_when_prewarm_is_skipped()
-    {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
-        blockhashProvider.Prefetch(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
-        CountingPreWarmer preWarmer = new();
-
-        BranchProcessor branchProcessor = new(
-            NullBlockProcessor.Instance,
-            HoodiSpecProvider.Instance,
-            stateProvider,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            blockhashProvider,
-            LimboLogs.Instance,
-            preWarmer);
-
-        Block parent = Build.A.Block.Genesis.TestObject;
-        Block block = Build.A.Block
-            .WithNumber(1)
-            .WithParent(parent)
-            .WithTransactions(1, Prague.Instance)
-            .TestObject;
-
-        branchProcessor.Process(
-            parent.Header,
-            new List<Block> { block },
-            ProcessingOptions.None,
-            NullBlockTracer.Instance);
-
-        // Execute once more so WaitForCacheClear() would observe any background clear from the previous run.
-        branchProcessor.Process(
-            parent.Header,
-            new List<Block> { block },
-            ProcessingOptions.None,
-            NullBlockTracer.Instance);
-
-        Assert.That(preWarmer.PreWarmCalls, Is.EqualTo(0));
-        // 2 ClearCaches per Process call: once in the no-prewarm else block, once in QueueClearCaches
-        Assert.That(preWarmer.ClearCalls, Is.EqualTo(4));
-        Assert.That(preWarmer.CrossThreadClearCalls, Is.EqualTo(0));
+        Assert.That(preWarmer.PreWarmCalls, Is.EqualTo(expectedPreWarmCalls));
+        Assert.That(preWarmer.ClearCalls, Is.EqualTo(expectedClearCalls));
+        Assert.That(preWarmer.CrossThreadClearCalls, Is.EqualTo(expectedCrossThreadClearCalls));
     }
 
     [MaxTime(Timeout.MaxTestTime)]
