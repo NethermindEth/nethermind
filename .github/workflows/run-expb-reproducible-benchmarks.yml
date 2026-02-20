@@ -35,6 +35,11 @@ on:
         description: Optional extra Nethermind flags (comma or newline separated)
         required: false
         default: ""
+      rebuild_docker:
+        description: Rebuild Nethermind Docker image before running benchmarks
+        required: false
+        type: boolean
+        default: true
   pull_request:
     types: [labeled]
   push:
@@ -56,6 +61,7 @@ jobs:
       branch: ${{ steps.resolve.outputs.branch }}
       clean_branch: ${{ steps.resolve.outputs.clean_branch }}
       should_trigger_publish_docker: ${{ steps.resolve.outputs.should_trigger_publish_docker }}
+      rebuild_docker: ${{ steps.resolve.outputs.rebuild_docker }}
       config_file: ${{ steps.resolve.outputs.config_file }}
       image_label: ${{ steps.resolve.outputs.image_label }}
       expb_repo: ${{ steps.resolve.outputs.expb_repo }}
@@ -82,6 +88,7 @@ jobs:
           DISPATCH_EXPB_BRANCH: ${{ inputs.expb_branch }}
           DISPATCH_DELAY_SECONDS: ${{ inputs.delay_seconds }}
           DISPATCH_ADDITIONAL_EXTRA_FLAGS: ${{ inputs.additional_extra_flags }}
+          DISPATCH_REBUILD_DOCKER: ${{ inputs.rebuild_docker }}
         run: |
           set -euo pipefail
 
@@ -96,6 +103,7 @@ jobs:
             delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
             cleanup_grace_seconds="90"
+            rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
           elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
             if [[ "${PR_LABEL}" != "reproducible-benchmark" ]]; then
               should_run="false"
@@ -112,6 +120,7 @@ jobs:
             delay_seconds="0"
             additional_extra_flags=""
             cleanup_grace_seconds="90"
+            rebuild_docker="true"
           else
             branch="${PUSH_BRANCH}"
             state_layout="halfpath"
@@ -122,6 +131,7 @@ jobs:
             delay_seconds="0"
             additional_extra_flags=""
             cleanup_grace_seconds="90"
+            rebuild_docker="true"
           fi
 
           branch="${branch#refs/heads/}"
@@ -140,10 +150,17 @@ jobs:
             exit 1
           fi
 
+          if [[ "${rebuild_docker}" != "true" && "${rebuild_docker}" != "false" ]]; then
+            echo "rebuild_docker must be true or false, got '${rebuild_docker}'."
+            exit 1
+          fi
+
           clean_branch="$(echo "${branch}" | sed 's/[^a-zA-Z0-9._-]/-/g')"
 
           should_trigger_publish_docker="true"
           if [[ "${branch}" == "master" || "${branch}" == "paprika" || "${branch}" == release/* ]]; then
+            should_trigger_publish_docker="false"
+          elif [[ "${EVENT_NAME}" == "workflow_dispatch" && "${rebuild_docker}" != "true" ]]; then
             should_trigger_publish_docker="false"
           fi
 
@@ -164,6 +181,7 @@ jobs:
             echo "branch=${branch}"
             echo "clean_branch=${clean_branch}"
             echo "should_trigger_publish_docker=${should_trigger_publish_docker}"
+            echo "rebuild_docker=${rebuild_docker}"
             echo "config_file=${config_file}"
             echo "image_label=nethermindeth/nethermind:${clean_branch}"
             echo "expb_repo=${expb_repo}"
@@ -240,6 +258,8 @@ jobs:
           echo "Docker image: ${NETHERMIND_IMAGE}"
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
           echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
+          echo "Rebuild docker requested: ${{ needs.resolve.outputs.rebuild_docker }}"
+          echo "Publish docker workflow triggered: ${{ needs.resolve.outputs.should_trigger_publish_docker }}"
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
           echo "Scenario name: ${{ needs.resolve.outputs.scenario_name }}"
 
