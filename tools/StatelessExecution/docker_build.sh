@@ -6,7 +6,7 @@ current_dir="$(pwd)"
 parent_dir=$(dirname "${current_dir}")
 
 # Build target image
-docker build -t bflat-tmp .
+docker build --platform linux/amd64 -t bflat-tmp .
 
 if [ "$?" != "0" ]; then
   echo "Docker build failed"
@@ -15,6 +15,7 @@ fi
 
 # Run target bflat-tmp image with parameters provided to the current script.
 time docker run \
+  --platform linux/amd64 \
   --rm \
   --cap-add=SYS_PTRACE \
   --security-opt seccomp=unconfined \
