@@ -56,7 +56,7 @@ public partial class DebugRpcModuleTests
             return;
         }
 
-        Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
+        using Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
             .Which.Result.Should().BeOfType<Witness>()
             .Subject;
 
@@ -126,7 +126,7 @@ public partial class DebugRpcModuleTests
 
             // GetWitness runs AccountProofCollector tree visitor for all recorded slots,
             // which traverses the trie and captures proof nodes even for not-read-and-set-but-reverted slots
-            Witness witness = witnessState.GetWitness(parent);
+            using Witness witness = witnessState.GetWitness(parent);
 
             // Collect the expected storage proof from the parent state
             AccountProofCollector collector = new(contractAddress, [storageSlot]);

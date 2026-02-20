@@ -65,6 +65,14 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
             stateNodes.AddRange(storageProof.SelectMany(p => p));
         }
 
+        ArrayPoolList<byte[]> codes = new(_bytecodes.Count);
+        foreach (byte[] code in _bytecodes.Values)
+            codes.Add(code);
+
+        ArrayPoolList<byte[]> state = new(stateNodes.Count);
+        foreach (byte[] node in stateNodes)
+            state.Add(node);
+
         // Build keys
         int totalKeysCount = 0;
         foreach (KeyValuePair<Address, HashSet<UInt256>> kvp in _storageSlots)
@@ -73,21 +81,20 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
             totalKeysCount += kvp.Value.Count;
         }
 
-        byte[][] keys = new byte[totalKeysCount][];
-        int i = 0;
+        ArrayPoolList<byte[]> keys = new(totalKeysCount);
 
         // Keys should be ordered like: <address1><address2><slot1-address2><slot2-address2><address3><slot1-address3>
         foreach (KeyValuePair<Address, HashSet<UInt256>> kvp in _storageSlots)
         {
-            keys[i++] = kvp.Key.Bytes;
+            keys.Add(kvp.Key.Bytes);
             foreach (UInt256 slot in kvp.Value)
-                keys[i++] = slot.ToBigEndian();
+                keys.Add(slot.ToBigEndian());
         }
 
         return new Witness
         {
-            Codes = _bytecodes.Values.ToArray(),
-            State = stateNodes.ToArray(),
+            Codes = codes,
+            State = state,
             Keys = keys,
             Headers = headerFinder.GetWitnessHeaders(parentHeader.Hash!)
         };

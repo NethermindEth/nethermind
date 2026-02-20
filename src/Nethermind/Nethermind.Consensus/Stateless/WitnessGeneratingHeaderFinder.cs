@@ -22,9 +22,9 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
         return header;
     }
 
-    public byte[][] GetWitnessHeaders(Hash256 parentHash)
+    public IOwnedReadOnlyList<byte[]> GetWitnessHeaders(Hash256 parentHash)
     {
-        using ArrayPoolListRef<byte[]> headers = new();
+        ArrayPoolList<byte[]> headers = new(capacity: 16);
 
         Hash256 currentHash = parentHash;
         BlockHeader childHeader = inner.Get(currentHash) ?? throw new ArgumentException($"Parent {currentHash} is not found");
@@ -40,6 +40,6 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
             }
         }
 
-        return headers.ToArray();
+        return headers;
     }
 }

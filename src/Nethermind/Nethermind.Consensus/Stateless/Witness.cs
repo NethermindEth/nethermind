@@ -13,12 +13,20 @@ using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class Witness
+public class Witness : IDisposable
 {
-    public byte[][] Codes;
-    public byte[][] State;
-    public byte[][] Keys;
-    public byte[][] Headers;
+    public required IOwnedReadOnlyList<byte[]> Codes { get; init; }
+    public required IOwnedReadOnlyList<byte[]> State { get; init; }
+    public required IOwnedReadOnlyList<byte[]> Keys { get; init; }
+    public required IOwnedReadOnlyList<byte[]> Headers { get; init; }
+
+    public void Dispose()
+    {
+        Codes.Dispose();
+        State.Dispose();
+        Keys.Dispose();
+        Headers.Dispose();
+    }
 }
 
 public static class WitnessExtensions
@@ -53,8 +61,8 @@ public static class WitnessExtensions
 
         public ArrayPoolList<BlockHeader> DecodeHeaders()
         {
-            byte[][] witnessHeaders = witness.Headers;
-            ArrayPoolList<BlockHeader> headers = new(witnessHeaders.Length);
+            IOwnedReadOnlyList<byte[]> witnessHeaders = witness.Headers;
+            ArrayPoolList<BlockHeader> headers = new(witnessHeaders.Count);
             foreach (byte[] encodedHeader in witnessHeaders)
             {
                 Rlp.ValueDecoderContext stream = new(encodedHeader);
