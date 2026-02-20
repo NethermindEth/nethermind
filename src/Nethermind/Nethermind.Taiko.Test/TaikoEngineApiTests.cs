@@ -52,8 +52,8 @@ public class TaikoEngineApiTests
             Substitute.For<ILogManager>()
         );
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> beforeNewBlockAadded = await forkchoiceUpdatedHandler.Handle(new ForkchoiceStateV1(genesisBlock.Hash!, futureBlock.Hash!, futureBlock.Hash!), null, 2);
-        Assert.That(beforeNewBlockAadded.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        ResultWrapper<ForkchoiceUpdatedV1Result> beforeNewBlockAdded = await forkchoiceUpdatedHandler.Handle(new ForkchoiceStateV1(genesisBlock.Hash!, futureBlock.Hash!, futureBlock.Hash!), null, 2);
+        Assert.That(beforeNewBlockAdded.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
         AddBlock(blockTree, futureBlock);
 

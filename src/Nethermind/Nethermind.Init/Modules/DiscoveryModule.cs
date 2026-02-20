@@ -1,13 +1,11 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -43,12 +41,13 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .AddKeyedSingleton<INodeSource>(NodeSourceToDiscV4Feeder.SourceKey, ctx => ctx.Resolve<EnrDiscovery>())
 
             // Uses by RPC also.
-            .AddSingleton<IStaticNodesManager, ILogManager>((logManager) => new StaticNodesManager(initConfig.StaticNodesPath, logManager))
+            .AddSingleton<IStaticNodesManager, ILogManager>(logManager =>
+                new StaticNodesManager(initConfig.StaticNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
             // This load from file.
             .AddSingleton<NodesLoader>()
 
-            .AddSingleton<ITrustedNodesManager, ILogManager>((logManager) =>
-                new TrustedNodesManager(initConfig.TrustedNodesPath, logManager))
+            .AddSingleton<ITrustedNodesManager, ILogManager>(logManager =>
+                new TrustedNodesManager(initConfig.TrustedNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
 
             .Bind<INodeSource, IStaticNodesManager>()
 
@@ -67,25 +66,14 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 ChainSpec chainSpec = ctx.Resolve<ChainSpec>();
                 IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
 
-                // Was in `UpdateDiscoveryConfig` step.
-                if (discoveryConfig.Bootnodes != string.Empty)
-                {
-                    if (chainSpec.Bootnodes.Length != 0)
-                    {
-                        discoveryConfig.Bootnodes += "," + string.Join(",", chainSpec.Bootnodes.Select(static bn => bn.ToString()));
-                    }
-                }
-                else if (chainSpec.Bootnodes is not null)
-                {
-                    discoveryConfig.Bootnodes = string.Join(",", chainSpec.Bootnodes.Select(static bn => bn.ToString()));
-                }
-
                 if (networkConfig.DiscoveryDns == null)
                 {
                     string chainName = BlockchainIds.GetBlockchainName(chainSpec!.NetworkId).ToLowerInvariant();
                     networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";
                 }
-                networkConfig.Bootnodes = discoveryConfig.Bootnodes;
+
+                networkConfig.Bootnodes = [.. networkConfig.Bootnodes, .. discoveryConfig.Bootnodes, .. chainSpec.Bootnodes];
+
                 return networkConfig;
             })
 
@@ -116,6 +104,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
 
                 .AddNetworkStorage(DbNames.DiscoveryNodes, "discoveryNodes")
+                .AddNetworkStorage(DbNames.DiscoveryV5Nodes, "discoveryV5Nodes")
                 .AddSingleton<DiscoveryV5App>()
 
                 .AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>()

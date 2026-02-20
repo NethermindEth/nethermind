@@ -18,7 +18,6 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test

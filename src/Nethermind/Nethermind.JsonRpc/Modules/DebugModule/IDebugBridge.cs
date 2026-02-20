@@ -33,7 +33,7 @@ public interface IDebugBridge
     void UpdateHeadBlock(Hash256 blockHash);
     Task<bool> MigrateReceipts(long from, long to);
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
-    SyncReportSymmary GetCurrentSyncStage();
+    SyncReportSummary GetCurrentSyncStage();
     bool HaveNotSyncedHeadersYet();
     IEnumerable<string> TraceBlockToFile(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     IEnumerable<string> TraceBadBlockToFile(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);

@@ -12,6 +12,7 @@ using Nethermind.Merge.Plugin.Test;
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 class ShutterBlockHandlerTests : BaseEngineModuleTests
 {
     [Test]
@@ -31,7 +32,7 @@ class ShutterBlockHandlerTests : BaseEngineModuleTests
     }
 
     [Test]
-    public void Wait_times_out_at_cutoff()
+    public async Task Wait_times_out_at_cutoff()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
         Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
@@ -47,7 +48,8 @@ class ShutterBlockHandlerTests : BaseEngineModuleTests
 
         Assert.That(waitTask.IsCompleted, Is.False);
         timeoutSource.Cancel();
-        Assert.That(waitTask.IsCompletedSuccessfully);
+        Block? result = await waitTask;
+        Assert.That(result, Is.Null);
     }
 
     [Test]

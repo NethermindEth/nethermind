@@ -53,6 +53,7 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             // Osaka
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV5)] = (spec.IsEip7594Enabled, spec.IsEip7594Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_getBlobsV2)] = (spec.IsEip7594Enabled, false);
+            _capabilities[nameof(IEngineRpcModule.engine_getBlobsV3)] = (spec.IsEip7594Enabled, false);
         }
 
         return _capabilities;

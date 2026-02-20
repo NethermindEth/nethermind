@@ -21,7 +21,7 @@ namespace Nethermind.Db
     // Some metadata options
     public interface IDbMeta
     {
-        DbMetric GatherMetric(bool includeSharedCache = false) => new DbMetric();
+        DbMetric GatherMetric() => new DbMetric();
 
         void Flush(bool onlyWal = false);
         void Clear() { }

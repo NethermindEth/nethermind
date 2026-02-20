@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -134,6 +135,10 @@ public class GasEstimator(
     private static string GetError(EstimateGasTracer gasTracer, string defaultError = "Transaction execution fails") =>
         gasTracer switch
         {
+            { TopLevelRevert: true } => gasTracer.Error ??
+                                        (gasTracer.ReturnValue?.Length > 0 ?
+                                            $"execution reverted: {gasTracer.ReturnValue.ToHexString(true)}"
+                                            : "execution reverted"),
             { OutOfGas: true } => "Gas estimation failed due to out of gas",
             { StatusCode: StatusCode.Failure } => gasTracer.Error ?? "Transaction execution fails",
             _ => defaultError
@@ -149,6 +154,8 @@ public class GasEstimator(
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block, specProvider.GetSpec(block)));
         TransactionResult result = transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
 
-        return result.TransactionExecuted && gasTracer.StatusCode == StatusCode.Success && !gasTracer.OutOfGas;
+        // Transaction succeeds if it executed, has success status, no OutOfGas, and no top-level revert
+        return result.TransactionExecuted && gasTracer.StatusCode == StatusCode.Success &&
+               !gasTracer.OutOfGas && !gasTracer.TopLevelRevert;
     }
 }

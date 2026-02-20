@@ -149,4 +149,7 @@ public static class BlockErrorMessages
 
     public static string ExceededBlockSizeLimit(int limit) =>
         $"ExceededBlockSizeLimit: Exceeded block size limit of {limit} bytes.";
+
+    public static string ReceiptCountMismatch(int expectedCount, int actualCount) =>
+        $"ReceiptCountMismatch: Expected {expectedCount} receipts to match transaction count, but got {actualCount}.";
 }

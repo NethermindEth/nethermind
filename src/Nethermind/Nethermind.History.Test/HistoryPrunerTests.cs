@@ -39,7 +39,7 @@ public class HistoryPrunerTests
     {
         AncientBodiesBarrier = BeaconGenesisBlockNumber,
         AncientReceiptsBarrier = BeaconGenesisBlockNumber,
-        PivotNumber = "100",
+        PivotNumber = 100,
         SnapSync = true
     };
 
@@ -53,6 +53,7 @@ public class HistoryPrunerTests
         {
             Pruning = PruningModes.Rolling,
             RetentionEpochs = 2,
+            PruningInterval = 0
         };
 
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
@@ -73,7 +74,7 @@ public class HistoryPrunerTests
 
         CheckOldestAndCutoff(1, cutoff, historyPruner);
 
-        await historyPruner.TryPruneHistory(CancellationToken.None);
+        historyPruner.TryPruneHistory(CancellationToken.None);
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
         for (int i = 1; i <= blocks; i++)
@@ -101,6 +102,7 @@ public class HistoryPrunerTests
         {
             Pruning = PruningModes.UseAncientBarriers,
             RetentionEpochs = 100, // should have no effect
+            PruningInterval = 0
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -120,7 +122,7 @@ public class HistoryPrunerTests
 
         CheckOldestAndCutoff(1, BeaconGenesisBlockNumber, historyPruner);
 
-        await historyPruner.TryPruneHistory(CancellationToken.None);
+        historyPruner.TryPruneHistory(CancellationToken.None);
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
 
@@ -149,6 +151,7 @@ public class HistoryPrunerTests
         IHistoryConfig historyConfig = new HistoryConfig
         {
             Pruning = PruningModes.UseAncientBarriers,
+            PruningInterval = 0
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -168,7 +171,7 @@ public class HistoryPrunerTests
 
         CheckOldestAndCutoff(1, BeaconGenesisBlockNumber, historyPruner);
 
-        await historyPruner.TryPruneHistory(CancellationToken.None);
+        historyPruner.TryPruneHistory(CancellationToken.None);
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
 
@@ -198,6 +201,7 @@ public class HistoryPrunerTests
         {
             Pruning = PruningModes.Rolling,
             RetentionEpochs = 2,
+            PruningInterval = 0
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -217,7 +221,7 @@ public class HistoryPrunerTests
 
         CheckOldestAndCutoff(1, cutoff, historyPruner);
 
-        await historyPruner.TryPruneHistory(CancellationToken.None);
+        historyPruner.TryPruneHistory(CancellationToken.None);
         historyPruner.SetDeletePointerToOldestBlock(); // recalculate oldest block with binary search
 
         CheckOldestAndCutoff(cutoff, cutoff, historyPruner);
@@ -231,6 +235,7 @@ public class HistoryPrunerTests
         IHistoryConfig historyConfig = new HistoryConfig
         {
             Pruning = PruningModes.Disabled,
+            PruningInterval = 0
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -243,7 +248,7 @@ public class HistoryPrunerTests
         }
 
         var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        await historyPruner.TryPruneHistory(CancellationToken.None);
+        historyPruner.TryPruneHistory(CancellationToken.None);
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
 

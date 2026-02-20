@@ -23,7 +23,11 @@ namespace Nethermind.Core.Test.Db
         public static IDbProvider Init()
         {
             return new ContainerBuilder()
-                .AddModule(new DbModule(new InitConfig() { DiagnosticMode = DiagnosticMode.MemDb }, new ReceiptConfig(), new SyncConfig()))
+                .AddModule(new DbModule(
+                    new InitConfig() { DiagnosticMode = DiagnosticMode.MemDb },
+                    new ReceiptConfig(),
+                    new SyncConfig()
+                ))
                 .AddSingleton<IDbProvider, ContainerOwningDbProvider>()
                 .Build()
                 .Resolve<IDbProvider>();

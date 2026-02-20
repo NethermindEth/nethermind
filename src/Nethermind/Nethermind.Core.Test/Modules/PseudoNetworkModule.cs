@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.State;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
@@ -31,7 +29,6 @@ public class PseudoNetworkModule() : Module
             .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
 
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
-            .AddSingleton<IPooledTxsRequestor, PooledTxsRequestor>()
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
 
@@ -42,7 +39,6 @@ public class PseudoNetworkModule() : Module
             {
                 cfg
                     .As<IProtocolsManager>()
-                    .WithAttributeFiltering()
                     .SingleInstance()
                     .OnActivating((m) =>
                     {

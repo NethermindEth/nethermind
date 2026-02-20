@@ -58,11 +58,9 @@ namespace Nethermind.Trie
         }
 
         public byte Level { get; internal set; }
-        private byte _branchChildIndex = 255;
         private byte _flags = 0;
 
         private const byte StorageFlag = 1;
-        private const byte ExpectAccountsFlag = 2;
 
         public bool IsStorage
         {
@@ -76,22 +74,6 @@ namespace Nethermind.Trie
                 else
                 {
                     _flags = (byte)(_flags & ~StorageFlag);
-                }
-            }
-        }
-
-        public bool ExpectAccounts
-        {
-            readonly get => (_flags & ExpectAccountsFlag) == ExpectAccountsFlag;
-            internal set
-            {
-                if (value)
-                {
-                    _flags = (byte)(_flags | ExpectAccountsFlag);
-                }
-                else
-                {
-                    _flags = (byte)(_flags & ~ExpectAccountsFlag);
                 }
             }
         }

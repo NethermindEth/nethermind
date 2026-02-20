@@ -6,25 +6,20 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-public class TestBranchProcessorInterceptor : IBranchProcessor
+public class TestBranchProcessorInterceptor(IBranchProcessor baseBlockProcessor, int delayMs) : IBranchProcessor
 {
-    private readonly IBranchProcessor _blockProcessorImplementation;
-    public int DelayMs { get; set; }
+    public int DelayMs { get; set; } = delayMs;
     public Exception? ExceptionToThrow { get; set; }
-
-    public TestBranchProcessorInterceptor(IBranchProcessor baseBlockProcessor, int delayMs)
-    {
-        _blockProcessorImplementation = baseBlockProcessor;
-        DelayMs = delayMs;
-    }
+    public ManualResetEventSlim? ProcessingStarted { get; set; }
 
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
     {
+        ProcessingStarted?.Set();
+
         if (DelayMs > 0)
         {
             Thread.Sleep(DelayMs);
@@ -35,24 +30,24 @@ public class TestBranchProcessorInterceptor : IBranchProcessor
             throw ExceptionToThrow;
         }
 
-        return _blockProcessorImplementation.Process(baseBlock, suggestedBlocks, processingOptions, blockTracer, token);
+        return baseBlockProcessor.Process(baseBlock, suggestedBlocks, processingOptions, blockTracer, token);
     }
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing
     {
-        add => _blockProcessorImplementation.BlocksProcessing += value;
-        remove => _blockProcessorImplementation.BlocksProcessing -= value;
+        add => baseBlockProcessor.BlocksProcessing += value;
+        remove => baseBlockProcessor.BlocksProcessing -= value;
     }
 
     public event EventHandler<BlockEventArgs>? BlockProcessing
     {
-        add => _blockProcessorImplementation.BlockProcessing += value;
-        remove => _blockProcessorImplementation.BlockProcessing -= value;
+        add => baseBlockProcessor.BlockProcessing += value;
+        remove => baseBlockProcessor.BlockProcessing -= value;
     }
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed
     {
-        add => _blockProcessorImplementation.BlockProcessed += value;
-        remove => _blockProcessorImplementation.BlockProcessed -= value;
+        add => baseBlockProcessor.BlockProcessed += value;
+        remove => baseBlockProcessor.BlockProcessed -= value;
     }
 }

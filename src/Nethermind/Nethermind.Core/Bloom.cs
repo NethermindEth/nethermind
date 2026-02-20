@@ -53,7 +53,10 @@ public class Bloom : IEquatable<Bloom>
         bytes.CopyTo(Bytes);
     }
 
+    [JsonIgnore]
     public Span<byte> Bytes => _bloomData.AsSpan();
+    [JsonIgnore]
+    public ReadOnlySpan<byte> ReadOnlyBytes => _bloomData.AsReadOnlySpan();
     private Span<ulong> ULongs => _bloomData.AsULongs();
 
     public void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
@@ -79,7 +82,7 @@ public class Bloom : IEquatable<Bloom>
 
     public bool Matches(ReadOnlySpan<byte> sequence) => Matches(GetExtract(sequence));
 
-    public override string ToString() => Bytes.ToHexString();
+    public override string ToString() => ReadOnlyBytes.ToHexString();
 
     public static bool operator !=(Bloom? a, Bloom? b)
     {
@@ -101,7 +104,7 @@ public class Bloom : IEquatable<Bloom>
         if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
 
-        return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+        return Nethermind.Core.Extensions.Bytes.AreEqual(ReadOnlyBytes, other.ReadOnlyBytes);
     }
 
     public override bool Equals(object? obj)
@@ -112,7 +115,7 @@ public class Bloom : IEquatable<Bloom>
         return Equals((Bloom)obj);
     }
 
-    public override int GetHashCode() => Bytes.FastHash();
+    public override int GetHashCode() => ReadOnlyBytes.FastHash();
 
     public void Add(LogEntry[] logEntries)
     {
@@ -251,7 +254,7 @@ public class Bloom : IEquatable<Bloom>
     public Bloom Clone()
     {
         Bloom clone = new();
-        Bytes.CopyTo(clone.Bytes);
+        ReadOnlyBytes.CopyTo(clone.Bytes);
         return clone;
     }
 
@@ -259,6 +262,7 @@ public class Bloom : IEquatable<Bloom>
     public struct BloomData
     {
         private byte _element0;
+        public ReadOnlySpan<byte> AsReadOnlySpan() => MemoryMarshal.CreateReadOnlySpan(ref _element0, ByteLength);
         public Span<byte> AsSpan() => MemoryMarshal.CreateSpan(ref _element0, ByteLength);
         public Span<ulong> AsULongs() => MemoryMarshal.CreateSpan(ref Unsafe.As<byte, ulong>(ref _element0), ByteLength / sizeof(ulong));
     }

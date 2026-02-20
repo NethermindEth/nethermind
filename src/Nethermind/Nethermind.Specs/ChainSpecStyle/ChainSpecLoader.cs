@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
 
@@ -22,8 +23,10 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// <summary>
 /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it.
 /// </summary>
-public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
+public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager) : IChainSpecLoader
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<ChainSpecLoader>();
+
     public ChainSpec Load(Stream streamData)
     {
         try
@@ -159,6 +162,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
             Eip2935TransitionTimestamp = chainSpecJson.Params.Eip2935TransitionTimestamp,
             Eip2935ContractAddress = chainSpecJson.Params.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
+            Eip2935RingBufferSize = chainSpecJson.Params.Eip2935RingBufferSize ?? Eip2935Constants.RingBufferSize,
             TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
             TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
             ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
@@ -433,18 +437,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         }
     }
 
-    private static void LoadBootnodes(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
-    {
-        if (chainSpecJson.Nodes is null)
-        {
-            chainSpec.Bootnodes = [];
-            return;
-        }
-
-        chainSpec.Bootnodes = new NetworkNode[chainSpecJson.Nodes.Length];
-        for (int i = 0; i < chainSpecJson.Nodes.Length; i++)
-        {
-            chainSpec.Bootnodes[i] = new NetworkNode(chainSpecJson.Nodes[i]);
-        }
-    }
+    private void LoadBootnodes(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+        => chainSpec.Bootnodes = NetworkNode.ParseNodes(chainSpecJson.Nodes, _logger);
 }

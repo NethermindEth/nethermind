@@ -19,6 +19,7 @@ using Autofac.Core.Lifetime;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -29,6 +30,7 @@ using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -42,10 +44,10 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Era1;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Flashbots;
 using Nethermind.HealthChecks;
-using Nethermind.Hive;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -55,20 +57,17 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Runner.Ethereum;
 using Nethermind.Optimism;
+using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Evm.State;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.TxPool;
+using Nethermind.Xdc.Spec;
 using NSubstitute;
 using NUnit.Framework;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
-using Nethermind.Api.Steps;
-using Nethermind.Consensus.Scheduler;
-using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Runner.Test;
 
@@ -78,15 +77,15 @@ public class EthereumRunnerTests
     static EthereumRunnerTests()
     {
         // Trigger plugins loading early to ensure TypeDiscovery caches plugin's types
-        PluginLoader pluginLoader = new("plugins", new FileSystem(), NullLogger.Instance);
+        PluginLoader pluginLoader = new("plugins", new FileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
         pluginLoader.Load();
 
         AssemblyLoadContext.Default.Resolving += static (_, _) => null;
     }
 
-    private static readonly Lazy<ICollection>? _cachedProviders = new(InitOnce);
+    private static readonly Lazy<ICollection<(string file, ConfigProvider configProvider)>>? _cachedProviders = new(InitOnce);
 
-    private static ICollection InitOnce()
+    private static ICollection<(string file, ConfigProvider configProvider)> InitOnce()
     {
         // we need this to discover ChainSpecEngineParameters
         _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters), typeof(XdcChainSpecEngineParameters) };
@@ -142,9 +141,9 @@ public class EthereumRunnerTests
         get
         {
             int index = 0;
-            foreach (var cachedProvider in _cachedProviders!.Value)
+            foreach ((string file, ConfigProvider configProvider) in _cachedProviders!.Value)
             {
-                yield return new TestCaseData(cachedProvider, index);
+                yield return new TestCaseData((Path.GetFileName(file), configProvider), index);
                 index++;
             }
         }
@@ -176,6 +175,8 @@ public class EthereumRunnerTests
             return;
         }
 
+        if (testCase.file.Contains("none.json")) Assert.Ignore("engine port missing");
+
         await SmokeTest(testCase.configProvider, testIndex, 30430, true);
     }
 
@@ -203,12 +204,12 @@ public class EthereumRunnerTests
 
         INethermindApi api = runner.Api;
 
-        // They normally need the api to be populated by steps, so we mock ouf nethermind api here.
+        // They normally need the api to be populated by steps, so we mock out nethermind api here.
         Build.MockOutNethermindApi((NethermindApi)api);
 
         api.Config<INetworkConfig>().LocalIp = "127.0.0.1";
         api.Config<INetworkConfig>().ExternalIp = "127.0.0.1";
-        _ = api.Config<IHealthChecksConfig>(); // Randomly fail type disccovery if not resolved early.
+        _ = api.Config<IHealthChecksConfig>(); // Randomly fail type discovery if not resolved early.
 
         api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
@@ -336,9 +337,6 @@ public class EthereumRunnerTests
 
     private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
     {
-        // An ugly hack to keep unused types
-        Console.WriteLine(typeof(IHiveConfig));
-
         Rlp.ResetDecoders(); // One day this will be fix. But that day is not today, because it is seriously difficult.
         configProvider.GetConfig<IInitConfig>().DiagnosticMode = DiagnosticMode.MemDb;
         var tempPath = TempPath.GetTempDirectory();

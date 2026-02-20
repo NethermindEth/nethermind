@@ -6,10 +6,8 @@ namespace Nethermind.Core.Specs;
 
 public class AuRaSpecProvider(ISpecProvider baseSpecProvider) : SpecProviderDecorator(baseSpecProvider)
 {
-    public override IReleaseSpec GetSpecInternal(ForkActivation forkActivation)
-    {
-        return new AuRaReleaseSpecDecorator(base.GetSpecInternal(forkActivation));
-    }
+    public override IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+        new AuRaReleaseSpecDecorator(base.GetSpec(forkActivation));
 }
 
 public class AuRaReleaseSpecDecorator(IReleaseSpec spec) : ReleaseSpecDecorator(spec)

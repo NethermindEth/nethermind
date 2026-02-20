@@ -12,7 +12,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Proxy
 {
-    public class DefaultHttpClient : IHttpClient
+    public class DefaultHttpClient : IHttpClient, IDisposable
     {
         private readonly HttpClient _client;
         private readonly IJsonSerializer _jsonSerializer;
@@ -25,7 +25,7 @@ namespace Nethermind.Facade.Proxy
             IJsonSerializer jsonSerializer,
             ILogManager logManager,
             int retries = 3,
-            int retryDelayMilliseconds = 1000)
+            int retryDelayMilliseconds = 100)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
@@ -109,6 +109,11 @@ namespace Nethermind.Facade.Proxy
         {
             Get,
             Post
+        }
+
+        public void Dispose()
+        {
+            _client?.Dispose();
         }
     }
 }

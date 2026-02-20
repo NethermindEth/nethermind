@@ -20,7 +20,7 @@ namespace Nethermind.Runner.Ethereum.Api;
 public class ApiBuilder
 {
     private readonly IConfigProvider _configProvider;
-    private readonly IJsonSerializer _jsonSerializer;
+    private readonly EthereumJsonSerializer _jsonSerializer;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly IInitConfig _initConfig;
@@ -36,7 +36,9 @@ public class ApiBuilder
         _processExitSource = processExitSource;
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _initConfig = configProvider.GetConfig<IInitConfig>();
-        _jsonSerializer = new EthereumJsonSerializer(configProvider.GetConfig<IJsonRpcConfig>().JsonSerializationMaxDepth);
+        IJsonRpcConfig? jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+        EthereumJsonSerializer.StrictHexFormat = jsonRpcConfig.StrictHexFormat;
+        _jsonSerializer = new EthereumJsonSerializer(jsonRpcConfig.JsonSerializationMaxDepth);
         ChainSpec = LoadChainSpec(_jsonSerializer);
     }
 
@@ -62,14 +64,21 @@ public class ApiBuilder
         return container.Resolve<EthereumRunner>();
     }
 
-    private ChainSpec LoadChainSpec(IJsonSerializer ethereumJsonSerializer)
+    private ChainSpec LoadChainSpec(EthereumJsonSerializer ethereumJsonSerializer)
     {
         if (_logger.IsDebug) _logger.Debug($"Loading chain spec from {_initConfig.ChainSpecPath}");
 
         ThisNodeInfo.AddInfo("Chainspec    :", _initConfig.ChainSpecPath);
 
-        var loader = new ChainSpecFileLoader(ethereumJsonSerializer, _logger);
+        var loader = new ChainSpecFileLoader(ethereumJsonSerializer, _logManager);
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath);
+
+        //overwriting NetworkId which is useful for some devnets (like bloatnet)
+        if (_initConfig.NetworkId is not null)
+        {
+            chainSpec.NetworkId = (ulong)_initConfig.NetworkId;
+        }
+
         return chainSpec;
     }
 

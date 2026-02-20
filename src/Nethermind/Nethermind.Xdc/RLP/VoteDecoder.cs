@@ -1,0 +1,97 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
+using Nethermind.Xdc.Types;
+using System;
+
+namespace Nethermind.Xdc;
+
+public sealed class VoteDecoder : RlpValueDecoder<Vote>
+{
+    private static readonly XdcBlockInfoDecoder _xdcBlockInfoDecoder = new();
+
+    protected override Vote DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (decoderContext.IsNextItemNull())
+            return null;
+        int sequenceLength = decoderContext.ReadSequenceLength();
+        int endPosition = decoderContext.Position + sequenceLength;
+
+        BlockRoundInfo proposedBlockInfo = _xdcBlockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);
+        Signature signature = null;
+        if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
+        {
+            signature = decoderContext.DecodeSignature();
+        }
+        ulong gapNumber = decoderContext.DecodeULong();
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        {
+            decoderContext.Check(endPosition);
+        }
+        return new Vote(proposedBlockInfo, gapNumber, signature);
+    }
+
+    protected override Vote DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (rlpStream.IsNextItemNull())
+            return null;
+        int sequenceLength = rlpStream.ReadSequenceLength();
+        int endPosition = rlpStream.Position + sequenceLength;
+
+        BlockRoundInfo proposedBlockInfo = _xdcBlockInfoDecoder.Decode(rlpStream, rlpBehaviors);
+        Signature signature = null;
+        if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
+        {
+            signature = rlpStream.DecodeSignature();
+        }
+        ulong gapNumber = rlpStream.DecodeULong();
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        {
+            rlpStream.Check(endPosition);
+        }
+        return new Vote(proposedBlockInfo, gapNumber, signature);
+    }
+
+    public override void Encode(RlpStream stream, Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (item is null)
+        {
+            stream.EncodeNullObject();
+            return;
+        }
+        stream.StartSequence(GetContentLength(item, rlpBehaviors));
+        _xdcBlockInfoDecoder.Encode(stream, item.ProposedBlockInfo, rlpBehaviors);
+        if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
+            stream.Encode(item.Signature.BytesWithRecovery);
+        stream.Encode(item.GapNumber);
+    }
+
+    public Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (item is null)
+            return Rlp.OfEmptySequence;
+
+        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
+        Encode(rlpStream, item, rlpBehaviors);
+
+        return new Rlp(rlpStream.Data.ToArray());
+    }
+
+    public override int GetLength(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    }
+
+    private int GetContentLength(Vote item, RlpBehaviors rlpBehaviors)
+    {
+        return
+            ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0)
+            + Rlp.LengthOf(item.GapNumber)
+            + _xdcBlockInfoDecoder.GetLength(item.ProposedBlockInfo, rlpBehaviors);
+    }
+}

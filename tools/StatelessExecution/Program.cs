@@ -1,5 +1,5 @@
-﻿// See https://aka.ms/new-console-template for more information
-
+﻿// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using StatelessExecution;
 using System.CommandLine;
@@ -7,7 +7,5 @@ using System.CommandLine;
 RootCommand rootCommand = [];
 
 SetupCli.SetupExecute(rootCommand);
-CommandLineConfiguration cli = new(rootCommand);
 
-return await cli.InvokeAsync(args);
-
+return await rootCommand.Parse(args).InvokeAsync();

@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -21,7 +22,7 @@ public class OptimismTransactionProcessor(
     ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper,
     ICodeInfoRepository? codeInfoRepository
-    ) : TransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     private UInt256? _currentTxL1Cost;
 
@@ -45,7 +46,7 @@ public class OptimismTransactionProcessor(
 
         TransactionResult result = base.Execute(tx, tracer, opts);
 
-        if (!result && tx.IsDeposit() && result.Error != "block gas limit exceeded")
+        if (!result && tx.IsDeposit() && result.Error != TransactionResult.ErrorType.BlockGasLimitExceeded)
         {
             // deposit tx should be included
             WorldState.Restore(snapshot);
@@ -58,7 +59,7 @@ public class OptimismTransactionProcessor(
                 WorldState.IncrementNonce(tx.SenderAddress!);
             }
             header.GasUsed += tx.GasLimit;
-            tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.Error}");
+            tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.ErrorDescription}");
             result = TransactionResult.Ok;
         }
 
@@ -72,7 +73,7 @@ public class OptimismTransactionProcessor(
         senderReservedGasPayment = UInt256.Zero;
         blobBaseFee = UInt256.Zero;
 
-        bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
+        bool validate = ShouldValidateGas(tx, opts);
 
         UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
 
@@ -81,10 +82,10 @@ public class OptimismTransactionProcessor(
             return TransactionResult.InsufficientSenderBalance;
         }
 
-        if (validate && !tx.IsDeposit())
+        if (!tx.IsDeposit())
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-            if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
+            if (validate && !tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
                 return TransactionResult.MinerPremiumNegative;
@@ -122,7 +123,7 @@ public class OptimismTransactionProcessor(
             senderReservedGasPayment += l1Cost; // no overflow here, otherwise previous check would fail
         }
 
-        if (validate)
+        if (!senderReservedGasPayment.IsZero)
             WorldState.SubtractFromBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
 
         return TransactionResult.Ok;
@@ -172,7 +173,7 @@ public class OptimismTransactionProcessor(
     }
 
     protected override GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
+        in TransactionSubstate substate, in EthereumGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, EthereumGasPolicy floorGas)
     {
         // if deposit: skip refunds, skip tipping coinbase
         // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.

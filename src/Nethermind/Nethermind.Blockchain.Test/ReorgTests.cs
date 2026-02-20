@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -28,6 +29,7 @@ using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -49,7 +51,7 @@ public class ReorgTests
 
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
 
-        using (var _ = stateProvider.BeginScope(IWorldState.PreGenesis))
+        using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
         {
             if (finalSpec.WithdrawalsEnabled)
             {
@@ -73,10 +75,11 @@ public class ReorgTests
         ITransactionComparerProvider transactionComparerProvider =
             new TransactionComparerProvider(specProvider, _blockTree);
 
-        _blockTree = Build.A.BlockTree()
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree()
             .WithoutSettingHead
-            .WithSpecProvider(specProvider)
-            .TestObject;
+            .WithSpecProvider(specProvider);
+
+        _blockTree = blockTreeBuilder.TestObject;
 
         TxPool.TxPool txPool = new(
             ecdsa,
@@ -87,12 +90,13 @@ public class ReorgTests
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
             transactionComparerProvider.GetDefaultComparer());
-        BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
-        VirtualMachine virtualMachine = new(
+        BlockhashCache blockhashCache = new(blockTreeBuilder.HeaderStore, LimboLogs.Instance);
+        BlockhashProvider blockhashProvider = new(blockhashCache, stateProvider, LimboLogs.Instance);
+        EthereumVirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
             LimboLogs.Instance);
-        TransactionProcessor transactionProcessor = new(
+        EthereumTransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,
             specProvider,
             stateProvider,
@@ -100,7 +104,7 @@ public class ReorgTests
             new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
-        BlockProcessor blockProcessor = new BlockProcessor(
+        BlockProcessor blockProcessor = new(
             MainnetSpecProvider.Instance,
             Always.Valid,
             new RewardCalculator(specProvider),
@@ -108,15 +112,16 @@ public class ReorgTests
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            new BlockhashStore(MainnetSpecProvider.Instance, stateProvider),
+            new BlockhashStore(stateProvider),
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor));
-        BranchProcessor branchProcessor = new BranchProcessor(
+        BranchProcessor branchProcessor = new(
             blockProcessor,
             MainnetSpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            blockhashProvider,
             LimboLogs.Instance);
 
         _blockchainProcessor = new BlockchainProcessor(
@@ -127,7 +132,9 @@ public class ReorgTests
                 specProvider,
                 LimboLogs.Instance),
             stateReader,
-            LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            LimboLogs.Instance,
+            BlockchainProcessor.Options.Default,
+            Substitute.For<IProcessingStats>());
     }
 
     [OneTimeTearDown]

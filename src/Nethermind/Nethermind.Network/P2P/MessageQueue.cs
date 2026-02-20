@@ -47,16 +47,15 @@ namespace Nethermind.Network.P2P
             {
                 if (_currentRequest is null)
                 {
-                    if (data is IDisposable d)
-                    {
-                        d.Dispose();
-                    }
-
+                    data.TryDispose();
                     throw new SubprotocolException($"Received a response to {nameof(TMsg)} that has not been requested");
                 }
 
                 _currentRequest.ResponseSize = size;
-                _currentRequest.CompletionSource.SetResult(data);
+                if (!_currentRequest.CompletionSource.TrySetResult(data))
+                {
+                    data.TryDispose();
+                }
                 if (_requestQueue.TryDequeue(out _currentRequest))
                 {
                     _currentRequest!.StartMeasuringTime();

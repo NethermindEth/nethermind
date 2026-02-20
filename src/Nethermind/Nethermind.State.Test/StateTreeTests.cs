@@ -415,7 +415,7 @@ public class StateTreeTests
     }
 
     [Test]
-    public void Can_ask_about_root_hash_without_commiting()
+    public void Can_ask_about_root_hash_without_committing()
     {
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);

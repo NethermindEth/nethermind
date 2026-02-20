@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.Validators
         protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly long? _daoBlockNumber = specProvider.DaoBlockNumber;
         protected readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
         public static bool ValidateHash(BlockHeader header, out Hash256 actualHash)
         {
@@ -349,7 +349,7 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
 
-                ulong? expectedExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+                ulong? expectedExcessBlobGas = CalculateExcessBlobGas(parent, spec);
                 if (header.ExcessBlobGas != expectedExcessBlobGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
@@ -375,6 +375,11 @@ namespace Nethermind.Consensus.Validators
             }
 
             return true;
+        }
+
+        protected virtual ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec)
+        {
+            return BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
         }
     }
 }

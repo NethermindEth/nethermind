@@ -3,7 +3,6 @@
 
 using DotNetty.Buffers;
 using FluentAssertions;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;

@@ -7,11 +7,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class BlockInfoDecoder : IRlpStreamDecoder<BlockInfo>, IRlpValueDecoder<BlockInfo>
+    public sealed class BlockInfoDecoder : RlpValueDecoder<BlockInfo>
     {
         public static BlockInfoDecoder Instance { get; } = new();
 
-        public BlockInfo? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override BlockInfo? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -52,7 +52,7 @@ namespace Nethermind.Serialization.Rlp
             return blockInfo;
         }
 
-        public void Encode(RlpStream stream, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream stream, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -89,12 +89,12 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        public int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             return item is null ? Rlp.OfEmptySequence.Length : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
 
-        public BlockInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override BlockInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {

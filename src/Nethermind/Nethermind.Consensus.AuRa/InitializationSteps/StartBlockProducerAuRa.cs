@@ -26,7 +26,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
@@ -158,7 +157,8 @@ public class StartBlockProducerAuRa(
         }
 
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
-        ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
+        (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. _parameters.RewriteBytecodeTimestampParsed];
+        ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 
         var transactionExecutor = new BlockProcessor.BlockProductionTransactionsExecutor(
             new BuildUpTransactionProcessorAdapter(txProcessor),
@@ -259,15 +259,16 @@ public class StartBlockProducerAuRa(
         {
             ReadOnlyBlockTree readOnlyBlockTree = blockTree.AsReadOnly();
 
-            IWorldState worldState = worldStateManager.CreateResettableWorldState();
+            IWorldStateScopeProvider worldStateScopeProvider = worldStateManager.CreateResettableWorldState();
             ILifetimeScope innerLifetime = lifetimeScope.BeginLifetimeScope((builder) => builder
-                .AddSingleton<IWorldState>(worldState)
+                .AddSingleton<IWorldStateScopeProvider>(worldStateScopeProvider)
                 .AddSingleton<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
                 .AddSingleton<IBlockProcessor, ITransactionProcessor, IWorldState>(CreateBlockProcessor)
                 .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>());
             lifetimeScope.Disposer.AddInstanceForAsyncDisposal(innerLifetime);
 
             IBlockchainProcessor chainProcessor = innerLifetime.Resolve<IBlockchainProcessor>();
+            IWorldState worldState = innerLifetime.Resolve<IWorldState>();
 
             return new BlockProducerEnv(readOnlyBlockTree, chainProcessor, worldState, CreateTxSourceForProducer());
         }

@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -57,7 +56,7 @@ public class DataFeed
         CancellationToken lifetime)
     {
         ArgumentNullException.ThrowIfNull(txPool);
-        ArgumentNullException.ThrowIfNull(syncPeerPool);
+        ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(receiptFinder);
         ArgumentNullException.ThrowIfNull(blockTree);
         ArgumentNullException.ThrowIfNull(syncPeerPool);
@@ -426,7 +425,7 @@ public class DataFeed
         public UInt256 EffectiveGasPrice { get; set; }
         public Address? ContractAddress { get; set; }
         public LogEntryForWeb[] Logs { get; set; }
-        public long Status { get; set; }
+        public long? Status { get; set; }
         public UInt256 BlobGasPrice { get; set; }
         public ulong BlobGasUsed { get; set; }
     }

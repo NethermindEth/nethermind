@@ -15,6 +15,8 @@ namespace Nethermind.Serialization.Ssz;
 /// </summary>
 public static partial class Ssz
 {
+    private const int VarOffsetSize = sizeof(uint);
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Encode(Span<byte> span, byte[] value, ref int offset)
     {

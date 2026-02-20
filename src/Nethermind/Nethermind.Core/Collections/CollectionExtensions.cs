@@ -16,24 +16,26 @@ namespace Nethermind.Core.Collections
 
         public static void AddRange<T>(this ICollection<T> list, IEnumerable<T> items)
         {
-            if (items is T[] array)
+            switch (items)
             {
-                list.AddRange(array);
-            }
-            else if (items is IList<T> listItems)
-            {
-                list.AddRange(listItems);
-            }
-            else if (items is IReadOnlyList<T> readOnlyList)
-            {
-                list.AddRange(readOnlyList);
-            }
-            else
-            {
-                foreach (T item in items)
-                {
-                    list.Add(item);
-                }
+                case T[] array:
+                    list.AddRange(array);
+                    break;
+                case IList<T> listItems:
+                    list.AddRange(listItems);
+                    break;
+                case IReadOnlyList<T> readOnlyList:
+                    list.AddRange(readOnlyList);
+                    break;
+                default:
+                    {
+                        foreach (T item in items)
+                        {
+                            list.Add(item);
+                        }
+
+                        break;
+                    }
             }
         }
 
@@ -44,6 +46,14 @@ namespace Nethermind.Core.Collections
             for (int index = 0; index < count; index++)
             {
                 list.Add(items[index]);
+            }
+        }
+
+        public static void AddOrUpdateRange<TKey, TValue>(this IDictionary<TKey, TValue> dict, IEnumerable<KeyValuePair<TKey, TValue>> items)
+        {
+            foreach (KeyValuePair<TKey, TValue> kv in items)
+            {
+                dict[kv.Key] = kv.Value;
             }
         }
 

@@ -16,21 +16,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return DeserializeHashes(nettyRlpStream);
         }
 
-        protected static Hash256[] DeserializeHashes(RlpStream rlpStream)
+        protected static Hash256[] DeserializeHashes(RlpStream rlpStream, RlpLimit? limit = null)
         {
-            Hash256[] hashes = rlpStream.DecodeArray(static itemContext => itemContext.DecodeKeccak());
+            Hash256[] hashes = rlpStream.DecodeArray(static itemContext => itemContext.DecodeKeccak(), limit: limit);
             return hashes;
         }
 
-        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer)
+        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null)
         {
             NettyRlpStream nettyRlpStream = new(byteBuffer);
-            return DeserializeHashesArrayPool(nettyRlpStream);
+            return DeserializeHashesArrayPool(nettyRlpStream, limit);
         }
 
-        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(RlpStream rlpStream)
+        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(RlpStream rlpStream, RlpLimit? limit = null)
         {
-            return rlpStream.DecodeArrayPoolList(static itemContext => itemContext.DecodeKeccak());
+            return rlpStream.DecodeArrayPoolList(static itemContext => itemContext.DecodeKeccak(), limit: limit);
         }
 
         public void Serialize(IByteBuffer byteBuffer, T message)

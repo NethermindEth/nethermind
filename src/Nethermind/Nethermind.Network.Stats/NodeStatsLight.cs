@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Stats.Model;
-using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Stats;
 

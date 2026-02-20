@@ -91,17 +91,37 @@ namespace Nethermind.Blockchain.Contracts.Json
 
             static AbiType ParseAbiType(string type)
             {
-                bool isArray = false;
-                if (type.EndsWith("[]"))
-                {
-                    isArray = true;
-                    type = type[..^2];
-                }
-
-                if (type == "tuple")
+                if (type == "tuple" || type.StartsWith("tuple["))
                 {
                     return new AbiTuple();
                 }
+
+                // Check for array suffix: [N] for fixed-size or [] for dynamic
+                int lastBracket = type.LastIndexOf('[');
+                if (lastBracket >= 0 && type.EndsWith(']'))
+                {
+                    string bracketContent = type[(lastBracket + 1)..^1];
+                    string elementTypeStr = type[..lastBracket];
+
+                    switch (bracketContent.Length)
+                    {
+                        case > 0 when int.TryParse(bracketContent, out int length):
+                            {
+                                // Fixed-size array: type[N]
+                                AbiType elementType = ParseAbiType(elementTypeStr);
+                                return new AbiFixedLengthArray(elementType, length);
+                            }
+                        case 0:
+                            {
+                                // Dynamic array: type[]
+                                AbiType elementType = ParseAbiType(elementTypeStr);
+                                return new AbiArray(elementType);
+                            }
+                        default:
+                            throw new ArgumentException($"Invalid array syntax in ABI type '{type}'.", nameof(type));
+                    }
+                }
+
                 if (type.StartsWith('(') && type.EndsWith(')'))
                 {
                     string[] types = type[1..^1].Split(',');
@@ -113,10 +133,7 @@ namespace Nethermind.Blockchain.Contracts.Json
                     return ParseTuple(types);
                 }
 
-                AbiType value = GetType(type);
-
-                return isArray ? new AbiArray(value) : value;
-
+                return GetType(type);
             }
 
             static AbiType ParseTuple(string[] types)

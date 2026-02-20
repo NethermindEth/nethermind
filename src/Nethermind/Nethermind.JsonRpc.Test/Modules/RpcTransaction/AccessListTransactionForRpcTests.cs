@@ -81,7 +81,7 @@ public static class AccessListTransactionForRpcTests
         json.GetProperty("value").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("input").GetString().Should().MatchRegex("^0x[0-9a-f]*$");
         json.GetProperty("gasPrice").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        // Suprising inconsistency in `FluentAssertions` where `AllSatisfy` fails on empty collections.
+        // Surprising inconsistency in `FluentAssertions` where `AllSatisfy` fails on empty collections.
         // This requires wrapping the assertion in a condition.
         // See: https://github.com/fluentassertions/fluentassertions/discussions/2143#discussioncomment-9677309
         var accessList = json.GetProperty("accessList").EnumerateArray();

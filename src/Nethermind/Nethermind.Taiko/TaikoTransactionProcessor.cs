@@ -5,6 +5,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -21,19 +22,26 @@ public class TaikoTransactionProcessor(
     IVirtualMachine virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager? logManager
-    ) : TransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in IntrinsicGas intrinsicGas)
+        in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
         => base.ValidateStatic(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, in intrinsicGas);
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-                in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
-        => base.BuyGas(tx, spec, tracer, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
+        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
+        out UInt256 blobBaseFee)
+    {
+        if (tx.IsAnchorTx)
+        {
+            premiumPerGas = UInt256.Zero;
+            senderReservedGasPayment = UInt256.Zero;
+            blobBaseFee = UInt256.Zero;
+            return TransactionResult.Ok;
+        }
 
-    protected override GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
-        => base.Refund(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);
+        return base.BuyGas(tx, spec, tracer, opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
+    }
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
         in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
@@ -52,11 +60,12 @@ public class TaikoTransactionProcessor(
 
         if (!tx.IsAnchorTx && !baseFees.IsZero && spec.FeeCollector is not null)
         {
-            if (((ITaikoReleaseSpec)spec).IsOntakeEnabled)
+            var taikoSpec = (ITaikoReleaseSpec)spec;
+            if (taikoSpec.IsOntakeEnabled || taikoSpec.IsShastaEnabled)
             {
-                byte basefeeSharingPctg = header.DecodeOntakeExtraData() ?? 0;
+                byte basefeeSharingPct = (taikoSpec.IsShastaEnabled ? header.DecodeShastaBasefeeSharingPctg() : header.DecodeOntakeExtraData()) ?? 0;
 
-                UInt256 feeCoinbase = baseFees * basefeeSharingPctg / 100;
+                UInt256 feeCoinbase = baseFees * basefeeSharingPct / 100;
 
                 if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
                 {
@@ -82,5 +91,13 @@ public class TaikoTransactionProcessor(
             WorldState.CreateAccountIfNotExists(tx.SenderAddress!, UInt256.Zero, UInt256.Zero);
 
         return base.IncrementNonce(tx, header, spec, tracer, opts);
+    }
+
+    protected override void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
+    {
+        if (!tx.IsAnchorTx)
+        {
+            base.PayRefund(tx, refundAmount, spec);
+        }
     }
 }

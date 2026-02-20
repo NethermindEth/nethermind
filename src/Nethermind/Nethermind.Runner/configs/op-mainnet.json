@@ -15,8 +15,8 @@
     "FastSyncCatchUpHeightDelta": "10000000000",
     "AncientBodiesBarrier": 105235063,
     "AncientReceiptsBarrier": 105235063,
-    "PivotNumber": 141700000,
-    "PivotHash": "0x05cc432a277d3d0c04d934c51f44a540d474e1f50f0546ec3964dd07f48fbdfb"
+    "PivotNumber": 147750000,
+    "PivotHash": "0xc5ca711298ccd110764eff891270897df703ba081239562286b263fbc046755e"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"

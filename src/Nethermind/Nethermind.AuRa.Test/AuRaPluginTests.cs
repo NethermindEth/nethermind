@@ -11,10 +11,8 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -27,7 +25,7 @@ namespace Nethermind.AuRa.Test
     public class AuRaPluginTests
     {
         [Test]
-        public void Init_when_not_AuRa_doesnt_trow()
+        public void Init_when_not_AuRa_does_not_throw()
         {
             ChainSpec chainSpec = new();
             AuRaPlugin auRaPlugin = new(chainSpec);

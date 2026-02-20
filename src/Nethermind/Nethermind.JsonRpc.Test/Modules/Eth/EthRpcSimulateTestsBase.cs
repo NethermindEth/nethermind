@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -174,6 +173,7 @@ public class EthRpcSimulateTestsBase
         SystemTransaction transaction = new() { Data = bytes, To = toAddress, SenderAddress = senderAddress };
         transaction.Hash = transaction.CalculateHash();
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
+        transactionForRpc.Gas = null;
         ResultWrapper<string> mainChainResult = testRpcBlockchain.EthRpcModule.eth_call(transactionForRpc, BlockParameter.Pending);
         return ParseEcRecoverAddress(Bytes.FromHexString(mainChainResult.Data));
     }

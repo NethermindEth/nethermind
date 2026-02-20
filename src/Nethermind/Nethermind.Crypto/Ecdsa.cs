@@ -21,7 +21,7 @@ namespace Nethermind.Crypto
                 InvalidPrivateKey();
             }
 
-            byte[] signatureBytes = SpanSecP256k1.SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId);
+            byte[] signatureBytes = SecP256k1.SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId);
             Signature signature = new(signatureBytes, recoveryId);
 
 #if DEBUG
@@ -40,7 +40,7 @@ namespace Nethermind.Crypto
         public PublicKey? RecoverPublicKey(Signature signature, in ValueHash256 message)
         {
             Span<byte> publicKey = stackalloc byte[65];
-            bool success = SpanSecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
+            bool success = SecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
             if (!success)
             {
                 return null;
@@ -52,7 +52,7 @@ namespace Nethermind.Crypto
         public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, in ValueHash256 message)
         {
             Span<byte> publicKey = stackalloc byte[33];
-            bool success = SpanSecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, true);
+            bool success = SecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, true);
             if (!success)
             {
                 return null;

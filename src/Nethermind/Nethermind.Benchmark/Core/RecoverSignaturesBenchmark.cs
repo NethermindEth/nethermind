@@ -10,9 +10,6 @@ using Nethermind.Specs;
 using System;
 using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
-using Nethermind.TxPool;
-using Nethermind.Int256;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -162,13 +159,13 @@ namespace Nethermind.Benchmarks.Core
         }
 
         [Benchmark]
-        public void Recover100TxSignatureswith100AuthoritySignatures()
+        public void Recover100TxSignaturesWith100AuthoritySignatures()
         {
             _sut.RecoverData(_block100TxWith100AuthSigs);
         }
 
         [Benchmark]
-        public void Recover100TxSignatureswith10AuthoritySignatures()
+        public void Recover100TxSignaturesWith10AuthoritySignatures()
         {
             _sut.RecoverData(_block100TxWith10AuthSigs);
         }

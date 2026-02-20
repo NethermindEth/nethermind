@@ -79,7 +79,7 @@ public class AuraWithdrawalProcessorTests
             .ExecuteWithdrawals(
                 Arg.Any<BlockHeader>(),
                 Arg.Any<UInt256>(),
-                Arg.Any<ulong[]>(),
-                Arg.Any<Address[]>());
+                Arg.Any<IList<ulong>>(),
+                Arg.Any<IList<Address>>());
     }
 }

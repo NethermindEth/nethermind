@@ -108,7 +108,7 @@ public class ReceiptsSyncFeedTests
         _syncConfig = new TestSyncConfig
         {
             FastSync = true,
-            PivotNumber = _pivotNumber.ToString(),
+            PivotNumber = _pivotNumber,
             PivotHash = Keccak.Zero.ToString()
         };
         _blockTree.SyncPivot.Returns((_pivotNumber, Keccak.Zero));
@@ -255,12 +255,12 @@ public class ReceiptsSyncFeedTests
     [TestCase(1, 1024, false, null, false)]
     [TestCase(1, 1024, true, null, false)]
     [TestCase(1, 1024, false, 0, false)]
-    public void When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
+    public void When_finished_sync_with_old_default_barrier_then_finishes_immediately(
         long AncientBarrierInConfig,
         long? lowestInsertedReceiptBlockNumber,
         bool JustStarted,
         long? previousBarrierInDb,
-        bool shouldfinish)
+        bool shouldFinish)
     {
         _syncPointers = Substitute.For<ISyncPointers>();
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
@@ -271,7 +271,7 @@ public class ReceiptsSyncFeedTests
             _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         LoadScenario(_256BodiesWithOneTxEach);
         _syncPointers.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);
-        _feed.IsFinished.Should().Be(shouldfinish);
+        _feed.IsFinished.Should().Be(shouldFinish);
     }
 
     private void LoadScenario(Scenario scenario)
@@ -282,7 +282,7 @@ public class ReceiptsSyncFeedTests
     private void LoadScenario(Scenario scenario, ISyncConfig syncConfig)
     {
         _syncConfig = syncConfig;
-        _syncConfig.PivotNumber = _pivotNumber.ToString();
+        _syncConfig.PivotNumber = _pivotNumber;
         _syncConfig.PivotHash = scenario.Blocks.Last()?.Hash?.ToString();
         _blockTree.SyncPivot.Returns((_pivotNumber, scenario.Blocks.Last()?.Hash!));
         _syncPointers = Substitute.For<ISyncPointers>();
@@ -412,7 +412,7 @@ public class ReceiptsSyncFeedTests
             FastSync = true,
             DownloadBodiesInFastSync = true,
             DownloadReceiptsInFastSync = true,
-            PivotNumber = "1",
+            PivotNumber = 1,
         };
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
@@ -433,7 +433,7 @@ public class ReceiptsSyncFeedTests
             FastSync = true,
             DownloadBodiesInFastSync = false,
             DownloadReceiptsInFastSync = true,
-            PivotNumber = "1",
+            PivotNumber = 1,
         };
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);

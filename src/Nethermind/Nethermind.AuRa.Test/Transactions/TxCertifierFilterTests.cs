@@ -8,24 +8,14 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.ExecutionRequests;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -120,14 +110,14 @@ public class TxCertifierFilterTests
     }
 
     [Test]
-    public async Task registry_contract_returns_not_found_when_key_doesnt_exist()
+    public async Task registry_contract_returns_not_found_when_key_does_not_exist()
     {
         using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
         chain.RegisterContract.TryGetAddress(chain.BlockTree.Head.Header, "not existing key", out Address _).Should().BeFalse();
     }
 
     [Test]
-    public async Task registry_contract_returns_not_found_when_contract_doesnt_exist()
+    public async Task registry_contract_returns_not_found_when_contract_does_not_exist()
     {
         using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
         RegisterContract contract = new(AbiEncoder.Instance, Address.FromNumber(1000), chain.ReadOnlyTxProcessingEnvFactory.Create());

@@ -3,7 +3,7 @@
 
 namespace Nethermind.Synchronization.Reporting
 {
-    public class SyncReportSymmary
+    public class SyncReportSummary
     {
         public string CurrentStage { get; set; }
     }

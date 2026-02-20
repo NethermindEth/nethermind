@@ -12,7 +12,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -183,6 +182,8 @@ public class AddressTests
     [TestCase(Address.SystemUserHex, false)]
     [TestCase("2" + Address.SystemUserHex, false)]
     [TestCase("2" + Address.SystemUserHex, true)]
+    [TestCase("0x00" + Address.SystemUserHex, true)]
+    [TestCase("0x00fffffffffffffffffffffffffffffffffffffffe", true)]
     public void Parse_variable_length(string addressHex, bool allowOverflow)
     {
         var result = Address.TryParseVariableLength(addressHex, out Address? address, allowOverflow);

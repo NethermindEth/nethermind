@@ -7,14 +7,14 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class BlockDecoder(IHeaderDecoder headerDecoder) : IRlpValueDecoder<Block>, IRlpStreamDecoder<Block>
+    public sealed class BlockDecoder(IHeaderDecoder headerDecoder) : RlpValueDecoder<Block>
     {
         private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? throw new ArgumentNullException(nameof(headerDecoder));
-        private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
+        private readonly BlockBodyDecoder _blockBodyDecoder = new BlockBodyDecoder(headerDecoder);
 
         public BlockDecoder() : this(new HeaderDecoder()) { }
 
-        public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Block? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.Length == 0)
             {
@@ -40,6 +40,12 @@ namespace Nethermind.Serialization.Rlp
 
             (int txs, int uncles, int? withdrawals) = _blockBodyDecoder.GetBodyComponentLength(item.Body);
 
+            byte[][]? encodedTxs = item.EncodedTransactions;
+            if (encodedTxs is not null)
+            {
+                txs = GetPreEncodedTxLength(item.Transactions, encodedTxs);
+            }
+
             int contentLength =
                 headerLength +
                 Rlp.LengthOfSequence(txs) +
@@ -48,7 +54,17 @@ namespace Nethermind.Serialization.Rlp
             return (contentLength, txs, uncles, withdrawals);
         }
 
-        public int GetLength(Block? item, RlpBehaviors rlpBehaviors)
+        private static int GetPreEncodedTxLength(Transaction[] txs, byte[][] encodedTxs)
+        {
+            int sum = 0;
+            for (int i = 0; i < encodedTxs.Length; i++)
+            {
+                sum += TxDecoder.GetWrappedTxLength(txs[i].Type, encodedTxs[i].Length);
+            }
+            return sum;
+        }
+
+        public override int GetLength(Block? item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
@@ -58,7 +74,7 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
 
-        public Block? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Block? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -69,7 +85,7 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = decoderContext.ReadSequenceLength();
             int blockCheck = decoderContext.Position + sequenceLength;
 
-            BlockHeader header = Rlp.Decode<BlockHeader>(ref decoderContext);
+            BlockHeader header = _headerDecoder.Decode(ref decoderContext);
             BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck);
 
             Block block = new(header, body)
@@ -92,7 +108,7 @@ namespace Nethermind.Serialization.Rlp
             return new(rlpStream.Data.ToArray());
         }
 
-        public void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -102,11 +118,23 @@ namespace Nethermind.Serialization.Rlp
 
             (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
-            stream.Encode(item.Header);
+            _headerDecoder.Encode(stream, item.Header);
             stream.StartSequence(txsLength);
-            for (int i = 0; i < item.Transactions.Length; i++)
+
+            byte[][]? encodedTxs = item.EncodedTransactions;
+            if (encodedTxs is not null)
             {
-                stream.Encode(item.Transactions[i]);
+                for (int i = 0; i < encodedTxs.Length; i++)
+                {
+                    TxDecoder.WriteWrappedFormat(stream, item.Transactions[i].Type, encodedTxs[i]);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < item.Transactions.Length; i++)
+                {
+                    stream.Encode(item.Transactions[i]);
+                }
             }
 
             stream.StartSequence(unclesLength);
@@ -126,7 +154,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public static ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
+        public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
         {
             Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory, true);
 
@@ -139,7 +167,7 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = decoderContext.ReadSequenceLength();
             int blockCheck = decoderContext.Position + sequenceLength;
 
-            BlockHeader header = Rlp.Decode<BlockHeader>(ref decoderContext);
+            BlockHeader header = _headerDecoder.Decode(ref decoderContext);
 
             int contentLength = decoderContext.ReadSequenceLength();
             int transactionCount = decoderContext.PeekNumberOfItemsRemaining(decoderContext.Position + contentLength);

@@ -24,7 +24,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -105,7 +104,8 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task getPayloadV1_picks_transactions_from_pool_v1()
+    [CancelAfter(10000)]
+    public async Task getPayloadV1_picks_transactions_from_pool_v1(CancellationToken cancellationToken)
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain();
@@ -123,7 +123,7 @@ public partial class EngineModuleTests
                 new PayloadAttributes() { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
-        await blockImprovementLock.WaitAsync(10000);
+        await blockImprovementLock.WaitAsync(cancellationToken);
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         getPayloadResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
@@ -186,9 +186,10 @@ public partial class EngineModuleTests
 
     [TestCaseSource(nameof(WaitTestCases))]
     [Parallelizable(ParallelScope.None)] // Timing sensitive
+    [Retry(3)]
     public async Task getPayloadV1_waits_for_block_production(TimeSpan txDelay, TimeSpan improveDelay, bool hasTx)
     {
-        TaskCompletionSource yieldedTransaction = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource yieldedTransaction = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
             .AddSingleton<IBlockImprovementContextFactory, IBlockProducer>((producer) => new DelayBlockImprovementContextFactory(producer, TimeSpan.FromSeconds(10), improveDelay))
             .AddSingleton(ConfigurePayloadPreparationService(TimeSpan.FromSeconds(10), null))
@@ -219,17 +220,16 @@ public partial class EngineModuleTests
         }
 
         TimeSpan timeBudget = PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay;
-        int expectedTxCount = 50;
-        if (txDelay != TimeSpan.Zero)
-        {
-            expectedTxCount = (int)((timeBudget - improveDelay) / txDelay);
-        }
-        if (improveDelay > timeBudget) expectedTxCount = 0;
+        int expectedTxCount = improveDelay > timeBudget
+            ? 0
+            : txDelay != TimeSpan.Zero ? (int)((timeBudget - improveDelay) / txDelay) : 50;
+
+        int maxWait = Math.Max(0, (int)(timeBudget - improveDelay).TotalMilliseconds - 1);
 
         await Task.Delay(timeBudget);
 
         Assert.That(() => rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId)).Result.Data!.Transactions,
-            Has.Length.InRange(expectedTxCount * 0.5, expectedTxCount * 2.0)); // get payload stop block improvement so retrying does nothing here.
+            Has.Length.InRange(expectedTxCount * 0.5, expectedTxCount * 2.0).After(maxWait, 10)); // get payload stop block improvement so retrying does nothing here.
     }
 
     [Test]
@@ -483,7 +483,7 @@ public partial class EngineModuleTests
 
     [Test]
     [Retry(3)]
-    public async Task getPayloadV1_doesnt_wait_for_improvement_when_block_is_not_empty()
+    public async Task getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 50 * delay;

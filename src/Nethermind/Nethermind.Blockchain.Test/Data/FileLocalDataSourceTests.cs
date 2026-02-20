@@ -16,6 +16,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Data
 {
+    [Parallelizable(ParallelScope.All)]
     public class FileLocalDataSourceTests
     {
         [Test, MaxTime(Timeout.MaxTestTime)]

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -35,26 +34,18 @@ namespace Nethermind.JsonRpc.Modules
 
             blockParameter ??= BlockParameter.Latest;
 
-            BlockHeader header;
-            if (blockParameter.RequireCanonical)
+            BlockHeader header = blockFinder.FindHeader(blockParameter);
+            if (blockParameter.RequireCanonical && header is null && !allowNulls && blockParameter.BlockHash is not null)
             {
-                header = blockFinder.FindHeader(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
-                if (header is null && !allowNulls)
+                header = blockFinder.FindHeader(blockParameter.BlockHash);
+                if (header is not null)
                 {
-                    header = blockFinder.FindHeader(blockParameter.BlockHash);
-                    if (header is not null)
-                    {
-                        return new SearchResult<BlockHeader>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
-                    }
+                    return new SearchResult<BlockHeader>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                 }
-            }
-            else
-            {
-                header = blockFinder.FindHeader(blockParameter);
             }
 
             return header is null && !allowNulls
-                ? new SearchResult<BlockHeader>($"{blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found", ErrorCodes.ResourceNotFound)
+                ? new SearchResult<BlockHeader>($"{blockParameter} could not be found", ErrorCodes.ResourceNotFound)
                 : new SearchResult<BlockHeader>(header);
         }
 
@@ -62,22 +53,14 @@ namespace Nethermind.JsonRpc.Modules
         {
             blockParameter ??= BlockParameter.Latest;
 
-            Block block;
-            if (blockParameter.RequireCanonical)
+            Block block = blockFinder.FindBlock(blockParameter);
+            if (blockParameter.RequireCanonical && block is null && !allowNulls && blockParameter.BlockHash is not null)
             {
-                block = blockFinder.FindBlock(blockParameter.BlockHash!, BlockTreeLookupOptions.RequireCanonical);
-                if (block is null && !allowNulls)
+                BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
+                if (header is not null)
                 {
-                    BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
-                    if (header is not null)
-                    {
-                        return new SearchResult<Block>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
-                    }
+                    return new SearchResult<Block>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                 }
-            }
-            else
-            {
-                block = blockFinder.FindBlock(blockParameter);
             }
 
             if (block is null)
@@ -89,13 +72,15 @@ namespace Nethermind.JsonRpc.Modules
 
                 if (blockFinder.IsBlockPruned(blockParameter))
                 {
-                    return new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
+                    return new SearchResult<Block>(
+                        $"pruned history unavailable for block {blockParameter}",
+                        ErrorCodes.PrunedHistoryUnavailable);
                 }
 
                 if (!allowNulls)
                 {
                     return new SearchResult<Block>(
-                        $"Block {blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found",
+                        $"Block {blockParameter} could not be found",
                         ErrorCodes.ResourceNotFound);
                 }
             }

@@ -27,5 +27,5 @@ public class SpecProviderDecorator(ISpecProvider baseSpecProvider) : ISpecProvid
 
     public ForkActivation[] TransitionActivations => baseSpecProvider.TransitionActivations;
 
-    public virtual IReleaseSpec GetSpecInternal(ForkActivation forkActivation) => baseSpecProvider.GetSpecInternal(forkActivation);
+    public virtual IReleaseSpec GetSpec(ForkActivation forkActivation) => baseSpecProvider.GetSpec(forkActivation);
 }

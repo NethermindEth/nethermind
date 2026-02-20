@@ -13,7 +13,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Analytics\Nethermind.Analytics.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Flashbots\Nethermind.Flashbots.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Hive\Nethermind.Hive.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Api\Nethermind.Api.csproj" />

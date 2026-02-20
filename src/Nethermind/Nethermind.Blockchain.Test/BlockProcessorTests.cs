@@ -12,13 +12,11 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -34,10 +32,11 @@ using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.State;
+using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class BlockProcessorTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -45,7 +44,7 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new BlockProcessor(HoleskySpecProvider.Instance,
+        BlockProcessor processor = new(HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
@@ -56,11 +55,12 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor));
-        BranchProcessor branchProcessor = new BranchProcessor(
+        BranchProcessor branchProcessor = new(
             processor,
-            HoleskySpecProvider.Instance,
+            HoodiSpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -79,8 +79,8 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new BlockProcessor(
-            HoleskySpecProvider.Instance,
+        BlockProcessor processor = new(
+            HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             new RewardCalculator(MainnetSpecProvider.Instance),
             new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
@@ -91,11 +91,12 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor));
-        BranchProcessor branchProcessor = new BranchProcessor(
+        BranchProcessor branchProcessor = new(
             processor,
-            HoleskySpecProvider.Instance,
+            HoodiSpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
@@ -127,7 +128,7 @@ public class BlockProcessorTests
     public async Task Process_long_running_branch(int blocksAmount)
     {
         Address address = TestItem.Addresses[0];
-        TestSingleReleaseSpecProvider spec = new TestSingleReleaseSpecProvider(ConstantinopleFix.Instance);
+        TestSingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance);
         TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(spec);
         testRpc.TestWallet.UnlockAccount(address, new SecureString());

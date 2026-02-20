@@ -7,7 +7,6 @@ using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Specs.Forks;
 
 namespace Evm.T8n;
 
@@ -23,7 +22,7 @@ public static class T8nValidator
 
     private static void ApplyLondonChecks(EnvJson env, IReleaseSpec spec)
     {
-        if (spec is not London) return;
+        if (!spec.IsEip1559Enabled) return;
         if (env.CurrentBaseFee is not null) return;
 
         if (!env.ParentBaseFee.HasValue || env.CurrentNumber == 0)
@@ -39,7 +38,7 @@ public static class T8nValidator
 
     private static void ApplyShanghaiChecks(EnvJson env, IReleaseSpec spec)
     {
-        if (spec is not Shanghai) return;
+        if (!spec.IsEip4895Enabled) return;
         if (env.Withdrawals is null)
         {
             throw new T8nException("Shanghai config but missing 'withdrawals' in env section",
@@ -49,7 +48,7 @@ public static class T8nValidator
 
     private static void ApplyCancunChecks(EnvJson env, IReleaseSpec spec)
     {
-        if (spec is not Cancun)
+        if (!spec.IsEip4844Enabled)
         {
             env.ParentBeaconBlockRoot = null;
             return;
@@ -69,7 +68,7 @@ public static class T8nValidator
             if (env.CurrentRandom is null)
                 throw new T8nException("post-merge requires currentRandom to be defined in env",
                     T8nErrorCodes.ErrorConfig);
-            if (env.CurrentDifficulty?.IsZero ?? false)
+            if (env.CurrentDifficulty is not null && !env.CurrentDifficulty.Value.IsZero)
                 throw new T8nException("post-merge difficulty must be zero (or omitted) in env",
                     T8nErrorCodes.ErrorConfig);
             return;

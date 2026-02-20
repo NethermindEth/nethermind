@@ -22,8 +22,8 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
 
     /// <inheritdoc/>
     /// <param name="transactions">The transactions to build the trie of.</param>
-    public TxTrie(ReadOnlySpan<Transaction> transactions, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
-        : base(transactions, canBuildProof, bufferPool: bufferPool) { }
+    public TxTrie(ReadOnlySpan<Transaction> transactions, bool canBuildProof = false, ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
+        : base(transactions, canBuildProof, bufferPool: bufferPool, canBeParallel: canBeParallel) { }
 
     protected override void Initialize(ReadOnlySpan<Transaction> list)
     {
@@ -57,20 +57,41 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         }
     }
 
+    private void InitializeFromEncodedTransactions(ReadOnlySpan<byte[]> list)
+    {
+        for (int key = 0; key < list.Length; key++)
+        {
+            SpanSource keyBuffer = key.EncodeToSpanSource(_bufferPool);
+            Set(keyBuffer.Span, list[key]);
+        }
+    }
+
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowSpanSourceNotCappedArray() => throw new InvalidOperationException("Encode to SpanSource failed to get a CappedArray.");
 
     public static byte[][] CalculateProof(ReadOnlySpan<Transaction> transactions, int index)
     {
-        using TrackingCappedArrayPool cappedArray = new(transactions.Length * 4);
-        byte[][] rootHash = new TxTrie(transactions, canBuildProof: true, bufferPool: cappedArray).BuildProof(index);
+        bool canBeParallel = transactions.Length > MinItemsForParallelRootHash;
+        using TrackingCappedArrayPool cappedArray = new(transactions.Length * 4, canBeParallel: canBeParallel);
+        byte[][] rootHash = new TxTrie(transactions, canBuildProof: true, bufferPool: cappedArray, canBeParallel: canBeParallel).BuildProof(index);
         return rootHash;
     }
 
     public static Hash256 CalculateRoot(ReadOnlySpan<Transaction> transactions)
     {
-        using TrackingCappedArrayPool cappedArray = new(transactions.Length * 4);
-        Hash256 rootHash = new TxTrie(transactions, canBuildProof: false, bufferPool: cappedArray).RootHash;
+        bool canBeParallel = transactions.Length > MinItemsForParallelRootHash;
+        using TrackingCappedArrayPool cappedArray = new(transactions.Length * 4, canBeParallel: canBeParallel);
+        Hash256 rootHash = new TxTrie(transactions, canBuildProof: false, bufferPool: cappedArray, canBeParallel: canBeParallel).RootHash;
         return rootHash;
+    }
+
+    public static Hash256 CalculateRoot(ReadOnlySpan<byte[]> encodedTransactions)
+    {
+        bool canBeParallel = encodedTransactions.Length > MinItemsForParallelRootHash;
+        using TrackingCappedArrayPool cappedArray = new(encodedTransactions.Length * 4, canBeParallel: canBeParallel);
+        TxTrie txTrie = new(ReadOnlySpan<Transaction>.Empty, canBuildProof: false, bufferPool: cappedArray, canBeParallel: canBeParallel);
+        txTrie.InitializeFromEncodedTransactions(encodedTransactions);
+        txTrie.UpdateRootHash(canBeParallel);
+        return txTrie.RootHash;
     }
 }

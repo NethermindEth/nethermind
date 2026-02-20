@@ -4,8 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -21,13 +19,14 @@ public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 
     public static string Name => "ID";
 
+    // Caching disabled: the copy operation is O(n) and the cache key hash is also O(n),
+    // making caching strictly worse than direct execution for this precompile.
+    public bool SupportsCaching => false;
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => 15L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         3L * EvmCalculations.Div32Ceiling((ulong)inputData.Length);
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return (inputData.ToArray(), true);
-    }
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => inputData.ToArray();
 }

@@ -20,7 +20,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Evm;
 
 namespace Nethermind.AuRa.Test.Reward
 {

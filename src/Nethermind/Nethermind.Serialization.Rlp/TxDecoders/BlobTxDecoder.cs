@@ -56,9 +56,9 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         {
             int networkWrapperLength = decoderContext.ReadSequenceLength();
             networkWrapperCheck = decoderContext.Position + networkWrapperLength;
-            int rlpRength = decoderContext.PeekNextRlpLength();
+            int rlpLength = decoderContext.PeekNextRlpLength();
             txSequenceStart = decoderContext.Position;
-            transactionSequence = decoderContext.Peek(rlpRength);
+            transactionSequence = decoderContext.Peek(rlpLength);
         }
 
         base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors | RlpBehaviors.ExcludeHashes);

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 
@@ -12,6 +13,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.Producers
 {
+    [DebuggerDisplay("{Hash} ({Number})")]
     public class BlockToProduce : Block
     {
         private IEnumerable<Transaction>? _transactions;

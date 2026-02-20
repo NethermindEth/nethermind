@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ServiceStopper;

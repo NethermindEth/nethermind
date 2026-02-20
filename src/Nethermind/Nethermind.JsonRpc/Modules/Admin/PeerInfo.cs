@@ -6,7 +6,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
-using Nethermind.Serialization.Json;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.JsonRpc.Modules.Admin.Utils;
@@ -19,7 +18,6 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         public string Enode { get; set; } = string.Empty;
 
-        [JsonConverter(typeof(PublicKeyHashedConverter))]
         public PublicKey Id { get; set; } = null!;
 
         public string? Name { get; set; }

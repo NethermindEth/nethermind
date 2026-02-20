@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -27,7 +26,7 @@ namespace Nethermind.Serialization.Rlp
             Address? address = rlpStream.DecodeAddress();
             long sequenceLength = rlpStream.ReadSequenceLength();
             long untilPosition = rlpStream.Position + sequenceLength;
-            using ArrayPoolList<Hash256> topics = new((int)(sequenceLength * 2 / Rlp.LengthOfKeccakRlp));
+            using ArrayPoolListRef<Hash256> topics = new((int)(sequenceLength * 2 / Rlp.LengthOfKeccakRlp));
             while (rlpStream.Position < untilPosition)
             {
                 topics.Add(rlpStream.DecodeZeroPrefixKeccak());
@@ -53,7 +52,7 @@ namespace Nethermind.Serialization.Rlp
             Address? address = decoderContext.DecodeAddress();
             long sequenceLength = decoderContext.ReadSequenceLength();
             long untilPosition = decoderContext.Position + sequenceLength;
-            using ArrayPoolList<Hash256> topics = new((int)(sequenceLength * 2 / Rlp.LengthOfKeccakRlp));
+            using ArrayPoolListRef<Hash256> topics = new((int)(sequenceLength * 2 / Rlp.LengthOfKeccakRlp));
             while (decoderContext.Position < untilPosition)
             {
                 topics.Add(decoderContext.DecodeZeroPrefixKeccak());
@@ -95,7 +94,7 @@ namespace Nethermind.Serialization.Rlp
         {
             long sequenceLength = valueDecoderContext.ReadSequenceLength();
             long untilPosition = valueDecoderContext.Position + sequenceLength;
-            using ArrayPoolList<Hash256> topics = new((int)(sequenceLength * 2 / Rlp.LengthOfKeccakRlp));
+            using ArrayPoolListRef<Hash256> topics = new((int)(sequenceLength * 2 / Rlp.LengthOfKeccakRlp));
             while (valueDecoderContext.Position < untilPosition)
             {
                 topics.Add(valueDecoderContext.DecodeZeroPrefixKeccak());

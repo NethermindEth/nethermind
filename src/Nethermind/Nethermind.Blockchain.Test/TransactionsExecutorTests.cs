@@ -20,7 +20,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
@@ -32,6 +31,7 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test
 {
+    [Parallelizable(ParallelScope.All)]
     public class TransactionsExecutorTests
     {
         public static IEnumerable ProperTransactionsSelectedTestCases
@@ -364,7 +364,7 @@ namespace Nethermind.Blockchain.Test
         }
     }
 
-    public class WorldStateStab() : WorldState(Substitute.For<ITrieStore>(), Substitute.For<IKeyValueStoreWithBatching>(), LimboLogs.Instance), IWorldState
+    public class WorldStateStab() : WorldState(Substitute.For<IWorldStateScopeProvider>(), LimboLogs.Instance), IWorldState
     {
         // we cannot mock ref methods
         ref readonly UInt256 IWorldState.GetBalance(Address address) => ref UInt256.MaxValue;
