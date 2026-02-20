@@ -14,7 +14,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
     public static readonly ReceiptArrayStorageDecoder Instance = new();
 
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptArrayStorageDecoder))]
-    public ReceiptArrayStorageDecoder() : this(false) { }
+    public ReceiptArrayStorageDecoder() : this(true) { }
 
     private static readonly IRlpStreamDecoder<TxReceipt> Decoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
     private static readonly IRlpValueDecoder<TxReceipt> ValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
