@@ -25,9 +25,6 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
 
     public static string Name => "ECREC";
 
-    // Eligible for fast-path CALL handling to avoid frame allocation overhead.
-    public bool SupportsFastPath => true;
-
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;

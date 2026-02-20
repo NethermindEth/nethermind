@@ -82,8 +82,7 @@ public class PruningTrieStateFactory(
             trieStore,
             dbProvider,
             logManager,
-            new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth),
-            nodeStorageCache);
+            new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
 
         // NOTE: Don't forget this! Very important!
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, blockTree!, logManager);

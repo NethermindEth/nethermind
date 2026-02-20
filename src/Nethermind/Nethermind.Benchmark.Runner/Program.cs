@@ -38,7 +38,7 @@ namespace Nethermind.Benchmark.Runner
 
     public class PrecompileBenchmarkConfig : DashboardConfig
     {
-        public PrecompileBenchmarkConfig() : base(Job.MediumRun)
+        public PrecompileBenchmarkConfig() : base(Job.MediumRun.WithRuntime(CoreRuntime.Core90))
         {
             AddColumnProvider(new GasColumnProvider());
         }
@@ -67,7 +67,7 @@ namespace Nethermind.Benchmark.Runner
             {
                 foreach (Assembly assembly in additionalJobAssemblies)
                 {
-                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun), args);
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)), args);
                 }
 
                 foreach (Assembly assembly in simpleJobAssemblies)

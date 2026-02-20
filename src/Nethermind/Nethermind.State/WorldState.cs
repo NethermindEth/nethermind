@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -225,83 +224,6 @@ namespace Nethermind.State
             _stateProvider.DecrementNonce(address, delta);
         }
 
-        public Account? GetAccountDirect(Address address)
-        {
-            DebugGuardInScope();
-            return _stateProvider.GetState(address);
-        }
-
-        public void ApplyPlainTransferDirect(
-            Address sender, UInt256 newSenderNonce,
-            in UInt256 senderGasReservation, in UInt256 senderRefund,
-            Address recipient, in UInt256 transferValue,
-            Address beneficiary, in UInt256 beneficiaryFee,
-            Address? feeCollector, in UInt256 collectedFees,
-            IReleaseSpec spec)
-        {
-            DebugGuardInScope();
-            StateProvider sp = _stateProvider;
-
-            // Sender: apply gas cost + value deduction + refund + nonce increment in one shot
-            Account senderAccount = sp.GetState(sender) ?? Account.TotallyEmpty;
-            UInt256 newBalance = senderAccount.Balance - senderGasReservation - transferValue + senderRefund;
-            sp.SetState(sender, new Account(newSenderNonce, newBalance, senderAccount.StorageRoot, senderAccount.CodeHash));
-
-            // Recipient: always process – the slow path (VM) always calls
-            // AddToBalanceAndCreateIfNotExists(recipient, value) which touches the account.
-            // EIP-158 deletes empty accounts that were touched.
-            ApplyBalanceChange(sp, recipient, in transferValue, spec);
-
-            // Beneficiary: always process – the slow path always calls
-            // AddToBalanceAndCreateIfNotExists(beneficiary, fee).
-            ApplyBalanceChange(sp, beneficiary, in beneficiaryFee, spec);
-
-            // Fee collector (EIP-1559)
-            if (feeCollector is not null && !collectedFees.IsZero)
-            {
-                Account? fcAccount = sp.GetState(feeCollector);
-                if (fcAccount is not null)
-                    sp.SetState(feeCollector, fcAccount.WithChangedBalance(fcAccount.Balance + collectedFees));
-                else
-                    sp.SetState(feeCollector, new Account(collectedFees));
-            }
-        }
-
-        /// <summary>
-        /// Applies a balance change matching the behavior of AddToBalanceAndCreateIfNotExists + EIP-158 cleanup.
-        /// Respects IsEip158IgnoredAccount (e.g. AuRa's Address.SystemUser).
-        /// </summary>
-        private static void ApplyBalanceChange(StateProvider sp, Address address, in UInt256 amount, IReleaseSpec spec)
-        {
-            Account? account = sp.GetState(address);
-            if (account is not null)
-            {
-                if (!amount.IsZero)
-                {
-                    sp.SetState(address, account.WithChangedBalance(account.Balance + amount));
-                }
-                else if (spec.IsEip158Enabled && account.IsEmpty && !spec.IsEip158IgnoredAccount(address))
-                {
-                    // Slow path touches the account with 0 balance → Commit deletes it via EIP-158
-                    sp.SetState(address, null);
-                }
-                // else: non-empty account + 0 amount → no state change
-            }
-            else
-            {
-                if (!amount.IsZero)
-                {
-                    sp.SetState(address, new Account(amount));
-                }
-                else if (!spec.IsEip158Enabled)
-                {
-                    // Pre-EIP-158: slow path creates empty account
-                    sp.SetState(address, new Account(UInt256.Zero));
-                }
-                // else: EIP-158 + 0 amount + non-existent → slow path creates then discards → no-op
-            }
-        }
-
         public void CommitTree(long blockNumber)
         {
             DebugGuardInScope();
@@ -458,23 +380,6 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _transientStorageProvider.Reset();
-        }
-
-        public void UpdatePreBlockCaches()
-        {
-            if (ScopeProvider is not IPreBlockCaches { Caches: { } preBlockCaches }) return;
-
-            KeyValuePair<AddressAsKey, Account?>[] stateChanges = _stateProvider.CaptureCommittedStateChanges();
-            if (stateChanges.Length > 0)
-            {
-                preBlockCaches.UpdateStateCache(stateChanges);
-            }
-
-            KeyValuePair<StorageCell, byte[]>[] storageChanges = _persistentStorageProvider.CaptureCommittedStorageChanges();
-            if (storageChanges.Length > 0)
-            {
-                preBlockCaches.UpdateStorageCache(storageChanges);
-            }
         }
     }
 }

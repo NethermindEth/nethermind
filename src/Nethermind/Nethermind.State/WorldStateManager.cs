@@ -8,7 +8,6 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State.SnapServer;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -18,7 +17,6 @@ public class WorldStateManager : IWorldStateManager
     private readonly IWorldStateScopeProvider _worldState;
     private readonly IPruningTrieStore _trieStore;
     private readonly IReadOnlyTrieStore _readOnlyTrieStore;
-    private readonly ITrieStore _readOnlyTrieStoreForResettable;
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _readaOnlyCodeCb;
     private readonly IDbProvider _dbProvider;
@@ -30,8 +28,7 @@ public class WorldStateManager : IWorldStateManager
         IPruningTrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager,
-        ILastNStateRootTracker lastNStateRootTracker = null,
-        NodeStorageCache? nodeStorageCache = null
+        ILastNStateRootTracker lastNStateRootTracker = null
     )
     {
         _dbProvider = dbProvider;
@@ -39,13 +36,6 @@ public class WorldStateManager : IWorldStateManager
         _trieStore = trieStore;
         _readOnlyTrieStore = trieStore.AsReadOnly();
         _logManager = logManager;
-
-        // When prewarming is enabled, wrap the read-only trie store with PreCachedTrieStore
-        // so that prewarmer threads populate the shared NodeStorageCache with trie node RLP,
-        // benefiting the main execution thread on value-level cache misses.
-        _readOnlyTrieStoreForResettable = nodeStorageCache is not null
-            ? new PreCachedTrieStore(_readOnlyTrieStore, nodeStorageCache)
-            : _readOnlyTrieStore;
 
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _readaOnlyCodeCb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
@@ -70,7 +60,7 @@ public class WorldStateManager : IWorldStateManager
 
     public IWorldStateScopeProvider CreateResettableWorldState()
     {
-        return new TrieStoreScopeProvider(_readOnlyTrieStoreForResettable, _readaOnlyCodeCb, _logManager);
+        return new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
     }
 
     public IOverridableWorldScope CreateOverridableWorldScope()
