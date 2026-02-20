@@ -43,4 +43,44 @@ public class SupportsCachingTests
     {
         Assert.That(IdentityPrecompile.Instance.SupportsCaching, Is.False);
     }
+
+    public static IEnumerable<TestCaseData> PrecompilesWithFastPathEnabled()
+    {
+        yield return new TestCaseData(IdentityPrecompile.Instance).SetName(nameof(IdentityPrecompile));
+        yield return new TestCaseData(Sha256Precompile.Instance).SetName(nameof(Sha256Precompile));
+        yield return new TestCaseData(BN254AddPrecompile.Instance).SetName(nameof(BN254AddPrecompile));
+        yield return new TestCaseData(BN254MulPrecompile.Instance).SetName(nameof(BN254MulPrecompile));
+        yield return new TestCaseData(BN254PairingPrecompile.Instance).SetName(nameof(BN254PairingPrecompile));
+        yield return new TestCaseData(ModExpPrecompile.Instance).SetName(nameof(ModExpPrecompile));
+        yield return new TestCaseData(Blake2FPrecompile.Instance).SetName(nameof(Blake2FPrecompile));
+        yield return new TestCaseData(G1AddPrecompile.Instance).SetName(nameof(G1AddPrecompile));
+        yield return new TestCaseData(G1MSMPrecompile.Instance).SetName(nameof(G1MSMPrecompile));
+        yield return new TestCaseData(G2AddPrecompile.Instance).SetName(nameof(G2AddPrecompile));
+        yield return new TestCaseData(G2MSMPrecompile.Instance).SetName(nameof(G2MSMPrecompile));
+        yield return new TestCaseData(PairingCheckPrecompile.Instance).SetName(nameof(PairingCheckPrecompile));
+        yield return new TestCaseData(MapFpToG1Precompile.Instance).SetName(nameof(MapFpToG1Precompile));
+        yield return new TestCaseData(MapFp2ToG2Precompile.Instance).SetName(nameof(MapFp2ToG2Precompile));
+        yield return new TestCaseData(PointEvaluationPrecompile.Instance).SetName(nameof(PointEvaluationPrecompile));
+#pragma warning disable CS0618
+        yield return new TestCaseData(ModExpPrecompilePreEip2565.Instance).SetName(nameof(ModExpPrecompilePreEip2565));
+#pragma warning restore CS0618
+    }
+
+    [TestCaseSource(nameof(PrecompilesWithFastPathEnabled))]
+    public void Precompile_SupportsFastPath_ReturnsTrue_WhenEnabled(IPrecompile precompile)
+    {
+        Assert.That(precompile.SupportsFastPath, Is.True);
+    }
+
+    [Test]
+    public void EcRecoverPrecompile_SupportsFastPath_ReturnsFalse()
+    {
+        Assert.That(EcRecoverPrecompile.Instance.SupportsFastPath, Is.False);
+    }
+
+    [Test]
+    public void Ripemd160Precompile_SupportsFastPath_ReturnsFalse()
+    {
+        Assert.That(Ripemd160Precompile.Instance.SupportsFastPath, Is.False);
+    }
 }
