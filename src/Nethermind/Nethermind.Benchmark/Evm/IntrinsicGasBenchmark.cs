@@ -73,7 +73,7 @@ public class IntrinsicGasBenchmark
         EthereumIntrinsicGas result = default;
         for (int i = 0; i < N; i++)
         {
-            _simpleTx._cachedIntrinsicGasSpec = null;
+            _simpleTx._cachedIntrinsicGas = null;
             result = IntrinsicGasCalculator.Calculate(_simpleTx, BerlinSpec);
         }
         return result;
@@ -85,7 +85,7 @@ public class IntrinsicGasBenchmark
         EthereumIntrinsicGas result = default;
         for (int i = 0; i < N; i++)
         {
-            _dataTx._cachedIntrinsicGasSpec = null;
+            _dataTx._cachedIntrinsicGas = null;
             result = IntrinsicGasCalculator.Calculate(_dataTx, BerlinSpec);
         }
         return result;
@@ -97,7 +97,7 @@ public class IntrinsicGasBenchmark
         EthereumIntrinsicGas result = default;
         for (int i = 0; i < N; i++)
         {
-            _accessListTx._cachedIntrinsicGasSpec = null;
+            _accessListTx._cachedIntrinsicGas = null;
             result = IntrinsicGasCalculator.Calculate(_accessListTx, BerlinSpec);
         }
         return result;

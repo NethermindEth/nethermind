@@ -178,12 +178,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
     {
-        // Cache check: _cachedIntrinsicGasSpec written last acts as sole validity indicator
-        if (ReferenceEquals(tx._cachedIntrinsicGasSpec, spec))
+        Transaction.IntrinsicGasCache? cache = tx._cachedIntrinsicGas;
+        if (cache is not null && ReferenceEquals(cache.Spec, spec))
         {
             return new IntrinsicGas<EthereumGasPolicy>(
-                FromLong(tx._cachedIntrinsicGasStandard),
-                FromLong(tx._cachedIntrinsicGasFloor));
+                FromLong(cache.Standard),
+                FromLong(cache.Floor));
         }
 
         long tokensInCallData = IGasPolicy<EthereumGasPolicy>.CalculateTokensInCallData(tx, spec);
@@ -194,10 +194,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
                         + AuthorizationListCost(tx, spec);
         long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, spec);
 
-        // Write spec LAST so concurrent readers see it only after standard/floor are set
-        tx._cachedIntrinsicGasStandard = standard;
-        tx._cachedIntrinsicGasFloor = floorCost;
-        tx._cachedIntrinsicGasSpec = spec;
+        tx._cachedIntrinsicGas = new Transaction.IntrinsicGasCache(standard, floorCost, spec);
 
         return new IntrinsicGas<EthereumGasPolicy>(FromLong(standard), FromLong(floorCost));
     }
