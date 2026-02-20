@@ -23,6 +23,8 @@ public class Witness
 
 public static class WitnessExtensions
 {
+    private static readonly HeaderDecoder _decoder = new();
+
     extension(Witness witness)
     {
         public INodeStorage CreateNodeStorage()
@@ -53,11 +55,10 @@ public static class WitnessExtensions
         {
             byte[][] witnessHeaders = witness.Headers;
             ArrayPoolList<BlockHeader> headers = new(witnessHeaders.Length);
-            HeaderDecoder decoder = new();
             foreach (byte[] encodedHeader in witnessHeaders)
             {
                 Rlp.ValueDecoderContext stream = new(encodedHeader);
-                headers.Add(decoder.Decode(ref stream) ?? throw new ArgumentException());
+                headers.Add(_decoder.Decode(ref stream) ?? throw new ArgumentException());
             }
 
             return headers;
