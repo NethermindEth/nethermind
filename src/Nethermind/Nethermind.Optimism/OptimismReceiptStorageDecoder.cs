@@ -78,14 +78,15 @@ public class OptimismCompactReceiptStorageDecoder :
     public OptimismTxReceipt Decode(ref ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        int sequenceLength = decoderContext.ReadSequenceLength();
+
+        if (sequenceLength is 0)
         {
-            decoderContext.ReadByte();
             return null!;
         }
 
         OptimismTxReceipt txReceipt = new();
-        int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
+        int lastCheck = sequenceLength + decoderContext.Position;
 
         byte[] firstItem = decoderContext.DecodeByteArray();
         if (firstItem.Length == 1)
@@ -142,13 +143,14 @@ public class OptimismCompactReceiptStorageDecoder :
         // Note: This method runs at 2.5 million times/sec on my machine
         item = new TxReceiptStructRef();
 
-        if (decoderContext.IsNextItemNull())
+        int sequenceLength = decoderContext.ReadSequenceLength();
+
+        if (sequenceLength is 0)
         {
-            decoderContext.ReadByte();
             return;
         }
 
-        int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
+        int lastCheck = sequenceLength + decoderContext.Position;
 
         ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan();
         if (firstItem.Length == 1)

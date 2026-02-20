@@ -13,12 +13,13 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
 {
     protected override TimeoutCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        int sequenceLength = decoderContext.ReadSequenceLength();
+
+        if (sequenceLength is 0)
         {
-            decoderContext.ReadByte();
             return null;
         }
-        int sequenceLength = decoderContext.ReadSequenceLength();
+
         int endPosition = decoderContext.Position + sequenceLength;
 
         ulong round = decoderContext.DecodeULong();

@@ -79,12 +79,14 @@ namespace Nethermind.Serialization.Rlp
 
         protected override ChainLevelInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            int sequenceLength = decoderContext.ReadSequenceLength();
+
+            if (sequenceLength is 0)
             {
                 return null;
             }
 
-            int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            int lastCheck = sequenceLength + decoderContext.Position;
             bool hasMainChainBlock = decoderContext.DecodeBool();
 
             List<BlockInfo> blockInfos = new();

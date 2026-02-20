@@ -5,7 +5,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
-using System;
 
 namespace Nethermind.Xdc;
 
@@ -15,12 +14,13 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
 
     protected override Vote DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        int sequenceLength = decoderContext.ReadSequenceLength();
+
+        if (sequenceLength is 0)
         {
-            decoderContext.ReadByte();
             return null;
         }
-        int sequenceLength = decoderContext.ReadSequenceLength();
+
         int endPosition = decoderContext.Position + sequenceLength;
 
         BlockRoundInfo proposedBlockInfo = _xdcBlockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);

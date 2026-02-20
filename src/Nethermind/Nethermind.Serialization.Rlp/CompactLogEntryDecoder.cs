@@ -42,13 +42,13 @@ namespace Nethermind.Serialization.Rlp
 
         public static LogEntry? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            int totalSequenceLength = decoderContext.ReadSequenceLength();
+
+            if (totalSequenceLength is 0)
             {
-                decoderContext.ReadByte();
                 return null;
             }
 
-            decoderContext.ReadSequenceLength();
             Address? address = decoderContext.DecodeAddress();
             long sequenceLength = decoderContext.ReadSequenceLength();
             long untilPosition = decoderContext.Position + sequenceLength;
@@ -68,14 +68,14 @@ namespace Nethermind.Serialization.Rlp
 
         public static void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors behaviors, out LogEntryStructRef item)
         {
-            if (decoderContext.IsNextItemNull())
+            int totalSequenceLength = decoderContext.ReadSequenceLength();
+
+            if (totalSequenceLength is 0)
             {
-                decoderContext.ReadByte();
                 item = new LogEntryStructRef();
                 return;
             }
 
-            decoderContext.ReadSequenceLength();
             decoderContext.DecodeAddressStructRef(out var address);
             var (PrefixLength, ContentLength) = decoderContext.PeekPrefixAndContentLength();
             var sequenceLength = PrefixLength + ContentLength;

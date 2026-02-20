@@ -14,13 +14,13 @@ internal class SyncInfoDecoder : RlpValueDecoder<SyncInfo>
 
     protected override SyncInfo DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        int sequenceLength = decoderContext.ReadSequenceLength();
+
+        if (sequenceLength is 0)
         {
-            decoderContext.ReadByte();
             return null;
         }
 
-        int sequenceLength = decoderContext.ReadSequenceLength();
         int endPosition = decoderContext.Position + sequenceLength;
 
         QuorumCertificate highestQuorumCert = _quorumCertificateDecoder.Decode(ref decoderContext, rlpBehaviors);

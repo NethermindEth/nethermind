@@ -18,14 +18,15 @@ namespace Nethermind.Serialization.Rlp
         protected override BlockHeader? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            ReadOnlySpan<byte> headerRlp = decoderContext.PeekNextItem();
+            int headerSequenceLength = decoderContext.ReadSequenceLength();
+
+            if (headerSequenceLength is 0)
             {
-                decoderContext.ReadByte();
                 return null;
             }
 
-            ReadOnlySpan<byte> headerRlp = decoderContext.PeekNextItem();
-            int headerSequenceLength = decoderContext.ReadSequenceLength();
+
             int headerCheck = decoderContext.Position + headerSequenceLength;
 
             Hash256? parentHash = decoderContext.DecodeKeccak();

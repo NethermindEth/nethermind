@@ -35,16 +35,16 @@ namespace Nethermind.Serialization.Rlp
 
         protected override LogEntry? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            int sequenceLength = decoderContext.ReadSequenceLength();
+
+            if (sequenceLength is 0)
             {
-                decoderContext.ReadByte();
                 return null;
             }
 
-            decoderContext.ReadSequenceLength();
             Address? address = decoderContext.DecodeAddress();
-            long sequenceLength = decoderContext.ReadSequenceLength();
-            Hash256[] topics = new Hash256[sequenceLength / 33];
+            long topicsLength = decoderContext.ReadSequenceLength();
+            Hash256[] topics = new Hash256[topicsLength / 33];
             for (int i = 0; i < topics.Length; i++)
             {
                 topics[i] = decoderContext.DecodeKeccak();
@@ -134,7 +134,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static void DecodeStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
         {
-            if (decoderContext.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyArray())
             {
                 decoderContext.ReadByte();
                 item = new LogEntryStructRef();

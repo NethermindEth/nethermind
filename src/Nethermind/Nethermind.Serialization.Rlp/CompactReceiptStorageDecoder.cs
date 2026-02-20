@@ -69,15 +69,14 @@ namespace Nethermind.Serialization.Rlp
         protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            int totalSequenceLength = decoderContext.ReadSequenceLength();
+
+            if (totalSequenceLength is 0)
             {
-                decoderContext.ReadByte();
                 return null;
             }
 
             TxReceipt txReceipt = new();
-            decoderContext.ReadSequenceLength();
-
             byte[] firstItem = decoderContext.DecodeByteArray();
             if (firstItem.Length == 1)
             {
@@ -120,13 +119,12 @@ namespace Nethermind.Serialization.Rlp
             // Note: This method runs at 2.5 million times/sec on my machine
             item = new TxReceiptStructRef();
 
-            if (decoderContext.IsNextItemNull())
+            int sequenceLength = decoderContext.ReadSequenceLength();
+
+            if (sequenceLength is 0)
             {
-                decoderContext.ReadByte();
                 return;
             }
-
-            decoderContext.SkipLength();
 
             ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
             if (firstItem.Length == 1)

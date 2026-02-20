@@ -29,14 +29,12 @@ public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
 
     protected override Withdrawal? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
-        {
-            decoderContext.ReadByte();
+        int sequenceLength = decoderContext.ReadSequenceLength();
 
+        if (sequenceLength is 0)
+        {
             return null;
         }
-
-        decoderContext.ReadSequenceLength();
 
         return new()
         {

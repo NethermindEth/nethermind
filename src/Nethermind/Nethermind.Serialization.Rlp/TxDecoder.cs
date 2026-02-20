@@ -116,7 +116,7 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
 
     public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyArray())
         {
             decoderContext.ReadByte();
             transaction = null;

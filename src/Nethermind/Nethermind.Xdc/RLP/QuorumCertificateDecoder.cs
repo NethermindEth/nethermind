@@ -16,12 +16,12 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
     private readonly XdcBlockInfoDecoder _blockInfoDecoder = new XdcBlockInfoDecoder();
     protected override QuorumCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        int sequenceLength = decoderContext.ReadSequenceLength();
+        if (sequenceLength is 0)
         {
-            decoderContext.ReadByte();
             return null;
         }
-        int sequenceLength = decoderContext.ReadSequenceLength();
+
         int endPosition = decoderContext.Position + sequenceLength;
 
         BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);

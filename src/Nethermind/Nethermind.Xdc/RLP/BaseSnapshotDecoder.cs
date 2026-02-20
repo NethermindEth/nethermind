@@ -13,10 +13,11 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
 {
     protected TResult DecodeBase<TResult>(ref Rlp.ValueDecoderContext decoderContext, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
     {
-        if (decoderContext.IsNextItemNull())
+        int sequenceLength = decoderContext.ReadSequenceLength();
+
+        if (sequenceLength is 0)
         {
-            decoderContext.ReadByte();
-            return null;
+            return default;
         }
 
         decoderContext.ReadSequenceLength();
@@ -27,9 +28,10 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
     }
     public static Address[] DecodeAddressArray(ref Rlp.ValueDecoderContext decoderContext)
     {
-        if (decoderContext.IsNextItemNull())
+        int sequenceLength = decoderContext.ReadSequenceLength();
+
+        if (sequenceLength is 0)
         {
-            _ = decoderContext.ReadByte();
             return [];
         }
 

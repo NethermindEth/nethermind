@@ -96,13 +96,14 @@ namespace Nethermind.Serialization.Rlp
 
         protected override BlockInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            int sequenceLength = decoderContext.ReadSequenceLength();
+
+            if (sequenceLength is 0)
             {
-                decoderContext.ReadByte();
                 return null;
             }
 
-            int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            int lastCheck = sequenceLength + decoderContext.Position;
 
             Hash256? blockHash = decoderContext.DecodeKeccak();
             bool wasProcessed = decoderContext.DecodeBool();

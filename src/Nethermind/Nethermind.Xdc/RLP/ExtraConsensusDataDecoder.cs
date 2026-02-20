@@ -11,12 +11,13 @@ internal sealed class ExtraConsensusDataDecoder : RlpValueDecoder<ExtraFieldsV2>
     private readonly QuorumCertificateDecoder _quorumCertificateDecoder = new();
     protected override ExtraFieldsV2 DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        int sequenceLength = decoderContext.ReadSequenceLength();
+
+        if (sequenceLength is 0)
         {
-            decoderContext.ReadByte();
             return null;
         }
-        int sequenceLength = decoderContext.ReadSequenceLength();
+
         int endPosition = decoderContext.Position + sequenceLength;
 
         ulong round = decoderContext.DecodeULong();
