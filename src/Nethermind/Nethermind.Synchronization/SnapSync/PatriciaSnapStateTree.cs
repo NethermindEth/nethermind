@@ -9,14 +9,14 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.SnapSync;
 
-public class PatriciaSnapStateTree(StateTree tree, SnapUpperBoundAdapter adapter) : ISnapTree
+public class PatriciaSnapStateTree(StateTree tree, SnapUpperBoundAdapter adapter, INodeStorage nodeStorage) : ISnapTree
 {
     public Hash256 RootHash => tree.RootHash;
 
     public void SetRootFromProof(TrieNode root) => tree.RootRef = root;
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
-        adapter.IsPersisted(path, keccak);
+        nodeStorage.KeyExists(null, path, keccak);
 
     public void BulkSetAndUpdateRootHash(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries)
     {

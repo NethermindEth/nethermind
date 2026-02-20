@@ -72,14 +72,9 @@ internal class XdcBlockProducer : BlockProducerBase
             blockAuthor,
             UInt256.Zero,
             parent.Number + 1,
-            //This should probably use TargetAdjustedGasLimitCalculator
             gasLimit,
             0,
-            extra)
-        {
-            //This will BestSuggestedBody in BlockTree, which may not be needed
-            //IsPostMerge = true
-        };
+            extra);
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader, currentRound);
 

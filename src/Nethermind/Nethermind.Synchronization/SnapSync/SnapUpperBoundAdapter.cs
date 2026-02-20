@@ -30,8 +30,6 @@ public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrie
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new BoundedSnapCommitter(baseTrieStore.BeginCommit(root, writeFlags), UpperBound);
 
-    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => baseTrieStore.IsPersisted(in path, in keccak);
-
     private sealed class BoundedSnapCommitter(ICommitter baseCommitter, ValueHash256 subtreeLimit) : ICommitter
     {
         public void Dispose() => baseCommitter.Dispose();
