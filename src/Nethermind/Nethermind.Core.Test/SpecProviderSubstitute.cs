@@ -11,8 +11,10 @@ public static class SpecProviderSubstitute
     public static ISpecProvider Create()
     {
         ISpecProvider sub = Substitute.For<ISpecProvider>();
-        sub.GenesisSpec.Returns(ReleaseSpecSubstitute.Create());
-        sub.GetSpec(Arg.Any<ForkActivation>()).Returns(call => ReleaseSpecSubstitute.Create());
+        IReleaseSpec genesis = ReleaseSpecSubstitute.Create();
+        sub.GenesisSpec.Returns(genesis);
+        IReleaseSpec spec = sub.GetSpec(Arg.Any<ForkActivation>());
+        spec.GasCosts.Returns(_ => new SpecGasCosts(spec));
         return sub;
     }
 }
