@@ -129,10 +129,10 @@ public class BranchProcessor(
                 {
                     // Even though we skip prewarming we still need to ensure the caches are cleared
                     CacheType result = preWarmer?.ClearCaches() ?? default;
-                    if (result != default)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
-                    }
+                    //if (result != default)
+                    //{
+                    //    if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
+                    //}
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
 

@@ -11,7 +11,7 @@ namespace Nethermind.Consensus.Processing;
 
 public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetime)
 {
-    public IReadOnlyTxProcessorSource Create(IPreBlockCachesInner preBlockCaches)
+    public IReadOnlyTxProcessorSource Create(IPreBlockCachesWrapper preBlockCaches)
     {
         var worldState = new PrewarmerScopeProvider(
             worldStateManager.CreateResettableWorldState(),
@@ -32,5 +32,5 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILifetime
 
 public interface IPrewarmerEnvFactory
 {
-    IReadOnlyTxProcessorSource Create(IPreBlockCachesInner preBlockCaches);
+    IReadOnlyTxProcessorSource Create(IPreBlockCachesWrapper preBlockCaches);
 }
