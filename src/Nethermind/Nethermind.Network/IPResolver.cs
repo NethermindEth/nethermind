@@ -36,47 +36,33 @@ public class IPResolver : IIPResolver
             LocalIp = IPAddress.Loopback;
         }
 
-        try
-        {
-            ExternalIp = await InitializeExternalIp();
-        }
-        catch (Exception)
-        {
-            ExternalIp = IPAddress.None;
-        }
+        const int maxAttempts = 5;
+        const int delaySeconds = 2;
 
-        if (Equals(ExternalIp, IPAddress.Any) || Equals(ExternalIp, IPAddress.None))
+        for (int i = 0; i < maxAttempts; i++)
         {
-            if (_logger.IsWarn) _logger.Warn("External IP could not be resolved. Peers will not be able to connect.");
-            _ = RetryExternalIpAsync();
-        }
-    }
+            if (i > 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"External IP resolution failed (attempt {i}/{maxAttempts}). Retrying in {delaySeconds}s...");
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+            }
 
-    private async Task RetryExternalIpAsync()
-    {
-        const int maxRetries = 5;
-        for (int i = 0; i < maxRetries; i++)
-        {
-            await Task.Delay(TimeSpan.FromSeconds(60));
             try
             {
-                IPAddress ip = await InitializeExternalIp();
-                if (!Equals(ip, IPAddress.Any) && !Equals(ip, IPAddress.None))
+                ExternalIp = await InitializeExternalIp();
+                if (!Equals(ExternalIp, IPAddress.Any) && !Equals(ExternalIp, IPAddress.None))
                 {
-                    ExternalIp = ip;
-                    if (_logger.IsWarn) _logger.Warn($"External IP resolved: {ip}. Restart the node for peers to connect using the new IP.");
                     return;
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                if (_logger.IsDebug) _logger.Debug($"External IP retry failed: {ex.Message}");
+                // Will retry or set to None after loop
             }
-
-            if (_logger.IsWarn) _logger.Warn($"External IP still unresolved (attempt {i + 1}/{maxRetries}). Retrying in 60s...");
         }
 
-        if (_logger.IsError) _logger.Error("External IP could not be resolved after all retries. Node will not be reachable by peers.");
+        ExternalIp = IPAddress.None;
+        if (_logger.IsWarn) _logger.Warn("External IP could not be resolved after all retries. Peers will not be able to connect.");
     }
 
     public IPAddress LocalIp { get; private set; }
