@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
@@ -107,7 +106,7 @@ namespace Nethermind.Evm
 
             public long GetBaseDataCost(Transaction tx) =>
                 tx.IsContractCreation && spec.IsEip3860Enabled
-                    ? EvmCalculations.Div32Ceiling((UInt256)tx.Data.Length) * GasCostOf.InitCodeWord
+                    ? ((long)(tx.Data.Length + 31) / 32) * GasCostOf.InitCodeWord
                     : 0;
 
         }

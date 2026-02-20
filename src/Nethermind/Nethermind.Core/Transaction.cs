@@ -12,9 +12,12 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
+[assembly: InternalsVisibleTo("Nethermind.Evm")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State")]
 namespace Nethermind.Core
 {
@@ -204,6 +207,13 @@ namespace Nethermind.Core
 
         protected int? _size = null;
 
+        // Intrinsic gas cache: plain long avoids Nullable<long> non-atomic writes on
+        // concurrent warmup paths. _cachedIntrinsicGasSpec is written last and acts as
+        // the sole validity indicator (non-null + ReferenceEquals ⇒ standard/floor valid).
+        internal long _cachedIntrinsicGasStandard;
+        internal long _cachedIntrinsicGasFloor;
+        internal IReleaseSpec? _cachedIntrinsicGasSpec;
+
         /// <summary>
         /// Encoded transaction length
         /// </summary>
@@ -310,6 +320,7 @@ namespace Nethermind.Core
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
                 obj._size = default;
+                obj._cachedIntrinsicGasSpec = default;
                 obj.AuthorizationList = default;
 
                 return true;

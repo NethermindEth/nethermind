@@ -275,10 +275,21 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
 /// <summary>
 /// Generic intrinsic gas result with TGasPolicy-typed Standard and FloorGas.
+/// Plain readonly struct avoids record-generated Equals/GetHashCode/ToString per generic instantiation.
 /// </summary>
-public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGasPolicy FloorGas)
+public readonly struct IntrinsicGas<TGasPolicy>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    public TGasPolicy MinimalGas { get; } = TGasPolicy.Max(Standard, FloorGas);
+    public TGasPolicy Standard { get; }
+    public TGasPolicy FloorGas { get; }
+    public TGasPolicy MinimalGas { get; }
+
+    public IntrinsicGas(TGasPolicy standard, TGasPolicy floorGas)
+    {
+        Standard = standard;
+        FloorGas = floorGas;
+        MinimalGas = TGasPolicy.Max(standard, floorGas);
+    }
+
     public static explicit operator TGasPolicy(IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
 }
