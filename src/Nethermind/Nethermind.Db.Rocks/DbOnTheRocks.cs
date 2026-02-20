@@ -591,8 +591,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // Cap WAL size to prevent sudden multi-CF flush storms when WAL gets too large.
         options.SetMaxTotalWalSize(2UL * 1024 * 1024 * 1024); // 2 GB
 
-        // Overlap WAL write and memtable insert for lower write latency.
-        _rocksDbNative.rocksdb_options_set_enable_pipelined_write(options.Handle, true);
+        // Note: enable_pipelined_write is incompatible with unordered_write (used by State DB).
+        // unordered_write is strictly more aggressive, so pipelined_write is not needed.
 
         #endregion
 
