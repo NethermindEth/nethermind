@@ -449,7 +449,7 @@ jobs:
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" \
-            | awk -v flags_file="${flags_file}" '
+            | awk -v flags_file="${flags_file}" -v scenario_name="${SCENARIO_NAME}" '
                 function trim(s) {
                   sub(/^[[:space:]]+/, "", s)
                   sub(/[[:space:]]+$/, "", s)
@@ -490,6 +490,14 @@ jobs:
                     print item_indent "- " existing_flag
                   }
                 }
+                function append_missing_extra_flags(key_indent, item_indent) {
+                  if (flags_count == 0 || appended_flags == 1) {
+                    return
+                  }
+                  item_indent = key_indent "  "
+                  print key_indent "extra_flags:"
+                  append_flags(item_indent)
+                }
                 BEGIN {
                   while ((getline flag < flags_file) > 0) {
                     flags[++flags_count] = flag
@@ -510,6 +518,17 @@ jobs:
                     }
                   }
 
+                  if (in_target_scenario == 1 && flags_count > 0 && target_extra_flags_seen == 0 && appended_flags == 0) {
+                    if ($0 !~ /^[[:space:]]*$/) {
+                      match($0, /^[[:space:]]*/)
+                      current_indent_len = RLENGTH
+                      if (current_indent_len <= target_scenario_indent_len) {
+                        append_missing_extra_flags(target_scenario_indent "  ")
+                        in_target_scenario = 0
+                      }
+                    }
+                  }
+
                   if (in_extra_flags == 1) {
                     if (match($0, /^([[:space:]]*)-[[:space:]]*(.+)$/, match_groups)) {
                       if (extra_flags_item_indent == "") {
@@ -525,10 +544,36 @@ jobs:
                   }
 
                   line = $0
+                  if (line ~ /^[[:space:]]*scenarios:[[:space:]]*$/) {
+                    match(line, /^[[:space:]]*/)
+                    scenarios_indent_len = RLENGTH
+                    in_scenarios = 1
+                  } else if (in_scenarios == 1 && line !~ /^[[:space:]]*$/) {
+                    match(line, /^[[:space:]]*/)
+                    current_indent_len = RLENGTH
+                    if (current_indent_len <= scenarios_indent_len) {
+                      in_scenarios = 0
+                    }
+                  }
+
+                  if (in_scenarios == 1 && match(line, /^([[:space:]]*)([^:#][^:]*)[[:space:]]*:[[:space:]]*$/, scenario_match)) {
+                    scenario_indent = scenario_match[1]
+                    scenario_key = trim(scenario_match[2])
+                    if (length(scenario_indent) > scenarios_indent_len && scenario_key == scenario_name) {
+                      in_target_scenario = 1
+                      target_scenario_indent = scenario_indent
+                      target_scenario_indent_len = length(scenario_indent)
+                      target_extra_flags_seen = 0
+                    }
+                  }
+
                   if (flags_count > 0 && match(line, /^([[:space:]]*)extra_flags:[[:space:]]*\[(.*)\][[:space:]]*$/, inline_extra_flags_match)) {
                     extra_flags_indent = inline_extra_flags_match[1]
                     inline_extra_flags = inline_extra_flags_match[2]
                     inline_extra_flags_item_indent = extra_flags_indent "  "
+                    if (in_target_scenario == 1) {
+                      target_extra_flags_seen = 1
+                    }
 
                     print extra_flags_indent "extra_flags:"
                     append_inline_existing_flags(inline_extra_flags, inline_extra_flags_item_indent)
@@ -542,6 +587,9 @@ jobs:
                     extra_flags_indent = substr(line, RSTART, RLENGTH)
                     extra_flags_indent_len = length(extra_flags_indent)
                     extra_flags_item_indent = ""
+                    if (in_target_scenario == 1) {
+                      target_extra_flags_seen = 1
+                    }
                     in_extra_flags = 1
                   }
                 }
@@ -551,6 +599,9 @@ jobs:
                       extra_flags_item_indent = extra_flags_indent "  "
                     }
                     append_flags(extra_flags_item_indent)
+                  }
+                  if (in_target_scenario == 1 && flags_count > 0 && target_extra_flags_seen == 0 && appended_flags == 0) {
+                    append_missing_extra_flags(target_scenario_indent "  ")
                   }
                 }
               ' > "${RENDERED_CONFIG_FILE}"
