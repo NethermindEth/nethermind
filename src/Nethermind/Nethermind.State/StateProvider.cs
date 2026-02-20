@@ -621,10 +621,8 @@ namespace Nethermind.State
                 {
                     using (var batch = codeDb.BeginCodeWrite())
                     {
-                        // Insert ordered for improved performance; use array sort to avoid LINQ allocations
-                        KeyValuePair<Hash256AsKey, byte[]>[] entries = new KeyValuePair<Hash256AsKey, byte[]>[dict.Count];
-                        ((ICollection<KeyValuePair<Hash256AsKey, byte[]>>)dict).CopyTo(entries, 0);
-                        Array.Sort(entries, static (a, b) => a.Key.CompareTo(b.Key));
+                        using ArrayPoolListRef<KeyValuePair<Hash256AsKey, byte[]>> entries = dict.ToPooledListRef();
+                        entries.Sort(static (a, b) => a.Key.CompareTo(b.Key));
                         foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in entries)
                         {
                             batch.Set(kvp.Key.Value, kvp.Value);
