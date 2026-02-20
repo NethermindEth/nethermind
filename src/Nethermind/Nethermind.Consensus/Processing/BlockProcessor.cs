@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -15,6 +16,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -114,7 +116,13 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        // Overlap receipt root computation with state root: the receipt trie is fully
+        // self-contained and only reads already-computed blooms, so it runs safely
+        // on the thread pool while we finish commits and state root hashing.
+        IReceiptsRootCalculator rootCalc = _receiptsRootCalculator;
+        Hash256? suggestedReceiptsRoot = block.ReceiptsRoot;
+        Task<Hash256> receiptRootTask = Task.Run(() => rootCalc.GetReceiptsRoot(receipts, spec, suggestedReceiptsRoot));
+
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
@@ -131,7 +139,6 @@ public partial class BlockProcessor(
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
-            // Get the accounts that have been changed
             block.AccountChanges = _stateProvider.GetAccountChanges();
         }
 
@@ -141,6 +148,7 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
+        header.ReceiptsRoot = receiptRootTask.GetAwaiter().GetResult();
         header.Hash = header.CalculateHash();
 
         return receipts;

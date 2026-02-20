@@ -9,7 +9,7 @@ public sealed class NodeStorageCache
 {
     private readonly SeqlockCache<NodeKey, byte[]> _cache = new();
 
-    private volatile bool _enabled = false;
+    private volatile bool _enabled = true;
 
     public bool Enabled
     {
@@ -28,7 +28,9 @@ public sealed class NodeStorageCache
 
     public bool ClearCaches()
     {
+        bool wasEnabled = _enabled;
+        _enabled = false;
         _cache.Clear();
-        return true;
+        return wasEnabled;
     }
 }
