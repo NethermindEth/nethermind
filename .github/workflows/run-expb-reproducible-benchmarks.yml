@@ -328,6 +328,10 @@ jobs:
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
+          echo "--- Rendered EXPB config ---"
+          cat "${RENDERED_CONFIG_FILE}"
+          echo "--- End rendered config ---"
+
       - name: Install or upgrade expb
         shell: bash
         env:
