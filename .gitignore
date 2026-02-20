@@ -450,3 +450,6 @@ FodyWeavers.xsd
 keystore/
 /.githooks
 /.dotnet_cli
+
+# Worktrees
+.worktrees/

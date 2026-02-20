@@ -18,6 +18,7 @@ public class HyperClockCacheWrapper : SafeHandleZeroOrMinusOneIsInvalid
 
     protected override bool ReleaseHandle()
     {
+        // Temporary disable to see if it fix crash
         RocksDbSharp.Native.Instance.rocksdb_cache_destroy(handle);
         return true;
     }
