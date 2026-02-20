@@ -84,8 +84,6 @@ public sealed class BlockCachePreWarmer(
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CacheType cachesCleared = preBlockCaches?.ClearCaches() ?? default;
-
-        nodeStorageCache.Enabled = false;
         cachesCleared |= nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
