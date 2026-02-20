@@ -35,7 +35,7 @@ on:
         description: >-
           Optional extra Nethermind flags. Example (single): --Merge.SweepMemory=NoGC.
           Example (multiple): --Sync.FastSync=false, --Pruning.CacheMb=12000
-          (or provide one flag per line).
+          (or provide one flag per line). Do not wrap flags in quotes.
         required: false
         default: ""
       rebuild_docker:
@@ -64,6 +64,7 @@ jobs:
       branch: ${{ steps.resolve.outputs.branch }}
       clean_branch: ${{ steps.resolve.outputs.clean_branch }}
       should_trigger_publish_docker: ${{ steps.resolve.outputs.should_trigger_publish_docker }}
+      should_wait_for_publish_docker: ${{ steps.resolve.outputs.should_wait_for_publish_docker }}
       rebuild_docker: ${{ steps.resolve.outputs.rebuild_docker }}
       config_file: ${{ steps.resolve.outputs.config_file }}
       image_label: ${{ steps.resolve.outputs.image_label }}
@@ -161,8 +162,12 @@ jobs:
           clean_branch="$(echo "${branch}" | sed 's/[^a-zA-Z0-9._-]/-/g')"
 
           should_trigger_publish_docker="true"
+          should_wait_for_publish_docker="false"
           if [[ "${branch}" == "master" || "${branch}" == "paprika" || "${branch}" == release/* ]]; then
             should_trigger_publish_docker="false"
+            if [[ "${EVENT_NAME}" == "push" ]]; then
+              should_wait_for_publish_docker="true"
+            fi
           elif [[ "${EVENT_NAME}" == "workflow_dispatch" && "${rebuild_docker}" != "true" ]]; then
             should_trigger_publish_docker="false"
           fi
@@ -184,6 +189,7 @@ jobs:
             echo "branch=${branch}"
             echo "clean_branch=${clean_branch}"
             echo "should_trigger_publish_docker=${should_trigger_publish_docker}"
+            echo "should_wait_for_publish_docker=${should_wait_for_publish_docker}"
             echo "rebuild_docker=${rebuild_docker}"
             echo "config_file=${config_file}"
             echo "image_label=nethermindeth/nethermind:${clean_branch}"
@@ -208,9 +214,12 @@ jobs:
         run: |
           echo "Skipping publish-docker.yml for auto-built branch '${{ needs.resolve.outputs.branch }}'."
           echo "Using image '${{ needs.resolve.outputs.image_label }}'."
+          if [[ "${{ needs.resolve.outputs.should_wait_for_publish_docker }}" == "true" ]]; then
+            echo "Will wait for auto-triggered publish-docker.yml for this push."
+          fi
 
       - name: Checkout repository
-        if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
+        if: needs.resolve.outputs.should_trigger_publish_docker == 'true' || needs.resolve.outputs.should_wait_for_publish_docker == 'true'
         uses: actions/checkout@v6
 
       - name: Trigger publish-docker.yml
@@ -227,11 +236,29 @@ jobs:
             "build-config": "release"
             }'
 
-      - name: Wait for publish-docker.yml to complete
+      - name: Wait for triggered publish-docker.yml to complete
         if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           WORKFLOW_ID: publish-docker.yml
+          HEAD_SHA: ${{ github.sha }}
+          MAX_WAIT_MINUTES: "10"
+          INTERVAL: "10"
+          TIMEOUT: "120"
+          ORG_NAME: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          NAME_FILTER: Publish Docker image
+          REF: ${{ needs.resolve.outputs.branch }}
+        run: |
+          chmod +x scripts/wait-for-workflow.sh
+          ./scripts/wait-for-workflow.sh
+
+      - name: Wait for auto-triggered publish-docker.yml to complete
+        if: needs.resolve.outputs.should_wait_for_publish_docker == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_ID: publish-docker.yml
+          HEAD_SHA: ${{ github.sha }}
           MAX_WAIT_MINUTES: "10"
           INTERVAL: "10"
           TIMEOUT: "120"
@@ -263,6 +290,7 @@ jobs:
           echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
           echo "Rebuild docker requested: ${{ needs.resolve.outputs.rebuild_docker }}"
           echo "Publish docker workflow triggered: ${{ needs.resolve.outputs.should_trigger_publish_docker }}"
+          echo "Publish docker workflow wait requested: ${{ needs.resolve.outputs.should_wait_for_publish_docker }}"
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
           echo "Scenario name: ${{ needs.resolve.outputs.scenario_name }}"
 
@@ -300,12 +328,31 @@ jobs:
         run: |
           set -euo pipefail
           flags_file="$(mktemp)"
+          deduped_flags_file="$(mktemp)"
           printf '%s' "${ADDITIONAL_EXTRA_FLAGS}" \
             | tr '\r' '\n' \
             | tr ',' '\n' \
             | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
             | sed '/^$/d' \
             | awk '
+                function trim(s) {
+                  sub(/^[[:space:]]+/, "", s)
+                  sub(/[[:space:]]+$/, "", s)
+                  return s
+                }
+                function strip_outer_quotes(s, quote_char) {
+                  s = trim(s)
+                  if (length(s) < 2) {
+                    return s
+                  }
+
+                  quote_char = substr(s, 1, 1)
+                  if ((quote_char == "\"" || quote_char == sprintf("%c", 39)) && substr(s, length(s), 1) == quote_char) {
+                    s = substr(s, 2, length(s) - 2)
+                  }
+
+                  return trim(s)
+                }
                 function emit_pending() {
                   if (pending != "") {
                     print pending
@@ -313,14 +360,20 @@ jobs:
                   }
                 }
                 {
-                  line = $0
+                  line = strip_outer_quotes($0)
+                  if (line == "") {
+                    next
+                  }
 
                   # Convert "--Key Value" to "--Key=Value" to avoid bare value tokens.
                   if (match(line, /^--[^[:space:]=]+[[:space:]]+/)) {
                     key = substr(line, 1, RLENGTH)
                     sub(/[[:space:]]+$/, "", key)
-                    value = substr(line, RLENGTH + 1)
-                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                    value = trim(substr(line, RLENGTH + 1))
+                    if (value == "") {
+                      printf "Invalid extra flag input '\''%s'\'': missing value after option.\n", line > "/dev/stderr"
+                      exit 1
+                    }
                     emit_pending()
                     print key "=" value
                     next
@@ -332,11 +385,19 @@ jobs:
                     next
                   }
 
+                  # Allow "Key=Value" and normalize to "--Key=Value".
+                  if (line ~ /^[A-Za-z0-9_.-]+=.*/) {
+                    emit_pending()
+                    print "--" line
+                    next
+                  }
+
                   if (pending != "") {
                     print pending "=" line
                     pending = ""
                   } else {
-                    print line
+                    printf "Invalid extra flag input '\''%s'\''. Use --Key=Value, --Flag, or --Key Value.\n", line > "/dev/stderr"
+                    exit 1
                   }
                 }
                 END {
@@ -345,26 +406,112 @@ jobs:
               ' \
             > "${flags_file}"
 
+          awk '
+            function trim(s) {
+              sub(/^[[:space:]]+/, "", s)
+              sub(/[[:space:]]+$/, "", s)
+              return s
+            }
+            function flag_key(flag, eq_pos) {
+              flag = trim(flag)
+              eq_pos = index(flag, "=")
+              if (eq_pos > 0) {
+                return trim(substr(flag, 1, eq_pos - 1))
+              }
+              return flag
+            }
+            {
+              key = flag_key($0)
+              if (!(key in seen)) {
+                order[++count] = key
+                seen[key] = 1
+              }
+              value_by_key[key] = $0
+            }
+            END {
+              for (i = 1; i <= count; i++) {
+                key = order[i]
+                print value_by_key[key]
+              }
+            }
+          ' "${flags_file}" > "${deduped_flags_file}"
+          mv "${deduped_flags_file}" "${flags_file}"
+
+          if [[ -s "${flags_file}" ]]; then
+            echo "Normalized additional extra flags:"
+            sed "s/^/  - /" "${flags_file}"
+          else
+            echo "No additional extra flags provided."
+          fi
+
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" \
             | awk -v flags_file="${flags_file}" '
+                function trim(s) {
+                  sub(/^[[:space:]]+/, "", s)
+                  sub(/[[:space:]]+$/, "", s)
+                  return s
+                }
+                function flag_key(flag, eq_pos) {
+                  flag = trim(flag)
+                  eq_pos = index(flag, "=")
+                  if (eq_pos > 0) {
+                    return trim(substr(flag, 1, eq_pos - 1))
+                  }
+                  return flag
+                }
+                function append_flags(indent) {
+                  if (flags_count == 0 || appended_flags == 1) {
+                    return
+                  }
+                  for (i = 1; i <= flags_count; i++) {
+                    print indent "  - " flags[i]
+                  }
+                  appended_flags = 1
+                }
                 BEGIN {
                   while ((getline flag < flags_file) > 0) {
                     flags[++flags_count] = flag
+                    override_keys[flag_key(flag)] = 1
                   }
                   close(flags_file)
                 }
                 {
+                  if (in_extra_flags == 1) {
+                    match($0, /^[[:space:]]*/)
+                    current_indent = substr($0, RSTART, RLENGTH)
+                    if ($0 !~ /^[[:space:]]*$/ && length(current_indent) <= extra_flags_indent_len) {
+                      append_flags(extra_flags_indent)
+                      in_extra_flags = 0
+                    }
+                  }
+
+                  if (in_extra_flags == 1) {
+                    if (match($0, /^[[:space:]]*-[[:space:]]*(.+)$/, match_groups)) {
+                      existing_flag = trim(match_groups[1])
+                      if (flag_key(existing_flag) in override_keys) {
+                        next
+                      }
+                    }
+                    print
+                    next
+                  }
+
                   print
                   if (flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:[[:space:]]*$/) {
                     match($0, /^[[:space:]]*/)
-                    indent = substr($0, RSTART, RLENGTH)
-                    for (i = 1; i <= flags_count; i++) {
-                      print indent "  - " flags[i]
-                    }
+                    extra_flags_indent = substr($0, RSTART, RLENGTH)
+                    extra_flags_indent_len = length(extra_flags_indent)
+                    in_extra_flags = 1
+                    append_flags(extra_flags_indent)
+                  }
+                }
+                END {
+                  if (in_extra_flags == 1) {
+                    append_flags(extra_flags_indent)
                   }
                 }
               ' > "${RENDERED_CONFIG_FILE}"
