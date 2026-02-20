@@ -226,5 +226,118 @@ namespace Nethermind.Evm.Test
 
             Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance), Throws.InstanceOf<InvalidDataException>());
         }
+
+        [TestFixture]
+        public class CacheBehaviorTests
+        {
+            [Test]
+            public void Cache_InitiallyNullBeforeFirstCalculation()
+            {
+                Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+
+                tx._cachedIntrinsicGasSpec.Should().BeNull();
+                tx._cachedIntrinsicGasStandard.Should().Be(0);
+                tx._cachedIntrinsicGasFloor.Should().Be(0);
+            }
+
+            [Test]
+            public void Cache_HitReturnsCachedValue()
+            {
+                Transaction tx = Build.A.Transaction.SignedAndResolved().WithData([1, 0, 1]).TestObject;
+
+                EthereumIntrinsicGas first = IntrinsicGasCalculator.Calculate(tx, Berlin.Instance);
+
+                tx._cachedIntrinsicGasSpec.Should().NotBeNull();
+                ReferenceEquals(tx._cachedIntrinsicGasSpec, Berlin.Instance).Should().BeTrue();
+                tx._cachedIntrinsicGasStandard.Should().Be(first.Standard);
+                tx._cachedIntrinsicGasFloor.Should().Be(first.FloorGas);
+
+                EthereumIntrinsicGas second = IntrinsicGasCalculator.Calculate(tx, Berlin.Instance);
+
+                second.Should().Be(first);
+            }
+
+            [Test]
+            public void Cache_InvalidatedWhenSpecChanges()
+            {
+                Transaction tx = Build.A.Transaction.SignedAndResolved().WithData([1]).TestObject;
+
+                // Berlin uses repriced data costs: byte 1 costs 16
+                EthereumIntrinsicGas berlinResult = IntrinsicGasCalculator.Calculate(tx, Berlin.Instance);
+                berlinResult.Standard.Should().Be(21000 + 16);
+
+                // Homestead uses old data costs: byte 1 costs 68
+                EthereumIntrinsicGas homesteadResult = IntrinsicGasCalculator.Calculate(tx, Homestead.Instance);
+                homesteadResult.Standard.Should().Be(21000 + 68);
+
+                // Cache should now point to Homestead
+                ReferenceEquals(tx._cachedIntrinsicGasSpec, Homestead.Instance).Should().BeTrue();
+                tx._cachedIntrinsicGasStandard.Should().Be(homesteadResult.Standard);
+            }
+
+            [Test]
+            public void Cache_PragueFloorCosts()
+            {
+                Transaction tx = Build.A.Transaction.SignedAndResolved().WithData([1]).TestObject;
+
+                EthereumIntrinsicGas first = IntrinsicGasCalculator.Calculate(tx, Prague.Instance);
+
+                first.Standard.Should().Be(21000 + 16);
+                first.FloorGas.Should().BeGreaterThan(0);
+                first.FloorGas.Should().Be(21040);
+
+                tx._cachedIntrinsicGasStandard.Should().Be(first.Standard);
+                tx._cachedIntrinsicGasFloor.Should().Be(first.FloorGas);
+
+                EthereumIntrinsicGas second = IntrinsicGasCalculator.Calculate(tx, Prague.Instance);
+                second.Should().Be(first);
+            }
+
+            [Test]
+            public void Cache_SpecTransition()
+            {
+                Transaction tx = Build.A.Transaction.SignedAndResolved().WithData([0, 0, 1]).TestObject;
+
+                // Homestead: old data costs — 2 zeros (4 each) + 1 nonzero (68) = 76
+                EthereumIntrinsicGas homesteadResult = IntrinsicGasCalculator.Calculate(tx, Homestead.Instance);
+                homesteadResult.Standard.Should().Be(21000 + 76);
+                homesteadResult.FloorGas.Should().Be(0);
+                ReferenceEquals(tx._cachedIntrinsicGasSpec, Homestead.Instance).Should().BeTrue();
+
+                // Berlin: repriced data costs — 2 zeros (4 each) + 1 nonzero (16) = 24
+                EthereumIntrinsicGas berlinResult = IntrinsicGasCalculator.Calculate(tx, Berlin.Instance);
+                berlinResult.Standard.Should().Be(21000 + 24);
+                berlinResult.FloorGas.Should().Be(0);
+                ReferenceEquals(tx._cachedIntrinsicGasSpec, Berlin.Instance).Should().BeTrue();
+
+                // Prague: same standard as Berlin, but with floor cost
+                EthereumIntrinsicGas pragueResult = IntrinsicGasCalculator.Calculate(tx, Prague.Instance);
+                pragueResult.Standard.Should().Be(21000 + 24);
+                pragueResult.FloorGas.Should().Be(21060);
+                ReferenceEquals(tx._cachedIntrinsicGasSpec, Prague.Instance).Should().BeTrue();
+            }
+
+            [Test]
+            public void Cache_AccessListTransaction()
+            {
+                AccessList.Builder accessListBuilder = new();
+                accessListBuilder.AddAddress(Address.Zero);
+                accessListBuilder.AddStorage((UInt256)1);
+                AccessList accessList = accessListBuilder.Build();
+
+                Transaction tx = Build.A.Transaction.SignedAndResolved().WithAccessList(accessList).TestObject;
+
+                EthereumIntrinsicGas first = IntrinsicGasCalculator.Calculate(tx, Berlin.Instance);
+
+                // 21000 base + 2400 (address) + 1900 (storage key) = 25300
+                first.Standard.Should().Be(25300);
+                tx._cachedIntrinsicGasStandard.Should().Be(first.Standard);
+                tx._cachedIntrinsicGasFloor.Should().Be(first.FloorGas);
+                ReferenceEquals(tx._cachedIntrinsicGasSpec, Berlin.Instance).Should().BeTrue();
+
+                EthereumIntrinsicGas second = IntrinsicGasCalculator.Calculate(tx, Berlin.Instance);
+                second.Should().Be(first);
+            }
+        }
     }
 }
