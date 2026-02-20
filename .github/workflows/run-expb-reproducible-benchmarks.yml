@@ -158,7 +158,7 @@ jobs:
           clean_branch="$(echo "${branch}" | sed 's/[^a-zA-Z0-9._-]/-/g')"
 
           should_trigger_publish_docker="true"
-          if [[ "${branch}" == "master" || "${branch}" == "paprika" || "${branch}" == release/* || "${branch}" == codex/* ]]; then
+          if [[ "${branch}" == "master" || "${branch}" == "paprika" || "${branch}" == release/* ]]; then
             should_trigger_publish_docker="false"
           fi
 
