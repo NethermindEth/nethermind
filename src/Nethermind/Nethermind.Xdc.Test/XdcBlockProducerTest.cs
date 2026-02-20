@@ -59,7 +59,6 @@ internal class XdcBlockProducerTest
 
         XdcBlockProducer producer = new XdcBlockProducer(
             epochManager,
-            Substitute.For<ISnapshotManager>(),
             Substitute.For<IMasternodesCalculator>(),
             xdcContext,
             Substitute.For<ITxSource>(),

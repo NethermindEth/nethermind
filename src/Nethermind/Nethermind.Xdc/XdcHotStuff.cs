@@ -27,7 +27,6 @@ namespace Nethermind.Xdc
         private readonly ISpecProvider _specProvider;
         private readonly IBlockProducer _blockBuilder;
         private readonly IEpochSwitchManager _epochSwitchManager;
-        private readonly ISnapshotManager _snapshotManager;
         private readonly IMasternodesCalculator _masternodesCalculator;
         private readonly IQuorumCertificateManager _quorumCertificateManager;
         private readonly IVotesManager _votesManager;
@@ -55,7 +54,6 @@ namespace Nethermind.Xdc
             ISpecProvider specProvider,
             IBlockProducer blockBuilder,
             IEpochSwitchManager epochSwitchManager,
-            ISnapshotManager snapshotManager,
             IMasternodesCalculator masternodesCalculator,
             IQuorumCertificateManager quorumCertificateManager,
             IVotesManager votesManager,
@@ -70,7 +68,6 @@ namespace Nethermind.Xdc
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
             _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
-            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
             _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
             _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));

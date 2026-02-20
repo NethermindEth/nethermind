@@ -343,7 +343,6 @@ public class XdcTestBlockchain : TestBlockchain
             Signer,
             Container.Resolve<CandidateContainer>(),
             EpochSwitchManager,
-            SnapshotManager,
             MasternodesCalculator,
             XdcContext,
             env.TxSource,

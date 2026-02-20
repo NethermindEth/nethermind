@@ -23,17 +23,15 @@ namespace Nethermind.Xdc;
 internal class XdcBlockProducer : BlockProducerBase
 {
     protected readonly IEpochSwitchManager epochSwitchManager;
-    protected readonly ISnapshotManager snapshotManager;
     protected readonly IMasternodesCalculator masternodesCalculator;
     protected readonly IXdcConsensusContext xdcContext;
     protected readonly ISealer sealer;
     protected readonly ISpecProvider specProvider;
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
 
-    public XdcBlockProducer(IEpochSwitchManager epochSwitchManager, ISnapshotManager snapshotManager, IMasternodesCalculator masternodesCalculator, IXdcConsensusContext xdcContext, ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IWorldState stateProvider, IGasLimitCalculator? gasLimitCalculator, ITimestamper? timestamper, ISpecProvider specProvider, ILogManager logManager, IDifficultyCalculator? difficultyCalculator, IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
+    public XdcBlockProducer(IEpochSwitchManager epochSwitchManager, IMasternodesCalculator masternodesCalculator, IXdcConsensusContext xdcContext, ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IWorldState stateProvider, IGasLimitCalculator? gasLimitCalculator, ITimestamper? timestamper, ISpecProvider specProvider, ILogManager logManager, IDifficultyCalculator? difficultyCalculator, IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
     {
         this.epochSwitchManager = epochSwitchManager;
-        this.snapshotManager = snapshotManager;
         this.masternodesCalculator = masternodesCalculator;
         this.xdcContext = xdcContext;
         this.sealer = sealer;

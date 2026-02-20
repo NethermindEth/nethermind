@@ -23,7 +23,6 @@ internal class TestXdcBlockProducer(
     ISigner signer,
     CandidateContainer candidateContainer,
     IEpochSwitchManager epochSwitchManager,
-    ISnapshotManager snapshotManager,
     IMasternodesCalculator masternodesCalculator,
     IXdcConsensusContext xdcContext,
     ITxSource txSource,
@@ -36,7 +35,7 @@ internal class TestXdcBlockProducer(
     ISpecProvider specProvider,
     ILogManager logManager,
     IDifficultyCalculator? difficultyCalculator,
-    IBlocksConfig? blocksConfig) : XdcBlockProducer(epochSwitchManager, snapshotManager, masternodesCalculator, xdcContext, txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
+    IBlocksConfig? blocksConfig) : XdcBlockProducer(epochSwitchManager, masternodesCalculator, xdcContext, txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
 {
     private readonly Signer signer = (Signer)signer;
 
