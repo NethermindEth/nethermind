@@ -472,6 +472,24 @@ jobs:
                   }
                   appended_flags = 1
                 }
+                function append_inline_existing_flags(raw_values, indent, item_count, items, idx, existing_flag) {
+                  raw_values = trim(raw_values)
+                  if (raw_values == "") {
+                    return
+                  }
+
+                  item_count = split(raw_values, items, ",")
+                  for (idx = 1; idx <= item_count; idx++) {
+                    existing_flag = trim(items[idx])
+                    if (existing_flag == "") {
+                      continue
+                    }
+                    if (flag_key(existing_flag) in override_keys) {
+                      continue
+                    }
+                    print indent "  - " existing_flag
+                  }
+                }
                 BEGIN {
                   while ((getline flag < flags_file) > 0) {
                     flags[++flags_count] = flag
@@ -501,8 +519,14 @@ jobs:
                   }
 
                   line = $0
-                  if (flags_count > 0 && line ~ /^[[:space:]]*extra_flags:[[:space:]]*\[[[:space:]]*\][[:space:]]*$/) {
-                    sub(/\[[[:space:]]*\][[:space:]]*$/, "", line)
+                  if (flags_count > 0 && match(line, /^([[:space:]]*)extra_flags:[[:space:]]*\[(.*)\][[:space:]]*$/, inline_extra_flags_match)) {
+                    extra_flags_indent = inline_extra_flags_match[1]
+                    inline_extra_flags = inline_extra_flags_match[2]
+
+                    print extra_flags_indent "extra_flags:"
+                    append_inline_existing_flags(inline_extra_flags, extra_flags_indent)
+                    append_flags(extra_flags_indent)
+                    next
                   }
 
                   print line
