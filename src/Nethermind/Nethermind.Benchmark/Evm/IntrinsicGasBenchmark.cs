@@ -4,6 +4,7 @@
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -11,113 +12,139 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Benchmarks.Evm;
 
+/// <summary>
+/// Measures the per-call cost of <see cref="IntrinsicGasCalculator.Calculate"/> with and
+/// without the intrinsic-gas cache introduced in PR #10514.
+///
+/// Each benchmark method executes 1 000 calls so that BenchmarkDotNet can report
+/// stable per-operation numbers even for very fast (cache-hit) paths.
+/// </summary>
 [MemoryDiagnoser]
 public class IntrinsicGasBenchmark
 {
-    private Transaction _simpleTxCold = null!;
-    private Transaction _simpleTxPrimed = null!;
-    private Transaction _dataTxCold = null!;
-    private Transaction _dataTxPrimed = null!;
-    private Transaction _accessListTxCold = null!;
-    private Transaction _accessListTxPrimed = null!;
-    private Transaction _specChangeTx = null!;
+    private const int N = 1_000;
+
+    private Transaction _simpleTx = null!;
+    private Transaction _dataTx = null!;
+    private Transaction _accessListTx = null!;
 
     private static readonly byte[] MixedData = CreateMixedData();
+    private static readonly IReleaseSpec BerlinSpec = Berlin.Instance;
+    private static readonly IReleaseSpec PragueSpec = Prague.Instance;
 
     private static byte[] CreateMixedData()
     {
         byte[] data = new byte[128];
         for (int i = 0; i < data.Length; i++)
-        {
             data[i] = i % 4 == 0 ? (byte)0 : (byte)(i & 0xFF);
-        }
         return data;
     }
 
-    private static AccessList BuildAccessList()
-    {
-        return new AccessList.Builder()
+    private static AccessList BuildAccessList() =>
+        new AccessList.Builder()
             .AddAddress(TestItem.AddressA)
             .AddStorage(UInt256.Zero)
             .AddStorage(UInt256.One)
             .AddAddress(TestItem.AddressB)
             .AddStorage(new UInt256(42))
             .Build();
-    }
-
-    private static Transaction BuildSimpleTx() =>
-        Build.A.Transaction.SignedAndResolved().TestObject;
-
-    private static Transaction BuildDataTx() =>
-        Build.A.Transaction.WithData(MixedData).SignedAndResolved().TestObject;
-
-    private static Transaction BuildAccessListTx() =>
-        Build.A.Transaction.WithAccessList(BuildAccessList()).SignedAndResolved().TestObject;
 
     [GlobalSetup]
     public void Setup()
     {
-        // Primed transactions: call Calculate once to populate the cache
-        _simpleTxPrimed = BuildSimpleTx();
-        IntrinsicGasCalculator.Calculate(_simpleTxPrimed, Prague.Instance);
+        _simpleTx = Build.A.Transaction.SignedAndResolved().TestObject;
+        _dataTx = Build.A.Transaction.WithData(MixedData).SignedAndResolved().TestObject;
+        _accessListTx = Build.A.Transaction.WithAccessList(BuildAccessList()).SignedAndResolved().TestObject;
 
-        _dataTxPrimed = BuildDataTx();
-        IntrinsicGasCalculator.Calculate(_dataTxPrimed, Prague.Instance);
-
-        _accessListTxPrimed = BuildAccessListTx();
-        IntrinsicGasCalculator.Calculate(_accessListTxPrimed, Prague.Instance);
-
-        // Cold transactions: will be replaced each iteration
-        _simpleTxCold = BuildSimpleTx();
-        _dataTxCold = BuildDataTx();
-        _accessListTxCold = BuildAccessListTx();
-
-        // SpecChange tx: primed with Prague, will be called with Berlin
-        _specChangeTx = BuildSimpleTx();
-        IntrinsicGasCalculator.Calculate(_specChangeTx, Prague.Instance);
+        // Pre-warm the cache on each transaction with Prague so CacheHit benchmarks
+        // start from a hot cache.
+        IntrinsicGasCalculator.Calculate(_simpleTx, PragueSpec);
+        IntrinsicGasCalculator.Calculate(_dataTx, PragueSpec);
+        IntrinsicGasCalculator.Calculate(_accessListTx, PragueSpec);
     }
 
-    [IterationSetup(Target = nameof(SimpleTx_CacheMiss))]
-    public void SetupSimpleTxCold() => _simpleTxCold = BuildSimpleTx();
+    // ── Cache-miss benchmarks ────────────────────────────────────────────────
+    // Each iteration resets the validity field before every call so the full
+    // computation runs every time.
 
-    [IterationSetup(Target = nameof(DataTx_CacheMiss))]
-    public void SetupDataTxCold() => _dataTxCold = BuildDataTx();
-
-    [IterationSetup(Target = nameof(AccessListTx_CacheMiss))]
-    public void SetupAccessListTxCold() => _accessListTxCold = BuildAccessListTx();
-
-    [IterationSetup(Target = nameof(SpecChange_CacheMiss))]
-    public void SetupSpecChangeTx()
+    [Benchmark(Baseline = true, OperationsPerInvoke = N)]
+    public EthereumIntrinsicGas SimpleTx_CacheMiss()
     {
-        _specChangeTx = BuildSimpleTx();
-        IntrinsicGasCalculator.Calculate(_specChangeTx, Prague.Instance);
+        EthereumIntrinsicGas result = default;
+        for (int i = 0; i < N; i++)
+        {
+            _simpleTx._cachedIntrinsicGasSpec = null;
+            result = IntrinsicGasCalculator.Calculate(_simpleTx, BerlinSpec);
+        }
+        return result;
     }
 
-    [Benchmark(Baseline = true)]
-    public EthereumIntrinsicGas SimpleTx_CacheMiss() =>
-        IntrinsicGasCalculator.Calculate(_simpleTxCold, Berlin.Instance);
+    [Benchmark(OperationsPerInvoke = N)]
+    public EthereumIntrinsicGas DataTx_CacheMiss()
+    {
+        EthereumIntrinsicGas result = default;
+        for (int i = 0; i < N; i++)
+        {
+            _dataTx._cachedIntrinsicGasSpec = null;
+            result = IntrinsicGasCalculator.Calculate(_dataTx, BerlinSpec);
+        }
+        return result;
+    }
 
-    [Benchmark]
-    public EthereumIntrinsicGas SimpleTx_CacheHit() =>
-        IntrinsicGasCalculator.Calculate(_simpleTxPrimed, Prague.Instance);
+    [Benchmark(OperationsPerInvoke = N)]
+    public EthereumIntrinsicGas AccessListTx_CacheMiss()
+    {
+        EthereumIntrinsicGas result = default;
+        for (int i = 0; i < N; i++)
+        {
+            _accessListTx._cachedIntrinsicGasSpec = null;
+            result = IntrinsicGasCalculator.Calculate(_accessListTx, BerlinSpec);
+        }
+        return result;
+    }
 
-    [Benchmark]
-    public EthereumIntrinsicGas DataTx_CacheMiss() =>
-        IntrinsicGasCalculator.Calculate(_dataTxCold, Berlin.Instance);
+    // ── Cache-hit benchmarks ─────────────────────────────────────────────────
+    // Cache is hot from GlobalSetup; same spec used every call → always hits.
 
-    [Benchmark]
-    public EthereumIntrinsicGas DataTx_CacheHit() =>
-        IntrinsicGasCalculator.Calculate(_dataTxPrimed, Prague.Instance);
+    [Benchmark(OperationsPerInvoke = N)]
+    public EthereumIntrinsicGas SimpleTx_CacheHit()
+    {
+        EthereumIntrinsicGas result = default;
+        for (int i = 0; i < N; i++)
+            result = IntrinsicGasCalculator.Calculate(_simpleTx, PragueSpec);
+        return result;
+    }
 
-    [Benchmark]
-    public EthereumIntrinsicGas AccessListTx_CacheMiss() =>
-        IntrinsicGasCalculator.Calculate(_accessListTxCold, Berlin.Instance);
+    [Benchmark(OperationsPerInvoke = N)]
+    public EthereumIntrinsicGas DataTx_CacheHit()
+    {
+        EthereumIntrinsicGas result = default;
+        for (int i = 0; i < N; i++)
+            result = IntrinsicGasCalculator.Calculate(_dataTx, PragueSpec);
+        return result;
+    }
 
-    [Benchmark]
-    public EthereumIntrinsicGas AccessListTx_CacheHit() =>
-        IntrinsicGasCalculator.Calculate(_accessListTxPrimed, Prague.Instance);
+    [Benchmark(OperationsPerInvoke = N)]
+    public EthereumIntrinsicGas AccessListTx_CacheHit()
+    {
+        EthereumIntrinsicGas result = default;
+        for (int i = 0; i < N; i++)
+            result = IntrinsicGasCalculator.Calculate(_accessListTx, PragueSpec);
+        return result;
+    }
 
-    [Benchmark]
-    public EthereumIntrinsicGas SpecChange_CacheMiss() =>
-        IntrinsicGasCalculator.Calculate(_specChangeTx, Berlin.Instance);
+    // ── Spec-change benchmark ────────────────────────────────────────────────
+    // Alternates between two specs every call: cache never hits.
+
+    [Benchmark(OperationsPerInvoke = N)]
+    public EthereumIntrinsicGas SpecChange_CacheMiss()
+    {
+        EthereumIntrinsicGas result = default;
+        for (int i = 0; i < N; i++)
+        {
+            IReleaseSpec spec = (i & 1) == 0 ? BerlinSpec : PragueSpec;
+            result = IntrinsicGasCalculator.Calculate(_simpleTx, spec);
+        }
+        return result;
+    }
 }
