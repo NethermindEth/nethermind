@@ -18,65 +18,7 @@ build-zisk:
 	rm -f Program; \
 	rm -f Program.patched; \
 	rm -f Program.o; \
-	./docker_build.sh bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk \
-		-d ZKVM \
-		--nostdlibrefs \
-		--no-stacktrace-data \
-		--no-globalization \
-		-r /nethermind/bin/Microsoft.Extensions.ObjectPool.dll \
-		-r /nethermind/bin/Nethermind.Abi.dll \
-		-r /nethermind/bin/Nethermind.Blockchain.dll \
-		-r /nethermind/bin/Nethermind.Consensus.dll \
-		-r /nethermind/bin/Nethermind.Core.dll \
-		-r /nethermind/bin/Nethermind.Crypto.dll \
-		-r /nethermind/bin/Nethermind.Db.dll \
-		-r /nethermind/bin/Nethermind.Evm.dll \
-		-r /nethermind/bin/Nethermind.Evm.Precompiles.dll \
-		-r /nethermind/bin/Nethermind.Facade.dll \
-		-r /nethermind/bin/Nethermind.Int256.dll \
-		-r /nethermind/bin/Nethermind.Logging.dll \
-		-r /nethermind/bin/Nethermind.Serialization.Rlp.dll \
-		-r /nethermind/bin/Nethermind.Specs.dll \
-		-r /nethermind/bin/Nethermind.State.dll \
-		-r /nethermind/bin/Nethermind.Trie.dll \
-		-r /nethermind/bin/Nethermind.TxPool.dll \
-		-r {std}/Microsoft.Win32.Primitives.dll \
-		-r {std}/netstandard.dll \
-		-r {std}/System.Collections.Concurrent.dll \
-		-r {std}/System.Collections.dll \
-		-r {std}/System.Collections.Immutable.dll \
-		-r {std}/System.ComponentModel.Primitives.dll \
-		-r {std}/System.Console.dll \
-		-r {std}/System.Diagnostics.DiagnosticSource.dll \
-		-r {std}/System.Diagnostics.Process.dll \
-		-r {std}/System.Diagnostics.Tracing.dll \
-		-r {std}/System.IO.Pipes.dll \
-		-r {std}/System.Linq.dll \
-		-r {std}/System.Memory.dll \
-		-r {std}/System.Net.Primitives.dll \
-		-r {std}/System.Net.Sockets.dll \
-		-r {std}/System.Runtime.dll \
-		-r {std}/System.Runtime.InteropServices.dll \
-		-r {std}/System.Runtime.Intrinsics.dll \
-		-r {std}/System.Runtime.Numerics.dll \
-		-r {std}/System.Security.Cryptography.dll \
-		-r {std}/System.Text.RegularExpressions.dll \
-		-r {std}/System.Threading.dll \
-		-r {std}/System.Threading.Tasks.Parallel.dll \
-		-r {std}/System.Threading.Thread.dll \
-		-r {std}/System.Threading.ThreadPool.dll \
-		-r {std}/System.Diagnostics.StackTrace.dll \
-		-r {std}/System.Reflection.Metadata.dll \
-		-r /nethermind/bin/BouncyCastle.Cryptography.dll \
-		-r /nethermind/bin/Nethermind.Crypto.Bls.dll \
-		-r /nethermind/bin/Nethermind.Crypto.SecP256k1.dll \
-		-r /nethermind/bin/Nethermind.Crypto.SecP256r1.dll \
-		-r /nethermind/bin/NonBlocking.dll \
-		-r /nethermind/bin/FastEnum.Core.dll \
-		-r /nethermind/bin/Nethermind.GmpBindings.dll \
-		-r /nethermind/bin/Nethermind.MclBindings.dll \
-		-r /nethermind/bin/Ckzg.Bindings.dll \
-		--stdlib dotnet --verbose /nethermind/src/Program.cs
+	./docker_build.sh bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk --stdlib dotnet --verbose /nethermind/src/Program.cs --extlib https://github.com/NethermindEth/bflat-libziskos:pre-develop-0.16.0
 
 build-zisk-sim:
 	rm -f Program; \
