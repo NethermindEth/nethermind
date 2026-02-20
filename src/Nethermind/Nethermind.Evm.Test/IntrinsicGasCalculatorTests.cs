@@ -235,7 +235,7 @@ namespace Nethermind.Evm.Test
             {
                 Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
 
-                tx._cachedIntrinsicGas.Spec.Should().BeNull();
+                tx._cachedIntrinsicGas.Should().BeNull();
             }
 
             [Test]

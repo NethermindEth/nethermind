@@ -208,17 +208,17 @@ namespace Nethermind.Core
 
         protected int? _size = null;
 
-        // Intrinsic gas cache: Spec is the last field by offset; a single struct assignment
-        // writes fields low-to-high, so concurrent readers who see Spec != null can rely on
-        // Standard/Floor being valid. Read the whole struct to a local before inspecting.
-        internal readonly struct IntrinsicGasCache(long standard, long floor, IReleaseSpec? spec)
+        // Intrinsic gas cache: stored as a class so that swapping the reference is a single
+        // atomic 64-bit write. Concurrent readers always see either null or a fully-constructed
+        // instance — no torn reads possible.
+        internal class IntrinsicGasCache(long standard, long floor, IReleaseSpec? spec)
         {
             internal readonly long Standard = standard;
             internal readonly long Floor = floor;
             internal readonly IReleaseSpec? Spec = spec;
         }
 
-        internal IntrinsicGasCache _cachedIntrinsicGas;
+        internal IntrinsicGasCache? _cachedIntrinsicGas;
 
         /// <summary>
         /// Encoded transaction length
@@ -326,7 +326,7 @@ namespace Nethermind.Core
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
                 obj._size = default;
-                obj._cachedIntrinsicGas = default;
+                obj._cachedIntrinsicGas = null;
                 obj.AuthorizationList = default;
 
                 return true;

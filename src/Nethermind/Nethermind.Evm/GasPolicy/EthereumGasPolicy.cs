@@ -178,9 +178,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
     {
-        // Read to local first, then check spec (avoids repeated field dereferences on cache hit)
-        Transaction.IntrinsicGasCache cached = tx._cachedIntrinsicGas;
-        if (ReferenceEquals(cached.Spec, spec))
+        // Read reference to local (atomic 64-bit load); null means cache is cold
+        Transaction.IntrinsicGasCache? cached = tx._cachedIntrinsicGas;
+        if (cached is not null && ReferenceEquals(cached.Spec, spec))
         {
             return new IntrinsicGas<EthereumGasPolicy>(
                 FromLong(cached.Standard),
@@ -195,7 +195,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
                         + AuthorizationListCost(tx, spec);
         long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, spec);
 
-        // Spec field is last in struct layout; single assignment preserves write ordering on common architectures
+        // Single reference-write is atomic on 64-bit; readers always see a fully-constructed instance
         tx._cachedIntrinsicGas = new Transaction.IntrinsicGasCache(standard, floorCost, spec);
 
         return new IntrinsicGas<EthereumGasPolicy>(FromLong(standard), FromLong(floorCost));
