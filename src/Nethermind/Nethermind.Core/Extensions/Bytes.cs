@@ -973,7 +973,7 @@ namespace Nethermind.Core.Extensions
                 int i = 0;
                 for (; i < data.Length - Vector128<byte>.Count; i += Vector128<byte>.Count)
                 {
-                    Vector128<byte> dataVector = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref bytes, i));
+                    Vector128<byte> dataVector = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(data), i));
                     uint flags = Vector128.Equals(dataVector, default).ExtractMostSignificantBits();
                     totalZeros += BitOperations.PopCount(flags);
                 }
