@@ -74,9 +74,11 @@ namespace Nethermind.Blockchain.Filters
             {
                 int filterId = filter.Id;
                 List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new List<Hash256>());
-                transactions.Add(e.Transaction.Hash);
-                if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId} contains {transactions.Count} transactions.");
-
+                lock (transactions)
+                {
+                    transactions.Add(e.Transaction.Hash);
+                    if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId} contains {transactions.Count} transactions.");
+                }
             }
         }
 
@@ -88,24 +90,32 @@ namespace Nethermind.Blockchain.Filters
             {
                 int filterId = filter.Id;
                 List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new List<Hash256>());
-                transactions.Remove(e.Transaction.Hash);
-                if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId} contains {transactions.Count} transactions.");
-
+                lock (transactions)
+                {
+                    transactions.Remove(e.Transaction.Hash);
+                    if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId} contains {transactions.Count} transactions.");
+                }
             }
         }
 
         public FilterLog[] GetLogs(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            _logs.TryGetValue(filterId, out List<FilterLog> logs);
-            return logs?.ToArray() ?? [];
+            if (_logs.TryGetValue(filterId, out List<FilterLog> logs))
+            {
+                lock (logs) return logs.ToArray();
+            }
+            return [];
         }
 
         public Hash256[] GetBlocksHashes(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            _blockHashes.TryGetValue(filterId, out List<Hash256> blockHashes);
-            return blockHashes?.ToArray() ?? [];
+            if (_blockHashes.TryGetValue(filterId, out List<Hash256> blockHashes))
+            {
+                lock (blockHashes) return blockHashes.ToArray();
+            }
+            return [];
         }
 
         [Todo("Truffle sends transaction first and then polls so we hack it here for now")]
@@ -124,10 +134,12 @@ namespace Nethermind.Blockchain.Filters
                 return [];
             }
 
-            var existingBlockHashes = blockHashes.ToArray();
-            _blockHashes[filterId].Clear();
-
-            return existingBlockHashes;
+            lock (blockHashes)
+            {
+                Hash256[] existingBlockHashes = blockHashes.ToArray();
+                blockHashes.Clear();
+                return existingBlockHashes;
+            }
         }
 
         public FilterLog[] PollLogs(int filterId)
@@ -138,10 +150,12 @@ namespace Nethermind.Blockchain.Filters
                 return [];
             }
 
-            var existingLogs = logs.ToArray();
-            _logs[filterId].Clear();
-
-            return existingLogs;
+            lock (logs)
+            {
+                FilterLog[] existingLogs = logs.ToArray();
+                logs.Clear();
+                return existingLogs;
+            }
         }
 
         public Hash256[] PollPendingTransactionHashes(int filterId)
@@ -153,10 +167,12 @@ namespace Nethermind.Blockchain.Filters
                 return [];
             }
 
-            var existingPendingTransactions = pendingTransactions.ToArray();
-            _pendingTransactions[filterId].Clear();
-
-            return existingPendingTransactions;
+            lock (pendingTransactions)
+            {
+                Hash256[] existingPendingTransactions = pendingTransactions.ToArray();
+                pendingTransactions.Clear();
+                return existingPendingTransactions;
+            }
         }
 
         private void AddReceipts(TxReceipt txReceipt, ulong blockTimestamp)
@@ -192,8 +208,11 @@ namespace Nethermind.Blockchain.Filters
             }
 
             List<Hash256> blocks = _blockHashes.GetOrAdd(filter.Id, static i => new List<Hash256>());
-            blocks.Add(block.Hash);
-            if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
+            lock (blocks)
+            {
+                blocks.Add(block.Hash);
+                if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
+            }
         }
 
         private void StoreLogs(LogFilter filter, TxReceipt txReceipt, long logIndex, ulong blockTimestamp)
@@ -204,22 +223,25 @@ namespace Nethermind.Blockchain.Filters
             }
 
             List<FilterLog> logs = _logs.GetOrAdd(filter.Id, static i => new List<FilterLog>());
-            for (int i = 0; i < txReceipt.Logs.Length; i++)
+            lock (logs)
             {
-                LogEntry? logEntry = txReceipt.Logs[i];
-                FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, blockTimestamp);
-                if (filterLog is not null)
+                for (int i = 0; i < txReceipt.Logs.Length; i++)
                 {
-                    logs.Add(filterLog);
+                    LogEntry? logEntry = txReceipt.Logs[i];
+                    FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, blockTimestamp);
+                    if (filterLog is not null)
+                    {
+                        logs.Add(filterLog);
+                    }
                 }
-            }
 
-            if (logs.Count == 0)
-            {
-                return;
-            }
+                if (logs.Count == 0)
+                {
+                    return;
+                }
 
-            if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {logs.Count} logs.");
+                if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {logs.Count} logs.");
+            }
         }
 
         private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, ulong blockTimestamp)
