@@ -18,7 +18,7 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
 
     public TestMemColumnsDb(params TKey[] keys)
     {
-        foreach (TKey key in keys)
+        foreach (var key in keys)
         {
             GetColumnDb(key);
         }
@@ -52,8 +52,13 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
 
     private class Snapshot(IDictionary<TKey, TestMemDb> columns) : IColumnDbSnapshot<TKey>
     {
-        public IReadOnlyKeyValueStore GetColumn(TKey key) => columns[key];
+        public IReadOnlyKeyValueStore GetColumn(TKey key)
+        {
+            return columns[key];
+        }
 
-        public void Dispose() { }
+        public void Dispose()
+        {
+        }
     }
 }

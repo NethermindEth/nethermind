@@ -38,7 +38,7 @@ public class AddressConverter : JsonConverter<Address>
         addressBytes[0] = (byte)'0';
         addressBytes[1] = (byte)'x';
         Span<byte> hex = addressBytes[2..];
-        value.Bytes.AsSpan().OutputBytesToByteHex(hex, false);
+        value.Bytes.OutputBytesToByteHex(hex, false);
         writer.WritePropertyName(addressBytes);
     }
 }

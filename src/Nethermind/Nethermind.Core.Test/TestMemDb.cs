@@ -168,4 +168,52 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
         public ReadOnlySpan<byte> CurrentKey => list[idx].Item1;
         public ReadOnlySpan<byte> CurrentValue => list[idx].Item2;
     }
+
+    public byte[]? FirstKey => Keys.Min();
+    public byte[]? LastKey => Keys.Max();
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+    {
+        ArrayPoolList<(byte[], byte[]?)> sortedValue = Keys
+            .Order(Bytes.Comparer)
+            .Select((key) => (key, this.Get(key)))
+            .ToPooledList(1);
+
+        return new FakeSortedView(sortedValue);
+    }
+
+    private class FakeSortedView(ArrayPoolList<(byte[], byte[]?)> list) : ISortedView
+    {
+        private int idx = -1;
+
+        public void Dispose()
+        {
+            list.Dispose();
+        }
+
+        public bool StartBefore(ReadOnlySpan<byte> value)
+        {
+            idx = 0;
+
+            while (idx < list.Count)
+            {
+                if (Bytes.BytesComparer.Compare(list[idx].Item1, value) >= 0)
+                {
+                    idx--;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool MoveNext()
+        {
+            idx++;
+            if (idx >= list.Count) return false;
+            return true;
+        }
+
+        public ReadOnlySpan<byte> CurrentKey => list[idx].Item1;
+        public ReadOnlySpan<byte> CurrentValue => list[idx].Item2;
+    }
 }

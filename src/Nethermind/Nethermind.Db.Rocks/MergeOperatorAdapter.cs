@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using RocksDbSharp;
@@ -15,11 +14,11 @@ internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
     public string Name => inner.Name;
 
     // TODO: fix and return array ptr instead of copying to unmanaged memory?
-    private static unsafe nint GetResult(ArrayPoolList<byte>? data, out nint resultLength, out byte success)
+    private static unsafe nint GetResult(ArrayPoolList<byte>? data, out nint resultLength, out nint success)
     {
         if (data is null)
         {
-            success = 0;
+            success = nint.Zero;
             resultLength = nint.Zero;
             return nint.Zero;
         }
@@ -32,15 +31,13 @@ internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
 
             resultLength = result.Length;
 
-            // Fixing RocksDbSharp invalid callback signature, TODO: submit an issue/PR
-            Unsafe.SkipInit(out success);
-            Unsafe.As<byte, byte>(ref success) = 1;
+            success = (nint)1;
 
             return (nint)resultPtr;
         }
     }
 
-    public unsafe nint PartialMerge(nint key, nuint keyLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
+    public unsafe nint PartialMerge(nint key, nuint keyLength, nint operandsList, nint operandsListLength, int numOperands, out nint success, out nint newValueLength)
     {
         var keyBytes = new Span<byte>((void*)key, (int)keyLength);
         var enumerator = new RocksDbMergeEnumerator(new((void*)operandsList, numOperands), new((void*)operandsListLength, numOperands));
@@ -49,7 +46,7 @@ internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
         return GetResult(result, out newValueLength, out success);
     }
 
-    public unsafe nint FullMerge(nint key, nuint keyLength, nint existingValue, nuint existingValueLength, nint operandsList, nint operandsListLength, int numOperands, out byte success, out nint newValueLength)
+    public unsafe nint FullMerge(nint key, nuint keyLength, nint existingValue, nuint existingValueLength, nint operandsList, nint operandsListLength, int numOperands, out nint success, out nint newValueLength)
     {
         var keyBytes = new ReadOnlySpan<byte>((void*)key, (int)keyLength);
         bool hasExistingValue = existingValue != nint.Zero;

@@ -75,14 +75,18 @@ public static class Int64Extensions
     {
         if (skipLeadingZeros)
         {
-            if (value.IsZero)
+            if (value.IsUint64)
             {
-                return Bytes.ZeroHexValue;
-            }
+                ulong valueU64 = value.u0;
+                if (valueU64 == 0)
+                {
+                    return Bytes.ZeroHexValue;
+                }
 
-            if (value.IsOne)
-            {
-                return "0x1";
+                if (valueU64 == 1)
+                {
+                    return "0x1";
+                }
             }
         }
 
