@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -178,8 +179,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
     {
-        // Read reference to local (atomic 64-bit load); null means cache is cold
-        Transaction.IntrinsicGasCache? cached = tx._cachedIntrinsicGas;
+        // Volatile.Read: acquire barrier — ensures we see a fully-constructed object
+        // on all architectures (free on x64 TSO; lightweight barrier on ARM).
+        Transaction.IntrinsicGasCache? cached = Volatile.Read(ref tx._cachedIntrinsicGas);
         if (cached is not null && ReferenceEquals(cached.Spec, spec))
         {
             return new IntrinsicGas<EthereumGasPolicy>(
@@ -195,8 +197,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
                         + AuthorizationListCost(tx, spec);
         long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, spec);
 
-        // Single reference-write is atomic on 64-bit; readers always see a fully-constructed instance
-        tx._cachedIntrinsicGas = new Transaction.IntrinsicGasCache(standard, floorCost, spec);
+        // Volatile.Write: release barrier — publishes the fully-constructed snapshot atomically.
+        // Readers always see either null or a complete IntrinsicGasCache; no torn state possible.
+        Volatile.Write(ref tx._cachedIntrinsicGas, new Transaction.IntrinsicGasCache(standard, floorCost, spec));
 
         return new IntrinsicGas<EthereumGasPolicy>(FromLong(standard), FromLong(floorCost));
     }

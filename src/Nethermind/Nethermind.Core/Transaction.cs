@@ -208,10 +208,11 @@ namespace Nethermind.Core
 
         protected int? _size = null;
 
-        // Intrinsic gas cache: stored as a class so that swapping the reference is a single
-        // atomic 64-bit write. Concurrent readers always see either null or a fully-constructed
-        // instance — no torn reads possible.
-        internal class IntrinsicGasCache(long standard, long floor, IReleaseSpec? spec)
+        // Intrinsic gas cache: immutable class published via Volatile.Write so that readers on all
+        // architectures always see either null or a fully-constructed snapshot — no torn reads.
+        // Volatile.Write/Read cost zero extra CPU instructions on x86/x64 (TSO); on ARM they emit
+        // lightweight barriers. The only overhead vs a struct is one pointer dereference on the hot path.
+        internal sealed class IntrinsicGasCache(long standard, long floor, IReleaseSpec? spec)
         {
             internal readonly long Standard = standard;
             internal readonly long Floor = floor;
