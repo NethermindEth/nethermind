@@ -66,9 +66,8 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
             listBlockHash.Add(currentHash);
         }
 
-        var header = (XdcBlockHeader)tree.FindHeader(parentHash, parentNumber);
-        ulong round = header!.GetRoundNumber();
-        IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(number, round);
+        var header = tree.FindHeader(parentHash, parentNumber) as XdcBlockHeader;
+        IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header!);
         Address[] preMasternodes = epochSwitchManager.GetEpochSwitchInfo(parentHash)!.Masternodes;
         var penalties = new HashSet<Address>();
 

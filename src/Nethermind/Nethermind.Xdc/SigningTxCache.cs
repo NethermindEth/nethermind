@@ -48,9 +48,8 @@ public class SigningTxCache : ISigningTxCache
         if (e.Block.Header is not XdcBlockHeader xdcHeader)
             return;
 
-        ulong round = xdcHeader.GetRoundNumber();
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, round);
-        _ = CacheSigningTransactions(e.Block.Hash!, e.Block, spec);
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader);
+        _ = CacheSigningTransactions(e.Block.Hash!, e.Block, spec!);
     }
 
     private Transaction[] CacheSigningTransactions(Hash256 blockHash, Block block, IXdcReleaseSpec spec)
