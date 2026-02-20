@@ -21,23 +21,15 @@ public class CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider
 
     protected override CodeInfo InternalGetCodeInfo(in ValueHash256 codeHash, IReleaseSpec vmSpec)
     {
-        CodeInfo? cachedCodeInfo = null;
-        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
+        if (codeHash == ValueKeccak.OfAnEmptyString)
         {
-            cachedCodeInfo = CodeInfo.Empty;
+            return CodeInfo.Empty;
         }
 
-        cachedCodeInfo ??= _codeCache.Get(in codeHash);
+        CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
         if (cachedCodeInfo is null)
         {
-            byte[]? code = _worldState.GetCode(in codeHash);
-
-            if (code is null)
-            {
-                MissingCode(in codeHash);
-            }
-
-            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, ValidationStrategy.ExtractHeader);
+            cachedCodeInfo = GetCodeInfo(_worldState, codeHash, vmSpec);
             _codeCache.Set(in codeHash, cachedCodeInfo);
         }
         else
@@ -46,47 +38,24 @@ public class CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider
         }
 
         return cachedCodeInfo;
-
-        [DoesNotReturn, StackTraceHidden]
-        static void MissingCode(in ValueHash256 codeHash)
-        {
-            throw new DataException($"Code {codeHash} missing in the state");
-        }
     }
 
     public override void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
-        // If the code is already in the cache, we don't need to create and add it again (and reanalyze it)
-        if (_worldState.InsertCode(codeOwner, in codeHash, code, spec) &&
-            _codeCache.Get(in codeHash) is null)
+        if (InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
         {
-            CodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
-            _codeCache.Set(in codeHash, codeInfo);
+            _codeCache.Set(in codeHash, CodeInfoFactory.CreateCodeInfo(code, spec));
         }
     }
 
     public override void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
     {
-        if (codeSource == Address.Zero)
-        {
-            _worldState.InsertCode(authority, Keccak.OfAnEmptyString, Array.Empty<byte>(), spec);
-            return;
-        }
-        byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
-        Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
-        codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
-        ValueHash256 codeHash = ValueKeccak.Compute(authorizedBuffer);
-        if (_worldState.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec)
-            // If the code is already in the cache, we don't need to create CodeInfo and add it again (and reanalyze it)
-            && _codeCache.Get(in codeHash) is null)
+        bool result = SetDelegation(_worldState, codeSource, authority, spec, out ValueHash256 codeHash, out byte[] authorizedBuffer);
+        if (result && codeSource != Address.Zero && _codeCache.Get(in codeHash) is null)
         {
             _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
         }
     }
-
-    public bool TryGetDelegation(in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(in codeHash, spec).CodeSpan, out delegatedAddress);
 
     private sealed class CodeLruCache
     {
@@ -110,19 +79,13 @@ public class CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider
             return cache.Get(codeHash);
         }
 
-        public bool Set(in ValueHash256 codeHash, CodeInfo codeInfo)
+        public void Set(in ValueHash256 codeHash, CodeInfo codeInfo)
         {
             ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
-            return cache.Set(codeHash, codeInfo);
+            cache.Set(codeHash, codeInfo);
         }
 
         private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
-
-        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out CodeInfo? codeInfo)
-        {
-            codeInfo = Get(in codeHash);
-            return codeInfo is not null;
-        }
     }
 }
 

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -12,67 +13,55 @@ using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Stateless;
 
-public struct Witness
+public class Witness
 {
-    [JsonPropertyName("codes")]
     public byte[][] Codes;
-    [JsonPropertyName("state")]
     public byte[][] State;
-    [JsonPropertyName("keys")]
     public byte[][] Keys;
-    [JsonPropertyName("headers")]
     public byte[][] Headers;
+}
 
-    [JsonIgnore]
-    public IReadOnlyCollection<BlockHeader> DecodedHeaders => _decodedHeaders ??= DecodeHeaders();
+public static class WitnessExtensions
+{
+    private static readonly HeaderDecoder _decoder = new();
 
-    [JsonIgnore]
-    public INodeStorage NodeStorage => _nodeStorage ??= CreateNodeStorage();
-
-    [JsonIgnore]
-    public IKeyValueStoreWithBatching CodeDb => _codeDb ??= CreateCodeDb();
-
-    private INodeStorage CreateNodeStorage()
+    extension(Witness witness)
     {
-        IKeyValueStore db = new MemDb();
-        foreach (var stateElement in State)
+        public INodeStorage CreateNodeStorage()
         {
-            var hash = ValueKeccak.Compute(stateElement).Bytes;
-            db.PutSpan(hash, stateElement);
+            IKeyValueStore db = new MemDb();
+            foreach (byte[] stateElement in witness.State)
+            {
+                ReadOnlySpan<byte> hash = ValueKeccak.Compute(stateElement).Bytes;
+                db.PutSpan(hash, stateElement);
+            }
+
+            return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
         }
 
-        return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
-    }
-
-    private IKeyValueStoreWithBatching CreateCodeDb()
-    {
-        IKeyValueStoreWithBatching db = new MemDb();
-        foreach (var code in Codes)
+        public IKeyValueStoreWithBatching CreateCodeDb()
         {
-            var hash = ValueKeccak.Compute(code).Bytes;
-            db.PutSpan(hash, code);
-        }
-        return db;
-    }
+            IKeyValueStoreWithBatching db = new MemDb();
+            foreach (byte[] code in witness.Codes)
+            {
+                ReadOnlySpan<byte> hash = ValueKeccak.Compute(code).Bytes;
+                db.PutSpan(hash, code);
+            }
 
-    private IReadOnlyCollection<BlockHeader> DecodeHeaders()
-    {
-        List<BlockHeader> headers = new(Headers.Length);
-        HeaderDecoder decoder = new();
-        foreach (var encodedHeader in Headers)
+            return db;
+        }
+
+        public ArrayPoolList<BlockHeader> DecodeHeaders()
         {
-            Rlp.ValueDecoderContext stream = new(encodedHeader);
-            headers.Add(decoder.Decode(ref stream) ?? throw new ArgumentException());
+            byte[][] witnessHeaders = witness.Headers;
+            ArrayPoolList<BlockHeader> headers = new(witnessHeaders.Length);
+            foreach (byte[] encodedHeader in witnessHeaders)
+            {
+                Rlp.ValueDecoderContext stream = new(encodedHeader);
+                headers.Add(_decoder.Decode(ref stream) ?? throw new ArgumentException());
+            }
+
+            return headers;
         }
-        return headers;
     }
-
-    [JsonIgnore]
-    private IReadOnlyCollection<BlockHeader>? _decodedHeaders;
-
-    [JsonIgnore]
-    private INodeStorage? _nodeStorage;
-
-    [JsonIgnore]
-    private IKeyValueStoreWithBatching _codeDb;
 }

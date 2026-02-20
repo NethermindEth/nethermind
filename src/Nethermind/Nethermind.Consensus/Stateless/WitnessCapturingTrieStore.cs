@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,20 +20,16 @@ public class WitnessCapturingTrieStore(IKeyValueStoreWithBatching keyValueStore,
 {
     private readonly INodeStorage _nodeStorage = new NodeStorage(keyValueStore);
 
-    private readonly ConcurrentDictionary<Hash256, byte[]> _rlpCollector = new();
+    private readonly ConcurrentDictionary<Hash256AsKey, byte[]> _rlpCollector = new();
 
-    public byte[][] TouchedNodesRlp => _rlpCollector.Values.ToArray();
+    public IEnumerable<byte[]> TouchedNodesRlp => _rlpCollector.Values;
 
-    public void Dispose()
-    {
-        baseStore.Dispose();
-    }
+    public void Dispose() => baseStore.Dispose();
 
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
     {
         TrieNode node = baseStore.FindCachedOrUnknown(address, in path, hash);
-        if (node.NodeType != NodeType.Unknown)
-            _rlpCollector.TryAdd(node.Keccak, node.FullRlp.ToArray());
+        if (node.NodeType != NodeType.Unknown) _rlpCollector.TryAdd(node.Keccak, node.FullRlp.ToArray());
         return node;
     }
 
@@ -50,9 +47,11 @@ public class WitnessCapturingTrieStore(IKeyValueStoreWithBatching keyValueStore,
         return rlp;
     }
 
-    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => _nodeStorage.Get(address, in path, in keccak) is not null || baseStore.IsPersisted(address, in path, in keccak);
+    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) =>
+        _nodeStorage.Get(address, in path, in keccak) is not null || baseStore.IsPersisted(address, in path, in keccak);
 
-    public bool HasRoot(Hash256 stateRoot) => _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null || baseStore.HasRoot(stateRoot);
+    public bool HasRoot(Hash256 stateRoot) =>
+        _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null || baseStore.HasRoot(stateRoot);
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => baseStore.BeginScope(baseBlock);
 
@@ -62,6 +61,6 @@ public class WitnessCapturingTrieStore(IKeyValueStoreWithBatching keyValueStore,
 
     public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
 
-    // Write directly to _nodeStorage, which goes to db provider.
+    // Write directly to _nodeStorage, which goes to the db provider.
     public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => new RawScopedTrieStore.Committer(_nodeStorage, address, writeFlags);
 }
