@@ -226,7 +226,7 @@ internal class SpecialTransactionsTests
     [TestCase(false, false)]
     [TestCase(false, true)]
     [TestCase(true, false)]
-    [TestCase(true, false)]
+    [TestCase(true, true)]
     public async Task Tx_With_With_BlackListed_Sender_Fails_Validation(bool blackListingActivated, bool enableEip1559)
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
