@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj"/>
+    <ProjectReference Include="..\..\nevm\src\Nethermind.Evm\Nethermind.Evm.csproj"/>
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj"/>
   </ItemGroup>
 

@@ -10,8 +10,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
-    <ProjectReference Include="..\Nethermind.Evm.Precompiles\Nethermind.Evm.Precompiles.csproj" />
+    <ProjectReference Include="..\..\nevm\src\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\..\nevm\src\Nethermind.Evm.Precompiles\Nethermind.Evm.Precompiles.csproj" />
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
   </ItemGroup>
 

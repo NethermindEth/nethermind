@@ -17,4 +17,10 @@
     <Product>Nethermind</Product>
   </PropertyGroup>
 
+  <!-- Override nevm dependency root so submodule EVM projects reference
+       Nethermind's own shared projects (Core, Crypto, Specs, etc.) -->
+  <PropertyGroup>
+    <NevmDepsRoot>$(MSBuildThisFileDirectory)src/Nethermind/</NevmDepsRoot>
+  </PropertyGroup>
+
 </Project>

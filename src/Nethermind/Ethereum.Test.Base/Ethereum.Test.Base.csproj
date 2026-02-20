@@ -18,6 +18,6 @@
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
-    <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\..\nevm\src\Nethermind.Evm\Nethermind.Evm.csproj" />
   </ItemGroup>
 </Project>

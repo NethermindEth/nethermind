@@ -10,8 +10,8 @@
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
-    <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
-    <ProjectReference Include="..\Nethermind.Evm.Precompiles\Nethermind.Evm.Precompiles.csproj" />
+    <ProjectReference Include="..\..\nevm\src\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\..\nevm\src\Nethermind.Evm.Precompiles\Nethermind.Evm.Precompiles.csproj" />
     <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
