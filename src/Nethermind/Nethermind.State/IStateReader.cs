@@ -15,7 +15,7 @@ namespace Nethermind.State
         ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index);
         byte[]? GetCode(Hash256 codeHash);
         byte[]? GetCode(in ValueHash256 codeHash);
-        void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>;
+        void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>;
         bool HasStateForBlock(BlockHeader? baseBlock);
     }
 }

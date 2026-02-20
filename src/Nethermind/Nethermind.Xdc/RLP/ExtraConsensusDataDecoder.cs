@@ -3,17 +3,13 @@
 
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.RLP;
-internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlpStreamDecoder<ExtraFieldsV2>
+
+internal sealed class ExtraConsensusDataDecoder : RlpValueDecoder<ExtraFieldsV2>
 {
-    private QuorumCertificateDecoder _quorumCertificateDecoder = new();
-    public ExtraFieldsV2 Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private readonly QuorumCertificateDecoder _quorumCertificateDecoder = new();
+    protected override ExtraFieldsV2 DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
             return null;
@@ -21,14 +17,14 @@ internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlp
         int endPosition = decoderContext.Position + sequenceLength;
 
         ulong round = decoderContext.DecodeULong();
-        QuorumCert? quorumCert = _quorumCertificateDecoder.Decode(ref decoderContext, rlpBehaviors);
+        QuorumCertificate? quorumCert = _quorumCertificateDecoder.Decode(ref decoderContext, rlpBehaviors);
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             decoderContext.Check(endPosition);
         return new ExtraFieldsV2(round, quorumCert);
     }
 
-    public ExtraFieldsV2 Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override ExtraFieldsV2 DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
             return null;
@@ -36,7 +32,7 @@ internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlp
         int endPosition = rlpStream.Position + sequenceLength;
 
         ulong round = rlpStream.DecodeULong();
-        QuorumCert? quorumCert = _quorumCertificateDecoder.Decode(rlpStream, rlpBehaviors);
+        QuorumCertificate? quorumCert = _quorumCertificateDecoder.Decode(rlpStream, rlpBehaviors);
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             rlpStream.Check(endPosition);
         return new ExtraFieldsV2(round, quorumCert);
@@ -52,7 +48,7 @@ internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlp
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public void Encode(RlpStream stream, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -61,11 +57,11 @@ internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlp
         }
 
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.CurrentRound);
+        stream.Encode(item.BlockRound);
         _quorumCertificateDecoder.Encode(stream, item.QuorumCert, rlpBehaviors);
     }
 
-    public int GetLength(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int GetLength(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
@@ -74,7 +70,7 @@ internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlp
         if (item is null)
             return 0;
         int length = _quorumCertificateDecoder.GetLength(item.QuorumCert, rlpBehaviors);
-        return Rlp.LengthOf(item.CurrentRound) + length;
+        return Rlp.LengthOf(item.BlockRound) + length;
     }
 
 }

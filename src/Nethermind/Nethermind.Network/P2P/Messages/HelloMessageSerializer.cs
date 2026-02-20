@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -59,18 +60,22 @@ namespace Nethermind.Network.P2P.Messages
 
             HelloMessage helloMessage = new();
             helloMessage.P2PVersion = rlpStream.DecodeByte();
-            helloMessage.ClientId = string.Intern(rlpStream.DecodeString());
+            helloMessage.ClientId = rlpStream.DecodeString();
             helloMessage.Capabilities = rlpStream.DecodeArrayPoolList(static ctx =>
             {
                 ctx.ReadSequenceLength();
-                string protocolCode = string.Intern(ctx.DecodeString());
+                ReadOnlySpan<byte> protocolSpan = ctx.DecodeByteArraySpan();
+                if (!Contract.P2P.ProtocolParser.TryGetProtocolCode(protocolSpan, out string? protocolCode))
+                {
+                    protocolCode = Encoding.UTF8.GetString(protocolSpan);
+                }
                 int version = ctx.DecodeByte();
                 return new Capability(protocolCode, version);
             });
 
             helloMessage.ListenPort = rlpStream.DecodeInt();
 
-            ReadOnlySpan<byte> publicKeyBytes = rlpStream.DecodeByteArraySpan();
+            ReadOnlySpan<byte> publicKeyBytes = rlpStream.DecodeByteArraySpan(RlpLimit.L64);
             if (publicKeyBytes.Length != PublicKey.LengthInBytes &&
                 publicKeyBytes.Length != PublicKey.PrefixedLengthInBytes)
             {

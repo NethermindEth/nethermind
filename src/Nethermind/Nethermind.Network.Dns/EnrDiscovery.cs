@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
 using DnsClient;
@@ -35,7 +34,7 @@ public class EnrDiscovery : INodeSource
         if (string.IsNullOrWhiteSpace(_domain)) yield break;
 
         IByteBuffer buffer = NethermindBuffers.Default.Buffer();
-        await using ConfiguredCancelableAsyncEnumerable<string>.Enumerator enumerator = _crawler.SearchTree(_domain)
+        await using ConfiguredCancelableAsyncEnumerable<string>.Enumerator enumerator = _crawler.SearchTree(_domain, cancellationToken)
             .WithCancellation(cancellationToken)
             .GetAsyncEnumerator();
 

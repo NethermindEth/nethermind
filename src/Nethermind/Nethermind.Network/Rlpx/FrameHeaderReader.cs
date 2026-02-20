@@ -1,9 +1,12 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using DotNetty.Buffers;
+using DotNetty.Codecs;
 using Nethermind.Serialization.Rlp;
+using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -28,25 +31,43 @@ namespace Nethermind.Network.Rlpx
             _currentContextId = contextId;
             int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?)null;
 
+            ValidateTotalPacketSize(frameSize, totalPacketSize);
+
             bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
             bool isFirst = totalPacketSize.HasValue || !isChunked;
+
+            headerBodyItems.Check(headerDataEnd);
             return new FrameInfo(isChunked, isFirst, frameSize, totalPacketSize ?? frameSize);
         }
 
-        internal readonly struct FrameInfo
+        private static void ValidateTotalPacketSize(int frameSize, int? totalPacketSize)
         {
-            public FrameInfo(bool isChunked, bool isFirst, int size, int totalPacketSize)
+            if (totalPacketSize is not null)
             {
-                IsChunked = isChunked;
-                IsFirst = isFirst;
-                Size = size;
-                TotalPacketSize = totalPacketSize;
+                if (totalPacketSize <= 0 || totalPacketSize > SnappyParameters.MaxSnappyLength)
+                {
+                    ThrowCorruptedFrameException(frameSize, totalPacketSize.Value);
+                }
+
+                if (frameSize > totalPacketSize)
+                {
+                    ThrowCorruptedFrameException(frameSize, totalPacketSize.Value);
+                }
             }
 
-            public bool IsChunked { get; }
-            public bool IsFirst { get; }
-            public int Size { get; }
-            public int TotalPacketSize { get; }
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowCorruptedFrameException(int frameSize, int totalPacketSize)
+            {
+                throw new CorruptedFrameException($"Invalid Rlpx header lengths, packet size {totalPacketSize}, frame size {frameSize}");
+            }
+        }
+
+        internal readonly struct FrameInfo(bool isChunked, bool isFirst, int size, int totalPacketSize)
+        {
+            public bool IsChunked { get; } = isChunked;
+            public bool IsFirst { get; } = isFirst;
+            public int Size { get; } = size;
+            public int TotalPacketSize { get; } = totalPacketSize;
             public int Padding => Frame.CalculatePadding(Size);
 
             public int PayloadSize => Size + Padding;

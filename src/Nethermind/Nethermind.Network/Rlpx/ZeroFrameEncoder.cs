@@ -6,26 +6,20 @@ using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
-using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroFrameEncoder : MessageToByteEncoder<IByteBuffer>
+    public class ZeroFrameEncoder(
+        IFrameCipher frameCipher,
+        IFrameMacProcessor frameMacProcessor)
+        : MessageToByteEncoder<IByteBuffer>
     {
-        private readonly ILogger _logger;
-        private readonly IFrameCipher _frameCipher;
-        private readonly IFrameMacProcessor _frameMacProcessor;
+        private readonly IFrameCipher _frameCipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
+        private readonly IFrameMacProcessor _frameMacProcessor = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
         private readonly FrameHeaderReader _headerReader = new();
 
         private readonly byte[] _encryptBuffer = new byte[Frame.BlockSize];
         private readonly byte[] _macBuffer = new byte[16];
-
-        public ZeroFrameEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
-        {
-            _frameCipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
-            _frameMacProcessor = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
-            _logger = logManager?.GetClassLogger<ZeroFrameEncoder>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
 
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {

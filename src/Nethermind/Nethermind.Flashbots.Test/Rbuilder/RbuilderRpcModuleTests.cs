@@ -18,6 +18,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using Nethermind.State;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;
@@ -61,7 +62,7 @@ public class RbuilderRpcModuleTests
         byte[] theCodeBytes = Bytes.FromHexString(theCode);
         Hash256 theHash = Keccak.Compute(theCodeBytes);
 
-        IWorldState worldState = _worldStateManager.GlobalWorldState;
+        IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
         using (worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 100000);

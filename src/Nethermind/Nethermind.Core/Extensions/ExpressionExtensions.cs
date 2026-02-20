@@ -48,7 +48,37 @@ namespace Nethermind.Core.Extensions
             }
             else
             {
-                // TODO: Add fields
+                if (memberExpression.Member is FieldInfo field)
+                {
+                    if (field.IsStatic)
+                    {
+                        throw new NotSupportedException($"Member {typeof(T).Name}{memberExpression.Member.Name} is a static field.");
+                    }
+
+                    if (field.IsInitOnly || field.IsLiteral)
+                    {
+                        throw new NotSupportedException($"Member {typeof(T).Name}{memberExpression.Member.Name} is a readonly or const field.");
+                    }
+
+                    var parameterT = Expression.Parameter(typeof(T), "x");
+                    var parameterTProperty = Expression.Parameter(typeof(TProperty), "y");
+
+                    var fieldExpr = Expression.Field(parameterT, field);
+                    Expression valueExpr = field.FieldType == typeof(TProperty)
+                        ? (Expression)parameterTProperty
+                        : Expression.Convert(parameterTProperty, field.FieldType);
+
+                    var assignExpr = Expression.Assign(fieldExpr, valueExpr);
+
+                    var setter = Expression.Lambda<Action<T, TProperty>>(
+                        assignExpr,
+                        parameterT,
+                        parameterTProperty
+                    );
+
+                    return setter.Compile();
+                }
+
                 throw new NotSupportedException($"Member {typeof(T).Name}{memberExpression.Member.Name} is not a property.");
             }
         }

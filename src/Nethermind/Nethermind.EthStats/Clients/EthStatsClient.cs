@@ -32,7 +32,7 @@ namespace Nethermind.EthStats.Clients
             _urlFromConfig = urlFromConfig ?? throw new ArgumentNullException(nameof(urlFromConfig));
             _reconnectionInterval = reconnectionInterval;
             _messageSender = messageSender ?? throw new ArgumentNullException(nameof(messageSender));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         internal string BuildUrl()

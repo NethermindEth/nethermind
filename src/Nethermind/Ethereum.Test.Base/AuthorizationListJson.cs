@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Ethereum.Test.Base;
+
 public class AuthorizationListJson
 {
     public UInt256 ChainId { get; set; }

@@ -1,16 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockBodiesMessageSerializer : IZeroInnerMessageSerializer<BlockBodiesMessage>
     {
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockBodiesMessage>(NethermindSyncLimits.MaxBodyFetch, nameof(BlockBodiesMessage.Bodies));
         private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
@@ -54,7 +55,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
             int startingPosition = ctx.Position;
-            BlockBody[]? bodies = ctx.DecodeArray(_blockBodyDecoder, false);
+            BlockBody[]? bodies = ctx.DecodeArray(_blockBodyDecoder, false, limit: RlpLimit);
             byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
 
             return new() { Bodies = new(bodies, memoryOwner) };

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -37,7 +36,7 @@ public class SimulateBlockValidationTransactionsExecutor(
         long startingGasLeft = simulateState.TotalGasLeft;
         if (!simulateState.Validate)
         {
-            processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
+            processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation;
         }
 
         var result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
@@ -48,10 +47,6 @@ public class SimulateBlockValidationTransactionsExecutor(
         {
             currentGasUsedTotal += txReceipt.GasUsed;
             txReceipt.GasUsedTotal = currentGasUsedTotal;
-
-            // For some reason, the logs from geth when processing the block is missing but not in the output from tracer.
-            // this cause the receipt root to be different than us. So we simulate it here.
-            txReceipt.Logs = [];
         }
 
         block.Header.GasUsed = startingGasLeft - simulateState.TotalGasLeft;

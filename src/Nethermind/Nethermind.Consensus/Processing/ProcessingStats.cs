@@ -19,27 +19,27 @@ namespace Nethermind.Consensus.Processing
 {
     public class BlockStatistics
     {
-        public long BlockCount { get; internal set; }
-        public long BlockFrom { get; internal set; }
-        public long BlockTo { get; internal set; }
-        public double ProcessingMs { get; internal set; }
-        public double SlotMs { get; internal set; }
+        public long BlockCount { get; set; }
+        public long BlockFrom { get; set; }
+        public long BlockTo { get; set; }
+        public double ProcessingMs { get; set; }
+        public double SlotMs { get; set; }
         [JsonPropertyName("mgasPerSecond")]
-        public double MGasPerSecond { get; internal set; }
-        public float MinGas { get; internal set; }
-        public float MedianGas { get; internal set; }
-        public float AveGas { get; internal set; }
-        public float MaxGas { get; internal set; }
-        public long GasLimit { get; internal set; }
+        public double MGasPerSecond { get; set; }
+        public float MinGas { get; set; }
+        public float MedianGas { get; set; }
+        public float AveGas { get; set; }
+        public float MaxGas { get; set; }
+        public long GasLimit { get; set; }
     }
     //TODO Consult on disabling of such metrics from configuration
-    internal class ProcessingStats
+    public class ProcessingStats : IProcessingStats
     {
         private static readonly DefaultObjectPool<BlockData> _dataPool = new(new BlockDataPolicy(), 16);
         private readonly Action<BlockData> _executeFromThreadPool;
         public event EventHandler<BlockStatistics>? NewProcessingStatistics;
-        private readonly IStateReader _stateReader;
-        private readonly ILogger _logger;
+        protected readonly IStateReader _stateReader;
+        protected readonly ILogger _logger;
         private readonly Stopwatch _runStopwatch = new();
 
         private bool _showBlobs;
@@ -69,12 +69,12 @@ namespace Nethermind.Consensus.Processing
         private long _contractsAnalyzed;
         private long _cachedContractsUsed;
 
-        public ProcessingStats(IStateReader stateReader, ILogger logger)
+        public ProcessingStats(IStateReader stateReader, ILogManager logManager)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
 
             _stateReader = stateReader;
-            _logger = logger;
+            _logger = logManager.GetClassLogger();
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
@@ -151,7 +151,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private void GenerateReport(BlockData data)
+        protected virtual void GenerateReport(BlockData data)
         {
             const long weiToEth = 1_000_000_000_000_000_000;
             const string resetColor = "\u001b[37m";
@@ -292,7 +292,7 @@ namespace Nethermind.Consensus.Processing
             double bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1_000_000.0;
             double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
             double runMs = (data.RunMicroseconds == 0 ? -1 : data.RunMicroseconds / 1000.0);
-            string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $"⛽ Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
+            string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $"⛽ Gas gwei: {Evm.Metrics.BlockMinGasPrice:N3} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N3}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N3}) .. {Evm.Metrics.BlockMaxGasPrice:N3}" : "";
             string mgasColor = whiteText;
 
             NewProcessingStatistics?.Invoke(this, new BlockStatistics()
@@ -443,7 +443,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private class BlockData
+        protected class BlockData
         {
             public Block Block;
             public BlockHeader? BaseBlock;

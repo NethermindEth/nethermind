@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
@@ -52,6 +51,19 @@ public class OptimismHeaderValidator(
                 error = $"{nameof(EIP1559Parameters)} is zero";
                 return false;
             }
+
+            (int version, string reason) versionCheck = header switch
+            {
+                // Newer forks should be added on top
+                _ when specHelper.IsJovian(header) => (1, "since Jovian"),
+                _ => (0, "before Jovian")
+            };
+
+            if (versionCheck.version != parameters.Version)
+            {
+                error = $"{nameof(EIP1559Parameters)} version should be {versionCheck.version} {versionCheck.reason}";
+                return false;
+            }
         }
 
         return base.Validate<TOrphaned>(header, parent, isUncle, out error);
@@ -73,8 +85,37 @@ public class OptimismHeaderValidator(
 
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 
+    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+    {
+        if (!base.ValidateBlobGasFields(header, parent, spec, ref error))
+            return false;
+
+        if (specHelper.IsJovian(header))
+        {
+            if (header.BlobGasUsed is not { } blobGasUsed)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - no DA footprint in {nameof(header.BlobGasUsed)}");
+                error = ErrorMessages.DaFootprintMissing;
+                return false;
+            }
+
+            if (blobGasUsed > (ulong)header.GasLimit)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
+                error = ErrorMessages.DaFootprintExceededGasLimit;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    protected override ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec) => 0;
+
     private static class ErrorMessages
     {
         public static readonly string RequestHashShouldBeOfShaOfEmpty = $"{nameof(BlockHeader.RequestsHash)} should be {OptimismPostMergeBlockProducer.PostIsthmusRequestHash} for post-Isthmus blocks";
+        public const string DaFootprintMissing = $"InvalidBlobGasUsed: DA footprint is missing from the block header {nameof(BlockHeader.BlobGasUsed)}.";
+        public const string DaFootprintExceededGasLimit = "ExceededGasLimit: DA footprint exceeds gas limit.";
     }
 }

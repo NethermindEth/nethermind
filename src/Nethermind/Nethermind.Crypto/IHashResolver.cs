@@ -4,6 +4,7 @@
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto;
+
 public interface IHashResolver
 {
     ValueHash256 CalculateHash();

@@ -17,24 +17,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2364
     /// </summary>
-    public class Eth64ProtocolHandler : Eth63ProtocolHandler
+    public class Eth64ProtocolHandler(
+        ISession session,
+        IMessageSerializationService serializer,
+        INodeStatsManager nodeStatsManager,
+        ISyncServer syncServer,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
+        ITxPool txPool,
+        IGossipPolicy gossipPolicy,
+        IForkInfo forkInfo,
+        ILogManager logManager,
+        ITxGossipPolicy? transactionsGossipPolicy = null)
+        : Eth63ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
+            gossipPolicy, logManager, transactionsGossipPolicy)
     {
-        protected readonly IForkInfo _forkInfo;
-
-        public Eth64ProtocolHandler(ISession session,
-            IMessageSerializationService serializer,
-            INodeStatsManager nodeStatsManager,
-            ISyncServer syncServer,
-            IBackgroundTaskScheduler backgroundTaskScheduler,
-            ITxPool txPool,
-            IGossipPolicy gossipPolicy,
-            IForkInfo forkInfo,
-            ILogManager logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
-        {
-            _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
-        }
+        protected readonly IForkInfo _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
 
         public override string Name => "eth64";
 

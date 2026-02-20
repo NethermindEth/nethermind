@@ -2,104 +2,108 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Buffers.Text;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
-namespace Nethermind.Serialization.Json
+namespace Nethermind.Serialization.Json;
+
+public class ULongConverter : JsonConverter<ulong>
 {
-    using System.Buffers;
-    using System.Buffers.Binary;
-    using System.Buffers.Text;
-    using System.Globalization;
-    using System.Runtime.CompilerServices;
-    using System.Text.Json;
-    using System.Text.Json.Serialization;
-
-    public class ULongConverter : JsonConverter<ulong>
+    public static ulong FromString(ReadOnlySpan<byte> s)
     {
-        public static ulong FromString(ReadOnlySpan<byte> s)
+        if (s.Length == 0)
         {
-            if (s.Length == 0)
-            {
-                throw new JsonException("null cannot be assigned to long");
-            }
+            throw new JsonException("null cannot be assigned to ulong");
+        }
 
-            if (s.SequenceEqual("0x0"u8))
-            {
-                return 0uL;
-            }
+        if (s.SequenceEqual("0x0"u8))
+        {
+            return 0uL;
+        }
 
-            ulong value;
-            if (s.StartsWith("0x"u8))
-            {
-                s = s[2..];
-                if (Utf8Parser.TryParse(s, out value, out _, 'x'))
-                {
-                    return value;
-                }
-            }
-            else if (Utf8Parser.TryParse(s, out value, out _))
+        ulong value;
+        if (s.StartsWith("0x"u8))
+        {
+            s = s[2..];
+            if (Utf8Parser.TryParse(s, out value, out _, 'x'))
             {
                 return value;
             }
-
-            throw new JsonException("hex to long");
+        }
+        else if (Utf8Parser.TryParse(s, out value, out _))
+        {
+            return value;
         }
 
-        [SkipLocalsInit]
-        public override void Write(
-            Utf8JsonWriter writer,
-            ulong value,
-            JsonSerializerOptions options)
-        {
-            NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
-            switch (usedConversion)
-            {
-                case NumberConversion.Hex:
-                    {
-                        if (value == 0)
-                        {
-                            writer.WriteRawValue("\"0x0\""u8, skipInputValidation: true);
-                        }
-                        else
-                        {
-                            Span<byte> bytes = stackalloc byte[8];
-                            BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
-                            ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: true);
-                        }
-                        break;
-                    }
-                case NumberConversion.Decimal:
-                    writer.WriteStringValue(value == 0 ? "0" : value.ToString(CultureInfo.InvariantCulture));
-                    break;
-                case NumberConversion.Raw:
-                    writer.WriteNumberValue(value);
-                    break;
-                default:
-                    throw new NotSupportedException();
-            }
-        }
 
-        public override ulong Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options)
+        ThrowJsonException();
+        return default;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowJsonException() => throw new JsonException("hex to long");
+    }
+
+    [SkipLocalsInit]
+    public override void Write(
+        Utf8JsonWriter writer,
+        ulong value,
+        JsonSerializerOptions options)
+    {
+        NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
+        switch (usedConversion)
         {
-            if (reader.TokenType == JsonTokenType.Number)
-            {
-                return reader.GetUInt64();
-            }
-            if (reader.TokenType == JsonTokenType.String)
-            {
-                if (!reader.HasValueSequence)
+            case NumberConversion.Hex:
+                if (value == 0)
                 {
-                    return FromString(reader.ValueSpan);
+                    writer.WriteStringValue("0x0"u8);
                 }
                 else
                 {
-                    return FromString(reader.ValueSequence.ToArray());
+                    HexWriter.WriteUlongHexRawValue(writer, value);
                 }
-            }
-
-            throw new JsonException();
+                break;
+            case NumberConversion.Decimal:
+                writer.WriteStringValue(value == 0 ? "0" : value.ToString(CultureInfo.InvariantCulture));
+                break;
+            case NumberConversion.Raw:
+                writer.WriteNumberValue(value);
+                break;
+            default:
+                throw new NotSupportedException();
         }
+    }
+
+    internal static ulong ReadCore(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType == JsonTokenType.Number)
+        {
+            return reader.GetUInt64();
+        }
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            return !reader.HasValueSequence
+                ? FromString(reader.ValueSpan)
+                : FromString(reader.ValueSequence.ToArray());
+        }
+
+        ThrowJsonException();
+        return default;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowJsonException() => throw new JsonException();
+    }
+
+    public override ulong Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options)
+    {
+        return ReadCore(ref reader);
     }
 }

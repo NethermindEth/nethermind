@@ -15,7 +15,8 @@ namespace Nethermind.Serialization.Json;
 
 public class ByteArrayConverter : JsonConverter<byte[]>
 {
-    private static readonly ushort _hexPrefix = MemoryMarshal.Cast<byte, ushort>("0x"u8)[0];
+    // '0' = 0x30, 'x' = 0x78, little-endian: 0x7830
+    private const ushort HexPrefix = 0x7830;
 
     public override byte[]? Read(
         ref Utf8JsonReader reader,
@@ -25,7 +26,8 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         return Convert(ref reader);
     }
 
-    public static byte[]? Convert(ref Utf8JsonReader reader)
+    [SkipLocalsInit]
+    public static byte[]? Convert(ref Utf8JsonReader reader, bool strictHexFormat = false)
     {
         JsonTokenType tokenType = reader.TokenType;
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
@@ -35,25 +37,30 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         if (reader.HasValueSequence)
         {
-            return ConvertValueSequence(ref reader);
+            return ConvertValueSequence(ref reader, strictHexFormat);
         }
 
-        int length = reader.ValueSpan.Length;
         ReadOnlySpan<byte> hex = reader.ValueSpan;
-        if (hex.Length == 0) return null;
-        if (length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == _hexPrefix)
-            hex = hex[2..];
+        int length = hex.Length;
+        if (length == 0) return null;
+        ref byte hexRef = ref MemoryMarshal.GetReference(hex);
+        if (length >= 2 && Unsafe.As<byte, ushort>(ref hexRef) == HexPrefix)
+        {
+            hex = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref hexRef, 2), length - 2);
+        }
+        else if (strictHexFormat) ThrowFormatException();
 
         return Bytes.FromUtf8HexString(hex);
     }
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader)
+    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader, bool strictHexFormat)
     {
         ReadOnlySequence<byte> valueSequence = reader.ValueSequence;
         int length = checked((int)valueSequence.Length);
         if (length == 0) return null;
+
         // Detect and skip 0x prefix even if split across segments
         SequenceReader<byte> sr = new(valueSequence);
         bool hadPrefix = false;
@@ -62,86 +69,81 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             if (b0 == (byte)'0')
             {
                 sr.Advance(1);
-                if (sr.TryPeek(out byte b1) && (b1 == (byte)'x'))
+                if (sr.TryPeek(out byte b1) && b1 == (byte)'x')
                 {
                     sr.Advance(1);
                     hadPrefix = true;
                 }
                 else
                 {
-                    // rewind if not really a prefix
                     sr.Rewind(1);
+                    if (strictHexFormat)
+                        ThrowFormatException();
                 }
+            }
+            else if (strictHexFormat)
+            {
+                ThrowFormatException();
             }
         }
 
-        // Compute total hex digit count (after prefix)
         long totalHexChars = length - (hadPrefix ? 2 : 0);
         if (totalHexChars <= 0) return [];
 
         int odd = (int)(totalHexChars & 1);
-        int outLenFinal = (int)(totalHexChars >> 1) + odd;
-        if (outLenFinal == 0) return [];
+        int outLen = (int)(totalHexChars >> 1) + odd;
 
-        byte[] result = GC.AllocateUninitializedArray<byte>(outLenFinal);
-        Span<byte> output = result;
+        byte[] result = GC.AllocateUninitializedArray<byte>(outLen);
+        ref byte resultRef = ref MemoryMarshal.GetArrayDataReference(result);
+        int outPos = 0;
+
         if (odd == 1)
         {
-            // If odd, we deal with the extra nibble, so we are left with an even number of nibbles
             if (!sr.TryRead(out byte firstNibble))
-            {
                 ThrowInvalidOperationException();
-            }
+
             firstNibble = (byte)HexConverter.FromLowerChar(firstNibble | 0x20);
             if (firstNibble > 0x0F)
-            {
                 ThrowFormatException();
-            }
-            result[0] = firstNibble;
-            output = output[1..];
+
+            Unsafe.Add(ref resultRef, outPos++) = firstNibble;
         }
 
-        // Stackalloc outside of the loop to avoid stackoverflow.
-        Span<byte> twoNibbles = stackalloc byte[2];
+        // Use ushort as 2-byte buffer instead of stackalloc
+        Unsafe.SkipInit(out ushort twoNibblesStorage);
+        Span<byte> twoNibbles = MemoryMarshal.CreateSpan(ref Unsafe.As<ushort, byte>(ref twoNibblesStorage), 2);
+
         while (!sr.End)
         {
-            ReadOnlySpan<byte> first = sr.UnreadSpan;
-            if (!first.IsEmpty)
+            ReadOnlySpan<byte> span = sr.UnreadSpan;
+            if (!span.IsEmpty)
             {
-                // Decode the largest even-length slice of the current contiguous span without copying.
-                int evenLen = first.Length & ~1; // largest even
+                int evenLen = span.Length & ~1;
                 if (evenLen > 0)
                 {
                     int outBytes = evenLen >> 1;
-                    Bytes.FromUtf8HexString(first.Slice(0, evenLen), output.Slice(0, outBytes));
-                    output = output.Slice(outBytes);
+                    Bytes.FromUtf8HexString(span.Slice(0, evenLen),
+                        MemoryMarshal.CreateSpan(ref Unsafe.Add(ref resultRef, outPos), outBytes));
+                    outPos += outBytes;
                     sr.Advance(evenLen);
                     continue;
                 }
             }
 
-            // Either current span is empty or has exactly 1 trailing nibble; marshal an even-sized chunk.
             long remaining = sr.Remaining;
             if (remaining == 0) break;
-
-            // If remaining is even overall, remaining will be >= 2 here; be defensive just in case.
             if (remaining == 1)
-            {
                 ThrowInvalidOperationException();
-            }
 
             if (!sr.TryCopyTo(twoNibbles))
-            {
-                // Should not happen since CopyTo should copy 2 hex chars and bridge the spans.
                 ThrowInvalidOperationException();
-            }
 
-            Bytes.FromUtf8HexString(twoNibbles, output[..1]);
-            output = output[1..];
-            sr.Advance(twoNibbles.Length);
+            Bytes.FromUtf8HexString(twoNibbles, MemoryMarshal.CreateSpan(ref Unsafe.Add(ref resultRef, outPos), 1));
+            outPos++;
+            sr.Advance(2);
         }
 
-        if (!output.IsEmpty)
+        if (outPos != outLen)
             ThrowInvalidOperationException();
 
         return result;
@@ -161,7 +163,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         }
 
         ReadOnlySpan<byte> hex = reader.ValueSpan;
-        if (hex.Length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == _hexPrefix)
+        if (hex.Length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == HexPrefix)
         {
             hex = hex[2..];
         }
@@ -183,16 +185,69 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         Convert(writer, bytes, skipLeadingZeros: false);
     }
 
+    /// <summary>
+    /// Writes bytes as a hex string value (e.g. "0xabcd") using WriteRawValue.
+    /// </summary>
     [SkipLocalsInit]
     public static void Convert(Utf8JsonWriter writer, ReadOnlySpan<byte> bytes, bool skipLeadingZeros = true, bool addHexPrefix = true)
     {
-        Convert(writer,
-            bytes,
-            static (w, h) => w.WriteRawValue(h, skipInputValidation: true), skipLeadingZeros, addHexPrefix: addHexPrefix);
+        int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
+        int nibblesCount = bytes.Length * 2;
+
+        if (skipLeadingZeros && nibblesCount is not 0 && leadingNibbleZeros == nibblesCount)
+        {
+            WriteZeroValue(writer);
+            return;
+        }
+
+        int prefixLength = addHexPrefix ? 2 : 0;
+        // +2 for surrounding quotes: "0xABCD..."
+        int rawLength = nibblesCount - leadingNibbleZeros + prefixLength + 2;
+
+        byte[]? array = null;
+        Unsafe.SkipInit(out HexBuffer256 buffer);
+        Span<byte> hex = rawLength <= 256
+            ? MemoryMarshal.CreateSpan(ref Unsafe.As<HexBuffer256, byte>(ref buffer), 256)
+            : (array = ArrayPool<byte>.Shared.Rent(rawLength));
+        hex = hex[..rawLength];
+
+        // Build the JSON string value directly: "0x<hex>"
+        ref byte hexRef = ref MemoryMarshal.GetReference(hex);
+        hexRef = (byte)'"';
+        int start = 1;
+        if (addHexPrefix)
+        {
+            Unsafe.As<byte, ushort>(ref Unsafe.Add(ref hexRef, 1)) = HexPrefix;
+            start = 3;
+        }
+        Unsafe.Add(ref hexRef, rawLength - 1) = (byte)'"';
+
+        int offset = leadingNibbleZeros >>> 1;
+        MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(bytes), offset), bytes.Length - offset)
+            .OutputBytesToByteHex(
+                MemoryMarshal.CreateSpan(ref Unsafe.Add(ref hexRef, start), rawLength - 1 - start),
+                extraNibble: (leadingNibbleZeros & 1) != 0);
+        // Hex chars (0-9, a-f) never need JSON escaping — bypass encoder entirely
+        writer.WriteRawValue(hex, skipInputValidation: true);
+
+        if (array is not null)
+            ArrayPool<byte>.Shared.Return(array);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void WriteZeroValue(Utf8JsonWriter writer) => writer.WriteStringValue("0x0"u8);
+
+    [InlineArray(256)]
+    private struct HexBuffer256
+    {
+        private byte _element0;
     }
 
     public delegate void WriteHex(Utf8JsonWriter writer, ReadOnlySpan<byte> hex);
 
+    /// <summary>
+    /// Writes bytes as hex using a custom write action (e.g. for property names).
+    /// </summary>
     [SkipLocalsInit]
     public static void Convert(
         Utf8JsonWriter writer,
@@ -202,48 +257,69 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         bool addQuotations = true,
         bool addHexPrefix = true)
     {
-        const int maxStackLength = 128;
-        const int stackLength = 256;
-
-        var leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
-        var nibblesCount = bytes.Length * 2;
+        int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
+        int nibblesCount = bytes.Length * 2;
 
         if (skipLeadingZeros && nibblesCount is not 0 && leadingNibbleZeros == nibblesCount)
         {
-            writer.WriteStringValue(Bytes.ZeroHexValue);
+            WriteZeroValue(writer, writeAction, addQuotations);
             return;
         }
 
-        var prefixLength = addHexPrefix ? 2 : 0;
-        var length = nibblesCount - leadingNibbleZeros + prefixLength + (addQuotations ? 2 : 0);
+        int prefixLength = addHexPrefix ? 2 : 0;
+        int quotesLength = addQuotations ? 2 : 0;
+        int length = nibblesCount - leadingNibbleZeros + prefixLength + quotesLength;
 
         byte[]? array = null;
-        if (length > maxStackLength)
-            array = ArrayPool<byte>.Shared.Rent(length);
+        Unsafe.SkipInit(out HexBuffer256 buffer);
+        Span<byte> hex = length <= 256
+            ? MemoryMarshal.CreateSpan(ref Unsafe.As<HexBuffer256, byte>(ref buffer), 256)
+            : (array = ArrayPool<byte>.Shared.Rent(length));
+        hex = hex[..length];
 
-        Span<byte> hex = (array ?? stackalloc byte[stackLength])[..length];
-        var start = 0;
-        Index end = ^0;
+        ref byte hexRef = ref MemoryMarshal.GetReference(hex);
+        int start = 0;
+        int endPad = 0;
         if (addQuotations)
         {
-            end = ^1;
-            hex[^1] = (byte)'"';
-            hex[start++] = (byte)'"';
+            hexRef = (byte)'"';
+            Unsafe.Add(ref hexRef, length - 1) = (byte)'"';
+            start = 1;
+            endPad = 1;
         }
 
         if (addHexPrefix)
         {
-            hex[start++] = (byte)'0';
-            hex[start++] = (byte)'x';
+            Unsafe.As<byte, ushort>(ref Unsafe.Add(ref hexRef, start)) = HexPrefix;
+            start += 2;
         }
 
-        Span<byte> output = hex[start..end];
-
-        ReadOnlySpan<byte> input = bytes[(leadingNibbleZeros / 2)..];
-        input.OutputBytesToByteHex(output, extraNibble: (leadingNibbleZeros & 1) != 0);
+        ReadOnlySpan<byte> input = bytes[(leadingNibbleZeros >>> 1)..];
+        input.OutputBytesToByteHex(
+            MemoryMarshal.CreateSpan(ref Unsafe.Add(ref hexRef, start), length - start - endPad),
+            extraNibble: (leadingNibbleZeros & 1) != 0);
         writeAction(writer, hex);
 
         if (array is not null)
             ArrayPool<byte>.Shared.Return(array);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void WriteZeroValue(Utf8JsonWriter writer, WriteHex writeAction, bool addQuotations)
+        => writeAction(writer, addQuotations ? "\"0x0\""u8 : "0x0"u8);
+
+    public override byte[] ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        byte[]? result = Convert(ref reader);
+
+        if (result is null)
+            ThrowInvalidOperationException();
+
+        return result;
+    }
+
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
+    {
+        Convert(writer, value, static (w, h) => w.WritePropertyName(h), skipLeadingZeros: false, addQuotations: false, addHexPrefix: true);
     }
 }

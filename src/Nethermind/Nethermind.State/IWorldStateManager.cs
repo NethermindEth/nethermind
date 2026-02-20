@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Evm.State;
-using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 
@@ -13,7 +12,7 @@ namespace Nethermind.State;
 
 public interface IWorldStateManager
 {
-    IWorldState GlobalWorldState { get; }
+    IWorldStateScopeProvider GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
     ISnapServer? SnapServer { get; }
     IReadOnlyKeyValueStore? HashServer { get; }
@@ -22,14 +21,7 @@ public interface IWorldStateManager
     /// Used by read only tasks that need to execute blocks.
     /// </summary>
     /// <returns></returns>
-    IWorldState CreateResettableWorldState();
-
-    /// <summary>
-    /// Create a read only world state to warm up another world state
-    /// </summary>
-    /// <param name="forWarmup">Specify a world state to warm up by the returned world state.</param>
-    /// <returns></returns>
-    IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup);
+    IWorldStateScopeProvider CreateResettableWorldState();
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -52,7 +44,7 @@ public interface IWorldStateManager
 
 public interface IOverridableWorldScope
 {
-    IDisposable BeginScope(BlockHeader? header);
-    IWorldState WorldState { get; }
+    IWorldStateScopeProvider WorldState { get; }
     IStateReader GlobalStateReader { get; }
+    void ResetOverrides();
 }

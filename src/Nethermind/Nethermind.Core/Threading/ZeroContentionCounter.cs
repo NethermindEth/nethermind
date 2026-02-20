@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Threading;
 
 namespace Nethermind.Core.Threading;
+
 public class ZeroContentionCounter
 {
     private readonly ThreadLocal<BoxedLong> _threadLocal = new(static () => new BoxedLong(), trackAllValues: true);

@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Evm.EvmObjectFormat;
+
 interface IEofVersionHandler
 {
     bool TryParseEofHeader(ReadOnlyMemory<byte> code, ValidationStrategy strategy, [NotNullWhen(true)] out EofHeader? header);

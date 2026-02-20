@@ -13,7 +13,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.State.Healing;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -312,7 +311,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddScoped<SyncFeedComponent<BlocksRequest>>()
 
             // The direct implementation is decorated by merge plugin (not the interface)
-            // so its  declared on its own and other use is binded.
+            // so it's declared on its own and other usage is bound.
             .AddSingleton<BlockDownloader>()
             .Bind<IForwardSyncController, BlockDownloader>()
 
@@ -413,6 +412,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     {
         serviceCollection
             .AddSingleton<ProgressTracker>()
+            .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
             .AddSingleton<ISnapProvider, SnapProvider>();
 
         ConfigureSingletonSyncFeed<SnapSyncBatch, SnapSyncFeed, SnapSyncDownloader, SnapSyncAllocationStrategyFactory>(serviceCollection);
@@ -451,6 +451,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     {
         serviceCollection
             .AddSingleton<StateSyncPivot>()
+            .AddSingleton<ITreeSyncStore, PatriciaTreeSyncStore>()
             .AddSingleton<ITreeSync, TreeSync>();
 
         ConfigureSingletonSyncFeed<StateSyncBatch, StateSyncFeed, StateSyncDownloader, StateSyncAllocationStrategyFactory>(serviceCollection);

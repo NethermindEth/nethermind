@@ -254,7 +254,7 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(deserialized?.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
         }
 
-        private void AssertStorageLegaxyReceipt(TxReceipt txReceipt, TxReceipt deserialized)
+        private void AssertStorageLegacyReceipt(TxReceipt txReceipt, TxReceipt deserialized)
         {
             Assert.That(deserialized.TxType, Is.EqualTo(txReceipt.TxType), "tx type");
             Assert.That(deserialized.BlockHash, Is.EqualTo(txReceipt.BlockHash), "block hash");

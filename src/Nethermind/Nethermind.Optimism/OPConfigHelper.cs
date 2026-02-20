@@ -16,6 +16,7 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
     private readonly ulong? _graniteTimestamp = parameters.GraniteTimestamp;
     private readonly ulong? _holoceneTimestamp = parameters.HoloceneTimestamp;
     private readonly ulong? _isthmusTimestamp = parameters.IsthmusTimestamp;
+    private readonly ulong? _jovianTimestamp = parameters.JovianTimestamp;
 
     public Address? L1FeeReceiver { get; init; } = parameters.L1FeeRecipient;
 
@@ -62,6 +63,11 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
     public bool IsIsthmus(BlockHeader header)
     {
         return header.Timestamp >= _isthmusTimestamp;
+    }
+
+    public bool IsJovian(BlockHeader header)
+    {
+        return header.Timestamp >= _jovianTimestamp;
     }
 
     public Address? Create2DeployerAddress { get; } = parameters.Create2DeployerAddress;

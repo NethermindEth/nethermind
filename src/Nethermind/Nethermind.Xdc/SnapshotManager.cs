@@ -4,82 +4,97 @@
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 internal class SnapshotManager : ISnapshotManager
 {
 
-    private LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");
-    private IDb _snapshotDb { get; }
-    private IPenaltyHandler _penaltyHandler { get; }
+    private readonly LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");
 
     private readonly SnapshotDecoder _snapshotDecoder = new();
+    private readonly IDb snapshotDb;
+    private readonly IBlockTree blockTree;
+    private readonly IMasternodeVotingContract votingContract;
+    private readonly ISpecProvider specProvider;
+    private readonly IPenaltyHandler penaltyHandler;
 
-    public SnapshotManager(IDb snapshotDb, IPenaltyHandler penaltyHandler)
+    public SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
     {
-        _snapshotDb = snapshotDb;
-        _penaltyHandler = penaltyHandler;
+        blockTree.NewHeadBlock += OnNewHeadBlock;
+        this.snapshotDb = snapshotDb;
+        this.blockTree = blockTree;
+        this.votingContract = votingContract;
+        this.specProvider = specProvider;
+        this.penaltyHandler = penaltyHandler;
     }
 
-    public Snapshot? GetSnapshot(Hash256 hash)
+    public Snapshot? GetSnapshotByGapNumber(long gapNumber)
     {
-        Snapshot? snapshot = _snapshotCache.Get(hash);
+        var gapBlockHeader = blockTree.FindHeader((long)gapNumber) as XdcBlockHeader;
+
+        if (gapBlockHeader is null)
+            return null;
+
+        Snapshot? snapshot = _snapshotCache.Get(gapBlockHeader.Hash);
         if (snapshot is not null)
         {
             return snapshot;
         }
 
-        Span<byte> key = hash.Bytes;
-        if (!_snapshotDb.KeyExists(key))
+        Span<byte> key = gapBlockHeader.Hash.Bytes;
+        if (!snapshotDb.KeyExists(key))
             return null;
-        Span<byte> value = _snapshotDb.Get(key);
+        Span<byte> value = snapshotDb.Get(key);
         if (value.IsEmpty)
             return null;
 
-        var decoded = _snapshotDecoder.Decode(value, RlpBehaviors.None);
+        Snapshot decoded = _snapshotDecoder.Decode(value);
         snapshot = decoded;
-        _snapshotCache.Set(hash, snapshot);
+        _snapshotCache.Set(gapBlockHeader.Hash, snapshot);
         return snapshot;
+    }
+
+    public Snapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec)
+    {
+        var gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
+        return GetSnapshotByGapNumber(gapBlockNum);
     }
 
     public void StoreSnapshot(Snapshot snapshot)
     {
         Span<byte> key = snapshot.HeaderHash.Bytes;
 
-        if (_snapshotDb.KeyExists(key))
+        if (snapshotDb.KeyExists(key))
             return;
 
-        var rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot, RlpBehaviors.None);
+        Rlp rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot);
 
-        _snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
+        snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
+        _snapshotCache.Set(snapshot.HeaderHash, snapshot);
     }
 
-    public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(XdcBlockHeader header, IXdcReleaseSpec spec)
+    public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
     {
         int maxMasternodes = spec.MaxMasternodes;
-        var previousSnapshot = GetSnapshot(header.Hash);
+        Snapshot previousSnapshot = GetSnapshotByBlockNumber(blockNumber, spec);
 
         if (previousSnapshot is null)
-            throw new InvalidOperationException($"No snapshot found for header {header.Number}:{header.Hash.ToShortString()}");
+            throw new InvalidOperationException($"No snapshot found for header #{blockNumber}");
 
-        var candidates = previousSnapshot.NextEpochCandidates;
+        Address[] candidates = previousSnapshot.NextEpochCandidates;
 
-        if (header.Number == spec.SwitchBlock + 1)
+        if (blockNumber == spec.SwitchBlock + 1)
         {
             if (candidates.Length > maxMasternodes)
             {
@@ -90,7 +105,7 @@ internal class SnapshotManager : ISnapshotManager
             return (candidates, []);
         }
 
-        var penalties = _penaltyHandler.HandlePenalties(header.Number, header.ParentHash, candidates);
+        Address[] penalties = penaltyHandler.HandlePenalties(blockNumber, parentHash, candidates);
 
         candidates = candidates
             .Except(penalties)        // remove penalties
@@ -98,5 +113,32 @@ internal class SnapshotManager : ISnapshotManager
             .ToArray();
 
         return (candidates, penalties);
+    }
+
+    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+    {
+        UpdateMasterNodes((XdcBlockHeader)e.Block.Header);
+    }
+
+    private void UpdateMasterNodes(XdcBlockHeader header)
+    {
+        ulong round;
+        if (header.IsGenesis)
+            round = 0;
+        else
+            round = header.ExtraConsensusData.BlockRound;
+        // Could consider dropping the round parameter here, since the consensus parameters used here should not change 
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(header, round);
+        if (!ISnapshotManager.IsTimeForSnapshot(header.Number, spec))
+            return;
+
+        Address[] candidates;
+        if (header.IsGenesis)
+            candidates = spec.GenesisMasterNodes;
+        else
+            candidates = votingContract.GetCandidatesByStake(header);
+
+        Snapshot snapshot = new(header.Number, header.Hash, candidates);
+        StoreSnapshot(snapshot);
     }
 }

@@ -345,6 +345,7 @@ namespace Nethermind.Consensus.AuRa
         public void Dispose()
         {
             _branchProcessor.BlockProcessed -= OnBlockProcessed;
+            _branchProcessor.BlocksProcessing -= OnBlocksProcessing;
         }
 
         [DebuggerDisplay("Count = {Count}")]

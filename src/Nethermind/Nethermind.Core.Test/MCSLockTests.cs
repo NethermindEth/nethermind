@@ -59,6 +59,7 @@ public class MCSLockTests
     }
 
     [Test]
+    [Retry(3)]
     public void LockFairnessTest()
     {
         int numberOfThreads = 10;

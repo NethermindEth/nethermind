@@ -24,7 +24,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
 
     public static MethodInfo GetFluentOpcodeFunction(Instruction opcode)
     {
-        static bool HasDigit(Instruction opcode, Instruction[] treatLikeSuffexedOpcode, Instruction[] treatLikeNonSuffexedOpcode, out int prefixLen, out string opcodeAsString)
+        static bool HasDigit(Instruction opcode, Instruction[] treatLikeSuffixedOpcode, Instruction[] treatLikeNonSuffixedOpcode, out int prefixLen, out string opcodeAsString)
         {
             // opcode with multiple indexes at the end like PUSH or DUP or SWAP are represented as one function
             // with the char 'x' instead of the number with one byte argument to diff i.g : PUSH32 => PUSHx(32, ...)
@@ -32,13 +32,13 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
             prefixLen = opcodeAsString.Length;
 
             // STORE8 is excluded from filter and always returns false cause it is one of it own and has a function mapped directly to it
-            if (treatLikeSuffexedOpcode.Contains(opcode))
+            if (treatLikeSuffixedOpcode.Contains(opcode))
             {
                 return false;
             }
 
             // CREATE is included from filter and always return true it is mapped to CREATE(byte)
-            if (treatLikeNonSuffexedOpcode.Contains(opcode))
+            if (treatLikeNonSuffixedOpcode.Contains(opcode))
             {
                 return true;
             }
@@ -604,7 +604,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void code_emited_by_fluent_is_same_as_expected([ValueSource(nameof(FluentBuilderTestCases))] TestCase test)
+    public void code_emitted_by_fluent_is_same_as_expected([ValueSource(nameof(FluentBuilderTestCases))] TestCase test)
     {
         test.FluentCodes.Should().BeEquivalentTo(test.ResultCodes, test.Description);
     }

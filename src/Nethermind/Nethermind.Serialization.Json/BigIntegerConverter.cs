@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Json
             {
                 JsonTokenType.Number => new BigInteger(reader.GetInt64()),
                 JsonTokenType.String => BigInteger.Parse(reader.GetString()),
-                _ => throw new InvalidOperationException()
+                _ => throw new JsonException($"Cannot convert {reader.TokenType} to {nameof(BigInteger)}")
             };
         }
 

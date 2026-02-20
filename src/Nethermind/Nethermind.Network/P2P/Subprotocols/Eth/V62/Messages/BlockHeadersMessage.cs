@@ -9,8 +9,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockHeadersMessage : P2PMessage
     {
-        public override int PacketType { get; } = Eth62MessageCode.BlockHeaders;
-        public override string Protocol { get; } = "eth";
+        public override int PacketType => Eth62MessageCode.BlockHeaders;
+        public override string Protocol => "eth";
 
         public IOwnedReadOnlyList<BlockHeader>? BlockHeaders { get; set; }
 

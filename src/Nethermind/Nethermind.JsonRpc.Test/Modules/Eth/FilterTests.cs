@@ -6,6 +6,8 @@ using System.Text.Json;
 
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
@@ -23,7 +25,7 @@ public class FilterTests
             yield return new TestCaseData("{}",
                 new Filter
                 {
-                    FromBlock = BlockParameter.Latest,
+                    FromBlock = BlockParameter.Earliest,
                     ToBlock = BlockParameter.Latest,
                 });
 
@@ -31,8 +33,6 @@ public class FilterTests
                 JsonSerializer.Serialize(
                     new
                     {
-                        fromBlock = "earliest",
-                        toBlock = "pending",
                         topics = new object?[]
                         {
                             null,
@@ -47,17 +47,16 @@ public class FilterTests
                 new Filter
                 {
                     FromBlock = BlockParameter.Earliest,
-                    ToBlock = BlockParameter.Pending,
-                    Topics = new object?[]
-                    {
+                    ToBlock = BlockParameter.Latest,
+                    Topics =
+                    [
                         null,
-                        "0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7",
-                        new[]
-                        {
-                            "0x000500002bd87daa34d8ff0daf3465c96044d8f6667614850000000000000001",
-                            "0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7"
-                        }
-                    }
+                        [new("0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7")],
+                        [
+                            new Hash256("0x000500002bd87daa34d8ff0daf3465c96044d8f6667614850000000000000001"),
+                            new Hash256("0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7")
+                        ]
+                    ]
                 });
 
             yield return new TestCaseData(
@@ -66,7 +65,6 @@ public class FilterTests
                     {
                         address = "0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5c",
                         fromBlock = "0x1143ade",
-                        toBlock = "latest",
                         topics = new object?[]
                         {
                             "0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7",
@@ -77,16 +75,16 @@ public class FilterTests
                     }),
                 new Filter
                 {
-                    Address = "0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5c",
+                    Address = [new Address("0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5c")],
                     FromBlock = new BlockParameter(0x1143ade),
                     ToBlock = BlockParameter.Latest,
-                    Topics = new object?[]
-                    {
-                        "0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7",
+                    Topics =
+                    [
+                        [new("0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7")],
                         null,
                         null,
-                        "0x000500002bd87daa34d8ff0daf3465c96044d8f6667614850000000000000001"
-                    }
+                        [new("0x000500002bd87daa34d8ff0daf3465c96044d8f6667614850000000000000001")]
+                    ]
                 });
 
             var blockHash = "0x892a8b3ccc78359e059e67ec44c83bfed496721d48c2d1dd929d6e4cd6559d35";

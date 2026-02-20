@@ -24,24 +24,24 @@ namespace Ethereum.Test.Base
                 testDirs = new[] { testsDirectoryName };
             }
 
-            List<EthereumTest> testJsons = new();
+            List<EthereumTest> tests = new();
             foreach (string testDir in testDirs)
             {
-                testJsons.AddRange(LoadTestsFromDirectory(testDir, wildcard));
+                tests.AddRange(LoadTestsFromDirectory(testDir, wildcard));
             }
 
-            return testJsons;
+            return tests;
         }
 
-        private string GetLegacyBlockchainTestsDirectory()
+        private static string GetLegacyBlockchainTestsDirectory()
         {
-            char pathSeparator = Path.AltDirectorySeparatorChar;
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string rootDirectory = currentDirectory.Remove(currentDirectory.LastIndexOf("src"));
 
-            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "LegacyTests", "Constantinople", "BlockchainTests");
+            return Path.Combine(rootDirectory, "src", "tests", "LegacyTests", "Cancun", "BlockchainTests");
         }
 
-        private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard)
+        private static IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard)
         {
             List<EthereumTest> testsByName = new();
             IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);

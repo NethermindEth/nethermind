@@ -15,7 +15,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             GetBlockHeadersMessage message = new();
             rlpStream.ReadSequenceLength();
             byte[] startingBytes = rlpStream.DecodeByteArray();
-            if (startingBytes.Length == 32)
+            if (startingBytes.Length == Hash256.Size)
             {
                 message.StartBlockHash = new Hash256(startingBytes);
             }

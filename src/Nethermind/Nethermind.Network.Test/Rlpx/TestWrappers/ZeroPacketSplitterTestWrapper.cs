@@ -3,7 +3,6 @@
 
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
-using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using NSubstitute;
 
@@ -24,7 +23,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
             return result;
         }
 
-        public ZeroPacketSplitterTestWrapper() : base(LimboLogs.Instance)
+        public ZeroPacketSplitterTestWrapper() : base()
         {
             _context.Allocator.Returns(PooledByteBufferAllocator.Default);
         }

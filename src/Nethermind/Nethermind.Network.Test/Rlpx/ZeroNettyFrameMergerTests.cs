@@ -4,7 +4,6 @@
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Extensions;
-using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
@@ -25,7 +24,7 @@ public class ZeroNettyFrameMergerTests
             base.Encode(_context, input, output);
         }
 
-        public TestFrameHelper() : base(LimboLogs.Instance)
+        public TestFrameHelper() : base()
         {
         }
     }

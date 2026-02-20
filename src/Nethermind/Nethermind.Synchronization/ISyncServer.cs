@@ -26,5 +26,6 @@ namespace Nethermind.Synchronization
         ulong NetworkId { get; }
         BlockHeader Genesis { get; }
         BlockHeader? Head { get; }
+        long LowestBlock { get; }
     }
 }

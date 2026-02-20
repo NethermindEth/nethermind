@@ -7,20 +7,12 @@ using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Attributes;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroPacketSplitter : MessageToByteEncoder<IByteBuffer>, IFramingAware
+    public class ZeroPacketSplitter() : MessageToByteEncoder<IByteBuffer>, IFramingAware
     {
-        private readonly ILogger _logger;
-
-        public ZeroPacketSplitter(ILogManager logManager)
-        {
-            _logger = logManager?.GetClassLogger<ZeroPacketSplitter>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-
         public void DisableFraming()
         {
             MaxFrameSize = int.MaxValue;

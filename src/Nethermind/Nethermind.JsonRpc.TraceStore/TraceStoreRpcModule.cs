@@ -211,7 +211,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
 
         if (TryGetBlockTraces(block.Header, out List<ParityLikeTxTrace>? traces) && traces is not null)
         {
-            ParityLikeTxTrace? trace = GetTxTrace(block, txHash, traces);
+            ParityLikeTxTrace? trace = GetTxTrace(txHash, traces);
             if (trace is not null)
             {
                 FilterTrace(trace, traceTypes);
@@ -249,7 +249,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
         }
     }
 
-    private static ParityLikeTxTrace? GetTxTrace(Block block, Hash256 txHash, List<ParityLikeTxTrace> traces)
+    private static ParityLikeTxTrace? GetTxTrace(Hash256 txHash, List<ParityLikeTxTrace> traces)
     {
         int index = traces.FindIndex(t => t.TransactionHash == txHash);
         return index != -1 ? traces[index] : null;

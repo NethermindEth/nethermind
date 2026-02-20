@@ -8,6 +8,11 @@ namespace Nethermind.JsonRpc
         public const int None = 0;
 
         /// <summary>
+        /// Execution reverted (Geth compatibility)
+        /// </summary>
+        public const int ExecutionReverted = 3;
+
+        /// <summary>
         /// Invalid JSON
         /// </summary>
         public const int ParseError = -32700;
@@ -40,7 +45,12 @@ namespace Nethermind.JsonRpc
         /// <summary>
         /// Requested resource not found
         /// </summary>
-        public const int ResourceNotFound = -32001;
+        public const int ResourceNotFound = -32000;
+
+        /// <summary>
+        /// Transaction creation failed
+        /// </summary>
+        public const int TransactionRejected = -32000;
 
         /// <summary>
         /// Requested resource not available
@@ -48,29 +58,14 @@ namespace Nethermind.JsonRpc
         public const int ResourceUnavailable = -32002;
 
         /// <summary>
-        /// Transaction creation failed
-        /// </summary>
-        public const int TransactionRejected = -32010;
-
-        /// <summary>
         /// Account locked
         /// </summary>
         public const int AccountLocked = -32020;
 
         /// <summary>
-        /// Method is not implemented
-        /// </summary>
-        public const int MethodNotSupported = -32004;
-
-        /// <summary>
         /// Request exceeds defined limit
         /// </summary>
         public const int LimitExceeded = -32005;
-
-        /// <summary>
-        ///
-        /// </summary>
-        public const int ExecutionError = -32015;
 
         /// <summary>
         /// Request exceeds defined timeout limit
@@ -103,23 +98,43 @@ namespace Nethermind.JsonRpc
         public const int InvalidInputTooManyBlocks = -38026;
 
         /// <summary>
-        /// Invalid RPC simulate call Not enough gas provided to pay for intrinsic gas for a transaction
-        /// </summary>
-        public const int InsufficientIntrinsicGas = -38013;
-
-        /// <summary>
-        /// Invalid RPC simulate call transaction
-        /// </summary>
-        public const int InvalidTransaction = -38014;
-
-        /// <summary>
         /// Too many blocks for simulation
         /// </summary>
         public const int ClientLimitExceededError = -38026;
 
         /// <summary>
-        /// Block is not available due to history expirty policy
+        /// Block is not available due to history expiry policy
         /// </summary>
         public const int PrunedHistoryUnavailable = 4444;
+
+        /// <summary>
+        /// Default error code
+        /// </summary>
+        public const int Default = -32000;
+
+        /// <summary>
+        /// Invalid intrinsic gas. Miner premium is negative
+        /// </summary>
+        public const int IntrinsicGas = -38013;
+
+        /// <summary>
+        /// Not enough value to cover transaction costs
+        /// </summary>
+        public const int InsufficientFunds = -38014;
+
+        /// <summary>
+        /// Gas limit reached
+        /// </summary>
+        public const int BlockGasLimitReached = -38015;
+
+        /// <summary>
+        /// EIP-3860. Code size is to big
+        /// </summary>
+        public const int MaxInitCodeSizeExceeded = -38025;
+
+        /// <summary>
+        /// Error during EVM execution
+        /// </summary>
+        public const int VMError = -32015;
     }
 }

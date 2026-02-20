@@ -14,12 +14,12 @@ namespace Nethermind.Blockchain.Test.Runner
     public class StateTestsBugHunter : GeneralStateTestBase, IStateTestRunner
     {
         private ITestSourceLoader _testsSource;
-        private ConsoleColor _defaultColour;
+        private ConsoleColor _defaultColor;
 
         public StateTestsBugHunter(ITestSourceLoader testsSource)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
-            _defaultColour = Console.ForegroundColor;
+            _defaultColor = Console.ForegroundColor;
         }
 
         public IEnumerable<EthereumTestResult> RunTests()
@@ -68,14 +68,14 @@ namespace Nethermind.Blockchain.Test.Runner
         {
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine(text);
-            Console.ForegroundColor = _defaultColour;
+            Console.ForegroundColor = _defaultColor;
         }
 
         private void WriteGreen(string text)
         {
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine(text);
-            Console.ForegroundColor = _defaultColour;
+            Console.ForegroundColor = _defaultColor;
         }
     }
 }

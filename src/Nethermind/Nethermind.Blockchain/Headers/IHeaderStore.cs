@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Headers;
 
-public interface IHeaderStore
+public interface IHeaderStore : IHeaderFinder
 {
     void Insert(BlockHeader header);
     void BulkInsert(IReadOnlyList<BlockHeader> headers);

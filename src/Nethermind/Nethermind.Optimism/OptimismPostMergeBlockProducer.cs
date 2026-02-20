@@ -35,7 +35,7 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
         ISpecProvider specProvider,
         IOptimismSpecHelper specHelper,
         ILogManager logManager,
-        IBlocksConfig? miningConfig) : base(
+        IBlocksConfig? blocksConfig) : base(
         payloadAttrsTxSource.Then(txPoolTxSource),
         processor,
         blockTree,
@@ -45,7 +45,7 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
         timestamper,
         specProvider,
         logManager,
-        miningConfig)
+        blocksConfig)
     {
         _payloadAttrsTxSource = payloadAttrsTxSource;
         _specHelper = specHelper;

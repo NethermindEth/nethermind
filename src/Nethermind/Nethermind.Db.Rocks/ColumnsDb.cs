@@ -18,11 +18,14 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
     private readonly IDictionary<T, ColumnDb> _columnDbs = new Dictionary<T, ColumnDb>();
 
     public ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache = null)
-        : base(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, GetEnumKeys(keys).Select(static (key) => key.ToString()).ToList(), sharedCache: sharedCache)
+        : this(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, ResolveKeys(keys), sharedCache)
     {
-        keys = GetEnumKeys(keys);
+    }
 
-        foreach (T key in keys)
+    private ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, (IReadOnlyList<T> Keys, IList<string> ColumnNames) keyInfo, IntPtr? sharedCache)
+        : base(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, keyInfo.ColumnNames, sharedCache: sharedCache)
+    {
+        foreach (T key in keyInfo.Keys)
         {
             _columnDbs[key] = new ColumnDb(_db, this, key.ToString()!);
         }
@@ -61,9 +64,17 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         return keys;
     }
 
-    protected override void BuildOptions<O>(IRocksDbConfig dbConfig, Options<O> options, IntPtr? sharedCache)
+    private static (IReadOnlyList<T> Keys, IList<string> ColumnNames) ResolveKeys(IReadOnlyList<T> keys)
     {
-        base.BuildOptions(dbConfig, options, sharedCache);
+        IReadOnlyList<T> resolvedKeys = GetEnumKeys(keys);
+        IList<string> columnNames = resolvedKeys.Select(static key => key.ToString()).ToList();
+
+        return (resolvedKeys, columnNames);
+    }
+
+    protected override void BuildOptions<TOptions>(IRocksDbConfig dbConfig, Options<TOptions> options, IntPtr? sharedCache, IMergeOperator? mergeOperator)
+    {
+        base.BuildOptions(dbConfig, options, sharedCache, mergeOperator);
         options.SetCreateMissingColumnFamilies();
     }
 
@@ -94,24 +105,19 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
     private class RocksColumnsWriteBatch : IColumnsWriteBatch<T>
     {
-        internal RocksDbWriteBatch _writeBatch;
+        internal readonly RocksDbWriteBatch WriteBatch;
         private readonly ColumnsDb<T> _columnsDb;
 
         public RocksColumnsWriteBatch(ColumnsDb<T> columnsDb)
         {
-            _writeBatch = new RocksDbWriteBatch(columnsDb);
+            WriteBatch = new RocksDbWriteBatch(columnsDb);
             _columnsDb = columnsDb;
         }
 
-        public IWriteBatch GetColumnBatch(T key)
-        {
-            return new RocksColumnWriteBatch(_columnsDb._columnDbs[key], this);
-        }
+        public IWriteBatch GetColumnBatch(T key) => new RocksColumnWriteBatch(_columnsDb._columnDbs[key], this);
 
-        public void Dispose()
-        {
-            _writeBatch.Dispose();
-        }
+        public void Clear() => WriteBatch.Clear();
+        public void Dispose() => WriteBatch.Dispose();
     }
 
     private class RocksColumnWriteBatch : IWriteBatch
@@ -130,9 +136,53 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _writeBatch.Dispose();
         }
 
+        public void Clear()
+        {
+            _writeBatch.WriteBatch.Clear();
+        }
+
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
-            _writeBatch._writeBatch.Set(key, value, _column._columnFamily, flags);
+            _writeBatch.WriteBatch.Set(key, value, _column._columnFamily, flags);
+        }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            _writeBatch.WriteBatch.Merge(key, value, _column._columnFamily, flags);
+        }
+    }
+
+    IColumnDbSnapshot<T> IColumnsDb<T>.CreateSnapshot()
+    {
+        Snapshot snapshot = _db.CreateSnapshot();
+        return new ColumnDbSnapshot(this, snapshot);
+    }
+
+    private class ColumnDbSnapshot(
+        ColumnsDb<T> columnsDb,
+        Snapshot snapshot
+    ) : IColumnDbSnapshot<T>
+    {
+        private readonly Dictionary<T, IReadOnlyKeyValueStore> _columnDbs = columnsDb.ColumnKeys.ToDictionary(k => k, k =>
+            (IReadOnlyKeyValueStore)new RocksDbReader(
+                columnsDb,
+                () =>
+                {
+                    ReadOptions options = new ReadOptions();
+                    options.SetVerifyChecksums(columnsDb.VerifyChecksum);
+                    options.SetSnapshot(snapshot);
+                    return options;
+                },
+                columnFamily: columnsDb._columnDbs[k]._columnFamily));
+
+        public IReadOnlyKeyValueStore GetColumn(T key)
+        {
+            return _columnDbs[key];
+        }
+
+        public void Dispose()
+        {
+            snapshot.Dispose();
         }
     }
 }

@@ -1,10 +1,9 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
@@ -35,12 +34,13 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Container;
+using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Json;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -59,6 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReceiptFinder ReceiptFinder => Container.Resolve<IReceiptFinder>();
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IProtocolsManager ProtocolsManager { get; private set; } = null!;
+        public ILogIndexConfig LogIndexConfig { get; } = new LogIndexConfig();
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =
@@ -68,8 +69,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IFeeHistoryOracle? FeeHistoryOracle { get; private set; }
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType, long? testTimeout = null) => ForTest<TestRpcBlockchain>(sealEngineType, testTimeout);
 
-        public static Builder<T> ForTest<T>(string sealEngineType, long? testTimout = null) where T : TestRpcBlockchain, new() =>
-            new(new T { SealEngineType = sealEngineType, TestTimout = testTimout ?? DefaultTimeout });
+        public static Builder<T> ForTest<T>(string sealEngineType, long? testTimeout = null) where T : TestRpcBlockchain, new() =>
+            new(new T { SealEngineType = sealEngineType, TestTimeout = testTimeout ?? DefaultTimeout });
 
         public static Builder<T> ForTest<T>(T blockchain) where T : TestRpcBlockchain =>
             new(blockchain);
@@ -194,10 +195,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
             @this.ProtocolsManager,
             @this.ForkInfo,
+            @this.LogIndexConfig,
             @this.BlocksConfig.SecondsPerSlot);
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
+            EthereumJsonSerializer.StrictHexFormat = RpcConfig.StrictHexFormat;
             await base.Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
@@ -217,7 +220,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISyncServer>(),
                 Substitute.For<IBackgroundTaskScheduler>(),
                 TxPool,
-                Substitute.For<IPooledTxsRequestor>(),
                 Substitute.For<IDiscoveryApp>(),
                 Substitute.For<IMessageSerializationService>(),
                 Substitute.For<IRlpxHost>(),
@@ -228,6 +230,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IGossipPolicy>(),
                 WorldStateManager,
                 LimboLogs.Instance,
+                Substitute.For<ITxPoolConfig>(),
+                Substitute.For<ISpecProvider>(),
                 Substitute.For<ITxGossipPolicy>()
             );
 
@@ -254,7 +258,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
             _currentBlockchainProcessor = new BlockchainProcessor(BlockTree, BranchProcessor,
-                BlockPreprocessorStep, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default);
+                BlockPreprocessorStep, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
             _currentBlockchainProcessor.Start();
         }
     }

@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
-using MathNet.Numerics.Statistics.Mcmc;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -105,7 +104,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 curStartingPath += partitionSize;
 
-                Hash256 limitPath;
+                ValueHash256 limitPath;
 
                 // Special case for the last partition
                 if (i == _accountRangePartitionCount - 1)
@@ -115,7 +114,8 @@ namespace Nethermind.Synchronization.SnapSync
                 else
                 {
                     limitPath = new Hash256(Keccak.Zero.Bytes);
-                    BinaryPrimitives.WriteUInt32BigEndian(limitPath.Bytes, curStartingPath);
+                    BinaryPrimitives.WriteUInt32BigEndian(limitPath.BytesAsSpan, curStartingPath);
+                    limitPath = limitPath.DecrementPath(); // Limit is inclusive
                 }
 
                 partition.AccountPathLimit = limitPath;
@@ -332,7 +332,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueHash256? startingHash, in ValueHash256? hashLimit)
         {
-            _pivot.UpdatedStorages.Add(pathWithAccount.Path.ToCommitment());
+            TrackAccountToHeal(pathWithAccount.Path);
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault(), StorageHashLimit = hashLimit ?? Keccak.MaxValue });
         }
 
@@ -357,7 +357,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void EnqueueNextSlot(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash)
+        public void EnqueueNextSlot(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash, int slotCount)
         {
             ValueHash256 limitHash = parentRequest.LimitHash ?? Keccak.MaxValue;
             if (lastProcessedHash > limitHash)
@@ -369,23 +369,30 @@ namespace Nethermind.Synchronization.SnapSync
             UInt256 lastProcessed = new UInt256(lastProcessedHash.Bytes, true);
             UInt256 start = startingHash.HasValue ? new UInt256(startingHash.Value.Bytes, true) : UInt256.Zero;
 
+            // Splitting storage will cause the storage proof to not get stitched completely, causing more healing time and
+            // causes it to be tracked for healing, also, one more slot range to keep in memory.
+            // So we only split if the estimated remaining slot count is large enough. This is recursive, so large
+            // contract will continue getting split until the remaining slot count is low enough.
+            double slotSize = lastProcessed == start ? 0 : (double)(lastProcessed - start) / slotCount;
+            int estimatedRemainingSlotCount = slotSize == 0 ? 0 : (int)((double)(limit - lastProcessed) / slotSize);
+
             UInt256 fullRange = limit - start;
 
-            if (_enableStorageRangeSplit && lastProcessed < fullRange / StorageRangeSplitFactor + start)
+            if (estimatedRemainingSlotCount > 10_000_000 && _enableStorageRangeSplit && lastProcessed < fullRange / StorageRangeSplitFactor + start)
             {
                 ValueHash256 halfOfLeftHash = ((limit - lastProcessed) / 2 + lastProcessed).ToValueHash();
 
                 NextSlotRange.Enqueue(new StorageRange
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
-                    StartingHash = lastProcessedHash,
+                    StartingHash = lastProcessedHash.IncrementPath(),
                     LimitHash = halfOfLeftHash
                 });
 
                 NextSlotRange.Enqueue(new StorageRange
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
-                    StartingHash = halfOfLeftHash,
+                    StartingHash = halfOfLeftHash.IncrementPath(),
                     LimitHash = limitHash
                 });
 
@@ -398,7 +405,7 @@ namespace Nethermind.Synchronization.SnapSync
                 var storageRange = new StorageRange
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
-                    StartingHash = lastProcessedHash,
+                    StartingHash = lastProcessedHash.IncrementPath(),
                     LimitHash = limitHash
                 };
                 NextSlotRange.Enqueue(storageRange);
@@ -407,6 +414,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void RetryStorageRange(StorageRange storageRange)
         {
+            bool dispose = false;
             if (storageRange.Accounts.Count == 1)
             {
                 EnqueueNextSlot(storageRange);
@@ -417,9 +425,12 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     EnqueueAccountStorage(account);
                 }
+
+                dispose = true;
             }
 
             Interlocked.Add(ref _activeStorageRequests, -(storageRange?.Accounts.Count ?? 0));
+            if (dispose) storageRange.Dispose();
         }
 
         public void ReportAccountRangePartitionFinished(in ValueHash256 hashLimit)
@@ -485,6 +496,12 @@ namespace Nethermind.Synchronization.SnapSync
             _db.Flush();
         }
 
+        public void TrackAccountToHeal(ValueHash256 path)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Tracked {path} for healing");
+            _pivot.UpdatedStorages.Add(path.ToCommitment());
+        }
+
         private void LogRequest(string reqType)
         {
             if (_reqCount % 100 == 0 || _lastLogTime < DateTimeOffset.Now - _maxTimeBetweenLog)
@@ -492,9 +509,9 @@ namespace Nethermind.Synchronization.SnapSync
                 int totalPathProgress = 0;
                 foreach (KeyValuePair<ValueHash256, AccountRangePartition> kv in AccountRangePartitions)
                 {
-                    AccountRangePartition? partiton = kv.Value;
-                    int nextAccount = partiton.NextAccountPath.Bytes[0] * 256 + partiton.NextAccountPath.Bytes[1];
-                    int startAccount = partiton.AccountPathStart.Bytes[0] * 256 + partiton.AccountPathStart.Bytes[1];
+                    AccountRangePartition? partition = kv.Value;
+                    int nextAccount = partition.NextAccountPath.Bytes[0] * 256 + partition.NextAccountPath.Bytes[1];
+                    int startAccount = partition.AccountPathStart.Bytes[0] * 256 + partition.AccountPathStart.Bytes[1];
                     totalPathProgress += nextAccount - startAccount;
                 }
 
@@ -521,7 +538,9 @@ namespace Nethermind.Synchronization.SnapSync
 
                         if (storagesToRetrieve > 0 && !_shouldStartLoggingLargeStorage)
                         {
-                            progress = (float)((_estimatedStorageRemaining - storagesToRetrieve) / (float)_estimatedStorageRemaining);
+                            progress = _estimatedStorageRemaining != 0
+                                ? (float)((_estimatedStorageRemaining - storagesToRetrieve) / (float)_estimatedStorageRemaining)
+                                : 1;
 
                             stateRangesReport = $"Snap         Remaining storage: ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
                         }
@@ -529,14 +548,16 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             double totalAllLargeStorageProgress = 0;
                             // totalLargeStorage changes over time, but thats fine.
-                            double totalLargeStorage = queuedStorage;
+                            long totalLargeStorage = queuedStorage;
                             foreach (var keyValuePair in _largeStorageProgress)
                             {
                                 totalAllLargeStorageProgress += keyValuePair.Value.CalculateProgress();
                                 totalLargeStorage++;
                             }
 
-                            progress = (float)(totalAllLargeStorageProgress / totalLargeStorage);
+                            progress = totalLargeStorage != 0
+                                ? (float)totalAllLargeStorageProgress / totalLargeStorage
+                                : 1;
 
                             stateRangesReport = $"Snap         Large storage left: {totalLargeStorage} ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
                         }

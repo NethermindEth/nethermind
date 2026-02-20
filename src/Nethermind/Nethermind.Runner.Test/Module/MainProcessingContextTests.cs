@@ -22,7 +22,7 @@ public class MainProcessingContextTests
 {
     [Test]
     [CancelAfter(10000)]
-    public async Task Test_TransactionProcessed_EventIsFired(CancellationToken cancelationToken)
+    public async Task Test_TransactionProcessed_EventIsFired(CancellationToken cancellationToken)
     {
         await using IContainer ctx = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Cancun.Instance))
@@ -36,8 +36,8 @@ public class MainProcessingContextTests
         int totalTransactionProcessed = 0;
         mainProcessingContext.TransactionProcessed += (_, _) => totalTransactionProcessed++;
 
-        await ctx.Resolve<PseudoNethermindRunner>().StartBlockProcessing(cancelationToken);
-        await ctx.Resolve<TestBlockchainUtil>().AddBlockAndWaitForHead(false, cancelationToken,
+        await ctx.Resolve<PseudoNethermindRunner>().StartBlockProcessing(cancellationToken);
+        await ctx.Resolve<TestBlockchainUtil>().AddBlockAndWaitForHead(false, cancellationToken,
             Build.A.Transaction
                 .WithGasLimit(100_000)
                 .WithSenderAddress(TestItem.AddressA)

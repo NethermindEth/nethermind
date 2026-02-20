@@ -405,12 +405,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private class AlwaysTimeoutBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
             internal int ScheduledTasks = 0;
-            public void ScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
+                TimeSpan? timeout = null)
             {
-                CancellationTokenSource cts = new CancellationTokenSource();
+                CancellationTokenSource cts = new();
                 cts.Cancel();
                 fulfillFunc(request, cts.Token);
                 ScheduledTasks++;
+                return true;
             }
         }
 
@@ -617,7 +619,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             _handler.SendNewTransactions(txs);
 
-            _session.Received(messagesCount).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == numberOfTxsInOneMsg || m.Transactions.Count == nonFullMsgTxsCount));
+            Assert.That(() => _session.ReceivedCallsMatching(s => s.DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == numberOfTxsInOneMsg || m.Transactions.Count == nonFullMsgTxsCount)), messagesCount), Is.True.After(500, 50));
+
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase

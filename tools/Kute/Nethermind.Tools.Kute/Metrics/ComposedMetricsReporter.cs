@@ -7,7 +7,6 @@ public sealed class ComposedMetricsReporter : IMetricsReporter
 {
     private readonly IMetricsReporter[] _reporters;
 
-
     public ComposedMetricsReporter(params IMetricsReporter[] reporters)
     {
         _reporters = reporters;

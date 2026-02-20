@@ -245,52 +245,6 @@ namespace Nethermind.Network.P2P
             }
         }
 
-        public void ReceiveMessage(Packet packet)
-        {
-            Interlocked.Add(ref Metrics.P2PBytesReceived, packet.Data.Length);
-
-            lock (_sessionStateLock)
-            {
-                if (State < SessionState.Initialized)
-                {
-                    throw new InvalidOperationException($"{nameof(ReceiveMessage)} called on {this}");
-                }
-
-                if (IsClosing)
-                {
-                    return;
-                }
-            }
-
-            int dynamicMessageCode = packet.PacketType;
-            (string protocol, int messageId) = _resolver.ResolveProtocol(packet.PacketType);
-            packet.Protocol = protocol;
-
-            MsgReceived?.Invoke(this, new PeerEventArgs(_node, packet.Protocol, packet.PacketType, packet.Data.Length));
-
-            RecordIncomingMessageMetric(protocol, messageId, packet.Data.Length);
-
-            if (_logger.IsTrace)
-                _logger.Trace($"{this} received a message of length {packet.Data.Length} " +
-                              $"({dynamicMessageCode} => {protocol}.{messageId})");
-
-            if (protocol is null)
-            {
-                if (_logger.IsTrace)
-                    _logger.Warn($"Received a message from node: {RemoteNodeId}, ({dynamicMessageCode} => {messageId}), " +
-                                 $"known protocols ({_protocols.Count}): " +
-                                 $"{string.Join(", ", _protocols.Select(static x => $"{x.Value.Name} {x.Value.MessageIdSpaceSize}"))}");
-                return;
-            }
-
-            packet.PacketType = messageId;
-
-            if (State < SessionState.DisconnectingProtocols)
-            {
-                _protocols[protocol].HandleMessage(packet);
-            }
-        }
-
         public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler)
         {
             return _protocols.TryGetValue(protocolCode, out handler);
@@ -599,15 +553,10 @@ namespace Nethermind.Network.P2P
         private AdaptiveCodeResolver GetOrCreateResolver()
         {
             string key = string.Join(":", _protocols.Select(static p => p.Value.Name).OrderBy(static x => x));
-            if (!_resolvers.TryGetValue(key, out AdaptiveCodeResolver value))
-            {
-                value = _resolvers.AddOrUpdate(
-                    key,
-                    addValueFactory: (k) => new AdaptiveCodeResolver(_protocols),
-                    updateValueFactory: (k, v) => v);
-            }
-
-            return value;
+            return _resolvers.GetOrAdd(
+                key,
+                static (_, protocols) => new AdaptiveCodeResolver(protocols),
+                _protocols);
         }
 
         public override string ToString()

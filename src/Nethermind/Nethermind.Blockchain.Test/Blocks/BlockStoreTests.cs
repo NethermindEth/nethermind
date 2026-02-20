@@ -15,6 +15,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
 
+[Parallelizable(ParallelScope.All)]
 public class BlockStoreTests
 {
     private readonly Func<EquivalencyAssertionOptions<Block>, EquivalencyAssertionOptions<Block>> _ignoreEncodedSize = options => options.Excluding(b => b.EncodedSize);
@@ -37,7 +38,7 @@ public class BlockStoreTests
     }
 
     [Test]
-    public void Test_insert_would_pass_in_writeflag()
+    public void Test_insert_would_pass_in_write_flag()
     {
         TestMemDb db = new();
         BlockStore store = new(db);

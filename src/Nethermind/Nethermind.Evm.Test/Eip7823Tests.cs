@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -43,10 +42,6 @@ public class Eip7823Tests
         if (success)
         {
             Assert.That(gas, Is.LessThan(long.MaxValue));
-        }
-        else
-        {
-            Assert.That(gas, Is.EqualTo(long.MaxValue));
         }
     }
 

@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -12,8 +13,13 @@ using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
-    public abstract class ZeroProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
-        : ProtocolHandlerBase(session, nodeStats, serializer, logManager), IZeroProtocolHandler
+    public abstract class ZeroProtocolHandlerBase(
+        ISession session,
+        INodeStatsManager nodeStats,
+        IMessageSerializationService serializer,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
+        ILogManager logManager)
+        : ProtocolHandlerBase(session, nodeStats, serializer, backgroundTaskScheduler, logManager), IZeroProtocolHandler
     {
         protected readonly INodeStats _nodeStats = nodeStats.GetOrAdd(session.Node);
 
@@ -80,15 +86,21 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
             else
             {
-                _ = task.ContinueWith(static t =>
+                // TrySetCanceled first: if it succeeds we own the TCS and need to
+                // dispose any late-arriving response. If it fails, the response was
+                // already set by Handle() and the caller owns the data — registering
+                // a disposal continuation would dispose data the caller still holds.
+                if (request.CompletionSource.TrySetCanceled(cancellationToken))
                 {
-                    if (t.IsCompletedSuccessfully)
+                    _ = task.ContinueWith(static t =>
                     {
-                        t.Result.TryDispose();
-                    }
-                });
+                        if (t.IsCompletedSuccessfully)
+                        {
+                            t.Result.TryDispose();
+                        }
+                    });
+                }
 
-                request.CompletionSource.TrySetCanceled(cancellationToken);
                 StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
 
                 if (Logger.IsDebug) Logger.Debug($"{Session} Request timeout in {describeRequestFunc(request.Message)}");

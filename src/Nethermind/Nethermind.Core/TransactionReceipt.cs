@@ -9,7 +9,7 @@ namespace Nethermind.Core
 {
     public class TxReceipt
     {
-        private Bloom? _boom;
+        private Bloom? _bloom;
 
         public TxReceipt()
         {
@@ -61,13 +61,13 @@ namespace Nethermind.Core
         ///     Removed in EIP-658
         /// </summary>
         public Hash256? PostTransactionState { get; set; }
-        public Bloom? Bloom { get => _boom ?? CalculateBloom(); set => _boom = value; }
+        public Bloom? Bloom { get => _bloom ?? CalculateBloom(); set => _bloom = value; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
 
 
         public Bloom CalculateBloom()
-            => _boom = Logs?.Length == 0 ? Bloom.Empty : new Bloom(Logs);
+            => _bloom = Logs?.Length == 0 ? Bloom.Empty : new Bloom(Logs);
     }
 
     public ref struct TxReceiptStructRef

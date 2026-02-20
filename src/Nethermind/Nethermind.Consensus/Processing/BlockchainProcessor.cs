@@ -57,14 +57,16 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         new BoundedChannelOptions(MaxProcessingQueueSize)
         {
             // Optimize for single reader concurrency
-            SingleReader = true
+            SingleReader = true,
+            // If queues are empty we want the block processing to continue on NewPayload thread and inherit its priority
+            AllowSynchronousContinuations = true,
         });
 
     private bool _recoveryComplete = false;
     private int _queueCount;
     private bool _disposed;
 
-    private readonly ProcessingStats _stats;
+    private readonly IProcessingStats _stats;
 
     private CancellationTokenSource? _loopCancellationSource;
     private Task? _recoveryTask;
@@ -89,13 +91,15 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// <param name="stateReader"></param>
     /// <param name="logManager"></param>
     /// <param name="options"></param>
+    /// <param name="processingStats"></param>
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
         IBlockPreprocessorStep recoveryStep,
         IStateReader stateReader,
         ILogManager logManager,
-        Options options)
+        Options options,
+        IProcessingStats processingStats)
     {
         _logger = logManager.GetClassLogger();
         _blockTree = blockTree;
@@ -104,7 +108,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _stateReader = stateReader;
         _options = options;
 
-        _stats = new ProcessingStats(stateReader, logManager.GetClassLogger<ProcessingStats>());
+        _stats = processingStats;
         _loopCancellationSource = new CancellationTokenSource();
         _stats.NewProcessingStatistics += OnNewProcessingStatistics;
     }
@@ -143,6 +147,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (!_recoveryComplete)
         {
             Interlocked.Increment(ref _queueCount);
+            BlockAdded?.Invoke(this, new BlockEventArgs(block));
+
             _lastProcessedBlock = DateTime.UtcNow;
             try
             {
@@ -424,6 +430,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public event EventHandler? ProcessingQueueEmpty;
     public event EventHandler<BlockRemovedEventArgs>? BlockRemoved;
+    public event EventHandler<BlockEventArgs>? BlockAdded;
     public bool IsEmpty => Volatile.Read(ref _queueCount) == 0;
     public int Count => Volatile.Read(ref _queueCount);
 
@@ -670,7 +677,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
     {
-        BlockHeader branchingPoint = null;
+        BlockHeader? branchingPoint = null;
         ArrayPoolList<Block> blocksToBeAddedToMain = new((int)Reorganization.PersistenceInterval);
 
         bool branchingCondition;
@@ -774,7 +781,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceBranchingPoint(BlockHeader branchingPoint)
+        void TraceBranchingPoint(BlockHeader? branchingPoint)
         {
             if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {
@@ -800,7 +807,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             => _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceStateRootLookup(Hash256 stateRoot)
+        void TraceStateRootLookup(Hash256? stateRoot)
             => _logger.Trace($"State root lookup: {stateRoot}");
 
         [DoesNotReturn, StackTraceHidden]

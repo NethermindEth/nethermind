@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Core.Messages;
+
 public static class TxErrorMessages
 {
     public static string InvalidTxType(string name) =>
@@ -43,8 +44,8 @@ public static class TxErrorMessages
     public static string BlobTxGasLimitExceeded(ulong totalDataGas, ulong maxBlobGas) =>
         $"BlobTxGasLimitExceeded: Transaction's totalDataGas={totalDataGas} exceeded MaxBlobGas per transaction={maxBlobGas}.";
 
-    public const string BlobTxMissingBlobs =
-        "blob transaction missing blob hashes";
+    public static readonly string BlobTxMissingBlobs =
+        $"blob transaction must have at least {Eip4844Constants.MinBlobsPerTransaction} blob";
 
     public const string MissingBlobVersionedHash =
         "MissingBlobVersionedHash: Must be set.";

@@ -10,20 +10,22 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
-    public class NetworkNodeDecoder : IRlpStreamDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
+    public sealed class NetworkNodeDecoder : RlpStreamDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
     {
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB(), nameof(NetworkNode.HostIp));
+
         static NetworkNodeDecoder()
         {
             Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
         }
 
-        public NetworkNode Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override NetworkNode DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             rlpStream.ReadSequenceLength();
 
-            PublicKey publicKey = new(rlpStream.DecodeByteArraySpan());
-            string ip = rlpStream.DecodeString();
-            int port = (int)rlpStream.DecodeByteArraySpan().ReadEthUInt64();
+            PublicKey publicKey = new(rlpStream.DecodeByteArraySpan(RlpLimit.L64));
+            string ip = rlpStream.DecodeString(RlpLimit);
+            int port = (int)rlpStream.DecodeByteArraySpan(RlpLimit.L8).ReadEthUInt64();
             rlpStream.SkipItem();
             long reputation = 0L;
             try
@@ -39,7 +41,7 @@ namespace Nethermind.Network
             return networkNode;
         }
 
-        public void Encode(RlpStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int contentLength = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
@@ -68,7 +70,7 @@ namespace Nethermind.Network
             throw new NotImplementedException();
         }
 
-        public int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors)
         {
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }

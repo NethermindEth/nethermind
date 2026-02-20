@@ -28,9 +28,6 @@ internal static class RocksDbExtensions
 
         var keyLength = (long)key.Length;
 
-        if (keyLength == 0)
-            keyLength = key.Length;
-
         nint result;
         nint error;
         UIntPtr valueLength;

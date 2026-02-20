@@ -2,7 +2,6 @@
   <Project Path="../../src/Nethermind/Nethermind.History/Nethermind.History.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Hive/Nethermind.Hive.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Abi/Nethermind.Abi.csproj" />
-  <Project Path="../../src/Nethermind/Nethermind.Analytics/Nethermind.Analytics.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Api/Nethermind.Api.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Config/Nethermind.Config.csproj" />

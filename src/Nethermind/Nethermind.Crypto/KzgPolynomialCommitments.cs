@@ -15,9 +15,8 @@ namespace Nethermind.Crypto;
 public static class KzgPolynomialCommitments
 {
     // https://eips.ethereum.org/EIPS/eip-4844#parameters
-    public static readonly UInt256 BlsModulus =
-        UInt256.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513",
-            System.Globalization.NumberStyles.Integer);
+    // 52435875175126190479447740508185965837690552500527637822603658699938581184513
+    public static readonly UInt256 BlsModulus = new(18446744069414584321ul, 6034159408538082302ul, 3691218898639771653ul, 8353516859464449352ul);
 
     public const byte KzgBlobHashVersionV1 = 1;
 
