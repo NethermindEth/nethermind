@@ -34,8 +34,8 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
     public SpecGasCosts(IReleaseSpec spec)
     {
         bool hotCold = spec.UseHotAndColdStorage;  // EIP-2929
-        bool largeDDos = spec.UseConstantinopleNetGasMetering;  // EIP-1884
-        bool shanghaiDDos = spec.UseConstantinopleNetGasMetering;   // EIP-150
+        bool largeDDos = spec.UseLargeStateDDosProtection;  // EIP-1884
+        bool shanghaiDDos = spec.UseShanghaiDDosProtection;   // EIP-150
         bool netIstanbul = spec.UseIstanbulNetGasMetering;  // EIP-2200
         bool netConstantinople = spec.UseConstantinopleNetGasMetering;  // EIP-1283
 
