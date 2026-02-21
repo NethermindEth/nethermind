@@ -28,7 +28,9 @@ public sealed class NodeStorageCache
 
     public bool ClearCaches()
     {
+        bool wasEnabled = _enabled;
+        _enabled = false;
         _cache.Clear();
-        return true;
+        return wasEnabled;
     }
 }
