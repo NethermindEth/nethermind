@@ -12,6 +12,7 @@ ARG TARGETARCH
 WORKDIR /nethermind
 
 COPY src/Nethermind src/Nethermind
+COPY src/nevm src/nevm
 COPY Directory.*.props .
 COPY global.json .
 COPY nuget.config .
