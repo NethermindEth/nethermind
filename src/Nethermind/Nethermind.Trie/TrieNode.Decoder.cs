@@ -305,7 +305,7 @@ namespace Nethermind.Trie
                     }
                     else
                     {
-                        if (ReferenceEquals(data, _nullNode) || data is null)
+                        if (ReferenceEquals(data, _nullNode))
                         {
                             totalLength++;
                         }
@@ -398,7 +398,7 @@ namespace Nethermind.Trie
                     }
                     else
                     {
-                        if (ReferenceEquals(data, _nullNode) || data is null)
+                        if (ReferenceEquals(data, _nullNode))
                         {
                             destination[position++] = 128;
                         }
