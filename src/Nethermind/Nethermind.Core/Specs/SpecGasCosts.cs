@@ -40,7 +40,7 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
         set;
     }
 
-    private long GetWithFreeGuard(long field) =>
+    private static long GetWithFreeGuard(long field) =>
         field == GasCostOf.Free
             ? throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled")
             : field;
