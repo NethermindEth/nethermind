@@ -14,7 +14,7 @@ public static class SpecProviderSubstitute
         IReleaseSpec genesis = ReleaseSpecSubstitute.Create();
         sub.GenesisSpec.Returns(genesis);
         IReleaseSpec spec = sub.GetSpec(Arg.Any<ForkActivation>());
-        spec.GasCosts.Returns(_ => new SpecGasCosts(spec));
+        spec.GasCosts.Returns(new SpecGasCosts(spec));
         return sub;
     }
 }
