@@ -590,6 +590,64 @@ namespace Nethermind.Network.Test
             Assert.That(() => ctx.PeerPool.TryRemove(node.NodeId, out _), Is.False.After(_delay, 10));
         }
 
+        [TestCase(0, 0, TestName = "Stop completes cleanly while idle")]
+        [TestCase(1, 5, TestName = "Stop completes when slots are saturated")]
+        [CancelAfter(10_000)]
+        public async Task Stop_does_not_hang(int maxActivePeers, int persistedPeers)
+        {
+            await using Context ctx = maxActivePeers > 0 ? new(maxActivePeers: maxActivePeers) : new();
+            ctx.SetupPersistedPeers(persistedPeers);
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            // Let the loop settle into its wait state
+            await Task.Delay(_delayLong);
+
+            Task stopTask = ctx.PeerManager.StopAsync();
+            bool completed = await Task.WhenAny(stopTask, Task.Delay(5000)) == stopTask;
+            completed.Should().BeTrue("StopAsync should complete within 5 seconds");
+            await stopTask;
+        }
+
+        [Test, Retry(5)]
+        public async Task Disconnect_triggers_refill_without_blocking()
+        {
+            await using Context ctx = new();
+            ctx.SetupPersistedPeers(50);
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            Assert.That(() => ctx.PeerPool.ActivePeers.Count, Is.AtLeast(25).After(_delayLong, 10));
+
+            int connectsBefore = ctx.RlpxPeer.ConnectAsyncCallsCount;
+            ctx.DisconnectAllSessions();
+
+            Assert.That(
+                () => ctx.RlpxPeer.ConnectAsyncCallsCount,
+                Is.GreaterThan(connectsBefore).After(_delayLong, 10));
+        }
+
+        [Test, Retry(5)]
+        public async Task No_slot_available_before_deadline_does_not_deadlock_refill()
+        {
+            await using Context ctx = new(maxActivePeers: 1);
+            ctx.NetworkConfig.ConnectTimeoutMs = 0;
+            ctx.SetupPersistedPeers(5);
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            Assert.That(() => ctx.PeerPool.ActivePeers.Count, Is.EqualTo(1).After(_delayLonger, 10));
+
+            await Task.Delay(Nethermind.Network.Timeouts.Handshake + TimeSpan.FromMilliseconds(_delay));
+
+            int connectsBefore = ctx.RlpxPeer.ConnectAsyncCallsCount;
+            ctx.DisconnectAllSessions();
+
+            Assert.That(
+                () => ctx.RlpxPeer.ConnectAsyncCallsCount,
+                Is.GreaterThan(connectsBefore).After(_delayLong, 10));
+        }
+
         private class Context : IAsyncDisposable
         {
             public RlpxMock RlpxPeer { get; }
