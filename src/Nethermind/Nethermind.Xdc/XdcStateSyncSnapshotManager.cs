@@ -55,7 +55,7 @@ public class XdcStateSyncSnapshotManager
             spec.EpochLength
          ) - spec.Gap;
 
-        if (gapBlockNum < pivotHeader.Number)
+        if (gapBlockNum > pivotHeader.Number)
         {
             return [];
         }
