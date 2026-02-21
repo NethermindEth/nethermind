@@ -62,10 +62,12 @@ public static class XdcStateRootCache
             _remoteRootsByBlock[blockNumber] = remoteStateRoot;
         }
 
-        // Evict old entries to prevent unbounded memory growth (keep last 10000 blocks)
-        if (blockNumber > 10000)
+        // Evict old entries to prevent unbounded memory growth (keep last 10M blocks for XDC mainnet)
+        // XDC mainnet: EVERY block from 1800+ diverges, so we need massive cache (10M+ entries)
+        const int MaxCachedBlocks = 10_000_000;
+        if (blockNumber > MaxCachedBlocks)
         {
-            long evictBlock = blockNumber - 10000;
+            long evictBlock = blockNumber - MaxCachedBlocks;
             _computedStateRoots.TryRemove(evictBlock, out _);
             if (_remoteRootsByBlock.TryRemove(evictBlock, out var oldRemote))
             {
