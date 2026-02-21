@@ -22,21 +22,16 @@ public class AuraWithdrawalProcessorTests
     [Test]
     public void Should_invoke_contract_as_expected()
     {
-        var contract = Substitute.For<IWithdrawalContract>();
-        var logManager = Substitute.For<ILogManager>();
-        var withdrawalProcessor = new AuraWithdrawalProcessor(contract, logManager);
-        var block = Build.A.Block
+        IWithdrawalContract contract = Substitute.For<IWithdrawalContract>();
+        ILogManager logManager = Substitute.For<ILogManager>();
+        AuraWithdrawalProcessor withdrawalProcessor = new(contract, logManager);
+        Block block = Build.A.Block
             .WithNumber(123)
-            .WithWithdrawals(
-                new[]
-                {
-                    Build.A.Withdrawal
-                        .WithAmount(1_000_000UL)
-                        .WithRecipient(Address.SystemUser).TestObject,
-                    Build.A.Withdrawal
-                        .WithAmount(2_000_000UL)
-                        .WithRecipient(Address.Zero).TestObject
-                })
+            .WithWithdrawals(Build.A.Withdrawal
+                    .WithAmount(1_000_000UL)
+                    .WithRecipient(Address.SystemUser).TestObject, Build.A.Withdrawal
+                    .WithAmount(2_000_000UL)
+                    .WithRecipient(Address.Zero).TestObject)
             .TestObject;
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
 
@@ -53,34 +48,30 @@ public class AuraWithdrawalProcessorTests
 
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
-        contract
-            .Received(1)
-            .ExecuteWithdrawals(
-                Arg.Is(block.Header),
-                Arg.Is<UInt256>(4),
-                Arg.Is<IList<ulong>>(a => values.SequenceEqual(new[] { 1_000_000UL, 2_000_000UL })),
-                Arg.Is<IList<Address>>(a => addresses.SequenceEqual(new[] { Address.SystemUser, Address.Zero })));
+        contract.Received(1).ExecuteWithdrawals(
+            Arg.Is(block.Header),
+            Arg.Is<UInt256>(4),
+            Arg.Is<IList<ulong>>(a => values.AsEnumerable().SequenceEqual(new[] { 1_000_000UL, 2_000_000UL })),
+            Arg.Is<IList<Address>>(a => addresses.AsEnumerable().SequenceEqual(new[] { Address.SystemUser, Address.Zero })));
     }
 
     [Test]
     public void Should_not_invoke_contract_before_Shanghai()
     {
-        var contract = Substitute.For<IWithdrawalContract>();
-        var logManager = Substitute.For<ILogManager>();
-        var withdrawalProcessor = new AuraWithdrawalProcessor(contract, logManager);
-        var block = Build.A.Block.TestObject;
-        var spec = ReleaseSpecSubstitute.Create();
+        IWithdrawalContract contract = Substitute.For<IWithdrawalContract>();
+        ILogManager logManager = Substitute.For<ILogManager>();
+        AuraWithdrawalProcessor withdrawalProcessor = new(contract, logManager);
+        Block block = Build.A.Block.TestObject;
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
 
         spec.WithdrawalsEnabled.Returns(false);
 
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
-        contract
-            .Received(0)
-            .ExecuteWithdrawals(
-                Arg.Any<BlockHeader>(),
-                Arg.Any<UInt256>(),
-                Arg.Any<IList<ulong>>(),
-                Arg.Any<IList<Address>>());
+        contract.Received(0).ExecuteWithdrawals(
+            Arg.Any<BlockHeader>(),
+            Arg.Any<UInt256>(),
+            Arg.Any<IList<ulong>>(),
+            Arg.Any<IList<Address>>());
     }
 }

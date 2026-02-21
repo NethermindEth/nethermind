@@ -11,7 +11,7 @@ public static class ReleaseSpecSubstitute
     public static IReleaseSpec Create()
     {
         IReleaseSpec sub = Substitute.For<IReleaseSpec>();
-        sub.GasCosts.Returns(_ => new SpecGasCosts(sub));
+        sub.GasCosts.Returns(new SpecGasCosts(sub));
         return sub;
     }
 }

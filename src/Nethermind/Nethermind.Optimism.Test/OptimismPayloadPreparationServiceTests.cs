@@ -24,6 +24,7 @@ using Nethermind.Blockchain;
 using FluentAssertions;
 using Nethermind.Crypto;
 using System.Threading;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core.Test;
 using Nethermind.TxPool;
 
@@ -52,25 +53,25 @@ public class OptimismPayloadPreparationServiceTests
     [TestCaseSource(nameof(TestCases))]
     public async Task Writes_EIP1559Params_Into_HeaderExtraData((OptimismPayloadAttributes Attributes, EIP1559Parameters? ExpectedEIP1559Parameters) testCase)
     {
-        var parent = Build.A.BlockHeader.TestObject;
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
 
-        var releaseSpec = ReleaseSpecSubstitute.Create();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
         releaseSpec.IsOpHoloceneEnabled.Returns(true);
         releaseSpec.BaseFeeMaxChangeDenominator.Returns((UInt256)250);
         releaseSpec.ElasticityMultiplier.Returns(6);
-        var specProvider = Substitute.For<ISpecProvider>();
+        ISpecProvider? specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(parent).Returns(releaseSpec);
 
-        var stateProvider = Substitute.For<IWorldState>();
+        IWorldState? stateProvider = Substitute.For<IWorldState>();
         stateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
-        var block = Build.A.Block
+        Block block = Build.A.Block
             .WithExtraData([])
             .TestObject;
         IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
         processor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns(block);
 
-        var service = new OptimismPayloadPreparationService(
+        OptimismPayloadPreparationService service = new(
             blockProducer: new PostMergeBlockProducer(
                 processor: processor,
                 specProvider: specProvider,
@@ -86,7 +87,7 @@ public class OptimismPayloadPreparationServiceTests
             txPool: Substitute.For<ITxPool>(),
             specProvider: specProvider,
             blockImprovementContextFactory: NoBlockImprovementContextFactory.Instance,
-            blocksConfig: new BlocksConfig()
+            blocksConfig: new BlocksConfig
             {
                 SecondsPerSlot = 1
             },
@@ -97,12 +98,12 @@ public class OptimismPayloadPreparationServiceTests
         testCase.Attributes.PrevRandao = Hash256.Zero;
         testCase.Attributes.SuggestedFeeRecipient = TestItem.AddressA;
 
-        var payloadId = service.StartPreparingPayload(parent, testCase.Attributes);
-        var context = await service.GetPayload(payloadId);
-        var currentBestBlock = context?.CurrentBestBlock!;
+        string payloadId = service.StartPreparingPayload(parent, testCase.Attributes);
+        IBlockProductionContext context = (await service.GetPayload(payloadId))!;
+        Block currentBestBlock = context.CurrentBestBlock!;
 
         currentBestBlock.Should().Be(block);
-        currentBestBlock.Header.TryDecodeEIP1559Parameters(out var parameters, out _).Should().BeTrue();
+        currentBestBlock.Header.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out _).Should().BeTrue();
         parameters.Should().BeEquivalentTo(testCase.ExpectedEIP1559Parameters);
         currentBestBlock.Header.Hash.Should().BeEquivalentTo(currentBestBlock.Header.CalculateHash());
     }

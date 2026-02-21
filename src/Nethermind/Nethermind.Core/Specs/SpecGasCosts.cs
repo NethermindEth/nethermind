@@ -19,11 +19,38 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
     public readonly long CallCost;
     public readonly long ExpByteCost;
     public readonly long SStoreResetCost;
-    public readonly long NetMeteredSStoreCost;
     public readonly long TxDataNonZeroMultiplier;
+
+#if DEBUG
+    public long NetMeteredSStoreCost
+    {
+        get => GetWithFreeGuard(field);
+        set;
+    }
+
+    public long ClearReversalRefund
+    {
+        get => GetWithFreeGuard(field);
+        set;
+    }
+
+    public long SetReversalRefund
+    {
+        get => GetWithFreeGuard(field);
+        set;
+    }
+
+    private long GetWithFreeGuard(long field) =>
+        field == GasCostOf.Free
+            ? throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled")
+            : field;
+
+#else
+    public readonly long NetMeteredSStoreCost;
 
     public readonly long ClearReversalRefund;
     public readonly long SetReversalRefund;
+#endif
     public readonly long SClearRefund;
     public readonly long DestroyRefund;
 
