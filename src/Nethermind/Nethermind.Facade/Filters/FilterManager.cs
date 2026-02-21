@@ -240,7 +240,7 @@ namespace Nethermind.Blockchain.Filters
                 return;
             }
 
-            // Fetch (or create) the list before processing logs so that a concur rent OnFilterRemoved
+            // Fetch (or create) the list before processing logs so that a concurrent OnFilterRemoved
             // cannot cause GetOrAdd to resurrect a removed entry in _logs after TryRemove has run.
             List<FilterLog> logs = _logs.GetOrAdd(filter.Id, static i => new List<FilterLog>());
             using ArrayPoolListRef<FilterLog> filteredLogs = new(txReceipt.Logs.Length);
