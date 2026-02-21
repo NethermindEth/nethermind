@@ -25,16 +25,6 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new();
 
-    public void RecordBytecode(byte[]? code)
-    {
-        // Unnecessary to record empty code
-        if (code?.Length > 0)
-        {
-            Hash256 codeHash = Keccak.Compute(code);
-            _bytecodes.TryAdd(codeHash, code);
-        }
-    }
-
     public Witness GetWitness(BlockHeader parentHeader)
     {
         // Build state nodes
@@ -290,5 +280,15 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         ref HashSet<UInt256>? slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, address, out _);
         slot ??= new HashSet<UInt256>();
         return slot;
+    }
+
+    private void RecordBytecode(byte[]? code)
+    {
+        // Unnecessary to record empty code
+        if (code?.Length > 0)
+        {
+            Hash256 codeHash = Keccak.Compute(code);
+            _bytecodes.TryAdd(codeHash, code);
+        }
     }
 }
