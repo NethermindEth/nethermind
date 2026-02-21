@@ -2,24 +2,29 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Data;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
-public class CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider) : CodeInfoRepository(worldState, precompileProvider)
+public class CacheCodeInfoRepository : ICodeInfoRepository
 {
     private static readonly CodeLruCache _codeCache = new();
 
-    protected override CodeInfo InternalGetCodeInfo(in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    private readonly IWorldState _worldState;
+    private readonly CodeInfoRepository _inner;
+
+    public CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
+    {
+        _worldState = worldState;
+        _inner = new CodeInfoRepository(worldState, precompileProvider, GetOrCacheCodeInfo);
+    }
+
+    private CodeInfo GetOrCacheCodeInfo(ValueHash256 codeHash, IReleaseSpec spec)
     {
         if (codeHash == ValueKeccak.OfAnEmptyString)
         {
@@ -29,7 +34,7 @@ public class CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider
         CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
         if (cachedCodeInfo is null)
         {
-            cachedCodeInfo = GetCodeInfo(_worldState, codeHash, vmSpec);
+            cachedCodeInfo = CodeInfoRepository.GetCodeInfo(_worldState, in codeHash, spec);
             _codeCache.Set(in codeHash, cachedCodeInfo);
         }
         else
@@ -40,17 +45,26 @@ public class CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider
         return cachedCodeInfo;
     }
 
-    public override void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress) =>
+        _inner.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+
+    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
+        _inner.GetExecutableCodeHash(address, spec);
+
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, out Address? delegatedAddress) =>
+        _inner.TryGetDelegation(address, spec, out delegatedAddress);
+
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        if (InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
+        if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
         {
             _codeCache.Set(in codeHash, CodeInfoFactory.CreateCodeInfo(code, spec));
         }
     }
 
-    public override void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
     {
-        bool result = SetDelegation(_worldState, codeSource, authority, spec, out ValueHash256 codeHash, out byte[] authorizedBuffer);
+        bool result = CodeInfoRepository.SetDelegation(_worldState, codeSource, authority, spec, out ValueHash256 codeHash, out byte[] authorizedBuffer);
         if (result && codeSource != Address.Zero && _codeCache.Get(in codeHash) is null)
         {
             _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
@@ -88,4 +102,3 @@ public class CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider
         private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
     }
 }
-

@@ -20,10 +20,26 @@ namespace Nethermind.Evm;
 /// the world state, which captures touched bytecodes.
 /// Relevant for witness generation (and therefore stateless reprocessing).
 /// </remarks>
-public class CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider) : ICodeInfoRepository
+public class CodeInfoRepository : ICodeInfoRepository
 {
-    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles = precompileProvider.GetPrecompiles();
-    protected readonly IWorldState _worldState = worldState;
+    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
+    private readonly IWorldState _worldState;
+    private readonly Func<ValueHash256, IReleaseSpec, CodeInfo> _codeInfoLoader;
+
+    public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
+        : this(worldState, precompileProvider, codeInfoLoader: null)
+    {
+    }
+
+    internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, Func<ValueHash256, IReleaseSpec, CodeInfo>? codeInfoLoader)
+    {
+        _localPrecompiles = precompileProvider.GetPrecompiles();
+        _worldState = worldState;
+        _codeInfoLoader = codeInfoLoader ?? DefaultLoad;
+
+        CodeInfo DefaultLoad(ValueHash256 codeHash, IReleaseSpec spec) =>
+            codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, in codeHash, spec);
+    }
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
@@ -49,13 +65,10 @@ public class CodeInfoRepository(IWorldState worldState, IPrecompileProvider prec
     private CodeInfo InternalGetCodeInfo(Address codeSource, IReleaseSpec vmSpec)
     {
         ref readonly ValueHash256 codeHash = ref _worldState.GetCodeHash(codeSource);
-        return InternalGetCodeInfo(in codeHash, vmSpec);
+        return _codeInfoLoader(codeHash, vmSpec);
     }
 
-    protected virtual CodeInfo InternalGetCodeInfo(in ValueHash256 codeHash, IReleaseSpec vmSpec) =>
-        codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(_worldState, codeHash, vmSpec);
-
-    protected static CodeInfo GetCodeInfo(IWorldState worldState, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    internal static CodeInfo GetCodeInfo(IWorldState worldState, in ValueHash256 codeHash, IReleaseSpec vmSpec)
     {
         byte[]? code = worldState.GetCode(in codeHash);
         if (code is null)
@@ -70,7 +83,7 @@ public class CodeInfoRepository(IWorldState worldState, IPrecompileProvider prec
     }
 
 
-    public virtual void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         InsertCode(_worldState, code, codeOwner, spec, out _);
 
     public static bool InsertCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, out ValueHash256 codeHash)
@@ -79,7 +92,7 @@ public class CodeInfoRepository(IWorldState worldState, IPrecompileProvider prec
         return worldState.InsertCode(codeOwner, in codeHash, code, spec);
     }
 
-    public virtual void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         SetDelegation(_worldState, codeSource, authority, spec, out _, out _);
 
     public static bool SetDelegation(
@@ -119,7 +132,7 @@ public class CodeInfoRepository(IWorldState worldState, IPrecompileProvider prec
             return Keccak.OfAnEmptyString.ValueHash256;
         }
 
-        CodeInfo codeInfo = InternalGetCodeInfo(in codeHash, spec);
+        CodeInfo codeInfo = _codeInfoLoader(codeHash, spec);
         return codeInfo.IsEmpty
             ? Keccak.OfAnEmptyString.ValueHash256
             : codeHash;
