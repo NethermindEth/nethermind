@@ -104,7 +104,11 @@ namespace Nethermind.Blockchain.Filters
             _filterStore.RefreshFilter(filterId);
             if (_logs.TryGetValue(filterId, out List<FilterLog> logs))
             {
-                lock (logs) return logs.ToArray();
+                lock (logs)
+                {
+                    if (_logs.TryGetValue(filterId, out List<FilterLog> current) && ReferenceEquals(current, logs))
+                        return logs.ToArray();
+                }
             }
             return [];
         }
@@ -114,7 +118,11 @@ namespace Nethermind.Blockchain.Filters
             _filterStore.RefreshFilter(filterId);
             if (_blockHashes.TryGetValue(filterId, out List<Hash256> blockHashes))
             {
-                lock (blockHashes) return blockHashes.ToArray();
+                lock (blockHashes)
+                {
+                    if (_blockHashes.TryGetValue(filterId, out List<Hash256> current) && ReferenceEquals(current, blockHashes))
+                        return blockHashes.ToArray();
+                }
             }
             return [];
         }
@@ -123,7 +131,7 @@ namespace Nethermind.Blockchain.Filters
         public Hash256[] PollBlockHashes(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            if (!_blockHashes.TryGetValue(filterId, out var blockHashes))
+            if (!_blockHashes.TryGetValue(filterId, out List<Hash256> blockHashes))
             {
                 if (_lastBlockHash is not null)
                 {
@@ -137,6 +145,9 @@ namespace Nethermind.Blockchain.Filters
 
             lock (blockHashes)
             {
+                if (!_blockHashes.TryGetValue(filterId, out List<Hash256> current) || !ReferenceEquals(current, blockHashes))
+                    return [];
+
                 Hash256[] existingBlockHashes = blockHashes.ToArray();
                 blockHashes.Clear();
                 return existingBlockHashes;
@@ -146,13 +157,16 @@ namespace Nethermind.Blockchain.Filters
         public FilterLog[] PollLogs(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            if (!_logs.TryGetValue(filterId, out var logs))
+            if (!_logs.TryGetValue(filterId, out List<FilterLog> logs))
             {
                 return [];
             }
 
             lock (logs)
             {
+                if (!_logs.TryGetValue(filterId, out List<FilterLog> current) || !ReferenceEquals(current, logs))
+                    return [];
+
                 FilterLog[] existingLogs = logs.ToArray();
                 logs.Clear();
                 return existingLogs;
@@ -163,13 +177,16 @@ namespace Nethermind.Blockchain.Filters
         {
             _filterStore.RefreshFilter(filterId);
 
-            if (!_pendingTransactions.TryGetValue(filterId, out var pendingTransactions))
+            if (!_pendingTransactions.TryGetValue(filterId, out List<Hash256> pendingTransactions))
             {
                 return [];
             }
 
             lock (pendingTransactions)
             {
+                if (!_pendingTransactions.TryGetValue(filterId, out List<Hash256> current) || !ReferenceEquals(current, pendingTransactions))
+                    return [];
+
                 Hash256[] existingPendingTransactions = pendingTransactions.ToArray();
                 pendingTransactions.Clear();
                 return existingPendingTransactions;
