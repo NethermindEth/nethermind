@@ -77,8 +77,8 @@ namespace Nethermind.TxPool
         private ulong _txIndex;
 
         private readonly ITimer? _timer;
-        private Transaction[]? _transactionSnapshot;
-        private Transaction[]? _blobTransactionSnapshot;
+        private volatile Transaction[]? _transactionSnapshot;
+        private volatile Transaction[]? _blobTransactionSnapshot;
         private long _lastBlockNumber = -1;
         private Hash256? _lastBlockHash;
 
@@ -272,10 +272,6 @@ namespace Nethermind.TxPool
             {
                 while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
                 {
-                    // Clear snapshot
-                    _transactionSnapshot = null;
-                    _blobTransactionSnapshot = null;
-
                     _newHeadLock.EnterWriteLock();
                     try
                     {
@@ -315,6 +311,12 @@ namespace Nethermind.TxPool
                     }
                     finally
                     {
+                        // Snapshot must be cleared inside the write lock so readers cannot
+                        // regenerate it from a partially-updated _transactions collection.
+                        // Placed in finally to guarantee clearing even if an exception occurs
+                        // mid-update (otherwise readers could see a stale snapshot).
+                        _transactionSnapshot = null;
+                        _blobTransactionSnapshot = null;
                         _newHeadLock.ExitWriteLock();
                     }
                 }
@@ -573,18 +575,17 @@ namespace Nethermind.TxPool
                 _newHeadLock.ExitReadLock();
             }
 
-            if (accepted != AcceptTxResult.Invalid)
-            {
-                _retryCache.Received(tx.Hash!);
-            }
-
             if (accepted)
             {
-                // Clear proper snapshot
                 if (tx.SupportsBlobs)
                     _blobTransactionSnapshot = null;
                 else
                     _transactionSnapshot = null;
+            }
+
+            if (accepted != AcceptTxResult.Invalid)
+            {
+                _retryCache.Received(tx.Hash!);
             }
 
             return accepted;
