@@ -7,6 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Precompiles")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.InstructionsBenchmark")]
 namespace Nethermind.Evm;
 
 internal static unsafe partial class EvmInstructions
@@ -20,12 +21,12 @@ internal static unsafe partial class EvmInstructions
     /// <typeparam name="TTracingInst">A struct implementing IFlag used for tracing purposes.</typeparam>
     /// <param name="spec">The release specification containing enabled features and opcode flags.</param>
     /// <returns>An array of function pointers (opcode handlers) indexed by opcode value.</returns>
-    public static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TGasPolicy, TTracingInst>(IReleaseSpec spec)
+    public static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[] GenerateOpCodes<TGasPolicy, TTracingInst>(IReleaseSpec spec)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Allocate lookup table for all possible opcodes.
-        var lookup = new delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[byte.MaxValue + 1];
+        var lookup = new delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[byte.MaxValue + 1];
 
         for (int i = 0; i < lookup.Length; i++)
         {
@@ -89,8 +90,18 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<TGasPolicy, OpCodeCopy<TGasPolicy>, TTracingInst>;
         lookup[(int)Instruction.GASPRICE] = &InstructionBlkUInt256<TGasPolicy, OpGasPrice<TGasPolicy>, TTracingInst>;
 
-        lookup[(int)Instruction.EXTCODESIZE] = &InstructionExtCodeSize<TGasPolicy, TTracingInst>;
-        lookup[(int)Instruction.EXTCODECOPY] = &InstructionExtCodeCopy<TGasPolicy, TTracingInst>;
+        // External code opcodes with spec-based specialization.
+        // Using generic type parameters allows JIT to eliminate dead code paths.
+        lookup[(int)Instruction.EXTCODESIZE] = spec.IsEofEnabled ?
+            &InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag> :
+            &InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag>;
+        lookup[(int)Instruction.EXTCODECOPY] = (spec.IsEip7907Enabled, spec.IsEofEnabled) switch
+        {
+            (true, true) => &InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OnFlag>,
+            (true, false) => &InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OffFlag>,
+            (false, true) => &InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OnFlag>,
+            (false, false) => &InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OffFlag>,
+        };
 
         // Return data opcodes (if enabled).
         if (spec.ReturnDataOpcodesEnabled)
@@ -145,11 +156,17 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.MSTORE8] = &InstructionMStore8<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.SLOAD] = &InstructionSLoad<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.SSTORE] = spec.UseNetGasMetering ?
-            (spec.UseNetGasMeteringWithAStipendFix ?
-                &InstructionSStoreMetered<TGasPolicy, TTracingInst, OnFlag> :
-                &InstructionSStoreMetered<TGasPolicy, TTracingInst, OffFlag>
-            ) :
-            &InstructionSStoreUnmetered<TGasPolicy, TTracingInst>;
+            ((spec.IsEip2200Enabled, spec.IsEip3529Enabled) switch
+            {
+                (true, true) => &InstructionSStoreMetered<TGasPolicy, TTracingInst, OnFlag, OnFlag>,
+                (true, false) => &InstructionSStoreMetered<TGasPolicy, TTracingInst, OnFlag, OffFlag>,
+                (false, true) => &InstructionSStoreMetered<TGasPolicy, TTracingInst, OffFlag, OnFlag>,
+                (false, false) => &InstructionSStoreMetered<TGasPolicy, TTracingInst, OffFlag, OffFlag>,
+            }) :
+            (spec.IsEip3529Enabled ?
+                &InstructionSStoreUnmetered<TGasPolicy, TTracingInst, OnFlag> :
+                &InstructionSStoreUnmetered<TGasPolicy, TTracingInst, OffFlag>
+            );
 
         // Jump instructions.
         lookup[(int)Instruction.JUMP] = &InstructionJump;
@@ -275,23 +292,66 @@ internal static unsafe partial class EvmInstructions
 
         // Contract creation and call opcodes.
         lookup[(int)Instruction.CREATE] = &InstructionCreate<TGasPolicy, OpCreate, TTracingInst>;
-        lookup[(int)Instruction.CALL] = &InstructionCall<TGasPolicy, OpCall, TTracingInst>;
-        lookup[(int)Instruction.CALLCODE] = &InstructionCall<TGasPolicy, OpCallCode, TTracingInst>;
         lookup[(int)Instruction.RETURN] = &InstructionReturn;
-        if (spec.DelegateCallEnabled)
+
+        switch (spec.IsEip150Enabled, spec.IsEip158Enabled, spec.IsEip7907Enabled, spec.IsEip2929Enabled)
         {
-            lookup[(int)Instruction.DELEGATECALL] = &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst>;
+            case (true, true, true, true):
+                AddCalls<TGasPolicy, TTracingInst, OnFlag, OnFlag, OnFlag, OnFlag>(lookup, spec);
+                break;
+            case (true, true, true, false):
+                AddCalls<TGasPolicy, TTracingInst, OnFlag, OnFlag, OnFlag, OffFlag>(lookup, spec);
+                break;
+            case (true, true, false, true):
+                AddCalls<TGasPolicy, TTracingInst, OnFlag, OnFlag, OffFlag, OnFlag>(lookup, spec);
+                break;
+            case (true, true, false, false):
+                AddCalls<TGasPolicy, TTracingInst, OnFlag, OnFlag, OffFlag, OffFlag>(lookup, spec);
+                break;
+            case (true, false, true, true):
+                AddCalls<TGasPolicy, TTracingInst, OnFlag, OffFlag, OnFlag, OnFlag>(lookup, spec);
+                break;
+            case (true, false, true, false):
+                AddCalls<TGasPolicy, TTracingInst, OnFlag, OffFlag, OnFlag, OffFlag>(lookup, spec);
+                break;
+            case (true, false, false, true):
+                AddCalls<TGasPolicy, TTracingInst, OnFlag, OffFlag, OffFlag, OnFlag>(lookup, spec);
+                break;
+            case (true, false, false, false):
+                AddCalls<TGasPolicy, TTracingInst, OnFlag, OffFlag, OffFlag, OffFlag>(lookup, spec);
+                break;
+            case (false, true, true, true):
+                AddCalls<TGasPolicy, TTracingInst, OffFlag, OnFlag, OnFlag, OnFlag>(lookup, spec);
+                break;
+            case (false, true, true, false):
+                AddCalls<TGasPolicy, TTracingInst, OffFlag, OnFlag, OnFlag, OffFlag>(lookup, spec);
+                break;
+            case (false, true, false, true):
+                AddCalls<TGasPolicy, TTracingInst, OffFlag, OnFlag, OffFlag, OnFlag>(lookup, spec);
+                break;
+            case (false, true, false, false):
+                AddCalls<TGasPolicy, TTracingInst, OffFlag, OnFlag, OffFlag, OffFlag>(lookup, spec);
+                break;
+            case (false, false, true, true):
+                AddCalls<TGasPolicy, TTracingInst, OffFlag, OffFlag, OnFlag, OnFlag>(lookup, spec);
+                break;
+            case (false, false, true, false):
+                AddCalls<TGasPolicy, TTracingInst, OffFlag, OffFlag, OnFlag, OffFlag>(lookup, spec);
+                break;
+            case (false, false, false, true):
+                AddCalls<TGasPolicy, TTracingInst, OffFlag, OffFlag, OffFlag, OnFlag>(lookup, spec);
+                break;
+            case (false, false, false, false):
+                AddCalls<TGasPolicy, TTracingInst, OffFlag, OffFlag, OffFlag, OffFlag>(lookup, spec);
+                break;
         }
+
         if (spec.Create2OpcodeEnabled)
         {
             lookup[(int)Instruction.CREATE2] = &InstructionCreate<TGasPolicy, OpCreate2, TTracingInst>;
         }
 
         lookup[(int)Instruction.RETURNDATALOAD] = &InstructionReturnDataLoad<TGasPolicy, TTracingInst>;
-        if (spec.StaticCallEnabled)
-        {
-            lookup[(int)Instruction.STATICCALL] = &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst>;
-        }
 
         // Extended call opcodes in EO mode.
         if (spec.IsEofEnabled)
@@ -318,5 +378,25 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.SELFDESTRUCT] = &InstructionSelfDestruct;
 
         return lookup;
+    }
+
+    private static void AddCalls<TGasPolicy, TTracingInst, EIP150, EIP158, EIP7907, EIP2929>(delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[] lookup, IReleaseSpec spec)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+        where EIP150 : struct, IFlag
+        where EIP158 : struct, IFlag
+        where EIP7907 : struct, IFlag
+        where EIP2929 : struct, IFlag
+    {
+        lookup[(int)Instruction.CALL] = &InstructionCall<TGasPolicy, OpCall, TTracingInst, EIP150, EIP158, EIP7907, EIP2929>;
+        lookup[(int)Instruction.CALLCODE] = &InstructionCall<TGasPolicy, OpCallCode, TTracingInst, EIP150, EIP158, EIP7907, EIP2929>;
+        if (spec.DelegateCallEnabled)
+        {
+            lookup[(int)Instruction.DELEGATECALL] = &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst, EIP150, EIP158, EIP7907, EIP2929>;
+        }
+        if (spec.StaticCallEnabled)
+        {
+            lookup[(int)Instruction.STATICCALL] = &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst, EIP150, EIP158, EIP7907, EIP2929>;
+        }
     }
 }

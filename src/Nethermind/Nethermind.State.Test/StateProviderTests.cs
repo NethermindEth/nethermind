@@ -63,7 +63,7 @@ public class StateProviderTests
         provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec);
         provider.Commit(releaseSpec);
 
-        ((WorldState)provider).GetAccount(systemUser).Should().NotBeNull();
+        provider.GetAccount(systemUser).Should().NotBeNull();
     }
 
     [Test]

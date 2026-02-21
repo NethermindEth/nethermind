@@ -248,7 +248,7 @@ namespace Nethermind.Evm
 
         public Prepare PushData(Address address)
         {
-            PushData(address.Bytes);
+            PushData(address.ToArray());
             return this;
         }
 

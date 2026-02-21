@@ -110,8 +110,8 @@ public class Context
     }
 
     public string type { get; set; } = null!;
-    public ITypedArray<byte>? from => _fromConverted ??= From?.Bytes.ToTypedScriptArray();
-    public ITypedArray<byte>? to => _toConverted ??= To?.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte>? from => _fromConverted ??= From?.ToArray()?.ToTypedScriptArray();
+    public ITypedArray<byte>? to => _toConverted ??= To?.ToArray()?.ToTypedScriptArray();
     public ITypedArray<byte>? input => _inputConverted ??= Input.ToArray().ToTypedScriptArray();
     public long gas { get; set; }
     public long gasUsed { get; set; }

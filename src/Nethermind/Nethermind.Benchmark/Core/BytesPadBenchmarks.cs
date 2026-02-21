@@ -17,7 +17,7 @@ namespace Nethermind.Benchmarks.Core
             new byte[]{0},
             new byte[]{1},
             Keccak.Zero.BytesToArray(),
-            TestItem.AddressA.Bytes
+            TestItem.AddressA.ToArray()
         };
 
         [Params(0, 1, 2, 3)]

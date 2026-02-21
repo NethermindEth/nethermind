@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
@@ -44,6 +45,7 @@ public struct StackAccessTracker : IDisposable
     public readonly bool WarmUpLargeContract(Address address)
         => _trackingState.LargeContractList.Add(address);
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void WarmUp(AccessList? accessList)
     {
         if (accessList?.IsEmpty == false)
@@ -91,7 +93,8 @@ public struct StackAccessTracker : IDisposable
     {
         TrackingState state = _trackingState;
         _trackingState = null;
-        TrackingState.ResetAndReturn(state);
+        if (state is not null)
+            TrackingState.ResetAndReturn(state);
     }
 
     private sealed class TrackingState

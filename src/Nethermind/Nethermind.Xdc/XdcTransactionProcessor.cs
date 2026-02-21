@@ -74,7 +74,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
             tracer.ReportFees(fee, UInt256.Zero);
     }
 
-    protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+    protected override TransactionResult BuyGas<TLogTracing>(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
         out UInt256 blobBaseFee)
     {
@@ -85,10 +85,10 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
             blobBaseFee = 0;
             return TransactionResult.Ok;
         }
-        return base.BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
+        return base.BuyGas<TLogTracing>(tx, spec, tracer, opts, effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
     }
 
-    protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult ValidateSender<TLogTracing>(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
         var xdcSpec = spec as XdcReleaseSpec;
         Address target = tx.To;
@@ -103,7 +103,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
             }
         }
 
-        return base.ValidateSender(tx, header, spec, tracer, opts);
+        return base.ValidateSender<TLogTracing>(tx, header, spec, tracer, opts);
     }
 
     private bool IsBlackListed(IXdcReleaseSpec spec, Address sender)
@@ -111,7 +111,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         return spec.BlackListedAddresses.Contains(sender);
     }
 
-    protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute<TLogTracing>(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
         IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
@@ -121,10 +121,10 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
             return ExecuteSpecialTransaction(tx, tracer, opts);
         }
 
-        return base.Execute(tx, tracer, opts);
+        return base.Execute<TLogTracing>(tx, tracer, opts);
     }
 
-    protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult IncrementNonce<TLogTracing>(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
         var xdcSpec = (IXdcReleaseSpec)spec;
         if (tx.RequiresSpecialHandling(xdcSpec))
@@ -148,17 +148,17 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
             return TransactionResult.Ok;
         }
 
-        return base.IncrementNonce(tx, header, spec, tracer, opts);
+        return base.IncrementNonce<TLogTracing>(tx, header, spec, tracer, opts);
     }
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired)
+    protected override TransactionResult ValidateGas<TLogTracing>(Transaction tx, BlockHeader header, long minGasRequired)
     {
         var spec = SpecProvider.GetXdcSpec((XdcBlockHeader)header);
         if (tx.RequiresSpecialHandling(spec))
         {
             return TransactionResult.Ok;
         }
-        return base.ValidateGas(tx, header, minGasRequired);
+        return base.ValidateGas<TLogTracing>(tx, header, minGasRequired);
     }
 
     protected override UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
@@ -193,12 +193,12 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
 
         // maybe a better approach would be adding an XdcGasPolicy
         TransactionResult result;
-        _ = RecoverSenderIfNeeded(tx, spec, opts, UInt256.Zero);
+        _ = RecoverSenderIfNeeded<OffFlag>(tx, spec, opts, UInt256.Zero);
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
 
-        if (!(result = ValidateSender(tx, header, spec, tracer, opts))
-            || !(result = IncrementNonce(tx, header, spec, tracer, opts))
-            || !(result = ValidateStatic(tx, header, spec, opts, intrinsicGas)))
+        if (!(result = ValidateSender<OffFlag>(tx, header, spec, tracer, opts))
+            || !(result = IncrementNonce<OffFlag>(tx, header, spec, tracer, opts))
+            || !(result = ValidateStatic<OffFlag>(tx, header, spec, opts, intrinsicGas)))
         {
             if (restore)
             {
