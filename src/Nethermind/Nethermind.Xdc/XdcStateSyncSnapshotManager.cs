@@ -7,9 +7,15 @@ using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using Nethermind.Xdc.Contracts;
+using System;
 
 namespace Nethermind.Xdc;
 
+/// <summary>
+/// In XDC, header verification requires snapshots from previous blocks; 
+/// however, these are not loaded during fast sync because previous headers are not processed normally. 
+/// This class calculates the required gap block numbers and stores their snapshots.
+/// </summary>
 public class XdcStateSyncSnapshotManager
 {
     private readonly ISpecProvider _specProvider;
@@ -44,7 +50,14 @@ public class XdcStateSyncSnapshotManager
             epochSwitchHeader = (XdcBlockHeader)_blockTree.FindHeader(epochSwitchHeader.ParentHash);
         }
 
-        long gapBlockNum = epochSwitchHeader.Number - epochSwitchHeader.Number % spec.EpochLength - spec.Gap;
+        long gapBlockNum = Math.Max(
+            epochSwitchHeader.Number - epochSwitchHeader.Number % spec.EpochLength,
+            spec.EpochLength
+         ) - spec.Gap;
+
+        if (gapBlockNum < pivotHeader.Number){
+            return [];
+        }
 
         int count = (int)((pivotHeader.Number - gapBlockNum) / spec.EpochLength) + 1;
         XdcBlockHeader[] gapBlockHeaders = new XdcBlockHeader[count];
