@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
@@ -27,15 +28,10 @@ public class OptimismWithdrawalTests
     [TestCaseSource(nameof(WithdrawalsRootData))]
     public void WithdrawalsRoots_Should_Be_Set_According_To_Block_Timestamp(ulong timestamp, Hash256? withdrawalHash)
     {
-        var state = TestWorldStateFactory.CreateForTest();
-        using var _ = state.BeginScope(IWorldState.PreGenesis);
+        IWorldState state = TestWorldStateFactory.CreateForTest();
+        using IDisposable _ = state.BeginScope(IWorldState.PreGenesis);
 
-        var genesis = Build.A.BlockHeader
-            .WithNumber(0)
-            .WithTimestamp(Spec.GenesisTimestamp)
-            .TestObject;
-
-        var header = Build.A.BlockHeader
+        BlockHeader header = Build.A.BlockHeader
             .WithNumber(1)
             .WithTimestamp(timestamp)
             .WithDifficulty(0)
@@ -45,8 +41,8 @@ public class OptimismWithdrawalTests
             .WithWithdrawalsRoot(withdrawalHash)
             .TestObject;
 
-        var releaseSpec = ReleaseSpecSubstitute.Create();
-        var block = Build.A.Block
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
+        Block block = Build.A.Block
             .WithHeader(header)
             .WithTransactions(0, releaseSpec)
             .TestObject;
@@ -56,10 +52,10 @@ public class OptimismWithdrawalTests
         // This will make the storage root of ActualStorageRoot
         state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), [1]);
 
-        var processor = new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance);
+        OptimismWithdrawalProcessor processor = new(state, TestLogManager.Instance, Spec.Instance);
         processor.ProcessWithdrawals(block, releaseSpec);
 
-        if (withdrawalHash == null)
+        if (withdrawalHash is null)
         {
             block.WithdrawalsRoot.Should().BeNull();
         }
@@ -79,17 +75,17 @@ public class OptimismWithdrawalTests
     [Test]
     public void WithdrawalsRoot_IsAlwaysUpToDate_PostIsthmus()
     {
-        var state = TestWorldStateFactory.CreateForTest();
-        using var _ = state.BeginScope(IWorldState.PreGenesis);
-        var processor = new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance);
-        var releaseSpec = ReleaseSpecSubstitute.Create();
+        IWorldState state = TestWorldStateFactory.CreateForTest();
+        using IDisposable _ = state.BeginScope(IWorldState.PreGenesis);
+        OptimismWithdrawalProcessor processor = new(state, TestLogManager.Instance, Spec.Instance);
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
 
         // Initialize the storage root
         state.CreateAccount(PreDeploys.L2ToL1MessagePasser, 1, 1);
         state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), [10]);
         state.Commit(releaseSpec);
 
-        var header_A = Build.A.BlockHeader
+        BlockHeader headerA = Build.A.BlockHeader
             .WithNumber(1)
             .WithTimestamp(Spec.IsthmusTimeStamp)
             .WithDifficulty(0)
@@ -98,18 +94,18 @@ public class OptimismWithdrawalTests
             .WithExtraData(Bytes.FromHexString("0x00ffffffffffffffff"))
             .TestObject;
 
-        var block_A = Build.A.Block
-            .WithHeader(header_A)
+        Block blockA = Build.A.Block
+            .WithHeader(headerA)
             .WithTransactions(0, releaseSpec)
             .TestObject;
 
-        processor.ProcessWithdrawals(block_A, releaseSpec);
-        block_A.WithdrawalsRoot.Should().Be(new("0xe11ca0cf3ff4b6b4f02b42f419c244e0ed4fffac24c14999b2b5bc978c21e652"));
+        processor.ProcessWithdrawals(blockA, releaseSpec);
+        blockA.WithdrawalsRoot.Should().Be(new("0xe11ca0cf3ff4b6b4f02b42f419c244e0ed4fffac24c14999b2b5bc978c21e652"));
 
         // Modify the storage root
         state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), [20]);
 
-        var header_B = Build.A.BlockHeader
+        BlockHeader headerB = Build.A.BlockHeader
             .WithNumber(2)
             .WithTimestamp(Spec.IsthmusTimeStamp + 2)
             .WithDifficulty(0)
@@ -118,12 +114,12 @@ public class OptimismWithdrawalTests
             .WithExtraData(Bytes.FromHexString("0x00ffffffffffffffff"))
             .TestObject;
 
-        var block_B = Build.A.Block
-            .WithHeader(header_B)
+        Block blockB = Build.A.Block
+            .WithHeader(headerB)
             .WithTransactions(0, releaseSpec)
             .TestObject;
 
-        processor.ProcessWithdrawals(block_B, releaseSpec);
-        block_B.WithdrawalsRoot.Should().Be(new("0x69b9a1b510f62bae4a767b9030b74cacd8e5bef0e5af497f961c642405f5fb62"));
+        processor.ProcessWithdrawals(blockB, releaseSpec);
+        blockB.WithdrawalsRoot.Should().Be(new("0x69b9a1b510f62bae4a767b9030b74cacd8e5bef0e5af497f961c642405f5fb62"));
     }
 }
