@@ -6,4 +6,4 @@
 	url = https://github.com/shamatar/bench_precompiles.git
 [submodule "src/nevm"]
 	path = src/nevm
-	url = c:/Users/kamil/source/repos/nevm
+	url = https://github.com/kamilchodola/nevm.git
