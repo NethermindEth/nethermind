@@ -375,7 +375,7 @@ namespace Nethermind.Trie.Test.Pruning
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
             MemDb memDb = new();
-            NodeStorage storage = new NodeStorage(memDb);
+            NodeStorage storage = new NodeStorage(memDb, scheme);
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 pruningStrategy: new MemoryLimit(16.MB()).WhenLastPersistedBlockIsTooOld(4, 0),
@@ -408,7 +408,7 @@ namespace Nethermind.Trie.Test.Pruning
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
             MemDb memDb = new();
-            NodeStorage storage = new NodeStorage(memDb);
+            NodeStorage storage = new NodeStorage(memDb, scheme);
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new MemoryLimit(16.MB()));
 
@@ -429,7 +429,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void Can_load_from_rlp()
         {
             MemDb memDb = new MemDb();
-            NodeStorage storage = new NodeStorage(memDb);
+            NodeStorage storage = new NodeStorage(memDb, scheme);
             storage.Set(null, TreePath.Empty, Keccak.Zero, new byte[] { 1, 2, 3 }, WriteFlags.None);
 
             using TrieStore trieStore = CreateTrieStore(kvStore: memDb);
@@ -444,7 +444,7 @@ namespace Nethermind.Trie.Test.Pruning
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
             MemDb memDb = new();
-            NodeStorage storage = new NodeStorage(memDb);
+            NodeStorage storage = new NodeStorage(memDb, scheme);
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
@@ -494,7 +494,7 @@ namespace Nethermind.Trie.Test.Pruning
             b.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
             MemDb memDb = new();
-            NodeStorage nodeStorage = new NodeStorage(memDb);
+            NodeStorage nodeStorage = new NodeStorage(memDb, scheme);
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
@@ -586,7 +586,7 @@ namespace Nethermind.Trie.Test.Pruning
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
             MemDb memDb = new();
-            NodeStorage asStorage = new NodeStorage(memDb);
+            NodeStorage asStorage = new NodeStorage(memDb, scheme);
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
@@ -717,7 +717,7 @@ namespace Nethermind.Trie.Test.Pruning
             branch.ResolveKey(NullTrieStore.Instance, ref emptyPath);
 
             MemDb memDb = new();
-            NodeStorage storage = new NodeStorage(memDb);
+            NodeStorage storage = new NodeStorage(memDb, scheme);
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,

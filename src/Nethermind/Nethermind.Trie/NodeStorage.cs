@@ -122,12 +122,10 @@ public class NodeStorage(
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
         if (Scheme == INodeStorage.KeyScheme.HalfPath)
         {
-            return _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags)
-                   ?? _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
+            return _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
         }
 
-        return _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags)
-               ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
+        return _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
     }
 
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
@@ -140,12 +138,10 @@ public class NodeStorage(
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
         if (Scheme == INodeStorage.KeyScheme.HalfPath)
         {
-            return _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak))
-                   || _keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak));
+            return _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak));
         }
 
-        return _keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak))
-               || _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak));
+        return _keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak));
     }
 
     public INodeStorage.IWriteBatch StartWriteBatch()
