@@ -446,5 +446,12 @@ namespace Nethermind.Core.Specs
         /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
         /// </summary>
         public bool IsRip7728Enabled { get; }
+
+        /// <summary>
+        /// Precomputed gas cost and refund constants derived from this spec.
+        /// Values are cached per spec instance (singletons per fork) to avoid
+        /// repeated interface dispatch on the EVM opcode hot path.
+        /// </summary>
+        SpecGasCosts GasCosts { get; }
     }
 }
