@@ -12,6 +12,7 @@ namespace Nethermind.Core.Specs;
 /// </summary>
 public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
 {
+    private readonly int _hashCode;
     public readonly long SLoadCost;
     public readonly long BalanceCost;
     public readonly long ExtCodeCost;
@@ -25,19 +26,19 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
     public long NetMeteredSStoreCost
     {
         get => GetWithFreeGuard(field);
-        set;
+        init;
     }
 
     public long ClearReversalRefund
     {
         get => GetWithFreeGuard(field);
-        set;
+        init;
     }
 
     public long SetReversalRefund
     {
         get => GetWithFreeGuard(field);
-        set;
+        init;
     }
 
     private static long GetWithFreeGuard(long field) =>
@@ -72,17 +73,17 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             : netConstantinople ? RefundOf.SResetReversedEip1283
             : GasCostOf.Free;
 
-        SetReversalRefund =
+        long setReversalRefund = SetReversalRefund =
             hotCold ? RefundOf.SSetReversedHotCold
             : netIstanbul ? RefundOf.SSetReversedEip2200
             : netConstantinople ? RefundOf.SSetReversedEip1283
             : GasCostOf.Free;
 
-        SStoreResetCost = hotCold
+        long sStoreResetCost = SStoreResetCost = hotCold
             ? GasCostOf.SReset - GasCostOf.ColdSLoad
             : GasCostOf.SReset;
 
-        NetMeteredSStoreCost =
+        long netMeteredSStoreCost = NetMeteredSStoreCost =
             hotCold ? GasCostOf.WarmStateRead
             : netIstanbul ? GasCostOf.SStoreNetMeteredEip2200
             : netConstantinople ? GasCostOf.SStoreNetMeteredEip1283
@@ -134,6 +135,10 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
         DestroyRefund = spec.IsEip3529Enabled
             ? RefundOf.DestroyAfter3529
             : RefundOf.DestroyBefore3529;
+
+        int hashCode1 = HashCode.Combine(SLoadCost, BalanceCost, ExtCodeCost, ExtCodeHashCost, CallCost, ExpByteCost, sStoreResetCost, netMeteredSStoreCost);
+        int hashCode2 = HashCode.Combine(TxDataNonZeroMultiplier, ClearReversalRefund, setReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock, DestroyRefund);
+        _hashCode = HashCode.Combine(hashCode1, hashCode2);
     }
 
     public bool Equals(SpecGasCosts? other)
@@ -160,7 +165,5 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
 
     public override bool Equals(object? obj) => obj is SpecGasCosts other && Equals(other);
 
-    public override int GetHashCode() => HashCode.Combine(
-        HashCode.Combine(SLoadCost, BalanceCost, ExtCodeCost, ExtCodeHashCost, CallCost, ExpByteCost, SStoreResetCost, NetMeteredSStoreCost),
-        HashCode.Combine(TxDataNonZeroMultiplier, ClearReversalRefund, SetReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock, DestroyRefund));
+    public override int GetHashCode() => _hashCode;
 }
