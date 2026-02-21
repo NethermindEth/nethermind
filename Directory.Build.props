@@ -6,10 +6,12 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <LangVersion>14.0</LangVersion>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <UseArtifactsOutput>true</UseArtifactsOutput>
     <WarningsNotAsErrors>NU1901;NU1902;NU1903</WarningsNotAsErrors>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
+    <Features>$(Features);runtime-async=on</Features>
   </PropertyGroup>
 
   <PropertyGroup Label="ProductInfo">
