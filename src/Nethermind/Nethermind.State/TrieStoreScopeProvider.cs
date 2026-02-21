@@ -195,16 +195,9 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                bool hasExplicitStateUpdate = _dirtyAccounts.TryGetValue(key, out Account? account);
-                if (!hasExplicitStateUpdate)
+                if (!_dirtyAccounts.TryGetValue(key, out Account? account))
                 {
                     account = scope.Get(key);
-                    if (account is null && storageRoot != Keccak.EmptyTreeHash)
-                    {
-                        // Storage writes can materialize an account when account-level commit
-                        // had no explicit state update for this address.
-                        account = Account.TotallyEmpty;
-                    }
                 }
 
                 // If account-layer commit explicitly set this account to null (EIP-161 delete),

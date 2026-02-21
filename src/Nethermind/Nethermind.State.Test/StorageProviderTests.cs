@@ -710,7 +710,8 @@ public class StorageProviderTests
             worldState.CreateAccount(TestItem.AddressA, 0);
             worldState.Set(new StorageCell(TestItem.AddressA, 1), [1]);
 
-            Assert.DoesNotThrow(() => worldState.Commit(MuirGlacier.Instance));
+            // Pre-EIP-161 empty accounts are not auto-deleted during commit.
+            Assert.DoesNotThrow(() => worldState.Commit(Frontier.Instance));
             worldState.AccountExists(TestItem.AddressA).Should().BeTrue();
 
             worldState.CommitTree(0);
