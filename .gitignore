@@ -442,7 +442,9 @@ FodyWeavers.xsd
 # AI
 .claude/*
 !.claude/skills
-!.claude/skills/**
+.claude/skills/*
+!.claude/skills/review-pr
+!.claude/skills/review-pr/**
 .gemini/
 
 # Worktrees
