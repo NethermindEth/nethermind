@@ -987,11 +987,8 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        [Retry(3)]
-        [NonParallelizable]
-        public async Task Will_Trigger_ReorgBoundaryEvent_On_Prune()
+        public void Will_Trigger_ReorgBoundaryEvent_On_Prune()
         {
-            // TODO: Check why slow
             MemDb memDb = new();
 
             using TrieStore fullTrieStore = CreateTrieStore(
@@ -1018,15 +1015,17 @@ namespace Nethermind.Trie.Test.Pruning
                     committer.CommitNode(ref emptyPath, node);
                 }
 
+                // Prune() in FinishBlockCommit may be a no-op if the previous background
+                // pruning task hasn't completed yet (_pruningTask.IsCompleted == false).
+                // In that case, WaitForPruning() only waits for the previous task, and
+                // the current block's commit set is never processed. Use SyncPruneQueue()
+                // to deterministically process the queue after any background work finishes.
+                fullTrieStore.WaitForPruning();
+                fullTrieStore.SyncPruneQueue();
+
                 if (i > 4)
                 {
-                    fullTrieStore.WaitForPruning();
-                    Assert.That(() => reorgBoundary, Is.EqualTo(i - 3).After(10000, 100));
-                }
-                else
-                {
-                    // Pruning is done in background
-                    await Task.Delay(TimeSpan.FromMilliseconds(1000));
+                    Assert.That(reorgBoundary, Is.EqualTo(i - 3));
                 }
             }
         }
