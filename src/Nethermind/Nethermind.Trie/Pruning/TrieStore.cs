@@ -1424,6 +1424,20 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return true;
     }
 
+    public bool HasRoot(Hash256 stateRoot, long blockNumber)
+    {
+        if (!HasRoot(stateRoot)) return false;
+
+        // Reject blocks whose state may have been partially pruned (root exists but child nodes don't)
+        long lastPersisted = LastPersistedBlockNumber;
+        if (lastPersisted > 0 && blockNumber < lastPersisted - _maxDepth)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     private class BlockCommitter(
         TrieStore trieStore,
         BlockCommitSet commitSet
