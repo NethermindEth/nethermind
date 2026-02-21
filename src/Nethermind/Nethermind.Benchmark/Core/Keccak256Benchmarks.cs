@@ -51,9 +51,9 @@ namespace Nethermind.Benchmarks.Core
         }
 
         [Benchmark]
-        public Span<byte> ValueKeccak()
+        public byte[] ValueKeccak()
         {
-            return Nethermind.Core.Crypto.ValueKeccak.Compute(_a).BytesAsSpan;
+            return Nethermind.Core.Crypto.ValueKeccak.Compute(_a).BytesAsSpan.ToArray();
         }
 
         //[Benchmark]
