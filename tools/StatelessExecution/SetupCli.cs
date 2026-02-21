@@ -113,7 +113,7 @@ internal static class SetupCli
             Hash = suggestedBlockForRpc.Hash,
         };
 
-        BlockHeader? baseBlock = witness.DecodedHeaders.FirstOrDefault(h => h.Hash == suggestedBlockHeader.ParentHash);
+        BlockHeader? baseBlock = witness.DecodeHeaders().FirstOrDefault(h => h.Hash == suggestedBlockHeader.ParentHash);
         if (baseBlock is null)
         {
             throw new ArgumentException($"No base block header in witness. Expected header with hash {suggestedBlockHeader.ParentHash}");
