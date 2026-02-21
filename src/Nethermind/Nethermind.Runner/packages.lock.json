@@ -1031,6 +1031,18 @@
           "Nethermind.Network.Contract": "[1.37.0-unstable, )"
         }
       },
+      "nethermind.opcodetracing.plugin": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Api": "[1.37.0-unstable, )",
+          "Nethermind.Blockchain": "[1.37.0-unstable, )",
+          "Nethermind.Config": "[1.37.0-unstable, )",
+          "Nethermind.Core": "[1.37.0-unstable, )",
+          "Nethermind.Evm": "[1.37.0-unstable, )",
+          "Nethermind.Logging": "[1.37.0-unstable, )",
+          "Nethermind.Synchronization": "[1.37.0-unstable, )"
+        }
+      },
       "nethermind.optimism": {
         "type": "Project",
         "dependencies": {

@@ -9,8 +9,10 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using CkzgLib;
 using FluentAssertions;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -40,6 +42,45 @@ public partial class EngineModuleTests
         ShardBlobNetworkWrapper wrapper = new ShardBlobNetworkWrapper(getPayloadResultBlobsBundle.Blobs,
             getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V1);
         Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(wrapper), Is.True);
+    }
+
+    [Test]
+    public async Task Testing_buildBlockV1_empty_block_with_empty_withdrawals_has_valid_hash()
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        ITestingRpcModule testingRpcModule = chain.Container.Resolve<ITestingRpcModule>();
+
+        Block head = chain.BlockTree.Head!;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = head.Timestamp + 12,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = TestItem.KeccakB
+        };
+
+        ResultWrapper<GetPayloadV5Result?> buildResult = await testingRpcModule.testing_buildBlockV1(
+            head.Hash!,
+            payloadAttributes,
+            [],
+            []);
+
+        buildResult.Result.Should().Be(Result.Success);
+        buildResult.Data.Should().NotBeNull();
+
+        ExecutionPayloadV3 executionPayload = buildResult.Data!.ExecutionPayload;
+        executionPayload.ExecutionRequests = buildResult.Data.ExecutionRequests;
+        executionPayload.TryGetBlock().Block!.CalculateHash().Should().Be(executionPayload.BlockHash);
+
+        ResultWrapper<PayloadStatusV1> newPayloadResult = await chain.EngineRpcModule.engine_newPayloadV4(
+            executionPayload,
+            [],
+            payloadAttributes.ParentBeaconBlockRoot,
+            buildResult.Data.ExecutionRequests);
+
+        newPayloadResult.Result.Should().Be(Result.Success);
+        newPayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
     }
 
     [Test]
