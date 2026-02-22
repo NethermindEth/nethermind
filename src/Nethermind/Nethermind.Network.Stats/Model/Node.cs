@@ -101,7 +101,7 @@ namespace Nethermind.Stats.Model
         private static string[] CreateCommonPortStrings()
         {
             var ports = new string[100];
-            for (int i = 0; ports.Length < 100; i++)
+            for (int i = 0; i < 100; i++)
             {
                 ports[i] = (i + 30300).ToString().PadLeft(5, ' ');
             }
