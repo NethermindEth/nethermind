@@ -44,14 +44,9 @@ public sealed class PreCachedTrieStore : ITrieStore
         return _inner.BeginBlockCommit(blockNumber);
     }
 
-    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
-    {
-        byte[]? rlp = _preBlockCache.GetOrAdd(new(address, in path, in keccak), _tryLoadRlp);
-
-        return rlp is not null;
-    }
-
     public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
+
+    public bool HasRoot(Hash256 stateRoot, long blockNumber) => _inner.HasRoot(stateRoot, blockNumber);
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => _inner.BeginScope(baseBlock);
 
