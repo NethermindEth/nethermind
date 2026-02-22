@@ -845,4 +845,77 @@ public class BlockchainProcessorTests
                 _block5D10
             );
     }
+
+    /// <summary>
+    /// Regression test for issue #10494: when blocks are on the main chain but state is missing
+    /// (e.g. DB corruption on an archive node) or blocks are not on the main chain (e.g. after
+    /// restart with reorg boundary), PrepareProcessingBranch used to throw InvalidOperationException
+    /// after walking back 8192 ancestors, crashing block processing entirely.
+    /// After the fix, the walk stops at MaxBranchSize and the block is gracefully rejected as
+    /// orphaned (InvalidBlockException) instead of crashing the processor.
+    /// </summary>
+    [TestCase(true, Description = "Blocks on main chain but no state (DB corruption on archive node)")]
+    [TestCase(false, Description = "Blocks not on main chain (restart with reorg boundary)")]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void PrepareProcessingBranch_does_not_crash_when_branch_exceeds_max_size(bool onMainChain)
+    {
+        const int chainLength = 8200;
+
+        BlockTree blockTree = Build.A.BlockTree()
+            .WithoutSettingHead
+            .TestObject;
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(false);
+
+        BlockchainProcessor processor = new(
+            blockTree,
+            Substitute.For<IBranchProcessor>(),
+            Substitute.For<IBlockPreprocessorStep>(),
+            stateReader,
+            LimboLogs.Instance,
+            BlockchainProcessor.Options.Default,
+            Substitute.For<IProcessingStats>());
+
+        Block genesis = Build.A.Block.WithNumber(0).WithNonce(0).WithDifficulty(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block previous = genesis;
+        Block[] chainBlocks = new Block[chainLength];
+        for (int i = 0; i < chainLength; i++)
+        {
+            Block block = Build.A.Block
+                .WithNumber(i + 1)
+                .WithNonce((ulong)(i + 1))
+                .WithParent(previous)
+                .WithDifficulty(2)
+                .TestObject;
+            chainBlocks[i] = block;
+            blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None);
+            previous = block;
+        }
+
+        if (onMainChain)
+        {
+            blockTree.UpdateMainChain(chainBlocks, false);
+        }
+
+        Block tipBlock = Build.A.Block
+            .WithNumber(chainLength + 1)
+            .WithNonce((ulong)(chainLength + 1))
+            .WithParent(previous)
+            .WithDifficulty(2)
+            .TestObject;
+        blockTree.SuggestBlock(tipBlock, BlockTreeSuggestOptions.None);
+
+        // Before the fix, this threw InvalidOperationException("Maximum size of branch reached").
+        // After the fix, the walk stops gracefully and the block is rejected as orphaned.
+        Action act = () => processor.Process(
+            tipBlock,
+            ProcessingOptions.None,
+            NullBlockTracer.Instance);
+
+        act.Should().NotThrow<InvalidOperationException>();
+        act.Should().Throw<InvalidBlockException>();
+    }
 }
