@@ -342,7 +342,8 @@ namespace Nethermind.Core.Extensions
         internal static int FastHashAesArm(ref byte start, int len, uint seed)
         {
             Vector128<byte> seedVec = Vector128.CreateScalar(seed).AsByte();
-            Vector128<byte> acc0 = Unsafe.As<byte, Vector128<byte>>(ref start) ^ seedVec;
+            Vector128<byte> input0 = Unsafe.As<byte, Vector128<byte>>(ref start);
+            Vector128<byte> acc0 = input0 ^ seedVec;
 
             if (len > 64)
             {
@@ -429,8 +430,7 @@ namespace Nethermind.Core.Extensions
                 // Encrypt(input, input^seed) cancels input, losing all input dependence.
                 // Feed input and seedVec directly: AESE XORs them to get (input ^ seed),
                 // then SubBytes and ShiftRows, and AESMC adds MixColumns.
-                acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(
-                    Unsafe.As<byte, Vector128<byte>>(ref start), seedVec));
+                acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(input0, seedVec));
             }
 
             ulong compressed = acc0.AsUInt64().GetElement(0) ^ acc0.AsUInt64().GetElement(1);
