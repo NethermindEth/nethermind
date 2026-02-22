@@ -614,17 +614,15 @@ namespace Nethermind.Core.Test
         [TestCase(79, 1000u, 2000u)]
         [TestCase(80, 1000u, 2000u)]
         [TestCase(128, 1000u, 2000u)]
-        public void FastHashAesArm_SeedAffectsOutput(int length, uint seed1, uint seed2)
+        public void FastHash_SeedAffectsOutput(int length, uint seed1, uint seed2)
         {
             byte[] input = new byte[length];
             for (int i = 0; i < length; i++)
                 input[i] = (byte)(i * 0x17 + 0x42);
-            ref byte start = ref input[0];
 
-            int hash1 = SpanExtensions.FastHashAesArm(ref start, length, seed1);
-            int hash2 = SpanExtensions.FastHashAesArm(ref start, length, seed2);
-
-            hash1.Should().NotBe(hash2, $"different seeds ({seed1} vs {seed2}) should produce different hashes for {length}-byte input");
+            SpanExtensions.FastHash(input, seed1).Should()
+                .NotBe(SpanExtensions.FastHash(input, seed2),
+                    $"seeds {seed1} vs {seed2} for {length} bytes");
         }
     }
 }

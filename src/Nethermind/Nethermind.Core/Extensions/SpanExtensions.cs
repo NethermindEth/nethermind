@@ -428,10 +428,10 @@ namespace Nethermind.Core.Extensions
             else
             {
                 // len == 16: start+len-16 == start, so data would be the same bytes
-                // that built acc0. ARM AESE XORs its operands before scrambling, so
-                // Encrypt(input, input^seed) cancels input, losing all input dependence.
-                // Feed input and seedVec directly: AESE XORs them to get (input ^ seed),
-                // then SubBytes and ShiftRows, and AESMC adds MixColumns.
+                // that built acc0. ARM Arm.Aes.Encrypt XORs its operands before scrambling,
+                // so Encrypt(input, input^seed) cancels input, losing all input dependence.
+                // Feed input and seedVec directly so the XOR yields (input ^ seed),
+                // then SubBytes and ShiftRows, and Arm.Aes.MixColumns completes the round.
                 acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(input0, seedVec));
             }
 
