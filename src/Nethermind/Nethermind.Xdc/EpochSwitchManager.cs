@@ -323,8 +323,8 @@ internal class EpochSwitchManager : IEpochSwitchManager
         while (epochBlockInfo.Round > timeoutCert.Round)
         {
             tempTCEpoch--;
-
-            if (GetBlockByEpochNumber(tempTCEpoch) is null)
+            epochBlockInfo = GetBlockByEpochNumber(tempTCEpoch);
+            if (epochBlockInfo is null)
             {
                 return null;
             }

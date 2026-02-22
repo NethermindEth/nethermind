@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -58,4 +59,26 @@ public static class XdcExtensions
         (blockInfo.BlockNumber == blockHeader.Number)
         && (blockInfo.Hash == blockHeader.Hash)
         && (blockInfo.Round == blockHeader.ExtraConsensusData.BlockRound);
+
+    public static Signature DecodeSignature(this ref Rlp.ValueDecoderContext decoderContext)
+    {
+        // Includes the list prefix (2 bytes for a 65-byte signature)
+        ReadOnlySpan<byte> sigBytes = decoderContext.PeekNextItem();
+        if (sigBytes.Length != Signature.Size + 2)
+            throw new RlpException($"Invalid signature length in '{nameof(Vote)}'");
+        Signature signature = new Signature(sigBytes.Slice(2, 64), sigBytes[66]);
+        decoderContext.SkipItem();
+        return signature;
+    }
+
+    public static Signature DecodeSignature(this RlpStream stream)
+    {
+        // Includes the list prefix (2 bytes for a 65-byte signature)
+        ReadOnlySpan<byte> sigBytes = stream.PeekNextItem();
+        if (sigBytes.Length != Signature.Size + 2)
+            throw new RlpException($"Invalid signature length in '{nameof(Vote)}'");
+        Signature signature = new Signature(sigBytes.Slice(2, 64), sigBytes[66]);
+        stream.SkipItem();
+        return signature;
+    }
 }
