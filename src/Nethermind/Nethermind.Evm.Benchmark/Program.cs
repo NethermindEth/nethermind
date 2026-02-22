@@ -22,5 +22,6 @@ public static class Program
             .AddDiagnoser(BenchmarkDotNet.Diagnosers.MemoryDiagnoser.Default);
 
         BenchmarkRunner.Run<TxProcessingBenchmark>(config, args);
+        BenchmarkRunner.Run<BlockProcessingBenchmark>(config, args);
     }
 }
