@@ -10,10 +10,12 @@ namespace Nethermind.Crypto;
 public static class Ripemd
 {
     const int HashOutputLength = 32;
+    [ThreadStatic] private static RipeMD160Digest? _digest;
 
     public static byte[] Compute(ReadOnlySpan<byte> input)
     {
-        RipeMD160Digest digest = new();
+        RipeMD160Digest digest = _digest ??= new RipeMD160Digest();
+        digest.Reset();
         digest.BlockUpdate(input);
         byte[] result = new byte[HashOutputLength];
         int length = digest.GetDigestSize();

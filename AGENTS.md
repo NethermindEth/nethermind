@@ -28,15 +28,28 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - Trust null annotations, do not add redundant null checks
 - When fixing a bug, always add a regression test that fails without the fix and passes with it
 - Add tests to existing test files rather than creating new ones
-- When adding multiple, similar tests write one test with test cases
+- When adding multiple, similar tests write one test with test cases (`[TestCase]` or `[TestCaseSource]`); never duplicate a test body across methods when only the inputs differ
 - When adding a test, check if previous tests can be reused with new test case
 - Code comments must explain _why_, not _what_
 - **NEVER suggest using LINQ (`.Select()`, `.Where()`, `.Any()`, etc.) when a simple `foreach` or `for` loop would work.** LINQ has overhead and is less readable for simple iterations. Use LINQ only for complex queries where the declarative syntax significantly improves clarity.
 - Keep changes minimal and focused: do not rename variables, reformat surrounding code, or refactor unrelated logic as part of a fix. Touch only what is necessary to solve the problem.
 - Follow DRY: after making changes, review the result for duplicated logic. Extract repeated blocks (roughly 5+ lines) into shared methods, but do not over-extract trivial one-liners into their own methods.
+- For EVM hot-path optimizations, prioritize maintainability and single-source-of-truth flow first; use `IFlag` specialization (e.g., `TFast : IFlag`) when it meaningfully reduces duplication and complexity, but do not force one exact pattern.
 - In generic types, move methods that do not depend on the type parameter to a non-generic base class or static helper to avoid redundant JIT instantiations per closed type.
 - Do not use the `#region` and `#endregion` pragmas
 - Do not alter anything in the [src/bench_precompiles](./src/bench_precompiles/) and [src/tests](./src/tests/) directories
+
+## Consensus-critical code review
+
+Changes to EVM execution, transaction processing, block validation, state transitions, or any code that affects what the chain accepts as valid require extra scrutiny. Nethermind is an Ethereum execution client — a subtle behavioral difference from the spec can cause a consensus split.
+
+- **Observable equivalence**: when refactoring or optimizing consensus code, trace every code path (success, failure, out-of-gas, revert) and confirm the observable outcome (state changes, gas, return data, receipts) is identical to the original.
+- **Fork-awareness**: Ethereum behavior changes across hard forks. Verify that fork-gated logic (`IReleaseSpec` checks) is evaluated correctly and that optimized paths do not bypass fork-specific rules. Remember that historical sync must replay all past forks.
+- **Historical edge cases**: some forks required client-specific compatibility workarounds (e.g., the EIP-161 Parity touch bug for RIPEMD-160). These must not be broken by new code paths. When excluding code from an optimization, document _why_ so future contributors do not accidentally revert the exclusion.
+- **Gas correctness**: gas charges, refunds, stipends, and the 63/64 forwarding rule must be preserved exactly. Arithmetic on gas values must guard against overflow.
+- **State rollback**: snapshot/restore semantics must match — if the original code takes a snapshot and reverts on failure, any alternative path must produce the same net state.
+- **Safe defaults**: new optimizations or alternative code paths should default to the conservative (original) behavior. Opt-in flags should be `false` by default so that untested paths are never activated implicitly.
+- **Reference the spec**: when in doubt, refer to the Yellow Paper, the relevant EIP, or the [execution-specs](https://github.com/ethereum/execution-specs). Add a comment citing the EIP number when implementing fork-specific logic.
 
 ## Project structure
 

@@ -18,6 +18,7 @@ public class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
 
     /// <see href="https://eips.ethereum.org/EIPS/eip-7910" />
     public static string Name => "BN254_PAIRING";
+    public bool SupportsFastPath => true;
 
     /// <see href="https://eips.ethereum.org/EIPS/eip-1108" />
     public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 45_000L : 100_000L;

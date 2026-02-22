@@ -73,6 +73,9 @@ public class CachedCodeInfoRepository(
         IPrecompile precompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache) : IPrecompile
     {
+        public bool SupportsCaching => precompile.SupportsCaching;
+        public bool SupportsFastPath => precompile.SupportsFastPath;
+
         public long BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);

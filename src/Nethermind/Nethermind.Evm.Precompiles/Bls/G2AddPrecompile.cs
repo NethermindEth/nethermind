@@ -23,6 +23,7 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
     public static Address Address { get; } = Address.FromNumber(0x0d);
 
     public static string Name => "BLS12_G2ADD";
+    public bool SupportsFastPath => true;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 600L;
 

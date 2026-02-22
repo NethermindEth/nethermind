@@ -25,6 +25,7 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
     public static Address Address { get; } = Address.FromNumber(0xf);
 
     public static string Name => "BLS12_PAIRING_CHECK";
+    public bool SupportsFastPath => true;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 37700L;
 
