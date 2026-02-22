@@ -27,7 +27,7 @@ public static unsafe class KeccakCache
     /// <summary>
     /// Count is defined as a +1 over bucket mask. In the future, just change the mask as the main parameter.
     /// </summary>
-    public const int Count = BucketMask + 1;
+    public const nuint Count = BucketMask + 1;
 
     private const int BucketMask = 0x0001_FFFF;
     private const uint HashMask = unchecked((uint)~BucketMask);
@@ -39,16 +39,28 @@ public static unsafe class KeccakCache
     private const int InputLengthOfKeccak = ValueHash256.MemorySize;
     private const int InputLengthOfAddress = Address.Size;
     private const int CacheLineSizeBytes = 64;
+
+#if ZKVM
+    // NativeAOT/ZKVM: avoid NativeMemory.AlignedAlloc (can fault in some environments). Use managed pinned storage instead.
+    private static readonly byte[] ManagedBuffer;
+    private static readonly GCHandle ManagedHandle;
+#endif
     private static readonly Entry* Memory;
 
     static KeccakCache()
     {
-        const UIntPtr size = Count * Entry.Size;
+        const nuint size = Count * Entry.Size;
 
+#if ZKVM
+        ManagedBuffer = GC.AllocateArray<byte>((int)size, pinned: true);
+        ManagedHandle = GCHandle.Alloc(ManagedBuffer, GCHandleType.Pinned);
+        Memory = (Entry*)ManagedHandle.AddrOfPinnedObject();
+#else
         // Aligned, so that no torn reads if fields of Entry are properly aligned.
         Memory = (Entry*)NativeMemory.AlignedAlloc(size, BitOperations.RoundUpToPowerOf2(Entry.Size));
         NativeMemory.Clear(Memory, size);
         GC.AddMemoryPressure((long)size);
+#endif
     }
 
     [SkipLocalsInit]

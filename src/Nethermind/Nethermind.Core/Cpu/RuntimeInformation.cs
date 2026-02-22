@@ -22,19 +22,20 @@ public static class RuntimeInformation
 
     public static CpuInfo? GetCpuInfo()
     {
+#if !ZKVM
         if (IsWindows())
             return WmicCpuInfoProvider.WmicCpuInfo.Value;
         if (IsLinux())
             return ProcCpuInfoProvider.ProcCpuInfo.Value;
         if (IsMacOS())
             return SysctlCpuInfoProvider.SysctlCpuInfo.Value;
-
+#endif
         return null;
     }
 
-    public static int PhysicalCoreCount { get; } = GetCpuInfo()?.PhysicalCoreCount ?? Environment.ProcessorCount;
-    public static ParallelOptions ParallelOptionsLogicalCores { get; } = new() { MaxDegreeOfParallelism = Environment.ProcessorCount };
-    public static ParallelOptions ParallelOptionsPhysicalCoresUpTo16 { get; } = new() { MaxDegreeOfParallelism = Math.Min(PhysicalCoreCount, 16) };
-
+    public static readonly int ProcessorCount = Math.Max(1, Environment.ProcessorCount);
+    public static int PhysicalCoreCount { get; } = GetCpuInfo()?.PhysicalCoreCount ?? ProcessorCount;
+    public static ParallelOptions ParallelOptionsLogicalCores { get; } = new() { MaxDegreeOfParallelism = ProcessorCount };
+    public static ParallelOptions ParallelOptionsPhysicalCoresUpTo16 { get; } = new() { MaxDegreeOfParallelism = Math.Min(ProcessorCount, 16) };
     public static bool Is64BitPlatform() => IntPtr.Size == 8;
 }
