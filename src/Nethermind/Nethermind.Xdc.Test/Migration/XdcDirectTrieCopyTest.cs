@@ -97,7 +97,7 @@ public class XdcDirectTrieCopyTest
         source.StateTree.Accept(nodeCollector, source.StateRoot, new() { FullScanMemoryBudget = 0 }); // TODO: enable batching?
         foreach (Hash256 hash in nodeCollector.Hashes)
         {
-            if (source.Db.Get(hash.Bytes) is not {} value)
+            if (source.Db.Get(hash.Bytes) is not { } value)
                 continue;
 
             target.StateDb.Set(hash.Bytes, value);
@@ -109,7 +109,7 @@ public class XdcDirectTrieCopyTest
         source.StateTree.Accept(codeCollector, source.StateRoot, new() { FullScanMemoryBudget = 0 });
         foreach (Hash256 codeHash in codeCollector.CodeHashes)
         {
-            if (source.Db.Get(codeHash.Bytes) is not {} code)
+            if (source.Db.Get(codeHash.Bytes) is not { } code)
                 continue;
 
             target.CodeDb.Set(codeHash.Bytes, code);

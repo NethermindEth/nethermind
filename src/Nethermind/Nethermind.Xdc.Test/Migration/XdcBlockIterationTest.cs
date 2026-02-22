@@ -68,7 +68,7 @@ public class XdcBlockIterationTest
     {
         IterateBackward(dbPath, (reader, header) =>
         {
-            if (reader.GetSnapshotAt(header) is not {} snap)
+            if (reader.GetSnapshotAt(header) is not { } snap)
                 return false;
 
             TestContext.Out.WriteLine($"Snapshot @{snap.BlockNumber}, Header: {snap.HeaderHash}, Candidates: [{snap.NextEpochCandidates.Length}]");
