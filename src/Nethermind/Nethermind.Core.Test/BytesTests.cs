@@ -602,6 +602,8 @@ namespace Nethermind.Core.Test
             }
         }
 
+        [TestCase(1, 1000u, 2000u)]
+        [TestCase(8, 1000u, 2000u)]
         [TestCase(16, 1000u, 2000u)]
         [TestCase(16, 0u, 1u)]
         [TestCase(16, 0u, 0xFFFFFFFFu)]
