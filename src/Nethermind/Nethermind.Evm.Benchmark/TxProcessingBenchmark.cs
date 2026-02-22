@@ -5,6 +5,7 @@ using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -24,31 +25,65 @@ namespace Nethermind.Evm.Benchmark;
 /// Measures the per-call cost of full transaction processing via
 /// <see cref="EthereumTransactionProcessor"/>. Uses <c>CallAndRestore</c> so
 /// state is rolled back after each call, allowing 1 000 iterations per invocation.
-/// Taken from PR #10514 (intrinsic-gas cache PR).
+///
+/// Transaction types covered:
+/// - Legacy ETH transfer (simple, data, zero-data, large-data)
+/// - EIP-2930 access-list transaction (Berlin)
+/// - EIP-1559 type-2 transaction (London)
+/// - Contract deployment via CREATE (no recipient)
+/// - Contract call into deployed code
+///
+/// Based on PR #10514 (intrinsic-gas cache benchmark).
+/// Block is set at 15 000 000 so London+ rules apply.
 /// </summary>
 [MemoryDiagnoser]
 public class TxProcessingBenchmark
 {
     private const int N = 1_000;
 
-    private static readonly IReleaseSpec BerlinSpec = Berlin.Instance;
+    // Block well past London (12 965 000) so EIP-1559 and EIP-2930 are active
+    private const long BenchmarkBlock = 15_000_000;
+
     private static readonly byte[] ContractCode = Prepare.EvmCode
         .PushData(0x01)
         .Op(Instruction.STOP)
         .Done;
-    private static readonly byte[] MixedData = CreateMixedData();
 
-    private IWorldState _stateProvider = null!;
-    private IDisposable _stateScope = null!;
-    private ITransactionProcessor _processor = null!;
-    private BlockHeader _header = null!;
-    private Transaction _simpleTx = null!;
-    private Transaction _dataTx = null!;
-    private Transaction _contractCallTx = null!;
+    // 128 bytes: every 4th byte is zero, rest non-zero  (realistic calldata mix)
+    private static readonly byte[] MixedData128  = CreateMixedData(128);
 
-    private static byte[] CreateMixedData()
+    // 128 bytes: all zeros (cheapest calldata per byte)
+    private static readonly byte[] ZeroData128   = new byte[128];
+
+    // 1024 bytes mixed (heavier calldata cost)
+    private static readonly byte[] MixedData1024 = CreateMixedData(1024);
+
+    private static readonly AccessList SampleAccessList = new AccessList.Builder()
+        .AddAddress(TestItem.AddressA)
+        .AddStorage(UInt256.Zero)
+        .AddStorage(UInt256.One)
+        .AddAddress(TestItem.AddressB)
+        .AddStorage(new UInt256(42))
+        .Build();
+
+    private IWorldState           _stateProvider  = null!;
+    private IDisposable           _stateScope     = null!;
+    private ITransactionProcessor _processor      = null!;
+    private BlockHeader           _header         = null!;
+
+    // ── transaction instances ──────────────────────────────────────────────
+    private Transaction _simpleTx        = null!;  // 21 000 gas ETH transfer
+    private Transaction _mixedDataTx     = null!;  // transfer + 128 B mixed calldata
+    private Transaction _zeroDataTx      = null!;  // transfer + 128 B zero calldata
+    private Transaction _largeDataTx     = null!;  // transfer + 1024 B mixed calldata
+    private Transaction _accessListTx    = null!;  // EIP-2930: access-list tx
+    private Transaction _eip1559Tx       = null!;  // EIP-1559: type-2 tx
+    private Transaction _contractCallTx  = null!;  // call a deployed contract
+    private Transaction _contractDeployTx = null!; // CREATE: deploy new contract
+
+    private static byte[] CreateMixedData(int length)
     {
-        byte[] data = new byte[128];
+        byte[] data = new byte[length];
         for (int i = 0; i < data.Length; i++)
             data[i] = i % 4 == 0 ? (byte)0 : (byte)(i & 0xFF);
         return data;
@@ -57,19 +92,22 @@ public class TxProcessingBenchmark
     [GlobalSetup]
     public void GlobalSetup()
     {
-        _stateProvider = TestWorldStateFactory.CreateForTest();
-        _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)BenchmarkBlock);
 
-        _stateProvider.CreateAccount(TestItem.AddressA, 1000.Ether());
+        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _stateScope    = _stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        // Fund sender; deploy target contract
+        _stateProvider.CreateAccount(TestItem.AddressA, 10_000.Ether());
         _stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
-        _stateProvider.InsertCode(TestItem.AddressB, ContractCode, BerlinSpec);
-        _stateProvider.Commit(BerlinSpec);
+        _stateProvider.InsertCode(TestItem.AddressB, ContractCode, spec);
+        _stateProvider.Commit(spec);
         _stateProvider.CommitTree(0);
 
         _header = Build.A.BlockHeader
-            .WithNumber(10_000_000)
-            .WithGasLimit(10_000_000)
-            .WithBaseFee(1.GWei())
+            .WithNumber(BenchmarkBlock)
+            .WithGasLimit(30_000_000)
+            .WithBaseFee(10.GWei())
             .WithStateRoot(_stateProvider.StateRoot)
             .TestObject;
 
@@ -86,43 +124,93 @@ public class TxProcessingBenchmark
             codeInfo,
             LimboLogs.Instance);
 
-        // Simple ETH transfer — 21 000 intrinsic gas
+        // ── build transactions ─────────────────────────────────────────────
         _simpleTx = Build.A.Transaction
             .WithTo(TestItem.AddressC)
             .WithValue(1.Ether())
             .WithGasLimit(50_000)
-            .WithGasPrice(2.GWei())
+            .WithGasPrice(20.GWei())
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
-        // Transfer with 128 bytes of mixed data
-        _dataTx = Build.A.Transaction
+        _mixedDataTx = Build.A.Transaction
             .WithTo(TestItem.AddressC)
-            .WithData(MixedData)
+            .WithData(MixedData128)
             .WithGasLimit(100_000)
-            .WithGasPrice(2.GWei())
+            .WithGasPrice(20.GWei())
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
-        // Call to deployed contract
+        _zeroDataTx = Build.A.Transaction
+            .WithTo(TestItem.AddressC)
+            .WithData(ZeroData128)
+            .WithGasLimit(100_000)
+            .WithGasPrice(20.GWei())
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        _largeDataTx = Build.A.Transaction
+            .WithTo(TestItem.AddressC)
+            .WithData(MixedData1024)
+            .WithGasLimit(200_000)
+            .WithGasPrice(20.GWei())
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        _accessListTx = Build.A.Transaction
+            .WithType(TxType.AccessList)
+            .WithTo(TestItem.AddressC)
+            .WithValue(1.Ether())
+            .WithGasLimit(100_000)
+            .WithGasPrice(20.GWei())
+            .WithAccessList(SampleAccessList)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        _eip1559Tx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithTo(TestItem.AddressC)
+            .WithValue(1.Ether())
+            .WithGasLimit(100_000)
+            .WithMaxFeePerGas(20.GWei())
+            .WithMaxPriorityFeePerGas(2.GWei())
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
         _contractCallTx = Build.A.Transaction
             .WithTo(TestItem.AddressB)
             .WithGasLimit(100_000)
-            .WithGasPrice(2.GWei())
+            .WithGasPrice(20.GWei())
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
-        _processor.SetBlockExecutionContext(_header);
+        // CREATE: no recipient, init code in data
+        _contractDeployTx = Build.A.Transaction
+            .WithTo(null)
+            .WithData(ContractCode)
+            .WithGasLimit(200_000)
+            .WithGasPrice(20.GWei())
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
 
-        // Pre-warm
-        _processor.CallAndRestore(_simpleTx, NullTxTracer.Instance);
-        _processor.CallAndRestore(_dataTx, NullTxTracer.Instance);
-        _processor.CallAndRestore(_contractCallTx, NullTxTracer.Instance);
+        // Pre-warm all paths
+        _processor.SetBlockExecutionContext(_header);
+        _processor.CallAndRestore(_simpleTx,         NullTxTracer.Instance);
+        _processor.CallAndRestore(_mixedDataTx,      NullTxTracer.Instance);
+        _processor.CallAndRestore(_zeroDataTx,       NullTxTracer.Instance);
+        _processor.CallAndRestore(_largeDataTx,      NullTxTracer.Instance);
+        _processor.CallAndRestore(_accessListTx,     NullTxTracer.Instance);
+        _processor.CallAndRestore(_eip1559Tx,        NullTxTracer.Instance);
+        _processor.CallAndRestore(_contractCallTx,   NullTxTracer.Instance);
+        _processor.CallAndRestore(_contractDeployTx, NullTxTracer.Instance);
     }
 
     [GlobalCleanup]
     public void GlobalCleanup() => _stateScope.Dispose();
 
+    // ── Legacy transactions ────────────────────────────────────────────────
+
+    /// <summary>Simple ETH transfer — 21 000 intrinsic gas, baseline.</summary>
     [Benchmark(Baseline = true, OperationsPerInvoke = N)]
     public TransactionResult SimpleTx()
     {
@@ -132,21 +220,77 @@ public class TxProcessingBenchmark
         return result;
     }
 
+    /// <summary>Transfer + 128 B mixed (non-zero / zero) calldata.</summary>
     [Benchmark(OperationsPerInvoke = N)]
-    public TransactionResult DataTx()
+    public TransactionResult MixedDataTx()
     {
         TransactionResult result = default;
         for (int i = 0; i < N; i++)
-            result = _processor.CallAndRestore(_dataTx, NullTxTracer.Instance);
+            result = _processor.CallAndRestore(_mixedDataTx, NullTxTracer.Instance);
         return result;
     }
 
+    /// <summary>Transfer + 128 B all-zero calldata (cheapest calldata path).</summary>
+    [Benchmark(OperationsPerInvoke = N)]
+    public TransactionResult ZeroDataTx()
+    {
+        TransactionResult result = default;
+        for (int i = 0; i < N; i++)
+            result = _processor.CallAndRestore(_zeroDataTx, NullTxTracer.Instance);
+        return result;
+    }
+
+    /// <summary>Transfer + 1024 B mixed calldata (heavier intrinsic gas).</summary>
+    [Benchmark(OperationsPerInvoke = N)]
+    public TransactionResult LargeDataTx()
+    {
+        TransactionResult result = default;
+        for (int i = 0; i < N; i++)
+            result = _processor.CallAndRestore(_largeDataTx, NullTxTracer.Instance);
+        return result;
+    }
+
+    // ── Typed transactions ─────────────────────────────────────────────────
+
+    /// <summary>EIP-2930 access-list transaction (type 1, Berlin+).</summary>
+    [Benchmark(OperationsPerInvoke = N)]
+    public TransactionResult AccessListTx()
+    {
+        TransactionResult result = default;
+        for (int i = 0; i < N; i++)
+            result = _processor.CallAndRestore(_accessListTx, NullTxTracer.Instance);
+        return result;
+    }
+
+    /// <summary>EIP-1559 type-2 transaction with max-fee / priority-fee (London+).</summary>
+    [Benchmark(OperationsPerInvoke = N)]
+    public TransactionResult Eip1559Tx()
+    {
+        TransactionResult result = default;
+        for (int i = 0; i < N; i++)
+            result = _processor.CallAndRestore(_eip1559Tx, NullTxTracer.Instance);
+        return result;
+    }
+
+    // ── EVM-executing transactions ─────────────────────────────────────────
+
+    /// <summary>Call into a deployed contract (EVM execution path).</summary>
     [Benchmark(OperationsPerInvoke = N)]
     public TransactionResult ContractCall()
     {
         TransactionResult result = default;
         for (int i = 0; i < N; i++)
             result = _processor.CallAndRestore(_contractCallTx, NullTxTracer.Instance);
+        return result;
+    }
+
+    /// <summary>Contract deployment via CREATE (init-code execution path).</summary>
+    [Benchmark(OperationsPerInvoke = N)]
+    public TransactionResult ContractDeploy()
+    {
+        TransactionResult result = default;
+        for (int i = 0; i < N; i++)
+            result = _processor.CallAndRestore(_contractDeployTx, NullTxTracer.Instance);
         return result;
     }
 }
