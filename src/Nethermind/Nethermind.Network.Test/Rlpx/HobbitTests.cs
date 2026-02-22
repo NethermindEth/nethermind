@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using DotNetty.Buffers;
 using DotNetty.Common;
 using DotNetty.Common.Internal.Logging;
@@ -75,6 +76,25 @@ namespace Nethermind.Network.Test.Rlpx
 
             using NewBlockMessage decodedMessage = newBlockMessageSerializer.Deserialize(decoded.Data);
             Assert.That(decodedMessage.Block.Transactions.Length, Is.EqualTo(newBlockMessage.Block.Transactions.Length));
+        }
+
+        // Packet types > 128 are needed for XDC
+        [TestCase(129, 8, StackType.Zero, StackType.Zero, false)]
+        [TestCase(129, Frame.DefaultMaxFrameSize, StackType.Zero, StackType.Zero, false)]
+        [TestCase(129, Frame.DefaultMaxFrameSize, StackType.Zero, StackType.Zero, true)]
+        [TestCase(129, Frame.DefaultMaxFrameSize + 1, StackType.Zero, StackType.Zero, true)]
+        [TestCase(224, 8, StackType.Zero, StackType.Zero, false)]
+        [TestCase(224, Frame.DefaultMaxFrameSize, StackType.Zero, StackType.Zero, false)]
+        [TestCase(224, Frame.DefaultMaxFrameSize, StackType.Zero, StackType.Zero, true)]
+        [TestCase(224, Frame.DefaultMaxFrameSize + 1, StackType.Zero, StackType.Zero, true)]
+        [TestCase(255, Frame.DefaultMaxFrameSize, StackType.Zero, StackType.Zero, false)]
+        [TestCase(255, Frame.DefaultMaxFrameSize, StackType.Zero, StackType.Zero, true)]
+        [TestCase(255, Frame.DefaultMaxFrameSize + 1, StackType.Zero, StackType.Zero, true)]
+        [TestCase(256, 8, StackType.Zero, StackType.Zero, false, Ignore = "Values >255 are not supported yet")]
+        public void High_packet_type_there_and_back(int packetType, int dataSize, StackType inbound, StackType outbound, bool framingEnabled)
+        {
+            var data = Enumerable.Range(0, dataSize).Select(i => (byte)i).ToArray();
+            Run(new Packet("eth", packetType, data), inbound, outbound, framingEnabled);
         }
 
         [TestCase(StackType.Zero, StackType.Zero, true)]
