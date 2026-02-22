@@ -228,12 +228,14 @@ namespace Nethermind.Core.Extensions
         /// </remarks>
         [SkipLocalsInit]
         public static int FastHash(this ReadOnlySpan<byte> input)
+            => FastHash(input, s_instanceRandom + (uint)input.Length);
+
+        internal static int FastHash(ReadOnlySpan<byte> input, uint seed)
         {
             int len = input.Length;
             if (len == 0) return 0;
 
             ref byte start = ref MemoryMarshal.GetReference(input);
-            uint seed = s_instanceRandom + (uint)len;
 
             if (len >= 16)
             {
