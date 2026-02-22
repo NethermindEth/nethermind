@@ -375,99 +375,11 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
         return null;
     }
 
-<<<<<<< HEAD
     private static UInt256 RewardInflation(UInt256 chainReward, ulong blockNumber)
     {
         if (blockNumber >= TIPNoHalvingMNReward) return chainReward;
         if (BlocksPerYear * 2 <= blockNumber && blockNumber < BlocksPerYear * 5) return chainReward / 2;
         if (blockNumber >= BlocksPerYear * 5) return chainReward / 4;
         return chainReward;
-=======
-        // Signing transaction ABI (Solidity):
-        // function sign(uint256 _blockNumber, bytes32 _blockHash)
-        // Calldata = 4-byte selector + 32-byte big-endian uint + 32-byte bytes32 = 68 bytes total.
-        private bool IsSigningTransaction(Transaction tx, IXdcReleaseSpec spec)
-        {
-            if (tx.To is null || tx.To != spec.BlockSignerContract) return false;
-            if (tx.Data.Length != 68) return false;
-
-            return ExtractSelectorFromSigningTxData(tx.Data) == "0xe341eaa4";
-        }
-
-        private String ExtractSelectorFromSigningTxData(ReadOnlyMemory<byte> data)
-        {
-            ReadOnlySpan<byte> span = data.Span;
-            if (span.Length != 68)
-                throw new ArgumentException("Signing tx calldata must be exactly 68 bytes (4 + 32 + 32).", nameof(data));
-
-            // 0..3: selector
-            ReadOnlySpan<byte> selBytes = span.Slice(0, 4);
-            return "0x" + Convert.ToHexString(selBytes).ToLowerInvariant();
-        }
-
-        private Hash256 ExtractBlockHashFromSigningTxData(ReadOnlyMemory<byte> data)
-        {
-            ReadOnlySpan<byte> span = data.Span;
-            if (span.Length != 68)
-                throw new ArgumentException("Signing tx calldata must be exactly 68 bytes (4 + 32 + 32).", nameof(data));
-
-            // 36..67: bytes32 blockHash
-            ReadOnlySpan<byte> hashBytes = span.Slice(36, 32);
-            return new Hash256(hashBytes);
-        }
-
-        private Dictionary<Address, UInt256> CalculateRewardForSigners(UInt256 totalReward,
-            Dictionary<Address, long> signers, long totalSigningCount)
-        {
-            var rewardSigners = new Dictionary<Address, UInt256>();
-            foreach (var (signer, count) in signers)
-            {
-                UInt256 reward = CalculateProportionalReward(count, totalSigningCount, totalReward);
-                rewardSigners.Add(signer, reward);
-            }
-            return rewardSigners;
-        }
-
-        /// <summary>
-        /// Calculates a proportional reward based on the number of signatures.
-        /// Uses UInt256 arithmetic to maintain precision with large Wei values.
-        ///
-        /// Formula: (totalReward / totalSignatures) * signatureCount
-        /// </summary>
-        internal UInt256 CalculateProportionalReward(
-            long signatureCount,
-            long totalSignatures,
-            UInt256 totalReward)
-        {
-            if (signatureCount <= 0 || totalSignatures <= 0)
-            {
-                return UInt256.Zero;
-            }
-
-            // Convert to UInt256 for precision
-            var signatures = (UInt256)signatureCount;
-            var total = (UInt256)totalSignatures;
-
-
-            UInt256 portion = totalReward / total;
-            UInt256 reward = portion * signatures;
-
-            return reward;
-        }
-
-        internal (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
-            Address masternodeAddress, UInt256 reward, XdcBlockHeader header)
-        {
-            Address owner = masternodeVotingContract.GetCandidateOwner(header, masternodeAddress);
-
-            // 90% of the reward goes to the masternode
-            UInt256 masterReward = reward * 90 / 100;
-
-            // 10% of the reward goes to the foundation wallet
-            UInt256 foundationReward = reward / 10;
-
-            return (new BlockReward(owner, masterReward), foundationReward);
-        }
->>>>>>> 85f0ecdf40 (XDC Fix calculation of rewards per signer (#10355))
     }
 }
