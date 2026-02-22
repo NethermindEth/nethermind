@@ -109,7 +109,7 @@ namespace Nethermind.Db.Blooms
                 else
                 {
                     var stream = new RlpStream(levelsFromDb);
-                    var dbBucketSizes = stream.DecodeArray(x => x.DecodeInt());
+                    var dbBucketSizes = stream.DecodeEnsureArray(x => x.DecodeInt());
 
                     if (!dbBucketSizes.SequenceEqual(sizes))
                     {

@@ -17,13 +17,17 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
     protected override QuorumCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int sequenceLength = decoderContext.ReadSequenceLength();
-        if (sequenceLength == 0)
+        if (sequenceLength is 0)
+        {
             return null;
+        }
+
         int endPosition = decoderContext.Position + sequenceLength;
 
         BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);
 
         byte[][]? signatureBytes = decoderContext.DecodeByteArrays();
+
         if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
             throw new RlpException("One or more invalid signature lengths in quorum certificate.");
         Signature[]? signatures = null;
@@ -46,13 +50,17 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
 
     protected override QuorumCertificate DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        if (sequenceLength == 0)
+        if (rlpStream.IsNextItemNull())
+        {
+            rlpStream.ReadByte();
             return null;
+        }
+        int sequenceLength = rlpStream.ReadSequenceLength();
         int endPosition = rlpStream.Position + sequenceLength;
         BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(rlpStream, rlpBehaviors);
 
         byte[][]? signatureBytes = rlpStream.DecodeByteArrays();
+
         if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
             throw new RlpException("One or more invalid signature lengths in quorum certificate.");
         Signature[]? signatures = null;
@@ -76,7 +84,7 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
     public Rlp Encode(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptySequence;
+            return Rlp.OfNullOrZero;
 
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);

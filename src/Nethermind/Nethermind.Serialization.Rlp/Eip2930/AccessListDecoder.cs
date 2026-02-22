@@ -82,14 +82,14 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            int sequenceLength = decoderContext.ReadSequenceLength();
+
+            if (sequenceLength is 0)
             {
-                decoderContext.ReadByte();
                 return null;
             }
 
-            int length = decoderContext.ReadSequenceLength();
-            int check = decoderContext.Position + length;
+            int check = decoderContext.Position + sequenceLength;
 
             AccessList.Builder accessListBuilder = new();
             while (decoderContext.Position < check)
@@ -136,7 +136,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         {
             if (item is null)
             {
-                stream.WriteByte(Rlp.NullObjectByte);
+                stream.EncodeNullObject();
                 return;
             }
 

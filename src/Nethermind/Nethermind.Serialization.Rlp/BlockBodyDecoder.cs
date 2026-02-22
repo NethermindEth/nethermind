@@ -94,13 +94,13 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
 
     public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
     {
-        Transaction[] transactions = ctx.DecodeArray(_txDecoder);
-        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
+        Transaction[] transactions = ctx.DecodeEnsureArray(_txDecoder);
+        BlockHeader[] uncles = ctx.DecodeEnsureArray(_headerDecoder);
         Withdrawal[]? withdrawals = null;
 
         if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
         {
-            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);
+            withdrawals = ctx.DecodeEnsureArray(_withdrawalDecoderDecoder);
         }
 
         return new BlockBody(transactions, uncles, withdrawals);

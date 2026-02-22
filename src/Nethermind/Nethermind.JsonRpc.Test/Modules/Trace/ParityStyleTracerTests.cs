@@ -9,18 +9,18 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Trace;
-using Nethermind.Specs;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace;
 
@@ -31,12 +31,11 @@ public class ParityStyleTracerTests
     private IPoSSwitcher? _poSSwitcher;
     private ITraceRpcModule _traceRpcModule;
     private IContainer _container;
-    private IBlockProcessingQueue _blockProcessingQueue;
 
     [SetUp]
     public async Task Setup()
     {
-        ISpecProvider specProvider = MainnetSpecProvider.Instance;
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Berlin.Instance);
 
         _blockTree = Build.A.BlockTree()
             .WithoutSettingHead
@@ -57,8 +56,6 @@ public class ParityStyleTracerTests
 
         await _container.Resolve<PseudoNethermindRunner>().StartBlockProcessing(default);
         _traceRpcModule = _container.Resolve<IRpcModuleFactory<ITraceRpcModule>>().Create();
-        _blockProcessingQueue = _container.Resolve<IBlockProcessingQueue>();
-
     }
 
     [TearDown]

@@ -56,7 +56,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                stream.Encode(Rlp.OfEmptySequence);
+                stream.Encode(Rlp.OfNullOrZero);
                 return;
             }
 
@@ -91,18 +91,19 @@ namespace Nethermind.Serialization.Rlp
 
         public override int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return item is null ? Rlp.OfEmptySequence.Length : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+            return item is null ? Rlp.OfNullOrZero.Length : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
 
         protected override BlockInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            int sequenceLength = decoderContext.ReadSequenceLength();
+
+            if (sequenceLength is 0)
             {
-                decoderContext.ReadByte();
                 return null;
             }
 
-            int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            int lastCheck = sequenceLength + decoderContext.Position;
 
             Hash256? blockHash = decoderContext.DecodeKeccak();
             bool wasProcessed = decoderContext.DecodeBool();

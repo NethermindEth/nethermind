@@ -274,33 +274,33 @@ public class EthSimulateTestsBlocksAndTransactions
         EthereumJsonSerializer serializer = new();
         string input = """
                        {
-                              "traceTransfers": true,
-                        "blockStateCalls": [
-                          {
-                            "blockOverrides": {
-                              "baseFeePerGas": "0xa"
-                            },
-                            "stateOverrides": {
-                              "0xc000000000000000000000000000000000000000": {
-                                "balance": "0x35a4ece8"
-                              }
-                            },
-                            "calls": [
-                              {
-                                "type": "0x2",
-                                "from": "0xc000000000000000000000000000000000000000",
-                                "to": "0xc100000000000000000000000000000000000000",
-                                "gas": "0x5208",
-                                "maxFeePerGas": "0x14",
-                                "maxPriorityFeePerGas": "0x1",
-                                "maxFeePerBlobGas": "0x0",
-                                "value": "0x65",
-                                "nonce": "0x0",
-                                "input": "0x"
-                              }
-                            ]
-                          }
-                        ]
+                           "traceTransfers": true,
+                           "blockStateCalls": [
+                               {
+                                   "blockOverrides": {
+                                       "baseFeePerGas": "0xa"
+                                   },
+                                   "stateOverrides": {
+                                       "0xc000000000000000000000000000000000000000": {
+                                           "balance": "0x35a4ece8"
+                                       }
+                                   },
+                                   "calls": [
+                                       {
+                                           "type": "0x2",
+                                           "from": "0xc000000000000000000000000000000000000000",
+                                           "to": "0xc100000000000000000000000000000000000000",
+                                           "gas": "0x5208",
+                                           "maxFeePerGas": "0x14",
+                                           "maxPriorityFeePerGas": "0x1",
+                                           "maxFeePerBlobGas": "0x0",
+                                           "value": "0x65",
+                                           "nonce": "0x0",
+                                           "input": "0x"
+                                       }
+                                   ]
+                               }
+                           ]
                        }
                        """;
         return serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);

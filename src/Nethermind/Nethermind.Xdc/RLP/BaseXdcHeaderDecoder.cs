@@ -33,13 +33,14 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
 
     public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        ReadOnlySpan<byte> headerRlp = decoderContext.PeekNextItem();
+        int headerSequenceLength = decoderContext.ReadSequenceLength();
+
+        if (headerSequenceLength is 0)
         {
             return null;
         }
 
-        ReadOnlySpan<byte> headerRlp = decoderContext.PeekNextItem();
-        int headerSequenceLength = decoderContext.ReadSequenceLength();
         int headerCheck = decoderContext.Position + headerSequenceLength;
 
         // Common fields
@@ -169,7 +170,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
     {
         if (item is null)
         {
-            return Rlp.OfEmptySequence;
+            return Rlp.OfNullOrZero;
         }
 
         if (item is not TH header)

@@ -60,7 +60,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (items is null)
             {
-                WriteByte(Rlp.NullObjectByte);
+                WriteByte(Rlp.NullOrZeroByte);
                 return;
             }
             IRlpStreamDecoder<T> decoder = Rlp.GetStreamDecoder<T>();
@@ -91,7 +91,7 @@ namespace Nethermind.Serialization.Rlp
             switch (contentLength)
             {
                 case 0:
-                    WriteByte(EmptyArrayByte);
+                    WriteByte(Rlp.NullOrZeroByte);
                     break;
                 case 1 when firstByteLessThan128:
                     // the single byte of content will be written without any prefix
@@ -192,7 +192,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (keccak is null)
             {
-                WriteByte(EmptyArrayByte);
+                WriteByte(Rlp.NullOrZeroByte);
             }
             else if (ReferenceEquals(keccak, Keccak.EmptyTreeHash))
             {
@@ -213,7 +213,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (keccak is null)
             {
-                WriteByte(EmptyArrayByte);
+                WriteByte(Rlp.NullOrZeroByte);
             }
             else
             {
@@ -297,7 +297,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (address is null)
             {
-                WriteByte(EmptyArrayByte);
+                WriteByte(Rlp.NullOrZeroByte);
             }
             else
             {
@@ -310,7 +310,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (rlp is null)
             {
-                WriteByte(EmptyArrayByte);
+                WriteByte(Rlp.NullOrZeroByte);
             }
             else
             {
@@ -329,7 +329,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else if (bloom is null)
             {
-                WriteByte(EmptyArrayByte);
+                WriteByte(Rlp.NullOrZeroByte);
             }
             else
             {
@@ -375,7 +375,7 @@ namespace Nethermind.Serialization.Rlp
             if (value < 128)
             {
                 // Single-byte optimization for [0..127]
-                byte singleByte = value > 0 ? (byte)value : EmptyArrayByte;
+                byte singleByte = value > 0 ? (byte)value : Rlp.NullOrZeroByte;
                 WriteByte(singleByte);
                 return;
             }
@@ -411,7 +411,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (value.IsZero && length == -1)
             {
-                WriteByte(EmptyArrayByte);
+                WriteByte(Rlp.NullOrZeroByte);
             }
             else
             {
@@ -442,7 +442,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (input is null)
             {
-                WriteByte(EmptyArrayByte);
+                WriteByte(Rlp.NullOrZeroByte);
                 return;
             }
             Encode(input.Value.Span);
@@ -456,7 +456,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (input.IsEmpty)
             {
-                WriteByte(EmptyArrayByte);
+                WriteByte(Rlp.NullOrZeroByte);
             }
             else if (input.Length == 1 && input[0] < 128)
             {
@@ -882,7 +882,7 @@ namespace Nethermind.Serialization.Rlp
 
         public bool IsNextItemEmptyArray() => PeekByte() == Rlp.EmptyArrayByte;
 
-        public bool IsNextItemNull() => PeekByte() == Rlp.NullObjectByte;
+        public bool IsNextItemNull() => PeekByte() == Rlp.NullOrZeroByte;
 
         public bool DecodeBool()
         {
@@ -929,15 +929,20 @@ namespace Nethermind.Serialization.Rlp
             return default;
         }
 
-        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+        public T[]? DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
         {
+            if (IsNextItemNull())
+            {
+                ReadByte();
+                return null;
+            }
             int positionCheck = ReadSequenceLength() + Position;
             int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
             GuardLimit(count, limit);
             T[] result = new T[count];
             for (int i = 0; i < result.Length; i++)
             {
-                if (PeekByte() == Rlp.OfEmptySequence[0])
+                if (PeekByte() == Rlp.NullOrZeroByte)
                 {
                     result[i] = defaultElement;
                     Position++;
@@ -956,15 +961,27 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public ArrayPoolList<T> DecodeArrayPoolList<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+        public T[] DecodeEnsureArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+            => DecodeArray(decodeItem, checkPositions, defaultElement, limit) ?? throw RlpException.NoNullAllowed();
+
+        public ArrayPoolList<T> DecodeEnsureArrayPoolList<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+            => DecodeArrayPoolList(decodeItem, checkPositions, defaultElement, limit) ?? throw RlpException.NoNullAllowed();
+
+        public ArrayPoolList<T>? DecodeArrayPoolList<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
         {
+            if (IsNextItemNull())
+            {
+                ReadByte();
+                return null;
+            }
+
             int positionCheck = ReadSequenceLength() + Position;
             int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
             GuardLimit(count, limit);
             var result = new ArrayPoolList<T>(count, count);
             for (int i = 0; i < result.Count; i++)
             {
-                if (PeekByte() == Rlp.OfEmptySequence[0])
+                if (PeekByte() == Rlp.NullOrZeroByte)
                 {
                     result[i] = defaultElement;
                     Position++;
@@ -1070,7 +1087,7 @@ namespace Nethermind.Serialization.Rlp
             switch (prefix)
             {
                 case 0:
-                    return (long)RlpHelpers.ThrowNonCanonicalInteger(Position);
+                    return RlpHelpers.ThrowNonCanonicalInteger(Position);
                 case < 128:
                     return prefix;
                 case 128:
@@ -1215,17 +1232,19 @@ namespace Nethermind.Serialization.Rlp
 
         public void Reset() => Position = 0;
 
-        public void EncodeNullObject() => WriteByte(EmptySequenceByte);
+        public void EncodeNullObject() => WriteByte(Rlp.NullOrZeroByte);
 
-        public void EncodeEmptyByteArray() => WriteByte(EmptyArrayByte);
-
-        private const byte EmptyArrayByte = 128;
-        private const byte EmptySequenceByte = 192;
+        public void EncodeEmptyArray() => WriteByte(Rlp.EmptyArrayByte);
 
         public override string ToString() => $"[{nameof(RlpStream)}|{Position}/{Length}]";
 
-        public byte[][] DecodeByteArrays(RlpLimit? limit = null)
+        public byte[][]? DecodeByteArrays(RlpLimit? limit = null)
         {
+            if (IsNextItemNull())
+            {
+                ReadByte();
+                return null;
+            }
             int length = ReadSequenceLength();
             if (length is 0)
             {
@@ -1246,6 +1265,9 @@ namespace Nethermind.Serialization.Rlp
 
             return result;
         }
+
+        public byte[][] DecodeEnsureByteArrays(RlpLimit? limit = null)
+            => DecodeByteArrays(limit) ?? throw RlpException.NoNullAllowed();
 
         [StackTraceHidden]
         public void GuardLimit(int count, RlpLimit? limit = null) =>

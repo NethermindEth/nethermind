@@ -123,7 +123,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     {
         base.DecodePayload(transaction, rlpStream, rlpBehaviors);
         transaction.MaxFeePerBlobGas = rlpStream.DecodeUInt256();
-        transaction.BlobVersionedHashes = rlpStream.DecodeByteArrays();
+        transaction.BlobVersionedHashes = rlpStream.DecodeEnsureByteArrays();
     }
 
     protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
@@ -131,7 +131,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     {
         base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
         transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
-        transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays();
+        transaction.BlobVersionedHashes = decoderContext.DecodeEnsureByteArrays();
     }
 
     protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -153,9 +153,9 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             }
         }
 
-        byte[][] blobs = rlpStream.DecodeByteArrays();
-        byte[][] commitments = rlpStream.DecodeByteArrays();
-        byte[][] proofs = rlpStream.DecodeByteArrays();
+        byte[][] blobs = rlpStream.DecodeEnsureByteArrays();
+        byte[][] commitments = rlpStream.DecodeEnsureByteArrays();
+        byte[][] proofs = rlpStream.DecodeEnsureByteArrays();
 
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version);
     }
@@ -172,9 +172,9 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             }
         }
 
-        byte[][] blobs = decoderContext.DecodeByteArrays();
-        byte[][] commitments = decoderContext.DecodeByteArrays();
-        byte[][] proofs = decoderContext.DecodeByteArrays();
+        byte[][] blobs = decoderContext.DecodeEnsureByteArrays();
+        byte[][] commitments = decoderContext.DecodeEnsureByteArrays();
+        byte[][] proofs = decoderContext.DecodeEnsureByteArrays();
 
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version);
     }

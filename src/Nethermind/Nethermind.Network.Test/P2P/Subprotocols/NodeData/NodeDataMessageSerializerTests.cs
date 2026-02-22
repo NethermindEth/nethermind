@@ -43,7 +43,7 @@ public class NodeDataMessageSerializerTests
     [Test]
     public void Roundtrip_with_nulls()
     {
-        ArrayPoolList<byte[]> data = new(3) { TestItem.KeccakA.BytesToArray(), Array.Empty<byte>(), TestItem.KeccakC.BytesToArray() };
+        ArrayPoolList<byte[]> data = new(3) { TestItem.KeccakA.BytesToArray(), null, TestItem.KeccakC.BytesToArray() };
         Test(data);
     }
 }

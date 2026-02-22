@@ -11,9 +11,13 @@ internal sealed class XdcBlockInfoDecoder : RlpValueDecoder<BlockRoundInfo>
 {
     protected override BlockRoundInfo DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
-            return null;
         int sequenceLength = decoderContext.ReadSequenceLength();
+
+        if (sequenceLength is 0)
+        {
+            return null;
+        }
+
         int endPosition = decoderContext.Position + sequenceLength;
 
         byte[] hashBytes = decoderContext.DecodeByteArray();
@@ -29,7 +33,10 @@ internal sealed class XdcBlockInfoDecoder : RlpValueDecoder<BlockRoundInfo>
     protected override BlockRoundInfo DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
+        {
+            rlpStream.ReadByte();
             return null;
+        }
         int sequenceLength = rlpStream.ReadSequenceLength();
         int endPosition = rlpStream.Position + sequenceLength;
 

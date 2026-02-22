@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.ReadSequenceLength();
 
             message.RequestId = rlpStream.DecodeLong();
-            message.Hashes = rlpStream.DecodeArrayPoolList(_ => rlpStream.DecodeValueKeccak(out var keccak) ? keccak : default);
+            message.Hashes = rlpStream.DecodeEnsureArrayPoolList(_ => rlpStream.DecodeValueKeccak(out var keccak) ? keccak : default);
             message.Bytes = rlpStream.DecodeLong();
 
             return message;

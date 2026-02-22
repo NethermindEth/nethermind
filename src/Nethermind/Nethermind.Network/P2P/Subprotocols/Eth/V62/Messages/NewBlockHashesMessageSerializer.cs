@@ -50,7 +50,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         private static NewBlockHashesMessage Deserialize(RlpStream rlpStream)
         {
-            (Hash256, long)[] blockHashes = rlpStream.DecodeArray(static ctx =>
+            (Hash256, long)[] blockHashes = rlpStream.DecodeEnsureArray(static ctx =>
             {
                 ctx.ReadSequenceLength();
                 return (ctx.DecodeKeccak(), (long)ctx.DecodeUInt256());

@@ -177,7 +177,7 @@ public class JsonRpcUrlCollectionTests
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
             { 1234, new JsonRpcUrl("http", "localhost", 1234, RpcEndpoint.Http, false, ["db", "erc20", "web3"]) }
-        }, Is.EquivalentTo(urlCollection)); ;
+        }, Is.EquivalentTo(urlCollection));
     }
 
     [Test]
@@ -201,7 +201,7 @@ public class JsonRpcUrlCollectionTests
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
             { 8551, new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http | RpcEndpoint.Ws, true, [ModuleType.Eth, ModuleType.Engine]) },
-        }, Is.EquivalentTo(urlCollection)); ;
+        }, Is.EquivalentTo(urlCollection));
     }
 
     [Test]

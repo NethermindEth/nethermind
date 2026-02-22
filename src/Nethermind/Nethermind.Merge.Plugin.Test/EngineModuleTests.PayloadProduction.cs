@@ -17,6 +17,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -283,7 +284,7 @@ public partial class EngineModuleTests
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         Block block = Build.A.Block.WithTransactions(
             Build.A.Transaction.WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-            Build.A.Transaction.WithTo(TestItem.AddressD).WithType(TxType.EIP1559).WithMaxFeePerGas(20).SignedAndResolved(TestItem.PrivateKeyA).TestObject).TestObject;
+            Build.A.Transaction.WithTo(TestItem.AddressD).WithType(TxType.EIP1559).WithMaxFeePerGas(20).WithAccessList(AccessList.Empty).SignedAndResolved(TestItem.PrivateKeyA).TestObject).TestObject;
         IBlockProductionContext improvementContext = Substitute.For<IBlockProductionContext>();
         improvementContext.CurrentBestBlock.Returns(block);
         payloadPreparationService.GetPayload(Arg.Any<string>(), Arg.Any<bool>()).Returns(improvementContext);

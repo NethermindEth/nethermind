@@ -21,37 +21,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             stream.StartSequence(contentLength);
 
             stream.Encode(message.RequestId);
-            if (message.PathsWithAccounts is null || message.PathsWithAccounts.Count == 0)
-            {
-                stream.EncodeNullObject();
-            }
-            else
-            {
-                stream.StartSequence(pwasLength);
-                for (int i = 0; i < message.PathsWithAccounts.Count; i++)
-                {
-                    PathWithAccount pwa = message.PathsWithAccounts[i];
 
-                    int accountContentLength = _decoder.GetContentLength(pwa.Account);
-                    int pwaLength = Rlp.LengthOf(pwa.Path) + Rlp.LengthOfSequence(accountContentLength);
+            stream.StartSequence(pwasLength);
+            for (int i = 0; i < message.PathsWithAccounts.Count; i++)
+            {
+                PathWithAccount pwa = message.PathsWithAccounts[i];
 
-                    stream.StartSequence(pwaLength);
-                    stream.Encode(pwa.Path);
-                    _decoder.Encode(pwa.Account, stream, accountContentLength);
-                }
+                int accountContentLength = _decoder.GetContentLength(pwa.Account);
+                int pwaLength = Rlp.LengthOf(pwa.Path) + Rlp.LengthOfSequence(accountContentLength);
+
+                stream.StartSequence(pwaLength);
+                stream.Encode(pwa.Path);
+                _decoder.Encode(pwa.Account, stream, accountContentLength);
             }
 
-            if (message.Proofs is null || message.Proofs.Count == 0)
+            stream.StartSequence(proofsLength);
+            for (int i = 0; i < message.Proofs.Count; i++)
             {
-                stream.EncodeNullObject();
-            }
-            else
-            {
-                stream.StartSequence(proofsLength);
-                for (int i = 0; i < message.Proofs.Count; i++)
-                {
-                    stream.Encode(message.Proofs[i]);
-                }
+                stream.Encode(message.Proofs[i]);
             }
         }
 
@@ -63,13 +50,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.ReadSequenceLength();
 
             message.RequestId = rlpStream.DecodeLong();
-            message.PathsWithAccounts = rlpStream.DecodeArrayPoolList(DecodePathWithRlpData);
-            message.Proofs = rlpStream.DecodeArrayPoolList(static s => s.DecodeByteArray());
+            message.PathsWithAccounts = rlpStream.DecodeEnsureArrayPoolList(DecodePathWithAccount);
+            message.Proofs = rlpStream.DecodeEnsureArrayPoolList(static s => s.DecodeByteArray());
 
             return message;
         }
 
-        private PathWithAccount DecodePathWithRlpData(RlpStream stream)
+        private PathWithAccount DecodePathWithAccount(RlpStream stream)
         {
             stream.ReadSequenceLength();
 

@@ -138,7 +138,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence.Bytes;
+                return Rlp.OfNullOrZero.Bytes;
             }
 
             int length = GetLength(item, rlpBehaviors);

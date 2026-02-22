@@ -103,7 +103,7 @@ namespace Nethermind.Serialization.Rlp
         protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyArray())
             {
                 decoderContext.ReadByte();
                 return null;
@@ -338,7 +338,7 @@ namespace Nethermind.Serialization.Rlp
         {
             item = new TxReceiptStructRef();
 
-            if (decoderContext.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyArray())
             {
                 decoderContext.ReadByte();
                 return;

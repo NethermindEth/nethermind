@@ -20,8 +20,8 @@ public class LegacyTxDecoder<T>(Func<T>? transactionFactory = null) : BaseTxDeco
             if (IncludeSigChainIdHack(isEip155Enabled, chainId))
             {
                 stream.Encode(chainId);
-                stream.Encode(Rlp.OfEmptyByteArray);
-                stream.Encode(Rlp.OfEmptyByteArray);
+                stream.Encode(Rlp.OfNullOrZero);
+                stream.Encode(Rlp.OfNullOrZero);
             }
         }
         else

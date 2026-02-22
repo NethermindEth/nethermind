@@ -4,7 +4,6 @@
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using System.Collections;
@@ -148,14 +147,14 @@ public class SyncInfoDecoderTests
 
         Rlp encoded = decoder.Encode(null!);
 
-        Assert.That(encoded, Is.EqualTo(Rlp.OfEmptySequence));
+        Assert.That(encoded, Is.EqualTo(Rlp.OfNullOrZero));
     }
 
     [Test]
     public void Decode_Null_ReturnsNull()
     {
         var decoder = new SyncInfoDecoder();
-        var stream = new RlpStream(Rlp.OfEmptySequence.Bytes);
+        var stream = new RlpStream(Rlp.OfNullOrZero.Bytes);
 
         SyncInfo decoded = decoder.Decode(stream);
 
@@ -166,7 +165,7 @@ public class SyncInfoDecoderTests
     public void Decode_EmptyByteArray_ValueDecoderContext_ReturnsNull()
     {
         var decoder = new SyncInfoDecoder();
-        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(Rlp.OfEmptySequence.Bytes);
+        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(Rlp.OfNullOrZero.Bytes);
 
         SyncInfo decoded = decoder.Decode(ref decoderContext);
 
