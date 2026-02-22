@@ -50,10 +50,10 @@ public class TxProcessingBenchmark
         .Done;
 
     // 128 bytes: every 4th byte is zero, rest non-zero  (realistic calldata mix)
-    private static readonly byte[] MixedData128  = CreateMixedData(128);
+    private static readonly byte[] MixedData128 = CreateMixedData(128);
 
     // 128 bytes: all zeros (cheapest calldata per byte)
-    private static readonly byte[] ZeroData128   = new byte[128];
+    private static readonly byte[] ZeroData128 = new byte[128];
 
     // 1024 bytes mixed (heavier calldata cost)
     private static readonly byte[] MixedData1024 = CreateMixedData(1024);
@@ -66,19 +66,19 @@ public class TxProcessingBenchmark
         .AddStorage(new UInt256(42))
         .Build();
 
-    private IWorldState           _stateProvider  = null!;
-    private IDisposable           _stateScope     = null!;
-    private ITransactionProcessor _processor      = null!;
-    private BlockHeader           _header         = null!;
+    private IWorldState _stateProvider = null!;
+    private IDisposable _stateScope = null!;
+    private ITransactionProcessor _processor = null!;
+    private BlockHeader _header = null!;
 
     // ── transaction instances ──────────────────────────────────────────────
-    private Transaction _simpleTx        = null!;  // 21 000 gas ETH transfer
-    private Transaction _mixedDataTx     = null!;  // transfer + 128 B mixed calldata
-    private Transaction _zeroDataTx      = null!;  // transfer + 128 B zero calldata
-    private Transaction _largeDataTx     = null!;  // transfer + 1024 B mixed calldata
-    private Transaction _accessListTx    = null!;  // EIP-2930: access-list tx
-    private Transaction _eip1559Tx       = null!;  // EIP-1559: type-2 tx
-    private Transaction _contractCallTx  = null!;  // call a deployed contract
+    private Transaction _simpleTx = null!;  // 21 000 gas ETH transfer
+    private Transaction _mixedDataTx = null!;  // transfer + 128 B mixed calldata
+    private Transaction _zeroDataTx = null!;  // transfer + 128 B zero calldata
+    private Transaction _largeDataTx = null!;  // transfer + 1024 B mixed calldata
+    private Transaction _accessListTx = null!;  // EIP-2930: access-list tx
+    private Transaction _eip1559Tx = null!;  // EIP-1559: type-2 tx
+    private Transaction _contractCallTx = null!;  // call a deployed contract
     private Transaction _contractDeployTx = null!; // CREATE: deploy new contract
 
     private static byte[] CreateMixedData(int length)
@@ -93,7 +93,7 @@ public class TxProcessingBenchmark
     public void GlobalSetup()
     {
         _stateProvider = TestWorldStateFactory.CreateForTest();
-        _stateScope    = _stateProvider.BeginScope(IWorldState.PreGenesis);
+        _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
 
         // Fund sender; deploy target contract
         _stateProvider.CreateAccount(TestItem.AddressA, 10_000.Ether());
@@ -193,13 +193,13 @@ public class TxProcessingBenchmark
 
         // Pre-warm all paths
         _processor.SetBlockExecutionContext(_header);
-        _processor.CallAndRestore(_simpleTx,         NullTxTracer.Instance);
-        _processor.CallAndRestore(_mixedDataTx,      NullTxTracer.Instance);
-        _processor.CallAndRestore(_zeroDataTx,       NullTxTracer.Instance);
-        _processor.CallAndRestore(_largeDataTx,      NullTxTracer.Instance);
-        _processor.CallAndRestore(_accessListTx,     NullTxTracer.Instance);
-        _processor.CallAndRestore(_eip1559Tx,        NullTxTracer.Instance);
-        _processor.CallAndRestore(_contractCallTx,   NullTxTracer.Instance);
+        _processor.CallAndRestore(_simpleTx, NullTxTracer.Instance);
+        _processor.CallAndRestore(_mixedDataTx, NullTxTracer.Instance);
+        _processor.CallAndRestore(_zeroDataTx, NullTxTracer.Instance);
+        _processor.CallAndRestore(_largeDataTx, NullTxTracer.Instance);
+        _processor.CallAndRestore(_accessListTx, NullTxTracer.Instance);
+        _processor.CallAndRestore(_eip1559Tx, NullTxTracer.Instance);
+        _processor.CallAndRestore(_contractCallTx, NullTxTracer.Instance);
         _processor.CallAndRestore(_contractDeployTx, NullTxTracer.Instance);
     }
 
