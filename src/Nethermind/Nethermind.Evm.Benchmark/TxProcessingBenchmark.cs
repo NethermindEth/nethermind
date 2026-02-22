@@ -28,21 +28,21 @@ namespace Nethermind.Evm.Benchmark;
 ///
 /// Transaction types covered:
 /// - Legacy ETH transfer (simple, data, zero-data, large-data)
-/// - EIP-2930 access-list transaction (Berlin)
-/// - EIP-1559 type-2 transaction (London)
+/// - EIP-2930 access-list transaction (type 1)
+/// - EIP-1559 type-2 transaction
 /// - Contract deployment via CREATE (no recipient)
 /// - Contract call into deployed code
 ///
+/// All benchmarks run under <see cref="Osaka"/> rules (latest fork).
 /// Based on PR #10514 (intrinsic-gas cache benchmark).
-/// Block is set at 15 000 000 so London+ rules apply.
 /// </summary>
 [MemoryDiagnoser]
 public class TxProcessingBenchmark
 {
     private const int N = 1_000;
 
-    // Block well past London (12 965 000) so EIP-1559 and EIP-2930 are active
-    private const long BenchmarkBlock = 15_000_000;
+    private static readonly IReleaseSpec Spec = Osaka.Instance;
+    private static readonly ISpecProvider SpecProvider = new TestSpecProvider(Osaka.Instance);
 
     private static readonly byte[] ContractCode = Prepare.EvmCode
         .PushData(0x01)
@@ -92,20 +92,18 @@ public class TxProcessingBenchmark
     [GlobalSetup]
     public void GlobalSetup()
     {
-        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)BenchmarkBlock);
-
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _stateScope    = _stateProvider.BeginScope(IWorldState.PreGenesis);
 
         // Fund sender; deploy target contract
         _stateProvider.CreateAccount(TestItem.AddressA, 10_000.Ether());
         _stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
-        _stateProvider.InsertCode(TestItem.AddressB, ContractCode, spec);
-        _stateProvider.Commit(spec);
+        _stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
+        _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
 
         _header = Build.A.BlockHeader
-            .WithNumber(BenchmarkBlock)
+            .WithNumber(1)
             .WithGasLimit(30_000_000)
             .WithBaseFee(10.GWei())
             .WithStateRoot(_stateProvider.StateRoot)
@@ -114,11 +112,11 @@ public class TxProcessingBenchmark
         EthereumCodeInfoRepository codeInfo = new(_stateProvider);
         EthereumVirtualMachine vm = new(
             new TestBlockhashProvider(),
-            MainnetSpecProvider.Instance,
+            SpecProvider,
             LimboLogs.Instance);
         _processor = new EthereumTransactionProcessor(
             BlobBaseFeeCalculator.Instance,
-            MainnetSpecProvider.Instance,
+            SpecProvider,
             _stateProvider,
             vm,
             codeInfo,
