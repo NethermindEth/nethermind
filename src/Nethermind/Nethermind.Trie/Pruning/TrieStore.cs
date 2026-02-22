@@ -69,6 +69,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
     private readonly IFinalizedStateProvider _finalizedStateProvider;
+    private readonly InPruningTrieStoreFactory _inPruningTrieStoreFactory;
 
     public TrieStore(
         INodeStorage nodeStorage,
@@ -105,11 +106,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, keepRoot: _deleteOldNodes, _logger);
             _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
         }
+        _inPruningTrieStoreFactory = new(this);
     }
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
-
-    private IScopedTrieStore GetTrieStoreForPruning(Hash256? address) => new ScopedTrieStore(new InPruningTrieStore(this), address);
 
     public long LastPersistedBlockNumber
     {
@@ -1112,7 +1112,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         // The first CallRecursive stop at two level, yielding 256 node in parallelStartNodes, which is run concurrently
         TreePath path = TreePath.Empty;
-        commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, GetTrieStoreForPruning(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
+        commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, _inPruningTrieStoreFactory.GetStorageTrieNodeResolver(null), _inPruningTrieStoreFactory, true, _logger, maxPathLength: parallelBoundaryPathLength);
 
         // The amount of change in the subtrees are not balanced at all. So their writes areas buffered here
         // which get disposed in parallel instead of being disposed in `PersistNodeStartingFrom`.
@@ -1181,7 +1181,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
-        await tn.CallRecursivelyAsync(DoPersist, address2, ref path, GetTrieStoreForPruning(address2), _logger);
+        await tn.CallRecursivelyAsync(DoPersist, address2, ref path, _inPruningTrieStoreFactory.GetStorageTrieNodeResolver(address2), _inPruningTrieStoreFactory, _logger);
         await disposeQueue.Writer.WriteAsync(writeBatch);
     }
 
@@ -1767,5 +1767,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(address, in path, hash, flags);
 
         public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
+    }
+
+    /// <summary>
+    /// Factory for creating scoped trie stores during memory pruning.
+    /// </summary>
+    private class InPruningTrieStoreFactory(TrieStore baseTrieStore) : ITrieNodeResolverFactory
+    {
+        private readonly InPruningTrieStore _inPruningTrieStore = new(baseTrieStore);
+
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => new ScopedTrieStore(_inPruningTrieStore, address);
     }
 }

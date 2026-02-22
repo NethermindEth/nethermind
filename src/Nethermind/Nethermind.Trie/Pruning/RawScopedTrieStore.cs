@@ -8,7 +8,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
-public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = null) : IScopedTrieStore
+public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = null) : IScopedTrieStore, ITrieNodeResolverFactory
 {
     public RawScopedTrieStore(IKeyValueStoreWithBatching kv, Hash256? address = null) : this(new NodeStorage(kv), address)
     {
@@ -25,11 +25,12 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => nodeStorage.Get(address, path, hash, flags);
 
-    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => new RawScopedTrieStore(nodeStorage, address);
-
     public INodeStorage.KeyScheme Scheme => nodeStorage.Scheme;
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(nodeStorage, address, writeFlags);
+
+    ITrieNodeResolver ITrieNodeResolverFactory.GetStorageTrieNodeResolver(Hash256? storageAddress) =>
+        new RawScopedTrieStore(nodeStorage, storageAddress);
 
     public class Committer(INodeStorage nodeStorage, Hash256? address, WriteFlags writeFlags) : ICommitter
     {

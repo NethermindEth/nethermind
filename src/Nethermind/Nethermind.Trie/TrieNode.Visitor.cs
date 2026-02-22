@@ -22,14 +22,14 @@ namespace Nethermind.Trie
     partial class TrieNode
     {
         internal void Accept<TNodeContext>(ITreeVisitor<TNodeContext> visitor, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver,
-            ref TreePath path, TrieVisitContext trieVisitContext) where TNodeContext : struct, INodeContext<TNodeContext>
+            ITrieNodeResolverFactory factory, ref TreePath path, TrieVisitContext trieVisitContext) where TNodeContext : struct, INodeContext<TNodeContext>
         {
-            new TrieNodeTraverser<TNodeContext>(visitor, trieVisitContext)
+            new TrieNodeTraverser<TNodeContext>(visitor, trieVisitContext, factory)
                 .Start(this, nodeContext, nodeResolver, ref path);
         }
     }
 
-    public class TrieNodeTraverser<TNodeContext>(ITreeVisitor<TNodeContext> visitor, TrieVisitContext options) where TNodeContext : struct, INodeContext<TNodeContext>
+    public class TrieNodeTraverser<TNodeContext>(ITreeVisitor<TNodeContext> visitor, TrieVisitContext options, ITrieNodeResolverFactory factory) where TNodeContext : struct, INodeContext<TNodeContext>
     {
         private static readonly AccountDecoder _accountDecoder = new();
         private int _maxDegreeOfParallelism = options.MaxDegreeOfParallelism;
@@ -128,7 +128,7 @@ namespace Nethermind.Trie
 
                             if (account.HasStorage && visitor.ShouldVisit(leafContext, account.StorageRoot))
                             {
-                                if (node.TryResolveStorageRoot(nodeResolver, ref path, out TrieNode? storageRoot))
+                                if (node.TryResolveStorageRoot(nodeResolver, factory, ref path, out TrieNode? storageRoot))
                                 {
                                     Hash256 storageAccount;
                                     using (path.ScopedAppend(node.Key))
@@ -138,7 +138,7 @@ namespace Nethermind.Trie
 
                                     TNodeContext storageContext = leafContext.AddStorage(storageAccount);
                                     TreePath emptyPath = TreePath.Empty;
-                                    actualSubtreeSize += Accept(storageRoot!, storageContext, nodeResolver.GetStorageTrieNodeResolver(storageAccount), ref emptyPath, true, subtreeSizeHint);
+                                    actualSubtreeSize += Accept(storageRoot!, storageContext, factory.GetStorageTrieNodeResolver(storageAccount), ref emptyPath, true, subtreeSizeHint);
                                 }
                                 else
                                 {
