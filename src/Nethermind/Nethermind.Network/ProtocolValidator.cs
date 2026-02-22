@@ -93,8 +93,10 @@ namespace Nethermind.Network
                     _logger.IsTrace ? $", different genesis hash: {syncPeerArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}" : "");
             }
 
-            // eth/100 (XDC) uses eth/62-style handshake without ForkId - skip ForkId validation
-            if (syncPeerArgs.ProtocolVersion < 100)
+            // XDC (chainId 50/51) uses eth/62-style handshake without ForkId
+            // Skip ForkId validation for XDC chains regardless of protocol version
+            bool isXdcChain = syncPeerArgs.NetworkId == 50 || syncPeerArgs.NetworkId == 51;
+            if (!isXdcChain && syncPeerArgs.ProtocolVersion < 100)
             {
                 if (syncPeerArgs.ForkId is null)
                 {
