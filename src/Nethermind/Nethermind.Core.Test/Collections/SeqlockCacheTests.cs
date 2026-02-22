@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -13,6 +14,22 @@ namespace Nethermind.Core.Test.Collections;
 
 public class SeqlockCacheTests
 {
+    /// <summary>
+    /// All instances share the same 64-bit hash, forcing every key into the same
+    /// cache set with the same header signature. Correctness depends entirely on
+    /// the seqlock + Equals protocol — exactly where the ref-readonly bug lives.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SameHashKey(int id) : IHash64bit<SameHashKey>
+    {
+        public int Id = id;
+        // Padding to ~48 bytes so the struct copy is non-trivial.
+        private long _pad0, _pad1, _pad2, _pad3, _pad4;
+
+        public readonly long GetHashCode64() => unchecked((long)0xDEAD_BEEF_CAFE_BABEL);
+        public readonly bool Equals(in SameHashKey other) => Id == other.Id;
+    }
+
     private static StorageCell CreateKey(int seed)
     {
         byte[] addressBytes = new byte[20];
@@ -390,6 +407,75 @@ public class SeqlockCacheTests
         bool found = cache.TryGetValue(in key, out byte[]? result);
         found.Should().BeTrue();
         result.Should().BeSameAs(value);
+    }
+
+    [Test]
+    public void Concurrent_read_write_returns_correct_value_for_key()
+    {
+        // All keys share the same hash → same 2 slots (way 0 + way 1).
+        // The hash-signature check always passes, so correctness relies on seqlock + Equals.
+        SeqlockCache<SameHashKey, object> cache = new();
+
+        const int keyCount = 16;
+        SameHashKey[] keys = new SameHashKey[keyCount];
+        object[] values = new object[keyCount];
+        for (int i = 0; i < keyCount; i++)
+        {
+            keys[i] = new SameHashKey(i);
+            values[i] = new object(); // unique reference identity
+        }
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(2));
+        string? failure = null;
+        int failureCount = 0;
+
+        // 4 writers continuously cycling through all key-value pairs
+        Task[] writers = new Task[4];
+        for (int w = 0; w < writers.Length; w++)
+        {
+            writers[w] = Task.Run(() =>
+            {
+                while (!cts.IsCancellationRequested && failure is null)
+                {
+                    for (int i = 0; i < keyCount; i++)
+                    {
+                        SameHashKey k = keys[i];
+                        cache.Set(in k, values[i]);
+                    }
+                }
+            });
+        }
+
+        // 4 readers: if TryGetValue(key_i) hits, the value MUST be values[i]
+        Task[] readers = new Task[4];
+        for (int r = 0; r < readers.Length; r++)
+        {
+            int readerIndex = r;
+            readers[r] = Task.Run(() =>
+            {
+                while (!cts.IsCancellationRequested && failure is null)
+                {
+                    for (int i = 0; i < keyCount; i++)
+                    {
+                        SameHashKey k = keys[i];
+                        if (cache.TryGetValue(in k, out object? val) && val is not null
+                            && !ReferenceEquals(val, values[i]))
+                        {
+                            Interlocked.Increment(ref failureCount);
+                            Interlocked.CompareExchange(
+                                ref failure,
+                                $"Key[{i}] returned wrong value (reader {readerIndex})",
+                                null);
+                        }
+                    }
+                }
+            });
+        }
+
+        Task.WaitAll(writers);
+        Task.WaitAll(readers);
+
+        failure.Should().BeNull($"wrong key-value pairing detected {failureCount} time(s)");
     }
 
     [Test]
