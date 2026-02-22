@@ -4,19 +4,19 @@
 #nullable enable
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading;
+using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
@@ -39,8 +39,8 @@ namespace Nethermind.Evm.Benchmark;
 /// Block-level processing benchmark measuring <see cref="BlockProcessor.ProcessOne"/>
 /// with mainnet-like block scenarios under <see cref="Osaka"/> rules.
 ///
-/// Uses <c>[IterationSetup]</c> to recreate world state before each iteration,
-/// ensuring measurements reflect cold-state block processing.
+/// Uses <c>[IterationSetup]</c> (with <c>InvocationCount=1/UnrollFactor=1</c>) to
+/// recreate world state before each measured invocation.
 ///
 /// Scenarios:
 /// - EmptyBlock, SingleTransfer, Transfers_50, Transfers_200
@@ -75,9 +75,14 @@ public class BlockProcessingBenchmark
     private readonly PrivateKey _senderKey = TestItem.PrivateKeyA;
     private Address _sender = null!;
 
+    // DI container — built once, shared across all iterations
+    private IContainer _container = null!;
+
+    // Per-iteration state
     private IWorldState _stateProvider = null!;
     private IDisposable? _stateScope;
-    private BlockProcessor _processor = null!;
+    private ILifetimeScope _processingScope = null!;
+    private IBlockProcessor _processor = null!;
 
     // Pre-built blocks (immutable after GlobalSetup)
     private Block _emptyBlock = null!;
@@ -124,12 +129,53 @@ public class BlockProcessingBenchmark
         nonce += 30;
         BuildContractCalls(10, nonce).CopyTo(mixedTxs, 190);
         _mixedBlock = BuildBlock(mixedTxs);
+
+        // Build DI container with the same wiring as BlockProcessingModule.
+        // IWorldState is left unregistered at root level; each iteration scope
+        // injects its own fresh instance (see IterationSetup).
+        ContainerBuilder builder = new();
+        builder
+            // Singletons
+            .AddSingleton<ISpecProvider>(SpecProvider)
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<IBlockValidator>(Always.Valid)
+            .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
+            .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
+            .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
+            .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
+
+            // Scoped — one fresh instance per iteration lifetime scope
+            .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
+            .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
+            .AddScoped<IVirtualMachine, EthereumVirtualMachine>()
+            .AddScoped<ITransactionProcessor, EthereumTransactionProcessor>()
+            .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
+            .AddScoped<IBlockhashStore, BlockhashStore>()
+            .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
+            .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
+            .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
+            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
+            .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>(
+                (src, txProc) => src.Get(txProc))
+            .AddScoped<IBlockProcessor, BlockProcessor>();
+
+        _container = builder.Build();
+    }
+
+    [GlobalCleanup]
+    public void GlobalCleanup()
+    {
+        _container.Dispose();
     }
 
     [IterationSetup]
     public void IterationSetup()
     {
+        // Dispose previous iteration's state
+        _processingScope?.Dispose();
         _stateScope?.Dispose();
+
+        // Fresh world state for this iteration
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
 
@@ -148,47 +194,22 @@ public class BlockProcessingBenchmark
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
 
-        CreateProcessor();
+        // Create a new lifetime scope with the fresh IWorldState injected.
+        // All scoped components (EthereumTransactionProcessor, BlockProcessor, etc.)
+        // are resolved fresh within this scope, matching the BlockProcessingModule wiring.
+        _processingScope = _container.BeginLifetimeScope(b =>
+            b.RegisterInstance(_stateProvider).As<IWorldState>().ExternallyOwned());
+
+        _processor = _processingScope.Resolve<IBlockProcessor>();
     }
 
     [IterationCleanup]
     public void IterationCleanup()
     {
+        _processingScope?.Dispose();
         _stateScope?.Dispose();
+        _processingScope = null!;
         _stateScope = null;
-    }
-
-    private void CreateProcessor()
-    {
-        EthereumCodeInfoRepository codeInfo = new(_stateProvider);
-        EthereumVirtualMachine vm = new(
-            new TestBlockhashProvider(),
-            SpecProvider,
-            LimboLogs.Instance);
-        ITransactionProcessor txProc = new EthereumTransactionProcessor(
-            BlobBaseFeeCalculator.Instance,
-            SpecProvider,
-            _stateProvider,
-            vm,
-            codeInfo,
-            LimboLogs.Instance);
-        IBlockProcessor.IBlockTransactionsExecutor executor =
-            new BlockProcessor.BlockValidationTransactionsExecutor(
-                new ExecuteTransactionProcessorAdapter(txProc),
-                _stateProvider);
-
-        _processor = new BlockProcessor(
-            SpecProvider,
-            new AlwaysValidBlockValidator(),
-            NoBlockRewards.Instance,
-            executor,
-            _stateProvider,
-            NullReceiptStorage.Instance,
-            new BeaconBlockRootHandler(txProc, _stateProvider),
-            new BlockhashStore(_stateProvider),
-            LimboLogs.Instance,
-            new WithdrawalProcessor(_stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(txProc));
     }
 
     // ── Benchmarks ────────────────────────────────────────────────────────
@@ -334,35 +355,5 @@ public class BlockProcessingBenchmark
                 .TestObject;
         }
         return txs;
-    }
-
-    // ── Inline validator ──────────────────────────────────────────────────
-
-    private sealed class AlwaysValidBlockValidator : IBlockValidator
-    {
-        public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error)
-        { error = null; return true; }
-
-        public bool ValidateSuggestedBlock(Block block, BlockHeader parent,
-            [NotNullWhen(false)] out string? error, bool validateHashes = true)
-        { error = null; return true; }
-
-        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts,
-            Block suggestedBlock, [NotNullWhen(false)] out string? error)
-        { error = null; return true; }
-
-        public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated,
-            [NotNullWhen(false)] out string? error)
-        { error = null; return true; }
-
-        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle,
-            [NotNullWhen(false)] out string? error)
-        { error = null; return true; }
-
-        public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error)
-        { error = null; return true; }
-
-        public bool ValidateWithdrawals(Block block, out string? error)
-        { error = null; return true; }
     }
 }
