@@ -568,4 +568,66 @@ jobs:
             *_perf_result
             *_perf_result.txt
             equality_result_*
-            
+
+      - name: Prepare RPC dashboard payload
+        id: rpc-payload
+        if: always()
+        env:
+          GH_RUN_ID: ${{ github.run_id }}
+          GH_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GH_REF_NAME: ${{ github.ref_name }}
+          GH_SHA: ${{ github.sha }}
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          IS_PERF: ${{ inputs.is_performance_check }}
+          BRANCH_COMPARED: ${{ inputs.branch_to_compare }}
+        run: |
+          COMP_TYPE="equality"
+          if [ "$IS_PERF" == "true" ]; then
+            COMP_TYPE="performance"
+          fi
+
+          STATUS="success"
+          if [ "${{ job.status }}" == "failure" ]; then
+            STATUS="failure"
+          elif [ "${{ job.status }}" == "cancelled" ]; then
+            STATUS="cancelled"
+          fi
+
+          PAYLOAD=$(jq -nc \
+            --argjson run_id "$GH_RUN_ID" \
+            --argjson run_attempt "$GH_RUN_ATTEMPT" \
+            --arg branch "$GH_REF_NAME" \
+            --arg commit_sha "$GH_SHA" \
+            --arg trigger_event "$GH_EVENT_NAME" \
+            --arg status "$STATUS" \
+            --arg github_run_url "$GH_RUN_URL" \
+            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg comparison_type "$COMP_TYPE" \
+            --arg network "mainnet" \
+            --arg branch_compared "$BRANCH_COMPARED" \
+            '{
+              run_id: $run_id,
+              run_attempt: $run_attempt,
+              branch: $branch,
+              commit_sha: $commit_sha,
+              trigger_event: $trigger_event,
+              status: $status,
+              github_run_url: $github_run_url,
+              timestamp: $timestamp,
+              comparison_type: $comparison_type,
+              network: $network,
+              branch_compared: $branch_compared
+            }')
+
+          echo "payload=$PAYLOAD" >> $GITHUB_OUTPUT
+
+      - name: Report to CI Dashboard
+        if: always()
+        uses: ./.github/actions/report-dashboard
+        with:
+          api-url: ${{ secrets.DASHBOARD_API_URL }}
+          api-key: ${{ secrets.DASHBOARD_API_KEY }}
+          endpoint: rpc
+          payload: ${{ steps.rpc-payload.outputs.payload }}
+
