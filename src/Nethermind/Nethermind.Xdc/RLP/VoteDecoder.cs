@@ -22,8 +22,6 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         Signature signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
-            // Fixed: use DecodeSignature() for proper RLP handling
-                throw new RlpException($"Invalid signature length in '{nameof(Vote)}'");
             signature = decoderContext.DecodeSignature();
         }
         ulong gapNumber = decoderContext.DecodeULong();
@@ -46,8 +44,6 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         Signature signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
-            // Fixed: use DecodeSignature() for proper RLP handling
-                throw new RlpException($"Invalid signature length in {nameof(Vote)}");
             signature = rlpStream.DecodeSignature();
         }
         ulong gapNumber = rlpStream.DecodeULong();

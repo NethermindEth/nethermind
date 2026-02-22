@@ -21,8 +21,6 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
         Signature signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
-            // Fixed: use DecodeSignature()
-                throw new RlpException($"Invalid signature length in '{nameof(Timeout)}'");
             signature = decoderContext.DecodeSignature();
         }
 
@@ -48,8 +46,6 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
         Signature signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
-            // Fixed: use DecodeSignature()
-                throw new RlpException($"Invalid signature length in {nameof(Vote)}");
             signature = rlpStream.DecodeSignature();
         }
 
