@@ -417,10 +417,20 @@ namespace Nethermind.Core.Extensions
                 Vector128<byte> last = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 16));
                 acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(last, acc0));
             }
-            else
+            else if (len > 16)
             {
                 Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 16));
                 acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, acc0));
+            }
+            else
+            {
+                // len == 16: start+len-16 == start, so data would be the same bytes
+                // that built acc0. ARM AESE XORs its operands before scrambling, so
+                // Encrypt(input, input^seed) cancels input, losing all input dependence.
+                // Feed input and seedVec directly: AESE XORs them to get (input ^ seed),
+                // then SubBytes and ShiftRows, and AESMC adds MixColumns.
+                acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(
+                    Unsafe.As<byte, Vector128<byte>>(ref start), seedVec));
             }
 
             ulong compressed = acc0.AsUInt64().GetElement(0) ^ acc0.AsUInt64().GetElement(1);
