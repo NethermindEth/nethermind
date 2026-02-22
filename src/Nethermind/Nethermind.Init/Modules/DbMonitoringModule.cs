@@ -74,7 +74,13 @@ public class DbMonitoringModule : Module
             return _createdDbs;
         }
 
-        public bool Paused { get; set; } = false;
+        private volatile bool _paused;
+
+        public bool Paused
+        {
+            get => _paused;
+            set => _paused = value;
+        }
 
         private void UpdateDbMetrics()
         {
