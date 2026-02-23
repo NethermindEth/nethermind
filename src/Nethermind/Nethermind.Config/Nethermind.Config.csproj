@@ -15,8 +15,7 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Update="..\Chains\xdc-test.json">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </EmbeddedResource>
+    <EmbeddedResource Remove="..\Chains\xdc-mine.json" />
+    <EmbeddedResource Remove="..\Chains\xdc-test.json" />
   </ItemGroup>
 </Project>
