@@ -26,7 +26,7 @@ public class SeqlockCacheTests
         // Padding to ~48 bytes so the struct copy is non-trivial.
         private long _pad0, _pad1, _pad2, _pad3, _pad4;
 
-        public readonly long GetHashCode64() => unchecked((long)0xDEAD_BEEF_CAFE_BABEL);
+        public readonly long GetHashCode64() => unchecked((long)0xDEAD_BEEF_CAFE_BABE);
         public readonly bool Equals(in SameHashKey other) => Id == other.Id;
     }
 
