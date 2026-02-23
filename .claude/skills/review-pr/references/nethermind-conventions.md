@@ -21,7 +21,7 @@ Derived from AGENTS.md and project patterns. Use this checklist during PR review
 
 - **Low allocation** — flag unnecessary allocations: new collections inside hot loops, closures capturing large objects, boxing value types, string concatenation in loops (use `StringBuilder` or interpolation)
 - **Generic base class** — methods in generic types that don't depend on the type parameter should be in a non-generic base or static helper (prevents redundant JIT instantiations)
-- **DRY** — flag duplicated blocks of 5+ lines that should be extracted. But don't flag one-liner duplications.
+- **DRY** — flag duplicated blocks of 5+ lines that should be extracted. But don't flag one-liner duplications. This should include similar code that can be reusable with parametrization.
 - **Minimal changes** — PRs should not rename variables, reformat unrelated code, or refactor beyond what's needed. Flag scope creep.
 - **No over-engineering** — flag unnecessary abstractions, helpers for one-time operations, or design for hypothetical future requirements
 
