@@ -407,6 +407,12 @@ namespace Nethermind.Serialization.Rlp
         [SuppressMessage("ReSharper", "IntVariableOverflowInUncheckedContext")]
         public static Span<byte> Encode(ulong value, Span<byte> buffer)
         {
+            var minLength = LengthOf(value);
+            if (buffer.Length < minLength)
+            {
+                ThrowBufferTooSmall(buffer, minLength);
+            }
+
             switch (value)
             {
                 case 0:
@@ -1918,6 +1924,13 @@ namespace Nethermind.Serialization.Rlp
                 : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
             if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR: {message}; {new StackTrace()}");
             throw new RlpLimitException(message);
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowBufferTooSmall(Span<byte> buffer, int minLength)
+        {
+            throw new ArgumentException($"Buffer is too small. Minimal length: {minLength}, actual length: {buffer.Length}");
         }
     }
 
