@@ -51,11 +51,7 @@ public class RewardTests
             chain.SpecProvider,
             chain.BlockTree,
             masternodeVotingContract,
-<<<<<<< HEAD
-            Substitute.For<ITransactionProcessor>()
-=======
             signingTxCache
->>>>>>> xdc/penalty-handler
         );
 
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -362,12 +358,8 @@ public class RewardTests
         votingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), Arg.Any<Address>())
             .Returns(ci => ci.ArgAt<Address>(1));
 
-<<<<<<< HEAD
-        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<ITransactionProcessor>());
-=======
         var signingTxCache = new SigningTxCache(tree, specProvider);
         var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, signingTxCache);
->>>>>>> xdc/penalty-handler
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
         Assert.That(rewards, Has.Length.EqualTo(3));
@@ -395,17 +387,10 @@ public class RewardTests
         ISigningTxCache signingTxCache = new SigningTxCache(blockTree, specProvider);
         var rewardCalculator = new XdcRewardCalculator(
             Substitute.For<IEpochSwitchManager>(),
-<<<<<<< HEAD
-            Substitute.For<ISpecProvider>(),
-            Substitute.For<IBlockTree>(),
-            masternodeVotingContract,
-            Substitute.For<ITransactionProcessor>()
-=======
             specProvider,
             blockTree,
             masternodeVotingContract,
             signingTxCache
->>>>>>> xdc/penalty-handler
             );
 
         var totalReward = UInt256.Parse("171000000000000000000");

@@ -22,11 +22,8 @@ internal static class XdcConstants
 
     public const int InMemoryRound2Epochs = 65536;   // One epoch ~ 0.5h, 65536 epochs ~ 3.7y, ~10MB memory
 
-<<<<<<< HEAD
-=======
     public const int BlockSignersCacheLimit = 9000;
 
->>>>>>> xdc/penalty-handler
     public const long DefaultTargetGasLimit = 84000000; // XDC default gas limit per block
 
     public const byte ConsensusVersion = 0x02;

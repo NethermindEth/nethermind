@@ -29,25 +29,7 @@ internal class XdcBlockProducer : BlockProducerBase
     protected readonly ISpecProvider specProvider;
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
 
-<<<<<<< HEAD
-    public XdcBlockProducer(
-        IEpochSwitchManager epochSwitchManager,
-        ISnapshotManager snapshotManager,
-        IXdcConsensusContext xdcContext,
-        ITxSource txSource,
-        IBlockchainProcessor processor,
-        ISealer sealer,
-        IBlockTree blockTree,
-        IWorldState stateProvider,
-        IGasLimitCalculator? gasLimitCalculator,
-        ITimestamper? timestamper,
-        ISpecProvider specProvider,
-        ILogManager logManager,
-        IDifficultyCalculator? difficultyCalculator,
-        IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
-=======
     public XdcBlockProducer(IEpochSwitchManager epochSwitchManager, IMasternodesCalculator masternodesCalculator, IXdcConsensusContext xdcContext, ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IWorldState stateProvider, IGasLimitCalculator? gasLimitCalculator, ITimestamper? timestamper, ISpecProvider specProvider, ILogManager logManager, IDifficultyCalculator? difficultyCalculator, IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
->>>>>>> xdc/penalty-handler
     {
         this.epochSwitchManager = epochSwitchManager;
         this.masternodesCalculator = masternodesCalculator;
