@@ -51,20 +51,16 @@ internal class XdcBlockProducer : BlockProducerBase
         byte[] extra = [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(new ExtraFieldsV2(currentRound, highestCert)).Bytes];
 
         Address blockAuthor = sealer.Address;
+        long gasLimit = GasLimitCalculator.GetGasLimit(parent);
         XdcBlockHeader xdcBlockHeader = new(
             parent.Hash!,
             Keccak.OfAnEmptySequenceRlp,
             blockAuthor,
             UInt256.Zero,
             parent.Number + 1,
-            //This should probably use TargetAdjustedGasLimitCalculator
-            XdcConstants.TargetGasLimit,
+            gasLimit,
             0,
-            extra)
-        {
-            //This will BestSuggestedBody in BlockTree, which may not be needed
-            IsPostMerge = true
-        };
+            extra);
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader, currentRound);
 
@@ -85,14 +81,14 @@ internal class XdcBlockProducer : BlockProducerBase
 
             for (int i = 0; i < masternodes.Length; i++)
             {
-                Array.Copy(masternodes[i].Bytes, 0, xdcBlockHeader.Validators, i * Address.Size, Address.Size);
+                masternodes[i].Bytes.CopyTo(xdcBlockHeader.Validators.AsSpan(i * Address.Size, Address.Size));
             }
 
             xdcBlockHeader.Penalties = new byte[penalties.Length * Address.Size];
 
             for (int i = 0; i < penalties.Length; i++)
             {
-                Array.Copy(penalties[i].Bytes, 0, xdcBlockHeader.Penalties, i * Address.Size, Address.Size);
+                penalties[i].Bytes.CopyTo(xdcBlockHeader.Penalties.AsSpan(i * Address.Size, Address.Size));
             }
         }
         return xdcBlockHeader;

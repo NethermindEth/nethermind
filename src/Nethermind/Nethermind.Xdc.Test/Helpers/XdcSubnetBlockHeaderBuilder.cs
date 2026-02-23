@@ -28,7 +28,7 @@ public class XdcSubnetBlockHeaderBuilder : XdcBlockHeaderBuilder
             Address.Zero,
             UInt256.One,
             1,
-            XdcConstants.TargetGasLimit,
+            XdcConstants.DefaultTargetGasLimit,
             1_700_000_000,
             [])
         {
@@ -52,7 +52,7 @@ public class XdcSubnetBlockHeaderBuilder : XdcBlockHeaderBuilder
     }
     public XdcSubnetBlockHeaderBuilder WithNextValidators(Address[] nextValidators)
     {
-        XdcTestObjectInternal.NextValidators = nextValidators.SelectMany(a => a.Bytes).ToArray();
+        XdcTestObjectInternal.NextValidators = nextValidators.SelectMany(a => a.Bytes.ToArray()).ToArray();
         return this;
     }
 }

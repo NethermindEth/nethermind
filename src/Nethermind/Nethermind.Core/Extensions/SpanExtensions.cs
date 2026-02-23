@@ -23,6 +23,28 @@ namespace Nethermind.Core.Extensions
         private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
 
         internal static uint ComputeSeed(int len) => s_instanceRandom + (uint)len;
+        public static uint InstanceRandom => s_instanceRandom;
+
+        /// <summary>
+        /// Computes a very fast, non-cryptographic 32-bit hash of exactly 32 bytes.
+        /// </summary>
+        /// <param name="start">Reference to the first byte of the 32-byte input.</param>
+        /// <returns>A 32-bit hash value.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int FastHash32(ref byte start)
+        {
+            Debug.Assert(x64.Aes.IsSupported || Arm.Aes.IsSupported, "FastHash32 requires AES hardware support");
+
+            uint seed = s_instanceRandom + 32;
+            Vector128<byte> key = Unsafe.As<byte, Vector128<byte>>(ref start);
+            Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, 16));
+            key ^= Vector128.CreateScalar(seed).AsByte();
+            Vector128<byte> mixed = x64.Aes.IsSupported
+                ? x64.Aes.Encrypt(data, key)
+                : Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+            ulong compressed = mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1);
+            return (int)(uint)(compressed ^ (compressed >> 32));
+        }
 
         public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false)
         {
@@ -228,12 +250,14 @@ namespace Nethermind.Core.Extensions
         /// </remarks>
         [SkipLocalsInit]
         public static int FastHash(this ReadOnlySpan<byte> input)
+            => FastHash(input, s_instanceRandom + (uint)input.Length);
+
+        internal static int FastHash(ReadOnlySpan<byte> input, uint seed)
         {
             int len = input.Length;
             if (len == 0) return 0;
 
             ref byte start = ref MemoryMarshal.GetReference(input);
-            uint seed = s_instanceRandom + (uint)len;
 
             if (len >= 16)
             {
@@ -342,7 +366,8 @@ namespace Nethermind.Core.Extensions
         internal static int FastHashAesArm(ref byte start, int len, uint seed)
         {
             Vector128<byte> seedVec = Vector128.CreateScalar(seed).AsByte();
-            Vector128<byte> acc0 = Unsafe.As<byte, Vector128<byte>>(ref start) ^ seedVec;
+            Vector128<byte> input0 = Unsafe.As<byte, Vector128<byte>>(ref start);
+            Vector128<byte> acc0 = input0 ^ seedVec;
 
             if (len > 64)
             {
@@ -417,10 +442,19 @@ namespace Nethermind.Core.Extensions
                 Vector128<byte> last = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 16));
                 acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(last, acc0));
             }
-            else
+            else if (len > 16)
             {
                 Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 16));
                 acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, acc0));
+            }
+            else
+            {
+                // len == 16: start+len-16 == start, so data would be the same bytes
+                // that built acc0. ARM Arm.Aes.Encrypt XORs its operands before scrambling,
+                // so Encrypt(input, input^seed) cancels input, losing all input dependence.
+                // Feed input and seedVec directly so the XOR yields (input ^ seed),
+                // then SubBytes and ShiftRows, and Arm.Aes.MixColumns completes the round.
+                acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(input0, seedVec));
             }
 
             ulong compressed = acc0.AsUInt64().GetElement(0) ^ acc0.AsUInt64().GetElement(1);
