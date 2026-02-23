@@ -1733,7 +1733,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOfNonce(ulong _) => 9;
 
-        public static int LengthOf(long value) => LengthOf((ulong)value);
+        public static int LengthOf(long value) => LengthOf(unchecked((ulong)value));
         public static int LengthOf(ulong value)
         {
             if (value < 128)
