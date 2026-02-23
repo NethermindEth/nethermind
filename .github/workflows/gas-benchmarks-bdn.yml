@@ -1,0 +1,284 @@
+name: Gas Benchmarks (BDN)
+
+on:
+  push:
+    branches: [master, 'kch/**']
+    paths: ['src/Nethermind/**', '.github/workflows/gas-benchmarks-bdn.yml']
+  pull_request:
+    branches: [master]
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Benchmark mode'
+        required: false
+        default: 'NewPayload'
+        type: choice
+        options:
+          - EVM
+          - BlockBuilding
+          - NewPayload
+          - NewPayloadMeasured
+      filter:
+        description: 'BDN filter pattern (optional, e.g. *MULMOD*)'
+        required: false
+        default: ''
+      warmupCount:
+        description: 'BDN warmup iterations'
+        required: false
+        default: '3'
+      iterationCount:
+        description: 'BDN measurement iterations'
+        required: false
+        default: '1'
+      launchCount:
+        description: 'BDN launch count'
+        required: false
+        default: '1'
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  TERM: xterm
+
+jobs:
+  resolve:
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.label.name == 'performance is good')
+    runs-on: ubuntu-slim
+    outputs:
+      mode: ${{ steps.check.outputs.mode }}
+      filter: ${{ steps.check.outputs.filter }}
+      chunks: ${{ steps.check.outputs.chunks }}
+      warmupCount: ${{ steps.check.outputs.warmupCount }}
+      iterationCount: ${{ steps.check.outputs.iterationCount }}
+      launchCount: ${{ steps.check.outputs.launchCount }}
+    steps:
+      - name: Resolve inputs
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mode="NewPayload"
+          filter=""
+          warmupCount="3"
+          iterationCount="1"
+          launchCount="1"
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            mode="${{ inputs.mode }}"
+            filter="${{ inputs.filter }}"
+            warmupCount="${{ inputs.warmupCount }}"
+            iterationCount="${{ inputs.iterationCount }}"
+            launchCount="${{ inputs.launchCount }}"
+          fi
+
+          # Full suite on master push, PRs, and workflow_dispatch; smoke test on branch pushes
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" != "refs/heads/master" ]]; then
+            chunks="[1, 2, 3, 4, 5]"
+            mode="NewPayload"
+          else
+            chunks="[1, 2, 3, 4, 5]"
+          fi
+
+          {
+            echo "mode=${mode}"
+            echo "filter=${filter}"
+            echo "chunks=${chunks}"
+            echo "warmupCount=${warmupCount}"
+            echo "iterationCount=${iterationCount}"
+            echo "launchCount=${launchCount}"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve
+    if: always() && !cancelled() && needs.resolve.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          lfs: true
+          submodules: true
+          fetch-depth: 1
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build benchmarks
+        run: dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release
+
+      - name: Upload build + data
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-package
+          retention-days: 1
+          path: |
+            src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/
+            tools/gas-benchmarks/
+            global.json
+
+  benchmark:
+    needs: [resolve, build]
+    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.build.result == 'success'
+    runs-on: [self-hosted, benchmark]
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: ${{ fromJson(needs.resolve.outputs.chunks) }}
+    timeout-minutes: 240
+    steps:
+      - name: Download benchmark package
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-package
+          path: .
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Create .git marker
+        run: mkdir -p .git
+
+      - name: Hardware verification
+        shell: bash
+        run: |
+          echo "=== CPU ==="
+          lscpu | grep -E 'Model name|Socket|Core|Thread|CPU MHz|CPU max|CPU min|Architecture|Flags'
+          echo ""
+          echo "=== CPU ID ==="
+          cat /proc/cpuinfo | grep -E 'model name|cpu MHz|cache size|physical id|core id|cpu cores' | sort -u
+          echo ""
+          echo "=== Memory ==="
+          free -h
+          echo ""
+          echo "=== NUMA ==="
+          numactl --hardware 2>/dev/null || echo "numactl not available"
+          echo ""
+          echo "=== Kernel ==="
+          uname -a
+          echo ""
+          echo "=== Runner ==="
+          echo "Runner name: $RUNNER_NAME"
+          echo "Runner OS: $RUNNER_OS"
+          echo "Hostname: $(hostname)"
+          echo ""
+          echo "=== Disk ==="
+          df -h . | head -5
+
+      - name: Run benchmarks (chunk ${{ matrix.chunk }}/${{ strategy.job-total }})
+        shell: bash
+        run: |
+          MODE="${{ needs.resolve.outputs.mode }}"
+          FILTER="${{ needs.resolve.outputs.filter }}"
+          WARMUP="${{ needs.resolve.outputs.warmupCount }}"
+          ITERATIONS="${{ needs.resolve.outputs.iterationCount }}"
+          LAUNCHES="${{ needs.resolve.outputs.launchCount }}"
+          CHUNKS="${{ needs.resolve.outputs.chunks }}"
+          TOTAL=$(echo "$CHUNKS" | tr -cd ',' | wc -c)
+          TOTAL=$((TOTAL + 1))
+
+          ARGS="--inprocess --mode=$MODE --chunk ${{ matrix.chunk }}/$TOTAL"
+          if [[ -n "$FILTER" ]]; then
+            ARGS="$ARGS --filter $FILTER"
+          fi
+          if [[ -n "$WARMUP" ]]; then
+            ARGS="$ARGS --warmupCount $WARMUP"
+          fi
+          if [[ -n "$ITERATIONS" ]]; then
+            ARGS="$ARGS --iterationCount $ITERATIONS"
+          fi
+          if [[ -n "$LAUNCHES" ]]; then
+            ARGS="$ARGS --launchCount $LAUNCHES"
+          fi
+
+          dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll $ARGS
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bdn-results-${{ matrix.chunk }}
+          path: BenchmarkDotNet.Artifacts/results/*-full.json
+          retention-days: 90
+
+  collect:
+    needs: [resolve, benchmark]
+    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.benchmark.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download all results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bdn-results-*
+          path: results/
+          merge-multiple: true
+
+      - name: Merge chunk results
+        run: python3 scripts/benchmarks/merge_bdn_results.py results/ pr-results.json
+
+      - name: Upload merged results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bdn-results-merged
+          path: pr-results.json
+          retention-days: 90
+
+      # On master push: cache results as baseline for future PR comparisons
+      - name: Cache master baseline
+        if: github.ref == 'refs/heads/master'
+        run: cp pr-results.json baseline.json
+
+      - name: Save master cache
+        if: github.ref == 'refs/heads/master'
+        uses: actions/cache/save@v4
+        with:
+          path: baseline.json
+          key: gas-benchmark-bdn-${{ github.sha }}
+
+      # On master push: publish to GitHub Pages for historical tracking
+      - name: Publish to GitHub Pages
+        if: github.ref == 'refs/heads/master'
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Gas Benchmarks (BDN)
+          tool: benchmarkdotnet
+          output-file-path: pr-results.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          alert-threshold: '120%'
+          comment-on-alert: true
+          fail-on-alert: false
+
+      # On PR: restore master baseline and compare
+      - name: Restore master baseline
+        if: github.event_name == 'pull_request'
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: baseline.json
+          key: gas-benchmark-bdn-
+          restore-keys: gas-benchmark-bdn-
+
+      - name: Compare against master
+        if: github.event_name == 'pull_request' && hashFiles('baseline.json') != ''
+        run: python3 scripts/benchmarks/compare_bdn_results.py baseline.json pr-results.json > comparison.md
+
+      - name: Post comparison to PR
+        if: github.event_name == 'pull_request' && hashFiles('baseline.json') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: gas-benchmark-bdn
+          path: comparison.md
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
