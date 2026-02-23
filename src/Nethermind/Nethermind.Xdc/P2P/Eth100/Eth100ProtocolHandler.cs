@@ -138,7 +138,7 @@ namespace Nethermind.Xdc.P2P.Eth100
         /// Keepalive timer callback - sends a lightweight request to keep the connection alive
         /// go-ethereum (XDC) has frameReadTimeout = 30s, so we send traffic every 20s
         /// </summary>
-        private async void OnKeepaliveTimer(object? state)
+        private void OnKeepaliveTimer(object? state)
         {
             try
             {
@@ -163,12 +163,7 @@ namespace Nethermind.Xdc.P2P.Eth100
                         Logger.Trace($"XDC eth/100: Sending keepalive GetBlockHeaders to {Node:c}");
 
                     // Fire-and-forget - we don't need the response, just need to send traffic
-                    _ = GetBlockHeaders(headHash, maxBlocks: 1, skip: 0, CancellationToken.None)
-                        .ContinueWith(t =>
-                        {
-                            if (t.IsFaulted && Logger.IsTrace)
-                                Logger.Trace($"XDC eth/100: Keepalive request failed (expected if peer busy): {t.Exception?.InnerException?.Message}");
-                        }, TaskContinuationOptions.ExecuteSynchronously);
+                    _ = SendKeepaliveRequest(headHash);
 
                     _lastActivity = DateTime.UtcNow;
                 }
@@ -178,6 +173,32 @@ namespace Nethermind.Xdc.P2P.Eth100
                 // Keepalive failures are non-critical - just log at trace level
                 if (Logger.IsTrace)
                     Logger.Trace($"XDC eth/100: Keepalive timer error (non-critical): {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Sends a lightweight keepalive request to prevent connection timeout
+        /// </summary>
+        private async Task SendKeepaliveRequest(Hash256 headHash)
+        {
+            try
+            {
+                // Send a GetBlockHeaders request for just 1 header - minimal overhead
+                var msg = new GetBlockHeadersMessage
+                {
+                    StartBlockHash = headHash,
+                    MaxHeaders = 1,
+                    Skip = 0,
+                    Reverse = 0
+                };
+
+                await SendRequest(msg, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                // Keepalive failures are non-critical - peer might be busy or disconnected
+                if (Logger.IsTrace)
+                    Logger.Trace($"XDC eth/100: Keepalive request failed (expected if peer busy): {ex.Message}");
             }
         }
 
