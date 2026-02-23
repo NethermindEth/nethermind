@@ -17,6 +17,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Crypto;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -202,6 +203,11 @@ internal static class BenchmarkContainer
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton(blocksConfig)
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
+            // IEthereumEcdsa — matches NethermindModule registration, used for RecoverSignatures.
+            .AddSingleton<IEthereumEcdsa>(new EthereumEcdsa(specProvider.ChainId))
+            // RecoverSignatures — production uses this in BlockchainProcessor; benchmarks
+            // resolve it from DI for NewPayload and BlockBuilding modes.
+            .AddSingleton<RecoverSignatures>()
             // Skip block/header validation — benchmark payloads are known-good and the
             // MinimalBenchmarkBlockTree cannot satisfy parent-header lookups.
             .AddSingleton<IBlockValidator>(Always.Valid)

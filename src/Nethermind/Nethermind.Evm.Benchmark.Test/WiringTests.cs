@@ -7,6 +7,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.Benchmark.GasBenchmarks;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -193,6 +194,76 @@ public class WiringTests
             Nethermind.State.IStateReader reader = BlockBenchmarkHelper.CreateStateReader(state);
 
             Assert.That(reader, Is.Not.Null);
+        }
+        finally
+        {
+            scope.Dispose();
+            containerLifetime.Dispose();
+        }
+    }
+
+    [Test]
+    public void BlockProcessingScope_Resolves_RecoverSignatures_And_EthereumEcdsa()
+    {
+        EnsureGenesisOrSkip();
+
+        ISpecProvider specProvider = CreateSpecProvider();
+
+        (ILifetimeScope scope, _, System.IDisposable containerLifetime) =
+            BenchmarkContainer.CreateBlockProcessingScope(specProvider, s_genesisPath, s_pragueSpec);
+
+        try
+        {
+            RecoverSignatures recoverSignatures = scope.Resolve<RecoverSignatures>();
+            IEthereumEcdsa ecdsa = scope.Resolve<IEthereumEcdsa>();
+
+            Assert.That(recoverSignatures, Is.Not.Null);
+            Assert.That(ecdsa, Is.Not.Null);
+            Assert.That(ecdsa, Is.InstanceOf<EthereumEcdsa>());
+        }
+        finally
+        {
+            scope.Dispose();
+            containerLifetime.Dispose();
+        }
+    }
+
+    [Test]
+    public void TransactionScope_Resolves_RecoverSignatures()
+    {
+        EnsureGenesisOrSkip();
+
+        (ILifetimeScope scope, System.IDisposable containerLifetime) =
+            BenchmarkContainer.CreateTransactionScope(CreateSpecProvider(), s_genesisPath, s_pragueSpec);
+
+        try
+        {
+            RecoverSignatures recoverSignatures = scope.Resolve<RecoverSignatures>();
+            Assert.That(recoverSignatures, Is.Not.Null);
+        }
+        finally
+        {
+            scope.Dispose();
+            containerLifetime.Dispose();
+        }
+    }
+
+    [Test]
+    public void BlockProcessingScope_Resolves_IBranchProcessor_Without_Concrete_Cast()
+    {
+        EnsureGenesisOrSkip();
+
+        ISpecProvider specProvider = CreateSpecProvider();
+
+        (ILifetimeScope scope, _, System.IDisposable containerLifetime) =
+            BenchmarkContainer.CreateBlockProcessingScope(specProvider, s_genesisPath, s_pragueSpec);
+
+        try
+        {
+            IBranchProcessor branchProcessor = scope.Resolve<IBranchProcessor>();
+            Assert.That(branchProcessor, Is.Not.Null);
+            // Verify Process method is accessible through the interface (no concrete cast needed)
+            Assert.That(branchProcessor, Is.InstanceOf<IBranchProcessor>());
         }
         finally
         {

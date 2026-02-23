@@ -54,7 +54,6 @@ public class GasNewPayloadBenchmarks
     internal const string TimingReportFileEnvVar = "NETHERMIND_NEWPAYLOAD_REAL_TIMING_REPORT_FILE";
     private const int MaxConsoleScenarioCount = 10;
     private static readonly JsonSerializerOptions s_jsonOptions = EthereumJsonSerializer.JsonOptions;
-    private static readonly EthereumEcdsa s_ecdsa = new(1);
     private static readonly object s_timingFileLock = new();
 
     private IReleaseSpec _releaseSpec;
@@ -62,7 +61,7 @@ public class GasNewPayloadBenchmarks
     private ILifetimeScope _scope;
     private IDisposable _containerLifetime;
     private IWorldState _state;
-    private BranchProcessor _branchProcessor;
+    private IBranchProcessor _branchProcessor;
     private BlockHeader _preBlockHeader;
     private byte[] _rawJsonBytes;
     private BenchmarkNewPayloadBlockTree _blockTree;
@@ -117,7 +116,7 @@ public class GasNewPayloadBenchmarks
         BlockBenchmarkHelper.ExecuteSetupPayload(_state, _timedTransactionProcessor, _preBlockHeader, Scenario, _specProvider);
 
         ReceiptConfig receiptConfig = new();
-        _branchProcessor = (BranchProcessor)_scope.Resolve<IBranchProcessor>();
+        _branchProcessor = _scope.Resolve<IBranchProcessor>();
 
         string rawJson = PayloadLoader.ReadRawJson(Scenario.FilePath);
         _rawJsonBytes = Encoding.UTF8.GetBytes(rawJson);
@@ -128,10 +127,11 @@ public class GasNewPayloadBenchmarks
         _preBlockHeader.Number = parentNumber >= 0 ? parentNumber : 0;
 
         _blockTree = new BenchmarkNewPayloadBlockTree(_preBlockHeader);
+        RecoverSignatures recoverSignatures = _scope.Resolve<RecoverSignatures>();
         _processingQueue = new BenchmarkProcessingQueue(
             _branchProcessor,
             _preBlockHeader,
-            _specProvider,
+            recoverSignatures,
             this);
 
         MergeConfig mergeConfig = new()
@@ -746,21 +746,21 @@ public class GasNewPayloadBenchmarks
 
     private sealed class BenchmarkProcessingQueue : IBlockProcessingQueue
     {
-        private readonly BranchProcessor _branchProcessor;
+        private readonly IBranchProcessor _branchProcessor;
         private readonly BlockHeader _parentHeader;
         private readonly RecoverSignatures _recoverSignatures;
         private readonly GasNewPayloadBenchmarks _owner;
         private int _count;
 
         public BenchmarkProcessingQueue(
-            BranchProcessor branchProcessor,
+            IBranchProcessor branchProcessor,
             BlockHeader parentHeader,
-            ISpecProvider specProvider,
+            RecoverSignatures recoverSignatures,
             GasNewPayloadBenchmarks owner)
         {
             _branchProcessor = branchProcessor;
             _parentHeader = parentHeader;
-            _recoverSignatures = new RecoverSignatures(s_ecdsa, specProvider, LimboLogs.Instance);
+            _recoverSignatures = recoverSignatures;
             _owner = owner;
         }
 

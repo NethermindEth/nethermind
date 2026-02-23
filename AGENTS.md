@@ -278,10 +278,10 @@ Keep benchmark setup coherent and DI-driven:
 Quick maintenance check:
 
 ```bash
-rg --line-number "new EthereumTransactionProcessor|new BranchProcessor|new BlockProcessor|new BeaconBlockRootHandler" src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks
+rg --line-number "new EthereumTransactionProcessor|new BranchProcessor|new BlockProcessor|new BeaconBlockRootHandler|new EthereumEcdsa|new RecoverSignatures" src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks
 ```
 
-Expected: constructor hits only in `BlockBenchmarkHelper.cs` (for setup-only `BlockProcessor`).
+Expected: hits only in `BlockBenchmarkHelper.cs` (setup-only `BlockProcessor`) and `BenchmarkContainer.cs` (DI registration).
 
 ## Reproducible Benchmark Workflow Guidance
 

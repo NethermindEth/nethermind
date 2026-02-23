@@ -18,7 +18,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -36,7 +35,6 @@ namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 public class GasBlockBuildingBenchmarks
 {
     internal const string BuildBlocksOnMainStateEnvVar = "NETHERMIND_BLOCKBUILDING_MAIN_STATE";
-    private static readonly EthereumEcdsa s_ecdsa = new(1);
 
     private ILifetimeScope _scope;
     private IDisposable _containerLifetime;
@@ -92,12 +90,13 @@ public class GasBlockBuildingBenchmarks
         BlockBenchmarkHelper.ExecuteSetupPayload(state, txProcessor, preBlockHeader, Scenario, specProvider);
         _chainParentHeader.StateRoot = preBlockHeader.StateRoot;
 
-        BranchProcessor branchProcessor = (BranchProcessor)_scope.Resolve<IBranchProcessor>();
+        IBranchProcessor branchProcessor = _scope.Resolve<IBranchProcessor>();
+        RecoverSignatures recoverSignatures = _scope.Resolve<RecoverSignatures>();
 
         BlockchainProcessor blockchainProcessor = new(
             new BenchmarkBlockProducerBlockTree(_chainParentHeader),
             branchProcessor,
-            new RecoverSignatures(s_ecdsa, specProvider, LimboLogs.Instance),
+            recoverSignatures,
             BlockBenchmarkHelper.CreateStateReader(state),
             LimboLogs.Instance,
             BlockBenchmarkHelper.GetBlockBuildingBlockchainProcessorOptions(blocksConfig),

@@ -15,12 +15,10 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
@@ -44,7 +42,7 @@ public class GasNewPayloadMeasuredBenchmarks
     private ILifetimeScope _scope;
     private IDisposable _containerLifetime;
     private IWorldState _state;
-    private BranchProcessor _branchProcessor;
+    private IBranchProcessor _branchProcessor;
     private BlockHeader _preBlockHeader;
     private byte[] _rawJsonBytes;
     private TimedTransactionProcessor _timedTransactionProcessor;
@@ -52,7 +50,6 @@ public class GasNewPayloadMeasuredBenchmarks
     private RecoverSignatures _recoverSignatures;
     private ProcessingOptions _newPayloadProcessingOptions;
     private static readonly JsonSerializerOptions s_jsonOptions = EthereumJsonSerializer.JsonOptions;
-    private static readonly EthereumEcdsa s_ecdsa = new(1);
     private static readonly object s_timingFileLock = new();
 
     // Timing breakdown accumulators (captured in ticks for sub-millisecond precision).
@@ -97,14 +94,14 @@ public class GasNewPayloadMeasuredBenchmarks
         _preBlockHeader = BlockBenchmarkHelper.CreateGenesisHeader();
         _preBlockHeader.TotalDifficulty = UInt256.Zero;
         _timedTransactionProcessor = (TimedTransactionProcessor)_scope.Resolve<ITransactionProcessor>();
-        _recoverSignatures = new RecoverSignatures(s_ecdsa, specProvider, LimboLogs.Instance);
+        _recoverSignatures = _scope.Resolve<RecoverSignatures>();
 
         BlockBenchmarkHelper.ExecuteSetupPayload(_state, _timedTransactionProcessor, _preBlockHeader, Scenario, specProvider);
 
         ReceiptConfig receiptConfig = new();
         _newPayloadProcessingOptions = BlockBenchmarkHelper.GetNewPayloadProcessingOptions(receiptConfig);
 
-        _branchProcessor = (BranchProcessor)_scope.Resolve<IBranchProcessor>();
+        _branchProcessor = _scope.Resolve<IBranchProcessor>();
 
         // Store raw JSON bytes for deserialization in each iteration
         string rawJson = PayloadLoader.ReadRawJson(Scenario.FilePath);
