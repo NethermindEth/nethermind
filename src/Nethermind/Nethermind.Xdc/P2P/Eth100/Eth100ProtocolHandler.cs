@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
@@ -27,6 +30,9 @@ namespace Nethermind.Xdc.P2P.Eth100
     public class Eth100ProtocolHandler : Eth63ProtocolHandler
     {
         private readonly IXdcConsensusMessageProcessor? _consensusProcessor;
+        private Timer? _keepaliveTimer;
+        private readonly TimeSpan _keepaliveInterval = TimeSpan.FromSeconds(20);
+        private DateTime _lastActivity = DateTime.MinValue;
 
         public Eth100ProtocolHandler(
             ISession session,
@@ -73,12 +79,29 @@ namespace Nethermind.Xdc.P2P.Eth100
 
             base.Init();
 
+            // Start keepalive timer to prevent go-ethereum's 30-second frame read timeout
+            // XDC nodes (go-ethereum fork) disconnect idle peers after frameReadTimeout (30s)
+            // We send a lightweight GetBlockHeaders request every 20s to keep the connection alive
+            _lastActivity = DateTime.UtcNow;
+            _keepaliveTimer = new Timer(OnKeepaliveTimer, null, _keepaliveInterval, _keepaliveInterval);
+            
+            if (Logger.IsDebug)
+                Logger.Debug($"XDC eth/100: Keepalive timer started ({_keepaliveInterval.TotalSeconds}s interval)");
+
             if (Logger.IsDebug)
                 Logger.Debug($"XDC eth/100: Protocol initialized with {Node:c}");
         }
 
+        public override void Dispose()
+        {
+            _keepaliveTimer?.Dispose();
+            _keepaliveTimer = null;
+            base.Dispose();
+        }
+
         public override void HandleMessage(ZeroPacket message)
         {
+            _lastActivity = DateTime.UtcNow;
             int size = message.Content.ReadableBytes;
 
             // Handle XDPoS v2 messages
@@ -108,6 +131,53 @@ namespace Nethermind.Xdc.P2P.Eth100
                     // Delegate to base class for standard eth/63 messages
                     base.HandleMessage(message);
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Keepalive timer callback - sends a lightweight request to keep the connection alive
+        /// go-ethereum (XDC) has frameReadTimeout = 30s, so we send traffic every 20s
+        /// </summary>
+        private async void OnKeepaliveTimer(object? state)
+        {
+            try
+            {
+                // Only send keepalive if connection is idle for more than 15 seconds
+                // This prevents duplicate requests if there's already active sync traffic
+                if (DateTime.UtcNow - _lastActivity < TimeSpan.FromSeconds(15))
+                {
+                    return;
+                }
+
+                if (Session?.State != SessionState.Initialized)
+                {
+                    return;
+                }
+
+                // Send a lightweight GetBlockHeaders request for the peer's head block
+                // This is a valid request that XDC nodes can handle and keeps the connection alive
+                var headHash = HeadHash;
+                if (headHash != null)
+                {
+                    if (Logger.IsTrace)
+                        Logger.Trace($"XDC eth/100: Sending keepalive GetBlockHeaders to {Node:c}");
+
+                    // Fire-and-forget - we don't need the response, just need to send traffic
+                    _ = GetBlockHeaders(headHash, maxBlocks: 1, skip: 0, CancellationToken.None)
+                        .ContinueWith(t =>
+                        {
+                            if (t.IsFaulted && Logger.IsTrace)
+                                Logger.Trace($"XDC eth/100: Keepalive request failed (expected if peer busy): {t.Exception?.InnerException?.Message}");
+                        }, TaskContinuationOptions.ExecuteSynchronously);
+
+                    _lastActivity = DateTime.UtcNow;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Keepalive failures are non-critical - just log at trace level
+                if (Logger.IsTrace)
+                    Logger.Trace($"XDC eth/100: Keepalive timer error (non-critical): {ex.Message}");
             }
         }
 
