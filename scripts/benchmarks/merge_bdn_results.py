@@ -22,7 +22,11 @@ def main():
 
         filepath = os.path.join(results_dir, filename)
         with open(filepath) as f:
-            report = json.load(f)
+            try:
+                report = json.load(f)
+            except json.JSONDecodeError as e:
+                print("WARNING: Skipping {} — malformed JSON: {}".format(filename, e), file=sys.stderr)
+                continue
 
         if base_report is None:
             base_report = report
