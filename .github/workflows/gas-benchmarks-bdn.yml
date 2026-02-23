@@ -78,8 +78,10 @@ jobs:
           # Full suite on master push, PRs, and workflow_dispatch; smoke test on branch pushes
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" != "refs/heads/master" ]]; then
             chunks="[1, 2, 3, 4, 5]"
+            mode="EVM"
             warmupCount="2"
             iterationCount="1"
+            launchCount="5"
             if [[ -z "$filter" ]]; then
               filter="*mulmod* *ether_transfer* *ADD* *CALL*"
             fi
