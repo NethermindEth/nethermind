@@ -93,9 +93,36 @@ jobs:
             echo "launchCount=${launchCount}"
           } >> "$GITHUB_OUTPUT"
 
-  benchmark:
+  build:
     needs: resolve
     if: always() && !cancelled() && needs.resolve.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          lfs: true
+          submodules: true
+          fetch-depth: 1
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build benchmarks
+        run: dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-build
+          path: src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/
+          retention-days: 1
+
+  benchmark:
+    needs: [resolve, build]
+    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.build.result == 'success'
     runs-on: ubuntu-chad
     strategy:
       fail-fast: false
@@ -103,16 +130,23 @@ jobs:
         chunk: ${{ fromJson(needs.resolve.outputs.chunks) }}
     timeout-minutes: 240
     steps:
-      - name: Checkout repository
+      - name: Checkout repository (shallow, for submodule data)
         uses: actions/checkout@v6
         with:
           lfs: true
           submodules: true
+          fetch-depth: 1
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+
+      - name: Download pre-built benchmarks
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-build
+          path: src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/
 
       - name: Hardware verification
         shell: bash
@@ -140,9 +174,6 @@ jobs:
           echo "=== Disk ==="
           df -h . | head -5
 
-      - name: Build benchmarks
-        run: dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release
-
       - name: Run benchmarks (chunk ${{ matrix.chunk }}/${{ strategy.job-total }})
         shell: bash
         run: |
@@ -155,7 +186,7 @@ jobs:
           TOTAL=$(echo "$CHUNKS" | tr -cd ',' | wc -c)
           TOTAL=$((TOTAL + 1))
 
-          ARGS="--mode=$MODE --chunk ${{ matrix.chunk }}/$TOTAL"
+          ARGS="--inprocess --mode=$MODE --chunk ${{ matrix.chunk }}/$TOTAL"
           if [[ -n "$FILTER" ]]; then
             ARGS="$ARGS --filter $FILTER"
           fi
