@@ -41,7 +41,7 @@ public class VoteDecoderTests
                     0,
                     new Signature(new byte[64], 0)
                 ),
-                true
+                false
             );
         }
     }

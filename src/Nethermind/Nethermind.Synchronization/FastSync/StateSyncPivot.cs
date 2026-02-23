@@ -11,7 +11,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class StateSyncPivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager? logManager)
+    public class StateSyncPivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager? logManager) : IStateSyncPivot
     {
         private BlockHeader? _bestHeader;
         private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
