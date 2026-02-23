@@ -23,12 +23,13 @@ namespace Nethermind.Xdc;
 internal class XdcBlockProducer : BlockProducerBase
 {
     protected readonly IEpochSwitchManager epochSwitchManager;
-    protected readonly ISnapshotManager snapshotManager;
+    protected readonly IMasternodesCalculator masternodesCalculator;
     protected readonly IXdcConsensusContext xdcContext;
     protected readonly ISealer sealer;
     protected readonly ISpecProvider specProvider;
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
 
+<<<<<<< HEAD
     public XdcBlockProducer(
         IEpochSwitchManager epochSwitchManager,
         ISnapshotManager snapshotManager,
@@ -44,9 +45,12 @@ internal class XdcBlockProducer : BlockProducerBase
         ILogManager logManager,
         IDifficultyCalculator? difficultyCalculator,
         IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
+=======
+    public XdcBlockProducer(IEpochSwitchManager epochSwitchManager, IMasternodesCalculator masternodesCalculator, IXdcConsensusContext xdcContext, ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IWorldState stateProvider, IGasLimitCalculator? gasLimitCalculator, ITimestamper? timestamper, ISpecProvider specProvider, ILogManager logManager, IDifficultyCalculator? difficultyCalculator, IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
+>>>>>>> xdc/penalty-handler
     {
         this.epochSwitchManager = epochSwitchManager;
-        this.snapshotManager = snapshotManager;
+        this.masternodesCalculator = masternodesCalculator;
         this.xdcContext = xdcContext;
         this.sealer = sealer;
         this.specProvider = specProvider;
@@ -72,14 +76,10 @@ internal class XdcBlockProducer : BlockProducerBase
             blockAuthor,
             UInt256.Zero,
             parent.Number + 1,
-            //This should probably use TargetAdjustedGasLimitCalculator
             gasLimit,
             0,
-            extra)
-        {
-            //This will BestSuggestedBody in BlockTree, which may not be needed
-            //IsPostMerge = true
-        };
+            extra
+        );
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader, currentRound);
 
@@ -95,7 +95,7 @@ internal class XdcBlockProducer : BlockProducerBase
 
         if (epochSwitchManager.IsEpochSwitchAtBlock(xdcBlockHeader))
         {
-            (Address[] masternodes, Address[] penalties) = snapshotManager.CalculateNextEpochMasternodes(xdcBlockHeader.Number, xdcBlockHeader.ParentHash, spec);
+            (Address[] masternodes, Address[] penalties) = masternodesCalculator.CalculateNextEpochMasternodes(xdcBlockHeader.Number, xdcBlockHeader.ParentHash, spec);
             xdcBlockHeader.Validators = new byte[masternodes.Length * Address.Size];
 
             for (int i = 0; i < masternodes.Length; i++)

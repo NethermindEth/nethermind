@@ -33,7 +33,7 @@ public class RewardTests
     {
         var chain = await XdcTestBlockchain.Create();
         var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
-
+        var signingTxCache = new SigningTxCache(chain.BlockTree, chain.SpecProvider);
         chain.ChangeReleaseSpec(spec =>
         {
             spec.EpochLength = 50;
@@ -51,7 +51,11 @@ public class RewardTests
             chain.SpecProvider,
             chain.BlockTree,
             masternodeVotingContract,
+<<<<<<< HEAD
             Substitute.For<ITransactionProcessor>()
+=======
+            signingTxCache
+>>>>>>> xdc/penalty-handler
         );
 
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -175,6 +179,7 @@ public class RewardTests
     {
         var chain = await XdcTestBlockchain.Create();
         var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
+        var signingTxCache = new SigningTxCache(chain.BlockTree, chain.SpecProvider);
         masternodeVotingContract
             .GetCandidateOwner(Arg.Any<BlockHeader>(), Arg.Any<Address>())
             .Returns(ci => ci.ArgAt<Address>(1));
@@ -185,6 +190,7 @@ public class RewardTests
             chain.BlockTree,
             masternodeVotingContract,
             Substitute.For<ITransactionProcessor>()
+            signingTxCache
         );
 
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -311,7 +317,7 @@ public class RewardTests
         xdcSpec.BlockSignerContract.Returns(blockSignerContract);
         xdcSpec.Reward.Returns(totalRewardInEther);
         xdcSpec.SwitchBlock.Returns(0);
-        xdcSpec.MergeSignRange = mergeSignRange;
+        xdcSpec.MergeSignRange.Returns(mergeSignRange);
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
@@ -349,15 +355,19 @@ public class RewardTests
 
         tree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>())
             .Returns(ci => blockHeaders[(long)ci.Args()[1]]);
-
-        tree.FindBlock(Arg.Any<long>())
-            .Returns(ci => blocks[(long)ci.Args()[0]]);
+        tree.FindBlock(Arg.Any<Hash256>(), Arg.Any<long>())
+            .Returns(ci => blocks[(long)ci.Args()[1]]);
 
         IMasternodeVotingContract votingContract = Substitute.For<IMasternodeVotingContract>();
         votingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), Arg.Any<Address>())
             .Returns(ci => ci.ArgAt<Address>(1));
 
+<<<<<<< HEAD
         var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<ITransactionProcessor>());
+=======
+        var signingTxCache = new SigningTxCache(tree, specProvider);
+        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, signingTxCache);
+>>>>>>> xdc/penalty-handler
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
         Assert.That(rewards, Has.Length.EqualTo(3));
@@ -380,12 +390,22 @@ public class RewardTests
     public void RewardCalculator_CalculateRewardsForSignersAndHolders_MatchesExpectedValues()
     {
         IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        ISigningTxCache signingTxCache = new SigningTxCache(blockTree, specProvider);
         var rewardCalculator = new XdcRewardCalculator(
             Substitute.For<IEpochSwitchManager>(),
+<<<<<<< HEAD
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlockTree>(),
             masternodeVotingContract,
             Substitute.For<ITransactionProcessor>()
+=======
+            specProvider,
+            blockTree,
+            masternodeVotingContract,
+            signingTxCache
+>>>>>>> xdc/penalty-handler
             );
 
         var totalReward = UInt256.Parse("171000000000000000000");

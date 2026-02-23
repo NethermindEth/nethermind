@@ -21,6 +21,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public int Reward { get; set; }
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
+    public ulong RangeReturnSigner { get; set; }
     public Address[] GenesisMasternodes { get; set; } = Array.Empty<Address>();
 
     public Address BlockSignerContract { get; set; }
@@ -32,6 +33,8 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 
     public Address MasternodeVotingContract { get; set; }
 
+    public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
 
     private List<V2ConfigParams> _v2Configs = new();
     public List<V2ConfigParams> V2Configs
@@ -51,7 +54,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public long BlackListHFNumber { get; set; }
     public long TipXDCX { get; set; }
     public long TIPXDCXMinerDisable { get; set; }
-    public long DynamicGasLimitBlock { get; set; }
+    public long? DynamicGasLimitBlock { get; set; }
 
     private static void CheckConfig(List<V2ConfigParams> list)
     {
@@ -64,16 +67,17 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         }
     }
 
+    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+    {
+        spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
+    }
+
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {
         if (TipTrc21Fee is not null)
             blockNumbers.Add(TipTrc21Fee.Value);
     }
 
-    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
-    {
-        spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
-    }
 }
 
 public sealed class V2ConfigParams

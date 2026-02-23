@@ -22,6 +22,11 @@ internal static class XdcConstants
 
     public const int InMemoryRound2Epochs = 65536;   // One epoch ~ 0.5h, 65536 epochs ~ 3.7y, ~10MB memory
 
+<<<<<<< HEAD
+=======
+    public const int BlockSignersCacheLimit = 9000;
+
+>>>>>>> xdc/penalty-handler
     public const long DefaultTargetGasLimit = 84000000; // XDC default gas limit per block
 
     public const byte ConsensusVersion = 0x02;
@@ -30,7 +35,6 @@ internal static class XdcConstants
 
     // --- Compile-time constants ---
     public const int InMemorySnapshots = 128;       // Number of recent vote snapshots to keep in memory
-    public const int BlockSignersCacheLimit = 9000;
     public const int M2ByteLength = 4;
 
     public const int PeriodicJobPeriod = 60;
@@ -39,7 +43,7 @@ internal static class XdcConstants
 
     public static readonly Hash256 UncleHash = Keccak.OfAnEmptySequenceRlp; // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW
     public static readonly UInt256 DifficultyDefault = UInt256.One;
-
+    public const int MinimumMinerBlockPerEpoch = 1;
 
     public static readonly byte[] SetSecret = Bytes.FromHexString("34d38600");
     public static readonly byte[] SetOpening = Bytes.FromHexString("e11f5ba2");
