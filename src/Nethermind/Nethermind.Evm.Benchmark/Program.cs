@@ -83,8 +83,20 @@ static string[] MergeWithClassFilter(string[] args, string classFilter)
     int filterIndex = Array.IndexOf(args, "--filter");
     if (filterIndex >= 0 && filterIndex + 1 < args.Length)
     {
-        string existingFilter = args[filterIndex + 1].Trim('"');
-        args[filterIndex + 1] = classFilter.TrimEnd('*') + "*" + existingFilter.TrimStart('*');
+        // Scope every filter pattern with the class prefix so patterns like *CALL*
+        // don't accidentally match non-gas benchmark classes (e.g. StaticCallBenchmarks).
+        string prefix = classFilter.TrimEnd('*');
+        for (int i = filterIndex + 1; i < args.Length; i++)
+        {
+            if (args[i].StartsWith("--", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            string pattern = args[i].Trim('"');
+            args[i] = prefix + "*" + pattern.TrimStart('*');
+        }
+
         return args;
     }
 
