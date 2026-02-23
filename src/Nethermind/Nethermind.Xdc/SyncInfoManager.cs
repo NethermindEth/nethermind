@@ -36,7 +36,7 @@ internal class SyncInfoManager(
     public bool VerifySyncInfo(SyncInfo syncInfo, [NotNullWhen(false)] out string error)
     {
         if (xdcContext.HighestQC.ProposedBlockInfo.Round >= syncInfo.HighestQuorumCert.ProposedBlockInfo.Round &&
-            xdcContext.HighestTC.Round >= syncInfo.HighestTimeoutCert.Round)
+            xdcContext.HighestTC?.Round >= syncInfo.HighestTimeoutCert.Round)
         {
             error = $"SyncInfo rounds are equal or lower than already known - QC={xdcContext.HighestQC.ProposedBlockInfo.Round}/{syncInfo.HighestQuorumCert.ProposedBlockInfo.Round} TC={xdcContext.HighestTC.Round}/{syncInfo.HighestTimeoutCert.Round}";
             return false;

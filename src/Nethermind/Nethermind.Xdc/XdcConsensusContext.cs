@@ -15,7 +15,6 @@ public class XdcConsensusContext : IXdcConsensusContext
     public XdcConsensusContext()
     {
         HighestQC = new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 0, 0), [], 0);
-        HighestTC = new TimeoutCertificate(0, [], 0);
     }
 
     public DateTime RoundStarted { get; private set; }

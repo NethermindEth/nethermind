@@ -556,7 +556,7 @@ internal class SpecialTransactionsTests
 
         blockChain.MainWorldState.BeginScope(head);
 
-        UInt256 tooHighBlockNumber = (UInt256)head.Number + 1;
+        UInt256 tooHighBlockNumber = (UInt256)head.Number + 2;
         Transaction txTooHigh = SignTransactionManager.CreateTxSign(
             tooHighBlockNumber,
             head.Hash!,

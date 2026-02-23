@@ -253,7 +253,7 @@ namespace Nethermind.Xdc
         internal (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
             Address masternodeAddress, UInt256 reward, XdcBlockHeader header)
         {
-            Address owner = _masternodeVotingContract.GetCandidateOwnerDuringProcessing(_transactionProcessor, header, masternodeAddress);
+            Address owner = _masternodeVotingContract.GetCandidateOwner(_transactionProcessor, header, masternodeAddress);
 
             // 90% of the reward goes to the masternode
             UInt256 masterReward = reward * 90 / 100;
