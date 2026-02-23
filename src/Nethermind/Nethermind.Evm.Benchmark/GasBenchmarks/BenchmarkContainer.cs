@@ -176,8 +176,8 @@ internal static class BenchmarkContainer
             // IDisposableStack for PruningTrieStateFactory to register disposables
             .Add<IDisposableStack, AutofacDisposableStack>()
 
-            // Lazy<IPathRecovery> — not needed for benchmarks, provide a null-returning lazy
-            .AddSingleton<Lazy<IPathRecovery>>(_ => new Lazy<IPathRecovery>(() => null))
+            // Lazy<IPathRecovery> — benchmarks have complete state; provide noop recovery
+            .AddSingleton<Lazy<IPathRecovery>>(_ => new Lazy<IPathRecovery>(() => new NoopPathRecovery()))
             ;
     }
 
@@ -212,6 +212,12 @@ internal static class BenchmarkContainer
             .AddSingleton<IBlockTree>(new MinimalBenchmarkBlockTree())
             .Bind<IBlockFinder, IBlockTree>()
             ;
+    }
+
+    private sealed class NoopPathRecovery : IPathRecovery
+    {
+        public Task<IOwnedReadOnlyList<(TreePath, byte[])>> Recover(Hash256 rootHash, Hash256 address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken = default)
+            => Task.FromResult<IOwnedReadOnlyList<(TreePath, byte[])>>(null);
     }
 
     private sealed class NullHeaderFinder : IHeaderFinder
