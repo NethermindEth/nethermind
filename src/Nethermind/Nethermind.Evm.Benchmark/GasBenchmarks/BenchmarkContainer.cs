@@ -162,6 +162,7 @@ internal static class BenchmarkContainer
             .AddModule(new BlockProcessingModule(initConfig, blocksConfig))
 
             // Configs required by WorldStateModule and its dependencies
+            .AddSingleton<IInitConfig>(initConfig)
             .AddSingleton<ISyncConfig>(syncConfig)
             .AddSingleton<IPruningConfig>(new PruningConfig())
             .AddSingleton<IDbConfig>(new DbConfig())
