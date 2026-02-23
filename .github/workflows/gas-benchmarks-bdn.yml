@@ -81,7 +81,7 @@ jobs:
             mode="EVM"
             warmupCount="2"
             iterationCount="1"
-            # stability-run: 2
+            # stability-run: 3
             if [[ -z "$filter" ]]; then
               filter="*mulmod* *ether_transfer* *ADD* *CALL*"
             fi
