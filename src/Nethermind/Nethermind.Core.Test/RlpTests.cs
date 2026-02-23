@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using FluentAssertions;
@@ -61,6 +62,12 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Length_of_ulong_same_as_uint256([ValueSource(nameof(ULongValues))] ulong value)
+        {
+            Assert.That(Rlp.LengthOf(value), Is.EqualTo(Rlp.LengthOf((UInt256)value)));
+        }
+
+        [Test]
         public void single_byte_encoding_decoding()
         {
             byte item = 0;
@@ -86,13 +93,27 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Long_negative()
+        public void Long_encode_decode([ValueSource(nameof(LongValues))] long value, [Values] bool useBuffer)
         {
-            Rlp output = Rlp.Encode(-1L);
-            RlpStream context = new RlpStream(output.Bytes);
-            long value = context.DecodeLong();
+            RlpStream context = useBuffer
+                ? new(Rlp.Encode(value, stackalloc byte[9]).ToArray())
+                : new(Rlp.Encode(value).Bytes);
 
-            Assert.That(value, Is.EqualTo(-1L));
+            long decoded = context.DecodeLong();
+
+            Assert.That(decoded, Is.EqualTo(value));
+        }
+
+        [Test]
+        public void ULong_encode_decode([ValueSource(nameof(ULongValues))] ulong value, [Values] bool useBuffer)
+        {
+            RlpStream context = useBuffer
+                ? new(Rlp.Encode(value, stackalloc byte[9]).ToArray())
+                : new(Rlp.Encode(value).Bytes);
+
+            ulong decoded = context.DecodeULong();
+
+            Assert.That(decoded, Is.EqualTo(value));
         }
 
         [Test]
@@ -223,17 +244,10 @@ namespace Nethermind.Core.Test
             Assert.Throws<RlpException>(() => rlp.AsRlpStream().DecodeBool());
         }
 
-
-        [TestCase(Int64.MinValue)]
-        [TestCase(-1L)]
-        [TestCase(0L)]
-        [TestCase(1L)]
-        [TestCase(129L)]
-        [TestCase(257L)]
-        [TestCase(Int64.MaxValue / 256 / 256)]
-        [TestCase(Int64.MaxValue)]
-        [TestCase(1555318864136L)]
-        public void Long_and_big_integer_encoded_the_same(long value)
+        [Test]
+        public void Long_and_big_integer_encoded_the_same(
+            [ValueSource(nameof(LongValues))] long value
+        )
         {
             Rlp rlpLong = Rlp.Encode(value);
 
@@ -244,6 +258,28 @@ namespace Nethermind.Core.Test
             }
 
             Assert.That(rlpBigInt.Bytes, Is.EqualTo(rlpLong.Bytes));
+        }
+
+        [Test]
+        public void Long_using_buffer_encoded_the_same(
+            [ValueSource(nameof(LongValues))] long value
+        )
+        {
+            Span<byte> buffer = stackalloc byte[9];
+            Span<byte> result = Rlp.Encode(value, buffer);
+
+            Assert.That(result.ToArray(), Is.EqualTo(Rlp.Encode(value).Bytes));
+        }
+
+        [Test]
+        public void ULong_using_buffer_encoded_the_same(
+            [ValueSource(nameof(ULongValues))] ulong value
+        )
+        {
+            Span<byte> buffer = stackalloc byte[9];
+            Span<byte> result = Rlp.Encode(value, buffer);
+
+            Assert.That(result.ToArray(), Is.EqualTo(Rlp.Encode(value).Bytes));
         }
 
         [Test]
@@ -305,6 +341,44 @@ namespace Nethermind.Core.Test
             RlpStream stream = Prepare100BytesStream();
             stream.Data[1] = 101; // tamper with length, it is more than available bytes
             Assert.Throws<RlpLimitException>(() => stream.DecodeByteArray());
+        }
+
+        private static HashSet<long> LongValues()
+        {
+            const long minusBit = 1L << 63;
+            HashSet<long> seen = [];
+
+            for (var i = 0; i < sizeof(long) * 8; i++)
+            {
+                var pow2 = 1L << i;
+
+                TryYield(pow2);
+                TryYield(pow2 - 1);
+                TryYield(pow2 + 1);
+
+                TryYield(pow2 | minusBit);
+                TryYield((pow2 - 1) | minusBit);
+                TryYield((pow2 + 1) | minusBit);
+            }
+
+            return seen;
+
+            void TryYield(long value) => seen.Add(value);
+        }
+
+        private static IEnumerable<ulong> ULongValues()
+        {
+            for (var i = 0; i < sizeof(long) * 8; i++)
+            {
+                var pow2 = 1UL << i;
+
+                yield return pow2;
+                yield return pow2 - 1;
+                yield return pow2 + 1;
+            }
+
+            yield return ulong.MaxValue - 1;
+            yield return ulong.MaxValue;
         }
 
         private static RlpStream Prepare100BytesStream()
