@@ -78,13 +78,8 @@ jobs:
           # Full suite on master push, PRs, and workflow_dispatch; smoke test on branch pushes
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" != "refs/heads/master" ]]; then
             chunks="[1, 2, 3, 4, 5]"
-            mode="EVM"
-            warmupCount="2"
-            iterationCount="1"
-            # stability-run: 5
-            if [[ -z "$filter" ]]; then
-              filter="*mulmod* *ether_transfer* *ADD* *CALL*"
-            fi
+            mode="BlockBuilding"
+            # lowchad-stability-run: 1
           else
             chunks="[1, 2, 3, 4, 5]"
           fi
@@ -101,7 +96,7 @@ jobs:
   benchmark:
     needs: resolve
     if: always() && !cancelled() && needs.resolve.result == 'success'
-    runs-on: [self-hosted, Linux, X64, benchmark]
+    runs-on: ubuntu-lowchad
     strategy:
       fail-fast: false
       matrix:
@@ -118,6 +113,32 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+
+      - name: Hardware verification
+        shell: bash
+        run: |
+          echo "=== CPU ==="
+          lscpu | grep -E 'Model name|Socket|Core|Thread|CPU MHz|CPU max|CPU min|Architecture|Flags'
+          echo ""
+          echo "=== CPU ID ==="
+          cat /proc/cpuinfo | grep -E 'model name|cpu MHz|cache size|physical id|core id|cpu cores' | sort -u
+          echo ""
+          echo "=== Memory ==="
+          free -h
+          echo ""
+          echo "=== NUMA ==="
+          numactl --hardware 2>/dev/null || echo "numactl not available"
+          echo ""
+          echo "=== Kernel ==="
+          uname -a
+          echo ""
+          echo "=== Runner ==="
+          echo "Runner name: $RUNNER_NAME"
+          echo "Runner OS: $RUNNER_OS"
+          echo "Hostname: $(hostname)"
+          echo ""
+          echo "=== Disk ==="
+          df -h . | head -5
 
       - name: Build benchmarks
         run: dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release
