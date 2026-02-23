@@ -104,6 +104,8 @@ public class XdcModule : Module
             .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
             .AddSingleton<XdcStateSyncSnapshotManager>()
             .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
+            .AddSingleton<ISyncDownloader<StateSyncBatch>, XdcStateSyncDownloader>()
+
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 

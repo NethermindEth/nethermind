@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.StateSync
                 task = nodeDataHandler.GetNodeData(hashList, cancellationToken);
             }
             // If the NodeData protocol is not supported, try eth66
-            else if (peer.ProtocolVersion < 101)
+            else if (ProtocolSupportsNodeData(peer))
             {
                 if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer}");
                 hashList = HashList.Rent(batch.RequestedNodes);
@@ -86,6 +86,11 @@ namespace Nethermind.Synchronization.StateSync
             {
                 if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", e);
             }
+        }
+
+        protected virtual bool ProtocolSupportsNodeData(ISyncPeer peer)
+        {
+            return peer.ProtocolVersion < EthVersions.Eth67;
         }
 
         /// <summary>
