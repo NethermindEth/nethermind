@@ -16,7 +16,7 @@ Derived from AGENTS.md and project patterns. Use this checklist during PR review
 - **Pattern matching** — prefer switch expressions and pattern matching over traditional if/else chains
 - **Documentation comments** — all public APIs need `<summary>` XML doc comments
 - **Comments explain why, not what** — flag comments that just restate the code
-
+- **Concise code** — prefer single line methods with `=>` instead of `{ ... }`, prefer ternary operator `? ... : ...` instead of `if-else` pattern when evaluating expression.
 ## Architecture / Design Rules
 
 - **Low allocation** — flag unnecessary allocations: new collections inside hot loops, closures capturing large objects, boxing value types, string concatenation in loops (use `StringBuilder` or interpolation)
