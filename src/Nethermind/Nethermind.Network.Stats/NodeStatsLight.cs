@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Stats;
 
@@ -429,11 +430,11 @@ public class NodeStatsLight : INodeStats
         {
             return Node.ClientType switch
             {
-                NodeClientType.Nethermind => Stats.SyncLimits.NethermindSyncLimits.MaxHeaderFetch,
-                NodeClientType.Geth => Stats.SyncLimits.GethSyncLimits.MaxHeaderFetch,
-                NodeClientType.Parity => Stats.SyncLimits.ParitySyncLimits.MaxHeaderFetch,
-                NodeClientType.Besu => Stats.SyncLimits.BeSuSyncLimits.MaxHeaderFetch,
-                _ => Stats.SyncLimits.GethSyncLimits.MaxHeaderFetch, // Default to Geth limits for unknown clients
+                NodeClientType.Nethermind => NethermindSyncLimits.MaxHeaderFetch,
+                NodeClientType.Geth => GethSyncLimits.MaxHeaderFetch,
+                NodeClientType.Parity => ParitySyncLimits.MaxHeaderFetch,
+                NodeClientType.Besu => BeSuSyncLimits.MaxHeaderFetch,
+                _ => GethSyncLimits.MaxHeaderFetch, // Default to Geth limits for unknown clients
             };
         }
 

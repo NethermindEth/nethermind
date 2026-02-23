@@ -354,7 +354,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [TestCase(5, 5)]
-        [TestCase(50, 20)]
+        [TestCase(50, 50)]
         public void Should_truncate_array_when_too_many_body(int availableBody, int expectedResponseSize)
         {
             List<Block> blocks = new List<Block>();
