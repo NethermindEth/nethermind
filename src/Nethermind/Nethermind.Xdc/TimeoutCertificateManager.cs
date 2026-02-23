@@ -189,7 +189,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
                 foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
                 {
                     if (peerInfo.SyncPeer is Xdpos2ProtocolHandler xdpos2ProtocolHandler)
-                        xdpos2ProtocolHandler.SendSyncinfo(syncInfo);
+                        xdpos2ProtocolHandler.SendSyncInfo(syncInfo);
                 }
             }
         }

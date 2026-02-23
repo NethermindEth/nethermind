@@ -256,7 +256,7 @@ public class Xdpos2ProtocolHandlerTests
         {
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
 
-            handler.SendSyncinfo(syncInfo);
+            handler.SendSyncInfo(syncInfo);
 
             session.Received(1).DeliverMessage(Arg.Any<SyncInfoMsg>());
         }
@@ -271,8 +271,8 @@ public class Xdpos2ProtocolHandlerTests
         {
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
 
-            handler.SendSyncinfo(syncInfo);
-            handler.SendSyncinfo(syncInfo);
+            handler.SendSyncInfo(syncInfo);
+            handler.SendSyncInfo(syncInfo);
 
             session.Received(2).DeliverMessage(Arg.Any<SyncInfoMsg>());
         }

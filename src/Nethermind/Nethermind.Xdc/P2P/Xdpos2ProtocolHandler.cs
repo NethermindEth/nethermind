@@ -126,7 +126,7 @@ internal class Xdpos2ProtocolHandler(
         Send(new TimeoutMsg() { Timeout = timeout });
     }
 
-    public void SendSyncinfo(SyncInfo syncInfo)
+    public void SendSyncInfo(SyncInfo syncInfo)
     {
         Send(new SyncInfoMsg() { SyncInfo = syncInfo });
     }

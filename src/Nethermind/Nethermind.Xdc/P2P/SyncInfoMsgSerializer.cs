@@ -13,7 +13,7 @@ using System.Text;
 
 namespace Nethermind.Xdc.P2P;
 
-internal class SyncinfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
+internal class SyncInfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
 {
     private static readonly SyncInfoDecoder _syncInfoDecoder = new SyncInfoDecoder();
 

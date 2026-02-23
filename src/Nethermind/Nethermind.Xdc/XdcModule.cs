@@ -117,7 +117,7 @@ public class XdcModule : Module
             .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
             .AddSingleton(new BlockDecoder(new XdcHeaderDecoder()))
             .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
-            .AddMessageSerializer<SyncInfoMsg, SyncinfoMsgSerializer>()
+            .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
             .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()

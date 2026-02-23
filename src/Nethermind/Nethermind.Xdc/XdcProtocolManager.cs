@@ -52,9 +52,9 @@ internal class XdcProtocolManager : ProtocolsManager
     IGossipPolicy gossipPolicy,
     IWorldStateManager worldStateManager,
     ILogManager logManager,
-    ITxPoolConfig txPoolConfdig,
+    ITxPoolConfig txPoolConfig,
     ISpecProvider specProvider,
-    ITxGossipPolicy? transactionsGossipPolicy = null) : base(syncPeerPool, syncServer, backgroundTaskScheduler, txPool, discoveryApp, serializationService, rlpxHost, nodeStatsManager, protocolValidator, peerStorage, forkInfo, gossipPolicy, worldStateManager, logManager, txPoolConfdig, specProvider, transactionsGossipPolicy)
+    ITxGossipPolicy? transactionsGossipPolicy = null) : base(syncPeerPool, syncServer, backgroundTaskScheduler, txPool, discoveryApp, serializationService, rlpxHost, nodeStatsManager, protocolValidator, peerStorage, forkInfo, gossipPolicy, worldStateManager, logManager, txPoolConfig, specProvider, transactionsGossipPolicy)
     {
         foreach (Capability item in DefaultCapabilities)
         {
@@ -70,8 +70,8 @@ internal class XdcProtocolManager : ProtocolsManager
 
     protected override IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
     {
-        IDictionary<string, Func<ISession, int, IProtocolHandler>> protocolfac = base.GetProtocolFactories();
-        protocolfac[Protocol.Eth] = (session, version) =>
+        IDictionary<string, Func<ISession, int, IProtocolHandler>> protocolFactory = base.GetProtocolFactories();
+        protocolFactory[Protocol.Eth] = (session, version) =>
         {
             Eth62ProtocolHandler ethHandler = version switch
             {
@@ -85,6 +85,6 @@ internal class XdcProtocolManager : ProtocolsManager
             InitSyncPeerProtocol(session, ethHandler);
             return ethHandler;
         };
-        return protocolfac;
+        return protocolFactory;
     }
 }
