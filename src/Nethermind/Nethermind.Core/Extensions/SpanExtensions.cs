@@ -220,12 +220,14 @@ namespace Nethermind.Core.Extensions
         /// </remarks>
         [SkipLocalsInit]
         public static int FastHash(this ReadOnlySpan<byte> input)
+            => FastHash(input, InstanceRandom + (uint)input.Length);
+
+        internal static int FastHash(ReadOnlySpan<byte> input, uint seed)
         {
             int len = input.Length;
             if (len == 0) return 0;
 
             ref byte start = ref MemoryMarshal.GetReference(input);
-            uint seed = InstanceRandom + (uint)len;
 
             if (len >= 16)
             {
@@ -334,7 +336,8 @@ namespace Nethermind.Core.Extensions
         internal static int FastHashAesArm(ref byte start, int len, uint seed)
         {
             Vector128<byte> seedVec = Vector128.CreateScalar(seed).AsByte();
-            Vector128<byte> acc0 = Unsafe.As<byte, Vector128<byte>>(ref start) ^ seedVec;
+            Vector128<byte> input0 = Unsafe.As<byte, Vector128<byte>>(ref start);
+            Vector128<byte> acc0 = input0 ^ seedVec;
 
             if (len > 64)
             {
@@ -409,10 +412,19 @@ namespace Nethermind.Core.Extensions
                 Vector128<byte> last = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 16));
                 acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(last, acc0));
             }
-            else
+            else if (len > 16)
             {
                 Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 16));
                 acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, acc0));
+            }
+            else
+            {
+                // len == 16: start+len-16 == start, so data would be the same bytes
+                // that built acc0. ARM Arm.Aes.Encrypt XORs its operands before scrambling,
+                // so Encrypt(input, input^seed) cancels input, losing all input dependence.
+                // Feed input and seedVec directly so the XOR yields (input ^ seed),
+                // then SubBytes and ShiftRows, and Arm.Aes.MixColumns completes the round.
+                acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(input0, seedVec));
             }
 
             ulong compressed = acc0.AsUInt64().GetElement(0) ^ acc0.AsUInt64().GetElement(1);
