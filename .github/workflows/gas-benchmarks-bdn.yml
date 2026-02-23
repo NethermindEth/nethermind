@@ -77,9 +77,10 @@ jobs:
 
           # Full suite on master push, PRs, and workflow_dispatch; smoke test on branch pushes
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" != "refs/heads/master" ]]; then
-            chunks="[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]"
+            chunks="[1, 2, 3]"
             mode="BlockBuilding"
-            # chad-stability-run: 1
+            filter="*ether_transfer*"
+            # lowchad-artifact-test: 1
           else
             chunks="[1, 2, 3, 4, 5]"
           fi
@@ -123,7 +124,7 @@ jobs:
   benchmark:
     needs: [resolve, build]
     if: always() && !cancelled() && needs.resolve.result == 'success' && needs.build.result == 'success'
-    runs-on: ubuntu-chad
+    runs-on: ubuntu-lowchad
     strategy:
       fail-fast: false
       matrix:
