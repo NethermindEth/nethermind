@@ -111,7 +111,7 @@ namespace Nethermind.Trie
             ILogManager? logManager,
             ICappedArrayPool? bufferPool = null)
         {
-            _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _allowCommits = allowCommits;
             RootHash = rootHash;
