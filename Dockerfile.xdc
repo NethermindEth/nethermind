@@ -24,10 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /
 # Clone XDC Nethermind
 RUN git clone -b ${GIT_BRANCH} --depth 1 ${GIT_REPO} .
 
-COPY src/Nethermind src/Nethermind
-COPY Directory.*.props .
-COPY global.json .
-COPY nuget.config .
+# Source already cloned from GitHub above — no local COPY needed
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   rid="linux-${arch}" && \
