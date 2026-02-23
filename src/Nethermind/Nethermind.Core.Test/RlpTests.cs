@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Length_of_long_same_as_uint256([ValueSource(nameof(LongValues))] long value)
+        public void Length_of_ulong_same_as_uint256([ValueSource(nameof(ULongValues))] ulong value)
         {
             Assert.That(Rlp.LengthOf(value), Is.EqualTo(Rlp.LengthOf((UInt256)value)));
         }
