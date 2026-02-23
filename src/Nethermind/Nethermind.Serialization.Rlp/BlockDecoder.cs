@@ -21,7 +21,7 @@ namespace Nethermind.Serialization.Rlp
                 throw new RlpException($"Received a 0 length stream when decoding a {nameof(Block)}");
             }
 
-            if (rlpStream.IsNextItemNull())
+            if (rlpStream.IsNextItemEmptyList())
             {
                 rlpStream.ReadByte();
                 return null;
@@ -68,7 +68,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return 1;
+                return Rlp.OfEmptyList.Length;
             }
 
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
@@ -76,7 +76,7 @@ namespace Nethermind.Serialization.Rlp
 
         protected override Block? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyList())
             {
                 decoderContext.ReadByte();
                 return null;
@@ -100,7 +100,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence;
+                return Rlp.OfEmptyList;
             }
 
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
@@ -158,7 +158,7 @@ namespace Nethermind.Serialization.Rlp
         {
             Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory, true);
 
-            if (decoderContext.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyList())
             {
                 decoderContext.ReadByte();
                 return null;

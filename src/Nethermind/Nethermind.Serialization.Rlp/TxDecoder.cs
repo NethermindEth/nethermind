@@ -74,7 +74,7 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
             }
         }
 
-        if (rlpStream.IsNextItemNull())
+        if (rlpStream.IsNextItemEmptyList())
         {
             rlpStream.ReadByte();
             return null;
@@ -116,7 +116,7 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
 
     public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
             transaction = null;
@@ -178,7 +178,7 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
     {
         if (item is null)
         {
-            stream.WriteByte(Rlp.NullObjectByte);
+            stream.WriteByte(Rlp.EmptyListByte);
             return;
         }
 

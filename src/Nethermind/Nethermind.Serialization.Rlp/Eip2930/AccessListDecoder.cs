@@ -22,7 +22,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         /// </summary>
         protected override AccessList? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (rlpStream.IsNextItemNull())
+            if (rlpStream.IsNextItemEmptyList())
             {
                 rlpStream.ReadByte();
                 return null;
@@ -82,7 +82,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyList())
             {
                 decoderContext.ReadByte();
                 return null;
@@ -136,7 +136,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         {
             if (item is null)
             {
-                stream.WriteByte(Rlp.NullObjectByte);
+                stream.WriteByte(Rlp.EmptyListByte);
                 return;
             }
 
