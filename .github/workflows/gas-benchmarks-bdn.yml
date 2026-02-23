@@ -3,7 +3,7 @@ name: Gas Benchmarks (BDN)
 on:
   push:
     branches: [master, 'kch/**']
-    paths: ['src/Nethermind/**']
+    paths: ['src/Nethermind/**', '.github/workflows/gas-benchmarks-bdn.yml']
   pull_request:
     branches: [master]
     types: [labeled]
