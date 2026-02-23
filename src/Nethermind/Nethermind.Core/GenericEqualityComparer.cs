@@ -25,8 +25,9 @@ public static class GenericEqualityComparer
     public static IEqualityComparer<T>? GetOptimized<T>(IEqualityComparer<T>? comparer) =>
         comparer switch
         {
-            null => null,
+#if !ZKVM
             IGenericEqualityComparer => null,
+#endif
             _ => comparer
         };
 }
