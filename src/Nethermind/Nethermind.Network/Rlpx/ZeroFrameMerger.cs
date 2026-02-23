@@ -98,7 +98,7 @@ namespace Nethermind.Network.Rlpx
             // otherwise we need to read into the freshly allocated buffer.
             if (frame.IsChunked)
             {
-                input.ReadBytes(_zeroPacket.Content, frame.Size - 1);
+                input.ReadBytes(_zeroPacket.Content, frame.Size - read);
                 // do not call Release since the input buffer is managed by
             }
         }
