@@ -7,6 +7,7 @@ using System.Linq;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Int256;
@@ -48,6 +49,8 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly bool _needToWaitForHeaders;
         private readonly ILogger _logger;
         private readonly bool _isSnapSyncDisabledAfterAnyStateSync;
+        private readonly ulong _chainId;
+        private readonly bool _isXdcChain;
 
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool SnapSyncEnabled => _syncConfig.SnapSync && !_isSnapSyncDisabledAfterAnyStateSync;
@@ -75,7 +78,8 @@ namespace Nethermind.Synchronization.ParallelSync
             ISyncConfig syncConfig,
             IBeaconSyncStrategy beaconSyncStrategy,
             IBetterPeerStrategy betterPeerStrategy,
-            ILogManager logManager)
+            ILogManager logManager,
+            Blockchain.IBlockTree blockTree)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -84,6 +88,13 @@ namespace Nethermind.Synchronization.ParallelSync
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _needToWaitForHeaders = syncConfig.NeedToWaitForHeader;
+            
+            // XDC chain detection: chainId 50 (mainnet) or 51 (apothem/testnet)
+            _chainId = blockTree?.ChainId ?? 0;
+            _isXdcChain = _chainId == 50 || _chainId == 51;
+            
+            if (_isXdcChain && _logger.IsInfo)
+                _logger.Info($"XDC chain detected (chainId={_chainId}). Full sync mode will be enforced.");
 
             if (syncConfig.FastSyncCatchUpHeightDelta <= syncConfig.StateMinDistanceFromHead)
             {
@@ -154,6 +165,33 @@ namespace Nethermind.Synchronization.ParallelSync
                 {
                     newModes = shouldBeInUpdatingPivot ? SyncMode.UpdatingPivot : inBeaconControl ? SyncMode.WaitingForBlock : SyncMode.Disconnected;
                     reason = "No Useful Peers";
+                }
+                // XDC Fix: For XDC chains (chainId 50/51), force full sync immediately when peers are available
+                // This bypasses FastSync/WaitingForBlock logic that doesn't work with XDC's go-ethereum fork
+                else if (_isXdcChain && !FastSyncEnabled)
+                {
+                    Snapshot best = EnsureSnapshot(peerDifficulty, peerBlock.Value, inBeaconControl);
+                    long bestBlock = Math.Max(_syncProgressResolver.FindBestProcessedBlock(), _syncProgressResolver.FindBestHeader());
+                    bool notCaughtUpYet = bestBlock < peerBlock.Value - 10; // 10 block tolerance
+                    bool hasUsefulPeers = peerBlock.Value > 0;
+                    
+                    if (hasUsefulPeers && notCaughtUpYet)
+                    {
+                        newModes = SyncMode.Full;
+                        if (_logger.IsDebug)
+                            _logger.Debug($"XDC: Forcing Full sync mode. Local: {bestBlock}, Peer: {peerBlock.Value}");
+                    }
+                    else if (hasUsefulPeers && !notCaughtUpYet)
+                    {
+                        newModes = SyncMode.WaitingForBlock;
+                        if (_logger.IsDebug)
+                            _logger.Debug($"XDC: Caught up with peers. Local: {bestBlock}, Peer: {peerBlock.Value}");
+                    }
+                    else
+                    {
+                        newModes = SyncMode.Disconnected;
+                        reason = "No Useful Peers (XDC)";
+                    }
                 }
                 // to avoid expensive checks we make this simple check at the beginning
                 else

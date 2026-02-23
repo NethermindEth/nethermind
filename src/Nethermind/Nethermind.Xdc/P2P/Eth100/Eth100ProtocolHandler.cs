@@ -11,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
@@ -33,6 +34,11 @@ namespace Nethermind.Xdc.P2P.Eth100
         private Timer? _keepaliveTimer;
         private readonly TimeSpan _keepaliveInterval = TimeSpan.FromSeconds(20);
         private DateTime _lastActivity = DateTime.MinValue;
+        
+        /// <summary>
+        /// Event fired when XDC peer disconnects - can be used for immediate reconnection attempts
+        /// </summary>
+        public event EventHandler<DisconnectEventArgs>? XdcPeerDisconnected;
 
         public Eth100ProtocolHandler(
             ISession session,
@@ -79,6 +85,12 @@ namespace Nethermind.Xdc.P2P.Eth100
 
             base.Init();
 
+            // Subscribe to disconnect events for reconnection signaling
+            if (Session != null)
+            {
+                Session.Disconnected += OnSessionDisconnected;
+            }
+
             // Start keepalive timer to prevent go-ethereum's 30-second frame read timeout
             // XDC nodes (go-ethereum fork) disconnect idle peers after frameReadTimeout (30s)
             // We send a lightweight GetBlockHeaders request every 20s to keep the connection alive
@@ -94,9 +106,41 @@ namespace Nethermind.Xdc.P2P.Eth100
 
         public override void Dispose()
         {
+            // Unsubscribe from disconnect events
+            if (Session != null)
+            {
+                Session.Disconnected -= OnSessionDisconnected;
+            }
+            
             _keepaliveTimer?.Dispose();
             _keepaliveTimer = null;
             base.Dispose();
+        }
+
+        /// <summary>
+        /// Handle session disconnect - log and signal for immediate reconnection
+        /// </summary>
+        private void OnSessionDisconnected(object? sender, DisconnectEventArgs e)
+        {
+            if (Logger.IsInfo)
+            {
+                Logger.Info($"XDC eth/100: Peer {Node:c} disconnected. " +
+                           $"Reason: {e.DisconnectReason}, Type: {e.DisconnectType}. " +
+                           $"Signaling for immediate reconnection...");
+            }
+
+            // Fire event for external reconnection handlers (e.g., peer pool manager)
+            // This allows the peer manager to immediately re-queue this XDC peer
+            // instead of waiting for the normal discovery cycle
+            try
+            {
+                XdcPeerDisconnected?.Invoke(this, e);
+            }
+            catch (Exception ex)
+            {
+                if (Logger.IsDebug)
+                    Logger.Debug($"XDC eth/100: Error in disconnect handler: {ex.Message}");
+            }
         }
 
         public override void HandleMessage(ZeroPacket message)
