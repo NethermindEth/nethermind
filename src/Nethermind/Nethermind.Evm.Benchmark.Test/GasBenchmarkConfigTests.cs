@@ -22,6 +22,9 @@ public class GasBenchmarkConfigTests
         GasBenchmarkConfig.InProcess = false;
         GasBenchmarkConfig.ChunkIndex = 0;
         GasBenchmarkConfig.ChunkTotal = 0;
+        GasBenchmarkConfig.WarmupCount = null;
+        GasBenchmarkConfig.IterationCount = null;
+        GasBenchmarkConfig.LaunchCount = null;
     }
 
     [Test]
@@ -117,5 +120,56 @@ public class GasBenchmarkConfigTests
     public void InProcess_Defaults_To_False()
     {
         Assert.That(GasBenchmarkConfig.InProcess, Is.False);
+    }
+
+    [Test]
+    public void WarmupCount_Override_Applied_To_Job()
+    {
+        GasBenchmarkConfig.WarmupCount = 3;
+
+        GasBenchmarkConfig config = new();
+
+        Job job = config.GetJobs().First();
+        Assert.That(job.Run.WarmupCount, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void IterationCount_Override_Applied_To_Job()
+    {
+        GasBenchmarkConfig.IterationCount = 5;
+
+        GasBenchmarkConfig config = new();
+
+        Job job = config.GetJobs().First();
+        Assert.That(job.Run.IterationCount, Is.EqualTo(5));
+    }
+
+    [Test]
+    public void LaunchCount_Override_Applied_To_Job()
+    {
+        GasBenchmarkConfig.LaunchCount = 2;
+
+        GasBenchmarkConfig config = new();
+
+        Job job = config.GetJobs().First();
+        Assert.That(job.Run.LaunchCount, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void WarmupCount_Defaults_To_Null()
+    {
+        Assert.That(GasBenchmarkConfig.WarmupCount, Is.Null);
+    }
+
+    [Test]
+    public void IterationCount_Defaults_To_Null()
+    {
+        Assert.That(GasBenchmarkConfig.IterationCount, Is.Null);
+    }
+
+    [Test]
+    public void LaunchCount_Defaults_To_Null()
+    {
+        Assert.That(GasBenchmarkConfig.LaunchCount, Is.Null);
     }
 }

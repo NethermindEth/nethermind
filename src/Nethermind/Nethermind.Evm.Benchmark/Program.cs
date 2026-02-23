@@ -4,18 +4,16 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using Autofac;
 using BenchmarkDotNet.Running;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.Benchmark;
 using Nethermind.Evm.Benchmark.GasBenchmarks;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
@@ -40,6 +38,7 @@ if (inprocessIndex >= 0)
 
 args = ApplyModeFilter(args);
 args = ApplyChunkFilter(args);
+args = ApplyBdnOverrides(args);
 
 ConfigureTimingFilePath();
 BenchmarkSwitcher.FromAssembly(typeof(EvmBenchmarks).Assembly).Run(args);
@@ -113,32 +112,14 @@ static (string Value, int RemoveCount) GetOptionValue(string[] args, int optionI
     throw new ArgumentException($"{optionName} requires a value.");
 }
 
-static (string ClassFilter, bool? BuildBlocksOnMainState) ResolveModeDefinition(string modeValue)
+static string ResolveModeDefinition(string modeValue) => modeValue.ToUpperInvariant() switch
 {
-    switch (modeValue.ToUpperInvariant())
-    {
-        case "EVM":
-        case "EVMEXECUTE":
-            return ("*GasPayloadExecuteBenchmarks*", null);
-        case "BUILDUP":
-        case "EVMBUILDUP":
-            return ("*GasPayloadBenchmarks*", null);
-        case "BLOCKBUILDING":
-            return ("*GasBlockBuildingBenchmarks*", false);
-        case "BLOCKBUILDINGMAINSTATE":
-            return ("*GasBlockBuildingBenchmarks*", true);
-        case "BLOCKONE":
-            return ("*GasBlockOne*", null);
-        case "BLOCK":
-            return ("*GasBlockBenchmarks*", null);
-        case "NEWPAYLOAD":
-            return ("*GasNewPayloadBenchmarks*", null);
-        case "NEWPAYLOADMEASURED":
-            return ("*GasNewPayloadMeasuredBenchmarks*", null);
-        default:
-            throw new ArgumentException($"Unknown --mode value: '{modeValue}'. Expected 'EVMExecute', 'EVMBuildUp', 'BlockBuilding', 'BlockBuildingMainState', 'BlockOne', 'Block', 'NewPayload', or 'NewPayloadMeasured'.");
-    }
-}
+    "EVM" or "EVMEXECUTE" => "*GasPayloadExecuteBenchmarks*",
+    "BLOCKBUILDING" => "*GasBlockBuildingBenchmarks*",
+    "NEWPAYLOAD" => "*GasNewPayloadBenchmarks*",
+    "NEWPAYLOADMEASURED" => "*GasNewPayloadMeasuredBenchmarks*",
+    _ => throw new ArgumentException($"Unknown --mode value: '{modeValue}'. Expected 'EVM', 'BlockBuilding', 'NewPayload', or 'NewPayloadMeasured'."),
+};
 
 static bool TryListScenarios(string[] args)
 {
@@ -225,13 +206,7 @@ static string[] ApplyModeFilter(string[] args)
     }
 
     (string modeValue, int removeCount) = GetOptionValue(args, modeIndex, "--mode");
-    (string classFilter, bool? buildBlocksOnMainStateValue) = ResolveModeDefinition(modeValue);
-    if (buildBlocksOnMainStateValue is bool buildBlocksOnMainState)
-    {
-        Environment.SetEnvironmentVariable(
-            GasBlockBuildingBenchmarks.BuildBlocksOnMainStateEnvVar,
-            buildBlocksOnMainState ? bool.TrueString : bool.FalseString);
-    }
+    string classFilter = ResolveModeDefinition(modeValue);
 
     string[] remaining = RemoveArguments(args, modeIndex, removeCount);
     return MergeWithClassFilter(remaining, classFilter);
@@ -268,6 +243,45 @@ static string[] ApplyChunkFilter(string[] args)
     return RemoveArguments(args, chunkIndex, removeCount);
 }
 
+/// <summary>
+/// Parses --warmupCount, --iterationCount, --launchCount and stores them
+/// on GasBenchmarkConfig so the ManualConfig constructor can apply them.
+/// Strips these custom args before passing the remaining to BDN.
+/// </summary>
+static string[] ApplyBdnOverrides(string[] args)
+{
+    (string name, Action<int> setter)[] overrides =
+    [
+        ("--warmupCount", v => GasBenchmarkConfig.WarmupCount = v),
+        ("--iterationCount", v => GasBenchmarkConfig.IterationCount = v),
+        ("--launchCount", v => GasBenchmarkConfig.LaunchCount = v),
+    ];
+
+    for (int o = 0; o < overrides.Length; o++)
+    {
+        string name = overrides[o].name;
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (!args[i].StartsWith(name, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            (string value, int removeCount) = GetOptionValue(args, i, name);
+            if (!int.TryParse(value, out int parsed) || parsed < 0)
+            {
+                throw new ArgumentException($"{name} requires a non-negative integer value.");
+            }
+
+            overrides[o].setter(parsed);
+            args = RemoveArguments(args, i, removeCount);
+            break;
+        }
+    }
+
+    return args;
+}
+
 static void RunDiagnostic(string pattern)
 {
     string repoRoot = FindRepoRoot();
@@ -292,12 +306,12 @@ static void RunDiagnostic(string pattern)
     PayloadLoader.EnsureGenesisInitialized(genesisPath, pragueSpec);
     Console.WriteLine($"Genesis loaded in {sw.ElapsedMilliseconds}ms, StateRoot={PayloadLoader.GenesisStateRoot}");
 
-    IWorldState state = PayloadLoader.CreateWorldState();
-    BlockHeader genesisBlock = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0, 0, 0, 0, Array.Empty<byte>())
-    {
-        StateRoot = PayloadLoader.GenesisStateRoot
-    };
-    IDisposable scope = state.BeginScope(genesisBlock);
+    // Use DI to get IWorldState + ITransactionProcessor, matching production wiring.
+    using ILifetimeScope scope = BenchmarkContainer.CreateTransactionScope(specProvider);
+    IWorldState state = scope.Resolve<IWorldState>();
+    ITransactionProcessor txProcessor = scope.Resolve<ITransactionProcessor>();
+
+    state.BeginScope(BlockBenchmarkHelper.CreateGenesisHeader());
 
     (BlockHeader header, Transaction[] txs) = PayloadLoader.LoadPayload(matchedFile);
     Console.WriteLine($"Block: number={header.Number}, gasLimit={header.GasLimit}, gasUsed={header.GasUsed}");
@@ -338,12 +352,6 @@ static void RunDiagnostic(string pattern)
         }
     }
 
-    TestBlockhashProvider blockhashProvider = new();
-    ITransactionProcessor txProcessor = BlockBenchmarkHelper.CreateTransactionProcessor(
-        state,
-        blockhashProvider,
-        specProvider);
-
     string setupFile = GasPayloadBenchmarks.FindSetupFile(Path.GetFileName(matchedFile));
     if (setupFile is not null)
     {
@@ -380,7 +388,6 @@ static void RunDiagnostic(string pattern)
         Console.WriteLine($"Tx[{i}] CallAndRestore elapsed: {sw.ElapsedMilliseconds}ms");
     }
 
-    scope.Dispose();
     Console.WriteLine("\nDiagnostic complete.");
 }
 

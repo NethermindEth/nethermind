@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Diagnosers;
@@ -22,9 +23,25 @@ public class GasBenchmarkConfig : ManualConfig
     /// <summary>Total number of chunks to split scenarios into.</summary>
     internal static int ChunkTotal { get; set; }
 
+    /// <summary>Override for BDN warmup count. Null = MediumRun default.</summary>
+    internal static int? WarmupCount { get; set; }
+
+    /// <summary>Override for BDN iteration count. Null = 10 (our default).</summary>
+    internal static int? IterationCount { get; set; }
+
+    /// <summary>Override for BDN launch count. Null = 1 (our default).</summary>
+    internal static int? LaunchCount { get; set; }
+
     public GasBenchmarkConfig()
     {
-        Job job = Job.MediumRun.WithLaunchCount(1).WithIterationCount(10);
+        Job job = Job.MediumRun
+            .WithLaunchCount(LaunchCount ?? 1)
+            .WithIterationCount(IterationCount ?? 10);
+
+        if (WarmupCount.HasValue)
+        {
+            job = job.WithWarmupCount(WarmupCount.Value);
+        }
 
         if (InProcess)
         {
@@ -32,6 +49,9 @@ public class GasBenchmarkConfig : ManualConfig
         }
 
         AddJob(job);
+
+        // Nethermind's dependency tree is large; the default 120s build timeout is too short for out-of-process mode.
+        WithBuildTimeout(TimeSpan.FromMinutes(10));
         AddDiagnoser(MemoryDiagnoser.Default);
         AddColumnProvider(new GasBenchmarkColumnProvider());
         AddExporter(JsonExporter.Full);

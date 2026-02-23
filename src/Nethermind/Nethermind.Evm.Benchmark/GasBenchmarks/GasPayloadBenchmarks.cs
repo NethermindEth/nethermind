@@ -4,26 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
-using BenchmarkDotNet.Attributes;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 
 /// <summary>
-/// Benchmarks that replay gas-benchmark payload files via TransactionProcessor.BuildUp.
-/// This models block-building style execution (uncommitted per-transaction flow).
-/// Test cases are auto-discovered from the gas-benchmarks submodule.
+/// Shared infrastructure for gas-benchmark test case discovery and configuration.
+/// All benchmark classes reference TestCase, GetTestCases(), FindSetupFile(), and path fields from here.
 /// </summary>
-[Config(typeof(GasBenchmarkConfig))]
-public class GasPayloadBenchmarks
+public static class GasPayloadBenchmarks
 {
     private static readonly string s_repoRoot = FindRepoRoot();
     private static readonly string s_gasBenchmarksRoot = Path.Combine(s_repoRoot, "tools", "gas-benchmarks");
@@ -31,62 +20,6 @@ public class GasPayloadBenchmarks
     private static readonly string s_setupDir = Path.Combine(s_gasBenchmarksRoot, "eest_tests", "setup");
     internal static readonly string s_genesisPath = Path.Combine(s_gasBenchmarksRoot, "scripts", "genesisfiles", "nethermind", "zkevmgenesis.json");
     private static bool s_missingSubmoduleWarned;
-
-    private IWorldState _state;
-    private IDisposable _stateScope;
-    private ITransactionProcessor _txProcessor;
-    private Transaction[] _testTransactions;
-    private BlockHeader _testHeader;
-
-    [ParamsSource(nameof(GetTestCases))]
-    public TestCase Scenario { get; set; }
-
-    [GlobalSetup]
-    public void GlobalSetup()
-    {
-        IReleaseSpec pragueSpec = Prague.Instance;
-        ISpecProvider specProvider = new SingleReleaseSpecProvider(pragueSpec, 1, 1);
-
-        BlockBenchmarkHelper.TransactionProcessingContext context = BlockBenchmarkHelper.CreateTransactionProcessingContext(specProvider, pragueSpec);
-        _state = context.State;
-        _stateScope = context.StateScope;
-        _txProcessor = context.TransactionProcessor;
-
-        BlockBenchmarkHelper.ExecuteSetupPayload(_state, _txProcessor, Scenario, pragueSpec);
-
-        // Parse the test payload
-        (BlockHeader header, Transaction[] txs) = PayloadLoader.LoadPayload(Scenario.FilePath);
-        _testHeader = header;
-        _testTransactions = txs;
-        _txProcessor.SetBlockExecutionContext(_testHeader);
-
-        // Warm up: execute once via CallAndRestore to prime code caches
-        for (int i = 0; i < _testTransactions.Length; i++)
-        {
-            _txProcessor.CallAndRestore(_testTransactions[i], NullTxTracer.Instance);
-        }
-    }
-
-    [Benchmark]
-    public void ExecutePayload()
-    {
-        for (int i = 0; i < _testTransactions.Length; i++)
-        {
-            _txProcessor.BuildUp(_testTransactions[i], NullTxTracer.Instance);
-        }
-
-        _state.Reset();
-    }
-
-    [GlobalCleanup]
-    public void GlobalCleanup()
-    {
-        _stateScope?.Dispose();
-        _stateScope = null;
-        _state = null;
-        _txProcessor = null;
-        _testTransactions = null;
-    }
 
     /// <summary>
     /// Auto-discovers test cases from the gas-benchmarks testing directory.

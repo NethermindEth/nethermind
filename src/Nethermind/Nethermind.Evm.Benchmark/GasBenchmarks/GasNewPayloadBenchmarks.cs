@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -58,6 +59,8 @@ public class GasNewPayloadBenchmarks
 
     private IReleaseSpec _releaseSpec;
     private ISpecProvider _specProvider;
+    private ILifetimeScope _scope;
+    private IDisposable _containerLifetime;
     private IWorldState _state;
     private BranchProcessor _branchProcessor;
     private BlockHeader _preBlockHeader;
@@ -67,7 +70,6 @@ public class GasNewPayloadBenchmarks
     private NewPayloadHandler _newPayloadHandler;
     private TimedTransactionProcessor _timedTransactionProcessor;
     private IBlockCachePreWarmer _preWarmer;
-    private IDisposable _preWarmerLifetime;
 
     private long _jsonParseTicks;
     private long _payloadDeserializeTicks;
@@ -99,39 +101,23 @@ public class GasNewPayloadBenchmarks
 
         PayloadLoader.EnsureGenesisInitialized(GasPayloadBenchmarks.s_genesisPath, _releaseSpec);
 
-        TestBlockhashProvider blockhashProvider = new();
-        BlockBenchmarkHelper.BranchProcessingContext branchProcessingContext = BlockBenchmarkHelper.CreateBranchProcessingContext(_specProvider, blockhashProvider);
-        _state = branchProcessingContext.State;
-        _preWarmer = branchProcessingContext.PreWarmer;
-        _preWarmerLifetime = branchProcessingContext.PreWarmerLifetime;
+        GasNewPayloadBenchmarks owner = this;
+        (_scope, _preWarmer, _containerLifetime) = BenchmarkContainer.CreateBlockProcessingScope(
+            _specProvider,
+            additionalRegistrations: childBuilder =>
+            {
+                childBuilder.AddDecorator<ITransactionProcessor>((_, inner) =>
+                    new TimedTransactionProcessor(inner, owner));
+            });
+        _state = _scope.Resolve<IWorldState>();
         _preBlockHeader = BlockBenchmarkHelper.CreateGenesisHeader();
         _preBlockHeader.TotalDifficulty = UInt256.Zero;
-
-        ITransactionProcessor txProcessor = BlockBenchmarkHelper.CreateTransactionProcessor(
-            _state,
-            blockhashProvider,
-            _specProvider,
-            branchProcessingContext.PreBlockCaches,
-            branchProcessingContext.CachePrecompiles);
-        _timedTransactionProcessor = new TimedTransactionProcessor(txProcessor, this);
+        _timedTransactionProcessor = (TimedTransactionProcessor)_scope.Resolve<ITransactionProcessor>();
 
         BlockBenchmarkHelper.ExecuteSetupPayload(_state, _timedTransactionProcessor, _preBlockHeader, Scenario, _specProvider);
 
         ReceiptConfig receiptConfig = new();
-        IReceiptStorage receiptStorage = BlockBenchmarkHelper.CreateReceiptStorage(receiptConfig);
-        BlockProcessor blockProcessor = BlockBenchmarkHelper.CreateBlockProcessor(
-            _specProvider,
-            _timedTransactionProcessor,
-            _state,
-            receiptStorage);
-
-        _branchProcessor = BlockBenchmarkHelper.CreateBranchProcessor(
-            blockProcessor,
-            _specProvider,
-            _state,
-            _timedTransactionProcessor,
-            blockhashProvider,
-            _preWarmer);
+        _branchProcessor = (BranchProcessor)_scope.Resolve<IBranchProcessor>();
 
         string rawJson = PayloadLoader.ReadRawJson(Scenario.FilePath);
         _rawJsonBytes = Encoding.UTF8.GetBytes(rawJson);
@@ -402,18 +388,35 @@ public class GasNewPayloadBenchmarks
             AppendSummaryToFile(summary);
         }
 
+        // Post-benchmark correctness verification: process one more payload and verify result.
+        if (_newPayloadHandler is not null && _rawJsonBytes is not null && _processingQueue is not null)
+        {
+            ExecutionPayloadParams<ExecutionPayloadV3> verificationRequest = DeserializeRequest(collectTiming: false);
+            ExecuteNewPayload(verificationRequest, collectTiming: false);
+            Block verificationBlock = _processingQueue.LastProcessedBlock;
+            if (verificationBlock is null)
+            {
+                throw new InvalidOperationException(
+                    $"Post-benchmark verification failed for {Scenario}: no processed block.");
+            }
+
+            PayloadLoader.VerifyProcessedBlock(verificationBlock, Scenario.ToString(), Scenario.FilePath);
+        }
+
         _newPayloadHandler?.Dispose();
         _preWarmer?.ClearCaches();
-        _preWarmerLifetime?.Dispose();
+        _scope?.Dispose();
+        _containerLifetime?.Dispose();
         _newPayloadHandler = null;
         _processingQueue = null;
         _blockTree = null;
         _rawJsonBytes = null;
         _branchProcessor = null;
         _state = null;
+        _scope = null;
+        _containerLifetime = null;
         _timedTransactionProcessor = null;
         _preWarmer = null;
-        _preWarmerLifetime = null;
     }
 
     public static void PrintFinalTimingBreakdown()

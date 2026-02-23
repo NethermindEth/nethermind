@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -22,19 +24,6 @@ namespace Nethermind.Evm.Benchmark.Test;
 [TestFixture]
 public class WiringTests
 {
-    private static bool GenesisAvailable()
-    {
-        try
-        {
-            _ = PayloadLoader.GenesisStateRoot;
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static void EnsureGenesis()
     {
         try
@@ -53,19 +42,97 @@ public class WiringTests
     }
 
     [Test]
-    public void CreateTransactionProcessor_Returns_Valid_Processor()
+    public void CreateTransactionScope_Resolves_WorldState_And_TxProcessor()
     {
         EnsureGenesis();
 
-        IWorldState state = PayloadLoader.CreateWorldState();
-        TestBlockhashProvider blockhashProvider = new();
         ISpecProvider specProvider = new SingleReleaseSpecProvider(Prague.Instance, 1, 1);
 
-        ITransactionProcessor txProcessor = BlockBenchmarkHelper.CreateTransactionProcessor(
-            state, blockhashProvider, specProvider);
+        using ILifetimeScope scope = BenchmarkContainer.CreateTransactionScope(specProvider);
 
+        IWorldState state = scope.Resolve<IWorldState>();
+        ITransactionProcessor txProcessor = scope.Resolve<ITransactionProcessor>();
+
+        Assert.That(state, Is.Not.Null);
         Assert.That(txProcessor, Is.Not.Null);
         Assert.That(txProcessor, Is.InstanceOf<EthereumTransactionProcessor>());
+    }
+
+    [Test]
+    public void CreateBlockProcessingScope_Resolves_BlockProcessor_And_BranchProcessor()
+    {
+        EnsureGenesis();
+
+        ISpecProvider specProvider = new SingleReleaseSpecProvider(Prague.Instance, 1, 1);
+
+        (ILifetimeScope scope, IBlockCachePreWarmer preWarmer, System.IDisposable containerLifetime) =
+            BenchmarkContainer.CreateBlockProcessingScope(specProvider);
+
+        try
+        {
+            IWorldState state = scope.Resolve<IWorldState>();
+            IBlockProcessor blockProcessor = scope.Resolve<IBlockProcessor>();
+            IBranchProcessor branchProcessor = scope.Resolve<IBranchProcessor>();
+
+            Assert.That(state, Is.Not.Null);
+            Assert.That(blockProcessor, Is.Not.Null);
+            Assert.That(blockProcessor, Is.InstanceOf<BlockProcessor>());
+            Assert.That(branchProcessor, Is.Not.Null);
+            Assert.That(branchProcessor, Is.InstanceOf<BranchProcessor>());
+            Assert.That(preWarmer, Is.Not.Null, "PreWarmer should be non-null with default config (PreWarmStateOnBlockProcessing=true)");
+        }
+        finally
+        {
+            scope.Dispose();
+            containerLifetime.Dispose();
+        }
+    }
+
+    [Test]
+    public void CreateBlockProcessingScope_BlockBuilding_Uses_ProductionTransactionsExecutor()
+    {
+        EnsureGenesis();
+
+        ISpecProvider specProvider = new SingleReleaseSpecProvider(Prague.Instance, 1, 1);
+
+        (ILifetimeScope scope, _, System.IDisposable containerLifetime) =
+            BenchmarkContainer.CreateBlockProcessingScope(specProvider, isBlockBuilding: true);
+
+        try
+        {
+            IBlockProcessor blockProcessor = scope.Resolve<IBlockProcessor>();
+            Assert.That(blockProcessor, Is.Not.Null);
+            Assert.That(blockProcessor, Is.InstanceOf<BlockProcessor>());
+        }
+        finally
+        {
+            scope.Dispose();
+            containerLifetime.Dispose();
+        }
+    }
+
+    [Test]
+    public void CreateBlockProcessingScope_Without_PreWarming()
+    {
+        EnsureGenesis();
+
+        ISpecProvider specProvider = new SingleReleaseSpecProvider(Prague.Instance, 1, 1);
+        BlocksConfig blocksConfig = new() { PreWarmStateOnBlockProcessing = false, CachePrecompilesOnBlockProcessing = false };
+
+        (ILifetimeScope scope, IBlockCachePreWarmer preWarmer, System.IDisposable containerLifetime) =
+            BenchmarkContainer.CreateBlockProcessingScope(specProvider, blocksConfig);
+
+        try
+        {
+            IWorldState state = scope.Resolve<IWorldState>();
+            Assert.That(state, Is.Not.Null);
+            Assert.That(preWarmer, Is.Null);
+        }
+        finally
+        {
+            scope.Dispose();
+            containerLifetime.Dispose();
+        }
     }
 
     [Test]
@@ -99,97 +166,6 @@ public class WiringTests
         Assert.That(header, Is.Not.Null);
         Assert.That(header.StateRoot, Is.EqualTo(PayloadLoader.GenesisStateRoot));
         Assert.That(header.Number, Is.EqualTo(0));
-    }
-
-    [Test]
-    public void CreateBlockProcessor_Returns_Valid_Processor()
-    {
-        EnsureGenesis();
-
-        IWorldState state = PayloadLoader.CreateWorldState();
-        TestBlockhashProvider blockhashProvider = new();
-        ISpecProvider specProvider = new SingleReleaseSpecProvider(Prague.Instance, 1, 1);
-        ITransactionProcessor txProcessor = BlockBenchmarkHelper.CreateTransactionProcessor(
-            state, blockhashProvider, specProvider);
-
-        Nethermind.Consensus.Processing.BlockProcessor blockProcessor =
-            BlockBenchmarkHelper.CreateBlockProcessor(specProvider, txProcessor, state);
-
-        Assert.That(blockProcessor, Is.Not.Null);
-    }
-
-    [Test]
-    public void CreateBlockBuildingProcessor_Returns_Valid_Processor()
-    {
-        EnsureGenesis();
-
-        IWorldState state = PayloadLoader.CreateWorldState();
-        TestBlockhashProvider blockhashProvider = new();
-        ISpecProvider specProvider = new SingleReleaseSpecProvider(Prague.Instance, 1, 1);
-        ITransactionProcessor txProcessor = BlockBenchmarkHelper.CreateTransactionProcessor(
-            state, blockhashProvider, specProvider);
-
-        Nethermind.Consensus.Processing.BlockProcessor blockProcessor =
-            BlockBenchmarkHelper.CreateBlockBuildingProcessor(specProvider, txProcessor, state);
-
-        Assert.That(blockProcessor, Is.Not.Null);
-    }
-
-    [Test]
-    public void CreateBranchProcessingContext_Without_PreWarming()
-    {
-        EnsureGenesis();
-
-        ISpecProvider specProvider = new SingleReleaseSpecProvider(Prague.Instance, 1, 1);
-        TestBlockhashProvider blockhashProvider = new();
-        BlocksConfig blocksConfig = new() { PreWarmStateOnBlockProcessing = false, CachePrecompilesOnBlockProcessing = false };
-
-        BlockBenchmarkHelper.BranchProcessingContext context =
-            BlockBenchmarkHelper.CreateBranchProcessingContext(specProvider, blockhashProvider, blocksConfig);
-
-        Assert.That(context.State, Is.Not.Null);
-        Assert.That(context.PreWarmer, Is.Null);
-        Assert.That(context.PreWarmerLifetime, Is.Null);
-        Assert.That(context.PreBlockCaches, Is.Null);
-        Assert.That(context.CachePrecompiles, Is.False);
-    }
-
-    [Test]
-    public void CreateBranchProcessor_Returns_Valid_Processor()
-    {
-        EnsureGenesis();
-
-        ISpecProvider specProvider = new SingleReleaseSpecProvider(Prague.Instance, 1, 1);
-        TestBlockhashProvider blockhashProvider = new();
-        IWorldState state = PayloadLoader.CreateWorldState();
-        ITransactionProcessor txProcessor = BlockBenchmarkHelper.CreateTransactionProcessor(
-            state, blockhashProvider, specProvider);
-
-        Nethermind.Consensus.Processing.BlockProcessor blockProcessor =
-            BlockBenchmarkHelper.CreateBlockProcessor(specProvider, txProcessor, state);
-
-        Nethermind.Consensus.Processing.BranchProcessor branchProcessor =
-            BlockBenchmarkHelper.CreateBranchProcessor(blockProcessor, specProvider, state, txProcessor, blockhashProvider, null);
-
-        Assert.That(branchProcessor, Is.Not.Null);
-    }
-
-    [Test]
-    public void CreateTransactionProcessingContext_Returns_All_Components()
-    {
-        EnsureGenesis();
-
-        ISpecProvider specProvider = new SingleReleaseSpecProvider(Prague.Instance, 1, 1);
-
-        BlockBenchmarkHelper.TransactionProcessingContext context =
-            BlockBenchmarkHelper.CreateTransactionProcessingContext(specProvider, Prague.Instance);
-
-        Assert.That(context.State, Is.Not.Null);
-        Assert.That(context.StateScope, Is.Not.Null);
-        Assert.That(context.TransactionProcessor, Is.Not.Null);
-        Assert.That(context.TransactionProcessor, Is.InstanceOf<EthereumTransactionProcessor>());
-
-        context.StateScope.Dispose();
     }
 
     [Test]

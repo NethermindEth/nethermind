@@ -2,7 +2,7 @@ name: Gas Benchmarks (BDN)
 
 on:
   push:
-    branches: [master]
+    branches: [master, 'kch/**']
     paths: ['src/Nethermind/**']
   pull_request:
     branches: [master]
@@ -12,19 +12,27 @@ on:
       mode:
         description: 'Benchmark mode'
         required: false
-        default: 'Block'
+        default: 'BlockBuilding'
         type: choice
         options:
-          - EVMExecute
-          - EVMBuildUp
-          - BlockOne
-          - Block
+          - EVM
           - BlockBuilding
-          - BlockBuildingMainState
           - NewPayload
           - NewPayloadMeasured
       filter:
         description: 'BDN filter pattern (optional, e.g. *MULMOD*)'
+        required: false
+        default: ''
+      warmupCount:
+        description: 'BDN warmup iterations (blank = MediumRun default)'
+        required: false
+        default: ''
+      iterationCount:
+        description: 'BDN measurement iterations'
+        required: false
+        default: ''
+      launchCount:
+        description: 'BDN launch count'
         required: false
         default: ''
 
@@ -42,6 +50,10 @@ jobs:
     outputs:
       mode: ${{ steps.check.outputs.mode }}
       filter: ${{ steps.check.outputs.filter }}
+      chunks: ${{ steps.check.outputs.chunks }}
+      warmupCount: ${{ steps.check.outputs.warmupCount }}
+      iterationCount: ${{ steps.check.outputs.iterationCount }}
+      launchCount: ${{ steps.check.outputs.launchCount }}
     steps:
       - name: Resolve inputs
         id: check
@@ -49,17 +61,38 @@ jobs:
         run: |
           set -euo pipefail
 
-          mode="Block"
+          mode="BlockBuilding"
           filter=""
+          warmupCount=""
+          iterationCount=""
+          launchCount=""
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             mode="${{ inputs.mode }}"
             filter="${{ inputs.filter }}"
+            warmupCount="${{ inputs.warmupCount }}"
+            iterationCount="${{ inputs.iterationCount }}"
+            launchCount="${{ inputs.launchCount }}"
+          fi
+
+          # Full suite on master push, PRs, and workflow_dispatch; smoke test on branch pushes
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" != "refs/heads/master" ]]; then
+            chunks="[1]"
+            # Smoke test: one representative scenario per category
+            if [[ -z "$filter" ]]; then
+              filter="*a_to_a*"
+            fi
+          else
+            chunks="[1, 2, 3, 4, 5]"
           fi
 
           {
             echo "mode=${mode}"
             echo "filter=${filter}"
+            echo "chunks=${chunks}"
+            echo "warmupCount=${warmupCount}"
+            echo "iterationCount=${iterationCount}"
+            echo "launchCount=${launchCount}"
           } >> "$GITHUB_OUTPUT"
 
   benchmark:
@@ -69,7 +102,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        chunk: [1, 2, 3, 4, 5]
+        chunk: ${{ fromJson(needs.resolve.outputs.chunks) }}
     timeout-minutes: 240
     steps:
       - name: Checkout repository
@@ -86,15 +119,30 @@ jobs:
       - name: Build benchmarks
         run: dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release
 
-      - name: Run benchmarks (chunk ${{ matrix.chunk }}/5)
+      - name: Run benchmarks (chunk ${{ matrix.chunk }}/${{ strategy.job-total }})
         shell: bash
         run: |
           MODE="${{ needs.resolve.outputs.mode }}"
           FILTER="${{ needs.resolve.outputs.filter }}"
+          WARMUP="${{ needs.resolve.outputs.warmupCount }}"
+          ITERATIONS="${{ needs.resolve.outputs.iterationCount }}"
+          LAUNCHES="${{ needs.resolve.outputs.launchCount }}"
+          CHUNKS="${{ needs.resolve.outputs.chunks }}"
+          TOTAL=$(echo "$CHUNKS" | tr -cd ',' | wc -c)
+          TOTAL=$((TOTAL + 1))
 
-          ARGS="--inprocess --mode=$MODE --chunk ${{ matrix.chunk }}/5"
+          ARGS="--mode=$MODE --chunk ${{ matrix.chunk }}/$TOTAL"
           if [[ -n "$FILTER" ]]; then
             ARGS="$ARGS --filter $FILTER"
+          fi
+          if [[ -n "$WARMUP" ]]; then
+            ARGS="$ARGS --warmupCount $WARMUP"
+          fi
+          if [[ -n "$ITERATIONS" ]]; then
+            ARGS="$ARGS --iterationCount $ITERATIONS"
+          fi
+          if [[ -n "$LAUNCHES" ]]; then
+            ARGS="$ARGS --launchCount $LAUNCHES"
           fi
 
           dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll $ARGS
@@ -143,6 +191,22 @@ jobs:
         with:
           path: baseline.json
           key: gas-benchmark-bdn-${{ github.sha }}
+
+      # On master push: publish to GitHub Pages for historical tracking
+      - name: Publish to GitHub Pages
+        if: github.ref == 'refs/heads/master'
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Gas Benchmarks (BDN)
+          tool: benchmarkdotnet
+          output-file-path: pr-results.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          alert-threshold: '120%'
+          comment-on-alert: true
+          fail-on-alert: false
 
       # On PR: restore master baseline and compare
       - name: Restore master baseline

@@ -275,6 +275,24 @@ public static class PayloadLoader
     }
 
     /// <summary>
+    /// Creates an IWorldStateScopeProvider backed by the shared TrieStore (which contains the genesis trie).
+    /// Used by DI container setup to provide the scope provider for WorldState creation.
+    /// </summary>
+    public static IWorldStateScopeProvider CreateWorldStateScopeProvider(NodeStorageCache nodeStorageCache = null)
+    {
+        if (!s_genesisInitialized)
+            throw new InvalidOperationException("Genesis not initialized. Call EnsureGenesisInitialized first.");
+
+        ITrieStore trieStore = s_trieStore;
+        if (nodeStorageCache is not null)
+        {
+            trieStore = new PreCachedTrieStore(trieStore, nodeStorageCache);
+        }
+
+        return new TrieStoreScopeProvider(trieStore, s_codeDb, LimboLogs.Instance);
+    }
+
+    /// <summary>
     /// Creates a new WorldState backed by the shared TrieStore (which contains the genesis trie).
     /// Caller must call BeginScope with a BlockHeader whose StateRoot is GenesisStateRoot.
     /// </summary>
@@ -286,13 +304,7 @@ public static class PayloadLoader
         if (!s_genesisInitialized)
             throw new InvalidOperationException("Genesis not initialized. Call EnsureGenesisInitialized first.");
 
-        ITrieStore trieStore = s_trieStore;
-        if (nodeStorageCache is not null)
-        {
-            trieStore = new PreCachedTrieStore(trieStore, nodeStorageCache);
-        }
-
-        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(trieStore, s_codeDb, LimboLogs.Instance);
+        IWorldStateScopeProvider scopeProvider = CreateWorldStateScopeProvider(nodeStorageCache);
         if (preBlockCaches is not null)
         {
             scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache);

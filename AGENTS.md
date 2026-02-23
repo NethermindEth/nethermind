@@ -127,8 +127,8 @@ The [Nethermind.Evm.Benchmark](./src/Nethermind/Nethermind.Evm.Benchmark/) proje
 
 For optimization work, do not recursively scan the whole repository first. Start from changed projects and map them to benchmark modes from this section, then run targeted scenarios.
 
-- `Nethermind.Evm` / `Nethermind.Evm.Precompiles`: start with `EVMExecute`, then `EVMBuildUp`, then one block-level mode (`BlockOne` or `Block`)
-- `Nethermind.Blockchain` / `Nethermind.State` / `Nethermind.Trie`: start with `BlockOne`, `Block`, then `NewPayload`
+- `Nethermind.Evm` / `Nethermind.Evm.Precompiles`: start with `EVM`, then `BlockBuilding`
+- `Nethermind.Blockchain` / `Nethermind.State` / `Nethermind.Trie`: start with `BlockBuilding`, then `NewPayload`
 - `Nethermind.Merge.Plugin`: start with `NewPayload` and `NewPayloadMeasured`
 
 When iterating on code, avoid `dotnet run` loops. Build once, run the benchmark executable directly.
@@ -162,18 +162,17 @@ git lfs install && cd tools/gas-benchmarks && git lfs pull
 
 ### Benchmark modes (current)
 
-Use `--mode=<ModeName>` to select one path. Do not use legacy `--mode=EVM`.
+Use `--mode=<ModeName>` to select one path.
 
 | Mode | Benchmark class | What it measures | Typical use |
 |---|---|---|---|
-| `EVMExecute` | `GasPayloadExecuteBenchmarks` | Transaction execution via `TransactionProcessor.Execute` | Node-like import tx execution cost |
-| `EVMBuildUp` | `GasPayloadBenchmarks` | Transaction execution via `TransactionProcessor.BuildUp` | Block-building tx execution cost |
-| `BlockOne` | `GasBlockOneBenchmarks` | `BlockProcessor.ProcessOne` | Block-level processing without branch-level overhead |
-| `Block` | `GasBlockBenchmarks` | `BranchProcessor.Process` | Full import branch processing overhead |
-| `BlockBuilding` | `GasBlockBuildingBenchmarks` | Producer path with `ProcessingOptions.ProducingBlock` | Default block production behavior |
-| `BlockBuildingMainState` | `GasBlockBuildingBenchmarks` | Producer path with `BuildBlocksOnMainState=true` | Main-state production behavior |
+| `EVM` | `GasPayloadExecuteBenchmarks` | Transaction execution via `TransactionProcessor.Execute` | Tx-level execution cost (import path) |
+| `BlockBuilding` | `GasBlockBuildingBenchmarks` | Producer path with `ProcessingOptions.ProducingBlock` | Block production behavior |
 | `NewPayload` | `GasNewPayloadBenchmarks` | `NewPayloadHandler` path | Real handler-side newPayload flow |
 | `NewPayloadMeasured` | `GasNewPayloadMeasuredBenchmarks` | Instrumented near-handler path | Detailed stage timing and breakdown |
+
+All benchmark classes use production DI wiring via `BenchmarkContainer` → `BlockProcessingModule` from `Nethermind.Init`.
+Benchmark-specific overrides (stub `IBlockTree`, `IBlockValidator`, genesis state) are layered on top.
 
 **Comparing with gas-benchmarks reference:** `NewPayload` mode is the closest BDN equivalent to the [gas-benchmarks](https://github.com/NethermindEth/gas-benchmarks) reference tool, which runs Nethermind as a full node processing `engine_newPayloadV4` calls. When comparing BDN results against gas-benchmarks reference values, use `NewPayload` or `NewPayloadMeasured`. Note that trivially fast scenarios (e.g., TLOAD of uninitialized storage, empty-input precompile calls) may show very large speedups (>10x) in BDN because the reference tool has fixed per-block overhead (networking, JSON-RPC, consensus) that dominates for sub-millisecond workloads.
 
@@ -184,20 +183,20 @@ Use `--mode=<ModeName>` to select one path. Do not use legacy `--mode=EVM`.
 dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release --no-restore
 
 # Use the benchmark executable directly (no rebuild)
-dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --inprocess --mode=EVMExecute --filter "*MULMOD*"
+dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --mode=EVM --filter "*MULMOD*"
 
 # Quick scenario listing (without BenchmarkDotNet class tree noise)
 dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --list-scenarios --filter "*extcode*"
 
 # Run one mode + one scenario pattern
-dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --inprocess --mode=EVMExecute --filter "*MULMOD*"
-dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --inprocess --mode=Block --filter "*a_to_a*"
-dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --inprocess --mode=NewPayloadMeasured --filter "*a_to_a*"
+dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --mode=EVM --filter "*MULMOD*"
+dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --mode=BlockBuilding --filter "*a_to_a*"
+dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --mode=NewPayloadMeasured --filter "*a_to_a*"
 
-# Run all 8 modes for the same scenario (PowerShell)
-$modes = @('EVMExecute','EVMBuildUp','BlockOne','Block','BlockBuilding','BlockBuildingMainState','NewPayload','NewPayloadMeasured')
+# Run all modes for the same scenario (PowerShell)
+$modes = @('EVM','BlockBuilding','NewPayload','NewPayloadMeasured')
 foreach ($mode in $modes) {
-  dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --inprocess --mode=$mode --filter "*a_to_a*"
+  dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --mode=$mode --filter "*a_to_a*"
 }
 
 # Quick diagnostic mode (single payload, no BDN harness, debuggable)
@@ -206,7 +205,9 @@ dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.
 
 ### Benchmark invariants
 
-- `BlocksConfig.CachePrecompilesOnBlockProcessing` is forced to `false` in benchmark setup. Do not override it in benchmark runs.
+- `BlocksConfig.PreWarmStateOnBlockProcessing` is forced to `true` in benchmark setup so block-level modes include prewarming overhead.
+- `BlocksConfig.CachePrecompilesOnBlockProcessing` is forced to `false` in benchmark setup to avoid hiding precompile-specific deltas.
+- **Do not use `--inprocess` for stable results.** In-process mode (`InProcessEmitToolchain`) shares the GC heap and JIT with the BDN harness, which introduces noise. CI runs out-of-process (separate process per benchmark) for proper isolation. Use `--inprocess` only for quick local iteration where speed matters more than precision.
 - Always compare baseline and candidate with identical benchmark arguments (`mode`, `filter`, warmup/iteration/launch counts).
 
 ### Faster rebuild loop
@@ -231,9 +232,9 @@ For `NewPayload` and `NewPayloadMeasured`, timing breakdown reports are emitted 
 ### Workflow for performance changes
 
 1. Pick modes based on the code path you changed:
-`EVMExecute` + `EVMBuildUp` for tx execution changes, `BlockOne` + `Block` for import flow changes, `BlockBuilding*` for producer flow changes, `NewPayload*` for engine API flow changes.
+`EVM` for tx execution changes, `BlockBuilding` for producer flow changes, `NewPayload*` for engine API and block processing flow changes.
 2. Run baseline using fixed BDN settings for comparability:
-`--inprocess --warmupCount 10 --iterationCount 10 --launchCount 1`.
+`--warmupCount 10 --iterationCount 10 --launchCount 1`.
 3. Apply your change.
 4. Rerun the same command(s) with the same `--mode` and `--filter`.
 5. Compare mean time, MGas/s, and allocations.
@@ -268,10 +269,10 @@ For benchmark-tool changes, also run the benchmark workflow (`gas-benchmarks-bdn
 
 Keep benchmark setup coherent and DI-driven:
 
-- Prefer shared setup helpers in `BlockBenchmarkHelper` over per-benchmark ad-hoc wiring.
-- Reuse existing modules/components where possible, and inject only the minimal overrides required by benchmark scenarios.
-- Avoid duplicating setup graphs across benchmark classes.
-- Keep constructor-sensitive wiring centralized in `src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks/BlockBenchmarkHelper.cs`.
+- All gas benchmark classes use `BenchmarkContainer` to create DI containers with production `BlockProcessingModule` wiring.
+- `BenchmarkContainer.CreateTransactionScope()` for tx-level benchmarks, `CreateBlockProcessingScope()` for block-level.
+- Benchmark-specific overrides (stub `IBlockTree`, `Always.Valid` for `IBlockValidator`, genesis state provider) are registered on top of production modules.
+- `BlockBenchmarkHelper` provides shared utilities: genesis header creation, setup payload execution, processing options.
 - Gas benchmark classes should not directly instantiate `EthereumTransactionProcessor`, `BranchProcessor`, or `BlockProcessor`.
 
 Quick maintenance check:
@@ -280,7 +281,7 @@ Quick maintenance check:
 rg --line-number "new EthereumTransactionProcessor|new BranchProcessor|new BlockProcessor|new BeaconBlockRootHandler" src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks
 ```
 
-Expected: constructor hits only in `BlockBenchmarkHelper.cs`.
+Expected: constructor hits only in `BlockBenchmarkHelper.cs` (for setup-only `BlockProcessor`).
 
 ## Reproducible Benchmark Workflow Guidance
 

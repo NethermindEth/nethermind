@@ -6,8 +6,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using Autofac;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -41,13 +41,14 @@ public class GasNewPayloadMeasuredBenchmarks
     internal const string TimingReportFileEnvVar = "NETHERMIND_NEWPAYLOAD_TIMING_REPORT_FILE";
     private const int MaxConsoleScenarioCount = 10;
 
+    private ILifetimeScope _scope;
+    private IDisposable _containerLifetime;
     private IWorldState _state;
     private BranchProcessor _branchProcessor;
     private BlockHeader _preBlockHeader;
     private byte[] _rawJsonBytes;
     private TimedTransactionProcessor _timedTransactionProcessor;
     private IBlockCachePreWarmer _preWarmer;
-    private IDisposable _preWarmerLifetime;
     private RecoverSignatures _recoverSignatures;
     private ProcessingOptions _newPayloadProcessingOptions;
     private static readonly JsonSerializerOptions s_jsonOptions = EthereumJsonSerializer.JsonOptions;
@@ -84,38 +85,26 @@ public class GasNewPayloadMeasuredBenchmarks
 
         PayloadLoader.EnsureGenesisInitialized(GasPayloadBenchmarks.s_genesisPath, pragueSpec);
 
-        TestBlockhashProvider blockhashProvider = new();
-        BlockBenchmarkHelper.BranchProcessingContext branchProcessingContext = BlockBenchmarkHelper.CreateBranchProcessingContext(specProvider, blockhashProvider);
-        _state = branchProcessingContext.State;
-        _preWarmer = branchProcessingContext.PreWarmer;
-        _preWarmerLifetime = branchProcessingContext.PreWarmerLifetime;
+        GasNewPayloadMeasuredBenchmarks owner = this;
+        (_scope, _preWarmer, _containerLifetime) = BenchmarkContainer.CreateBlockProcessingScope(
+            specProvider,
+            additionalRegistrations: childBuilder =>
+            {
+                childBuilder.AddDecorator<ITransactionProcessor>((_, inner) =>
+                    new TimedTransactionProcessor(inner, owner));
+            });
+        _state = _scope.Resolve<IWorldState>();
         _preBlockHeader = BlockBenchmarkHelper.CreateGenesisHeader();
         _preBlockHeader.TotalDifficulty = UInt256.Zero;
-        ITransactionProcessor txProcessor = BlockBenchmarkHelper.CreateTransactionProcessor(
-            _state,
-            blockhashProvider,
-            specProvider,
-            branchProcessingContext.PreBlockCaches,
-            branchProcessingContext.CachePrecompiles);
-        _timedTransactionProcessor = new TimedTransactionProcessor(txProcessor, this);
+        _timedTransactionProcessor = (TimedTransactionProcessor)_scope.Resolve<ITransactionProcessor>();
         _recoverSignatures = new RecoverSignatures(s_ecdsa, specProvider, LimboLogs.Instance);
 
         BlockBenchmarkHelper.ExecuteSetupPayload(_state, _timedTransactionProcessor, _preBlockHeader, Scenario, specProvider);
 
         ReceiptConfig receiptConfig = new();
-        IReceiptStorage receiptStorage = BlockBenchmarkHelper.CreateReceiptStorage(receiptConfig);
         _newPayloadProcessingOptions = BlockBenchmarkHelper.GetNewPayloadProcessingOptions(receiptConfig);
 
-        BlockProcessor blockProcessor = BlockBenchmarkHelper.CreateBlockProcessor(
-            specProvider, _timedTransactionProcessor, _state, receiptStorage);
-
-        _branchProcessor = BlockBenchmarkHelper.CreateBranchProcessor(
-            blockProcessor,
-            specProvider,
-            _state,
-            _timedTransactionProcessor,
-            blockhashProvider,
-            _preWarmer);
+        _branchProcessor = (BranchProcessor)_scope.Resolve<IBranchProcessor>();
 
         // Store raw JSON bytes for deserialization in each iteration
         string rawJson = PayloadLoader.ReadRawJson(Scenario.FilePath);
@@ -323,14 +312,27 @@ public class GasNewPayloadMeasuredBenchmarks
             AppendSummaryToFile(summary);
         }
 
+        // Post-benchmark correctness verification: process one more block and verify result.
+        if (_branchProcessor is not null && _rawJsonBytes is not null)
+        {
+            Block verificationBlock = DeserializeAndBuildBlock();
+            Block[] verificationResult = _branchProcessor.Process(
+                _preBlockHeader, [verificationBlock],
+                _newPayloadProcessingOptions,
+                NullBlockTracer.Instance);
+            PayloadLoader.VerifyProcessedBlock(verificationResult[0], Scenario.ToString(), Scenario.FilePath);
+        }
+
         _preWarmer?.ClearCaches();
-        _preWarmerLifetime?.Dispose();
+        _scope?.Dispose();
+        _containerLifetime?.Dispose();
         _state = null;
+        _scope = null;
+        _containerLifetime = null;
         _branchProcessor = null;
         _rawJsonBytes = null;
         _timedTransactionProcessor = null;
         _preWarmer = null;
-        _preWarmerLifetime = null;
     }
 
     public static void PrintFinalTimingBreakdown()

@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
+using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 public class GasPayloadExecuteBenchmarks
 {
     private IWorldState _state;
-    private IDisposable _stateScope;
+    private ILifetimeScope _scope;
     private ITransactionProcessor _txProcessor;
     private Transaction[] _testTransactions;
     private BlockHeader _testHeaderTemplate;
@@ -39,11 +39,13 @@ public class GasPayloadExecuteBenchmarks
         IReleaseSpec pragueSpec = Prague.Instance;
         ISpecProvider specProvider = new SingleReleaseSpecProvider(pragueSpec, 1, 1);
 
-        BlockBenchmarkHelper.TransactionProcessingContext context = BlockBenchmarkHelper.CreateTransactionProcessingContext(specProvider, pragueSpec);
-        _state = context.State;
-        _stateScope = context.StateScope;
-        _txProcessor = context.TransactionProcessor;
+        PayloadLoader.EnsureGenesisInitialized(GasPayloadBenchmarks.s_genesisPath, pragueSpec);
 
+        _scope = BenchmarkContainer.CreateTransactionScope(specProvider);
+        _state = _scope.Resolve<IWorldState>();
+        _txProcessor = _scope.Resolve<ITransactionProcessor>();
+
+        _state.BeginScope(BlockBenchmarkHelper.CreateGenesisHeader());
         BlockBenchmarkHelper.ExecuteSetupPayload(_state, _txProcessor, Scenario, pragueSpec);
 
         // Parse the test payload
@@ -51,7 +53,7 @@ public class GasPayloadExecuteBenchmarks
         _testHeaderTemplate = header;
         _testTransactions = txs;
 
-        // Warm up once on Execute path, then restore state.
+        // Warm up: execute once to JIT-compile code paths, then reset.
         ExecutePayloadCore();
         _state.Reset();
     }
@@ -77,8 +79,17 @@ public class GasPayloadExecuteBenchmarks
     [GlobalCleanup]
     public void GlobalCleanup()
     {
-        _stateScope?.Dispose();
-        _stateScope = null;
+        // Post-benchmark correctness verification: re-execute to ensure no exceptions.
+        // State root comparison is not viable at tx-level because CommitTree makes permanent
+        // trie writes that Reset() cannot undo. Block-level benchmarks verify state roots instead.
+        if (_state is not null && _txProcessor is not null && _testTransactions is not null)
+        {
+            ExecutePayloadCore();
+            _state.Reset();
+        }
+
+        _scope?.Dispose();
+        _scope = null;
         _state = null;
         _txProcessor = null;
         _testTransactions = null;

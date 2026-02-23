@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -37,18 +38,16 @@ public class GasBlockBuildingBenchmarks
     internal const string BuildBlocksOnMainStateEnvVar = "NETHERMIND_BLOCKBUILDING_MAIN_STATE";
     private static readonly EthereumEcdsa s_ecdsa = new(1);
 
-    private IWorldState _state;
-    private BranchProcessor _branchProcessor;
+    private ILifetimeScope _scope;
+    private IDisposable _containerLifetime;
     private IBlockchainProcessor _chainProcessor;
     private BlockHeader _chainParentHeader;
-    private BlockHeader _preBlockHeader;
     private BlockHeader _testHeaderTemplate;
     private Transaction[] _testTransactions;
     private BlockHeader[] _testUncles;
     private Withdrawal[] _testWithdrawals;
     private ProcessingOptions _processingOptions;
     private IBlockCachePreWarmer _preWarmer;
-    private IDisposable _preWarmerLifetime;
 
     [ParamsSource(nameof(GetTestCases))]
     public GasPayloadBenchmarks.TestCase Scenario { get; set; }
@@ -70,24 +69,14 @@ public class GasBlockBuildingBenchmarks
             blocksConfig.BuildBlocksOnMainState = buildOnMainState;
         }
 
-        TestBlockhashProvider blockhashProvider = new();
-        BlockBenchmarkHelper.BranchProcessingContext branchProcessingContext = BlockBenchmarkHelper.CreateBranchProcessingContext(
-            specProvider,
-            blockhashProvider,
-            blocksConfig);
-        _state = branchProcessingContext.State;
-        _preWarmer = branchProcessingContext.PreWarmer;
-        _preWarmerLifetime = branchProcessingContext.PreWarmerLifetime;
-        _preBlockHeader = BlockBenchmarkHelper.CreateGenesisHeader();
+        (_scope, _preWarmer, _containerLifetime) = BenchmarkContainer.CreateBlockProcessingScope(
+            specProvider, blocksConfig, isBlockBuilding: true);
+        IWorldState state = _scope.Resolve<IWorldState>();
+        BlockHeader preBlockHeader = BlockBenchmarkHelper.CreateGenesisHeader();
 
         _processingOptions = BlockBenchmarkHelper.GetBlockBuildingProcessingOptions(blocksConfig);
 
-        ITransactionProcessor txProcessor = BlockBenchmarkHelper.CreateTransactionProcessor(
-            _state,
-            blockhashProvider,
-            specProvider,
-            branchProcessingContext.PreBlockCaches,
-            branchProcessingContext.CachePrecompiles);
+        ITransactionProcessor txProcessor = _scope.Resolve<ITransactionProcessor>();
 
         Block testBlock = PayloadLoader.LoadBlock(Scenario.FilePath);
         _testHeaderTemplate = testBlock.Header;
@@ -95,34 +84,27 @@ public class GasBlockBuildingBenchmarks
         _testUncles = testBlock.Uncles;
         _testWithdrawals = testBlock.Withdrawals;
 
-        _chainParentHeader = _preBlockHeader.Clone();
+        _chainParentHeader = preBlockHeader.Clone();
         _chainParentHeader.Hash = _testHeaderTemplate.ParentHash;
         _chainParentHeader.Number = _testHeaderTemplate.Number > 0 ? _testHeaderTemplate.Number - 1 : 0;
         _chainParentHeader.TotalDifficulty = _testHeaderTemplate.TotalDifficulty is null
             ? UInt256.Zero
             : _testHeaderTemplate.TotalDifficulty - _testHeaderTemplate.Difficulty;
 
-        BlockBenchmarkHelper.ExecuteSetupPayload(_state, txProcessor, _preBlockHeader, Scenario, specProvider);
-        _chainParentHeader.StateRoot = _preBlockHeader.StateRoot;
+        BlockBenchmarkHelper.ExecuteSetupPayload(state, txProcessor, preBlockHeader, Scenario, specProvider);
+        _chainParentHeader.StateRoot = preBlockHeader.StateRoot;
 
-        BlockProcessor blockProcessor = BlockBenchmarkHelper.CreateBlockBuildingProcessor(specProvider, txProcessor, _state);
-        _branchProcessor = BlockBenchmarkHelper.CreateBranchProcessor(
-            blockProcessor,
-            specProvider,
-            _state,
-            txProcessor,
-            blockhashProvider,
-            _preWarmer);
+        BranchProcessor branchProcessor = (BranchProcessor)_scope.Resolve<IBranchProcessor>();
 
         BlockchainProcessor blockchainProcessor = new(
             new BenchmarkBlockProducerBlockTree(_chainParentHeader),
-            _branchProcessor,
+            branchProcessor,
             new RecoverSignatures(s_ecdsa, specProvider, LimboLogs.Instance),
-            BlockBenchmarkHelper.CreateStateReader(_state),
+            BlockBenchmarkHelper.CreateStateReader(state),
             LimboLogs.Instance,
             BlockBenchmarkHelper.GetBlockBuildingBlockchainProcessorOptions(blocksConfig),
             new NoopProcessingStats());
-        _chainProcessor = new OneTimeChainProcessor(_state, blockchainProcessor);
+        _chainProcessor = new OneTimeChainProcessor(state, blockchainProcessor);
 
         // Warm up and verify correctness.
         BlockToProduce warmupBlock = CreateBlockToProduce();
@@ -157,15 +139,29 @@ public class GasBlockBuildingBenchmarks
     [GlobalCleanup]
     public void GlobalCleanup()
     {
+        // Post-benchmark correctness verification: process one more block and verify result.
+        if (_chainProcessor is not null && _testHeaderTemplate is not null)
+        {
+            BlockToProduce verificationBlock = CreateBlockToProduce();
+            Block verificationResult = _chainProcessor.Process(verificationBlock, _processingOptions, NullBlockTracer.Instance);
+            if (verificationResult is null)
+            {
+                throw new InvalidOperationException(
+                    $"Post-benchmark verification failed for {Scenario}: block processing returned null.");
+            }
+
+            PayloadLoader.VerifyProcessedBlock(verificationResult, Scenario.ToString(), Scenario.FilePath);
+        }
+
         _chainProcessor?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _preWarmer?.ClearCaches();
-        _preWarmerLifetime?.Dispose();
-        _state = null;
-        _branchProcessor = null;
+        _scope?.Dispose();
+        _containerLifetime?.Dispose();
+        _scope = null;
+        _containerLifetime = null;
         _chainProcessor = null;
         _chainParentHeader = null;
         _preWarmer = null;
-        _preWarmerLifetime = null;
         _testHeaderTemplate = null;
         _testTransactions = null;
         _testUncles = null;

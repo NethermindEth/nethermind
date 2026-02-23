@@ -69,13 +69,11 @@ public class ProgramArgsTests
 
     // --- ResolveModeDefinition ---
 
-    [TestCase("EVMExecute", "*GasPayloadExecuteBenchmarks*")]
+    [TestCase("EVM", "*GasPayloadExecuteBenchmarks*")]
     [TestCase("evm", "*GasPayloadExecuteBenchmarks*")]
+    [TestCase("EVMExecute", "*GasPayloadExecuteBenchmarks*")]
     [TestCase("EVMEXECUTE", "*GasPayloadExecuteBenchmarks*")]
-    [TestCase("EVMBuildUp", "*GasPayloadBenchmarks*")]
-    [TestCase("BUILDUP", "*GasPayloadBenchmarks*")]
-    [TestCase("BlockOne", "*GasBlockOne*")]
-    [TestCase("Block", "*GasBlockBenchmarks*")]
+    [TestCase("BlockBuilding", "*GasBlockBuildingBenchmarks*")]
     [TestCase("NewPayload", "*GasNewPayloadBenchmarks*")]
     [TestCase("NewPayloadMeasured", "*GasNewPayloadMeasuredBenchmarks*")]
     public void ResolveModeDefinition_Returns_Expected_ClassFilter(string mode, string expectedFilter)
@@ -83,38 +81,9 @@ public class ProgramArgsTests
         if (s_resolveModeDefinition is null)
             Assert.Ignore("ResolveModeDefinition method not found");
 
-        // Returns a ValueTuple<string, bool?>
-        object result = s_resolveModeDefinition.Invoke(null, [mode]);
-        ITuple tuple = (ITuple)result;
-        string classFilter = (string)tuple[0];
+        string classFilter = (string)s_resolveModeDefinition.Invoke(null, [mode]);
 
         Assert.That(classFilter, Is.EqualTo(expectedFilter));
-    }
-
-    [TestCase("BlockBuilding")]
-    public void ResolveModeDefinition_BlockBuilding_Returns_False_BuildOnMainState(string mode)
-    {
-        if (s_resolveModeDefinition is null)
-            Assert.Ignore("ResolveModeDefinition method not found");
-
-        object result = s_resolveModeDefinition.Invoke(null, [mode]);
-        ITuple tuple = (ITuple)result;
-        bool? buildOnMainState = (bool?)tuple[1];
-
-        Assert.That(buildOnMainState, Is.EqualTo(false));
-    }
-
-    [TestCase("BlockBuildingMainState")]
-    public void ResolveModeDefinition_BlockBuildingMainState_Returns_True_BuildOnMainState(string mode)
-    {
-        if (s_resolveModeDefinition is null)
-            Assert.Ignore("ResolveModeDefinition method not found");
-
-        object result = s_resolveModeDefinition.Invoke(null, [mode]);
-        ITuple tuple = (ITuple)result;
-        bool? buildOnMainState = (bool?)tuple[1];
-
-        Assert.That(buildOnMainState, Is.EqualTo(true));
     }
 
     [Test]
@@ -149,7 +118,7 @@ public class ProgramArgsTests
         if (s_removeArguments is null)
             Assert.Ignore("RemoveArguments method not found");
 
-        string[] args = ["--mode", "EVMExecute", "--filter", "*foo*"];
+        string[] args = ["--mode", "EVM", "--filter", "*foo*"];
         string[] result = (string[])s_removeArguments.Invoke(null, [args, 0, 2]);
 
         Assert.That(result, Is.EqualTo(new[] { "--filter", "*foo*" }));
@@ -176,10 +145,10 @@ public class ProgramArgsTests
             Assert.Ignore("MergeWithClassFilter method not found");
 
         string[] args = ["--inprocess"];
-        string[] result = (string[])s_mergeWithClassFilter.Invoke(null, [args, "*GasBlockBenchmarks*"]);
+        string[] result = (string[])s_mergeWithClassFilter.Invoke(null, [args, "*GasBlockBuildingBenchmarks*"]);
 
         Assert.That(result, Does.Contain("--filter"));
-        Assert.That(result, Does.Contain("*GasBlockBenchmarks*"));
+        Assert.That(result, Does.Contain("*GasBlockBuildingBenchmarks*"));
     }
 
     [Test]
@@ -189,12 +158,12 @@ public class ProgramArgsTests
             Assert.Ignore("MergeWithClassFilter method not found");
 
         string[] args = ["--filter", "*MULMOD*"];
-        string[] result = (string[])s_mergeWithClassFilter.Invoke(null, [args, "*GasBlockBenchmarks*"]);
+        string[] result = (string[])s_mergeWithClassFilter.Invoke(null, [args, "*GasBlockBuildingBenchmarks*"]);
 
         // Should merge: class filter prefix + existing filter
         Assert.That(result.Length, Is.EqualTo(2));
         string merged = result[1];
-        Assert.That(merged, Does.Contain("GasBlockBenchmarks"));
+        Assert.That(merged, Does.Contain("GasBlockBuildingBenchmarks"));
         Assert.That(merged, Does.Contain("MULMOD"));
     }
 
@@ -206,13 +175,13 @@ public class ProgramArgsTests
         if (s_getOptionValue is null)
             Assert.Ignore("GetOptionValue method not found");
 
-        string[] args = ["--mode=EVMExecute"];
+        string[] args = ["--mode=EVM"];
         object result = s_getOptionValue.Invoke(null, [args, 0, "--mode"]);
         ITuple tuple = (ITuple)result;
         string value = (string)tuple[0];
         int removeCount = (int)tuple[1];
 
-        Assert.That(value, Is.EqualTo("EVMExecute"));
+        Assert.That(value, Is.EqualTo("EVM"));
         Assert.That(removeCount, Is.EqualTo(1));
     }
 
@@ -222,13 +191,13 @@ public class ProgramArgsTests
         if (s_getOptionValue is null)
             Assert.Ignore("GetOptionValue method not found");
 
-        string[] args = ["--mode:Block"];
+        string[] args = ["--mode:BlockBuilding"];
         object result = s_getOptionValue.Invoke(null, [args, 0, "--mode"]);
         ITuple tuple = (ITuple)result;
         string value = (string)tuple[0];
         int removeCount = (int)tuple[1];
 
-        Assert.That(value, Is.EqualTo("Block"));
+        Assert.That(value, Is.EqualTo("BlockBuilding"));
         Assert.That(removeCount, Is.EqualTo(1));
     }
 
@@ -338,14 +307,14 @@ public class ProgramArgsTests
         if (s_applyModeFilter is null)
             Assert.Ignore("ApplyModeFilter method not found");
 
-        string[] args = ["--mode", "Block"];
+        string[] args = ["--mode", "BlockBuilding"];
         string[] result = (string[])s_applyModeFilter.Invoke(null, [args]);
 
         Assert.That(result, Does.Contain("--filter"));
-        Assert.That(result, Does.Contain("*GasBlockBenchmarks*"));
-        // --mode and Block should be removed
+        Assert.That(result, Does.Contain("*GasBlockBuildingBenchmarks*"));
+        // --mode and BlockBuilding should be removed
         Assert.That(result, Does.Not.Contain("--mode"));
-        Assert.That(result, Does.Not.Contain("Block"));
+        Assert.That(result, Does.Not.Contain("BlockBuilding"));
     }
 
     [Test]
@@ -354,7 +323,7 @@ public class ProgramArgsTests
         if (s_applyModeFilter is null)
             Assert.Ignore("ApplyModeFilter method not found");
 
-        string[] args = ["--mode=EVMExecute"];
+        string[] args = ["--mode=EVM"];
         string[] result = (string[])s_applyModeFilter.Invoke(null, [args]);
 
         Assert.That(result, Does.Contain("--filter"));
