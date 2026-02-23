@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Autofac;
 using BenchmarkDotNet.Attributes;
@@ -24,6 +25,7 @@ public class GasPayloadExecuteBenchmarks
 {
     private IWorldState _state;
     private ILifetimeScope _scope;
+    private IDisposable _containerLifetime;
     private ITransactionProcessor _txProcessor;
     private Transaction[] _testTransactions;
     private BlockHeader _testHeaderTemplate;
@@ -39,7 +41,7 @@ public class GasPayloadExecuteBenchmarks
         IReleaseSpec pragueSpec = Prague.Instance;
         ISpecProvider specProvider = new SingleReleaseSpecProvider(pragueSpec, 1, 1);
 
-        _scope = BenchmarkContainer.CreateTransactionScope(specProvider, GasPayloadBenchmarks.s_genesisPath, pragueSpec);
+        (_scope, _containerLifetime) = BenchmarkContainer.CreateTransactionScope(specProvider, GasPayloadBenchmarks.s_genesisPath, pragueSpec);
         _state = _scope.Resolve<IWorldState>();
         _txProcessor = _scope.Resolve<ITransactionProcessor>();
 
@@ -87,7 +89,9 @@ public class GasPayloadExecuteBenchmarks
         }
 
         _scope?.Dispose();
+        _containerLifetime?.Dispose();
         _scope = null;
+        _containerLifetime = null;
         _state = null;
         _txProcessor = null;
         _testTransactions = null;

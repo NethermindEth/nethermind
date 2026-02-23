@@ -318,7 +318,9 @@ static void RunDiagnostic(string pattern)
 
     // Use DI to get IWorldState + ITransactionProcessor, matching production wiring.
     // Genesis initialization happens inside BenchmarkContainer.
-    using ILifetimeScope scope = BenchmarkContainer.CreateTransactionScope(specProvider, genesisPath, pragueSpec);
+    (ILifetimeScope scope, IDisposable containerLifetime) = BenchmarkContainer.CreateTransactionScope(specProvider, genesisPath, pragueSpec);
+    using IDisposable _ = scope;
+    using IDisposable __ = containerLifetime;
     Console.WriteLine($"Genesis loaded in {sw.ElapsedMilliseconds}ms, StateRoot={PayloadLoader.GenesisStateRoot}");
     IWorldState state = scope.Resolve<IWorldState>();
     ITransactionProcessor txProcessor = scope.Resolve<ITransactionProcessor>();

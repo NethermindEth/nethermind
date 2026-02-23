@@ -49,9 +49,9 @@ internal static class BenchmarkContainer
 {
     /// <summary>
     /// Creates a scope with IWorldState + ITransactionProcessor for tx-level benchmarks (EVMExecute).
-    /// Dispose the returned scope in GlobalCleanup.
+    /// Dispose the returned scope AND ContainerLifetime in GlobalCleanup.
     /// </summary>
-    public static ILifetimeScope CreateTransactionScope(
+    public static (ILifetimeScope Scope, IDisposable ContainerLifetime) CreateTransactionScope(
         ISpecProvider specProvider,
         string genesisPath,
         IReleaseSpec genesisSpec,
@@ -77,7 +77,7 @@ internal static class BenchmarkContainer
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>();
         });
 
-        return scope;
+        return (scope, container);
     }
 
     /// <summary>

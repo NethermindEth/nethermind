@@ -23,10 +23,10 @@ public class GasBenchmarkConfig : ManualConfig
     /// <summary>Total number of chunks to split scenarios into.</summary>
     internal static int ChunkTotal { get; set; }
 
-    /// <summary>Override for BDN warmup count. Null = MediumRun default.</summary>
+    /// <summary>Override for BDN warmup count. Null = 3 (our default).</summary>
     internal static int? WarmupCount { get; set; }
 
-    /// <summary>Override for BDN iteration count. Null = 10 (our default).</summary>
+    /// <summary>Override for BDN iteration count. Null = 1 (our default).</summary>
     internal static int? IterationCount { get; set; }
 
     /// <summary>Override for BDN launch count. Null = 1 (our default).</summary>
@@ -36,12 +36,8 @@ public class GasBenchmarkConfig : ManualConfig
     {
         Job job = Job.MediumRun
             .WithLaunchCount(LaunchCount ?? 1)
-            .WithIterationCount(IterationCount ?? 10);
-
-        if (WarmupCount.HasValue)
-        {
-            job = job.WithWarmupCount(WarmupCount.Value);
-        }
+            .WithWarmupCount(WarmupCount ?? 3)
+            .WithIterationCount(IterationCount ?? 1);
 
         if (InProcess)
         {

@@ -38,8 +38,10 @@ public class WiringTests
     {
         try
         {
-            using ILifetimeScope scope = BenchmarkContainer.CreateTransactionScope(
+            (ILifetimeScope scope, System.IDisposable containerLifetime) = BenchmarkContainer.CreateTransactionScope(
                 CreateSpecProvider(), s_genesisPath, s_pragueSpec);
+            scope.Dispose();
+            containerLifetime.Dispose();
         }
         catch (System.IO.FileNotFoundException)
         {
@@ -58,14 +60,23 @@ public class WiringTests
 
         ISpecProvider specProvider = CreateSpecProvider();
 
-        using ILifetimeScope scope = BenchmarkContainer.CreateTransactionScope(specProvider, s_genesisPath, s_pragueSpec);
+        (ILifetimeScope scope, System.IDisposable containerLifetime) =
+            BenchmarkContainer.CreateTransactionScope(specProvider, s_genesisPath, s_pragueSpec);
 
-        IWorldState state = scope.Resolve<IWorldState>();
-        ITransactionProcessor txProcessor = scope.Resolve<ITransactionProcessor>();
+        try
+        {
+            IWorldState state = scope.Resolve<IWorldState>();
+            ITransactionProcessor txProcessor = scope.Resolve<ITransactionProcessor>();
 
-        Assert.That(state, Is.Not.Null);
-        Assert.That(txProcessor, Is.Not.Null);
-        Assert.That(txProcessor, Is.InstanceOf<EthereumTransactionProcessor>());
+            Assert.That(state, Is.Not.Null);
+            Assert.That(txProcessor, Is.Not.Null);
+            Assert.That(txProcessor, Is.InstanceOf<EthereumTransactionProcessor>());
+        }
+        finally
+        {
+            scope.Dispose();
+            containerLifetime.Dispose();
+        }
     }
 
     [Test]
@@ -173,11 +184,20 @@ public class WiringTests
     {
         EnsureGenesisOrSkip();
 
-        using ILifetimeScope scope = BenchmarkContainer.CreateTransactionScope(
+        (ILifetimeScope scope, System.IDisposable containerLifetime) = BenchmarkContainer.CreateTransactionScope(
             CreateSpecProvider(), s_genesisPath, s_pragueSpec);
-        IWorldState state = scope.Resolve<IWorldState>();
-        Nethermind.State.IStateReader reader = BlockBenchmarkHelper.CreateStateReader(state);
 
-        Assert.That(reader, Is.Not.Null);
+        try
+        {
+            IWorldState state = scope.Resolve<IWorldState>();
+            Nethermind.State.IStateReader reader = BlockBenchmarkHelper.CreateStateReader(state);
+
+            Assert.That(reader, Is.Not.Null);
+        }
+        finally
+        {
+            scope.Dispose();
+            containerLifetime.Dispose();
+        }
     }
 }
