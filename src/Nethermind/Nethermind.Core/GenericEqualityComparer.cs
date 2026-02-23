@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Core;
 
 [Serializable]
-public sealed class GenericEqualityComparer<T> : EqualityComparer<T> where T : IEquatable<T>?
+public sealed class GenericEqualityComparer<T> : EqualityComparer<T>, GenericEqualityComparer.IGenericEqualityComparer where T : IEquatable<T>?
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override bool Equals(T? x, T? y) => x != null ? y != null && x.Equals(y) : y == null;
@@ -17,4 +17,16 @@ public sealed class GenericEqualityComparer<T> : EqualityComparer<T> where T : I
     public override int GetHashCode([DisallowNull] T obj) => obj?.GetHashCode() ?? 0;
     public override bool Equals([NotNullWhen(true)] object? obj) => obj != null && GetType() == obj.GetType();
     public override int GetHashCode() => GetType().GetHashCode();
+}
+
+public static class GenericEqualityComparer
+{
+    internal interface IGenericEqualityComparer;
+    public static IEqualityComparer<T>? GetOptimized<T>(IEqualityComparer<T>? comparer) =>
+        comparer switch
+        {
+            null => null,
+            IGenericEqualityComparer => null,
+            _ => comparer
+        };
 }
