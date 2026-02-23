@@ -30,7 +30,7 @@ namespace Nethermind.Serialization.Rlp
 
         protected override TxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (ctx.IsNextItemNull())
+            if (ctx.IsNextItemEmptyList())
             {
                 ctx.ReadByte();
                 return null;
@@ -138,7 +138,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence.Bytes;
+                return Rlp.OfEmptyList.Bytes;
             }
 
             int length = GetLength(item, rlpBehaviors);

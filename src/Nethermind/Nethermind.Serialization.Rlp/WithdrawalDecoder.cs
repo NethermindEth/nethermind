@@ -9,10 +9,9 @@ public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
 {
     protected override Withdrawal? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (rlpStream.IsNextItemNull())
+        if (rlpStream.IsNextItemEmptyList())
         {
             rlpStream.ReadByte();
-
             return null;
         }
 
@@ -29,10 +28,9 @@ public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
 
     protected override Withdrawal? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
-
             return null;
         }
 

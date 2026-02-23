@@ -35,15 +35,17 @@ namespace Nethermind.Serialization.Rlp
 
         internal const int DebugMessageContentLength = 2048;
 
-        public const byte EmptyArrayByte = 128;
+        public const byte EmptyByteArrayByte = 0x80;
 
-        public const byte NullObjectByte = 192; // use bytes to avoid stack overflow
+        public const byte EmptyListByte = 0xc0; // use bytes to avoid stack overflow
 
         internal const int LengthOfNull = 1;
 
-        public static readonly Rlp OfEmptyByteArray = new(EmptyArrayByte);
+        public static readonly Rlp OfEmptyByteArray = new(EmptyByteArrayByte);
 
-        public static readonly Rlp OfEmptySequence = new(NullObjectByte);
+        public static readonly Rlp OfZero = OfEmptyByteArray;
+
+        public static readonly Rlp OfEmptyList = new(EmptyListByte);
 
         internal static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
 
@@ -79,7 +81,7 @@ namespace Nethermind.Serialization.Rlp
 
         private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
         private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decoders;
-        private static Lock _decoderLock = new();
+        private static readonly Lock _decoderLock = new();
         public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders
         {
             get
@@ -343,11 +345,11 @@ namespace Nethermind.Serialization.Rlp
             return GetObjectDecoder<T>().Encode(item, behaviors);
         }
 
-        public static Rlp Encode<T>(T[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            if (items is null)
+            if (items is [])
             {
-                return OfEmptySequence;
+                return OfEmptyList;
             }
 
             IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
@@ -382,7 +384,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (value == 0)
             {
-                return OfEmptyByteArray;
+                return OfZero;
             }
 
             return value < 0 ? Encode(new BigInteger(value), 4) : Encode((long)value);
@@ -391,7 +393,7 @@ namespace Nethermind.Serialization.Rlp
         public static Rlp Encode(long value) => value switch
         {
             < 0 => Encode(new BigInteger(value), 8),
-            0L => OfEmptyByteArray,
+            0L => OfZero,
             < 0x80 => new((byte)value),
             < 0x100 => new(new byte[] { 129, (byte)value }),
             < 0x1_0000 => new(new byte[] { 130, (byte)(value >> 8), (byte)value }),
@@ -451,13 +453,13 @@ namespace Nethermind.Serialization.Rlp
         // caller is responsible for allocating buffer large enough (max 9 bytes)
         public static Span<byte> Encode(long value, Span<byte> buffer) => Encode(unchecked((ulong)value), buffer);
 
-        public static Rlp Encode(BigInteger bigInteger, int outputLength = -1) => bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray(outputLength));
+        public static Rlp Encode(BigInteger bigInteger, int outputLength = -1) => bigInteger == 0 ? OfZero : Encode(bigInteger.ToBigEndianByteArray(outputLength));
 
         public static Rlp Encode(in UInt256 value, int length = -1)
         {
             if (value.IsZero && length == -1)
             {
-                return OfEmptyByteArray;
+                return OfZero;
             }
             else
             {
@@ -556,7 +558,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public static Rlp Encode(byte[]? input) => input is null ? OfEmptyByteArray : Encode(input.AsSpan());
+        public static Rlp Encode(byte[]? input) => input is null or [] ? OfEmptyByteArray : Encode(input.AsSpan());
 
         private static int SerializeLength(int value, Span<byte> destination)
         {
@@ -1285,8 +1287,6 @@ namespace Nethermind.Serialization.Rlp
                 return Peek(length);
             }
 
-            public readonly bool IsNextItemNull() => Data[Position] == 192;
-
             public int DecodeInt()
             {
                 int prefix = ReadByte();
@@ -1337,7 +1337,7 @@ namespace Nethermind.Serialization.Rlp
                     return span.Slice(prefix, 1);
                 }
 
-                if (prefix == 128)
+                if (prefix is EmptyByteArrayByte)
                 {
                     return default;
                 }
@@ -1399,9 +1399,9 @@ namespace Nethermind.Serialization.Rlp
 
                 switch (prefix)
                 {
-                    case < 128:
+                    case < EmptyByteArrayByte:
                         return Memory.Value.Slice(Position - 1, 1);
-                    case 128:
+                    case EmptyByteArrayByte:
                         return Array.Empty<byte>();
                     case <= 183:
                         {
@@ -1648,7 +1648,7 @@ namespace Nethermind.Serialization.Rlp
                 T[] result = new T[count];
                 for (int i = 0; i < result.Length; i++)
                 {
-                    if (PeekByte() == OfEmptySequence[0])
+                    if (PeekByte() == OfEmptyList[0])
                     {
                         result[i] = defaultElement;
                         Position++;
@@ -1667,7 +1667,9 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
-            public readonly bool IsNextItemEmptyArray() => PeekByte() == EmptyArrayByte;
+            public readonly bool IsNextItemEmptyByteArray() => PeekByte() is EmptyByteArrayByte;
+
+            public readonly bool IsNextItemEmptyList() => PeekByte() is EmptyListByte;
 
             [DoesNotReturn, StackTraceHidden]
             private readonly void ThrowKeccakDecodeException(int prefix)
