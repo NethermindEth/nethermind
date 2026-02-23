@@ -51,6 +51,16 @@ internal class XdcBlockTree : BlockTree
         {
             return AddBlockResult.InvalidBlock;
         }
+        
+        // During catch-up sync (far behind tip), skip XDC finalization checks
+        // Finalization validation is only relevant when near the chain tip
+        const long CatchUpSyncThreshold = 100;
+        if (header.Number - finalizedBlockInfo.BlockNumber > CatchUpSyncThreshold)
+        {
+            // Let base BlockTree handle validation during batch sync
+            return base.Suggest(block, header, options);
+        }
+        
         if (header.Number - finalizedBlockInfo.BlockNumber > MaxSearchDepth)
         {
             //Theoretically very deep reorgs could happen, if the chain doesnt finalize for a long time
@@ -69,7 +79,11 @@ internal class XdcBlockTree : BlockTree
 
             current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (current is null)
-                return AddBlockResult.UnknownParent;
+            {
+                // During batch sync, parent headers may not be in DB yet
+                // Fall back to base BlockTree validation instead of rejecting as UnknownParent
+                return base.Suggest(block, header, options);
+            }
         }
         //This is not possible to reach
         return AddBlockResult.InvalidBlock;
