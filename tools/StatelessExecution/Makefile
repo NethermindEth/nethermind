@@ -4,8 +4,8 @@ ARTIFACTS_DIR := $(PARENT_DIR)/artifacts/bin/StatelessExecution/release
 
 .PHONY: all build-tool-local build-zisk-sim execute-zisk-sim execute-zisk-qemu build-zisk execute-zisk publish-aot run-docker
 
-all: build-tool-local build-riscv execute-riscv
-zisk_sim: build-tool-local build-zisk-sim execute-zisk-sim execute-zisk-qemu
+all: build-tool-local build-zisk-sim execute-zisk-sim execute-zisk-qemu build-zisk execute-zisk
+zisk-sim: build-tool-local build-zisk-sim execute-zisk-sim execute-zisk-qemu
 zisk: build-tool-local build-zisk execute-zisk
 
 build-tool-local:
