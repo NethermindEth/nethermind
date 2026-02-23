@@ -22,6 +22,8 @@ public sealed class GenericEqualityComparer<T> : EqualityComparer<T>, GenericEqu
 public static class GenericEqualityComparer
 {
     internal interface IGenericEqualityComparer;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static IEqualityComparer<T>? GetOptimized<T>(IEqualityComparer<T>? comparer) =>
         comparer switch
         {
