@@ -10,30 +10,23 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
-using Nethermind.Core.Test.Db;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 
 /// <summary>
 /// Loads engine_newPayloadV4 payload files and genesis state for gas benchmarks.
+/// Genesis state construction is handled by DI (via <see cref="BenchmarkContainer"/>);
+/// this class provides JSON parsing and genesis account population.
 /// </summary>
 public static class PayloadLoader
 {
     private static readonly object s_genesisLock = new();
-    private static IDbProvider s_dbProvider;
-    private static TrieStore s_trieStore;
-    private static IDb s_codeDb;
     private static Hash256 s_genesisStateRoot;
     private static bool s_genesisInitialized;
 
@@ -221,10 +214,10 @@ public static class PayloadLoader
     }
 
     /// <summary>
-    /// Ensures the genesis state is loaded from the chainspec file into a shared TrieStore.
-    /// Subsequent calls are no-ops. Call CreateWorldState() to get a WorldState rooted at genesis.
+    /// Initializes the genesis state by loading accounts from the chainspec file into a DI-provided world state.
+    /// Thread-safe; subsequent calls are no-ops. The genesis file path and LFS status are validated on first call.
     /// </summary>
-    public static void EnsureGenesisInitialized(string genesisPath, IReleaseSpec spec)
+    public static void InitializeGenesis(IWorldState state, string genesisPath, IReleaseSpec spec)
     {
         if (s_genesisInitialized) return;
 
@@ -233,24 +226,7 @@ public static class PayloadLoader
             if (s_genesisInitialized) return;
 
             KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
-            s_dbProvider = TestMemDbProvider.Init();
-            PruningConfig pruningConfig = new();
-            TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
-
-            s_trieStore = new TrieStore(
-                new NodeStorage(s_dbProvider.StateDb),
-                No.Pruning,
-                Persist.EveryBlock,
-                finalizedStateProvider,
-                pruningConfig,
-                LimboLogs.Instance);
-
-            finalizedStateProvider.TrieStore = s_trieStore;
-            s_codeDb = s_dbProvider.CodeDb;
-
-            WorldState state = new(
-                new TrieStoreScopeProvider(s_trieStore, s_codeDb, LimboLogs.Instance),
-                LimboLogs.Instance);
+            ValidateGenesisFile(genesisPath);
 
             using (state.BeginScope(IWorldState.PreGenesis))
             {
@@ -275,86 +251,12 @@ public static class PayloadLoader
     }
 
     /// <summary>
-    /// Creates an IWorldStateScopeProvider backed by the shared TrieStore (which contains the genesis trie).
-    /// Used by DI container setup to provide the scope provider for WorldState creation.
+    /// Loads genesis accounts from a chainspec JSON file into the given world state.
+    /// Does not commit — caller is responsible for calling Commit + CommitTree.
     /// </summary>
-    public static IWorldStateScopeProvider CreateWorldStateScopeProvider(NodeStorageCache nodeStorageCache = null)
+    public static void LoadGenesisAccounts(IWorldState state, string genesisPath, IReleaseSpec spec)
     {
-        if (!s_genesisInitialized)
-            throw new InvalidOperationException("Genesis not initialized. Call EnsureGenesisInitialized first.");
-
-        ITrieStore trieStore = s_trieStore;
-        if (nodeStorageCache is not null)
-        {
-            trieStore = new PreCachedTrieStore(trieStore, nodeStorageCache);
-        }
-
-        return new TrieStoreScopeProvider(trieStore, s_codeDb, LimboLogs.Instance);
-    }
-
-    /// <summary>
-    /// Creates a new WorldState backed by the shared TrieStore (which contains the genesis trie).
-    /// Caller must call BeginScope with a BlockHeader whose StateRoot is GenesisStateRoot.
-    /// </summary>
-    public static IWorldState CreateWorldState(
-        NodeStorageCache nodeStorageCache = null,
-        PreBlockCaches preBlockCaches = null,
-        bool populatePreBlockCache = true)
-    {
-        if (!s_genesisInitialized)
-            throw new InvalidOperationException("Genesis not initialized. Call EnsureGenesisInitialized first.");
-
-        IWorldStateScopeProvider scopeProvider = CreateWorldStateScopeProvider(nodeStorageCache);
-        if (preBlockCaches is not null)
-        {
-            scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache);
-        }
-
-        return new WorldState(scopeProvider, LimboLogs.Instance);
-    }
-
-    public static IWorldStateManager CreateWorldStateManager(NodeStorageCache nodeStorageCache = null)
-    {
-        if (!s_genesisInitialized)
-            throw new InvalidOperationException("Genesis not initialized. Call EnsureGenesisInitialized first.");
-
-        ITrieStore trieStore = s_trieStore;
-        if (nodeStorageCache is not null)
-        {
-            trieStore = new PreCachedTrieStore(trieStore, nodeStorageCache);
-        }
-
-        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(trieStore, s_codeDb, LimboLogs.Instance);
-        return new WorldStateManager(scopeProvider, s_trieStore, s_dbProvider, LimboLogs.Instance);
-    }
-
-    private static void LoadGenesisAccounts(IWorldState state, string genesisPath, IReleaseSpec spec)
-    {
-        if (!File.Exists(genesisPath))
-        {
-            string message = $"Genesis file not found: {genesisPath}\n" +
-                "Make sure the gas-benchmarks submodule is initialized:\n" +
-                "  git lfs install && git submodule update --init tools/gas-benchmarks";
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                message += "\n  On Windows, you may also need: git config --global core.longpaths true";
-            throw new FileNotFoundException(message);
-        }
-
         using FileStream fs = File.OpenRead(genesisPath);
-
-        // Detect Git LFS pointer (starts with "version https://git-lfs")
-        byte[] header = new byte[8];
-        int read = fs.Read(header, 0, header.Length);
-        fs.Position = 0;
-
-        if (read >= 7 && header[0] == (byte)'v' && header[1] == (byte)'e' && header[2] == (byte)'r')
-        {
-            throw new InvalidOperationException(
-                $"Genesis file appears to be a Git LFS pointer: {genesisPath}\n" +
-                "Git LFS was not installed when the submodule was cloned. Fix with:\n" +
-                "  git lfs install && cd tools/gas-benchmarks && git lfs pull");
-        }
-
         using JsonDocument doc = JsonDocument.Parse(fs);
         JsonElement accounts = doc.RootElement.GetProperty("accounts");
 
@@ -399,6 +301,34 @@ public static class PayloadLoader
                     state.Set(new StorageCell(address, slot), value);
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Validates that the genesis file exists and is not a Git LFS pointer.
+    /// </summary>
+    private static void ValidateGenesisFile(string genesisPath)
+    {
+        if (!File.Exists(genesisPath))
+        {
+            string message = $"Genesis file not found: {genesisPath}\n" +
+                "Make sure the gas-benchmarks submodule is initialized:\n" +
+                "  git lfs install && git submodule update --init tools/gas-benchmarks";
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                message += "\n  On Windows, you may also need: git config --global core.longpaths true";
+            throw new FileNotFoundException(message);
+        }
+
+        using FileStream fs = File.OpenRead(genesisPath);
+        byte[] header = new byte[8];
+        int read = fs.Read(header, 0, header.Length);
+
+        if (read >= 7 && header[0] == (byte)'v' && header[1] == (byte)'e' && header[2] == (byte)'r')
+        {
+            throw new InvalidOperationException(
+                $"Genesis file appears to be a Git LFS pointer: {genesisPath}\n" +
+                "Git LFS was not installed when the submodule was cloned. Fix with:\n" +
+                "  git lfs install && cd tools/gas-benchmarks && git lfs pull");
         }
     }
 

@@ -99,11 +99,11 @@ public class GasNewPayloadBenchmarks
         _releaseSpec = Prague.Instance;
         _specProvider = new SingleReleaseSpecProvider(_releaseSpec, 1, 1);
 
-        PayloadLoader.EnsureGenesisInitialized(GasPayloadBenchmarks.s_genesisPath, _releaseSpec);
-
         GasNewPayloadBenchmarks owner = this;
         (_scope, _preWarmer, _containerLifetime) = BenchmarkContainer.CreateBlockProcessingScope(
             _specProvider,
+            GasPayloadBenchmarks.s_genesisPath,
+            _releaseSpec,
             additionalRegistrations: childBuilder =>
             {
                 childBuilder.AddDecorator<ITransactionProcessor>((_, inner) =>

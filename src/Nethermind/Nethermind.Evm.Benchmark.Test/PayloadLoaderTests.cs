@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Benchmark.GasBenchmarks;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -375,24 +374,6 @@ public class PayloadLoaderTests
         (BlockHeader header, _) = PayloadLoader.LoadPayload(path);
 
         Assert.That(header.BaseFeePerGas, Is.EqualTo(new UInt256(255)));
-    }
-
-    [Test]
-    public void CreateWorldState_Throws_Before_Genesis_Initialized()
-    {
-        // PayloadLoader.CreateWorldState should throw if genesis not initialized.
-        // Since genesis may already be initialized from other tests, we only test
-        // that CreateWorldState returns a valid object if genesis IS initialized.
-        // This test documents the expected contract.
-        try
-        {
-            IWorldState state = PayloadLoader.CreateWorldState();
-            Assert.That(state, Is.Not.Null);
-        }
-        catch (InvalidOperationException ex)
-        {
-            Assert.That(ex.Message, Does.Contain("Genesis not initialized"));
-        }
     }
 
     [Test]

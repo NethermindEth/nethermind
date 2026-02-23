@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -11,6 +12,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -18,45 +20,59 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
+using Nethermind.Core.Timers;
+using Nethermind.Db;
+using Nethermind.Db.LogIndex;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
+using Nethermind.State.Healing;
 using Nethermind.Trie;
 
 namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 
 /// <summary>
-/// Central factory for creating DI containers that wire block processing components
-/// via production <see cref="BlockProcessingModule"/>, matching the real Nethermind pipeline.
-/// Benchmark-specific overrides (genesis state, stub IBlockTree) are layered on top.
+/// Central factory for creating DI containers that wire block processing and world state
+/// components via production modules (<see cref="BlockProcessingModule"/>, <see cref="WorldStateModule"/>),
+/// matching the real Nethermind pipeline. Benchmark-specific overrides (genesis state, stub IBlockTree)
+/// are layered on top.
 /// </summary>
 internal static class BenchmarkContainer
 {
     /// <summary>
-    /// Creates a scope with IWorldState + ITransactionProcessor for tx-level benchmarks (EVMExecute, EVMBuildUp).
+    /// Creates a scope with IWorldState + ITransactionProcessor for tx-level benchmarks (EVMExecute).
     /// Dispose the returned scope in GlobalCleanup.
     /// </summary>
-    public static ILifetimeScope CreateTransactionScope(ISpecProvider specProvider, IBlocksConfig blocksConfig = null)
+    public static ILifetimeScope CreateTransactionScope(
+        ISpecProvider specProvider,
+        string genesisPath,
+        IReleaseSpec genesisSpec,
+        IBlocksConfig blocksConfig = null)
     {
         blocksConfig ??= BlockBenchmarkHelper.CreateBenchmarkBlocksConfig();
-        InitConfig initConfig = new();
+        InitConfig initConfig = new() { DiagnosticMode = DiagnosticMode.MemDb };
 
         ContainerBuilder builder = new();
-        builder.AddModule(new BlockProcessingModule(initConfig, blocksConfig));
+        RegisterProductionModules(builder, initConfig, blocksConfig, specProvider);
         RegisterBenchmarkOverrides(builder, specProvider, blocksConfig);
 
         IContainer container = builder.Build();
+        InitializeGenesisState(container, genesisPath, genesisSpec);
 
-        // Create a child scope mirroring what MainProcessingContext does:
-        // register IWorldStateScopeProvider + validation modules
+        IWorldStateManager worldStateManager = container.Resolve<IWorldStateManager>();
+
         ILifetimeScope scope = container.BeginLifetimeScope(childBuilder =>
         {
             childBuilder
-                .AddSingleton<IWorldStateScopeProvider>(PayloadLoader.CreateWorldStateScopeProvider())
+                .AddSingleton<IWorldStateScopeProvider>(worldStateManager.GlobalWorldState)
                 .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>();
         });
@@ -66,54 +82,39 @@ internal static class BenchmarkContainer
 
     /// <summary>
     /// Creates a scope with full block processing components for block-level benchmarks
-    /// (BlockOne, Block, BlockBuilding, NewPayload, NewPayloadMeasured).
+    /// (BlockBuilding, NewPayload, NewPayloadMeasured).
     /// Returns the scope, optional pre-warmer, and the root container (dispose in GlobalCleanup).
     /// </summary>
     public static (ILifetimeScope Scope, IBlockCachePreWarmer PreWarmer, IDisposable ContainerLifetime)
         CreateBlockProcessingScope(
             ISpecProvider specProvider,
+            string genesisPath,
+            IReleaseSpec genesisSpec,
             IBlocksConfig blocksConfig = null,
             bool isBlockBuilding = false,
             Action<ContainerBuilder> additionalRegistrations = null)
     {
         blocksConfig ??= BlockBenchmarkHelper.CreateBenchmarkBlocksConfig();
-        InitConfig initConfig = new();
+        InitConfig initConfig = new() { DiagnosticMode = DiagnosticMode.MemDb };
 
         ContainerBuilder builder = new();
-        builder.AddModule(new BlockProcessingModule(initConfig, blocksConfig));
-        builder.AddModule(new PrewarmerModule(blocksConfig));
+        RegisterProductionModules(builder, initConfig, blocksConfig, specProvider);
         RegisterBenchmarkOverrides(builder, specProvider, blocksConfig);
 
-        // If prewarming, register IWorldStateManager for PrewarmerEnvFactory
-        if (blocksConfig.PreWarmStateOnBlockProcessing)
-        {
-            builder.AddSingleton<IWorldStateManager>(ctx =>
-            {
-                NodeStorageCache nodeStorageCache = ctx.Resolve<NodeStorageCache>();
-                return PayloadLoader.CreateWorldStateManager(nodeStorageCache);
-            });
-        }
-
         IContainer container = builder.Build();
+        InitializeGenesisState(container, genesisPath, genesisSpec);
 
-        // Create a child scope applying validation/production modules + prewarmer module,
-        // mirroring what MainProcessingContext does with IBlockValidationModule + IMainProcessingModule
+        IWorldStateManager worldStateManager = container.Resolve<IWorldStateManager>();
+
         ILifetimeScope scope = container.BeginLifetimeScope(childBuilder =>
         {
-            // Register IWorldStateScopeProvider from benchmark genesis state
+            // Register IWorldStateScopeProvider from production IWorldStateManager
+            childBuilder.AddSingleton<IWorldStateScopeProvider>(worldStateManager.GlobalWorldState);
+
+            // Apply prewarmer decorators if prewarming is enabled
             if (blocksConfig.PreWarmStateOnBlockProcessing)
             {
-                NodeStorageCache nodeStorageCache = container.Resolve<NodeStorageCache>();
-                childBuilder.AddSingleton<IWorldStateScopeProvider>(
-                    PayloadLoader.CreateWorldStateScopeProvider(nodeStorageCache));
-
-                // Apply prewarmer decorators (PrewarmerScopeProvider, CachedCodeInfoRepository)
                 childBuilder.AddModule(new PrewarmerModule.PrewarmerMainProcessingModule());
-            }
-            else
-            {
-                childBuilder.AddSingleton<IWorldStateScopeProvider>(
-                    PayloadLoader.CreateWorldStateScopeProvider());
             }
 
             // Register the appropriate tx executor based on mode
@@ -138,6 +139,56 @@ internal static class BenchmarkContainer
             : null;
 
         return (scope, preWarmer, container);
+    }
+
+    /// <summary>
+    /// Registers production DI modules for world state and block processing.
+    /// Uses MemDb via DiagnosticMode.MemDb for in-memory storage.
+    /// </summary>
+    private static void RegisterProductionModules(
+        ContainerBuilder builder,
+        InitConfig initConfig,
+        IBlocksConfig blocksConfig,
+        ISpecProvider specProvider)
+    {
+        SyncConfig syncConfig = new();
+        ReceiptConfig receiptConfig = new();
+
+        builder
+            // Production modules — world state and block processing through real DI chain
+            .AddModule(new DbModule(initConfig, receiptConfig, syncConfig))
+            .AddModule(new WorldStateModule(initConfig))
+            .AddModule(new PrewarmerModule(blocksConfig))
+            .AddModule(new BlockProcessingModule(initConfig, blocksConfig))
+
+            // Configs required by WorldStateModule and its dependencies
+            .AddSingleton<ISyncConfig>(syncConfig)
+            .AddSingleton<IPruningConfig>(new PruningConfig())
+            .AddSingleton<IDbConfig>(new DbConfig())
+            .AddSingleton<ILogIndexConfig>(new LogIndexConfig())
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB()))
+            .AddSingleton<ITimerFactory>(_ => TimerFactory.Default)
+            .AddSingleton<IFileSystem>(_ => new FileSystem())
+            .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
+            .AddSingleton<ChainSpec>(_ => new ChainSpec { ChainId = specProvider.ChainId })
+
+            // IDisposableStack for PruningTrieStateFactory to register disposables
+            .Add<IDisposableStack, AutofacDisposableStack>()
+
+            // Lazy<IPathRecovery> — not needed for benchmarks, provide a null-returning lazy
+            .AddSingleton<Lazy<IPathRecovery>>(_ => new Lazy<IPathRecovery>(() => null))
+            ;
+    }
+
+    /// <summary>
+    /// Initializes the genesis state from the chainspec file into the DI-provided world state.
+    /// Thread-safe via PayloadLoader.InitializeGenesis.
+    /// </summary>
+    private static void InitializeGenesisState(IContainer container, string genesisPath, IReleaseSpec spec)
+    {
+        IWorldStateManager worldStateManager = container.Resolve<IWorldStateManager>();
+        WorldState genesisState = new(worldStateManager.GlobalWorldState, LimboLogs.Instance);
+        PayloadLoader.InitializeGenesis(genesisState, genesisPath, spec);
     }
 
     private static void RegisterBenchmarkOverrides(

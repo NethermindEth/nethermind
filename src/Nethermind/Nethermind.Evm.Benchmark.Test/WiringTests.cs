@@ -17,19 +17,29 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Benchmark.Test;
 
 /// <summary>
-/// Wiring sanity tests that verify the benchmark setup helpers produce correctly-typed
+/// Wiring sanity tests that verify the benchmark DI containers produce correctly-typed
 /// objects and that the DI/construction chains don't break when Nethermind interfaces change.
-/// These tests require the genesis state to be initialized (which requires the gas-benchmarks submodule).
+/// These tests require the gas-benchmarks submodule (genesis state file).
 /// </summary>
 [TestFixture]
 public class WiringTests
 {
-    private static void EnsureGenesis()
+    private static readonly string s_genesisPath = GasPayloadBenchmarks.s_genesisPath;
+    private static readonly IReleaseSpec s_pragueSpec = Prague.Instance;
+
+    private static ISpecProvider CreateSpecProvider() =>
+        new SingleReleaseSpecProvider(s_pragueSpec, 1, 1);
+
+    /// <summary>
+    /// Initializes genesis state via BenchmarkContainer, skipping the test if the
+    /// gas-benchmarks submodule is not available.
+    /// </summary>
+    private static void EnsureGenesisOrSkip()
     {
         try
         {
-            IReleaseSpec pragueSpec = Prague.Instance;
-            PayloadLoader.EnsureGenesisInitialized(GasPayloadBenchmarks.s_genesisPath, pragueSpec);
+            using ILifetimeScope scope = BenchmarkContainer.CreateTransactionScope(
+                CreateSpecProvider(), s_genesisPath, s_pragueSpec);
         }
         catch (System.IO.FileNotFoundException)
         {
@@ -44,11 +54,11 @@ public class WiringTests
     [Test]
     public void CreateTransactionScope_Resolves_WorldState_And_TxProcessor()
     {
-        EnsureGenesis();
+        EnsureGenesisOrSkip();
 
-        ISpecProvider specProvider = new SingleReleaseSpecProvider(Prague.Instance, 1, 1);
+        ISpecProvider specProvider = CreateSpecProvider();
 
-        using ILifetimeScope scope = BenchmarkContainer.CreateTransactionScope(specProvider);
+        using ILifetimeScope scope = BenchmarkContainer.CreateTransactionScope(specProvider, s_genesisPath, s_pragueSpec);
 
         IWorldState state = scope.Resolve<IWorldState>();
         ITransactionProcessor txProcessor = scope.Resolve<ITransactionProcessor>();
@@ -61,12 +71,12 @@ public class WiringTests
     [Test]
     public void CreateBlockProcessingScope_Resolves_BlockProcessor_And_BranchProcessor()
     {
-        EnsureGenesis();
+        EnsureGenesisOrSkip();
 
-        ISpecProvider specProvider = new SingleReleaseSpecProvider(Prague.Instance, 1, 1);
+        ISpecProvider specProvider = CreateSpecProvider();
 
         (ILifetimeScope scope, IBlockCachePreWarmer preWarmer, System.IDisposable containerLifetime) =
-            BenchmarkContainer.CreateBlockProcessingScope(specProvider);
+            BenchmarkContainer.CreateBlockProcessingScope(specProvider, s_genesisPath, s_pragueSpec);
 
         try
         {
@@ -91,12 +101,12 @@ public class WiringTests
     [Test]
     public void CreateBlockProcessingScope_BlockBuilding_Uses_ProductionTransactionsExecutor()
     {
-        EnsureGenesis();
+        EnsureGenesisOrSkip();
 
-        ISpecProvider specProvider = new SingleReleaseSpecProvider(Prague.Instance, 1, 1);
+        ISpecProvider specProvider = CreateSpecProvider();
 
         (ILifetimeScope scope, _, System.IDisposable containerLifetime) =
-            BenchmarkContainer.CreateBlockProcessingScope(specProvider, isBlockBuilding: true);
+            BenchmarkContainer.CreateBlockProcessingScope(specProvider, s_genesisPath, s_pragueSpec, isBlockBuilding: true);
 
         try
         {
@@ -114,13 +124,13 @@ public class WiringTests
     [Test]
     public void CreateBlockProcessingScope_Without_PreWarming()
     {
-        EnsureGenesis();
+        EnsureGenesisOrSkip();
 
-        ISpecProvider specProvider = new SingleReleaseSpecProvider(Prague.Instance, 1, 1);
+        ISpecProvider specProvider = CreateSpecProvider();
         BlocksConfig blocksConfig = new() { PreWarmStateOnBlockProcessing = false, CachePrecompilesOnBlockProcessing = false };
 
         (ILifetimeScope scope, IBlockCachePreWarmer preWarmer, System.IDisposable containerLifetime) =
-            BenchmarkContainer.CreateBlockProcessingScope(specProvider, blocksConfig);
+            BenchmarkContainer.CreateBlockProcessingScope(specProvider, s_genesisPath, s_pragueSpec, blocksConfig);
 
         try
         {
@@ -136,19 +146,9 @@ public class WiringTests
     }
 
     [Test]
-    public void CreateWorldState_Returns_Valid_State()
-    {
-        EnsureGenesis();
-
-        IWorldState state = PayloadLoader.CreateWorldState();
-
-        Assert.That(state, Is.Not.Null);
-    }
-
-    [Test]
     public void GenesisStateRoot_Is_Not_Zero()
     {
-        EnsureGenesis();
+        EnsureGenesisOrSkip();
 
         Hash256 root = PayloadLoader.GenesisStateRoot;
 
@@ -159,7 +159,7 @@ public class WiringTests
     [Test]
     public void CreateGenesisHeader_Uses_GenesisStateRoot()
     {
-        EnsureGenesis();
+        EnsureGenesisOrSkip();
 
         BlockHeader header = BlockBenchmarkHelper.CreateGenesisHeader();
 
@@ -171,21 +171,13 @@ public class WiringTests
     [Test]
     public void CreateStateReader_Returns_NonNull()
     {
-        EnsureGenesis();
+        EnsureGenesisOrSkip();
 
-        IWorldState state = PayloadLoader.CreateWorldState();
+        using ILifetimeScope scope = BenchmarkContainer.CreateTransactionScope(
+            CreateSpecProvider(), s_genesisPath, s_pragueSpec);
+        IWorldState state = scope.Resolve<IWorldState>();
         Nethermind.State.IStateReader reader = BlockBenchmarkHelper.CreateStateReader(state);
 
         Assert.That(reader, Is.Not.Null);
-    }
-
-    [Test]
-    public void CreateWorldStateManager_Returns_Valid_Manager()
-    {
-        EnsureGenesis();
-
-        Nethermind.State.IWorldStateManager manager = PayloadLoader.CreateWorldStateManager();
-
-        Assert.That(manager, Is.Not.Null);
     }
 }

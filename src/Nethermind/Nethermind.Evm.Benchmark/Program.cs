@@ -315,11 +315,11 @@ static void RunDiagnostic(string pattern)
 
     Console.WriteLine("Loading genesis...");
     Stopwatch sw = Stopwatch.StartNew();
-    PayloadLoader.EnsureGenesisInitialized(genesisPath, pragueSpec);
-    Console.WriteLine($"Genesis loaded in {sw.ElapsedMilliseconds}ms, StateRoot={PayloadLoader.GenesisStateRoot}");
 
     // Use DI to get IWorldState + ITransactionProcessor, matching production wiring.
-    using ILifetimeScope scope = BenchmarkContainer.CreateTransactionScope(specProvider);
+    // Genesis initialization happens inside BenchmarkContainer.
+    using ILifetimeScope scope = BenchmarkContainer.CreateTransactionScope(specProvider, genesisPath, pragueSpec);
+    Console.WriteLine($"Genesis loaded in {sw.ElapsedMilliseconds}ms, StateRoot={PayloadLoader.GenesisStateRoot}");
     IWorldState state = scope.Resolve<IWorldState>();
     ITransactionProcessor txProcessor = scope.Resolve<ITransactionProcessor>();
 

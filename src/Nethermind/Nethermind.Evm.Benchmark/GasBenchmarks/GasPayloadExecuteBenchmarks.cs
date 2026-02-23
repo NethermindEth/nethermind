@@ -39,9 +39,7 @@ public class GasPayloadExecuteBenchmarks
         IReleaseSpec pragueSpec = Prague.Instance;
         ISpecProvider specProvider = new SingleReleaseSpecProvider(pragueSpec, 1, 1);
 
-        PayloadLoader.EnsureGenesisInitialized(GasPayloadBenchmarks.s_genesisPath, pragueSpec);
-
-        _scope = BenchmarkContainer.CreateTransactionScope(specProvider);
+        _scope = BenchmarkContainer.CreateTransactionScope(specProvider, GasPayloadBenchmarks.s_genesisPath, pragueSpec);
         _state = _scope.Resolve<IWorldState>();
         _txProcessor = _scope.Resolve<ITransactionProcessor>();
 

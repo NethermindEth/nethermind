@@ -61,8 +61,6 @@ public class GasBlockBuildingBenchmarks
         ISpecProvider specProvider = new SingleReleaseSpecProvider(pragueSpec, 1, 1);
         BlocksConfig blocksConfig = BlockBenchmarkHelper.CreateBenchmarkBlocksConfig();
 
-        PayloadLoader.EnsureGenesisInitialized(GasPayloadBenchmarks.s_genesisPath, pragueSpec);
-
         string buildOnMainStateValue = Environment.GetEnvironmentVariable(BuildBlocksOnMainStateEnvVar);
         if (!string.IsNullOrWhiteSpace(buildOnMainStateValue) && bool.TryParse(buildOnMainStateValue, out bool buildOnMainState))
         {
@@ -70,7 +68,7 @@ public class GasBlockBuildingBenchmarks
         }
 
         (_scope, _preWarmer, _containerLifetime) = BenchmarkContainer.CreateBlockProcessingScope(
-            specProvider, blocksConfig, isBlockBuilding: true);
+            specProvider, GasPayloadBenchmarks.s_genesisPath, pragueSpec, blocksConfig, isBlockBuilding: true);
         IWorldState state = _scope.Resolve<IWorldState>();
         BlockHeader preBlockHeader = BlockBenchmarkHelper.CreateGenesisHeader();
 
