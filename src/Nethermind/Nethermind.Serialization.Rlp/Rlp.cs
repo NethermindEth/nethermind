@@ -443,7 +443,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         // caller is responsible for allocating buffer large enough (max 9 bytes)
-        public static Span<byte> Encode(long value, Span<byte> buffer) => Encode((ulong)value, buffer);
+        public static Span<byte> Encode(long value, Span<byte> buffer) => Encode(unchecked((ulong)value), buffer);
 
         public static Rlp Encode(BigInteger bigInteger, int outputLength = -1) => bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray(outputLength));
 
