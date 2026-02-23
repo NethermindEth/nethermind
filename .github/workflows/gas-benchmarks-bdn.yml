@@ -274,11 +274,11 @@ jobs:
           restore-keys: gas-benchmark-bdn-
 
       - name: Compare against master
-        if: github.event_name == 'pull_request' && steps.cache-restore.outputs.cache-hit == 'true'
+        if: github.event_name == 'pull_request' && hashFiles('baseline.json') != ''
         run: python3 scripts/benchmarks/compare_bdn_results.py baseline.json pr-results.json > comparison.md
 
       - name: Post comparison to PR
-        if: github.event_name == 'pull_request' && steps.cache-restore.outputs.cache-hit == 'true'
+        if: github.event_name == 'pull_request' && hashFiles('baseline.json') != ''
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: gas-benchmark-bdn

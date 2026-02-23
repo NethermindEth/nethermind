@@ -28,6 +28,7 @@ public static class PayloadLoader
 {
     private static readonly object s_genesisLock = new();
     private static Hash256 s_genesisStateRoot;
+    private static string s_genesisPath;
     private static bool s_genesisInitialized;
 
     /// <summary>
@@ -214,29 +215,30 @@ public static class PayloadLoader
     }
 
     /// <summary>
-    /// Initializes the genesis state by loading accounts from the chainspec file into a DI-provided world state.
-    /// Thread-safe; subsequent calls are no-ops. The genesis file path and LFS status are validated on first call.
+    /// Initializes the genesis state by loading accounts from the chainspec file into the provided world state.
+    /// One-time setup (KZG init, file validation) runs on the first call; genesis accounts are loaded into
+    /// every world state passed. This is necessary for --inprocess mode where each BDN scenario creates
+    /// a new DI container with fresh MemDb databases.
     /// </summary>
     public static void InitializeGenesis(IWorldState state, string genesisPath, IReleaseSpec spec)
     {
-        if (s_genesisInitialized) return;
-
         lock (s_genesisLock)
         {
-            if (s_genesisInitialized) return;
-
-            KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
-            ValidateGenesisFile(genesisPath);
-
-            using (state.BeginScope(IWorldState.PreGenesis))
+            if (!s_genesisInitialized)
             {
-                LoadGenesisAccounts(state, genesisPath, spec);
-                state.Commit(spec);
-                state.CommitTree(0);
-                s_genesisStateRoot = state.StateRoot;
+                KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
+                ValidateGenesisFile(genesisPath);
+                s_genesisPath = genesisPath;
+                s_genesisInitialized = true;
             }
+        }
 
-            s_genesisInitialized = true;
+        using (state.BeginScope(IWorldState.PreGenesis))
+        {
+            LoadGenesisAccounts(state, genesisPath, spec);
+            state.Commit(spec);
+            state.CommitTree(0);
+            s_genesisStateRoot = state.StateRoot;
         }
     }
 
