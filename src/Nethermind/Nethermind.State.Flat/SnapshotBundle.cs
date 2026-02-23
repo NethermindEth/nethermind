@@ -124,20 +124,17 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
-        if (selfDestructStateIdx == -1 || currentBundleSelfDestructIdx >= 0)
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            for (int i = _snapshots.Count - 1; i >= 0; i--)
+            if (_snapshots[i].TryGetStorage(address, index, out slotValue))
             {
-                if (_snapshots[i].TryGetStorage(address, index, out slotValue))
-                {
-                    return slotValue?.ToEvmBytes();
-                }
+                return slotValue?.ToEvmBytes();
+            }
 
-                if (i <= currentBundleSelfDestructIdx)
-                {
-                    // This is the snapshot with selfdestruct
-                    return null;
-                }
+            if (i <= currentBundleSelfDestructIdx)
+            {
+                // This is the snapshot with selfdestruct
+                return null;
             }
         }
 
