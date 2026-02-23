@@ -24,20 +24,23 @@ namespace Nethermind.Xdc
     ///   When TIPUpgradeReward activates, protector/observer beneficiaries must be added.
     /// - Current split implemented here: 90% to masternode owner, 10% to foundation.
     /// </summary>
-    public class XdcRewardCalculator(
-        IEpochSwitchManager epochSwitchManager,
-        ISpecProvider specProvider,
-        IBlockTree blockTree,
-        IMasternodeVotingContract masternodeVotingContract,
-        ISigningTxCache signingTxCache) : IRewardCalculator
+    public class XdcRewardCalculator : IRewardCalculator
     {
-        private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
+        private readonly EthereumEcdsa _ethereumEcdsa;
+        private readonly IEpochSwitchManager _epochSwitchManager;
+        private readonly ISpecProvider _specProvider;
+        private readonly IBlockTree _blockTree;
+        private readonly IMasternodeVotingContract _masternodeVotingContract;
+        private readonly ISigningTxCache _signingTxCache;
+
+        private readonly ITransactionProcessor _transactionProcessor;
 
         public XdcRewardCalculator(
             IEpochSwitchManager epochSwitchManager,
             ISpecProvider specProvider,
             IBlockTree blockTree,
             IMasternodeVotingContract masternodeVotingContract,
+            ISigningTxCache signingTxCache,
             ITransactionProcessor transactionProcessor)
         {
             _ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId);
@@ -45,6 +48,7 @@ namespace Nethermind.Xdc
             _specProvider = specProvider;
             _blockTree = blockTree;
             _masternodeVotingContract = masternodeVotingContract;
+            _signingTxCache = signingTxCache;
             _transactionProcessor = transactionProcessor;
         }
         /// <summary>
@@ -128,7 +132,7 @@ namespace Nethermind.Xdc
                 }
 
                 blockNumberToHash[i] = h.Hash;
-                Transaction[] signingTxs = signingTxCache.GetSigningTransactions(h.Hash, i, spec);
+                Transaction[] signingTxs = _signingTxCache.GetSigningTransactions(h.Hash, i, spec);
 
                 foreach (Transaction tx in signingTxs)
                 {

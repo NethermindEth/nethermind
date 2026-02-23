@@ -40,7 +40,7 @@ namespace Nethermind.Xdc;
 public class StartXdcBlockProducer(
     INethermindApi nethermindApi,
     IEpochSwitchManager epochSwitchManager,
-    ISnapshotManager snapshotManager,
+    IMasternodeVotingContract masternodeVotingContract,
     IXdcConsensusContext xdcConsensusContext,
     ISpecProvider specProvider,
     IBlocksConfig blocksConfig,
@@ -61,7 +61,7 @@ public class StartXdcBlockProducer(
 
         return new XdcBlockProducer(
             epochSwitchManager,
-            snapshotManager,
+            masternodeVotingContract,
             xdcConsensusContext,
             env.TxSource,
             env.ChainProcessor,
