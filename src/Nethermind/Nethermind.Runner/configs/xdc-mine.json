@@ -14,6 +14,11 @@
     "P2PPort": 30300
   },
   "Sync": {
+    "FastSync": true,
+    "NeedToWaitForHeader": true,
+    "PivotNumber": 4500,
+    "PivotHash": "0xcfce2bd2b2c41c86c742ec6fa691a2a0116c0b9c3b9e55dac6e343b47443c84e",
+    "PivotTotalDifficulty": 4501
   },
   "Mining": {
     "Enabled": true
