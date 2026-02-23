@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -45,7 +46,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         // as anyway all keys recorded in this file should either be read or written to. In both cases, we want
         // trie traversal with trie nodes capture along the path to be compatible with other clients.
         //
-        HashSet<byte[]> stateNodes = new(trieStore.TouchedNodesRlp, Bytes.EqualityComparer);
+        using PooledSet<byte[]> stateNodes = new(trieStore.TouchedNodesRlp, Bytes.EqualityComparer);
         foreach ((Address account, HashSet<UInt256> slots) in _storageSlots)
         {
             AccountProofCollector accountProofCollector = new(account, slots);
