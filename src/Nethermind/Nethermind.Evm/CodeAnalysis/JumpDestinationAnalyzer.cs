@@ -16,7 +16,7 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
+public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis = false)
 {
     private const int PUSH1 = (int)Instruction.PUSH1;
     private const int PUSHx = PUSH1 - 1;
@@ -24,10 +24,10 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
     private const int BitShiftPerInt64 = 6;
 
     private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
-    private long[]? _jumpDestinationBitmap = code.Length == 0 ? _emptyJumpDestinationBitmap : null;
+    private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     private object? _analysisComplete;
-    private ReadOnlyMemory<byte> MachineCode { get; } = code;
+    public ReadOnlyMemory<byte> MachineCode => codeInfo.Code;
 
     public bool ValidateJump(int destination)
     {
@@ -108,14 +108,14 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
         Metrics.IncrementContractsAnalysed();
         ReadOnlySpan<byte> code = MachineCode.Span;
 
-        // If code is empty or starts with STOP, then we don't need to analyse
+        // If code is empty or starts with STOP, then we don't need to analyze
         if ((uint)code.Length < (uint)1 || code[0] == (byte)Instruction.STOP) return _emptyJumpDestinationBitmap;
 
         long[] bitmap = CreateBitmap(code.Length);
 
-        return Vector512<sbyte>.IsSupported && code.Length >= Vector512<sbyte>.Count ?
+        return Vector512.IsHardwareAccelerated && code.Length >= Vector512<sbyte>.Count ?
             PopulateJumpDestinationBitmap_Vector512(bitmap, code) :
-            Vector128<sbyte>.IsSupported && code.Length >= Vector128<sbyte>.Count ?
+            Vector128.IsHardwareAccelerated && code.Length >= Vector128<sbyte>.Count ?
             PopulateJumpDestinationBitmap_Vector128(bitmap, code) :
             PopulateJumpDestinationBitmap_Scalar(bitmap, code);
     }
@@ -266,7 +266,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
             int move = 1;
             // We use 128bit rather than Avx or Avx-512 as is optimization for stretch of code without PUSHes.
             // As the vector size increases the chance of there being a PUSH increases which will disable this optimization.
-            if (Vector128<sbyte>.IsSupported &&
+            if (Vector128.IsHardwareAccelerated &&
                 // Check not going to read passed end of code.
                 programCounter <= code.Length - Vector128<sbyte>.Count &&
                 // Are we on an short stride, one quarter of the long flags?
@@ -305,7 +305,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
             else if ((sbyte)op > PUSHx)
             {
                 // Fast forward programCounter by the amount of data the push
-                // represents as don't need to analyse data for Jump Destinations.
+                // represents as don't need to analyze data for Jump Destinations.
                 move = op - PUSH1 + 2;
             }
 

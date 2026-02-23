@@ -38,7 +38,9 @@ using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
 using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
+#if !DEBUG
 using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
+#endif
 
 DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
@@ -50,6 +52,13 @@ ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
 var unhandledError = "A critical error has occurred";
+Option<string>[] deprecatedOptions =
+[
+    BasicOptions.ConfigurationDirectory,
+    BasicOptions.DatabasePath,
+    BasicOptions.LoggerConfigurationSource,
+    BasicOptions.PluginsDirectory
+];
 
 AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
 {
@@ -213,10 +222,13 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
 void AddConfigurationOptions(Command command)
 {
-    static Option CreateOption<T>(string name, Type configType) =>
-        new Option<T>(
-            $"--{ConfigExtensions.GetCategoryName(configType)}.{name}",
-            $"--{ConfigExtensions.GetCategoryName(configType)}-{name}".ToLowerInvariant());
+    static Option CreateOption<T>(Type configType, string name, string? alias)
+    {
+        var category = ConfigExtensions.GetCategoryName(configType);
+        alias = string.IsNullOrWhiteSpace(alias) ? name : alias;
+
+        return new Option<T>($"--{category}.{name}", $"--{category}-{alias}".ToLowerInvariant());
+    }
 
     IEnumerable<Type> configTypes = TypeDiscovery
         .FindNethermindBasedTypes(typeof(IConfig))
@@ -225,9 +237,6 @@ void AddConfigurationOptions(Command command)
     foreach (Type configType in
         configTypes.Where(ct => !ct.IsAssignableTo(typeof(INoCategoryConfig))).OrderBy(c => c.Name))
     {
-        if (configType is null)
-            continue;
-
         ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
 
         if (typeLevel is not null && typeLevel.DisabledForCli)
@@ -238,19 +247,19 @@ void AddConfigurationOptions(Command command)
         foreach (PropertyInfo prop in
             configType.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
         {
-            ConfigItemAttribute? configItemAttribute = prop.GetCustomAttribute<ConfigItemAttribute>();
+            ConfigItemAttribute? configItemAttr = prop.GetCustomAttribute<ConfigItemAttribute>();
 
-            if (configItemAttribute?.DisabledForCli != true)
+            if (configItemAttr?.DisabledForCli != true)
             {
                 Option option = prop.PropertyType == typeof(bool)
-                    ? CreateOption<bool>(prop.Name, configType)
-                    : CreateOption<string>(prop.Name, configType);
+                    ? CreateOption<bool>(configType, prop.Name, configItemAttr?.CliOptionAlias)
+                    : CreateOption<string>(configType, prop.Name, configItemAttr?.CliOptionAlias);
 
-                string? description = configItemAttribute?.Description;
+                string? description = configItemAttr?.Description;
 
-                if (!string.IsNullOrEmpty(configItemAttribute?.DefaultValue))
+                if (!string.IsNullOrEmpty(configItemAttr?.DefaultValue))
                 {
-                    string defaultValue = $"Defaults to `{configItemAttribute.DefaultValue}`.";
+                    string defaultValue = $"Defaults to `{configItemAttr.DefaultValue}`.";
 
                     description = string.IsNullOrEmpty(description)
                         ? defaultValue
@@ -259,12 +268,12 @@ void AddConfigurationOptions(Command command)
 
                 option.Description = description;
                 option.HelpName = "value";
-                option.Hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
+                option.Hidden = categoryHidden || configItemAttr?.HiddenFromDocs == true;
 
                 command.Add(option);
             }
 
-            if (configItemAttribute?.IsPortOption == true)
+            if (configItemAttr?.IsPortOption == true)
                 ConfigExtensions.AddPortOptionName(configType, prop.Name);
         }
     }
@@ -272,14 +281,6 @@ void AddConfigurationOptions(Command command)
 
 void CheckForDeprecatedOptions(ParseResult parseResult)
 {
-    Option<string>[] deprecatedOptions =
-    [
-        BasicOptions.ConfigurationDirectory,
-        BasicOptions.DatabasePath,
-        BasicOptions.LoggerConfigurationSource,
-        BasicOptions.PluginsDirectory
-    ];
-
     foreach (Token token in parseResult.Tokens)
     {
         foreach (Option option in deprecatedOptions)

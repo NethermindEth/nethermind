@@ -84,7 +84,7 @@ namespace Nethermind.Consensus.Processing
         {
             if (expectedGenesisHash is not null && genesis.Hash != expectedGenesisHash)
             {
-                if (_logger.IsTrace) _logger.Trace(stateReader.DumpState(genesis.StateRoot!));
+                if (_logger.IsTrace) _logger.Trace(stateReader.DumpState(genesis));
                 if (_logger.IsWarn) _logger.Warn(genesis.ToString(BlockHeader.Format.Full));
                 if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {genesis.Hash}");
             }

@@ -137,8 +137,7 @@ public class OptimismCompactReceiptStorageDecoder :
         return txReceipt;
     }
 
-    public void DecodeStructRef(scoped ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors,
-        out TxReceiptStructRef item)
+    public void DecodeStructRef(scoped ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item)
     {
         // Note: This method runs at 2.5 million times/sec on my machine
         item = new TxReceiptStructRef();
@@ -165,8 +164,7 @@ public class OptimismCompactReceiptStorageDecoder :
         decoderContext.DecodeAddressStructRef(out item.Sender);
         item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
 
-        (int prefixLength, int contentLength) =
-            decoderContext.PeekPrefixAndContentLength();
+        (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
         int logsBytes = contentLength + prefixLength;
         item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
 

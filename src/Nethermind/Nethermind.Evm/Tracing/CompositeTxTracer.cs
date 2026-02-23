@@ -313,7 +313,7 @@ public class CompositeTxTracer : ITxTracer
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingInstructions)
+            if (innerTracer.IsTracingStorage)
             {
                 innerTracer.ReportStorageChange(key, value);
             }

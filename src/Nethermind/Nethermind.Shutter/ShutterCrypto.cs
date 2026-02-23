@@ -315,7 +315,7 @@ public static class ShutterCrypto
 
     internal static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, IEnumerable<ReadOnlyMemory<byte>> identityPreimages)
     {
-        SlotDecryptionIdentites container = new()
+        SlotDecryptionIdentities container = new()
         {
             InstanceID = instanceId,
             Eon = eon,
@@ -356,7 +356,7 @@ public static class ShutterCrypto
         return ValueKeccak.Compute(preimage);
     }
 
-    private readonly struct SlotDecryptionIdentites
+    private readonly struct SlotDecryptionIdentities
     {
         public ulong InstanceID { get; init; }
         public ulong Eon { get; init; }

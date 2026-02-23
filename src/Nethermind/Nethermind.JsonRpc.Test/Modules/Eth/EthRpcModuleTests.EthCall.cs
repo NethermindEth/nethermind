@@ -10,7 +10,6 @@ using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
@@ -25,7 +24,6 @@ using Nethermind.Int256;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Nethermind.Abi;
-using Nethermind.Blockchain;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -54,7 +52,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         ctx.Test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            "{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            "{\"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "0x0");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
@@ -82,7 +80,7 @@ public partial class EthRpcModuleTests
         Address someAccount = new("0x0001020304050607080910111213141516171819");
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            "{\"from\":\"0x0001020304050607080910111213141516171819\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "0x0");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
@@ -93,7 +91,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_no_sender()
     {
         using Context ctx = await Context.Create();
-        LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
+        LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
         {
             To = TestItem.AddressB,
             Gas = 1000000
@@ -108,7 +106,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_no_recipient_should_work_as_init()
     {
         using Context ctx = await Context.Create();
-        LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
+        LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
         {
             From = TestItem.AddressA,
             Input = [1, 2, 3],
@@ -134,9 +132,10 @@ public partial class EthRpcModuleTests
             }));
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        LegacyTransactionForRpc transaction = new(tx, 1, Keccak.Zero, 1L)
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet))
         {
-            To = TestItem.AddressB
+            To = TestItem.AddressB,
+            GasPrice = 0
         };
 
         string serialized =
@@ -158,7 +157,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_ok()
     {
         using Context ctx = await Context.Create();
-        LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
+        LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB,
@@ -174,7 +173,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_with_blockhash_ok()
     {
         using Context ctx = await Context.Create();
-        LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
+        LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB
@@ -189,7 +188,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_create_tx_with_empty_data()
     {
         using Context ctx = await Context.Create();
-        LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
+        LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
         {
             From = TestItem.AddressA
         };
@@ -202,7 +201,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_missing_state_after_fast_sync()
     {
         using Context ctx = await Context.Create();
-        LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
+        LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB
@@ -248,7 +247,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
+            $"{{\"from\": \"{TestItem.AddressA}\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
@@ -258,7 +257,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
+            $"{{\"from\": \"{TestItem.AddressA}\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x100000000\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
@@ -394,7 +393,7 @@ public partial class EthRpcModuleTests
         """{"jsonrpc":"2.0","result":"0x00000000000000000000000000000000000000000000003635c9adc5de9f09e5","id":67}"""
     )]
     [TestCase(
-        "Executes precompile using overriden address",
+        "Executes precompile using overridden address",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","input":"0xB6E16D27AC5AB427A7F68900AC5559CE272DC6C37C82B3E052246C82244C50E4000000000000000000000000000000000000000000000000000000000000001C7B8B1991EB44757BC688016D27940DF8FB971D7C87F77A6BC4E938E3202C44037E9267B0AEAA82FA765361918F2D8ABD9CDD86E64AA6F2B81D3C4E0B69A7B055"}""",
         """{"0x0000000000000000000000000000000000000001":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000", "code": "0x"}}""",
         """{"jsonrpc":"2.0","result":"0x000000000000000000000000b7705ae4c6f81b66cdb323c65f4e8133690fc099","id":67}"""
@@ -412,12 +411,12 @@ public partial class EthRpcModuleTests
     }
 
     [TestCase(
-        "When balance and nonce is overriden",
+        "When balance and nonce is overridden",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f","value":"0x1"}""",
         """{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":"0x123", "nonce": "0x123"}}"""
     )]
     [TestCase(
-        "When address code is overriden",
+        "When address code is overridden",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","input":"0xf8b2cb4f000000000000000000000000b7705ae4c6f81b66cdb323c65f4e8133690fc099"}""",
         """{"0xc200000000000000000000000000000000000000":{"code":"0x608060405234801561001057600080fd5b506004361061002b5760003560e01c8063f8b2cb4f14610030575b600080fd5b61004a600480360381019061004591906100e4565b610060565b604051610057919061012a565b60405180910390f35b60008173ffffffffffffffffffffffffffffffffffffffff16319050919050565b600080fd5b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b60006100b182610086565b9050919050565b6100c1816100a6565b81146100cc57600080fd5b50565b6000813590506100de816100b8565b92915050565b6000602082840312156100fa576100f9610081565b5b6000610108848285016100cf565b91505092915050565b6000819050919050565b61012481610111565b82525050565b600060208201905061013f600083018461011b565b9291505056fea2646970667358221220172c443a163d8a43e018c339d1b749c312c94b6de22835953d960985daf228c764736f6c63430008120033"}}"""
     )]
@@ -487,12 +486,13 @@ public partial class EthRpcModuleTests
         byte[] code = Prepare.EvmCode
          .Op(Instruction.STOP)
          .Done;
-        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
+        Transaction tx = Build.A.Transaction
             .WithNonce(123)
             .WithGasLimit(100000)
             .WithData(code)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
+            .TestObject;
+        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.GasPrice = null;
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
@@ -508,11 +508,12 @@ public partial class EthRpcModuleTests
         byte[] code = Prepare.EvmCode
             .Op(Instruction.STOP)
             .Done;
-        LegacyTransactionForRpc transaction = new(Build.A.Transaction
+        Transaction tx = Build.A.Transaction
             .WithData(code)
             .WithGasLimit(100000)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
+            .TestObject;
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.To = null;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
@@ -525,10 +526,11 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_to_is_null_and_not_contract_creation(byte[]? data)
     {
         using Context ctx = await Context.Create();
-        LegacyTransactionForRpc transaction = new(Build.A.Transaction
+        Transaction tx = Build.A.Transaction
             .WithGasLimit(100000)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
+            .TestObject;
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.To = null;
         transaction.Data = data;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
@@ -541,11 +543,12 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_gas_price_in_eip1559_tx()
     {
         using Context ctx = await Context.Create();
-        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
+        Transaction tx = Build.A.Transaction
             .WithGasLimit(100000)
             .To(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
+            .TestObject;
+        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.GasPrice = new UInt256(1);
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
@@ -558,12 +561,13 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_no_blobs_in_blob_tx(bool isNull)
     {
         using Context ctx = await Context.Create();
-        BlobTransactionForRpc transaction = new(Build.A.Transaction
+        Transaction tx = Build.A.Transaction
             .WithGasLimit(100000)
             .WithBlobVersionedHashes(isNull ? null : [])
             .To(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
+            .TestObject;
+        BlobTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.GasPrice = null;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
@@ -575,11 +579,15 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_maxFeePerBlobGas_is_zero()
     {
         using Context ctx = await Context.Create();
-        BlobTransactionForRpc transaction = new(Build.A.Transaction
+        byte[] validHash = new byte[32];
+        validHash[0] = 0x01; // KZG version
+        Transaction tx = Build.A.Transaction
             .WithGasLimit(100000)
-            .WithBlobVersionedHashes([[]])
+            .WithBlobVersionedHashes([validHash])
+            .To(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
+            .TestObject;
+        BlobTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.MaxFeePerBlobGas = 0;
         transaction.GasPrice = null;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
@@ -595,13 +603,16 @@ public partial class EthRpcModuleTests
         byte[] code = Prepare.EvmCode
             .Op(Instruction.STOP)
             .Done;
-        BlobTransactionForRpc transaction = new(Build.A.Transaction
+        byte[] validHash = new byte[32];
+        validHash[0] = 0x01; // KZG version
+        Transaction tx = Build.A.Transaction
             .WithData(code)
             .WithGasLimit(100000)
             .WithMaxFeePerBlobGas(1)
-            .WithBlobVersionedHashes([[]])
+            .WithBlobVersionedHashes([validHash])
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
+            .TestObject;
+        BlobTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.To = null;
         transaction.GasPrice = null;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
@@ -614,10 +625,11 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_maxFeePerGas_is_zero()
     {
         using Context ctx = await Context.Create();
-        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
+        Transaction tx = Build.A.Transaction
             .WithGasLimit(100000)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
+            .TestObject;
+        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.MaxFeePerGas = 0;
         transaction.GasPrice = null;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
@@ -630,29 +642,60 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_maxFeePerGas_smaller_then_maxPriorityFeePerGas()
     {
         using Context ctx = await Context.Create();
-        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
+        Transaction tx = Build.A.Transaction
             .WithGasLimit(100000)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
-        transaction.MaxFeePerGas = 1;
-        transaction.MaxPriorityFeePerGas = 2;
-        transaction.GasPrice = null;
+            .TestObject;
+
+        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet))
+        {
+            MaxFeePerGas = 1,
+            MaxPriorityFeePerGas = 2,
+            GasPrice = null
+        };
+
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"maxFeePerGas (1) < maxPriorityFeePerGas (2)\"},\"id\":67}"));
     }
 
+    [TestCase(null, RpcTransactionErrors.InvalidBlobVersionedHashSize, TestName = "BlobVersionedHash null")]
+    [TestCase(new byte[] { 0x01 }, RpcTransactionErrors.InvalidBlobVersionedHashSize, TestName = "BlobVersionedHash too short")]
+    [TestCase(new byte[] { 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, RpcTransactionErrors.InvalidBlobVersionedHashSize, TestName = "BlobVersionedHash too long")]
+    [TestCase(new byte[] { 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, RpcTransactionErrors.InvalidBlobVersionedHashVersion, TestName = "BlobVersionedHash invalid version 0x00")]
+    [TestCase(new byte[] { 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, RpcTransactionErrors.InvalidBlobVersionedHashVersion, TestName = "BlobVersionedHash invalid version 0x02")]
+    public async Task Eth_call_invalid_blob_versioned_hash(byte[]? hash, string expectedError)
+    {
+        using Context ctx = await Context.Create();
+        Transaction tx = Build.A.Transaction
+            .WithGasLimit(100000)
+            .WithMaxFeePerBlobGas(1)
+            .WithBlobVersionedHashes([hash!])
+            .To(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        BlobTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet))
+        {
+            GasPrice = null
+        };
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"{expectedError}\"}},\"id\":67}}"));
+    }
+
     [Test]
     public async Task Eth_call_bubbles_up_precompile_errors()
     {
         using Context ctx = await Context.Create(new SingleReleaseSpecProvider(Osaka.Instance, BlockchainIds.Mainnet, BlockchainIds.Mainnet));
-        LegacyTransactionForRpc transaction = new(Build.A.Transaction
+        Transaction tx = Build.A.Transaction
             .WithData(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000004010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000101"))
             .WithTo(new Address("0x0000000000000000000000000000000000000005"))
             .WithGasLimit(1000000)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
+            .TestObject;
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 

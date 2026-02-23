@@ -3,6 +3,7 @@
 
 using System.Buffers;
 using System.IO.Pipelines;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -15,11 +16,21 @@ public static class PipeReaderExtensions
         while (true)
         {
             ReadResult result = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-            ReadOnlySequence<byte> buffer = result.Buffer;
             if (result.IsCompleted || result.IsCanceled)
             {
                 return result;
             }
+
+            // Separate method to shrink the async state machine by not including
+            // the ReadOnlySequence<byte> buffer in the main method
+            AdvanceReaderToEnd(reader, in result);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void AdvanceReaderToEnd(PipeReader reader, in ReadResult result)
+        {
+            // Extract buffer reading to a separate method to reduce async state machine size
+            ReadOnlySequence<byte> buffer = result.Buffer;
             reader.AdvanceTo(buffer.Start, buffer.End);
         }
     }

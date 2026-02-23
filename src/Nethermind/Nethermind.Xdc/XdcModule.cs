@@ -3,21 +3,31 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Abi;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
+using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.TxPool;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
 
@@ -34,6 +44,7 @@ public class XdcModule : Module
         base.Load(builder);
 
         builder
+            .AddStep(typeof(InitializeBlockchainXdc))
             .Intercept<ChainSpec>(XdcChainSpecLoader.ProcessChainSpec)
             .AddSingleton<ISpecProvider, XdcChainSpecBasedSpecProvider>()
             .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
@@ -42,11 +53,22 @@ public class XdcModule : Module
             .AddDecorator<IGenesisBuilder, XdcGenesisBuilder>()
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
 
+            .Add<StartXdcBlockProducer>()
+
+
             // stores
             .AddSingleton<IHeaderStore, XdcHeaderStore>()
             .AddSingleton<IXdcHeaderStore, XdcHeaderStore>()
             .AddSingleton<IBlockStore, XdcBlockStore>()
             .AddSingleton<IBlockTree, XdcBlockTree>()
+
+            // Sys contracts
+            //TODO this might not be wired correctly
+            .AddSingleton<
+                IMasternodeVotingContract,
+                IAbiEncoder,
+                ISpecProvider,
+                IReadOnlyTxProcessingEnvFactory>(CreateVotingContract)
 
             // sealer
             .AddSingleton<ISealer, XdcSealer>()
@@ -54,6 +76,7 @@ public class XdcModule : Module
             // penalty handler
 
             // reward handler
+            .AddDecorator<IRewardCalculatorSource, XdcRewardCalculatorSource>()
 
             // forensics handler
             .AddSingleton<IForensicsProcessor, ForensicsProcessor>()
@@ -70,20 +93,64 @@ public class XdcModule : Module
             .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(SnapshotDbName)
-            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler>(CreateSnapshotManager)
+            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
+            .AddSingleton<ISignTransactionManager, ISigner, ITxPool, ILogManager>(CreateSignTransactionManager)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
 
+            // sync
+            .AddSingleton<IBeaconSyncStrategy, XdcBeaconSyncStrategy>()
+            .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
+            .AddSingleton<XdcStateSyncSnapshotManager>()
+            .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
+
+            .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
+
+            // block processing
+            .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
+
             //Network
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
             .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
+            .AddSingleton(new BlockDecoder(new XdcHeaderDecoder()))
+            .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
+            .AddMessageSerializer<SyncInfoMsg, SyncinfoMsgSerializer>()
+            .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
+
+            .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
+
+            // block processing
+            .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
+            .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
+            .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
+            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
+
+
+            //Sync
+            .AddSingleton<CreateSnapshotOnStateSyncFinished>()
+                .OnActivate<ISyncFeed<StateSyncBatch>>((_, ctx) =>
+                {
+                    ctx.Resolve<CreateSnapshotOnStateSyncFinished>();
+                })
             ;
     }
 
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IPenaltyHandler penaltyHandler)
+    private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
     {
-        return new SnapshotManager(db, blockTree, penaltyHandler);
+        return new SnapshotManager(db, blockTree, penaltyHandler, votingContract, specProvider);
+    }
+    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager)
+    {
+        return new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>());
     }
 
+    private IMasternodeVotingContract CreateVotingContract(
+        IAbiEncoder abiEncoder,
+        ISpecProvider specProvider,
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnv)
+    {
+        IXdcReleaseSpec spec = (XdcReleaseSpec)specProvider.GetFinalSpec();
+        return new MasternodeVotingContract(abiEncoder, spec.MasternodeVotingContract, readOnlyTxProcessingEnv);
+    }
 }

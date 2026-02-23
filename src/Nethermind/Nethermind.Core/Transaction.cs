@@ -277,15 +277,26 @@ namespace Nethermind.Core
 
             public bool Return(Transaction obj)
             {
+
+                // Only pool pure Transaction objects, not subclasses
+                // This prevents other subclasses from contaminating the pool
+                if (obj.GetType() != typeof(Transaction))
+                    return false;
+
                 obj.ClearPreHash();
                 obj.Hash = default;
                 obj.ChainId = default;
                 obj.Type = default;
+                obj.IsAnchorTx = default;
+                obj.SourceHash = default;
+                obj.Mint = default;
+                obj.IsOPSystemTransaction = default;
                 obj.Nonce = default;
                 obj.GasPrice = default;
                 obj.GasBottleneck = default;
                 obj.DecodedMaxFeePerGas = default;
                 obj.GasLimit = default;
+                obj._spentGas = default;
                 obj.To = default;
                 obj.Value = default;
                 obj.Data = default;
@@ -309,6 +320,7 @@ namespace Nethermind.Core
         {
             tx.ChainId = ChainId;
             tx.Type = Type;
+            tx.IsAnchorTx = IsAnchorTx;
             tx.SourceHash = SourceHash;
             tx.Mint = Mint;
             tx.IsOPSystemTransaction = IsOPSystemTransaction;

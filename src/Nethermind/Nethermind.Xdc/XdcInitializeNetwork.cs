@@ -43,7 +43,7 @@ internal class XdcInitializeNetwork(
     protected override IProtocolsManager CreateProtocolManager()
     {
         //We cannot call base since it will setup a spaghetti of event listeners we don't want
-                
+
         XdcProtocolManager xdcProtocolManager = new XdcProtocolManager(
             _api.Context.Resolve<ITimeoutCertificateManager>(),
             _api.Context.Resolve<IVotesManager>(),

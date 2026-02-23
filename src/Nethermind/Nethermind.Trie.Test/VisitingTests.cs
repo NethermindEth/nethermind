@@ -20,6 +20,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class VisitingTests
 {
     [TestCaseSource(nameof(GetOptions))]
@@ -73,10 +74,10 @@ public class VisitingTests
 
         var blockCommit = trieStore.BeginBlockCommit(0);
 
-        for (int outi = 0; outi < 64; outi++)
+        for (int outerIndex = 0; outerIndex < 64; outerIndex++)
         {
             ValueHash256 stateKey = default;
-            stateKey.BytesAsSpan[outi / 2] = (byte)(1 << (4 * (1 - outi % 2)));
+            stateKey.BytesAsSpan[outerIndex / 2] = (byte)(1 << (4 * (1 - outerIndex % 2)));
 
             StorageTree storage = new(trieStore.GetTrieStore(stateKey.ToCommitment()), LimboLogs.Instance);
             for (int i = 0; i < 64; i++)

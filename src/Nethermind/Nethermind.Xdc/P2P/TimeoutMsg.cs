@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.P2P;
+
 internal class TimeoutMsg : P2PMessage
 {
     public override int PacketType => Xdpos2MessageCode.TimeoutMsg;

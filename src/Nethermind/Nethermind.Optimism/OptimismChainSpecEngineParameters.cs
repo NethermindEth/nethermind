@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -53,5 +54,18 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
         }
 
         spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp, JovianTimestamp, new DefaultBaseFeeCalculator());
+    }
+
+    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+    {
+        AddIfNotNull(timestamps, JovianTimestamp);
+    }
+
+    private void AddIfNotNull(SortedSet<ulong> timestamps, ulong? timestamp)
+    {
+        if (timestamp is not null)
+        {
+            timestamps.Add(timestamp.Value);
+        }
     }
 }

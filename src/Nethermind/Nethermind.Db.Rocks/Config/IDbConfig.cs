@@ -25,6 +25,7 @@ public interface IDbConfig : IConfig
 
 
     int? MaxOpenFiles { get; set; }
+    bool? SkipCheckingSstFileSizesOnDbOpen { get; set; }
     bool WriteAheadLogSync { get; set; }
     ulong? ReadAheadSize { get; set; }
     string RocksDbOptions { get; set; }
@@ -101,6 +102,21 @@ public interface IDbConfig : IConfig
 
     string L1OriginDbRocksDbOptions { get; set; }
     string? L1OriginDbAdditionalRocksDbOptions { get; set; }
+
+    string LogIndexStorageDbRocksDbOptions { get; set; }
+    string LogIndexStorageDbAdditionalRocksDbOptions { get; set; }
+    string LogIndexStorageMetaDbRocksDbOptions { get; set; }
+    string LogIndexStorageMetaDbAdditionalRocksDbOptions { get; set; }
+    string LogIndexStorageAddressesDbRocksDbOptions { get; set; }
+    string LogIndexStorageAddressesDbAdditionalRocksDbOptions { get; set; }
+    string LogIndexStorageTopics0DbRocksDbOptions { get; set; }
+    string LogIndexStorageTopics0DbAdditionalRocksDbOptions { get; set; }
+    string LogIndexStorageTopics1DbRocksDbOptions { get; set; }
+    string LogIndexStorageTopics1DbAdditionalRocksDbOptions { get; set; }
+    string LogIndexStorageTopics2DbRocksDbOptions { get; set; }
+    string LogIndexStorageTopics2DbAdditionalRocksDbOptions { get; set; }
+    string LogIndexStorageTopics3DbRocksDbOptions { get; set; }
+    string LogIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; }
 
     public string SnapshotsDbRocksDbOptions { get; set; }
     public string? SnapshotsDbAdditionalRocksDbOptions { get; set; }

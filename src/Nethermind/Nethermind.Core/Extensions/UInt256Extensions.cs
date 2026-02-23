@@ -35,7 +35,7 @@ public static class UInt256Extensions
                 Word data = Unsafe.As<UInt256, Word>(ref Unsafe.AsRef(in value));
                 result = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
             }
-            else if (Avx2.IsSupported)
+            else
             {
                 Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in value));
                 Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);

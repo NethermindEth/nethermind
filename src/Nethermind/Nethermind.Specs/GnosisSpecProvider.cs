@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -11,8 +11,8 @@ namespace Nethermind.Specs;
 
 public class GnosisSpecProvider : ISpecProvider
 {
-    public const long ConstantinopoleBlockNumber = 1_604_400;
-    public const long ConstantinopoleFixBlockNumber = 2_508_800;
+    public const long ConstantinopleBlockNumber = 1_604_400;
+    public const long ConstantinopleFixBlockNumber = 2_508_800;
     public const long IstanbulBlockNumber = 7_298_030;
     public const long BerlinBlockNumber = 16_101_500;
     public const long LondonBlockNumber = 19_040_000;
@@ -20,16 +20,17 @@ public class GnosisSpecProvider : ISpecProvider
     public const ulong ShanghaiTimestamp = 0x64c8edbc;
     public const ulong CancunTimestamp = 0x65ef4dbc;
     public const ulong PragueTimestamp = 0x68122dbc;
+    public const ulong BalancerTimestamp = 0x69496dbc; // does not alter specs
     public static readonly Address FeeCollector = new("0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92");
 
     private GnosisSpecProvider() { }
 
-    IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation)
+    public IReleaseSpec GetSpec(ForkActivation forkActivation)
     {
         return forkActivation.BlockNumber switch
         {
-            < ConstantinopoleBlockNumber => GenesisSpec,
-            < ConstantinopoleFixBlockNumber => Constantinople.Instance,
+            < ConstantinopleBlockNumber => GenesisSpec,
+            < ConstantinopleFixBlockNumber => Constantinople.Instance,
             < IstanbulBlockNumber => ConstantinopleFix.Instance,
             < BerlinBlockNumber => Istanbul.Instance,
             < LondonBlockNumber => Berlin.Instance,
@@ -54,7 +55,8 @@ public class GnosisSpecProvider : ISpecProvider
 
     public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;
-    public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("8626000000000000000000058750000000000000000000");
+    // 8626000000000000000000058750000000000000000000
+    public UInt256? TerminalTotalDifficulty { get; private set; } = new UInt256(15847367919172845568ul, 12460455203863319017ul, 25349535ul);
     public IReleaseSpec GenesisSpec => Byzantium.Instance;
     public long? DaoBlockNumber => null;
     public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;

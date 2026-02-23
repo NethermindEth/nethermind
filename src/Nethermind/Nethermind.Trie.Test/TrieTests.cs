@@ -27,6 +27,8 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class TrieTests
     {
         private ILogger _logger;
@@ -1081,6 +1083,8 @@ namespace Nethermind.Trie.Test
         }
 
         [TestCaseSource(nameof(FuzzAccountsWithStorageScenarios))]
+        [Retry(3)]
+        [NonParallelizable]
         public void Fuzz_accounts_with_storage(
             (TrieStoreConfigurations trieStoreConfigurations,
                 int accountsCount,
@@ -1119,7 +1123,7 @@ namespace Nethermind.Trie.Test
                 }
                 else
                 {
-                    accounts[i] = TestItem.GenerateRandomAccount();
+                    accounts[i] = TestItem.GenerateRandomAccount(_random);
                 }
 
                 addresses[i] = TestItem.GetRandomAddress(_random);

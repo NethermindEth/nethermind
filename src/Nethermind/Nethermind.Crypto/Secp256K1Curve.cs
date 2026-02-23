@@ -18,7 +18,8 @@ namespace Nethermind.Crypto
             - BigInteger.Pow(2, 4)
             - 1; */
 
-        public static readonly UInt256 N = UInt256.Parse("115792089237316195423570985008687907852837564279074904382605163141518161494337");
+        // 115792089237316195423570985008687907852837564279074904382605163141518161494337
+        public static readonly UInt256 N = new(13822214165235122497ul, 13451932020343611451ul, 18446744073709551614ul, 18446744073709551615ul);
         public static readonly UInt256 NMinusOne = N - 1;
         public static readonly UInt256 HalfN = N / 2;
         public static readonly UInt256 HalfNPlusOne = HalfN + 1;

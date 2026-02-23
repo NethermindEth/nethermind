@@ -17,7 +17,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
@@ -41,8 +40,6 @@ namespace Nethermind.Network
     {
         public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
         {
-            new(Protocol.Eth, 66),
-            new(Protocol.Eth, 67),
             new(Protocol.Eth, 68),
             new(Protocol.NodeData, 1)
         };
@@ -69,7 +66,7 @@ namespace Nethermind.Network
         private readonly IRlpxHost _rlpxHost;
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
-        private readonly ITxPoolConfig _txPoolConfdig;
+        private readonly ITxPoolConfig _txPoolConfig;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
@@ -90,7 +87,7 @@ namespace Nethermind.Network
             IGossipPolicy gossipPolicy,
             IWorldStateManager worldStateManager,
             ILogManager logManager,
-            ITxPoolConfig txPoolConfdig,
+            ITxPoolConfig txPoolConfig,
             ISpecProvider specProvider,
             ITxGossipPolicy? transactionsGossipPolicy = null)
         {
@@ -108,7 +105,7 @@ namespace Nethermind.Network
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _txPoolConfdig = txPoolConfdig;
+            _txPoolConfig = txPoolConfig;
             _specProvider = specProvider;
             _snapServer = worldStateManager.SnapServer;
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -226,11 +223,10 @@ namespace Nethermind.Network
                     {
                         66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfdig, _specProvider, _txGossipPolicy),
-                        69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfdig, _specProvider, _txGossipPolicy),
+                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfig, _specProvider, _txGossipPolicy),
+                        69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfig, _specProvider, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
-
                     InitSyncPeerProtocol(session, ethHandler);
                     return ethHandler;
                 },
@@ -242,7 +238,6 @@ namespace Nethermind.Network
                         _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
                     };
                     InitSatelliteProtocol(session, handler);
-
                     return handler;
                 },
                 [Protocol.NodeData] = (session, version) =>
@@ -253,7 +248,6 @@ namespace Nethermind.Network
                         _ => throw new NotSupportedException($"{Protocol.NodeData}.{version} is not supported.")
                     };
                     InitSatelliteProtocol(session, handler);
-
                     return handler;
                 }
             };

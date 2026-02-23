@@ -10,8 +10,7 @@
   },
   "Sync": {
     "FastSync": true,
-    "SnapSync": true,
-    "PivotNumber": 80370000
+    "SnapSync": true
   },
   "Merge": {
     "Enabled": false

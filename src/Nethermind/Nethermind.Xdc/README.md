@@ -214,7 +214,7 @@ Finalization requires:
 │      ├─▶ Add to XdcPool<Vote>                      │
 │      │                                             │
 │      ├─▶ Check threshold                           │
-│      │    (votes >= masternodes * certThreshold)   │
+│      │    (votes >= masternodes * CertificateThreshold)   │
 │      │                                             │
 │      └─▶ OnVotePoolThresholdReached()              │
 │           │                                        │
@@ -389,7 +389,7 @@ Phase 4: QC AGGREGATION
 ┌────────────────────────────────┐
 │ Collect Votes in Pool          │
 │ Wait for threshold:            │
-│  votes >= nodes * certThreshold│
+│  votes >= nodes * CertificateThreshold│
 └──────────────┬─────────────────┘
                │
                ▼
@@ -806,8 +806,8 @@ Total Validators: N
 Byzantine Tolerance: f
 Honest Majority: N ≥ 3f + 1
 
-Quorum Certificate: ⌈N * certThreshold⌉ signatures
-Default: certThreshold = 2/3
+Quorum Certificate: ⌈N * CertificateThreshold⌉ signatures
+Default: CertificateThreshold = 2/3
 Minimum: 2f + 1 = ⌈2N/3⌉
 ```
 
@@ -898,7 +898,7 @@ EpochLength: 900              // Blocks per epoch
 Gap: 450                      // Snapshot before epoch end
 SwitchBlock: <configured>     // V2 activation block
 MaxMasternodes: 108          // Maximum validators
-CertThreshold: 0.67          // 2/3 quorum
+CertificateThreshold: 0.67          // 2/3 quorum
 TimeoutPeriod: 4000ms        // Round timeout
 MinePeriod: 2000ms           // Minimum block time
 TimeoutSyncThreshold: 3      // SyncInfo after N timeouts
@@ -913,14 +913,14 @@ V2ConfigParams[] {
     {
         SwitchRound: 0,
         MaxMasternodes: 108,
-        CertThreshold: 0.67,
+        CertificateThreshold: 0.67,
         TimeoutPeriod: 4000,
         MinePeriod: 2000
     },
     {
         SwitchRound: 1000000,  // Future upgrade
         MaxMasternodes: 150,
-        CertThreshold: 0.70,
+        CertificateThreshold: 0.70,
         ...
     }
 }

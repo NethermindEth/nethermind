@@ -5,6 +5,7 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.P2P;
+
 internal class VoteMsg : P2PMessage
 {
     public override int PacketType => Xdpos2MessageCode.VoteMsg;

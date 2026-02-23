@@ -9,7 +9,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -87,6 +86,7 @@ namespace Nethermind.Network
 
         public int MaxActivePeers => _networkConfig.MaxActivePeers + _peerPool.StaticPeerCount;
         public int ActivePeersCount => _peerPool.ActivePeerCount;
+        public int ConnectedPeersCount => _peerPool.ActivePeers.Values.Count(IsConnected);
         private int AvailableActivePeersCount => MaxActivePeers - _peerPool.ActivePeers.Count;
 
         /// <summary>

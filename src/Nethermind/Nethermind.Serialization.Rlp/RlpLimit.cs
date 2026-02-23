@@ -10,7 +10,7 @@ namespace Nethermind.Serialization.Rlp;
 
 public record struct RlpLimit(int Limit, string TypeName = "", ReadOnlyMemory<char> PropertyName = default)
 {
-    // We shouldn't allocate any single array bigger than 1M
+    // We shouldn't allocate any single array bigger than 4M
     public static readonly RlpLimit DefaultLimit = new();
     public static readonly RlpLimit Bloom = For<Bloom>(Core.Bloom.ByteLength);
     public static readonly RlpLimit L4 = new(4);
@@ -20,7 +20,7 @@ public record struct RlpLimit(int Limit, string TypeName = "", ReadOnlyMemory<ch
     public static readonly RlpLimit L65 = new(65);
     private string _collectionExpression;
 
-    public RlpLimit() : this((int)1.MiB()) { }
+    public RlpLimit() : this((int)4.MiB()) { }
 
     public string CollectionExpression
     {

@@ -846,7 +846,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             /// <summary>
             /// The best block that we want to go to. best.Peer.Block for PoW, beaconSync.ProcessDestination for PoS,
-            /// whith is the NewPayload/FCU block.
+            /// which is the NewPayload/FCU block.
             /// </summary>
             public long TargetBlock { get; }
 

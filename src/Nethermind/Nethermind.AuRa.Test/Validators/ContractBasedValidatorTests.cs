@@ -28,11 +28,9 @@ using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using Nethermind.Evm;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
-using Nethermind.State;
 
 namespace Nethermind.AuRa.Test.Validators;
 
@@ -111,7 +109,7 @@ public class ContractBasedValidatorTests
     }
 
     [Test]
-    public void throws_ArgumentNullException_on_empty_validSealearStrategy()
+    public void throws_ArgumentNullException_on_empty_validSealerStrategy()
     {
         Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, null, _blockFinalizationManager, default, _logManager, 1);
         act.Should().Throw<ArgumentNullException>();

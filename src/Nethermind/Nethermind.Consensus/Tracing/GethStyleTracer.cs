@@ -174,17 +174,19 @@ public class GethStyleTracer(
 
         // Previously, when the processing options is not `TraceTransaction`, the base block is the parent of the block
         // which is set by the `BranchProcessor`, which mean the state override probably does not take affect.
-        // However, when it is `TraceTransactioon`, it apply `ForceSameBlock` to `BlockchainProcessor` which will send the same
+        // However, when it is `TraceTransaction`, it applies `ForceSameBlock` to `BlockchainProcessor`, which will send the same
         // block as the baseBlock, which is important as the stateroot of the baseblock is modified in `BuildAndOverride`.
         //
         // Wild stuff!
         BlockHeader baseBlockHeader = block.Header;
+
         if ((processingOptions & ProcessingOptions.ForceSameBlock) == 0)
         {
             baseBlockHeader = FindParent(block);
         }
 
-        using var scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
+        options.BlockOverrides?.ApplyOverrides(block.Header);
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash }, scope.Component.WorldState, specProvider);
 
         try

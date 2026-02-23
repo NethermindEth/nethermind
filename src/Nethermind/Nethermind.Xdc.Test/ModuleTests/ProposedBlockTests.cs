@@ -13,11 +13,10 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 
-[Parallelizable(ParallelScope.All)]
 internal class ProposedBlockTests
 {
     [Test]
-    public async Task TestShouldSendVoteMsgAndCommitGrandGrandParentBlockAsync()
+    public async Task TestShouldSendVoteMsgAndCommitGreatGrandparentBlockAsync()
     {
         var blockChain = await XdcTestBlockchain.Create(2, true);
 
@@ -32,8 +31,8 @@ internal class ProposedBlockTests
         {
             //If we randomly picked the block proposer we need to remove him with a another voting masternode
             var extraMaster = switchInfo.Masternodes.First((m) => m != head.Beneficiary && masternodes.Any(x => x.Address != m));
-            var extraMasterkey = blockChain.MasterNodeCandidates.First(x => x.Address == extraMaster);
-            masternodes = [.. masternodes.Where(x => x.Address != head.Beneficiary), extraMasterkey];
+            var extraMasterKey = blockChain.MasterNodeCandidates.First(x => x.Address == extraMaster);
+            masternodes = [.. masternodes.Where(x => x.Address != head.Beneficiary), extraMasterKey];
         }
 
         BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
@@ -106,8 +105,8 @@ internal class ProposedBlockTests
         {
             //If we randomly picked the block proposer we need to remove him with a another voting masternode
             var extraMaster = switchInfo.Masternodes.First((m) => m != head.Beneficiary && masternodes.Any(x => x.Address != m));
-            var extraMasterkey = blockChain.MasterNodeCandidates.First(x => x.Address == extraMaster);
-            masternodes = [.. masternodes.Where(x => x.Address != head.Beneficiary), extraMasterkey];
+            var extraMasterKey = blockChain.MasterNodeCandidates.First(x => x.Address == extraMaster);
+            masternodes = [.. masternodes.Where(x => x.Address != head.Beneficiary), extraMasterKey];
         }
 
         BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
@@ -181,8 +180,8 @@ internal class ProposedBlockTests
         {
             //If we randomly picked the block proposer we need to remove him with a another voting masternode
             var extraMaster = switchInfo.Masternodes.First((m) => m != head.Beneficiary && masternodes.Any(x => x.Address != m));
-            var extraMasterkey = blockChain.MasterNodeCandidates.First(x => x.Address == extraMaster);
-            masternodes = [.. masternodes.Where(x => x.Address != head.Beneficiary), extraMasterkey];
+            var extraMasterKey = blockChain.MasterNodeCandidates.First(x => x.Address == extraMaster);
+            masternodes = [.. masternodes.Where(x => x.Address != head.Beneficiary), extraMasterKey];
         }
 
         BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);

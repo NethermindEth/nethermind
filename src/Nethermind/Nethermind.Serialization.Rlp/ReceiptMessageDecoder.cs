@@ -72,6 +72,11 @@ namespace Nethermind.Serialization.Rlp
             }
             txReceipt.Logs = entries;
 
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                ctx.Check(lastCheck);
+            }
+
             return txReceipt;
         }
 

@@ -249,16 +249,15 @@ jobs:
               $extra_param
 
           elif [[ "$network" == taiko-* ]]; then
+            taiko_client_version="latest"
             if [[ "$network" == *alethia* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
               stripped_network="mainnet"
-              taiko_client_version="taiko-alethia-client-v0.43.2"
             elif [[ "$network" == *hoodi* ]]; then
               CONSENSUS_URL="${{ secrets.HOODI_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.HOODI_EXECUTION_URL }}"
               stripped_network="hoodi"
-              taiko_client_version="latest"
             else
               echo "Unknown network"
               exit 1

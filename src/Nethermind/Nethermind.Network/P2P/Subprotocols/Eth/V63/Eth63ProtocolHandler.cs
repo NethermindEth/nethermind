@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -112,7 +111,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             GetNodeDataMessage msg = new(keys.ToPooledList());
 
-            // could use more array pooled lists (pooled memmory) here.
+            // could use more array pooled lists (pooled memory) here.
             // maybe remeasure allocations on another network since goerli has been phased out.
             return SendRequest(msg, token);
         }
@@ -133,7 +132,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             if (Logger.IsTrace)
             {
-                Logger.Trace("Sending node fata request:");
+                Logger.Trace("Sending node data request:");
                 Logger.Trace($"Keys count: {message.Hashes.Count}");
             }
 
@@ -149,7 +148,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             if (Logger.IsTrace)
             {
-                Logger.Trace("Sending node fata request:");
+                Logger.Trace("Sending receipts request:");
                 Logger.Trace($"Hashes count: {message.Hashes.Count}");
             }
 

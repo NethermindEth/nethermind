@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -55,7 +56,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         var proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
         if (proposedBlockHeader is null)
-            throw new InvalidBlockException(proposedBlockHeader, "Proposed block header not found in chain");
+            throw new IncomingMessageBlockNotFoundException(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber);
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, _context.CurrentRound);
 
@@ -100,7 +101,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         if (parentHeader.ExtraConsensusData is null)
         {
-            error = $"Block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} does not have required consensus data! Chain migth be corrupt!";
+            error = $"Block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} does not have required consensus data! Chain might be corrupt!";
             return false;
         }
 
@@ -171,11 +172,11 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         ulong qcRound = qc.ProposedBlockInfo.Round;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(certificateTarget, qcRound);
-        double certThreshold = spec.CertThreshold;
-        double required = Math.Ceiling(epochSwitchInfo.Masternodes.Length * certThreshold);
+        double CertificateThreshold = spec.CertificateThreshold;
+        double required = Math.Ceiling(epochSwitchInfo.Masternodes.Length * CertificateThreshold);
         if ((qcRound > 0) && (uniqueSignatures.Length < required))
         {
-            error = $"Number of votes ({uniqueSignatures.Length}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {certThreshold}";
+            error = $"Number of votes ({uniqueSignatures.Length}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {CertificateThreshold}";
             return false;
         }
 

@@ -231,6 +231,7 @@ public struct TreePath : IEquatable<TreePath>
         Length--;
     }
 
+    [SkipLocalsInit]
     public readonly byte[] ToNibble()
     {
         bool odd = Length % 2 == 1;
@@ -336,6 +337,25 @@ public struct TreePath : IEquatable<TreePath>
         }
 
         return length.CompareTo(otherTree.Length);
+    }
+
+    /// <summary>
+    /// Returns the Path extended to 64 nibbles with 0xF (upper bound of subtree).
+    /// </summary>
+    public readonly ValueHash256 ToUpperBoundPath()
+    {
+        ValueHash256 result = Path;
+        Span<byte> bytes = result.BytesAsSpan;
+
+        int startByte = Length / 2;
+        if (Length % 2 == 1)
+        {
+            bytes[startByte] |= 0x0F;
+            startByte++;
+        }
+        bytes[startByte..].Fill(0xFF);
+
+        return result;
     }
 
     private static ReadOnlySpan<byte> ZeroMasksData => new byte[]

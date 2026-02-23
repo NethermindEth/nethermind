@@ -4,14 +4,12 @@
 using System.Collections.Concurrent;
 using System.IO.Abstractions;
 using Autofac.Features.AttributeFilters;
-using CommunityToolkit.HighPerformance;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Era1.Exceptions;
 using Nethermind.Logging;
@@ -49,7 +47,7 @@ public class EraImporter(
             trustedAccumulators = (await fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation)).Select(EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry).ToHashSet();
         }
 
-        IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);
+        using IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);
 
         long lastBlockInStore = eraStore.LastBlock;
         if (to == 0) to = long.MaxValue;

@@ -13,7 +13,6 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using System;
 using System.Text.RegularExpressions;
-using static System.Collections.Specialized.BitVector32;
 
 namespace Nethermind.Network
 {
@@ -87,7 +86,7 @@ namespace Nethermind.Network
                 return false;
             }
 
-            if(!ValidateGenesisHash(session, syncPeerArgs))
+            if (!ValidateGenesisHash(session, syncPeerArgs))
             {
                 return false;
             }

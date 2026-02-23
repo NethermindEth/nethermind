@@ -67,7 +67,7 @@ public static class Metrics
     [KeyIsLabel("allocator")]
     public static ConcurrentDictionary<string, double> AllocatorActiveAllocationBytes { get; } = new();
 
-    [Description("Allocatioons")]
+    [Description("Allocations")]
     [KeyIsLabel("allocator")]
     public static ConcurrentDictionary<string, double> AllocatorAllocations { get; } = new();
 }

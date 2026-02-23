@@ -12,6 +12,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 {
     public int EpochLength { get; set; }
     public int Gap { get; set; }
+    public long Reward { get; set; }
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }              // v2 max masternodes
@@ -21,7 +22,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int MinePeriod { get; set; }                  // Miner mine period to mine a block
     public int TimeoutSyncThreshold { get; set; }        // send syncInfo after number of timeout
     public int TimeoutPeriod { get; set; }               // Duration in ms
-    public double CertThreshold { get; set; }            // Necessary number of messages from master nodes to form a certificate
+    public double CertificateThreshold { get; set; }            // Necessary number of messages from master nodes to form a certificate
     public double MasternodeReward { get; set; }         // Block reward per master node (core validator) - unit Ether
     public double ProtectorReward { get; set; }          // Block reward per protector - unit Ether
     public double ObserverReward { get; set; }           // Block reward per observer - unit Ether
@@ -31,13 +32,28 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public List<V2ConfigParams> V2Configs { get; set; } = new List<V2ConfigParams>();
 
     public Address[] GenesisMasterNodes { get; set; }
+    public long MergeSignRange { get; set; }
+    public HashSet<Address> BlackListedAddresses { get; set; }
+    public Address BlockSignerContract { get; set; }
+    public Address RandomizeSMCBinary { get; set; }
+    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
+    public Address XDCXLendingAddressBinary { get; set; }
+    public Address XDCXAddressBinary { get; set; }
+    public Address TradingStateAddressBinary { get; set; }
+    public Address FoundationWallet { get; set; }
+    public Address MasternodeVotingContract { get; set; }
+    public bool IsTipTrc21FeeEnabled { get; set; }
+    public bool IsBlackListingEnabled { get; set; }
+    public bool IsTIP2019 { get; set; }
+    public bool IsTIPXDCXMiner { get; set; }
+    public bool IsDynamicGasLimitBlock { get; set; }
 
     public void ApplyV2Config(ulong round)
     {
         V2ConfigParams configParams = GetConfigAtRound(V2Configs, round);
         SwitchRound = configParams.SwitchRound;
         MaxMasternodes = configParams.MaxMasternodes;
-        CertThreshold = configParams.CertThreshold;
+        CertificateThreshold = configParams.CertificateThreshold;
         TimeoutSyncThreshold = configParams.TimeoutSyncThreshold;
         TimeoutPeriod = configParams.TimeoutPeriod;
         MinePeriod = configParams.MinePeriod;
@@ -79,6 +95,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
 {
     public int EpochLength { get; }
     public int Gap { get; }
+    public long Reward { get; }
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }          // v2 max masternodes
@@ -88,7 +105,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int MinePeriod { get; set; }              // Miner mine period to mine a block
     public int TimeoutSyncThreshold { get; set; }    // send syncInfo after number of timeout
     public int TimeoutPeriod { get; set; }           // Duration in ms
-    public double CertThreshold { get; set; }        // Necessary number of messages from master nodes to form a certificate
+    public double CertificateThreshold { get; set; }        // Necessary number of messages from master nodes to form a certificate
     public double MasternodeReward { get; set; }     // Block reward per master node (core validator) - unit Ether
     public double ProtectorReward { get; set; }      // Block reward per protector - unit Ether
     public double ObserverReward { get; set; }       // Block reward per observer - unit Ether
@@ -96,6 +113,22 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }
-    Address[] GenesisMasterNodes { get; set; }
+    public Address[] GenesisMasterNodes { get; set; }
+    public long MergeSignRange { get; set; }
+
+    public Address BlockSignerContract { get; set; }
+    public Address RandomizeSMCBinary { get; set; }
+    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
+    public Address XDCXLendingAddressBinary { get; set; }
+    public Address XDCXAddressBinary { get; set; }
+    public Address TradingStateAddressBinary { get; set; }
+    public HashSet<Address> BlackListedAddresses { get; set; }
+    public Address FoundationWallet { get; set; }
+    public Address MasternodeVotingContract { get; set; }
+    public bool IsTipTrc21FeeEnabled { get; set; }
+    public bool IsBlackListingEnabled { get; set; }
+    public bool IsTIP2019 { get; set; }
+    public bool IsTIPXDCXMiner { get; set; }
+    public bool IsDynamicGasLimitBlock { get; set; }
     public void ApplyV2Config(ulong round);
 }

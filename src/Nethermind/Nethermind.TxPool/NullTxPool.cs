@@ -83,11 +83,12 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public int GetBlobCounts(byte[][] blobVersionedHashes) => 0;
+        public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
+            byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs) => 0;
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
-        public AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.New;
+        public AnnounceResult NotifyAboutTx(Hash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.RequestRequired;
 
         public event EventHandler<TxEventArgs> NewDiscovered
         {
@@ -113,5 +114,6 @@ namespace Nethermind.TxPool
             remove { }
         }
         public bool AcceptTxWhenNotSynced { get; set; }
+        public void ResetTxPoolState() { }
     }
 }

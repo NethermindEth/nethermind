@@ -12,7 +12,6 @@ env:
   PACKAGE_DIR: pkg
   PACKAGE_RETENTION: 7
   PUB_DIR: pub
-  SCRIPTS_PATH: ${{ github.workspace }}/scripts/build
 
 jobs:
   build:
@@ -44,16 +43,29 @@ jobs:
       - name: Build Nethermind.Runner
         id: build
         run: |
-          mkdir $GITHUB_WORKSPACE/$PUB_DIR
-
-          docker build . -t nethermind-build -f $SCRIPTS_PATH/Dockerfile \
+          mkdir $PUB_DIR
+          docker build . -t nethermind-build -f scripts/build/Dockerfile \
             --build-arg COMMIT_HASH=$GITHUB_SHA \
             --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
-
-          docker run --rm --mount type=bind,source=$GITHUB_WORKSPACE/$PUB_DIR,target=/output nethermind-build
+          docker run --rm --mount type=bind,source=./$PUB_DIR,target=/output nethermind-build
 
       - name: Archive packages
-        run: $SCRIPTS_PATH/archive.sh
+        run: scripts/build/archive.sh
+
+      - name: Sign packages
+        env:
+          GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
+          GPG_SECRET_KEY: ${{ secrets.PPA_GPG_SECRET_KEY }}
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
+
+          for rid in "linux-arm64" "linux-x64" "macos-arm64" "macos-x64" "windows-x64"; do
+            file_name=$(basename *$rid*)
+            gpg --no-tty --batch --yes --pinentry-mode loopback \
+              --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
+              -o "$file_name.asc" -ab "$file_name"
+          done
 
       - name: Upload Nethermind Linux arm64 package
         uses: actions/upload-artifact@v4
@@ -116,7 +128,7 @@ jobs:
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
 
-      - name: Authenticate App
+      - name: Create GitHub app token
         id: gh-app
         uses: actions/create-github-app-token@v2
         with:
@@ -132,42 +144,39 @@ jobs:
         env:
           GIT_TAG: ${{ needs.build.outputs.version }}
           GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
-          PACKAGE_PREFIX: ${{ needs.build.outputs.package-prefix }}
-          PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
-          cp $GITHUB_WORKSPACE/$PACKAGE_DIR/**/*.zip $GITHUB_WORKSPACE/$PACKAGE_DIR
-          rm -rf $GITHUB_WORKSPACE/$PACKAGE_DIR/*/
-          $SCRIPTS_PATH/publish-github.sh
+          cp $PACKAGE_DIR/**/*.zip $PACKAGE_DIR/**/*.zip.asc $PACKAGE_DIR
+          rm -rf $PACKAGE_DIR/*/
+          echo "Publishing packages to GitHub"
+          prerelease=${{ needs.build.outputs.prerelease && '1' || '' }}
+          if gh release view "$GIT_TAG" >/dev/null 2>&1; then publish=1; else publish=0; fi
 
-  publish-downloads:
-    name: Publish to Downloads page
-    runs-on: ubuntu-latest
-    needs: [approval, build]
-    if: needs.build.outputs.prerelease == 'false'
-    steps:
-      - name: Check out Nethermind repository
-        uses: actions/checkout@v6
+          if (( !publish )); then
+            echo "Drafting release $GIT_TAG"
+            relnotes=$(cat <<'EOF'
+          # Release notes
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}
+          ### [CONTENT PLACEHOLDER]
 
-      - name: Configure GPG Key
-        run: |
-          mkdir -p ~/.gnupg/
-          printf "${{ secrets.GPG_SIGNING_KEY }}" | base64 --decode > ~/.gnupg/private.key
-          gpg --import --no-tty --batch --yes ~/.gnupg/private.key
+          #### Build signatures
 
-      - name: Publish packages to Downloads page
-        env:
-          DOWNLOADS_PAGE: ${{ secrets.DOWNLOADS_API_KEY }}
-          PACKAGE_PREFIX: ${{ needs.build.outputs.package-prefix }}
-          PASS: ${{ secrets.GPG_PASSWORD }}
-        run: |
-          cp $GITHUB_WORKSPACE/$PACKAGE_DIR/**/*.zip $GITHUB_WORKSPACE/$PACKAGE_DIR
-          rm -rf $GITHUB_WORKSPACE/$PACKAGE_DIR/*/
-          $SCRIPTS_PATH/publish-downloads.sh
+          The packages are signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
+          EOF
+          )
+            gh release create "$GIT_TAG" --target "$GITHUB_SHA" -t "v$GIT_TAG" -d ${prerelease:+-p} -F <(printf '%s' "$relnotes")
+          fi
+
+          cd $PACKAGE_DIR
+          echo "Uploading assets"
+          gh release upload "$GIT_TAG" *.zip *.zip.asc --clobber
+
+          if (( publish )); then
+            echo "Publishing release $GIT_TAG"
+            if [[ -n "$prerelease" ]]; then flag="--prerelease"; else flag="--latest"; fi
+            gh release edit "$GIT_TAG" --verify-tag --target "$GITHUB_SHA" -t "v$GIT_TAG" --draft=false $flag
+          fi
+
+          echo "Publishing completed"
 
   publish-docker:
     name: Publish to Docker Hub
@@ -177,7 +186,7 @@ jobs:
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
 
-      - name: Authenticate App
+      - name: Create GitHub app token
         id: gh-app
         uses: actions/create-github-app-token@v2
         with:
@@ -202,7 +211,6 @@ jobs:
 
           for suffix in "" ".chiseled"; do
             tag_suffix=$([[ -z "$suffix" ]] && echo "" || echo "-${suffix:1}")
-
             docker buildx build . --platform=linux/amd64,linux/arm64 -f Dockerfile$suffix \
               ${{ needs.build.outputs.prerelease == 'false' && '-t $image:latest$tag_suffix' || '' }} \
               -t "$image:${{ needs.build.outputs.version }}$tag_suffix" \

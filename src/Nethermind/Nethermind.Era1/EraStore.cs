@@ -3,11 +3,9 @@
 
 using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
-using CommunityToolkit.HighPerformance;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Era1.Exceptions;
 using NonBlocking;
@@ -81,18 +79,18 @@ public class EraStore : IEraStore
         IFileSystem fileSystem,
         string networkName,
         int maxEraSize,
-        ISet<ValueHash256>? trustedAcccumulators,
+        ISet<ValueHash256>? trustedAccumulators,
         string directory,
         int verifyConcurrency = 0
     )
     {
         _specProvider = specProvider;
         _blockValidator = blockValidator;
-        _trustedAccumulators = trustedAcccumulators;
+        _trustedAccumulators = trustedAccumulators;
         _maxEraFile = maxEraSize;
         _maxOpenFile = Environment.ProcessorCount * 2;
-        if (_verifyConcurrency == 0) _verifyConcurrency = Environment.ProcessorCount;
         _verifyConcurrency = verifyConcurrency;
+        if (_verifyConcurrency == 0) _verifyConcurrency = Environment.ProcessorCount;
 
         // Geth behaviour seems to be to always read the checksum and fail when its missing.
         _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))

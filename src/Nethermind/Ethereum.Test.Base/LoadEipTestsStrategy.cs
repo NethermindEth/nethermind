@@ -23,13 +23,13 @@ namespace Ethereum.Test.Base
                 testDirs = new[] { testsDirectoryName };
             }
 
-            List<EthereumTest> testJsons = new();
+            List<EthereumTest> tests = new();
             foreach (string testDir in testDirs)
             {
-                testJsons.AddRange(LoadTestsFromDirectory(testDir, wildcard));
+                tests.AddRange(LoadTestsFromDirectory(testDir, wildcard));
             }
 
-            return testJsons;
+            return tests;
         }
 
         private string GetGeneralStateTestsDirectory()

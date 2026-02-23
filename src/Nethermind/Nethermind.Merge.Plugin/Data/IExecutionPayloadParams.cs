@@ -20,7 +20,7 @@ public enum ValidationResult : byte { Success, Fail, Invalid };
 public class ExecutionPayloadParams(byte[][]? executionRequests = null)
 {
     /// <summary>
-    /// Gets or sets <see cref="ExecutionRequets"/> as defined in
+    /// Gets or sets <see cref="ExecutionRequests"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
     public byte[][]? ExecutionRequests { get; set; } = executionRequests;

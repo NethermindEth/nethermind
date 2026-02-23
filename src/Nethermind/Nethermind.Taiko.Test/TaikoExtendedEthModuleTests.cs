@@ -3,6 +3,7 @@
 
 using Autofac;
 using FluentAssertions;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -22,6 +23,7 @@ public class TaikoExtendedEthModuleTests
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
+            .AddSingleton(Substitute.For<IBlockFinder>())
             .AddModule(new TaikoModule())
             .Build();
 

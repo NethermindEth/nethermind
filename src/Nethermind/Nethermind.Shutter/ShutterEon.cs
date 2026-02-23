@@ -66,7 +66,7 @@ public class ShutterEon(
                 }
                 else if (_logger.IsError)
                 {
-                    _logger.Error("Cannot use unfinalised Shutter keyper set contract.");
+                    _logger.Error("Cannot use unfinalized Shutter keyper set contract.");
                 }
             }
         }

@@ -9,8 +9,10 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.JsonRpc.Exceptions;
@@ -23,7 +25,7 @@ using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
-public class JsonRpcService : IJsonRpcService
+public sealed class JsonRpcService : IJsonRpcService
 {
     private readonly static Lock _reparseLock = new();
     private static Dictionary<TypeAsKey, bool> _reparseReflectionCache = new();
@@ -271,6 +273,15 @@ public class JsonRpcService : IJsonRpcService
             { InnerException: InsufficientBalanceException } =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.InnerException.Message, ex.ToString(), request.Id, returnAction),
 
+            { InnerException: InvalidTransactionException e } =>
+                GetErrorResponse(methodName, ErrorCodes.Default, e.Reason.ErrorDescription, null, request.Id, returnAction),
+
+            InvalidTransactionException e =>
+                GetErrorResponse(methodName, ErrorCodes.Default, e.Reason.ErrorDescription, null, request.Id, returnAction),
+
+            InvalidBlockException or { InnerException: InvalidBlockException } =>
+                GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, request.Id, returnAction),
+
             _ => HandleException(ex, methodName, request, returnAction)
         };
 
@@ -334,7 +345,7 @@ public class JsonRpcService : IJsonRpcService
             {
                 foreach (JsonElement param in providedParameters.EnumerateArray())
                 {
-                    string? parameter = expectedParameters.ElementAtOrDefault(paramsCount).Info?.Name == "passphrase"
+                    string? parameter = (uint)paramsCount < (uint)expectedParameters.Length && expectedParameters[paramsCount].Info?.Name == "passphrase"
                         ? "{passphrase}"
                         : param.GetRawText();
 
@@ -393,6 +404,7 @@ public class JsonRpcService : IJsonRpcService
         }
         else
         {
+            EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(paramType, out JsonTypeInfo? typeInfo);
             if (providedParameter.ValueKind == JsonValueKind.String)
             {
                 if (!_reparseReflectionCache.TryGetValue(paramType, out bool reparseString))
@@ -402,11 +414,15 @@ public class JsonRpcService : IJsonRpcService
 
                 executionParam = reparseString
                     ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
-                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+                    : typeInfo is not null
+                        ? providedParameter.Deserialize(typeInfo)
+                        : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
             else
             {
-                executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+                executionParam = typeInfo is not null
+                    ? providedParameter.Deserialize(typeInfo)
+                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
         }
 

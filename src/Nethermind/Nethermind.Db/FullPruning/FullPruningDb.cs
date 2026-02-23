@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
@@ -17,7 +18,7 @@ namespace Nethermind.Db.FullPruning
     /// Allows to start pruning with <see cref="TryStartPruning"/> in a thread safe way.
     /// When pruning is started it duplicates all writes to current DB as well as the new one for full pruning, this includes write batches.
     /// When <see cref="IPruningContext"/> returned in <see cref="TryStartPruning"/> is <see cref="IDisposable.Dispose"/>d it will delete the pruning DB if the pruning was not successful.
-    /// It uses <see cref="IRocksDbFactory"/> to create new pruning DB's. Check <see cref="FullPruningInnerDbFactory"/> to see how inner sub DB's are organised.
+    /// It uses <see cref="IRocksDbFactory"/> to create new pruning DB's. Check <see cref="FullPruningInnerDbFactory"/> to see how inner sub DB's are organized.
     /// </remarks>
     public class FullPruningDb : IDb, IFullPruningDb, ITunableDb
     {
@@ -71,6 +72,17 @@ namespace Nethermind.Db.FullPruning
             return value;
         }
 
+        public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            MemoryManager<byte>? memoryManager = _currentDb.GetOwnedMemory(key, flags);
+            if (memoryManager is not null && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
+            {
+                Duplicate(_pruningContext.CloningDb, key, memoryManager.GetSpan(), WriteFlags.None);
+            }
+
+            return memoryManager;
+        }
+
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             _currentDb.Set(key, value, flags); // we are writing to the main DB
@@ -121,10 +133,7 @@ namespace Nethermind.Db.FullPruning
             _pruningContext?.CloningDb.Dispose();
         }
 
-        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
-        {
-            return _currentDb.GatherMetric(includeSharedCache);
-        }
+        public IDbMeta.DbMetric GatherMetric() => _currentDb.GatherMetric();
 
         public string Name => _settings.DbName;
 
@@ -145,6 +154,8 @@ namespace Nethermind.Db.FullPruning
         }
 
         public bool KeyExists(ReadOnlySpan<byte> key) => _currentDb.KeyExists(key);
+
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _currentDb.DangerousReleaseMemory(span);
 
         // inner DB's can be deleted in the future and
         // we cannot expose a DB that will potentially be later deleted

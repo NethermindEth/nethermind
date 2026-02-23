@@ -101,15 +101,6 @@ namespace Nethermind.Consensus.Clique
                 return false;
             }
 
-            if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _signer.Address))
-            {
-                if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _signer.Address))
-                {
-                    if (_logger.IsTrace) _logger.Trace("Signed recently");
-                    return false;
-                }
-            }
-
             // If we're amongst the recent signers, wait for the next block
             if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _signer.Address))
             {

@@ -135,17 +135,17 @@ internal class EpochSwitchManager : IEpochSwitchManager
         Address[] penalties = header.PenaltiesAddress.Value.ToArray();
         Address[] candidates = snap.NextEpochCandidates;
 
-        var stanbyNodes = new Address[0];
+        var standbyNodes = Array.Empty<Address>();
 
         if (masterNodes.Length != candidates.Length)
         {
-            stanbyNodes = candidates
+            standbyNodes = candidates
                 .Except(masterNodes)
                 .Except(penalties)
                 .ToArray();
         }
 
-        epochSwitchInfo = new EpochSwitchInfo(masterNodes, stanbyNodes, penalties, new BlockRoundInfo(header.Hash, header.ExtraConsensusData?.BlockRound ?? 0, header.Number));
+        epochSwitchInfo = new EpochSwitchInfo(masterNodes, standbyNodes, penalties, new BlockRoundInfo(header.Hash, header.ExtraConsensusData?.BlockRound ?? 0, header.Number));
 
         if (header.ExtraConsensusData?.QuorumCert is not null)
         {
@@ -324,8 +324,8 @@ internal class EpochSwitchManager : IEpochSwitchManager
         while (epochBlockInfo.Round > timeoutCert.Round)
         {
             tempTCEpoch--;
-
-            if (GetBlockByEpochNumber(tempTCEpoch) is null)
+            epochBlockInfo = GetBlockByEpochNumber(tempTCEpoch);
+            if (epochBlockInfo is null)
             {
                 return null;
             }

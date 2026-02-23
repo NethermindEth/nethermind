@@ -5,6 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
+using System;
 
 namespace Nethermind.Xdc;
 
@@ -23,9 +24,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         Signature signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
-            if (decoderContext.PeekNextRlpLength() != Signature.Size)
-                throw new RlpException($"Invalid signature length in '{nameof(Vote)}'");
-            signature = new(decoderContext.DecodeByteArray());
+            signature = decoderContext.DecodeSignature();
         }
         ulong gapNumber = decoderContext.DecodeULong();
 
@@ -47,9 +46,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         Signature signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
-            if (rlpStream.PeekNextRlpLength() != Signature.Size)
-                throw new RlpException($"Invalid signature length in {nameof(Vote)}");
-            signature = new(rlpStream.DecodeByteArray());
+            signature = rlpStream.DecodeSignature();
         }
         ulong gapNumber = rlpStream.DecodeULong();
 
@@ -85,15 +82,15 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public override int GetLength(Vote item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
 
-    private int GetContentLength(Vote item, RlpBehaviors rlpBehaviors)
+    public int GetContentLength(Vote item, RlpBehaviors rlpBehaviors)
     {
         return
-            (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0
+            ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0)
             + Rlp.LengthOf(item.GapNumber)
             + _xdcBlockInfoDecoder.GetLength(item.ProposedBlockInfo, rlpBehaviors);
     }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
@@ -16,7 +15,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             rlpStream.Encode(message.RequestId);
             rlpStream.Encode(message.StorageRange.RootHash);
-            rlpStream.Encode(message.StorageRange.Accounts.Select(static a => a.Path).ToArray()); // TODO: optimize this
+            var accounts = message.StorageRange.Accounts;
+            int accountsCount = accounts.Count;
+            int accountsPathsContentLength = accountsCount * Rlp.LengthOfKeccakRlp;
+            rlpStream.StartSequence(accountsPathsContentLength);
+            for (int i = 0; i < accountsCount; i++)
+            {
+                rlpStream.Encode(accounts[i].Path);
+            }
             rlpStream.Encode(message.StorageRange.StartingHash);
             rlpStream.Encode(message.StorageRange.LimitHash);
             rlpStream.Encode(message.ResponseBytes);
@@ -48,7 +54,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         {
             contentLength = Rlp.LengthOf(message.RequestId);
             contentLength += Rlp.LengthOf(message.StorageRange.RootHash);
-            contentLength += Rlp.LengthOf(message.StorageRange.Accounts.Select(static a => a.Path).ToArray(), true); // TODO: optimize this
+            int accountsCount = message.StorageRange.Accounts.Count;
+            int accountsPathsContentLength = accountsCount * Rlp.LengthOfKeccakRlp;
+            contentLength += Rlp.LengthOfSequence(accountsPathsContentLength);
             contentLength += Rlp.LengthOf(message.StorageRange.StartingHash);
             contentLength += Rlp.LengthOf(message.StorageRange.LimitHash);
             contentLength += Rlp.LengthOf(message.ResponseBytes);

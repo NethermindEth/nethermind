@@ -101,7 +101,7 @@ namespace Nethermind.Logging.NLog
                     IEnumerable<LoggingRule> loggingRules = ParseRules(logRules, targets);
                     foreach (LoggingRule loggingRule in loggingRules)
                     {
-                        RemoveOverridenRules(configurationLoggingRules, loggingRule);
+                        RemoveOverriddenRules(configurationLoggingRules, loggingRule);
                         configurationLoggingRules.Add(loggingRule);
                     }
                 }
@@ -111,12 +111,12 @@ namespace Nethermind.Logging.NLog
         private static Target[] GetTargets(IList<LoggingRule> configurationLoggingRules) =>
             configurationLoggingRules.SelectMany(static r => r.Targets).Distinct().ToArray();
 
-        private static void RemoveOverridenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
+        private static void RemoveOverriddenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
         {
-            string reqexPattern = $"^{loggingRule.LoggerNamePattern.Replace(".", "\\.").Replace("*", ".*")}$";
+            string regexPattern = $"^{loggingRule.LoggerNamePattern.Replace(".", "\\.").Replace("*", ".*")}$";
             for (int j = 0; j < configurationLoggingRules.Count;)
             {
-                if (Regex.IsMatch(configurationLoggingRules[j].LoggerNamePattern, reqexPattern))
+                if (Regex.IsMatch(configurationLoggingRules[j].LoggerNamePattern, regexPattern))
                 {
                     configurationLoggingRules.RemoveAt(j);
                 }
