@@ -25,7 +25,7 @@ using System;
 
 namespace Nethermind.Xdc.Test.P2P;
 
-[TestFixture]
+[TestFixture, Parallelizable(ParallelScope.All)]
 public class Xdpos2ProtocolHandlerTests
 {
     private static (Xdpos2ProtocolHandler handler, IMessageSerializationService serializer, ISession session,
