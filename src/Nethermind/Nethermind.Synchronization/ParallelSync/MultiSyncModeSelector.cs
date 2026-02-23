@@ -307,13 +307,20 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
 
+            // XDC Fix: When pivot is 0, it means "no fast sync, do full sync from genesis"
+            // Don't enter WaitingForBlock mode just because header >= 0
+            // Only enter WaitingForBlock if we're actually caught up with peers
+            bool pivotIsZero = best.PivotNumber == 0;
+            bool notCaughtUpYet = best.Header < best.TargetBlock - TotalSyncLag;
+
             bool result = inBeaconControl ||
                           (notInBeaconHeaders &&
                            noDesiredPeerKnown &&
                            postPivotPeerAvailable &&
                            hasFastSyncBeenActive &&
                            notInFastSync &&
-                           notInStateSync);
+                           notInStateSync &&
+                           !(pivotIsZero && notCaughtUpYet)); // Don't wait if pivot=0 and not caught up
 
             if (_logger.IsTrace)
             {
@@ -324,7 +331,8 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
                     (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
                     (nameof(notInFastSync), notInFastSync),
-                    (nameof(notInStateSync), notInStateSync));
+                    (nameof(notInStateSync), notInStateSync),
+                    ($"!({nameof(pivotIsZero)} && {nameof(notCaughtUpYet)})", !(pivotIsZero && notCaughtUpYet)));
             }
 
             return result;
@@ -445,9 +453,15 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInStateSync = !best.IsInStateSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
 
+            // XDC Fix: When pivot is 0, allow full sync even without "desired peer"
+            // as long as we have any post-pivot peers and are not caught up yet
+            bool pivotIsZero = best.PivotNumber == 0;
+            bool notCaughtUpYet = best.Header < best.TargetBlock - TotalSyncLag;
+            bool canSyncWithPivotZero = pivotIsZero && postPivotPeerAvailable && notCaughtUpYet;
+
             bool result = notInUpdatingPivot &&
                           notInBeaconModes &&
-                          desiredPeerKnown &&
+                          (desiredPeerKnown || canSyncWithPivotZero) && // Allow sync with pivot=0 even without desired peer
                           postPivotPeerAvailable &&
                           hasFastSyncBeenActive &&
                           notInFastSync &&
@@ -459,7 +473,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 LogDetailedSyncModeChecks("FULL",
                     (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(notInBeaconModes), notInBeaconModes),
-                    (nameof(desiredPeerKnown), desiredPeerKnown),
+                    ($"{nameof(desiredPeerKnown)} || {nameof(canSyncWithPivotZero)}", desiredPeerKnown || canSyncWithPivotZero),
                     (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
                     (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
                     (nameof(notInFastSync), notInFastSync),
