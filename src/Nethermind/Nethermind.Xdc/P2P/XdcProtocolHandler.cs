@@ -21,7 +21,7 @@ using System;
 
 namespace Nethermind.Xdc.P2P;
 
-internal class Xdpos2ProtocolHandler(
+internal class XdcProtocolHandler(
     ITimeoutCertificateManager timeoutCertificateManager,
     IVotesManager votesManager,
     ISyncInfoManager syncInfoManager,
@@ -47,7 +47,7 @@ internal class Xdpos2ProtocolHandler(
 
     public override string ProtocolCode => "eth";
 
-    public override int MessageIdSpaceSize => Xdpos2MessageCode.SyncInfoMsg + 1;
+    public override int MessageIdSpaceSize => XdcMessageCode.SyncInfoMsg + 1;
 
     protected override TimeSpan InitTimeout => base.InitTimeout;
 
@@ -59,21 +59,21 @@ internal class Xdpos2ProtocolHandler(
 
         switch (packetType)
         {
-            case Xdpos2MessageCode.VoteMsg:
+            case XdcMessageCode.VoteMsg:
                 {
                     using VoteMsg voteMsg = Deserialize<VoteMsg>(message.Content);
                     ReportIn(voteMsg, size);
                     Handle(voteMsg);
                     break;
                 }
-            case Xdpos2MessageCode.TimeoutMsg:
+            case XdcMessageCode.TimeoutMsg:
                 {
                     using TimeoutMsg timeoutMsg = Deserialize<TimeoutMsg>(message.Content);
                     ReportIn(timeoutMsg, size);
                     Handle(timeoutMsg);
                     break;
                 }
-            case Xdpos2MessageCode.SyncInfoMsg:
+            case XdcMessageCode.SyncInfoMsg:
                 {
                     using SyncInfoMsg syncInfoMsg = Deserialize<SyncInfoMsg>(message.Content);
                     ReportIn(syncInfoMsg, size);

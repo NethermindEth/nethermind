@@ -26,9 +26,9 @@ using System;
 namespace Nethermind.Xdc.Test.P2P;
 
 [TestFixture, Parallelizable(ParallelScope.All)]
-public class Xdpos2ProtocolHandlerTests
+public class XdcProtocolHandlerTests
 {
-    private static (Xdpos2ProtocolHandler handler, IMessageSerializationService serializer, ISession session,
+    private static (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
         IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
         CreateAll()
     {
@@ -43,7 +43,7 @@ public class Xdpos2ProtocolHandlerTests
         INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
         nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
-        Xdpos2ProtocolHandler handler = new(
+        XdcProtocolHandler handler = new(
             timeoutManager,
             votesManager,
             syncInfoManager,
@@ -90,12 +90,12 @@ public class Xdpos2ProtocolHandlerTests
     [Test]
     public void HandleMessage_VoteMsg_RoutesToVotesManager()
     {
-        (Xdpos2ProtocolHandler handler, IMessageSerializationService serializer, _,
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
             IVotesManager votesManager, _, _) = CreateAll();
         using (handler)
         {
             Vote vote = CreateVote(round: 5);
-            ZeroPacket packet = CreatePacket(Xdpos2MessageCode.VoteMsg);
+            ZeroPacket packet = CreatePacket(XdcMessageCode.VoteMsg);
             serializer.Deserialize<VoteMsg>(packet.Content).Returns(new VoteMsg { Vote = vote });
 
             handler.HandleMessage(packet);
@@ -107,12 +107,12 @@ public class Xdpos2ProtocolHandlerTests
     [Test]
     public void HandleMessage_TimeoutMsg_RoutesToTimeoutManager()
     {
-        (Xdpos2ProtocolHandler handler, IMessageSerializationService serializer, _,
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
             _, ITimeoutCertificateManager timeoutManager, _) = CreateAll();
         using (handler)
         {
             Timeout timeout = CreateTimeout(round: 3);
-            ZeroPacket packet = CreatePacket(Xdpos2MessageCode.TimeoutMsg);
+            ZeroPacket packet = CreatePacket(XdcMessageCode.TimeoutMsg);
             serializer.Deserialize<TimeoutMsg>(packet.Content).Returns(new TimeoutMsg { Timeout = timeout });
 
             handler.HandleMessage(packet);
@@ -124,12 +124,12 @@ public class Xdpos2ProtocolHandlerTests
     [Test]
     public void HandleMessage_SyncInfoMsg_WhenVerificationSucceeds_CallsProcessSyncInfo()
     {
-        (Xdpos2ProtocolHandler handler, IMessageSerializationService serializer, _,
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
             _, _, ISyncInfoManager syncInfoManager) = CreateAll();
         using (handler)
         {
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
-            ZeroPacket packet = CreatePacket(Xdpos2MessageCode.SyncInfoMsg);
+            ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
             serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
             syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>()).Returns(true);
 
@@ -142,12 +142,12 @@ public class Xdpos2ProtocolHandlerTests
     [Test]
     public void HandleMessage_SyncInfoMsg_WhenVerificationFails_DoesNotCallProcessSyncInfo()
     {
-        (Xdpos2ProtocolHandler handler, IMessageSerializationService serializer, _,
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
             _, _, ISyncInfoManager syncInfoManager) = CreateAll();
         using (handler)
         {
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
-            ZeroPacket packet = CreatePacket(Xdpos2MessageCode.SyncInfoMsg);
+            ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
             serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
             syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>())
                 .Returns(x => { x[1] = "rounds too low"; return false; });
@@ -161,7 +161,7 @@ public class Xdpos2ProtocolHandlerTests
     [Test]
     public void SendVote_FirstVote_IsDelivered()
     {
-        (Xdpos2ProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
+        (XdcProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
         using (handler)
         {
             Vote vote = CreateVote(round: 1);
@@ -175,7 +175,7 @@ public class Xdpos2ProtocolHandlerTests
     [Test]
     public void SendVote_SameVoteSentTwice_IsDeliveredOnlyOnce()
     {
-        (Xdpos2ProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
+        (XdcProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
         using (handler)
         {
             Vote vote = CreateVote(round: 7);
@@ -190,7 +190,7 @@ public class Xdpos2ProtocolHandlerTests
     [Test]
     public void SendVote_TwoDifferentVotes_BothDelivered()
     {
-        (Xdpos2ProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
+        (XdcProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
         using (handler)
         {
             Vote vote1 = CreateVote(round: 1);
@@ -206,7 +206,7 @@ public class Xdpos2ProtocolHandlerTests
     [Test]
     public void SendTimeout_FirstTimeout_IsDelivered()
     {
-        (Xdpos2ProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
+        (XdcProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
         using (handler)
         {
             Timeout timeout = CreateTimeout(round: 1);
@@ -220,7 +220,7 @@ public class Xdpos2ProtocolHandlerTests
     [Test]
     public void SendTimeout_SameTimeoutSentTwice_IsDeliveredOnlyOnce()
     {
-        (Xdpos2ProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
+        (XdcProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
         using (handler)
         {
             Timeout timeout = CreateTimeout(round: 4);
@@ -235,7 +235,7 @@ public class Xdpos2ProtocolHandlerTests
     [Test]
     public void SendTimeout_TwoDifferentTimeouts_BothDelivered()
     {
-        (Xdpos2ProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
+        (XdcProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
         using (handler)
         {
             Timeout timeout1 = CreateTimeout(round: 1);
@@ -249,9 +249,9 @@ public class Xdpos2ProtocolHandlerTests
     }
 
     [Test]
-    public void SendSyncinfo_IsDelivered()
+    public void SendSyncInfo_IsDelivered()
     {
-        (Xdpos2ProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
+        (XdcProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
         using (handler)
         {
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
@@ -263,10 +263,10 @@ public class Xdpos2ProtocolHandlerTests
     }
 
     [Test]
-    public void SendSyncinfo_SameSyncInfoTwice_IsDeliveredTwice()
+    public void SendSyncInfo_SameSyncInfoTwice_IsDeliveredTwice()
     {
         // SyncInfo has no deduplication cache; each call should send
-        (Xdpos2ProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
+        (XdcProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
         using (handler)
         {
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);

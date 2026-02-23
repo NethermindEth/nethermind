@@ -83,8 +83,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     {
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
-            if (peer.SyncPeer is Xdpos2ProtocolHandler xdpos2Protocol)
-                xdpos2Protocol.SendTimeout(timeout);
+            if (peer.SyncPeer is XdcProtocolHandler xdcProtocol)
+                xdcProtocol.SendTimeout(timeout);
         }
     }
 
@@ -188,8 +188,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
                 SyncInfo syncInfo = GetSyncInfo();
                 foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
                 {
-                    if (peerInfo.SyncPeer is Xdpos2ProtocolHandler xdpos2ProtocolHandler)
-                        xdpos2ProtocolHandler.SendSyncInfo(syncInfo);
+                    if (peerInfo.SyncPeer is XdcProtocolHandler xdcProtocolHandler)
+                        xdcProtocolHandler.SendSyncInfo(syncInfo);
                 }
             }
         }

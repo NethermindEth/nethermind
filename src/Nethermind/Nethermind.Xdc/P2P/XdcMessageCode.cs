@@ -3,7 +3,7 @@
 
 namespace Nethermind.Xdc.P2P;
 
-public static class Xdpos2MessageCode
+public static class XdcMessageCode
 {
     public const int VoteMsg = 0xe0;
     public const int TimeoutMsg = 0xe1;
