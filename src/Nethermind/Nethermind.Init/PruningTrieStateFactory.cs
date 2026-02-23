@@ -230,7 +230,7 @@ public class MainPruningTrieStoreFactory
             pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy);
         }
 
-        INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb, true);
+        INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
 
         if (pruningConfig.SimulateLongFinalizationDepth != 0)
         {

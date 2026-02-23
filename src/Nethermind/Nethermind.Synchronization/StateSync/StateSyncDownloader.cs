@@ -88,10 +88,7 @@ namespace Nethermind.Synchronization.StateSync
             }
         }
 
-        protected virtual bool ProtocolSupportsNodeData(ISyncPeer peer)
-        {
-            return peer.ProtocolVersion < EthVersions.Eth67;
-        }
+        protected virtual bool ProtocolSupportsNodeData(ISyncPeer peer) => peer.ProtocolVersion < EthVersions.Eth67;
 
         /// <summary>
         /// SNAP protocol allows grouping of storage requests by account path.
