@@ -35,7 +35,7 @@ namespace Nethermind.Xdc;
 
 public class XdcModule : Module
 {
-    private const string SnapshotDbName = "Snapshots";
+    private const string SnapshotDbName = "XdcSnapshots";
 
     protected override void Load(ContainerBuilder builder)
     {
