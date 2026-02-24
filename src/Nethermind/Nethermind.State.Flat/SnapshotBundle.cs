@@ -433,6 +433,8 @@ public sealed class SnapshotBundle : IDisposable
             snapshot.Dispose(); // Revert the lease before
 
             _transientResource.Reset();
+            _readStateNodes = null!;
+            _readStorageNodes = null!;
 
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
 

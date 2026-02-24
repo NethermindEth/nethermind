@@ -200,6 +200,20 @@ public class TreePathTests
         path.Length.Should().Be(0);
     }
 
+    [TestCase("", "000000")]
+    [TestCase("01", "100001")]
+    [TestCase("0001020304", "012345")]
+    public void TestEncodeWith3Byte(string nibbleHex, string expectedEncodedHex)
+    {
+        byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);
+        TreePath path = TreePath.FromNibble(nibbles);
+
+        Span<byte> buffer = stackalloc byte[3];
+        path.EncodeWith3Byte(buffer);
+
+        buffer.ToArray().ToHexString().Should().Be(expectedEncodedHex);
+    }
+
     [TestCase("", "0000000000000000")]
     [TestCase("01", "1000000000000001")]
     [TestCase("000102030405060708", "0123456780000009")]
@@ -214,6 +228,38 @@ public class TreePathTests
         path.EncodeWith8Byte(buffer);
 
         buffer.ToArray().ToHexString().Should().Be(expectedEncodedHex);
+    }
+
+    [TestCase("")]
+    [TestCase("01")]
+    [TestCase("0001020304")]
+    public void TestRoundtripWith3Byte(string nibbleHex)
+    {
+        byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);
+        TreePath original = TreePath.FromNibble(nibbles);
+
+        Span<byte> buffer = stackalloc byte[3];
+        original.EncodeWith3Byte(buffer);
+        TreePath decoded = TreePath.DecodeWith3Byte(buffer);
+
+        decoded.Should().Be(original);
+    }
+
+    [TestCase("")]
+    [TestCase("01")]
+    [TestCase("000102030405060708")]
+    [TestCase("000102030405060708090a0b0c0d0e")]
+    [TestCase("000102030405")]
+    public void TestRoundtripWith8Byte(string nibbleHex)
+    {
+        byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);
+        TreePath original = TreePath.FromNibble(nibbles);
+
+        Span<byte> buffer = stackalloc byte[8];
+        original.EncodeWith8Byte(buffer);
+        TreePath decoded = TreePath.DecodeWith8Byte(buffer);
+
+        decoded.Should().Be(original);
     }
 
     private static TreePath CreateFullTreePath()

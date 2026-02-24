@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.PersistedSnapshots;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -24,7 +25,7 @@ public class SnapshotRepositoryTests
     {
         _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
-        _repository = new SnapshotRepository(LimboLogs.Instance);
+        _repository = new SnapshotRepository(NullPersistedSnapshotRepository.Instance, LimboLogs.Instance);
     }
 
     private StateId CreateStateId(long blockNumber, byte rootByte = 0)
@@ -249,7 +250,7 @@ public class SnapshotRepositoryTests
     {
         StateId target = CreateStateId(10);
 
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
+        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target.BlockNumber);
 
         Assert.That(states.Count, Is.EqualTo(0));
         states.Dispose();
@@ -262,7 +263,7 @@ public class SnapshotRepositoryTests
         _repository.AddStateId(state10);
 
         StateId target = CreateStateId(5);
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
+        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target.BlockNumber);
 
         Assert.That(states.Count, Is.EqualTo(0));
         states.Dispose();
@@ -284,7 +285,7 @@ public class SnapshotRepositoryTests
         _repository.AddStateId(state10);
 
         StateId target = CreateStateId(6);
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
+        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target.BlockNumber);
 
         Assert.That(states.Count, Is.EqualTo(3));
         states.Dispose();

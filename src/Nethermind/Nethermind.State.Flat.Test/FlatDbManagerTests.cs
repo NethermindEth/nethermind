@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -55,7 +56,8 @@ public class FlatDbManagerTests
         _persistenceManager,
         _config,
         LimboLogs.Instance,
-        enableDetailedMetrics: false);
+        enableDetailedMetrics: false,
+        Substitute.For<IPersistedSnapshotRepository>());
 
     private static StateId CreateStateId(long blockNumber, byte rootByte = 0)
     {

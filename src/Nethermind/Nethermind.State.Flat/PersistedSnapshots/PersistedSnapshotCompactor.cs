@@ -1,0 +1,138 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Diagnostics;
+using Nethermind.Core.Extensions;
+using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.State.Flat.Storage;
+using Prometheus;
+
+namespace Nethermind.State.Flat.PersistedSnapshots;
+
+/// <summary>
+/// Manages conversion of in-memory snapshots to persisted snapshots (HSST files)
+/// and compaction of persisted snapshots. Mirrors <see cref="SnapshotCompactor"/>'s
+/// logarithmic compaction strategy for the persisted layer.
+/// </summary>
+public class PersistedSnapshotCompactor(
+    IPersistedSnapshotRepository persistedSnapshotRepository,
+    IArenaManager arenaManager,
+    IFlatDbConfig config,
+    ILogManager logManager) : IPersistedSnapshotCompactor
+{
+    private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
+    private readonly int _compactSize = config.CompactSize;
+    private readonly int _persistedSnapshotMaxCompactSize = config.PersistedSnapshotMaxCompactSize;
+    private readonly int _minCompactSize = Math.Max(config.MinCompactSize, 2);
+
+    /// <summary>
+    /// Try to compact persisted snapshots using logarithmic compaction.
+    /// Mirrors <see cref="SnapshotCompactor.GetSnapshotsToCompact"/> logic.
+    /// When compactSize exceeds _compactSize, produces both a large compacted snapshot
+    /// and a persistable (_compactSize) snapshot for RocksDB writes.
+    /// </summary>
+    public void DoCompactSnapshot(StateId snapshotTo)
+    {
+        if (_compactSize <= 1) return;
+
+        long blockNumber = snapshotTo.BlockNumber;
+        if (blockNumber == 0) return;
+
+        int compactSize = (int)Math.Min(blockNumber & -blockNumber, _persistedSnapshotMaxCompactSize);
+        if (compactSize < _minCompactSize) return;
+
+        // We need at least 2 snapshots to compact
+        if (persistedSnapshotRepository.SnapshotCount < 2) return;
+
+        // When compactSize > _compactSize, also produce a persistable snapshot
+        if (compactSize > _compactSize)
+        {
+            long smallStartingBlockNumber = ((blockNumber - 1) / _compactSize) * _compactSize;
+            CompactRange(snapshotTo, smallStartingBlockNumber, _compactSize, isPersistable: true);
+        }
+
+        long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
+        bool isPersistable = compactSize == _compactSize;
+        CompactRange(snapshotTo, startingBlockNumber, compactSize, isPersistable);
+    }
+
+
+    private Histogram _persistedSnapshotSize =
+        Prometheus.Metrics.CreateHistogram("persisted_snapshot_compacted_size", "persisted_snapshot_compacted_size", "size");
+    private Histogram _persistedSnapshotCompactTime =
+        Prometheus.Metrics.CreateHistogram("persisted_snapshot_compact_time", "persisted_snapshot_compact_time", "size");
+
+    private void CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize, bool isPersistable)
+    {
+        using PersistedSnapshotList snapshots = persistedSnapshotRepository.AssembleSnapshotsForCompaction(snapshotTo, startingBlockNumber);
+        if (snapshots.Count < 2) return;
+
+        if (snapshots[0].From.BlockNumber != startingBlockNumber)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Unable to compile persisted snapshots to compact. {snapshots[0].From.BlockNumber} -> {snapshots[snapshots.Count - 1].To.BlockNumber}. Starting block number should be {startingBlockNumber}");
+            return;
+        }
+
+        if (_logger.IsDebug) _logger.Debug($"Compacting {snapshots.Count} persisted snapshots at block {snapshotTo.BlockNumber}, compact size {compactSize}, persistable {isPersistable}");
+
+        StateId from = snapshots[0].From;
+        StateId to = snapshots[snapshots.Count - 1].To;
+
+        // Collect all base snapshot IDs that the compacted result will reference via NodeRefs
+        HashSet<int> referencedIds = new();
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            if (snapshots[i].Type == PersistedSnapshotType.Base)
+            {
+                referencedIds.Add(snapshots[i].Id);
+            }
+            else if (snapshots[i].ReferencedSnapshotIds is int[] ids)
+            {
+                for (int j = 0; j < ids.Length; j++) referencedIds.Add(ids[j]);
+            }
+        }
+
+        int totalSize = 0;
+        for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
+        totalSize += 4096;
+
+        ArenaReservation reservationA = arenaManager.ReserveForWrite(totalSize);
+        ArenaReservation reservationB = arenaManager.ReserveForWrite(totalSize);
+        try
+        {
+            long sw = Stopwatch.GetTimestamp();
+            int len = PersistedSnapshotBuilder.MergeSnapshots(snapshots, reservationA.GetSpan(), reservationB.GetSpan(), out bool resultInA, referencedIds);
+            _persistedSnapshotSize.WithLabels($"size{compactSize}").Observe(len);
+            _persistedSnapshotCompactTime.WithLabels($"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);
+
+            ArenaReservation result = resultInA ? reservationA : reservationB;
+            ArenaReservation temp = resultInA ? reservationB : reservationA;
+            temp.Return();
+
+            result.Size = len;
+            PersistedSnapshot compacted = new(0, from, to, PersistedSnapshotType.Compacted, result);
+            try
+            {
+                PersistedSnapshotUtils.ValidateCompactedPersistedSnapshot(compacted, snapshots, true);
+            }
+            finally
+            {
+                compacted.Dispose();
+            }
+
+            persistedSnapshotRepository.AddCompactedSnapshot(from, to, result, len, referencedIds, isPersistable);
+        }
+        catch
+        {
+            reservationA.Return();
+            reservationB.Return();
+            throw;
+        }
+
+        Metrics.PersistedSnapshotCompactions++;
+        Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;
+        Metrics.PersistedSnapshotMemory = persistedSnapshotRepository.BaseSnapshotMemory;
+        Metrics.CompactedPersistedSnapshotMemory = persistedSnapshotRepository.CompactedSnapshotMemory;
+    }
+}

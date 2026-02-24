@@ -439,6 +439,13 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         return Truncate(otherPath.Length) == otherPath;
     }
 
+    public readonly void EncodeWith3Byte(Span<byte> buffer)
+    {
+        Path.Bytes[..3].CopyTo(buffer);
+        byte lengthAsByte = (byte)Length;
+        buffer[3 - 1] = (byte)((buffer[3 - 1] & 0xf0) | (lengthAsByte & 0x0f));
+    }
+
     public readonly void EncodeWith8Byte(Span<byte> buffer)
     {
         Path.Bytes[..8].CopyTo(buffer);
@@ -446,6 +453,24 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
 
         // Pack length into lower 4 bits of last byte (upper 4 bits contain path data)
         buffer[8 - 1] = (byte)((buffer[8 - 1] & 0xf0) | (lengthAsByte & 0x0f));
+    }
+
+    public static TreePath DecodeWith3Byte(ReadOnlySpan<byte> buffer)
+    {
+        Span<byte> pathBytes = stackalloc byte[32];
+        buffer[..3].CopyTo(pathBytes);
+        int length = pathBytes[2] & 0x0f;
+        pathBytes[2] = (byte)(pathBytes[2] & 0xf0);
+        return new TreePath(new ValueHash256(pathBytes), length);
+    }
+
+    public static TreePath DecodeWith8Byte(ReadOnlySpan<byte> buffer)
+    {
+        Span<byte> pathBytes = stackalloc byte[32];
+        buffer[..8].CopyTo(pathBytes);
+        int length = pathBytes[7] & 0x0f;
+        pathBytes[7] = (byte)(pathBytes[7] & 0xf0);
+        return new TreePath(new ValueHash256(pathBytes), length);
     }
 }
 

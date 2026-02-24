@@ -16,6 +16,10 @@ public static class Metrics
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }
 
+    [GaugeMetric]
+    [Description("Average snapshot bundle size in terms of num of snapshot")]
+    public static long SnapshotBundlePersistedSnapshotSize { get; set; }
+
     [DetailedMetric]
     [Description("Time for persistence job")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
@@ -89,4 +93,37 @@ public static class Metrics
     [Description("Time spend compaction snapshots for mid compaction")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 1, LabelNames = [])]
     public static IMetricObserver MidCompactTime { get; set; } = new NoopMetricObserver();
+
+    // --- Persisted snapshot metrics ---
+
+    [GaugeMetric]
+    [Description("Number of persisted snapshots on disk")]
+    public static long PersistedSnapshotCount { get; set; }
+
+    [GaugeMetric]
+    [Description("Estimated disk usage of persisted snapshots in bytes")]
+    public static long PersistedSnapshotDiskBytes { get; set; }
+
+    [GaugeMetric]
+    [Description("Estimated memory used by base persisted snapshots in bytes")]
+    public static long PersistedSnapshotMemory { get; set; }
+
+    [GaugeMetric]
+    [Description("Estimated memory used by compacted persisted snapshots in bytes")]
+    public static long CompactedPersistedSnapshotMemory { get; set; }
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Number of persisted snapshot compactions performed")]
+    public static long PersistedSnapshotCompactions { get; set; }
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Number of persisted snapshot file writes")]
+    public static long PersistedSnapshotWrites { get; set; }
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Number of persisted snapshot prunes")]
+    public static long PersistedSnapshotPrunes { get; set; }
 }

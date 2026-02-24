@@ -208,31 +208,11 @@ public class SnapshotCompactor : ISnapshotCompactor
         // Storage tries
         compactTask.Add(Task.Run(() =>
         {
-            using PooledSet<Hash256AsKey> addressHashToClear = new();
-
             for (int i = 0; i < snapshots.Count; i++)
             {
+                // Its fine to not check for selfdestruct here. The trie is traversed so it will skip orphaned node.
+                // plus selfdestruct does not work anymore.
                 Snapshot knownState = snapshots[i];
-
-                addressHashToClear.Clear();
-                foreach ((AddressAsKey address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
-                {
-                    if (!isNewAccount) addressHashToClear.Add(address.Value.ToAccountPath.ToCommitment());
-                }
-
-                if (addressHashToClear.Count > 0)
-                {
-                    // Clear
-                    foreach (((Hash256AsKey Address, TreePath) key, TrieNode? _) in storageNodes)
-                    {
-                        if (addressHashToClear.Contains(key.Address))
-                        {
-                            storageNodes.Remove(key, out _);
-                        }
-                    }
-
-                }
-
                 storageNodes.AddOrUpdateRange(knownState.StorageNodes);
             }
         }));
