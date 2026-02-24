@@ -5,7 +5,6 @@
 #pragma warning disable SYSLIB1054 // Use 'LibraryImportAttribute' instead of 'DllImportAttribute' to generate P/Invoke marshalling code at compile time
 
 using System.Runtime.InteropServices;
-using static Microsoft.FSharp.Core.ByRefKinds;
 
 namespace Nethermind.Stateless.ZiskGuest;
 
@@ -13,6 +12,9 @@ public static unsafe partial class Zisk
 {
     public static class Precompiles
     {
+        [DllImport("__Internal")]
+        public static extern byte bls12_381_g2_add_c(byte* ret, byte* a, byte* b);
+
         [DllImport("__Internal")]
         public static extern byte bls12_381_pairing_check_c(byte* pairs, nuint num_pairs);
 
