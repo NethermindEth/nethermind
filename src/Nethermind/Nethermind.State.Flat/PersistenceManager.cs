@@ -254,7 +254,10 @@ public class PersistenceManager(
             }
 
             _trieNodesSortBuffer.Clear();
-            _trieNodesSortBuffer.AddRange(snapshot.StateNodeKeys.Select<TreePath, (Hash256AsKey, TreePath)>((path) => (new Hash256AsKey(Hash256.Zero), path)));
+            foreach (TreePath path in snapshot.StateNodeKeys)
+            {
+                _trieNodesSortBuffer.Add((new Hash256AsKey(Hash256.Zero), path));
+            }
             _trieNodesSortBuffer.Sort();
 
             long stateNodesSize = 0;
