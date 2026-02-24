@@ -13,13 +13,18 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcUrl : IEquatable<JsonRpcUrl>, ICloneable
     {
+        private int? _hashCode;
         public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules, long? maxRequestBodySize = null)
         {
+            string[] sortedModules = enabledModules
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
             Scheme = scheme;
             Host = host;
             Port = port;
             RpcEndpoint = rpcEndpoint;
-            EnabledModules = new HashSet<string>(enabledModules, StringComparer.OrdinalIgnoreCase);
+            EnabledModules = new HashSet<string>(sortedModules, StringComparer.OrdinalIgnoreCase);
             IsAuthenticated = isAuthenticated;
             MaxRequestBodySize = maxRequestBodySize;
         }
@@ -78,11 +83,11 @@ namespace Nethermind.JsonRpc
 
         public long? MaxRequestBodySize { get; }
         public bool IsAuthenticated { get; }
-        public string Scheme { get; set; }
-        public string Host { get; set; }
-        public int Port { get; set; }
-        public RpcEndpoint RpcEndpoint { get; set; }
-        public IReadOnlySet<string> EnabledModules { get; set; }
+        public string Scheme { get; }
+        public string Host { get; }
+        public int Port { get; }
+        public RpcEndpoint RpcEndpoint { get; }
+        public IReadOnlySet<string> EnabledModules { get; }
 
         public bool IsModuleEnabled(string moduleName) => EnabledModules.Contains(moduleName);
 
@@ -99,8 +104,7 @@ namespace Nethermind.JsonRpc
                    Port == other.Port &&
                    RpcEndpoint == other.RpcEndpoint &&
                    IsAuthenticated == other.IsAuthenticated &&
-                   EnabledModules.OrderBy(static t => t).SequenceEqual(other.EnabledModules.OrderBy(static t => t),
-                       StringComparer.OrdinalIgnoreCase);
+                   EnabledModules.SetEquals(other.EnabledModules);
         }
 
         public override bool Equals(object other)
@@ -113,10 +117,21 @@ namespace Nethermind.JsonRpc
 
             return other is JsonRpcUrl url && Equals(url);
         }
+        public override int GetHashCode()
+        {
+            if (_hashCode.HasValue) return _hashCode.Value;
 
-        public override int GetHashCode() => HashCode.Combine(Scheme, Host, Port, RpcEndpoint, EnabledModules as IStructuralEquatable);
+            int modulesHash = 0;
+            foreach (string m in EnabledModules)
+            {
+                modulesHash = HashCode.Combine(modulesHash, StringComparer.OrdinalIgnoreCase.GetHashCode(m));
+            }
+
+            int hash = HashCode.Combine(Scheme, Host, Port, RpcEndpoint, IsAuthenticated, modulesHash);
+            _hashCode = hash;
+            return hash;
+        }
         public object Clone() => new JsonRpcUrl(Scheme, Host, Port, RpcEndpoint, IsAuthenticated, EnabledModules.ToArray());
         public override string ToString() => $"{Scheme}://{Host}:{Port}";
     }
 }
-
