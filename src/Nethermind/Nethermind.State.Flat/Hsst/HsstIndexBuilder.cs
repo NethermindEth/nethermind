@@ -128,20 +128,29 @@ public ref struct HsstIndexBuilder<TWriter>
         }
 
         // Auto-select KeyType: all same non-zero length -> Uniform, else Variable
+        // When max separator length <= 3, prefer UniformWithLen over Variable since
+        // Variable has at least 3 bytes overhead per entry (2-byte offset + LEB128 length).
         int keyType = 0;
         int keySlotSize = 0;
         if (entries.Length > 0)
         {
             bool allSameLen = true;
             int firstLen = entries[0].SepLen;
+            int maxLen = firstLen;
             for (int i = 1; i < entries.Length; i++)
             {
-                if (entries[i].SepLen != firstLen) { allSameLen = false; break; }
+                if (entries[i].SepLen != firstLen) allSameLen = false;
+                if (entries[i].SepLen > maxLen) maxLen = entries[i].SepLen;
             }
             if (allSameLen && firstLen > 0)
             {
                 keyType = 1; // Uniform
                 keySlotSize = firstLen;
+            }
+            else if (maxLen <= 3)
+            {
+                keyType = 2; // UniformWithLen
+                keySlotSize = maxLen + 1;
             }
         }
 
@@ -199,8 +208,14 @@ public ref struct HsstIndexBuilder<TWriter>
         }
 
         // Auto-select KeyType
+        // When max separator length <= 3, prefer UniformWithLen over Variable since
+        // Variable has at least 3 bytes overhead per entry (2-byte offset + LEB128 length).
         int keyType;
         int keySlotSize;
+        int maxSepLen = 0;
+        for (int i = 0; i < childCount; i++)
+            if (sepLengths[i] > maxSepLen) maxSepLen = sepLengths[i];
+
         bool hasEmptyFirst = sepLengths[0] == 0;
         if (!hasEmptyFirst)
         {
@@ -211,6 +226,7 @@ public ref struct HsstIndexBuilder<TWriter>
                 if (sepLengths[i] != firstLen) { allSameLen = false; break; }
             }
             if (allSameLen && firstLen > 0) { keyType = 1; keySlotSize = firstLen; }
+            else if (maxSepLen <= 3) { keyType = 2; keySlotSize = maxSepLen + 1; }
             else { keyType = 0; keySlotSize = 0; }
         }
         else if (childCount > 1)
@@ -222,6 +238,7 @@ public ref struct HsstIndexBuilder<TWriter>
                 if (sepLengths[i] != secondLen) { allSameLenExceptFirst = false; break; }
             }
             if (allSameLenExceptFirst && secondLen > 0) { keyType = 2; keySlotSize = secondLen + 1; }
+            else if (maxSepLen <= 3) { keyType = 2; keySlotSize = maxSepLen + 1; }
             else { keyType = 0; keySlotSize = 0; }
         }
         else { keyType = 0; keySlotSize = 0; }
