@@ -100,6 +100,11 @@ namespace Nethermind.Synchronization.Test
             peerInfo.IsAllocated(_contexts).Should().BeFalse();
             peerInfo.TryAllocate(_contexts);
             peerInfo.IsAllocated(_contexts).Should().BeTrue();
+            // With default maxAllocationsPerContext = 2, we can still allocate again
+            peerInfo.CanBeAllocated(_contexts).Should().BeTrue();
+            // Allocate a second time
+            peerInfo.TryAllocate(_contexts).Should().BeTrue();
+            // Now we've hit the limit
             peerInfo.CanBeAllocated(_contexts).Should().BeFalse();
         }
 
@@ -123,9 +128,10 @@ namespace Nethermind.Synchronization.Test
             peerInfo.IsAllocated(AllocationContexts.Bodies).Should().BeTrue();
             peerInfo.IsAllocated(AllocationContexts.Headers).Should().BeFalse();
             peerInfo.IsAllocated(AllocationContexts.Receipts).Should().BeTrue();
-            peerInfo.CanBeAllocated(AllocationContexts.Bodies).Should().BeFalse();
+            // With multiple allocations per context, we can still allocate again (up to the limit)
+            peerInfo.CanBeAllocated(AllocationContexts.Bodies).Should().BeTrue();
             peerInfo.CanBeAllocated(AllocationContexts.Headers).Should().BeTrue();
-            peerInfo.CanBeAllocated(AllocationContexts.Receipts).Should().BeFalse();
+            peerInfo.CanBeAllocated(AllocationContexts.Receipts).Should().BeTrue();
 
             peerInfo.Free(AllocationContexts.Receipts);
             peerInfo.IsAllocated(AllocationContexts.Receipts).Should().BeFalse();
