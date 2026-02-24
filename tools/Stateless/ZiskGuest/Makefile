@@ -74,29 +74,36 @@ DOCKER_RUN := docker run --platform linux/amd64 --rm \
   -w $(SRC_DIR) \
   --mount type=bind,source="$(ARTIFACTS_DIR)",target=$(BIN_DIR) \
   --mount type=bind,source="$(MAKEFILE_DIR)",target=$(SRC_DIR) \
-  bflat-ricsv64-local
+  bflat-riscv64-local
 
 build-docker-bflat:
-	docker build --platform linux/amd64 -f $(MAKEFILE_DIR)/Dockerfile.bflat -t bflat-ricsv64-local $(MAKEFILE_DIR)
+	docker build --platform linux/amd64 -f $(MAKEFILE_DIR)/Dockerfile.bflat -t bflat-riscv64-local $(MAKEFILE_DIR)
 
 build-dotnet:
 	dotnet build -c release -p:EnableZkvm=true $(MAKEFILE_DIR)/ZiskGuest.csproj
 
-build-zisk: build-docker-bflat
+build-zisk: clean build-dotnet build-docker-bflat
 	$(DOCKER_RUN) $(BFLAT_BUILD) --libc zisk $(BFLAT_REFS) $(BFLAT_SRC) \
-    --extlib https://github.com/NethermindEth/bflat-libziskos:pre-develop-0.16.0
+		--extlib https://github.com/NethermindEth/bflat-libziskos:pre-develop-0.16.0
 	mkdir -p $(MAKEFILE_DIR)/bin && \
-    mv -f $(MAKEFILE_DIR)/Program.patched $(MAKEFILE_DIR)/bin/nethermind && \
-    rm -f $(MAKEFILE_DIR)/Program $(MAKEFILE_DIR)/Program.o
+		mv -f $(MAKEFILE_DIR)/Program.patched $(MAKEFILE_DIR)/bin/nethermind && \
+		rm -f $(MAKEFILE_DIR)/Program $(MAKEFILE_DIR)/Program.o
 
-build-zisk-sim: build-docker-bflat
+build-zisk-sim: clean build-dotnet build-docker-bflat
 	$(DOCKER_RUN) $(BFLAT_BUILD) --libc zisk_sim $(BFLAT_REFS) $(BFLAT_SRC)
 	mkdir -p $(MAKEFILE_DIR)/bin && \
-    mv -f $(MAKEFILE_DIR)/Program $(MAKEFILE_DIR)/bin/nethermind && \
-    rm -f $(MAKEFILE_DIR)/Program.o
+		mv -f $(MAKEFILE_DIR)/Program $(MAKEFILE_DIR)/bin/nethermind && \
+		rm -f $(MAKEFILE_DIR)/Program.o
+
+clean:
+	rm -rf \
+		$(MAKEFILE_DIR)/bin/** \
+		$(MAKEFILE_DIR)/Program \
+		$(MAKEFILE_DIR)/Program.patched \
+		$(MAKEFILE_DIR)/Program.o
 
 run-zisk: build-zisk
 	docker build --platform linux/amd64 -f $(MAKEFILE_DIR)/Dockerfile.zisk -t zisk $(MAKEFILE_DIR)
 	docker run --rm -it -e RUST_BACKTRACE=full zisk ziskemu -e /n/nethermind
 
-.PHONY: build-docker build-dotnet build-zisk build-zisk-sim run-zisk
+.PHONY: build-docker-bflat build-dotnet build-zisk build-zisk-sim clean run-zisk
