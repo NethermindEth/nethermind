@@ -53,7 +53,7 @@ public class EraImporter(
         if (to == 0) to = long.MaxValue;
         if (to != long.MaxValue && lastBlockInStore < to)
         {
-            throw new EraImportException($"The directory given for import '{src}' have highest block number {lastBlockInStore} which is lower then last requested block {to}.");
+            throw new EraImportException($"The directory given for import '{src}' have highest block number {lastBlockInStore} which is lower than last requested block {to}.");
         }
         if (to == long.MaxValue)
         {
@@ -67,7 +67,7 @@ public class EraImporter(
         }
         else if (from < firstBlockInStore)
         {
-            throw new EraImportException($"The directory given for import '{src}' have lowest block number {firstBlockInStore} which is lower then first requested block {from}.");
+            throw new EraImportException($"The directory given for import '{src}' have lowest block number {firstBlockInStore} which is higher than first requested block {from}.");
         }
         if (from > to && to != 0)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to})");
