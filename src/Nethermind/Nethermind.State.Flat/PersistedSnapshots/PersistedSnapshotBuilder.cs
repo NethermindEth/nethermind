@@ -17,7 +17,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
 /// Builds columnar HSST byte data from an in-memory <see cref="Snapshot"/>.
-/// The outer HSST has 9 column entries (tags 0x00-0x08), each containing an inner HSST.
+/// The outer HSST has 7 column entries, each containing an inner HSST.
 /// Inner HSST keys are the entity keys without the tag prefix.
 /// </summary>
 public static class PersistedSnapshotBuilder
@@ -34,17 +34,11 @@ public static class PersistedSnapshotBuilder
             // Column 0x00: Metadata
             WriteMetadataColumn(ref outer, snapshot);
 
-            // Column 0x01: Accounts
-            WriteAccountsColumn(ref outer, snapshot);
-
-            // Column 0x02: Self-destruct
-            WriteSelfDestructColumn(ref outer, snapshot);
+            // Column 0x01: Unified account column (accounts, self-destruct, storage)
+            WriteAccountColumn(ref outer, snapshot);
 
             // Column 0x03: State nodes (compact, path length 6-15)
             WriteStateNodesColumnCompact(ref outer, snapshot);
-
-            // Column 0x04: Storage slots
-            WriteStorageColumn(ref outer, snapshot);
 
             // Column 0x05: State top nodes (path length 0-5)
             WriteStateTopNodesColumn(ref outer, snapshot);
@@ -118,52 +112,31 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.MetadataTag);
     }
 
-    private static void WriteAccountsColumn<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
+    private static void WriteAccountColumn<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
     {
-        // Sort accounts
-        List<(AddressAsKey Key, Account? Value)> accounts = new();
+        // Collect all unique addresses across accounts, self-destructs, and storages
+        // Also build lookup dictionaries for direct access
+        SortedSet<byte[]> uniqueAddresses = new(Bytes.Comparer);
+        Dictionary<AddressAsKey, Account?> accountLookup = new();
         foreach (KeyValuePair<AddressAsKey, Account?> kv in snapshot.Accounts)
         {
-            accounts.Add((kv.Key, kv.Value));
+            uniqueAddresses.Add(kv.Key.Value.Bytes.ToArray());
+            accountLookup[kv.Key] = kv.Value;
         }
-        accounts.Sort((a, b) => a.Key.Value.Bytes.SequenceCompareTo(b.Key.Value.Bytes));
-
-        // Begin outer value write for accounts column
-        ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using (HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 2))
+        Dictionary<AddressAsKey, bool> sdLookup = new();
+        foreach (KeyValuePair<AddressAsKey, bool> kv in snapshot.SelfDestructedStorageAddresses)
         {
-            byte[] rlpBuffer = new byte[256];
-            RlpStream rlpStream = new(rlpBuffer);
-
-            foreach ((AddressAsKey key, Account? value) in accounts)
-            {
-                if (value is null)
-                {
-                    inner.Add(key.Value.Bytes, ReadOnlySpan<byte>.Empty);
-                }
-                else
-                {
-                    int len = AccountDecoder.Slim.GetLength(value);
-                    rlpStream.Reset();
-                    AccountDecoder.Slim.Encode(rlpStream, value);
-                    inner.Add(key.Value.Bytes, rlpBuffer.AsSpan(0, len));
-                }
-            }
-
-            inner.Build();
-            outer.FinishValueWrite(PersistedSnapshot.AccountTag);
+            uniqueAddresses.Add(kv.Key.Value.Bytes.ToArray());
+            sdLookup[kv.Key] = kv.Value;
         }
-    }
-
-    private static void WriteStorageColumn<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
-    {
-        // Sort storage by (Address, Slot)
-        List<((AddressAsKey Addr, UInt256 Slot) Key, SlotValue? Value)> storages = new();
         foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in snapshot.Storages)
-        {
-            storages.Add((kv.Key, kv.Value));
-        }
-        storages.Sort((a, b) =>
+            uniqueAddresses.Add(kv.Key.Item1.Value.Bytes.ToArray());
+
+        // Pre-sort storages by (Address, Slot) for efficient iteration
+        List<((AddressAsKey Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages = new();
+        foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in snapshot.Storages)
+            sortedStorages.Add((kv.Key, kv.Value));
+        sortedStorages.Sort((a, b) =>
         {
             int cmp = a.Key.Addr.Value.Bytes.SequenceCompareTo(b.Key.Addr.Value.Bytes);
             if (cmp != 0) return cmp;
@@ -173,80 +146,96 @@ public static class PersistedSnapshotBuilder
         const int slotPrefixLength = 30;
         const int slotSuffixLength = 2;
 
-        // Address-level HSST: Address(20) -> prefix HSST(SlotPrefix(30) -> suffix HSST(SlotSuffix(2) -> SlotValue))
+        // Address-level HSST
         ref TWriter addressWriter = ref outer.BeginValueWrite();
         using (HsstBuilder<TWriter> addressLevel = new(ref addressWriter, minSeparatorLength: 2))
         {
+            byte[] rlpBuffer = new byte[256];
+            RlpStream rlpStream = new(rlpBuffer);
             byte[] slotKey = new byte[32];
-            int i = 0;
-            while (i < storages.Count)
+            int storageIdx = 0;
+
+            foreach (byte[] addrBytes in uniqueAddresses)
             {
-                Address currentAddr = storages[i].Key.Addr;
+                Address address = new(addrBytes);
 
-                ref TWriter prefixWriter = ref addressLevel.BeginValueWrite();
-                using HsstBuilder<TWriter> prefixLevel = new(ref prefixWriter, minSeparatorLength: 2);
+                // Begin per-address HSST
+                ref TWriter perAddrWriter = ref addressLevel.BeginValueWrite();
+                using HsstBuilder<TWriter> perAddr = new(ref perAddrWriter);
 
-                while (i < storages.Count && storages[i].Key.Addr == currentAddr)
+                // Sub-tag 0x01: Slots
+                bool hasStorage = storageIdx < sortedStorages.Count &&
+                    sortedStorages[storageIdx].Key.Addr.Value.Bytes.SequenceEqual(addrBytes);
+                if (hasStorage)
                 {
-                    storages[i].Key.Slot.ToBigEndian(slotKey.AsSpan());
-                    byte[] currentPrefix = slotKey[..slotPrefixLength].ToArray();
+                    ref TWriter slotWriter = ref perAddr.BeginValueWrite();
+                    using HsstBuilder<TWriter> prefixLevel = new(ref slotWriter, minSeparatorLength: 2);
 
-                    ref TWriter suffixWriter = ref prefixLevel.BeginValueWrite();
-                    using HsstBuilder<TWriter> suffixLevel = new(ref suffixWriter, minSeparatorLength: 2, inlineValues: true);
-
-                    while (i < storages.Count && storages[i].Key.Addr == currentAddr)
+                    while (storageIdx < sortedStorages.Count &&
+                        sortedStorages[storageIdx].Key.Addr.Value.Bytes.SequenceEqual(addrBytes))
                     {
-                        storages[i].Key.Slot.ToBigEndian(slotKey.AsSpan());
-                        if (!slotKey.AsSpan(0, slotPrefixLength).SequenceEqual(currentPrefix))
-                            break;
+                        sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey.AsSpan());
+                        byte[] currentPrefix = slotKey[..slotPrefixLength].ToArray();
 
-                        SlotValue? value = storages[i].Value;
-                        if (value.HasValue)
+                        ref TWriter suffixWriter = ref prefixLevel.BeginValueWrite();
+                        using HsstBuilder<TWriter> suffixLevel = new(ref suffixWriter, minSeparatorLength: 2, inlineValues: true);
+
+                        while (storageIdx < sortedStorages.Count &&
+                            sortedStorages[storageIdx].Key.Addr.Value.Bytes.SequenceEqual(addrBytes))
                         {
-                            ReadOnlySpan<byte> withoutLeadingZeros = value.Value.AsReadOnlySpan.WithoutLeadingZeros();
-                            suffixLevel.Add(slotKey.AsSpan(slotPrefixLength, slotSuffixLength), withoutLeadingZeros);
+                            sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey.AsSpan());
+                            if (!slotKey.AsSpan(0, slotPrefixLength).SequenceEqual(currentPrefix))
+                                break;
+
+                            SlotValue? value = sortedStorages[storageIdx].Value;
+                            if (value.HasValue)
+                            {
+                                ReadOnlySpan<byte> withoutLeadingZeros = value.Value.AsReadOnlySpan.WithoutLeadingZeros();
+                                suffixLevel.Add(slotKey.AsSpan(slotPrefixLength, slotSuffixLength), withoutLeadingZeros);
+                            }
+                            else
+                            {
+                                suffixLevel.Add(slotKey.AsSpan(slotPrefixLength, slotSuffixLength), ReadOnlySpan<byte>.Empty);
+                            }
+                            storageIdx++;
                         }
-                        else
-                        {
-                            suffixLevel.Add(slotKey.AsSpan(slotPrefixLength, slotSuffixLength), ReadOnlySpan<byte>.Empty);
-                        }
-                        i++;
+
+                        suffixLevel.Build();
+                        prefixLevel.FinishValueWrite(currentPrefix);
                     }
 
-                    suffixLevel.Build();
-                    prefixLevel.FinishValueWrite(currentPrefix);
+                    prefixLevel.Build();
+                    perAddr.FinishValueWrite(PersistedSnapshot.SlotSubTag);
                 }
 
-                prefixLevel.Build();
-                addressLevel.FinishValueWrite(currentAddr.Bytes);
+                // Sub-tag 0x02: Self-destruct
+                if (sdLookup.TryGetValue(address, out bool sdValue))
+                {
+                    perAddr.Add(PersistedSnapshot.SelfDestructSubTag, sdValue ? [0x01] : ReadOnlySpan<byte>.Empty);
+                }
+
+                // Sub-tag 0x03: Account
+                if (accountLookup.TryGetValue(address, out Account? account))
+                {
+                    if (account is null)
+                    {
+                        perAddr.Add(PersistedSnapshot.AccountSubTag, ReadOnlySpan<byte>.Empty);
+                    }
+                    else
+                    {
+                        int len = AccountDecoder.Slim.GetLength(account);
+                        rlpStream.Reset();
+                        AccountDecoder.Slim.Encode(rlpStream, account);
+                        perAddr.Add(PersistedSnapshot.AccountSubTag, rlpBuffer.AsSpan(0, len));
+                    }
+                }
+
+                perAddr.Build();
+                addressLevel.FinishValueWrite(addrBytes);
             }
 
             addressLevel.Build();
-            outer.FinishValueWrite(PersistedSnapshot.StorageTag);
-        }
-    }
-
-    private static void WriteSelfDestructColumn<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
-    {
-        // Sort self-destructs
-        List<(AddressAsKey Key, bool Value)> selfDestructs = new();
-        foreach (KeyValuePair<AddressAsKey, bool> kv in snapshot.SelfDestructedStorageAddresses)
-        {
-            selfDestructs.Add((kv.Key, kv.Value));
-        }
-        selfDestructs.Sort((a, b) => a.Key.Value.Bytes.SequenceCompareTo(b.Key.Value.Bytes));
-
-        ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using (HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 2))
-        {
-            ReadOnlySpan<byte> trueValue = new byte[] { 0x01 };
-            foreach ((AddressAsKey key, bool value) in selfDestructs)
-            {
-                inner.Add(key.Value.Bytes, value ? trueValue : ReadOnlySpan<byte>.Empty);
-            }
-
-            inner.Build();
-            outer.FinishValueWrite(PersistedSnapshot.SelfDestructTag);
+            outer.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
         }
     }
 
@@ -517,9 +506,8 @@ public static class PersistedSnapshotBuilder
     }
 
     /// <summary>
-    /// Merge two columnar HSST snapshots with self-destruct awareness.
-    ///   - SelfDestruct column: TryAdd semantics (newer=empty->empty, newer=0x01->older if exists)
-    ///   - Storage column: destructed addresses' older storage is discarded
+    /// Merge two columnar HSST snapshots.
+    ///   - Account column (0x01): unified per-address merge with self-destruct awareness
     ///   - Trie node columns (0x03,0x05,0x06): emit NodeRef instead of copying RLP
     ///   - StorageNodes columns (0x07,0x08): nested merge with NodeRef for inner values
     /// </summary>
@@ -531,26 +519,12 @@ public static class PersistedSnapshotBuilder
         Hsst.Hsst olderOuter = new(olderData);
         Hsst.Hsst newerOuter = new(newerData);
 
-        // Pre-extract destructed addresses from newer self-destruct column
-        bool hasSdTag = newerOuter.TryGet(PersistedSnapshot.SelfDestructTag, out ReadOnlySpan<byte> newerSd);
-        Debug.Assert(hasSdTag, $"Missing required tag 0x{PersistedSnapshot.SelfDestructTag[0]:X2} in persisted snapshot");
-        HashSet<byte[]> destructedAddresses = new(Bytes.EqualityComparer);
-        Hsst.Hsst sdHsst = new(newerSd);
-        using Hsst.Hsst.Enumerator sdEnum = sdHsst.GetEnumerator();
-        while (sdEnum.MoveNext())
-        {
-            if (sdEnum.Current.Value.IsEmpty) // destructed
-                destructedAddresses.Add(sdEnum.Current.Key.ToArray());
-        }
-
         SpanBufferWriter outerWriter = new(output);
         using HsstBuilder<SpanBufferWriter> outerBuilder = new(ref outerWriter);
         byte[][] tags = [
             PersistedSnapshot.MetadataTag,
-            PersistedSnapshot.AccountTag,
-            PersistedSnapshot.SelfDestructTag,
+            PersistedSnapshot.AccountColumnTag,
             PersistedSnapshot.StateNodeTag,
-            PersistedSnapshot.StorageTag,
             PersistedSnapshot.StateTopNodesTag,
             PersistedSnapshot.StateNodeFallbackTag,
             PersistedSnapshot.StorageNodeTag,
@@ -568,13 +542,10 @@ public static class PersistedSnapshotBuilder
             int columnLen = tag[0] switch
             {
                 0x00 => MetadataMergeWithCompactedFlags(olderColumn, newerColumn, valueWriter.GetSpan(0), referencedIds),
-                0x01 => StreamingMerge(olderColumn, newerColumn, valueWriter.GetSpan(0), 0, minSeparatorLength: 2),
-                0x02 => SelfDestructMerge(olderColumn, newerColumn, valueWriter.GetSpan(0), minSeparatorLength: 2),
+                0x01 => MergeAccountColumn(olderColumn, newerColumn, valueWriter.GetSpan(0)),
                 0x03 => StreamingMergeWithNodeRef(olderColumn, newerColumn, valueWriter.GetSpan(0),
                     olderSnapshotId, olderData, newerSnapshotId, newerData,
                     olderHasNodeRefs, newerHasNodeRefs, minSeparatorLength: 8, inlineValues: true),
-                0x04 => NestedStreamingMergeWithSelfDestruct(olderColumn, newerColumn, valueWriter.GetSpan(0), destructedAddresses,
-                    outerMinSep: 2, innerMinSep: 2, innerInline: true),
                 0x05 => StreamingMergeWithNodeRef(olderColumn, newerColumn, valueWriter.GetSpan(0),
                     olderSnapshotId, olderData, newerSnapshotId, newerData,
                     olderHasNodeRefs, newerHasNodeRefs, minSeparatorLength: 3, inlineValues: true),
@@ -665,6 +636,143 @@ public static class PersistedSnapshotBuilder
         }
 
         builder.Build();
+        return writer.Written;
+    }
+
+    /// <summary>
+    /// Merge unified account columns. Each address maps to a per-address HSST with sub-tags:
+    ///   0x01 (SlotSubTag): nested storage HSST
+    ///   0x02 (SelfDestructSubTag): SD flag
+    ///   0x03 (AccountSubTag): account RLP
+    /// Merge rules per sub-tag:
+    ///   SlotSubTag: if newer has SelfDestructSubTag with empty value (destructed), use newer slots only; otherwise nested merge
+    ///   SelfDestructSubTag: TryAdd semantics (newer=empty→empty, newer=0x01→older if exists)
+    ///   AccountSubTag: newer wins
+    /// </summary>
+    internal static int MergeAccountColumn(ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output)
+    {
+        Hsst.Hsst olderHsst = new(older);
+        Hsst.Hsst newerHsst = new(newer);
+
+        SpanBufferWriter writer = new(output);
+        using HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength: 2);
+        using Hsst.Hsst.Enumerator olderEnum = olderHsst.GetEnumerator();
+        using Hsst.Hsst.Enumerator newerEnum = newerHsst.GetEnumerator();
+
+        bool hasOlder = olderEnum.MoveNext();
+        bool hasNewer = newerEnum.MoveNext();
+
+        while (hasOlder && hasNewer)
+        {
+            ReadOnlySpan<byte> olderKey = olderEnum.Current.Key;
+            ReadOnlySpan<byte> newerKey = newerEnum.Current.Key;
+
+            int cmp = olderKey.SequenceCompareTo(newerKey);
+            if (cmp < 0)
+            {
+                builder.Add(olderKey, olderEnum.Current.Value);
+                hasOlder = olderEnum.MoveNext();
+            }
+            else if (cmp > 0)
+            {
+                builder.Add(newerKey, newerEnum.Current.Value);
+                hasNewer = newerEnum.MoveNext();
+            }
+            else
+            {
+                // Same address: merge per-address sub-HSSTs
+                ref SpanBufferWriter perAddrWriter = ref builder.BeginValueWrite();
+                int len = MergePerAddressHsst(olderEnum.Current.Value, newerEnum.Current.Value, perAddrWriter.GetSpan(0));
+                perAddrWriter.Advance(len);
+                builder.FinishValueWrite(newerKey);
+                hasOlder = olderEnum.MoveNext();
+                hasNewer = newerEnum.MoveNext();
+            }
+        }
+
+        while (hasOlder)
+        {
+            builder.Add(olderEnum.Current.Key, olderEnum.Current.Value);
+            hasOlder = olderEnum.MoveNext();
+        }
+
+        while (hasNewer)
+        {
+            builder.Add(newerEnum.Current.Key, newerEnum.Current.Value);
+            hasNewer = newerEnum.MoveNext();
+        }
+
+        builder.Build();
+        return writer.Written;
+    }
+
+    /// <summary>
+    /// Merge two per-address sub-HSSTs (sub-tags 0x01, 0x02, 0x03).
+    /// </summary>
+    private static int MergePerAddressHsst(ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output)
+    {
+        Hsst.Hsst olderHsst = new(older);
+        Hsst.Hsst newerHsst = new(newer);
+
+        // Check if newer has self-destruct with empty value (address was destructed)
+        bool isDestructed = newerHsst.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> newerSdValue) && newerSdValue.IsEmpty;
+
+        SpanBufferWriter writer = new(output);
+        using HsstBuilder<SpanBufferWriter> perAddrBuilder = new(ref writer);
+
+        // Sub-tag 0x01: Slots
+        bool olderHasSlots = olderHsst.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> olderSlots);
+        bool newerHasSlots = newerHsst.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> newerSlots);
+        if (olderHasSlots || newerHasSlots)
+        {
+            if (isDestructed || !olderHasSlots)
+            {
+                // Destructed or only newer has slots: use newer only
+                if (newerHasSlots)
+                    perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, newerSlots);
+            }
+            else if (!newerHasSlots)
+            {
+                // Only older has slots
+                perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, olderSlots);
+            }
+            else
+            {
+                // Both have slots, not destructed: merge prefix-level HSSTs
+                ref SpanBufferWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
+                int slotLen = NestedStreamingMerge(olderSlots, newerSlots, slotWriter.GetSpan(0),
+                    outerMinSep: 2, innerMinSep: 2, innerInline: true);
+                slotWriter.Advance(slotLen);
+                perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
+            }
+        }
+
+        // Sub-tag 0x02: Self-destruct
+        bool olderHasSd = olderHsst.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> olderSdValue);
+        if (isDestructed)
+        {
+            // newer=empty (destructed) → always empty
+            perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, ReadOnlySpan<byte>.Empty);
+        }
+        else if (newerHsst.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> newerSdVal))
+        {
+            // newer=0x01 (new account) → use older if exists (TryAdd)
+            perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, olderHasSd ? olderSdValue : newerSdVal);
+        }
+        else if (olderHasSd)
+        {
+            perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, olderSdValue);
+        }
+
+        // Sub-tag 0x03: Account — newer wins
+        bool olderHasAccount = olderHsst.TryGet(PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> olderAccount);
+        bool newerHasAccount = newerHsst.TryGet(PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> newerAccount);
+        if (newerHasAccount)
+            perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, newerAccount);
+        else if (olderHasAccount)
+            perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, olderAccount);
+
+        perAddrBuilder.Build();
         return writer.Written;
     }
 

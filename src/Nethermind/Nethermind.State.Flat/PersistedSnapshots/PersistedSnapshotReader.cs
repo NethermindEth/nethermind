@@ -24,24 +24,70 @@ public static class PersistedSnapshotReader
     private const int StorageHashPrefixLength = 20;
     private const int SlotPrefixLength = 30;
 
-    internal static bool TryGetAccount(ReadOnlySpan<byte> data, Address address, [UnscopedRef] out ReadOnlySpan<byte> accountRlp) =>
-        TryGetFromColumn(data, PersistedSnapshot.AccountTag, address.Bytes, out accountRlp);
+    internal static bool TryGetAccount(ReadOnlySpan<byte> data, Address address, [UnscopedRef] out ReadOnlySpan<byte> accountRlp)
+    {
+        if (!TryGetPerAddressHsst(data, address.Bytes, out ReadOnlySpan<byte> perAddrData))
+        {
+            accountRlp = default;
+            return false;
+        }
+        Hsst.Hsst perAddr = new(perAddrData);
+        return perAddr.TryGet(PersistedSnapshot.AccountSubTag, out accountRlp);
+    }
 
     internal static bool TryGetSlot(ReadOnlySpan<byte> data, Address address, in UInt256 index, [UnscopedRef] out ReadOnlySpan<byte> slotValue)
     {
+        if (!TryGetPerAddressHsst(data, address.Bytes, out ReadOnlySpan<byte> perAddrData))
+        {
+            slotValue = default;
+            return false;
+        }
+        Hsst.Hsst perAddr = new(perAddrData);
+        if (!perAddr.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotData))
+        {
+            slotValue = default;
+            return false;
+        }
         Span<byte> slotKey = stackalloc byte[32];
         index.ToBigEndian(slotKey);
-        return TryGetDoubleNestedValue(data, PersistedSnapshot.StorageTag, address.Bytes, slotKey[..SlotPrefixLength], slotKey[SlotPrefixLength..], out slotValue);
+        Hsst.Hsst prefixLevel = new(slotData);
+        if (!prefixLevel.TryGet(slotKey[..SlotPrefixLength], out ReadOnlySpan<byte> suffixData))
+        {
+            slotValue = default;
+            return false;
+        }
+        Hsst.Hsst suffixLevel = new(suffixData);
+        return suffixLevel.TryGet(slotKey[SlotPrefixLength..], out slotValue);
     }
 
-    internal static bool IsSelfDestructed(ReadOnlySpan<byte> data, Address address) =>
-        TryGetFromColumn(data, PersistedSnapshot.SelfDestructTag, address.Bytes, out _);
+    internal static bool IsSelfDestructed(ReadOnlySpan<byte> data, Address address)
+    {
+        if (!TryGetPerAddressHsst(data, address.Bytes, out ReadOnlySpan<byte> perAddrData))
+            return false;
+        Hsst.Hsst perAddr = new(perAddrData);
+        return perAddr.TryGet(PersistedSnapshot.SelfDestructSubTag, out _);
+    }
 
     internal static bool? TryGetSelfDestructFlag(ReadOnlySpan<byte> data, Address address)
     {
-        if (!TryGetFromColumn(data, PersistedSnapshot.SelfDestructTag, address.Bytes, out ReadOnlySpan<byte> value))
+        if (!TryGetPerAddressHsst(data, address.Bytes, out ReadOnlySpan<byte> perAddrData))
+            return null;
+        Hsst.Hsst perAddr = new(perAddrData);
+        if (!perAddr.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> value))
             return null;
         return value.Length > 0 && value[0] == 0x01;
+    }
+
+    private static bool TryGetPerAddressHsst(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> addressBytes, out ReadOnlySpan<byte> perAddrData)
+    {
+        Hsst.Hsst outer = new(data);
+        if (!outer.TryGet(PersistedSnapshot.AccountColumnTag, out ReadOnlySpan<byte> columnData))
+        {
+            perAddrData = default;
+            return false;
+        }
+        Hsst.Hsst addressLevel = new(columnData);
+        return addressLevel.TryGet(addressBytes, out perAddrData);
     }
 
     internal static bool TryLoadStateNodeRlp(ReadOnlySpan<byte> data, scoped in TreePath path,
@@ -228,21 +274,25 @@ public static class PersistedSnapshotReader
         {
             _index = -1;
             Hsst.Hsst outer = new(snapshotData);
-            if (!outer.TryGet(PersistedSnapshot.SelfDestructTag, out ReadOnlySpan<byte> column))
+            if (!outer.TryGet(PersistedSnapshot.AccountColumnTag, out ReadOnlySpan<byte> column))
             {
                 _entries = [];
                 return;
             }
 
             List<KeyValuePair<AddressAsKey, bool>> list = new();
-            Hsst.Hsst hsst = new(column);
-            using Hsst.Hsst.Enumerator e = hsst.GetEnumerator();
-            while (e.MoveNext())
+            Hsst.Hsst addressLevel = new(column);
+            using Hsst.Hsst.Enumerator addrEnum = addressLevel.GetEnumerator();
+            while (addrEnum.MoveNext())
             {
-                Hsst.Hsst.KeyValueEntry entry = e.Current;
-                Address addr = new(entry.Key.ToArray());
-                bool isNew = !entry.Value.IsEmpty && entry.Value[0] == 0x01;
-                list.Add(new(addr, isNew));
+                Hsst.Hsst.KeyValueEntry addrEntry = addrEnum.Current;
+                Hsst.Hsst perAddr = new(addrEntry.Value);
+                if (perAddr.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdValue))
+                {
+                    Address addr = new(addrEntry.Key.ToArray());
+                    bool isNew = !sdValue.IsEmpty && sdValue[0] == 0x01;
+                    list.Add(new(addr, isNew));
+                }
             }
 
             _entries = list.ToArray();
@@ -268,23 +318,27 @@ public static class PersistedSnapshotReader
         {
             _index = -1;
             Hsst.Hsst outer = new(snapshotData);
-            if (!outer.TryGet(PersistedSnapshot.AccountTag, out ReadOnlySpan<byte> column))
+            if (!outer.TryGet(PersistedSnapshot.AccountColumnTag, out ReadOnlySpan<byte> column))
             {
                 _entries = [];
                 return;
             }
 
             List<KeyValuePair<AddressAsKey, Account?>> list = new();
-            Hsst.Hsst hsst = new(column);
-            using Hsst.Hsst.Enumerator e = hsst.GetEnumerator();
-            while (e.MoveNext())
+            Hsst.Hsst addressLevel = new(column);
+            using Hsst.Hsst.Enumerator addrEnum = addressLevel.GetEnumerator();
+            while (addrEnum.MoveNext())
             {
-                Hsst.Hsst.KeyValueEntry entry = e.Current;
-                Address addr = new(entry.Key.ToArray());
-                Account? account = entry.Value.IsEmpty
-                    ? null
-                    : AccountDecoder.Slim.Decode(new RlpStream(entry.Value.ToArray()));
-                list.Add(new(addr, account));
+                Hsst.Hsst.KeyValueEntry addrEntry = addrEnum.Current;
+                Hsst.Hsst perAddr = new(addrEntry.Value);
+                if (perAddr.TryGet(PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> accountRlp))
+                {
+                    Address addr = new(addrEntry.Key.ToArray());
+                    Account? account = accountRlp.IsEmpty
+                        ? null
+                        : AccountDecoder.Slim.Decode(new RlpStream(accountRlp.ToArray()));
+                    list.Add(new(addr, account));
+                }
             }
 
             _entries = list.ToArray();
@@ -310,7 +364,7 @@ public static class PersistedSnapshotReader
         {
             _index = -1;
             Hsst.Hsst outer = new(snapshotData);
-            if (!outer.TryGet(PersistedSnapshot.StorageTag, out ReadOnlySpan<byte> column))
+            if (!outer.TryGet(PersistedSnapshot.AccountColumnTag, out ReadOnlySpan<byte> column))
             {
                 _entries = [];
                 return;
@@ -322,8 +376,12 @@ public static class PersistedSnapshotReader
             while (addrEnum.MoveNext())
             {
                 Hsst.Hsst.KeyValueEntry addrEntry = addrEnum.Current;
+                Hsst.Hsst perAddr = new(addrEntry.Value);
+                if (!perAddr.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotData))
+                    continue;
+
                 Address addr = new(addrEntry.Key.ToArray());
-                Hsst.Hsst prefixLevel = new(addrEntry.Value);
+                Hsst.Hsst prefixLevel = new(slotData);
                 using Hsst.Hsst.Enumerator prefixEnum = prefixLevel.GetEnumerator();
                 while (prefixEnum.MoveNext())
                 {
