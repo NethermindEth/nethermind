@@ -407,6 +407,12 @@ namespace Nethermind.Serialization.Rlp
         [SuppressMessage("ReSharper", "IntVariableOverflowInUncheckedContext")]
         public static Span<byte> Encode(ulong value, Span<byte> buffer)
         {
+            var minLength = LengthOf(value);
+            if (buffer.Length < minLength)
+            {
+                ThrowBufferTooSmall(buffer, minLength);
+            }
+
             switch (value)
             {
                 case 0:
@@ -443,7 +449,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         // caller is responsible for allocating buffer large enough (max 9 bytes)
-        public static Span<byte> Encode(long value, Span<byte> buffer) => Encode((ulong)value, buffer);
+        public static Span<byte> Encode(long value, Span<byte> buffer) => Encode(unchecked((ulong)value), buffer);
 
         public static Rlp Encode(BigInteger bigInteger, int outputLength = -1) => bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray(outputLength));
 
@@ -1733,16 +1739,17 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOfNonce(ulong _) => 9;
 
-        public static int LengthOf(long value)
+        public static int LengthOf(long value) => LengthOf(unchecked((ulong)value));
+        public static int LengthOf(ulong value)
         {
-            if ((ulong)value < 128)
+            if (value < 128)
             {
                 return 1;
             }
             else
             {
                 // everything has a length prefix
-                return 1 + sizeof(ulong) - (BitOperations.LeadingZeroCount((ulong)value) / 8);
+                return 1 + sizeof(ulong) - (BitOperations.LeadingZeroCount(value) / 8);
             }
         }
 
@@ -1917,6 +1924,13 @@ namespace Nethermind.Serialization.Rlp
                 : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
             if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR: {message}; {new StackTrace()}");
             throw new RlpLimitException(message);
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowBufferTooSmall(Span<byte> buffer, int minLength)
+        {
+            throw new ArgumentException($"Buffer is too small. Minimal length: {minLength}, actual length: {buffer.Length}");
         }
     }
 

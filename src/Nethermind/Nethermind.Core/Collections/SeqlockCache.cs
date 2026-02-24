@@ -130,7 +130,7 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
         {
-            ref readonly TKey storedKey = ref e0.Key;
+            TKey storedKey = e0.Key;
             TValue? storedValue = e0.Value;
 
             long h2 = Volatile.Read(ref e0.HashEpochSeqLock);
@@ -147,7 +147,7 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
         {
-            ref readonly TKey storedKey = ref e1.Key;
+            TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
 
             long w2 = Volatile.Read(ref e1.HashEpochSeqLock);
@@ -221,7 +221,7 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
         {
-            ref readonly TKey storedKey = ref e0.Key;
+            TKey storedKey = e0.Key;
             TValue? storedValue = e0.Value;
 
             long h2 = Volatile.Read(ref e0.HashEpochSeqLock);
@@ -238,7 +238,7 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
         {
-            ref readonly TKey storedKey = ref e1.Key;
+            TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
 
             long w2 = Volatile.Read(ref e1.HashEpochSeqLock);
@@ -269,7 +269,7 @@ public sealed class SeqlockCache<TKey, TValue>
         // === Way 0: check for matching key ===
         if (h0 >= 0 && (h0 & TagMask) == tagToStore)
         {
-            ref readonly TKey k0 = ref e0.Key;
+            TKey k0 = e0.Key;
             TValue? v0 = e0.Value;
 
             long h0_2 = Volatile.Read(ref e0.HashEpochSeqLock);
@@ -288,7 +288,7 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if (h1 >= 0 && (h1 & TagMask) == tagToStore)
         {
-            ref readonly TKey k1 = ref e1.Key;
+            TKey k1 = e1.Key;
             TValue? v1 = e1.Value;
 
             long h1_2 = Volatile.Read(ref e1.HashEpochSeqLock);

@@ -62,6 +62,12 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Length_of_ulong_same_as_uint256([ValueSource(nameof(ULongValues))] ulong value)
+        {
+            Assert.That(Rlp.LengthOf(value), Is.EqualTo(Rlp.LengthOf((UInt256)value)));
+        }
+
+        [Test]
         public void single_byte_encoding_decoding()
         {
             byte item = 0;
