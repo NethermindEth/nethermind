@@ -105,8 +105,10 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
                 stream.StartSequence(signatureContentLength);
                 foreach (var sig in item.Signatures)
                 {
-                    //TODO Signature class should be optimized to store full 65 bytes
-                    stream.Encode(sig.BytesWithRecovery);
+                    stream.StartByteArray(65, false);
+                    stream.Write(sig.RAsSpan);
+                    stream.Write(sig.SAsSpan);
+                    stream.WriteByte(sig.RecoveryId);
                 }
             }
         }
