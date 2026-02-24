@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-ARTIFACTS_DIR := $(abspath ../../artifacts/bin/ZiskGuest/release)
+MAKEFILE_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
+ARTIFACTS_DIR := $(abspath $(MAKEFILE_DIR)/../../artifacts/bin/ZiskGuest/release)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
@@ -72,26 +73,30 @@ DOCKER_RUN := docker run --platform linux/amd64 --rm \
   -e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
   -w $(SRC_DIR) \
   --mount type=bind,source="$(ARTIFACTS_DIR)",target=$(BIN_DIR) \
-  --mount type=bind,source="$(CURDIR)",target=$(SRC_DIR) \
+  --mount type=bind,source="$(MAKEFILE_DIR)",target=$(SRC_DIR) \
   bflat-ricsv64-local
 
 build-docker-bflat:
-	docker build --platform linux/amd64 -f Dockerfile.bflat -t bflat-ricsv64-local .
+	docker build --platform linux/amd64 -f $(MAKEFILE_DIR)/Dockerfile.bflat -t bflat-ricsv64-local $(MAKEFILE_DIR)
 
 build-dotnet:
-	dotnet build -c release -p:EnableZkvm=true
+	dotnet build -c release -p:EnableZkvm=true $(MAKEFILE_DIR)/ZiskGuest.csproj
 
 build-zisk: build-docker-bflat
 	$(DOCKER_RUN) $(BFLAT_BUILD) --libc zisk $(BFLAT_REFS) $(BFLAT_SRC) \
     --extlib https://github.com/NethermindEth/bflat-libziskos:pre-develop-0.16.0
-	mkdir -p bin; mv -f Program.patched bin/nethermind; rm -f Program Program.o
+	mkdir -p $(MAKEFILE_DIR)/bin && \
+    mv -f $(MAKEFILE_DIR)/Program.patched $(MAKEFILE_DIR)/bin/nethermind && \
+    rm -f $(MAKEFILE_DIR)/Program $(MAKEFILE_DIR)/Program.o
 
 build-zisk-sim: build-docker-bflat
 	$(DOCKER_RUN) $(BFLAT_BUILD) --libc zisk_sim $(BFLAT_REFS) $(BFLAT_SRC)
-	mkdir -p bin; mv -f Program bin/nethermind; rm -f Program.o
+	mkdir -p $(MAKEFILE_DIR)/bin && \
+    mv -f $(MAKEFILE_DIR)/Program $(MAKEFILE_DIR)/bin/nethermind && \
+    rm -f $(MAKEFILE_DIR)/Program.o
 
 run-zisk: build-zisk
-	docker build --platform linux/amd64 -f Dockerfile.zisk -t zisk .
+	docker build --platform linux/amd64 -f $(MAKEFILE_DIR)/Dockerfile.zisk -t zisk $(MAKEFILE_DIR)
 	docker run --rm -it -e RUST_BACKTRACE=full zisk ziskemu -e /n/nethermind
 
 .PHONY: build-docker build-dotnet build-zisk build-zisk-sim run-zisk
