@@ -199,6 +199,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
   benchmark:
+    name: benchmark (${{ matrix.tag }})
     needs: [resolve-images]
     strategy:
       matrix: ${{ fromJson(needs.resolve-images.outputs.matrix) }}
