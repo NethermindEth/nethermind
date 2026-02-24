@@ -28,7 +28,7 @@ public sealed class ReadOnlySnapshotBundle(
     PersistedSnapshotList persistedSnapshots)
     : RefCountingDisposable
 {
-    public int SnapshotCount => snapshots.Count;
+    public int SnapshotCount => persistedSnapshots.Count + snapshots.Count;
     private bool _isDisposed;
 
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
@@ -45,6 +45,13 @@ public sealed class ReadOnlySnapshotBundle(
     private static readonly StringLabel _readStateRlpPersistedLabel = new("state_rlp_persisted_snapshot");
     private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
     private static readonly StringLabel _readStorageRlpPersistedLabel = new("storage_rlp_persisted_snapshot");
+
+    private static Histogram _persistedSnapshotSkipTime = Prometheus.Metrics.CreateHistogram(
+        "readonly_snapshot_bundle_skip_time", "skip time", new HistogramConfiguration()
+        {
+            LabelNames = ["part"],
+            Buckets = Histogram.PowersOfTenDividedBuckets(0, 10, 10)
+        });
 
     public Account? GetAccount(Address address)
     {
@@ -77,6 +84,7 @@ public sealed class ReadOnlySnapshotBundle(
                 return AccountDecoder.Slim.Decode(ref ctx);
             }
         }
+        _persistedSnapshotSkipTime.WithLabels("account").Observe(Stopwatch.GetTimestamp() - psw);
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         Account? account = persistenceReader.GetAccount(address);
@@ -97,9 +105,14 @@ public sealed class ReadOnlySnapshotBundle(
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
             if (snapshots[i].HasSelfDestruct(address))
-            {
+                return persistedSnapshots.Count + i;
+        }
+
+        for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
+        {
+            bool? flag = persistedSnapshots[i].TryGetSelfDestructFlag(address);
+            if (flag.HasValue)
                 return i;
-            }
         }
 
         return -1;
@@ -119,12 +132,13 @@ public sealed class ReadOnlySnapshotBundle(
                 return res;
             }
 
-            if (i <= selfDestructStateIdx)
+            if (persistedSnapshots.Count + i <= selfDestructStateIdx)
             {
                 return null;
             }
         }
 
+        long psw = Stopwatch.GetTimestamp();
         // Check persisted snapshots (newest-first) with self-destruct boundary
         for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
         {
@@ -134,13 +148,12 @@ public sealed class ReadOnlySnapshotBundle(
                 return value.ToArray();
             }
 
-            // Check self-destruct boundary: if destructed (false flag), storage was cleared
-            bool? selfDestructFlag = persistedSnapshots[i].TryGetSelfDestructFlag(address);
-            if (selfDestructFlag.HasValue && !selfDestructFlag.Value)
+            if (i <= selfDestructStateIdx)
             {
                 return null;
             }
         }
+        _persistedSnapshotSkipTime.WithLabels("slot").Observe(Stopwatch.GetTimestamp() - psw);
 
         SlotValue outSlotValue = new();
 
@@ -216,6 +229,7 @@ public sealed class ReadOnlySnapshotBundle(
                 return rlp.ToArray();
             }
         }
+        _persistedSnapshotSkipTime.WithLabels("state_rlp").Observe(Stopwatch.GetTimestamp() - sw);
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -238,6 +252,7 @@ public sealed class ReadOnlySnapshotBundle(
                 return rlp.ToArray();
             }
         }
+        _persistedSnapshotSkipTime.WithLabels("storage_rlp").Observe(Stopwatch.GetTimestamp() - sw);
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
