@@ -192,7 +192,7 @@ public static class PersistedSnapshotBuilder
                     byte[] currentPrefix = slotKey[..slotPrefixLength].ToArray();
 
                     ref TWriter suffixWriter = ref prefixLevel.BeginValueWrite();
-                    using HsstBuilder<TWriter> suffixLevel = new(ref suffixWriter, minSeparatorLength: 2);
+                    using HsstBuilder<TWriter> suffixLevel = new(ref suffixWriter, minSeparatorLength: 2, inlineValues: true);
 
                     while (i < storages.Count && storages[i].Key.Addr == currentAddr)
                     {
@@ -572,18 +572,18 @@ public static class PersistedSnapshotBuilder
                 0x02 => SelfDestructMerge(olderColumn, newerColumn, valueWriter.GetSpan(0), minSeparatorLength: 2),
                 0x03 => StreamingMergeWithNodeRef(olderColumn, newerColumn, valueWriter.GetSpan(0),
                     olderSnapshotId, olderData, newerSnapshotId, newerData,
-                    olderHasNodeRefs, newerHasNodeRefs, minSeparatorLength: 8),
+                    olderHasNodeRefs, newerHasNodeRefs, minSeparatorLength: 8, inlineValues: true),
                 0x04 => NestedStreamingMergeWithSelfDestruct(olderColumn, newerColumn, valueWriter.GetSpan(0), destructedAddresses,
-                    outerMinSep: 2, innerMinSep: 2),
+                    outerMinSep: 2, innerMinSep: 2, innerInline: true),
                 0x05 => StreamingMergeWithNodeRef(olderColumn, newerColumn, valueWriter.GetSpan(0),
                     olderSnapshotId, olderData, newerSnapshotId, newerData,
-                    olderHasNodeRefs, newerHasNodeRefs, minSeparatorLength: 3),
+                    olderHasNodeRefs, newerHasNodeRefs, minSeparatorLength: 3, inlineValues: true),
                 0x06 => StreamingMergeWithNodeRef(olderColumn, newerColumn, valueWriter.GetSpan(0),
                     olderSnapshotId, olderData, newerSnapshotId, newerData,
                     olderHasNodeRefs, newerHasNodeRefs),
                 0x07 => NestedStreamingMergeWithNodeRef(olderColumn, newerColumn, valueWriter.GetSpan(0),
                     olderSnapshotId, olderData, newerSnapshotId, newerData,
-                    olderHasNodeRefs, newerHasNodeRefs, outerMinSep: 2, innerMinSep: 8),
+                    olderHasNodeRefs, newerHasNodeRefs, outerMinSep: 2, innerMinSep: 8, innerInline: true),
                 0x08 => NestedStreamingMergeWithNodeRef(olderColumn, newerColumn, valueWriter.GetSpan(0),
                     olderSnapshotId, olderData, newerSnapshotId, newerData,
                     olderHasNodeRefs, newerHasNodeRefs, outerMinSep: 2),
@@ -678,7 +678,7 @@ public static class PersistedSnapshotBuilder
     internal static int NestedStreamingMergeWithSelfDestruct(
         ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output,
         HashSet<byte[]> destructedAddresses,
-        int outerMinSep = 0, int innerMinSep = 0)
+        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false)
     {
         Hsst.Hsst olderHsst = new(older);
         Hsst.Hsst newerHsst = new(newer);
@@ -732,7 +732,7 @@ public static class PersistedSnapshotBuilder
                     ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
                     int mergedLen = NestedStreamingMerge(
                         olderEnum.Current.Value, newerEnum.Current.Value, innerWriter.GetSpan(0),
-                        innerMinSep, innerMinSep);
+                        innerMinSep, innerMinSep, innerInline);
                     innerWriter.Advance(mergedLen);
                     builder.FinishValueWrite(newerKey);
                 }
@@ -764,7 +764,7 @@ public static class PersistedSnapshotBuilder
     /// For non-matching keys, inner HSSTs are copied as-is.
     /// </summary>
     internal static int NestedStreamingMerge(ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output,
-        int outerMinSep = 0, int innerMinSep = 0)
+        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false)
     {
         Hsst.Hsst olderHsst = new(older);
         Hsst.Hsst newerHsst = new(newer);
@@ -806,7 +806,7 @@ public static class PersistedSnapshotBuilder
                 // Matching address key: merge the inner HSSTs directly into output
                 ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
                 int mergedLen = StreamingMerge(
-                    olderEnum.Current.Value, newerEnum.Current.Value, innerWriter.GetSpan(0), 0, innerMinSep);
+                    olderEnum.Current.Value, newerEnum.Current.Value, innerWriter.GetSpan(0), 0, innerMinSep, innerInline);
                 innerWriter.Advance(mergedLen);
                 builder.FinishValueWrite(newerKey);
                 hasOlder = olderEnum.MoveNext();
@@ -850,13 +850,13 @@ public static class PersistedSnapshotBuilder
         int olderSnapshotId, ReadOnlySpan<byte> olderFullData,
         int newerSnapshotId, ReadOnlySpan<byte> newerFullData,
         bool olderHasNodeRefs, bool newerHasNodeRefs,
-        int startOffset = 0, int minSeparatorLength = 0)
+        int startOffset = 0, int minSeparatorLength = 0, bool inlineValues = false)
     {
         Hsst.Hsst olderHsst = new(older);
         Hsst.Hsst newerHsst = new(newer);
 
         SpanBufferWriter writer = new(output[startOffset..]);
-        HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength);
+        HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
 
         Hsst.Hsst.Enumerator olderEnum = olderHsst.GetEnumerator();
         Hsst.Hsst.Enumerator newerEnum = newerHsst.GetEnumerator();
@@ -939,11 +939,11 @@ public static class PersistedSnapshotBuilder
     private static int ConvertToNodeRefs(
         ReadOnlySpan<byte> innerData, Span<byte> output,
         int snapshotId, ReadOnlySpan<byte> fullData, bool hasNodeRefs,
-        int minSeparatorLength = 0)
+        int minSeparatorLength = 0, bool inlineValues = false)
     {
         Hsst.Hsst hsst = new(innerData);
         SpanBufferWriter writer = new(output);
-        HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength);
+        HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
         Hsst.Hsst.Enumerator e = hsst.GetEnumerator();
 
         int dataOffset = SpanOffset(fullData, innerData);
@@ -970,7 +970,7 @@ public static class PersistedSnapshotBuilder
         int olderSnapshotId, ReadOnlySpan<byte> olderFullData,
         int newerSnapshotId, ReadOnlySpan<byte> newerFullData,
         bool olderHasNodeRefs, bool newerHasNodeRefs,
-        int outerMinSep = 0, int innerMinSep = 0)
+        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false)
     {
         Hsst.Hsst olderHsst = new(older);
         Hsst.Hsst newerHsst = new(newer);
@@ -1001,7 +1001,7 @@ public static class PersistedSnapshotBuilder
             {
                 ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
                 int len = ConvertToNodeRefs(olderEnum.Current.Value, innerWriter.GetSpan(0),
-                    olderSnapshotId, olderFullData, olderHasNodeRefs, innerMinSep);
+                    olderSnapshotId, olderFullData, olderHasNodeRefs, innerMinSep, innerInline);
                 innerWriter.Advance(len);
                 builder.FinishValueWrite(olderKey);
                 hasOlder = olderEnum.MoveNext();
@@ -1010,7 +1010,7 @@ public static class PersistedSnapshotBuilder
             {
                 ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
                 int len = ConvertToNodeRefs(newerEnum.Current.Value, innerWriter.GetSpan(0),
-                    newerSnapshotId, newerFullData, newerHasNodeRefs, innerMinSep);
+                    newerSnapshotId, newerFullData, newerHasNodeRefs, innerMinSep, innerInline);
                 innerWriter.Advance(len);
                 builder.FinishValueWrite(newerKey);
                 hasNewer = newerEnum.MoveNext();
@@ -1023,7 +1023,7 @@ public static class PersistedSnapshotBuilder
                     olderEnum.Current.Value, newerEnum.Current.Value, innerWriter.GetSpan(0),
                     olderSnapshotId, olderFullData, newerSnapshotId, newerFullData,
                     olderHasNodeRefs, newerHasNodeRefs,
-                    minSeparatorLength: innerMinSep);
+                    minSeparatorLength: innerMinSep, inlineValues: innerInline);
                 innerWriter.Advance(mergedLen);
                 builder.FinishValueWrite(newerKey);
                 hasOlder = olderEnum.MoveNext();
@@ -1035,7 +1035,7 @@ public static class PersistedSnapshotBuilder
         {
             ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
             int len = ConvertToNodeRefs(olderEnum.Current.Value, innerWriter.GetSpan(0),
-                olderSnapshotId, olderFullData, olderHasNodeRefs, innerMinSep);
+                olderSnapshotId, olderFullData, olderHasNodeRefs, innerMinSep, innerInline);
             innerWriter.Advance(len);
             builder.FinishValueWrite(olderEnum.Current.Key);
             hasOlder = olderEnum.MoveNext();
@@ -1045,7 +1045,7 @@ public static class PersistedSnapshotBuilder
         {
             ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
             int len = ConvertToNodeRefs(newerEnum.Current.Value, innerWriter.GetSpan(0),
-                newerSnapshotId, newerFullData, newerHasNodeRefs, innerMinSep);
+                newerSnapshotId, newerFullData, newerHasNodeRefs, innerMinSep, innerInline);
             innerWriter.Advance(len);
             builder.FinishValueWrite(newerEnum.Current.Key);
             hasNewer = newerEnum.MoveNext();
@@ -1159,13 +1159,13 @@ public static class PersistedSnapshotBuilder
     }
 
     [MethodImpl(MethodImplOptions.NoOptimization)]
-    internal static int StreamingMerge(ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output, int startOffset = 0, int minSeparatorLength = 0)
+    internal static int StreamingMerge(ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output, int startOffset = 0, int minSeparatorLength = 0, bool inlineValues = false)
     {
         Hsst.Hsst olderHsst = new(older);
         Hsst.Hsst newerHsst = new(newer);
 
         SpanBufferWriter writer = new(output[startOffset..]);
-        using HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength);
+        using HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
 
         using Hsst.Hsst.Enumerator olderEnum = olderHsst.GetEnumerator();
         using Hsst.Hsst.Enumerator newerEnum = newerHsst.GetEnumerator();
