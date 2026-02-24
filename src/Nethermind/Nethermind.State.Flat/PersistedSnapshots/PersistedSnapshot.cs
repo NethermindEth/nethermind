@@ -13,13 +13,15 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
 /// A persisted snapshot backed by columnar HSST data on disk (or in memory).
-/// The outer HSST has 9 column entries (tags 0x00-0x08), each containing an inner HSST.
+/// The outer HSST has 7 column entries, each containing an inner HSST.
 /// Inner HSST keys are the entity keys without the tag prefix:
 ///   Column 0x00: Metadata — String key → version, block range, state root values
-///   Column 0x01: Address (20 bytes) → Account RLP
-///   Column 0x02: Address (20 bytes) → Self-destruct marker
+///   Column 0x01: Address (20 bytes) → per-address HSST {
+///       0x01 (SlotSubTag):         nested HSST (SlotPrefix(30) → nested(SlotSuffix(2) → SlotValue))
+///       0x02 (SelfDestructSubTag): raw SD flag bytes (empty = destructed, 0x01 = new account)
+///       0x03 (AccountSubTag):      raw account slim RLP bytes (empty = deleted account)
+///   }
 ///   Column 0x03: TreePath (8 bytes compact) → State trie node RLP (path length 6-15)
-///   Column 0x04: Address (20 bytes) → nested HSST (SlotPrefix (30 bytes) → nested HSST (SlotSuffix (2 bytes) → SlotValue))
 ///   Column 0x05: TreePath (3 bytes: PathByte0, PathByte1, Length) → State trie node RLP (path length 0-5)
 ///   Column 0x06: TreePath.Path (32 bytes) + PathLength (1 byte) → State trie node RLP (path length 16+)
 ///   Column 0x07: AddressHash (20 bytes) → nested HSST (TreePath (8 bytes compact) → Storage trie node RLP, path length 6-15)
@@ -27,16 +29,19 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// </summary>
 public sealed class PersistedSnapshot : RefCountingDisposable
 {
-    // Tag prefixes for HSST key encoding
+    // Tag prefixes for outer HSST columns
     internal static readonly byte[] MetadataTag = [0x00];
-    internal static readonly byte[] AccountTag = [0x01];
-    internal static readonly byte[] SelfDestructTag = [0x02];
+    internal static readonly byte[] AccountColumnTag = [0x01];
     internal static readonly byte[] StateNodeTag = [0x03];
-    internal static readonly byte[] StorageTag = [0x04];
     internal static readonly byte[] StateTopNodesTag = [0x05];
     internal static readonly byte[] StateNodeFallbackTag = [0x06];
     internal static readonly byte[] StorageNodeTag = [0x07];
     internal static readonly byte[] StorageNodeFallbackTag = [0x08];
+
+    // Sub-tags within per-address HSST (sorted order)
+    internal static readonly byte[] SlotSubTag = [0x01];
+    internal static readonly byte[] SelfDestructSubTag = [0x02];
+    internal static readonly byte[] AccountSubTag = [0x03];
 
     private readonly ArenaReservation _reservation;
     private readonly Dictionary<int, PersistedSnapshot>? _referencedSnapshots;
