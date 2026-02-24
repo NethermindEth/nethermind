@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Executor/Executor.csproj" />
+  <Project Path="ZiskGuest/ZiskGuest.csproj" />
+</Solution>
+

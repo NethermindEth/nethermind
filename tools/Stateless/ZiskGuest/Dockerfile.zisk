@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
+FROM rust:latest
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  libomp-dev \
+  libopenmpi-dev \
+  libsodium-dev && \
+  rm -rf /var/lib/apt/lists/*
+
+RUN curl -L https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/ziskup | bash -s -- --nokey
+
+ENV PATH="/root/.zisk/bin:${PATH}"
+
+WORKDIR /n
+
+COPY bin/nethermind .
+
+CMD ["tail", "-f", "/dev/null"]
