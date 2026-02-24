@@ -165,10 +165,6 @@ public class BlockProcessingBenchmark
     [IterationSetup]
     public void IterationSetup()
     {
-        // Dispose previous iteration's state
-        _processingScope?.Dispose();
-        _stateScope?.Dispose();
-
         // Fresh world state for this iteration
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
