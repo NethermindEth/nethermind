@@ -89,7 +89,7 @@ public class WarmupBenchmark
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
 
-        _stateProvider.CreateAccount(TestItem.AddressA, 10_000.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1_000_000_000.Ether());
         _stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
         _stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
         _stateProvider.Commit(Spec);
