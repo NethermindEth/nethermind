@@ -247,7 +247,7 @@ public class SimulateTxExecutor<TTrace>(
 
     private static int MapEvmExceptionType(EvmExceptionType type) => type switch
     {
-        EvmExceptionType.Revert => ErrorCodes.RevertedSimulate,
+        EvmExceptionType.Revert => ErrorCodes.ExecutionReverted,
         _ => ErrorCodes.VMError
     };
 }

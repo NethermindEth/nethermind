@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using FluentAssertions;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 
@@ -14,7 +16,7 @@ namespace Nethermind.Core.Test;
 /// <summary>
 /// MemDB with additional tools for testing purposes since you can't use NSubstitute with refstruct
 /// </summary>
-public class TestMemDb : MemDb, ITunableDb
+public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
 {
     private readonly List<(byte[], ReadFlags)> _readKeys = new();
     private readonly List<((byte[], byte[]?), WriteFlags)> _writes = new();
@@ -71,4 +73,99 @@ public class TestMemDb : MemDb, ITunableDb
     public void KeyWasRemoved(Func<byte[], bool> cond, int times = 1) => _removedKeys.Count(cond).Should().Be(times);
     public override IWriteBatch StartWriteBatch() => new InMemoryWriteBatch(this);
     public override void Flush(bool onlyWal) => FlushCount++;
+
+    public byte[]? FirstKey
+    {
+        get
+        {
+            byte[]? min = null;
+            foreach (byte[] key in Keys)
+            {
+                if (min is null || Bytes.BytesComparer.Compare(key, min) < 0)
+                {
+                    min = key;
+                }
+            }
+
+            return min;
+        }
+    }
+
+    public byte[]? LastKey
+    {
+        get
+        {
+            byte[]? max = null;
+            foreach (byte[] key in Keys)
+            {
+                if (max is null || Bytes.BytesComparer.Compare(key, max) > 0)
+                {
+                    max = key;
+                }
+            }
+
+            return max;
+        }
+    }
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+    {
+        ArrayPoolList<(byte[], byte[]?)> sortedValue = new(1);
+
+        foreach (KeyValuePair<byte[], byte[]?> keyValuePair in GetAll())
+        {
+            if (Bytes.BytesComparer.Compare(keyValuePair.Key, firstKeyInclusive) < 0)
+            {
+                continue;
+            }
+
+            if (Bytes.BytesComparer.Compare(keyValuePair.Key, lastKeyExclusive) >= 0)
+            {
+                continue;
+            }
+            sortedValue.Add((keyValuePair.Key, keyValuePair.Value));
+        }
+
+        sortedValue.AsSpan().Sort((it1, it2) => Bytes.BytesComparer.Compare(it1.Item1, it2.Item1));
+        return new FakeSortedView(sortedValue);
+    }
+
+    private class FakeSortedView(ArrayPoolList<(byte[], byte[]?)> list) : ISortedView
+    {
+        private int idx = -1;
+
+        public void Dispose()
+        {
+            list.Dispose();
+        }
+
+        public bool StartBefore(ReadOnlySpan<byte> value)
+        {
+            if (list.Count == 0) return false;
+
+            idx = 0;
+            while (idx < list.Count)
+            {
+                if (Bytes.BytesComparer.Compare(list[idx].Item1, value) >= 0)
+                {
+                    idx--;
+                    return true;
+                }
+                idx++;
+            }
+
+            // All keys are less than value - position at last element (largest key <= value)
+            idx = list.Count - 1;
+            return true;
+        }
+
+        public bool MoveNext()
+        {
+            idx++;
+            if (idx >= list.Count) return false;
+            return true;
+        }
+
+        public ReadOnlySpan<byte> CurrentKey => list[idx].Item1;
+        public ReadOnlySpan<byte> CurrentValue => list[idx].Item2;
+    }
 }

@@ -52,7 +52,7 @@ namespace Nethermind.State
             _stateProvider = new StateProvider(logManager);
             _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
-            _logger = logManager.GetClassLogger<WorldState>();
+            _logger = logManager.GetClassLogger();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
