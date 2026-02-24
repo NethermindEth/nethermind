@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -27,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             rlpStream.StartSequence(contentLength);
             for (int i = 0; i < message.BlockHeaders.Count; i++)
             {
-                rlpStream.Encode(message.BlockHeaders[i]);
+                _headerDecoder.Encode(rlpStream, message.BlockHeaders[i]);
             }
         }
 
