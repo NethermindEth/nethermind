@@ -25,7 +25,7 @@ public ref struct HsstBuilder<TWriter>
     private int _writtenBeforeValue;
     private readonly int _baseOffset;
 
-    private readonly int _extraSeparatorLength;
+    private readonly int _minSeparatorLength;
 
     // Working buffers allocated from ArrayPool
     private ArrayPoolListRef<byte> _separatorBuffer;
@@ -45,11 +45,11 @@ public ref struct HsstBuilder<TWriter>
     /// Writes version byte 0x01.
     /// Allocates working buffers from ArrayPool — call Dispose() to return them.
     /// </summary>
-    public HsstBuilder(ref TWriter writer, int extraSeparatorLength = 0)
+    public HsstBuilder(ref TWriter writer, int minSeparatorLength = 0)
     {
         _writer = ref writer;
         _baseOffset = _writer.Written;
-        _extraSeparatorLength = extraSeparatorLength;
+        _minSeparatorLength = minSeparatorLength;
         _separatorBuffer = new ArrayPoolListRef<byte>(65536);
         _entriesBuffer = new ArrayPoolListRef<HsstEntry>(10000);
         _prevKeyBuffer = new ArrayPoolListRef<byte>(256);
@@ -95,7 +95,7 @@ public ref struct HsstBuilder<TWriter>
             _prevKeyBuffer.AsSpan(),
             key,
             nextKey: default,
-            _extraSeparatorLength);
+            _minSeparatorLength);
 
         int sepOffset = _separatorBuffer.Count;
         _separatorBuffer.AddRange(key[..sepLen]);
@@ -150,7 +150,7 @@ public ref struct HsstBuilder<TWriter>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ComputeSeparatorLength(ReadOnlySpan<byte> prevKey, ReadOnlySpan<byte> currKey, ReadOnlySpan<byte> nextKey, int extraSeparatorLength = 0)
+    private static int ComputeSeparatorLength(ReadOnlySpan<byte> prevKey, ReadOnlySpan<byte> currKey, ReadOnlySpan<byte> nextKey, int minSeparatorLength = 0)
     {
         int minVsPrev = 0;
         if (!prevKey.IsEmpty)
@@ -170,7 +170,7 @@ public ref struct HsstBuilder<TWriter>
         len = Math.Min(len, currKey.Length);
         if (len == 0) len = Math.Min(1, currKey.Length);
 
-        return Math.Min(len + extraSeparatorLength, currKey.Length);
+        return Math.Min(Math.Max(len, minSeparatorLength), currKey.Length);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

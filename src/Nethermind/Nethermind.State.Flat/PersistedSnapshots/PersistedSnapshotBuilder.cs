@@ -1142,13 +1142,13 @@ public static class PersistedSnapshotBuilder
     }
 
     [MethodImpl(MethodImplOptions.NoOptimization)]
-    internal static int StreamingMerge(ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output, int startOffset = 0, int extraSeparatorLength = 0)
+    internal static int StreamingMerge(ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output, int startOffset = 0, int minSeparatorLength = 0)
     {
         Hsst.Hsst olderHsst = new(older);
         Hsst.Hsst newerHsst = new(newer);
 
         SpanBufferWriter writer = new(output[startOffset..]);
-        using HsstBuilder<SpanBufferWriter> builder = new(ref writer, extraSeparatorLength);
+        using HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength);
 
         using Hsst.Hsst.Enumerator olderEnum = olderHsst.GetEnumerator();
         using Hsst.Hsst.Enumerator newerEnum = newerHsst.GetEnumerator();
