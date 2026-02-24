@@ -252,7 +252,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                     throw new InvalidOperationException($"Unable to gather {nameof(ReadOnlySnapshotBundle)} for block {baseBlock} in {Stopwatch.GetElapsedTime(sw)}");
                 }
 
-                int delayMs = Math.Min(1 << attempt, 100);  // 1, 2, 4, 8, 16, 32, 64, 100ms max
+                int delayMs = Math.Min(1 << Math.Min(attempt, 30), 100);  // 1, 2, 4, 8, 16, 32, 64, 100ms max
                 Thread.Sleep(delayMs);
             }
 
