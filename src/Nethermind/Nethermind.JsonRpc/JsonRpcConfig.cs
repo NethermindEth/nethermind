@@ -31,6 +31,8 @@ public class JsonRpcConfig : IJsonRpcConfig
 
     public string? IpcUnixDomainSocketPath { get; set; } = null;
 
+    public bool RestrictIpcSocketPermissions { get; set; } = true;
+
     public string[] EnabledModules
     {
         get => _enabledModules;
