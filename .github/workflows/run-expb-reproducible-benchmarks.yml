@@ -187,11 +187,14 @@ jobs:
             selected_tags=("${selected_tags[@]:0:256}")
           fi
 
-          # Print selected tags
+          # Resolve dates and print selected tags
+          declare -a selected_dates
           for t in "${selected_tags[@]}"; do
             sha="${t#master-}"
+            commit_date=$(git log --format='%cs' -n 1 "${sha}" 2>/dev/null || echo "unknown")
             msg=$(git log --format='%s' -n 1 "${sha}" 2>/dev/null | head -c 80 || echo "")
-            echo "  ${t} (${msg})"
+            selected_dates+=("${commit_date}")
+            echo "  ${t} ${commit_date} (${msg})"
           done
 
           # Build matrix JSON and ordered list
@@ -201,12 +204,13 @@ jobs:
           for i in "${!selected_tags[@]}"; do
             tag="${selected_tags[$i]}"
             sha="${tag#master-}"
+            date="${selected_dates[$i]}"
             if [[ "${i}" -gt 0 ]]; then
               matrix_json+=','
               ordered_json+=','
             fi
-            matrix_json+="{\"tag\":\"${tag}\",\"sha\":\"${sha}\"}"
-            ordered_json+="{\"tag\":\"${tag}\",\"sha\":\"${sha}\"}"
+            matrix_json+="{\"tag\":\"${tag}\",\"sha\":\"${sha}\",\"date\":\"${date}\"}"
+            ordered_json+="{\"tag\":\"${tag}\",\"sha\":\"${sha}\",\"date\":\"${date}\"}"
           done
           matrix_json+=']}'
           ordered_json+=']'
@@ -224,7 +228,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
   benchmark:
-    name: benchmark (${{ matrix.tag }})
+    name: benchmark (${{ matrix.tag }} / ${{ matrix.date }})
     needs: [resolve-images]
     strategy:
       matrix: ${{ fromJson(needs.resolve-images.outputs.matrix) }}
@@ -602,6 +606,7 @@ jobs:
           # Parse ordered tags JSON — newest first from resolve, reverse to oldest-first
           mapfile -t tags < <(echo "${ORDERED_TAGS}" | jq -r '.[].tag' | tac)
           mapfile -t shas < <(echo "${ORDERED_TAGS}" | jq -r '.[].sha' | tac)
+          mapfile -t dates < <(echo "${ORDERED_TAGS}" | jq -r '.[].date' | tac)
 
           load_metric() {
             local file="$1"
@@ -629,8 +634,8 @@ jobs:
             echo ""
             echo "Benchmarked ${#tags[@]} Docker images from oldest to newest (last=${{ inputs.last }}, step=${{ inputs.step }})."
             echo ""
-            echo "| # | Image Tag | Commit | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs Oldest |"
-            echo "|---|-----------|--------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
+            echo "| # | Image Tag | Date | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs Oldest |"
+            echo "|---|-----------|------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
           } > "${summary_file}"
 
           baseline_avg=""
@@ -638,12 +643,13 @@ jobs:
           for i in "${!tags[@]}"; do
             tag="${tags[$i]}"
             sha="${shas[$i]}"
+            date="${dates[$i]}"
             idx=$(( i + 1 ))
 
             metrics_file="${METRICS_DIR}/expb-metrics-${tag}/metrics.env"
 
             if [[ ! -f "${metrics_file}" ]]; then
-              echo "| ${idx} | \`${tag}\` | ${sha} | - | - | - | - | - | - | - | no data |" >> "${summary_file}"
+              echo "| ${idx} | \`${tag}\` | ${date} | - | - | - | - | - | - | - | no data |" >> "${summary_file}"
               continue
             fi
 
@@ -658,7 +664,7 @@ jobs:
               if [[ "${invalid}" == "true" ]]; then
                 status="${status} :warning: invalid blocks"
               fi
-              echo "| ${idx} | \`${tag}\` | ${sha} | - | - | - | - | - | - | - | ${status} |" >> "${summary_file}"
+              echo "| ${idx} | \`${tag}\` | ${date} | - | - | - | - | - | - | - | ${status} |" >> "${summary_file}"
               continue
             fi
 
@@ -686,7 +692,7 @@ jobs:
               warnings="${warnings} :no_entry:"
             fi
 
-            echo "| ${idx} | \`${tag}\` | ${sha} | ${avg} | ${median} | ${p90} | ${p95} | ${p99} | ${min_val} | ${max_val} | ${delta}${warnings} |" >> "${summary_file}"
+            echo "| ${idx} | \`${tag}\` | ${date} | ${avg} | ${median} | ${p90} | ${p95} | ${p99} | ${min_val} | ${max_val} | ${delta}${warnings} |" >> "${summary_file}"
           done
 
           {
