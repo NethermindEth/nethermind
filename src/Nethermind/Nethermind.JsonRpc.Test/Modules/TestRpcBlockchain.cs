@@ -34,6 +34,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Container;
+using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -58,6 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReceiptFinder ReceiptFinder => Container.Resolve<IReceiptFinder>();
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IProtocolsManager ProtocolsManager { get; private set; } = null!;
+        public ILogIndexConfig LogIndexConfig { get; } = new LogIndexConfig();
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =
@@ -193,6 +195,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
             @this.ProtocolsManager,
             @this.ForkInfo,
+            @this.LogIndexConfig,
             @this.BlocksConfig.SecondsPerSlot);
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
@@ -255,7 +258,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
             _currentBlockchainProcessor = new BlockchainProcessor(BlockTree, BranchProcessor,
-                BlockPreprocessorStep, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default);
+                BlockPreprocessorStep, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
             _currentBlockchainProcessor.Start();
         }
     }

@@ -15,6 +15,7 @@ namespace Nethermind.JsonRpc.Modules
         public const string Engine = nameof(Engine);
         public const string Erc20 = nameof(Erc20);
         public const string Eth = nameof(Eth);
+        public const string LogIndex = nameof(LogIndex);
         public const string Evm = nameof(Evm);
         public const string Flashbots = nameof(Flashbots);
         public const string Health = nameof(Health);

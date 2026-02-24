@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using System;
 using System.Buffers;
-using Nethermind.Core;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -12,6 +13,7 @@ namespace Nethermind.Serialization.Rlp
         private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? throw new ArgumentNullException(nameof(headerDecoder));
         private readonly BlockBodyDecoder _blockBodyDecoder = new BlockBodyDecoder(headerDecoder);
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockDecoder))]
         public BlockDecoder() : this(new HeaderDecoder()) { }
 
         protected override Block? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -40,12 +42,28 @@ namespace Nethermind.Serialization.Rlp
 
             (int txs, int uncles, int? withdrawals) = _blockBodyDecoder.GetBodyComponentLength(item.Body);
 
+            byte[][]? encodedTxs = item.EncodedTransactions;
+            if (encodedTxs is not null)
+            {
+                txs = GetPreEncodedTxLength(item.Transactions, encodedTxs);
+            }
+
             int contentLength =
                 headerLength +
                 Rlp.LengthOfSequence(txs) +
                 Rlp.LengthOfSequence(uncles) +
                 (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0);
             return (contentLength, txs, uncles, withdrawals);
+        }
+
+        private static int GetPreEncodedTxLength(Transaction[] txs, byte[][] encodedTxs)
+        {
+            int sum = 0;
+            for (int i = 0; i < encodedTxs.Length; i++)
+            {
+                sum += TxDecoder.GetWrappedTxLength(txs[i].Type, encodedTxs[i].Length);
+            }
+            return sum;
         }
 
         public override int GetLength(Block? item, RlpBehaviors rlpBehaviors)
@@ -104,9 +122,21 @@ namespace Nethermind.Serialization.Rlp
             stream.StartSequence(contentLength);
             _headerDecoder.Encode(stream, item.Header);
             stream.StartSequence(txsLength);
-            for (int i = 0; i < item.Transactions.Length; i++)
+
+            byte[][]? encodedTxs = item.EncodedTransactions;
+            if (encodedTxs is not null)
             {
-                stream.Encode(item.Transactions[i]);
+                for (int i = 0; i < encodedTxs.Length; i++)
+                {
+                    TxDecoder.WriteWrappedFormat(stream, item.Transactions[i].Type, encodedTxs[i]);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < item.Transactions.Length; i++)
+                {
+                    stream.Encode(item.Transactions[i]);
+                }
             }
 
             stream.StartSequence(unclesLength);

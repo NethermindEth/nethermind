@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -13,24 +12,66 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
-internal class XdcTransactionProcessor(
+internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
+{
+    private readonly IMasternodeVotingContract _masternodeVotingContract;
+
+    public XdcTransactionProcessor(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
         IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager) : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
-{
-
-    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
+        ILogManager? logManager,
+        IMasternodeVotingContract masternodeVotingContract)
+        : base(
+            blobBaseFeeCalculator,
+            specProvider,
+            worldState,
+            virtualMachine,
+            codeInfoRepository,
+            logManager)
     {
-        if (tx.IsSpecialTransaction((IXdcReleaseSpec)spec)) return;
+        _masternodeVotingContract = masternodeVotingContract;
+    }
 
-        base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
+    protected override void PayFees(
+        Transaction tx,
+        BlockHeader header,
+        IReleaseSpec spec,
+        ITxTracer tracer,
+        in TransactionSubstate substate,
+        long spentGas,
+        in UInt256 premiumPerGas,
+        in UInt256 blobBaseFee,
+        int statusCode)
+    {
+        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)spec;
+
+        if (tx.IsSpecialTransaction(xdcSpec)) return;
+
+        if (!xdcSpec.IsTipTrc21FeeEnabled)
+        {
+            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
+            return;
+        }
+
+        Address coinbase = header.GasBeneficiary!;
+        Address owner = _masternodeVotingContract.GetCandidateOwnerDuringProcessing(this, header, coinbase);
+
+        if (owner is null || owner == Address.Zero)
+            return;
+
+        UInt256 fee = tx.GasPrice * (ulong)spentGas;
+        WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
+
+        if (tracer.IsTracingFees)
+            tracer.ReportFees(fee, UInt256.Zero);
     }
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
@@ -138,15 +179,10 @@ internal class XdcTransactionProcessor(
         return base.CalculateEffectiveGasPrice(tx, eip1559Enabled, in baseFee, out opcodeGasPrice);
     }
 
-    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
-    {
-        if (tx.RequiresSpecialHandling((IXdcReleaseSpec)spec))
-        {
-            return new IntrinsicGas<EthereumGasPolicy>();
-        }
-
-        return base.CalculateIntrinsicGas(tx, spec);
-    }
+    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
+        tx.RequiresSpecialHandling((IXdcReleaseSpec)spec)
+            ? new IntrinsicGas<EthereumGasPolicy>()
+            : base.CalculateIntrinsicGas(tx, spec);
 
     private TransactionResult ExecuteSpecialTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -155,7 +191,7 @@ internal class XdcTransactionProcessor(
 
         bool restore = opts.HasFlag(ExecutionOptions.Restore);
 
-        // maybe a better approach would be adding an XdcGasPolicy 
+        // maybe a better approach would be adding an XdcGasPolicy
         TransactionResult result;
         _ = RecoverSenderIfNeeded(tx, spec, opts, UInt256.Zero);
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);

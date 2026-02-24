@@ -57,7 +57,7 @@ public sealed class BlockCachePreWarmer(
         if (preBlockCaches is not null)
         {
             CacheType result = preBlockCaches.ClearCaches();
-            result |= nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
+            nodeStorageCache.ClearCaches();
             nodeStorageCache.Enabled = true;
             if (result != default)
             {
@@ -84,8 +84,6 @@ public sealed class BlockCachePreWarmer(
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CacheType cachesCleared = preBlockCaches?.ClearCaches() ?? default;
-
-        nodeStorageCache.Enabled = false;
         cachesCleared |= nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
@@ -322,7 +320,7 @@ public sealed class BlockCachePreWarmer(
         {
             if (parallelOptions.CancellationToken.IsCancellationRequested)
             {
-                SystemTxAccessLists!.Dispose();
+                SystemTxAccessLists?.Dispose();
                 return;
             }
 
