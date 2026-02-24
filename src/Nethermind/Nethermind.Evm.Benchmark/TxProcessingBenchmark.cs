@@ -3,6 +3,10 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Exporters.Json;
+using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
@@ -36,9 +40,19 @@ namespace Nethermind.Evm.Benchmark;
 /// All benchmarks run under <see cref="Osaka"/> rules (latest fork).
 /// Based on PR #10514 (intrinsic-gas cache benchmark).
 /// </summary>
+[Config(typeof(TxProcessingConfig))]
 [MemoryDiagnoser]
+[JsonExporterAttribute.FullCompressed]
 public class TxProcessingBenchmark
 {
+    private class TxProcessingConfig : ManualConfig
+    {
+        public TxProcessingConfig()
+        {
+            AddJob(Job.ShortRun.WithToolchain(InProcessNoEmitToolchain.Instance));
+        }
+    }
+
     private const int N = 1_000;
 
     private static readonly IReleaseSpec Spec = Osaka.Instance;

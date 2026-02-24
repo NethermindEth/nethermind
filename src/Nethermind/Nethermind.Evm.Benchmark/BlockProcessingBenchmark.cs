@@ -7,16 +7,13 @@ using System;
 using System.Threading;
 using Autofac;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
+using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Exporters.Json;
+using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
@@ -24,13 +21,11 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Core.Container;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Benchmark;
@@ -47,11 +42,27 @@ namespace Nethermind.Evm.Benchmark;
 /// - Eip1559_200, AccessList_50, ContractDeploy_10
 /// - ContractCall_200, MixedBlock (100 legacy + 60 EIP-1559 + 30 AL + 10 calls)
 /// </summary>
+[Config(typeof(BlockProcessingConfig))]
 [MemoryDiagnoser]
+[JsonExporterAttribute.FullCompressed]
 public class BlockProcessingBenchmark
 {
+    /// <summary>
+    /// [IterationSetup] rebuilds world state once per iteration.
+    /// InvocationCount=1/UnrollFactor=1 ensures each invocation starts from a fresh state.
+    /// </summary>
+    private class BlockProcessingConfig : ManualConfig
+    {
+        public BlockProcessingConfig()
+        {
+            AddJob(Job.ShortRun
+                .WithToolchain(InProcessNoEmitToolchain.Instance)
+                .WithInvocationCount(1)
+                .WithUnrollFactor(1));
+        }
+    }
+
     private static readonly IReleaseSpec Spec = Osaka.Instance;
-    private static readonly ISpecProvider SpecProvider = new TestSpecProvider(Osaka.Instance);
 
     private static readonly byte[] ContractCode = Prepare.EvmCode
         .PushData(0x01)
@@ -130,36 +141,13 @@ public class BlockProcessingBenchmark
         BuildContractCalls(10, nonce).CopyTo(mixedTxs, 190);
         _mixedBlock = BuildBlock(mixedTxs);
 
-        // Build DI container with the same wiring as BlockProcessingModule.
-        // IWorldState is left unregistered at root level; each iteration scope
-        // injects its own fresh instance (see IterationSetup).
-        ContainerBuilder builder = new();
-        builder
-            // Singletons
-            .AddSingleton<ISpecProvider>(SpecProvider)
-            .AddSingleton<ILogManager>(LimboLogs.Instance)
-            .AddSingleton<IBlockValidator>(Always.Valid)
-            .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
-            .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
-            .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
-            .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
-
-            // Scoped — one fresh instance per iteration lifetime scope
-            .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
-            .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-            .AddScoped<IVirtualMachine, EthereumVirtualMachine>()
-            .AddScoped<ITransactionProcessor, EthereumTransactionProcessor>()
-            .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
-            .AddScoped<IBlockhashStore, BlockhashStore>()
-            .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
-            .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
-            .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
-            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
-            .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>(
-                (src, txProc) => src.Get(txProc))
-            .AddScoped<IBlockProcessor, BlockProcessor>();
-
-        _container = builder.Build();
+        // Build DI container using standard modules instead of hand-wiring.
+        // TestNethermindModule wires PseudoNethermindModule + TestEnvironmentModule
+        // with TestSpecProvider(Osaka.Instance) and in-memory databases.
+        // IWorldState is overridden per iteration in IterationSetup.
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Osaka.Instance))
+            .Build();
     }
 
     [GlobalCleanup]
@@ -197,8 +185,15 @@ public class BlockProcessingBenchmark
         // Create a new lifetime scope with the fresh IWorldState injected.
         // All scoped components (EthereumTransactionProcessor, BlockProcessor, etc.)
         // are resolved fresh within this scope, matching the BlockProcessingModule wiring.
+        // IBlockValidationModule[] (StandardBlockValidationModule) provides the
+        // IBlockTransactionsExecutor and ITransactionProcessorAdapter registrations
+        // that BlockProcessor requires — mirroring MainProcessingContext.
+        IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();
         _processingScope = _container.BeginLifetimeScope(b =>
-            b.RegisterInstance(_stateProvider).As<IWorldState>().ExternallyOwned());
+        {
+            b.RegisterInstance(_stateProvider).As<IWorldState>().ExternallyOwned();
+            b.AddModule(validationModules);
+        });
 
         _processor = _processingScope.Resolve<IBlockProcessor>();
     }
