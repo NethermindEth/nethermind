@@ -3,6 +3,7 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Exporters.Json;
 using BenchmarkDotNet.Jobs;
@@ -49,7 +50,12 @@ public class TxProcessingBenchmark
     {
         public TxProcessingConfig()
         {
-            AddJob(Job.ShortRun.WithToolchain(InProcessNoEmitToolchain.Instance));
+            AddJob(Job.MediumRun.WithToolchain(InProcessNoEmitToolchain.Instance));
+            AddColumn(StatisticColumn.Min);
+            AddColumn(StatisticColumn.Max);
+            AddColumn(StatisticColumn.Median);
+            AddColumn(StatisticColumn.P90);
+            AddColumn(StatisticColumn.P95);
         }
     }
 

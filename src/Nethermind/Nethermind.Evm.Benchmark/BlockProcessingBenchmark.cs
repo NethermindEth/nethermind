@@ -7,6 +7,7 @@ using System;
 using System.Threading;
 using Autofac;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Exporters.Json;
 using BenchmarkDotNet.Jobs;
@@ -55,10 +56,15 @@ public class BlockProcessingBenchmark
     {
         public BlockProcessingConfig()
         {
-            AddJob(Job.ShortRun
+            AddJob(Job.MediumRun
                 .WithToolchain(InProcessNoEmitToolchain.Instance)
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1));
+            AddColumn(StatisticColumn.Min);
+            AddColumn(StatisticColumn.Max);
+            AddColumn(StatisticColumn.Median);
+            AddColumn(StatisticColumn.P90);
+            AddColumn(StatisticColumn.P95);
         }
     }
 
