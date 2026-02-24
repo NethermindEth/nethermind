@@ -2558,6 +2558,7 @@ namespace Nethermind.TxPool.Test
                 snapshot.Should().NotContain(t => t.Hash == txA.Hash);
 
                 // Re-create test state for the next attempt
+                await _txPool.DisposeAsync();
                 Setup();
             }
         }
