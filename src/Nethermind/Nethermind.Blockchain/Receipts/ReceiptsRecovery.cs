@@ -117,6 +117,10 @@ namespace Nethermind.Blockchain.Receipts
                 {
                     receipt.StatusCode = (receipt.Logs?.Length ?? 0) == 0 ? StatusCode.Failure : StatusCode.Success;
                 }
+                if (receipt.Bloom == Bloom.Empty && (receipt.Logs?.Length ?? 0) != 0)
+                {
+                    receipt.Bloom = null;
+                }
 
                 IncrementContext(receipt.GasUsedTotal);
             }
