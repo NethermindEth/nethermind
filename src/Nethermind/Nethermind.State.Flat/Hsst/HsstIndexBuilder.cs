@@ -18,12 +18,29 @@ public ref struct HsstIndexBuilder<TWriter>
     private ref TWriter _writer;
     private readonly ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> _entries;
     private readonly ReadOnlySpan<byte> _separatorBuffer;
+    private readonly bool _isInline;
+    private readonly ReadOnlySpan<byte> _inlineValueBuffer;
+    private readonly ReadOnlySpan<int> _inlineValueLengths;
 
     public HsstIndexBuilder(ref TWriter writer, ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> entries, ReadOnlySpan<byte> separatorBuffer)
     {
         _writer = ref writer;
         _entries = entries;
         _separatorBuffer = separatorBuffer;
+        _isInline = false;
+        _inlineValueBuffer = default;
+        _inlineValueLengths = default;
+    }
+
+    public HsstIndexBuilder(ref TWriter writer, ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> entries, ReadOnlySpan<byte> separatorBuffer,
+        ReadOnlySpan<byte> inlineValueBuffer, ReadOnlySpan<int> inlineValueLengths)
+    {
+        _writer = ref writer;
+        _entries = entries;
+        _separatorBuffer = separatorBuffer;
+        _isInline = true;
+        _inlineValueBuffer = inlineValueBuffer;
+        _inlineValueLengths = inlineValueLengths;
     }
 
     /// <summary>
@@ -37,7 +54,7 @@ public ref struct HsstIndexBuilder<TWriter>
         if (_entries.Length == 0)
         {
             // Empty index: write a single empty leaf node
-            WriteLeafIndexNode(ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry>.Empty, 0);
+            WriteLeafIndexNode(ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry>.Empty, 0, 0);
             return;
         }
 
@@ -56,7 +73,7 @@ public ref struct HsstIndexBuilder<TWriter>
 
             int nodeStart = _writer.Written;
             int relativeStart = nodeStart - startWritten;
-            WriteLeafIndexNode(leafEntries, absoluteIndexStart + relativeStart);
+            WriteLeafIndexNode(leafEntries, absoluteIndexStart + relativeStart, entryIdx);
             int nodeLen = _writer.Written - nodeStart;
 
             HsstBuilder<TWriter>.HsstEntry first = leafEntries[0];
@@ -110,8 +127,15 @@ public ref struct HsstIndexBuilder<TWriter>
 
     private void WriteLeafIndexNode(
         ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> entries,
-        int absoluteNodeStart)
+        int absoluteNodeStart,
+        int globalStartIndex)
     {
+        if (_isInline)
+        {
+            WriteLeafIndexNodeInline(entries, globalStartIndex);
+            return;
+        }
+
         // Compute BaseOffset from values
         int baseOffset = 0;
         if (entries.Length > 1)
@@ -175,6 +199,105 @@ public ref struct HsstIndexBuilder<TWriter>
             ReadOnlySpan<byte> key = _separatorBuffer.Slice(entries[i].SepOffset, entries[i].SepLen);
             BinaryPrimitives.WriteInt32LittleEndian(valueBuf, entries[i].MetadataStart - baseOffset);
             indexWriter.AddKey(key, valueBuf);
+        }
+        indexWriter.FinalizeNode();
+    }
+
+    private void WriteLeafIndexNodeInline(
+        ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> entries,
+        int globalStartIndex)
+    {
+        if (entries.Length == 0)
+        {
+            // Write empty node
+            scoped BSearchIndexWriter<TWriter> emptyWriter = new(ref _writer, new BSearchIndexMetadata
+            {
+                IsIntermediate = false,
+            }, Span<byte>.Empty);
+            emptyWriter.FinalizeNode();
+            return;
+        }
+
+        // Auto-select ValueType from value sizes
+        int firstValLen = _inlineValueLengths[globalStartIndex];
+        bool allSameValLen = true;
+        int maxValLen = firstValLen;
+        for (int i = 1; i < entries.Length; i++)
+        {
+            int len = _inlineValueLengths[globalStartIndex + i];
+            if (len != firstValLen) allSameValLen = false;
+            if (len > maxValLen) maxValLen = len;
+        }
+
+        int valueType, valueSlotSize;
+        if (allSameValLen)
+        {
+            valueType = 1; // Uniform
+            valueSlotSize = firstValLen;
+        }
+        else if (maxValLen <= 3)
+        {
+            valueType = 2; // UniformWithLen
+            valueSlotSize = maxValLen + 1;
+        }
+        else
+        {
+            valueType = 0; // Variable
+            valueSlotSize = 0;
+        }
+
+        // Auto-select KeyType
+        int keyType = 0;
+        int keySlotSize = 0;
+        bool allSameKeyLen = true;
+        int firstKeyLen = entries[0].SepLen;
+        int maxKeyLen = firstKeyLen;
+        for (int i = 1; i < entries.Length; i++)
+        {
+            if (entries[i].SepLen != firstKeyLen) allSameKeyLen = false;
+            if (entries[i].SepLen > maxKeyLen) maxKeyLen = entries[i].SepLen;
+        }
+        if (allSameKeyLen && firstKeyLen > 0)
+        {
+            keyType = 1; // Uniform
+            keySlotSize = firstKeyLen;
+        }
+        else if (maxKeyLen <= 3)
+        {
+            keyType = 2; // UniformWithLen
+            keySlotSize = maxKeyLen + 1;
+        }
+
+        // Compute buffer sizes
+        int keyBufSize = 0;
+        int valueBufSize = 0;
+        for (int i = 0; i < entries.Length; i++)
+        {
+            keyBufSize += 2 + entries[i].SepLen;
+            valueBufSize += 2 + _inlineValueLengths[globalStartIndex + i];
+        }
+
+        Span<byte> keyBuf = stackalloc byte[keyBufSize];
+        Span<byte> valueBuf = stackalloc byte[valueBufSize];
+
+        // Write node via BSearchIndexWriter with value buffering
+        scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
+        {
+            IsIntermediate = false,
+            KeyType = keyType,
+            KeySlotSize = keySlotSize,
+            BaseOffset = 0,
+            ValueType = valueType,
+            ValueSlotSize = valueSlotSize,
+        }, keyBuf, valueBuf);
+
+        for (int i = 0; i < entries.Length; i++)
+        {
+            ReadOnlySpan<byte> key = _separatorBuffer.Slice(entries[i].SepOffset, entries[i].SepLen);
+            int valueOffset = entries[i].MetadataStart;
+            int valueLen = _inlineValueLengths[globalStartIndex + i];
+            ReadOnlySpan<byte> value = _inlineValueBuffer.Slice(valueOffset, valueLen);
+            indexWriter.AddKey(key, value);
         }
         indexWriter.FinalizeNode();
     }

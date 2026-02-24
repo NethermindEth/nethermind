@@ -3,17 +3,24 @@
 
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Utils;
 
 namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
 /// Hierarchical Static Sorted Table. A compact binary format for persisted snapshots.
-/// Layout: [Version: u8 = 0x01][Data Region][Index Region (B-tree)]
+///
+/// Normal layout: [Version: u8 = 0x01][Data Region][Index Region (B-tree)]
+/// Inline layout: [Version: u8 = 0x81][Index Region (B-tree)]
+///
 /// Root index is readable from the end via MetadataLength byte (no trailer).
 ///
-/// Entry format (value first, lengths forward-readable from MetadataStart):
+/// Normal entry format (value first, lengths forward-readable from MetadataStart):
 ///   [Value][ValueLength: LEB128][RemainingKeyLength: LEB128][RemainingKey]
+///
+/// Inline: no data section; leaf values stored directly in B-tree index nodes.
+/// Separators ARE the full keys.
 /// </summary>
 public readonly ref struct Hsst
 {
@@ -24,6 +31,8 @@ public readonly ref struct Hsst
     public ReadOnlySpan<byte> Data => _data;
 
     public Hsst(ReadOnlySpan<byte> data) => _data = data;
+
+    private bool IsInline => _data.Length >= 1 && (_data[0] & 0x80) != 0;
 
     public int EntryCount
     {
@@ -58,6 +67,8 @@ public readonly ref struct Hsst
             return false;
         }
 
+        bool isInline = IsInline;
+
         HsstIndex currentIndex = HsstIndex.ReadFromEnd(_data, _data.Length);
 
         // B-tree traversal through intermediate nodes
@@ -72,8 +83,28 @@ public readonly ref struct Hsst
             currentIndex = HsstIndex.ReadFromEnd(_data, childOffset + 1);
         }
 
-        // Leaf search
-        if (!currentIndex.TryGetFloor(key, out ReadOnlySpan<byte> separatorKey, out ReadOnlySpan<byte> metadataBytes))
+        if (isInline)
+        {
+            // Inline: separator IS the full key, value is the leaf value
+            int floorIdx = currentIndex.FindFloorIndex(key);
+            if (floorIdx < 0)
+            {
+                value = default;
+                return false;
+            }
+            if (!key.SequenceEqual(currentIndex.GetKey(floorIdx)))
+            {
+                value = default;
+                return false;
+            }
+            // Re-derive value span from _data to satisfy ref safety (leafVal references _data memory)
+            ReadOnlySpan<byte> leafVal = currentIndex.GetValue(floorIdx);
+            value = RederiveFromData(_data, leafVal);
+            return true;
+        }
+
+        // Non-inline: leaf search
+        if (!currentIndex.TryGetFloor(key, out ReadOnlySpan<byte> sepKey, out ReadOnlySpan<byte> metadataBytes))
         {
             value = default;
             return false;
@@ -83,14 +114,14 @@ public readonly ref struct Hsst
         ReadEntry(_data, 1 + metadataStart, out ReadOnlySpan<byte> remainingKey, out ReadOnlySpan<byte> entryValue);
 
         // Verify full key matches: key == separator + remainingKey
-        if (key.Length != separatorKey.Length + remainingKey.Length)
+        if (key.Length != sepKey.Length + remainingKey.Length)
         {
             value = default;
             return false;
         }
 
-        if (!key.StartsWith(separatorKey) ||
-            (remainingKey.Length > 0 && !key.Slice(separatorKey.Length).SequenceEqual(remainingKey)))
+        if (!key.StartsWith(sepKey) ||
+            (remainingKey.Length > 0 && !key.Slice(sepKey.Length).SequenceEqual(remainingKey)))
         {
             value = default;
             return false;
@@ -115,18 +146,34 @@ public readonly ref struct Hsst
         value = data.Slice(metadataStart - valueLength, valueLength);
     }
 
+    /// <summary>
+    /// Re-derive a sub-span from _data to satisfy compiler ref safety rules.
+    /// The sub-span must already reference memory within data.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> RederiveFromData(ReadOnlySpan<byte> data, ReadOnlySpan<byte> subSpan)
+    {
+        if (subSpan.IsEmpty) return default;
+        nint offset = Unsafe.ByteOffset(
+            ref Unsafe.AsRef(in MemoryMarshal.GetReference(data)),
+            ref Unsafe.AsRef(in MemoryMarshal.GetReference(subSpan)));
+        return data.Slice((int)offset, subSpan.Length);
+    }
+
     public Enumerator GetEnumerator() => new(_data);
 
     public ref struct Enumerator : IDisposable
     {
         private readonly ReadOnlySpan<byte> _data;
-        private readonly (byte[] Separator, int MetadataStart)[] _leafEntries;
+        private readonly bool _isInline;
+        private readonly (byte[] Key, int MetadataStart, byte[]? InlineValue)[] _leafEntries;
         private int _currentIndex;
 
         public Enumerator(ReadOnlySpan<byte> data)
         {
             _data = data;
             _currentIndex = -1;
+            _isInline = data.Length >= 1 && (data[0] & 0x80) != 0;
 
             if (data.Length < 2)
             {
@@ -135,20 +182,29 @@ public readonly ref struct Hsst
             }
 
             HsstIndex rootIndex = HsstIndex.ReadFromEnd(data, data.Length);
-            List<(byte[] Separator, int MetadataStart)> entries = new();
-            CollectLeafEntries(data, rootIndex, entries);
+            List<(byte[] Key, int MetadataStart, byte[]? InlineValue)> entries = new();
+            CollectLeafEntries(data, rootIndex, entries, _isInline);
             _leafEntries = entries.ToArray();
         }
 
-        private static void CollectLeafEntries(ReadOnlySpan<byte> data, HsstIndex index, List<(byte[], int)> entries)
+        private static void CollectLeafEntries(ReadOnlySpan<byte> data, HsstIndex index,
+            List<(byte[], int, byte[]?)> entries, bool isInline)
         {
             if (!index.IsIntermediate)
             {
                 for (int i = 0; i < index.EntryCount; i++)
                 {
-                    byte[] sep = index.GetKey(i).ToArray();
-                    int metaStart = index.GetIntValue(i);
-                    entries.Add((sep, metaStart));
+                    byte[] key = index.GetKey(i).ToArray();
+                    if (isInline)
+                    {
+                        byte[] value = index.GetValue(i).ToArray();
+                        entries.Add((key, 0, value));
+                    }
+                    else
+                    {
+                        int metaStart = index.GetIntValue(i);
+                        entries.Add((key, metaStart, null));
+                    }
                 }
             }
             else
@@ -157,7 +213,7 @@ public readonly ref struct Hsst
                 {
                     int childOffset = index.GetIntValue(i);
                     HsstIndex child = HsstIndex.ReadFromEnd(data, childOffset + 1);
-                    CollectLeafEntries(data, child, entries);
+                    CollectLeafEntries(data, child, entries, isInline);
                 }
             }
         }
@@ -178,13 +234,16 @@ public readonly ref struct Hsst
         {
             get
             {
-                (byte[] separator, int metaStart) = _leafEntries[_currentIndex];
+                (byte[] key, int metaStart, byte[]? inlineValue) = _leafEntries[_currentIndex];
+
+                if (inlineValue is not null)
+                    return new KeyValueEntry(key, inlineValue);
 
                 ReadEntry(_data, 1 + metaStart, out ReadOnlySpan<byte> remainingKey, out ReadOnlySpan<byte> value);
 
-                byte[] fullKey = new byte[separator.Length + remainingKey.Length];
-                separator.CopyTo(fullKey.AsSpan());
-                remainingKey.CopyTo(fullKey.AsSpan(separator.Length));
+                byte[] fullKey = new byte[key.Length + remainingKey.Length];
+                key.CopyTo(fullKey.AsSpan());
+                remainingKey.CopyTo(fullKey.AsSpan(key.Length));
 
                 return new KeyValueEntry(fullKey, value);
             }

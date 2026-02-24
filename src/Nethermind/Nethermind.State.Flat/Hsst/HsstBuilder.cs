@@ -11,11 +11,15 @@ namespace Nethermind.State.Flat.Hsst;
 /// Builds an HSST (Hierarchical Static Sorted Table) from key-value entries.
 /// Entries MUST be added in sorted key order. No internal sorting is performed.
 ///
-/// Binary layout:
+/// Binary layout (normal):
 ///   [Version: u8 = 0x01][Data Region: entries...][Index Region: B-tree nodes...]
 ///   Root index is readable from the end via MetadataLength byte (no trailer).
 ///
-/// Entry format (value first, lengths forward-readable from MetadataStart):
+/// Binary layout (inline):
+///   [Version: u8 = 0x81][Index Region: B-tree nodes...]
+///   No data section. Leaf values are stored directly in the B-tree index.
+///
+/// Entry format (normal, value first, lengths forward-readable from MetadataStart):
 ///   [Value][ValueLength: LEB128][RemainingKeyLength: LEB128][RemainingKey]
 /// </summary>
 public ref struct HsstBuilder<TWriter>
@@ -26,37 +30,52 @@ public ref struct HsstBuilder<TWriter>
     private readonly int _baseOffset;
 
     private readonly int _minSeparatorLength;
+    private readonly bool _inlineValues;
 
     // Working buffers allocated from ArrayPool
     private ArrayPoolListRef<byte> _separatorBuffer;
     private ArrayPoolListRef<HsstEntry> _entriesBuffer;
     private ArrayPoolListRef<byte> _prevKeyBuffer;
 
+    // Inline value buffers (only allocated when _inlineValues is true)
+    private ArrayPoolListRef<byte> _inlineValueBuffer;
+    private ArrayPoolListRef<int> _inlineValueLengths;
+
     public readonly struct HsstEntry(int sepOffset, int sepLen, int metadataStart)
     {
         public readonly int SepOffset = sepOffset;
         public readonly int SepLen = sepLen;
-        /// <summary>Offset relative to position 1 (after this builder's version byte).</summary>
+        /// <summary>
+        /// Normal: offset relative to position 1 (after version byte) where value metadata starts.
+        /// Inline: offset into the inline value buffer.
+        /// </summary>
         public readonly int MetadataStart = metadataStart;
     }
 
     /// <summary>
     /// Create builder writing via the given writer.
-    /// Writes version byte 0x01.
+    /// Writes version byte (0x01 normal, 0x81 inline).
     /// Allocates working buffers from ArrayPool — call Dispose() to return them.
     /// </summary>
-    public HsstBuilder(ref TWriter writer, int minSeparatorLength = 0)
+    public HsstBuilder(ref TWriter writer, int minSeparatorLength = 0, bool inlineValues = false)
     {
         _writer = ref writer;
         _baseOffset = _writer.Written;
         _minSeparatorLength = minSeparatorLength;
+        _inlineValues = inlineValues;
         _separatorBuffer = new ArrayPoolListRef<byte>(65536);
         _entriesBuffer = new ArrayPoolListRef<HsstEntry>(10000);
         _prevKeyBuffer = new ArrayPoolListRef<byte>(256);
 
+        if (inlineValues)
+        {
+            _inlineValueBuffer = new ArrayPoolListRef<byte>(65536);
+            _inlineValueLengths = new ArrayPoolListRef<int>(10000);
+        }
+
         // Write version byte
         Span<byte> span = _writer.GetSpan(1);
-        span[0] = 0x01;
+        span[0] = inlineValues ? (byte)0x81 : (byte)0x01;
         _writer.Advance(1);
     }
 
@@ -68,6 +87,11 @@ public ref struct HsstBuilder<TWriter>
         _separatorBuffer.Dispose();
         _entriesBuffer.Dispose();
         _prevKeyBuffer.Dispose();
+        if (_inlineValues)
+        {
+            _inlineValueBuffer.Dispose();
+            _inlineValueLengths.Dispose();
+        }
     }
 
     /// <summary>
@@ -76,6 +100,7 @@ public ref struct HsstBuilder<TWriter>
     /// </summary>
     public ref TWriter BeginValueWrite()
     {
+        if (_inlineValues) throw new NotSupportedException("BeginValueWrite not supported in inline mode. Use Add() instead.");
         _writtenBeforeValue = _writer.Written;
         return ref _writer;
     }
@@ -86,6 +111,8 @@ public ref struct HsstBuilder<TWriter>
     /// </summary>
     public void FinishValueWrite(ReadOnlySpan<byte> key)
     {
+        if (_inlineValues) throw new NotSupportedException("FinishValueWrite not supported in inline mode. Use Add() instead.");
+
         int actualLen = _writer.Written - _writtenBeforeValue;
         // metadataStart stored in index is relative to position 1 (after this builder's version byte)
         int metadataStart = _writer.Written - _baseOffset - 1;
@@ -128,10 +155,28 @@ public ref struct HsstBuilder<TWriter>
     /// </summary>
     public void Add(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
     {
-        _writtenBeforeValue = _writer.Written;
-        value.CopyTo(_writer.GetSpan(value.Length));
-        _writer.Advance(value.Length);
-        FinishValueWrite(key);
+        if (_inlineValues)
+        {
+            // Inline: separator = full key, buffer value separately
+            int sepOffset = _separatorBuffer.Count;
+            _separatorBuffer.AddRange(key);
+
+            int valueOffset = _inlineValueBuffer.Count;
+            _inlineValueBuffer.AddRange(value);
+            _inlineValueLengths.Add(value.Length);
+
+            _entriesBuffer.Add(new HsstEntry(sepOffset, key.Length, valueOffset));
+
+            _prevKeyBuffer.Clear();
+            _prevKeyBuffer.AddRange(key);
+        }
+        else
+        {
+            _writtenBeforeValue = _writer.Written;
+            value.CopyTo(_writer.GetSpan(value.Length));
+            _writer.Advance(value.Length);
+            FinishValueWrite(key);
+        }
     }
 
     /// <summary>
@@ -140,13 +185,29 @@ public ref struct HsstBuilder<TWriter>
     /// </summary>
     public void Build(int maxLeafEntries = Hsst.MaxLeafEntries)
     {
-        int absoluteIndexStart = _writer.Written - _baseOffset;
+        if (_inlineValues)
+        {
+            // Inline: no data section, index starts right after version byte
+            int absoluteIndexStart = 1;
 
-        HsstIndexBuilder<TWriter> indexBuilder = new(
-            ref _writer, _entriesBuffer.AsSpan(),
-            _separatorBuffer.AsSpan());
+            HsstIndexBuilder<TWriter> indexBuilder = new(
+                ref _writer, _entriesBuffer.AsSpan(),
+                _separatorBuffer.AsSpan(),
+                _inlineValueBuffer.AsSpan(),
+                _inlineValueLengths.AsSpan());
 
-        indexBuilder.Build(absoluteIndexStart, maxLeafEntries);
+            indexBuilder.Build(absoluteIndexStart, maxLeafEntries);
+        }
+        else
+        {
+            int absoluteIndexStart = _writer.Written - _baseOffset;
+
+            HsstIndexBuilder<TWriter> indexBuilder = new(
+                ref _writer, _entriesBuffer.AsSpan(),
+                _separatorBuffer.AsSpan());
+
+            indexBuilder.Build(absoluteIndexStart, maxLeafEntries);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
