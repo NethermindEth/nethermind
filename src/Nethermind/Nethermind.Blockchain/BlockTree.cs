@@ -964,29 +964,19 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            bool ascendingOrder = true;
-            if (blocks.Count > 1)
-            {
-                if (blocks[^1].Number < blocks[0].Number)
-                {
-                    ascendingOrder = false;
-                }
-            }
+            bool ascendingOrder = blocks.Count <= 1 || blocks[^1].Number >= blocks[0].Number;
 
 #if DEBUG
-            for (int i = 0; i < blocks.Count; i++)
+            for (int i = 1; i < blocks.Count; i++)
             {
-                if (i != 0)
+                if (ascendingOrder && blocks[i].Number != blocks[i - 1].Number + 1)
                 {
-                    if (ascendingOrder && blocks[i].Number != blocks[i - 1].Number + 1)
-                    {
-                        throw new InvalidOperationException("Update main chain invoked with gaps");
-                    }
+                    throw new InvalidOperationException("Update main chain invoked with gaps");
+                }
 
-                    if (!ascendingOrder && blocks[i - 1].Number != blocks[i].Number + 1)
-                    {
-                        throw new InvalidOperationException("Update main chain invoked with gaps");
-                    }
+                if (!ascendingOrder && blocks[i - 1].Number != blocks[i].Number + 1)
+                {
+                    throw new InvalidOperationException("Update main chain invoked with gaps");
                 }
             }
 #endif
@@ -1009,6 +999,10 @@ namespace Nethermind.Blockchain
                 }
             }
 
+            // Fire before the per-block loop so subscribers (e.g. receipt tx-index batching)
+            // can write data before BlockAddedToMain / NewCanonicalReceipts notifies JSON-RPC clients.
+            OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(blocks, wereProcessed));
+
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
@@ -1022,12 +1016,14 @@ namespace Nethermind.Blockchain
                 bool lastProcessedBlock = i == blocks.Count - 1;
 
                 // Where head is set if wereProcessed is true
-                MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
+                MoveToMain(
+                    blocks[i],
+                    batch,
+                    wereProcessed,
+                    forceUpdateHeadBlock && lastProcessedBlock);
             }
 
             TryUpdateSyncPivot();
-
-            OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(blocks, wereProcessed));
         }
 
         private void TryUpdateSyncPivot()
@@ -1148,7 +1144,11 @@ namespace Nethermind.Blockchain
         /// <param name="forceUpdateHeadBlock">Force updating <see cref="Head"/> to this block, even when <see cref="Block.TotalDifficulty"/> is not higher than previous head.</param>
         /// <exception cref="InvalidOperationException">Invalid block</exception>
         [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
-        private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed, bool forceUpdateHeadBlock)
+        private void MoveToMain(
+            Block block,
+            BatchWrite batch,
+            bool wasProcessed,
+            bool forceUpdateHeadBlock)
         {
             if (Logger.IsTrace) Logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
             if (block.Hash is null)

@@ -19,7 +19,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class PersistentReceiptStorage : IReceiptStorage
+    public class PersistentReceiptStorage : IReceiptStorage, IDisposable
     {
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
@@ -34,7 +34,6 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IBlockStore _blockStore;
         private readonly IReceiptConfig _receiptConfig;
         private readonly bool _legacyHashKey;
-
         private const int CacheSize = 64;
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
@@ -69,33 +68,57 @@ namespace Nethermind.Blockchain.Receipts
             _legacyHashKey = firstValue.HasValue && firstValue.Value.Key is not null && firstValue.Value.Key.Length == Hash256.Size;
 
             _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
+            _blockTree.OnUpdateMainChain += BlockTreeOnUpdateMainChain;
         }
 
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
-            EnsureCanonical(e.Block);
+            Block newMain = e.Block;
+
             NewCanonicalReceipts?.Invoke(this, e);
 
-            // Don't block the main loop
-            Task.Run(() =>
+            long? txLookupLimit = _receiptConfig.TxLookupLimit;
+            if (txLookupLimit is null or <= 0 || newMain.Number <= txLookupLimit.Value)
             {
-                Block newMain = e.Block;
+                return;
+            }
 
-                // Delete old tx index
-                if (_receiptConfig.TxLookupLimit > 0 && newMain.Number > _receiptConfig.TxLookupLimit.Value)
+            // Don't block the main loop
+            _ = Task.Run(() =>
+            {
+                Block? newOldTx = _blockTree.FindBlock(newMain.Number - txLookupLimit.Value);
+                if (newOldTx is not null)
                 {
-                    Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
-                    if (newOldTx is not null)
-                    {
-                        RemoveBlockTx(newOldTx);
-                    }
+                    RemoveBlockTx(newOldTx);
                 }
             });
         }
 
+        private void BlockTreeOnUpdateMainChain(object? sender, OnUpdateMainChainArgs e)
+        {
+            long lastBlockNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+            IReadOnlyList<Block> blocks = e.Blocks;
+
+            if (blocks.Count == 1)
+            {
+                EnsureCanonical(blocks[0], lastBlockNumber);
+                return;
+            }
+
+            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
+            foreach (Block block in blocks)
+            {
+                if (ShouldIndexBlock(block, lastBlockNumber, out Transaction[] transactions))
+                {
+                    WriteCanonicalTxIndex(block, transactions, writeBatch);
+                }
+            }
+        }
+
         public Hash256 FindBlockHash(Hash256 txHash)
         {
-            var blockHashData = _transactionDb.Get(txHash);
+            byte[]? blockHashData = _transactionDb.Get(txHash);
+
             if (blockHashData is null) return FindReceiptObsolete(txHash)?.BlockHash;
 
             if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
@@ -351,6 +374,11 @@ namespace Nethermind.Blockchain.Receipts
 
         private void RemoveBlockTx(Block block)
         {
+            if (block.Transactions.Length == 0)
+            {
+                return;
+            }
+
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
             foreach (Transaction tx in block.Transactions)
             {
@@ -360,32 +388,51 @@ namespace Nethermind.Blockchain.Receipts
 
         private void EnsureCanonical(Block block, long? lastBlockNumber)
         {
-            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
-
             lastBlockNumber ??= _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+            if (!ShouldIndexBlock(block, lastBlockNumber.Value, out Transaction[] transactions))
+            {
+                return;
+            }
 
-            if (_receiptConfig.TxLookupLimit == -1) return;
-            if (_receiptConfig.TxLookupLimit != 0 && block.Number <= lastBlockNumber - _receiptConfig.TxLookupLimit) return;
+            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
+            WriteCanonicalTxIndex(block, transactions, writeBatch);
+        }
+
+        private bool ShouldIndexBlock(Block block, long lastBlockNumber, out Transaction[] transactions)
+        {
+            transactions = block.Transactions;
+            if (transactions.Length == 0) return false;
+
+            long? limit = _receiptConfig.TxLookupLimit;
+            return limit != -1 && (limit is null or 0 || block.Number > lastBlockNumber - limit.Value);
+        }
+
+        private void WriteCanonicalTxIndex(Block block, Transaction[] transactions, IWriteBatch writeBatch)
+        {
             if (_receiptConfig.CompactTxIndex)
             {
                 byte[] blockNumber = Rlp.Encode(block.Number).Bytes;
-                foreach (Transaction tx in block.Transactions)
+                foreach (Transaction tx in transactions)
                 {
                     tx.Hash ??= tx.CalculateHash();
-                    Hash256 hash = tx.Hash;
-                    writeBatch[hash.Bytes] = blockNumber;
+                    writeBatch[tx.Hash.Bytes] = blockNumber;
                 }
             }
             else
             {
-                byte[] blockHash = block.Hash.BytesToArray();
-                foreach (Transaction tx in block.Transactions)
+                ReadOnlySpan<byte> blockHash = block.Hash!.Bytes;
+                foreach (Transaction tx in transactions)
                 {
                     tx.Hash ??= tx.CalculateHash();
-                    Hash256 hash = tx.Hash;
-                    writeBatch[hash.Bytes] = blockHash;
+                    writeBatch.PutSpan(tx.Hash.Bytes, blockHash);
                 }
             }
+        }
+
+        public void Dispose()
+        {
+            _blockTree.BlockAddedToMain -= BlockTreeOnBlockAddedToMain;
+            _blockTree.OnUpdateMainChain -= BlockTreeOnUpdateMainChain;
         }
     }
 }

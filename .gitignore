@@ -449,3 +449,4 @@ FodyWeavers.xsd
 ## Nethermind
 keystore/
 /.githooks
+/.dotnet_cli

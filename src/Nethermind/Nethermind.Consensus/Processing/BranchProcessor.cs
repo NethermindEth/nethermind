@@ -32,7 +32,7 @@ public class BranchProcessor(
     protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider);
     private Task _clearTask = Task.CompletedTask;
 
-    private const int MaxUncommittedBlocks = 64;
+    private const int MaxUncommittedBlocks = BlockProcessingConstants.MaxUncommittedBlocks;
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
