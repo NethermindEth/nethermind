@@ -283,6 +283,71 @@ public class FilterManagerTests
     }
 
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task concurrent_pending_transaction_add_and_poll_does_not_lose_data()
+    {
+        PendingTransactionFilter filter = _filterStore.CreatePendingTransactionFilter();
+        _filterStore.SaveFilter(filter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _logManager);
+
+        const int txCount = 500;
+        int totalPolled = 0;
+
+        Task producer = Task.Run(() =>
+        {
+            for (int i = 0; i < txCount; i++)
+                _txPool.NewPending += Raise.EventWith(new TxPool.TxEventArgs(Build.A.Transaction.TestObject));
+        });
+
+        Task consumer = Task.Run(async () =>
+        {
+            while (totalPolled < txCount)
+            {
+                Hash256[] polled = _filterManager.PollPendingTransactionHashes(filter.Id);
+                totalPolled += polled.Length;
+                if (polled.Length == 0) await Task.Yield();
+            }
+        });
+
+        await Task.WhenAll(producer, consumer);
+        totalPolled.Should().Be(txCount);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task concurrent_block_processing_and_poll_does_not_lose_data()
+    {
+        BlockFilter blockFilter = new(_currentFilterId++);
+        _filterStore.SaveFilter(blockFilter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _logManager);
+
+        Block block = Build.A.Block.TestObject;
+
+        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
+        _filterManager.PollBlockHashes(blockFilter.Id);
+
+        const int blockCount = 500;
+        int totalPolled = 0;
+
+        Task producer = Task.Run(() =>
+        {
+            for (int i = 0; i < blockCount; i++)
+                _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
+        });
+
+        Task consumer = Task.Run(async () =>
+        {
+            while (totalPolled < blockCount)
+            {
+                Hash256[] polled = _filterManager.PollBlockHashes(blockFilter.Id);
+                totalPolled += polled.Length;
+                if (polled.Length == 0) await Task.Yield();
+            }
+        });
+
+        await Task.WhenAll(producer, consumer);
+        totalPolled.Should().Be(blockCount);
+    }
+
     private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder, Action<ReceiptBuilder> receiptBuilder)
         => LogsShouldNotBeEmpty([filterBuilder], [receiptBuilder]);
 
