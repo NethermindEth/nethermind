@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -27,7 +26,7 @@ namespace Nethermind.Serialization.Rlp
     ///
     ///     Note: Prefer RlpStream to encode instead, which does not create a new byte array on each call.
     /// </summary>
-    public class Rlp
+    public partial class Rlp
     {
         public const int LengthOfKeccakRlp = 33;
 
@@ -62,7 +61,7 @@ namespace Nethermind.Serialization.Rlp
         /// </summary>
         private Rlp(byte singleByte)
         {
-            Bytes = new[] { singleByte };
+            Bytes = [singleByte];
         }
 
         public Rlp(byte[] bytes)
@@ -80,35 +79,13 @@ namespace Nethermind.Serialization.Rlp
         public int Length => Bytes.Length;
 
         private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
-        private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decoders;
-        private static readonly Lock _decoderLock = new();
-        public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders
-        {
-            get
-            {
-                FrozenDictionary<RlpDecoderKey, IRlpDecoder> decoders = _decoders;
-                if (decoders is not null)
-                {
-                    // Already exists no need for lock
-                    return decoders;
-                }
-
-                return CreateDecoders();
-            }
-        }
-
-        private static FrozenDictionary<RlpDecoderKey, IRlpDecoder> CreateDecoders()
-        {
-            using Lock.Scope _ = _decoderLock.EnterScope();
-            // Recreate, if not already recreated
-            return _decoders ??= _decoderBuilder.ToFrozenDictionary();
-        }
+        private static Lock _decoderLock = new();
 
         public static void ResetDecoders()
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
-            _decoders = null;
+            _decodersSnapshot = null;
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
             RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         }
@@ -117,79 +94,13 @@ namespace Nethermind.Serialization.Rlp
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder[key] = decoder;
-            // Mark FrozenDictionary as null to force re-creation
-            _decoders = null;
+            _decodersSnapshot = null;
         }
 
-        public static void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false)
-        {
-            foreach (Type? type in assembly.GetExportedTypes())
-            {
-                if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
-                {
-                    continue;
-                }
-
-                if (type.GetCustomAttribute<SkipGlobalRegistration>() is not null)
-                {
-                    continue;
-                }
-
-                Type[]? implementedInterfaces = type.GetInterfaces();
-                foreach (Type? implementedInterface in implementedInterfaces)
-                {
-                    if (!implementedInterface.IsGenericType)
-                    {
-                        continue;
-                    }
-
-                    Type? interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
-                    if (interfaceGenericDefinition == typeof(IRlpDecoder<>).GetGenericTypeDefinition())
-                    {
-                        bool isSetForAnyAttribute = false;
-                        IRlpDecoder? instance = null;
-
-                        foreach (DecoderAttribute rlpDecoderAttr in type.GetCustomAttributes<DecoderAttribute>())
-                        {
-                            RlpDecoderKey key = new(implementedInterface.GenericTypeArguments[0], rlpDecoderAttr.Key);
-                            AddEncoder(key);
-
-                            isSetForAnyAttribute = true;
-                        }
-
-                        if (!isSetForAnyAttribute)
-                        {
-                            AddEncoder(new(implementedInterface.GenericTypeArguments[0]));
-                        }
-
-                        void AddEncoder(RlpDecoderKey key)
-                        {
-                            using Lock.Scope _ = _decoderLock.EnterScope();
-                            if (!_decoderBuilder.TryGetValue(key, out IRlpDecoder? value) || canOverrideExistingDecoders)
-                            {
-                                try
-                                {
-                                    _decoderBuilder[key] = instance ??= (IRlpDecoder)(type.GetConstructor(Type.EmptyTypes) is not null ?
-                                        Activator.CreateInstance(type) :
-                                        Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null));
-                                }
-                                catch (Exception)
-                                {
-                                    throw new ArgumentException($"Unable to set decoder for {key}, because {type} decoder has no suitable constructor.");
-                                }
-                            }
-                            else
-                            {
-                                throw new InvalidOperationException($"Unable to override decoder for {key}, because the following decoder is already set: {value}.");
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Mark FrozenDictionary as null to force re-creation
-            _decoders = null;
-        }
+        public static partial void RegisterDecoders(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.Interfaces)]
+            Assembly assembly,
+            bool canOverrideExistingDecoders = false);
 
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => Decode<T>(oldRlp.Bytes.AsRlpStream(), rlpBehaviors);
@@ -1905,7 +1816,7 @@ namespace Nethermind.Serialization.Rlp
             public string Key { get; } = key;
         }
 
-        private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
+        private static ILogger _logger = Static.LogManager.GetClassLogger();
 
         [StackTraceHidden]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
@@ -1936,7 +1847,7 @@ namespace Nethermind.Serialization.Rlp
         }
     }
 
-    public readonly struct RlpDecoderKey(Type type, string key = RlpDecoderKey.Default) : IEquatable<RlpDecoderKey>
+    public readonly partial struct RlpDecoderKey(Type type, string key = RlpDecoderKey.Default) : IEquatable<RlpDecoderKey>
     {
         public const string Default = "default";
         public const string Storage = "storage";
@@ -1951,11 +1862,7 @@ namespace Nethermind.Serialization.Rlp
         public static implicit operator Type(RlpDecoderKey key) => key._type;
         public static implicit operator RlpDecoderKey(Type key) => new(key);
 
-        public bool Equals(RlpDecoderKey other) => _type.Equals(other._type) && _key.Equals(other._key);
-
-        public override int GetHashCode() => (int)BitOperations.Crc32C(
-            (uint)_type.GetHashCode(),
-            (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
+        public bool Equals(RlpDecoderKey other) => _type == other._type && _key.Equals(other._key);
 
         public override bool Equals(object obj) => obj is RlpDecoderKey key && Equals(key);
 

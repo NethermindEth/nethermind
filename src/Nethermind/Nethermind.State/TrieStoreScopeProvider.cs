@@ -108,7 +108,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber)
         {
-            return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<WorldStateWriteBatch>());
+            return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger());
         }
 
         public void Commit(long blockNumber)
