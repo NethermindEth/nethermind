@@ -63,7 +63,6 @@
     <Project Path="Nethermind.Network.Dns.Test/Nethermind.Network.Dns.Test.csproj" />
     <Project Path="Nethermind.Network.Enr.Test/Nethermind.Network.Enr.Test.csproj" />
     <Project Path="Nethermind.Network.Test/Nethermind.Network.Test.csproj" />
-    <Project Path="Nethermind.Optimism.Test/Nethermind.Optimism.Test.csproj" />
     <Project Path="Nethermind.Runner.Test/Nethermind.Runner.Test.csproj" />
     <Project Path="Nethermind.Serialization.Ssz.Test/Nethermind.Serialization.Ssz.Test.csproj" />
     <Project Path="Nethermind.Serialization.SszGenerator.Test/Nethermind.Serialization.SszGenerator.Test.csproj" />
@@ -112,7 +111,6 @@
   <Project Path="Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
   <Project Path="Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
   <Project Path="Nethermind.Network/Nethermind.Network.csproj" />
-  <Project Path="Nethermind.Optimism/Nethermind.Optimism.csproj" />
   <Project Path="Nethermind.Runner/Nethermind.Runner.csproj" />
   <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
   <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
