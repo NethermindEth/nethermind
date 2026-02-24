@@ -51,7 +51,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public BlockHeadersMessage Deserialize(RlpStream rlpStream)
         {
             BlockHeadersMessage message = new();
-            message.BlockHeaders = _headerDecoder.DecodeArrayPool(rlpStream);
+            message.BlockHeaders = _headerDecoder.DecodeArrayPool(rlpStream, limit: RlpLimit); 
             return message;
         }
     }

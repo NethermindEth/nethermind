@@ -23,14 +23,5 @@ internal class XdcProtocolValidator : ProtocolValidator
     {
     }
 
-    protected override bool ValidateEthProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)
-    {
-        SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs)eventArgs;
-        if (!ValidateNetworkId(session, syncPeerArgs.NetworkId))
-            return false;
-
-        if (!ValidateGenesisHash(session, syncPeerArgs))
-            return false;
-        return true;
-    }
+    protected override bool MustValidateForkId { get; set; } = false;
 }

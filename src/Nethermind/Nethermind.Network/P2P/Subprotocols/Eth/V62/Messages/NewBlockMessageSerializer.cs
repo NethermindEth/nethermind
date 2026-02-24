@@ -7,14 +7,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class NewBlockMessageSerializer : IZeroInnerMessageSerializer<NewBlockMessage>
+    public class NewBlockMessageSerializer(BlockDecoder blockDecoder = null) : IZeroInnerMessageSerializer<NewBlockMessage>
     {
-        private readonly BlockDecoder _blockDecoder;
-
-        public NewBlockMessageSerializer(BlockDecoder blockDecoder = null)
-        {
-            _blockDecoder = blockDecoder ?? new();
-        }
+        private readonly BlockDecoder _blockDecoder = blockDecoder ?? new();
 
         public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message)
         {

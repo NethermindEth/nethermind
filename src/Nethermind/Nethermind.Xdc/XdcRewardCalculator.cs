@@ -138,7 +138,7 @@ namespace Nethermind.Xdc
                 if (!_signingTxsCache.TryGet(h.Hash, out Transaction[] signingTxs))
                 {
                     Block? block = _blockTree.FindBlock(h.Hash, h.Number);
-                    if (block == null) throw new InvalidOperationException($"Block with number {i} not found");
+                    if (block == null) throw new InvalidOperationException($"Block {h.ToString(BlockHeader.Format.Short)} not found");
                     Transaction[] txs = block.Transactions;
                     signingTxs = CacheSigningTxs(h.Hash!, txs, spec);
                 }
