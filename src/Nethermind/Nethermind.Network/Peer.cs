@@ -40,6 +40,12 @@ namespace Nethermind.Network
         /// </summary>
         public ISession? OutSession { get; set; }
 
+        /// <summary>
+        /// Randomized score for this peer, used to ensure better distribution of connections.
+        /// Higher scores indicate higher priority for randomized peer distribution.
+        /// </summary>
+        public long RandomizedScore { get; set; }
+
         public override string ToString() => $"[Peer|{Node:s}|{InSession}|{OutSession}]";
 
         public bool Equals(Peer? other) => Node.Equals(other?.Node);

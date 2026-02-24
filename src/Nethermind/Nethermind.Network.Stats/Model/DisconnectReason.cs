@@ -18,6 +18,7 @@ public enum DisconnectReason : byte
     DuplicatedConnection,
     PeerRemoved,
     TooManyPeers,
+    BetterRandomizedPeer,
     HardLimitTooManyPeers,
     SessionAlreadyExist,
     ReplacingSessionWithOppositeDirection,
@@ -79,6 +80,7 @@ public static class DisconnectReasonExtension
         return disconnectReason switch
         {
             DisconnectReason.TooManyPeers => EthDisconnectReason.TooManyPeers,
+            DisconnectReason.BetterRandomizedPeer => EthDisconnectReason.TooManyPeers,
             DisconnectReason.HardLimitTooManyPeers => EthDisconnectReason.TooManyPeers,
             DisconnectReason.SessionAlreadyExist or DisconnectReason.ReplacingSessionWithOppositeDirection or DisconnectReason.OppositeDirectionCleanup or DisconnectReason.DuplicatedConnection or DisconnectReason.SessionIdAlreadyExists => EthDisconnectReason.AlreadyConnected,
             DisconnectReason.ConnectionClosed or DisconnectReason.OutgoingConnectionFailed => EthDisconnectReason.TcpSubSystemError,
