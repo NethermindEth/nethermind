@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -70,8 +71,9 @@ public class PersistenceManagerTests
     }
 
     [TearDown]
-    public void TearDown()
+    public async Task TearDown()
     {
+        await _persistenceManager.DisposeAsync();
         _memArena.Dispose();
         _persistedSnapshotRepository.Dispose();
     }

@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -41,7 +42,35 @@ public class PersistenceManager(
     private readonly List<(Hash256AsKey, TreePath)> _trieNodesSortBuffer = new(); // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
+    private readonly Channel<StateId> _compactPersistedJobs = Channel.CreateBounded<StateId>(1);
+    private readonly CancellationTokenSource _cancelTokenSource = new();
+    private Task? _compactPersistedTask;
+
     private StateId _currentPersistedStateId = StateId.PreGenesis;
+
+    private Task EnsureCompactorStarted() =>
+        _compactPersistedTask ??= RunPersistedCompactor(_cancelTokenSource.Token);
+
+    private async Task RunPersistedCompactor(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (StateId stateId in _compactPersistedJobs.Reader.ReadAllAsync(cancellationToken))
+            {
+                _persistedSnapshotCompactor.DoCompactSnapshot(stateId);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _cancelTokenSource.Cancel();
+        _compactPersistedJobs.Writer.Complete();
+        if (_compactPersistedTask is not null)
+            await _compactPersistedTask;
+        _cancelTokenSource.Dispose();
+    }
 
     public IPersistence.IPersistenceReader LeaseReader() => _persistence.CreateReader();
 
@@ -223,7 +252,8 @@ public class PersistenceManager(
                     if (_snapshotRepository.TryLeaseState(state, out Snapshot? snapshot))
                     {
                         _persistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot(snapshot);
-                        _persistedSnapshotCompactor.DoCompactSnapshot(state);
+                        EnsureCompactorStarted();
+                        _compactPersistedJobs.Writer.WriteAsync(state).AsTask().Wait();
                         snapshot.Dispose();
                     }
                 }
