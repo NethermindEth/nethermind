@@ -57,7 +57,7 @@ namespace Nethermind.Network.Discovery
                     break;
                 }
 
-                if (!_discoveryManager.NodesFilter.Set(networkNode.HostIp))
+                if (!_discoveryManager.ShouldContact(networkNode.HostIp))
                 {
                     // Already seen this node ip recently
                     continue;
