@@ -27,7 +27,7 @@ while [[ "${remaining}" -gt 0 ]]; do
     fetch_size="${remaining}"
   fi
 
-  url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${fetch_size}&page=${page}&name=master-&ordering=-last_updated"
+  url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${fetch_size}&page=${page}&name=master-"
   response=$(curl -sf "${url}" || echo '{"results":[]}')
 
   mapfile -t page_tags < <(echo "${response}" | jq -r '.results[] | select(.name | test("^master-[0-9a-f]{7}$")) | .name')
