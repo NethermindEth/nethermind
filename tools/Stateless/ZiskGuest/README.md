@@ -12,7 +12,7 @@ make build-zisk
 
 The resulting binary can be found in `bin/nethermind`.
 
-To excute Nethermind guest in Zisk, run the following (invokes the previous step automatically):
+To execute Nethermind guest in Zisk, run the following (invokes the previous step automatically):
 
 ```bash
 make run-zisk
