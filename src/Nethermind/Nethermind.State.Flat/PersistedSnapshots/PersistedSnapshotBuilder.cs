@@ -490,24 +490,26 @@ public static class PersistedSnapshotBuilder
     internal static int MergeSnapshots(PersistedSnapshotList snapshots, Span<byte> bufferA, Span<byte> bufferB, out bool resultInA,
         HashSet<int> referencedIds)
     {
-        snapshots[0].GetSpan().CopyTo(bufferA);
-        int currentLen = snapshots[0].Size;
-        int olderSnapshotId = snapshots[0].Id;
-        bool olderHasNodeRefs = snapshots[0].Type == PersistedSnapshotType.Compacted;
+        // Reversed: start with newest, iterate backward — smaller intermediates early
+        int last = snapshots.Count - 1;
+        snapshots[last].GetSpan().CopyTo(bufferA);
+        int currentLen = snapshots[last].Size;
+        int newerSnapshotId = snapshots[last].Id;
+        bool newerHasNodeRefs = snapshots[last].Type == PersistedSnapshotType.Compacted;
         resultInA = true;
 
-        for (int i = 1; i < snapshots.Count; i++)
+        for (int i = last - 1; i >= 0; i--)
         {
-            bool newerHasNodeRefs = snapshots[i].Type == PersistedSnapshotType.Compacted;
-            ReadOnlySpan<byte> src = resultInA ? bufferA[..currentLen] : bufferB[..currentLen];
+            bool olderHasNodeRefs = snapshots[i].Type == PersistedSnapshotType.Compacted;
+            ReadOnlySpan<byte> newerSrc = resultInA ? bufferA[..currentLen] : bufferB[..currentLen];
             Span<byte> dst = resultInA ? bufferB : bufferA;
-            currentLen = MergeTwoPersisted(src, snapshots[i].GetSpan(), dst,
-                olderSnapshotId, snapshots[i].Id,
+            currentLen = MergeTwoPersisted(snapshots[i].GetSpan(), newerSrc, dst,
+                snapshots[i].Id, newerSnapshotId,
                 olderHasNodeRefs, newerHasNodeRefs,
                 referencedIds);
-            // After first merge, output always has NodeRefs
-            olderHasNodeRefs = true;
-            olderSnapshotId = 0;
+            // After first merge, accumulator (newer side) always has NodeRefs
+            newerHasNodeRefs = true;
+            newerSnapshotId = 0;
             resultInA = !resultInA;
         }
 
