@@ -14,13 +14,16 @@ public static unsafe partial class Zisk
     public static class Precompiles
     {
         [DllImport("__Internal")]
+        public static extern byte bls12_381_pairing_check_c(byte* pairs, nuint num_pairs);
+
+        [DllImport("__Internal")]
         public static extern byte bn254_g1_add_c(byte* p1, byte* p2, byte* ret);
 
         [DllImport("__Internal")]
         public static extern byte bn254_g1_mul_c(byte* point, byte* scalar, byte* ret);
 
         [DllImport("__Internal")]
-        public static extern byte bn254_pairing_check_c(byte* pairs, nuint num_points);
+        public static extern byte bn254_pairing_check_c(byte* pairs, nuint num_pairs);
 
         [DllImport("__Internal")]
         public static extern nuint modexp_bytes_c(
