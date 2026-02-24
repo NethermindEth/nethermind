@@ -219,7 +219,11 @@ namespace Nethermind.Blockchain
                 SetTotalDifficulty(header);
             }
 
-            _bloomStorage.Store(header.Number, header.Bloom);
+            Task bloomStoreTask = Task.Run(() =>
+            {
+                _bloomStorage.Store(header.Number, header.Bloom);
+            });
+
             _headerStore.Insert(header);
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
@@ -280,6 +284,8 @@ namespace Nethermind.Blockchain
             }
 
             UpdateOrCreateLevel(header.Number, blockInfo, isOnMainChain);
+
+            bloomStoreTask.Wait();
 
             return AddBlockResult.Added;
         }
@@ -1172,7 +1178,11 @@ namespace Nethermind.Blockchain
                 level.SwapToMain(index.Value);
             }
 
-            _bloomStorage.Store(block.Number, block.Bloom);
+            Task bloomStoreTask = Task.Run(() =>
+            {
+                _bloomStorage.Store(block.Number, block.Bloom);
+            });
+
             level.HasBlockOnMainChain = true;
             _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
 
@@ -1203,6 +1213,8 @@ namespace Nethermind.Blockchain
             BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
             if (Logger.IsTrace) Logger.Trace($"Block {block.ToString(Block.Format.Short)}, TD: {block.TotalDifficulty} added to main chain");
+
+            bloomStoreTask.Wait();
         }
 
         protected virtual bool HeadImprovementRequirementsSatisfied(BlockHeader header)
