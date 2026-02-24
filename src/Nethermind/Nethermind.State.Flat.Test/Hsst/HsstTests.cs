@@ -324,7 +324,7 @@ public class HsstTests
     [TestCase(100, 32, 32, 42, 30)]
     [TestCase(200, 20, 64, 55, 18)]
     [TestCase(500, 52, 32, 101, 50)]
-    public void Binary_Keys_WithExtraSeparatorLength_RoundTrip(int count, int keyLen, int maxValLen, int seed, int extraSepLen)
+    public void Binary_Keys_WithMinSeparatorLength_RoundTrip(int count, int keyLen, int maxValLen, int seed, int minSepLen)
     {
         Random rng = new(seed);
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
@@ -349,7 +349,7 @@ public class HsstTests
         {
             foreach ((byte[] key, byte[] value) in deduped)
                 builder.Add(key, value);
-        }, extraSeparatorLength: extraSepLen);
+        }, minSeparatorLength: minSepLen);
 
         Hsst.Hsst hsst = new(data);
         Assert.That(hsst.EntryCount, Is.EqualTo(deduped.Count));
@@ -386,7 +386,7 @@ public class HsstTests
 
     [TestCase(100, 4, 32, 32, 42, 30)]
     [TestCase(300, 4, 32, 32, 77, 30)]
-    public void Binary_Keys_MultiLevel_WithExtraSeparatorLength_RoundTrip(int count, int maxLeaf, int keyLen, int maxValLen, int seed, int extraSepLen)
+    public void Binary_Keys_MultiLevel_WithMinSeparatorLength_RoundTrip(int count, int maxLeaf, int keyLen, int maxValLen, int seed, int minSepLen)
     {
         Random rng = new(seed);
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
@@ -411,7 +411,7 @@ public class HsstTests
         {
             foreach ((byte[] key, byte[] value) in deduped)
                 builder.Add(key, value);
-        }, maxLeafEntries: maxLeaf, extraSeparatorLength: extraSepLen);
+        }, maxLeafEntries: maxLeaf, minSeparatorLength: minSepLen);
 
         Hsst.Hsst hsst = new(data);
         Assert.That(hsst.EntryCount, Is.EqualTo(deduped.Count));

@@ -14,14 +14,14 @@ internal static class HsstTestUtil
     /// <summary>
     /// Helper for tests: Create builder, execute action, dispose and return result.
     /// </summary>
-    public static byte[] BuildToArray(BuildAction buildAction, int maxLeafEntries = Hsst.Hsst.MaxLeafEntries, int extraSeparatorLength = 0)
+    public static byte[] BuildToArray(BuildAction buildAction, int maxLeafEntries = Hsst.Hsst.MaxLeafEntries, int minSeparatorLength = 0)
     {
         byte[] buffer = ArrayPool<byte>.Shared.Rent(10 * 1024 * 1024);
         try
         {
             Span<byte> bufferSpan = buffer.AsSpan();
             SpanBufferWriter writer = new(bufferSpan);
-            HsstBuilder<SpanBufferWriter> builder = new(ref writer, extraSeparatorLength);
+            HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength);
             try
             {
                 buildAction(ref builder);
