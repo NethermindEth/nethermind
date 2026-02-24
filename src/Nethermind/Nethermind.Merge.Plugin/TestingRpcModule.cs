@@ -35,7 +35,7 @@ public class TestingRpcModule(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly IBlockchainProcessor _processor = mainProcessingContext.BlockchainProcessor;
 
-    public Task<ResultWrapper<GetPayloadV5Result?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData, string? targetFork = null)
+    public Task<ResultWrapper<GetPayloadV5Result?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null, string? targetFork = null)
     {
         Block? parentBlock = blockFinder.FindBlock(parentBlockHash);
 
