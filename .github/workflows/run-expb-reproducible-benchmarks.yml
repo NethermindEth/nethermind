@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       last:
-        description: Number of recent master commits to look back from HEAD
+        description: Number of recent master-* Docker images to consider
         required: true
         type: number
         default: 100
       step:
-        description: Pick every Nth commit that has a Docker image (e.g. 10 means every 10th image within the window)
+        description: Pick every Nth image from the pool (e.g. last=500 step=10 benchmarks every 10th of the 500 most recent images)
         required: true
         type: number
         default: 10
@@ -65,12 +65,6 @@ jobs:
       delay_seconds: ${{ steps.resolve.outputs.delay_seconds }}
       additional_extra_flags: ${{ steps.resolve.outputs.additional_extra_flags }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-        with:
-          ref: master
-          fetch-depth: ${{ inputs.last }}
-
       - name: Resolve Docker images from Docker Hub
         id: resolve
         shell: bash
@@ -112,71 +106,55 @@ jobs:
             config_file="github-action-mainnet.yaml"
           fi
 
-          # Get last LAST commit sha7s from master (newest first)
-          echo "Getting last ${LAST} master commits..."
-          mapfile -t commit_shas < <(git log --format='%h' -n "${LAST}" HEAD)
-          echo "Got ${#commit_shas[@]} commits from master."
+          # Fetch last LAST master-* tags from Docker Hub (newest first)
+          echo "Fetching last ${LAST} master-* Docker images from Docker Hub (step=${STEP})..."
 
-          # Fetch all master-* tags from Docker Hub into a set for fast lookup
-          echo "Fetching master-* tags from Docker Hub..."
-          declare -A available_tags
+          all_tags=()
+          all_dates=()
           page=1
           page_size=100
-          fetched=0
+          remaining="${LAST}"
 
-          while true; do
-            url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${page_size}&page=${page}&name=master-&ordering=-last_updated"
+          while [[ "${remaining}" -gt 0 ]]; do
+            fetch_size="${page_size}"
+            if [[ "${remaining}" -lt "${page_size}" ]]; then
+              fetch_size="${remaining}"
+            fi
+
+            url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${fetch_size}&page=${page}&name=master-&ordering=-last_updated"
             response=$(curl -sf "${url}" || echo '{"results":[]}')
 
-            mapfile -t page_tags < <(echo "${response}" | jq -r '.results[].name // empty')
+            # Extract tag names and dates
+            mapfile -t page_tags < <(echo "${response}" | jq -r '.results[] | select(.name | test("^master-[0-9a-f]{7}$")) | .name')
+            mapfile -t page_dates < <(echo "${response}" | jq -r '.results[] | select(.name | test("^master-[0-9a-f]{7}$")) | .last_updated[:10]')
 
             if [[ "${#page_tags[@]}" -eq 0 ]]; then
+              echo "No more tags found at page ${page}."
               break
             fi
 
-            for t in "${page_tags[@]}"; do
-              if [[ "${t}" =~ ^master-[0-9a-f]{7}$ ]]; then
-                available_tags["${t}"]=1
-                fetched=$(( fetched + 1 ))
-              fi
+            for i in "${!page_tags[@]}"; do
+              all_tags+=("${page_tags[$i]}")
+              all_dates+=("${page_dates[$i]}")
             done
 
-            # Stop fetching once we have more tags than commits (no point going further)
-            if [[ "${fetched}" -ge "${LAST}" ]]; then
-              break
-            fi
-
-            # Check if there are more pages
-            has_next=$(echo "${response}" | jq -r '.next // empty')
-            if [[ -z "${has_next}" ]]; then
-              break
-            fi
-
+            remaining=$(( remaining - page_size ))
             page=$(( page + 1 ))
           done
 
-          echo "Fetched ${fetched} master-* tags from Docker Hub."
+          echo "Found ${#all_tags[@]} master-* images on Docker Hub."
 
-          # Walk commits newest-first, collect those with Docker images
-          images_in_window=()
-          for sha7 in "${commit_shas[@]}"; do
-            tag="master-${sha7}"
-            if [[ -n "${available_tags[${tag}]+x}" ]]; then
-              images_in_window+=("${tag}")
-            fi
-          done
-
-          echo "Found ${#images_in_window[@]} Docker images within the last ${LAST} commits."
-
-          if [[ "${#images_in_window[@]}" -eq 0 ]]; then
-            echo "No Docker images found within the last ${LAST} master commits."
+          if [[ "${#all_tags[@]}" -eq 0 ]]; then
+            echo "No master-<sha7> Docker images found."
             exit 1
           fi
 
           # Apply step: pick every Nth image (newest first)
           selected_tags=()
-          for (( i=0; i<${#images_in_window[@]}; i+=STEP )); do
-            selected_tags+=("${images_in_window[$i]}")
+          selected_dates=()
+          for (( i=0; i<${#all_tags[@]}; i+=STEP )); do
+            selected_tags+=("${all_tags[$i]}")
+            selected_dates+=("${all_dates[$i]}")
           done
 
           echo "Selected ${#selected_tags[@]} images after applying step=${STEP}."
@@ -185,16 +163,12 @@ jobs:
           if [[ "${#selected_tags[@]}" -gt 256 ]]; then
             echo "Warning: truncating to 256 matrix entries (GitHub Actions limit)."
             selected_tags=("${selected_tags[@]:0:256}")
+            selected_dates=("${selected_dates[@]:0:256}")
           fi
 
-          # Resolve dates and print selected tags
-          declare -a selected_dates
-          for t in "${selected_tags[@]}"; do
-            sha="${t#master-}"
-            commit_date=$(git log --format='%cs' -n 1 "${sha}" 2>/dev/null || echo "unknown")
-            msg=$(git log --format='%s' -n 1 "${sha}" 2>/dev/null | head -c 80 || echo "")
-            selected_dates+=("${commit_date}")
-            echo "  ${t} ${commit_date} (${msg})"
+          # Print selected tags
+          for i in "${!selected_tags[@]}"; do
+            echo "  ${selected_tags[$i]}  ${selected_dates[$i]}"
           done
 
           # Build matrix JSON and ordered list
