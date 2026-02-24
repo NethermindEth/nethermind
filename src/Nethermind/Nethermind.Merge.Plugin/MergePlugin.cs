@@ -42,6 +42,8 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using IDebugRpcModule = Nethermind.Merge.Plugin.IDebugRpcModule;
+using DebugRpcModule = Nethermind.Merge.Plugin.DebugRpcModule;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -55,6 +57,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
     private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
+    private IJsonRpcConfig _jsonRpcConfig = null!;
 
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
 
@@ -73,6 +76,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         _syncConfig = nethermindApi.Config<ISyncConfig>();
         _blocksConfig = nethermindApi.Config<IBlocksConfig>();
         _txPoolConfig = nethermindApi.Config<ITxPoolConfig>();
+        _jsonRpcConfig = nethermindApi.Config<IJsonRpcConfig>();
 
         MigrateSecondsPerSlot(_blocksConfig, mergeConfig);
 
@@ -158,23 +162,22 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
             return;
 
-        IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
-        if (!jsonRpcConfig.Enabled)
+        if (!_jsonRpcConfig.Enabled)
         {
             if (_logger.IsInfo)
                 _logger.Info("JsonRpc not enabled. Turning on JsonRpc URL with engine API.");
 
-            jsonRpcConfig.Enabled = true;
+            _jsonRpcConfig.Enabled = true;
 
             EnsureEngineModuleIsConfigured();
 
-            if (!jsonRpcConfig.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
+            if (!_jsonRpcConfig.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
             {
                 // Disable it
-                jsonRpcConfig.EnabledModules = [];
+                _jsonRpcConfig.EnabledModules = [];
             }
 
-            jsonRpcConfig.AdditionalRpcUrls = jsonRpcConfig.AdditionalRpcUrls
+            _jsonRpcConfig.AdditionalRpcUrls = _jsonRpcConfig.AdditionalRpcUrls
                 .Where(static (url) => JsonRpcUrl.Parse(url).EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
         }
@@ -261,6 +264,10 @@ public class MergePluginModule : Module
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
             .AddDecorator<ISealValidator, MergeSealValidator>()
             .AddDecorator<ISealer, MergeSealer>()
+
+            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(Environment.ProcessorCount, Int32.MaxValue)
+                .AddScoped<IEngineDebugBridge, EngineDebugBridge>()
+                .AddScoped<IDebugRpcModule, DebugRpcModule>()
 
             .AddModule(new BaseMergePluginModule());
     }
