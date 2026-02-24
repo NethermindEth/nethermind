@@ -42,7 +42,8 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
             WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         }
 
-        return base.Execute(tx, tracer, (opts != ExecutionOptions.SkipValidation && !opts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
+        ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
+        return base.Execute(tx, tracer, (coreOpts != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
             ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }
