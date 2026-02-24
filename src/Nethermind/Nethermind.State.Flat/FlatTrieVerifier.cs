@@ -875,6 +875,6 @@ public class FlatTrieVerifier
         public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
             inner.BeginCommit(root, writeFlags);
 
-        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => inner.IsPersisted(path, keccak);
+
     }
 }
