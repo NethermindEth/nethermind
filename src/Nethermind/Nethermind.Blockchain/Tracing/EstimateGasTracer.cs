@@ -149,11 +149,14 @@ public class EstimateGasTracer : TxTracer
 
     public override void ReportOperationError(EvmExceptionType error)
     {
-        OutOfGas |= error == EvmExceptionType.OutOfGas;
-
-        if (error == EvmExceptionType.Revert && _currentNestingLevel == 0)
+        if (_currentNestingLevel == 0)
         {
-            TopLevelRevert = true;
+            OutOfGas |= error == EvmExceptionType.OutOfGas;
+
+            if (error == EvmExceptionType.Revert)
+            {
+                TopLevelRevert = true;
+            }
         }
     }
 

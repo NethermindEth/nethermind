@@ -16,6 +16,7 @@ namespace Nethermind.Serialization.Rlp
     {
         private readonly bool _skipStateAndStatus;
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
         public ReceiptMessageDecoder(bool skipStateAndStatus = false)
         {
             _skipStateAndStatus = skipStateAndStatus;

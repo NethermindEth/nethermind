@@ -4,9 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -92,8 +90,6 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         foreach (AccountChanges expectedAccountChanges in expected)
         {
             AccountChanges actual = bal.GetAccountChanges(expectedAccountChanges.Address);
-            Console.WriteLine($"expected: {JsonSerializer.Serialize(expectedAccountChanges)}");
-            Console.WriteLine($"actual: {JsonSerializer.Serialize(actual)}");
             Assert.That(actual, Is.EqualTo(expectedAccountChanges));
         }
     }
@@ -148,8 +144,6 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         foreach (AccountChanges expectedAccountChanges in expected)
         {
             AccountChanges actual = bal.GetAccountChanges(expectedAccountChanges.Address);
-            Console.WriteLine($"expected: {JsonSerializer.Serialize(expectedAccountChanges)}");
-            Console.WriteLine($"actual: {JsonSerializer.Serialize(actual)}");
             Assert.That(actual, Is.EqualTo(expectedAccountChanges));
         }
     }

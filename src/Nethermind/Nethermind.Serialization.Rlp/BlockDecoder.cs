@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using System;
 using System.Buffers;
-using Nethermind.Core;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -12,6 +13,7 @@ namespace Nethermind.Serialization.Rlp
         private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? throw new ArgumentNullException(nameof(headerDecoder));
         private readonly BlockBodyDecoder _blockBodyDecoder = new BlockBodyDecoder(headerDecoder);
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockDecoder))]
         public BlockDecoder() : this(new HeaderDecoder()) { }
 
         protected override Block? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -59,9 +61,7 @@ namespace Nethermind.Serialization.Rlp
             int sum = 0;
             for (int i = 0; i < encodedTxs.Length; i++)
             {
-                int len = encodedTxs[i].Length;
-                // Legacy txs: CL format = block format. Typed txs: block format wraps in RLP byte string.
-                sum += txs[i].Type == TxType.Legacy ? len : Rlp.LengthOfSequence(len);
+                sum += TxDecoder.GetWrappedTxLength(txs[i].Type, encodedTxs[i].Length);
             }
             return sum;
         }
@@ -128,13 +128,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 for (int i = 0; i < encodedTxs.Length; i++)
                 {
-                    byte[] encoded = encodedTxs[i];
-                    if (item.Transactions[i].Type != TxType.Legacy)
-                    {
-                        // Typed txs: CL format is type||rlp(fields), block format wraps in RLP byte string
-                        stream.StartByteArray(encoded.Length, false);
-                    }
-                    stream.Write(encoded);
+                    TxDecoder.WriteWrappedFormat(stream, item.Transactions[i].Type, encodedTxs[i]);
                 }
             }
             else

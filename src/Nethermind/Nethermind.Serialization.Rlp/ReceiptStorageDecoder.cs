@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 #pragma warning disable 618
 
@@ -16,6 +17,7 @@ namespace Nethermind.Serialization.Rlp
         private readonly bool _supportTxHash;
         private const byte MarkTxHashByte = 255;
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
         public ReceiptStorageDecoder(bool supportTxHash = true)
         {
             _supportTxHash = supportTxHash;

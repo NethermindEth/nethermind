@@ -12,7 +12,4 @@ public class TrieStoreWithReadFlags(IScopedTrieStore implementation, ReadFlags f
 {
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         implementation.BeginCommit(root, writeFlags);
-
-    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
-        implementation.IsPersisted(in path, in keccak);
 }
