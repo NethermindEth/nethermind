@@ -86,8 +86,8 @@ public static class BaseFlatPersistence
 
             Span<byte> value = buffer[..resultSize];
 
-            // AI said: Use Unsafe to bypass the 'Slice' bounds check and property access
-            // This writes the variable-length DB value into the end of the 32-byte struct
+            // Bypass bounds check on the slice - the length is already validated by the if guard above.
+            // This writes the variable-length DB value into the end of the 32-byte struct.
             int len = value.Length;
             if (len == SlotValue.ByteCount)
             {
