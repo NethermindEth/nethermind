@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.Types;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test
@@ -78,6 +82,32 @@ namespace Nethermind.Xdc.Test
 
             Assert.That(unencoded.Validator, Is.Null,
                 "ForSealing encoding should not contain Validator field.");
+        }
+
+        [Test]
+        public void EncodeDecode_BlockHeadersMessage_PreservesXdcFields()
+        {
+            XdcHeaderDecoder codec = new();
+            XdcBlockHeader header = Build.A.XdcBlockHeader()
+                .WithValidators([TestItem.AddressA, TestItem.AddressB, TestItem.AddressC])
+                .WithPenalties([TestItem.AddressD, TestItem.AddressE, TestItem.AddressF])
+                .WithExtraConsensusData(new ExtraFieldsV2(1, Build.A.QuorumCertificate().TestObject))
+                .TestObject;
+
+            using BlockHeadersMessage message = new(new ArrayPoolList<BlockHeader>(1) { header });
+            BlockHeadersMessageSerializer serializer = new(codec);
+            IByteBuffer buffer = Unpooled.Buffer();
+            serializer.Serialize(buffer, message);
+
+            using BlockHeadersMessage decoded = serializer.Deserialize(buffer);
+            XdcBlockHeader decodedHeader = (XdcBlockHeader)decoded.BlockHeaders![0];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decodedHeader.Validators, Is.EqualTo(header.Validators));
+                Assert.That(decodedHeader.Validator, Is.EqualTo(header.Validator));
+                Assert.That(decodedHeader.Penalties, Is.EqualTo(header.Penalties));
+            }
         }
 
         [TestCase("0xf90258a00000000000000000000000000000000000000000000000000000000000000000a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a0efb190856ff185dded722e2dca183304c92fd7ac25f2ef5ea8ff9d518ba85693a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008302000080839896808080b86100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000880000000000000000808080")]
