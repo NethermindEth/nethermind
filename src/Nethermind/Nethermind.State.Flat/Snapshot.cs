@@ -97,12 +97,13 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public long EstimateMemory()
     {
         // ConcurrentDictionary entry overhead ~48 bytes, includes Account object (~104 bytes)
+        // Cast Count to long before multiplying to avoid int overflow for large snapshots
         return
-            Accounts.Count * 168 +                         // Key (8B) + Value ref (8B) + concurrent dictionary overhead (48) + Account object (~104B)
-            Storages.Count * 128 +                         // Key (40B) + Value (40B SlotValue?) + concurrent dictionary overhead (48)
-            SelfDestructedStorageAddresses.Count * 60 +    // Key (8B) + Value (4B) + concurrent dictionary overhead (48)
-            StateNodes.Count * (NodeSizeEstimate + 92) +   // Key (36B) + Value ref (8B) + concurrent dictionary overhead (48) + TrieNode
-            StorageNodes.Count * (NodeSizeEstimate + 100); // Key (44B) + Value ref (8B) + concurrent dictionary overhead (48) + TrieNode
+            (long)Accounts.Count * 168 +                         // Key (8B) + Value ref (8B) + concurrent dictionary overhead (48) + Account object (~104B)
+            (long)Storages.Count * 128 +                         // Key (40B) + Value (40B SlotValue?) + concurrent dictionary overhead (48)
+            (long)SelfDestructedStorageAddresses.Count * 60 +    // Key (8B) + Value (4B) + concurrent dictionary overhead (48)
+            (long)StateNodes.Count * (NodeSizeEstimate + 92) +   // Key (36B) + Value ref (8B) + concurrent dictionary overhead (48) + TrieNode
+            (long)StorageNodes.Count * (NodeSizeEstimate + 100); // Key (44B) + Value ref (8B) + concurrent dictionary overhead (48) + TrieNode
     }
 
     /// <summary>

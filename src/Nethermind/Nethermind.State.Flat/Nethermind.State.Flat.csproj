@@ -16,6 +16,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Collections.Pooled" />
+    <PackageReference Include="prometheus-net" />
     <PackageReference Include="System.IO.Hashing" />
   </ItemGroup>
 

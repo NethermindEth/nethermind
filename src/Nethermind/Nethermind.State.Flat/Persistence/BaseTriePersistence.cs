@@ -82,13 +82,7 @@ public static class BaseTriePersistence
 
     private static ReadOnlySpan<byte> EncodeStateTopNodeKey(Span<byte> buffer, in TreePath path)
     {
-        // Looks like this <3-byte-path>
-        // Last 4 bit of the path is the length
-
-        path.Path.Bytes[0..StateNodesTopPathLength].CopyTo(buffer);
-        // Pack length into lower 4 bits of last byte (upper 4 bits contain path data)
-        byte lengthAsByte = (byte)path.Length;
-        buffer[StateNodesTopPathLength - 1] = (byte)((buffer[StateNodesTopPathLength - 1] & 0xf0) | (lengthAsByte & 0x0f));
+        path.EncodeWith3Byte(buffer);
         return buffer[..StateNodesTopPathLength];
     }
 

@@ -535,11 +535,6 @@
         "resolved": "1.8.5",
         "contentHash": "EaCgmntbH1sOzemRTqyXSqYjB6pLH7VCYHhhDYZ59guHSD5qPwhIYa7kfy0QUlmTRt9IXhaXdFhNuBUArp70Ng=="
       },
-      "prometheus-net": {
-        "type": "Transitive",
-        "resolved": "8.2.1",
-        "contentHash": "3wVgdEPOCBF752s2xps5T+VH+c9mJK8S8GKEDg49084P6JZMumTZI5Te6aJ9MQpX0sx7om6JOnBpIi7ZBmmiDQ=="
-      },
       "SimpleBase": {
         "type": "Transitive",
         "resolved": "4.0.2",
@@ -1128,7 +1123,8 @@
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
           "Nethermind.State": "[1.37.0-unstable, )",
           "Nethermind.Trie": "[1.37.0-unstable, )",
-          "System.IO.Hashing": "[10.0.2, )"
+          "System.IO.Hashing": "[10.0.2, )",
+          "prometheus-net": "[8.2.1, )"
         }
       },
       "nethermind.synchronization": {
@@ -1559,6 +1555,12 @@
           "Polly.Core": "8.6.5"
         }
       },
+      "prometheus-net": {
+        "type": "CentralTransitive",
+        "requested": "[8.2.1, )",
+        "resolved": "8.2.1",
+        "contentHash": "3wVgdEPOCBF752s2xps5T+VH+c9mJK8S8GKEDg49084P6JZMumTZI5Te6aJ9MQpX0sx7om6JOnBpIi7ZBmmiDQ=="
+      },
       "prometheus-net.AspNetCore": {
         "type": "CentralTransitive",
         "requested": "[8.2.1, )",
@@ -1724,6 +1726,12 @@
         "resolved": "1.0.0",
         "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
       },
+      "Nethermind.TurboPForBindings": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
+      },
       "RocksDB": {
         "type": "CentralTransitive",
         "requested": "[10.4.2.63147, 10.4.2.63147]",
@@ -1815,6 +1823,12 @@
         "requested": "[1.0.5, )",
         "resolved": "1.0.5",
         "contentHash": "GVzsykooi0PAydDuhdWB7ugFyHPYYkwiBFGy5sVMlKeXsqBqUdvOgqnT/29bf74b3Uhm76gfC6fiW9nEW0xA3Q=="
+      },
+      "Nethermind.TurboPForBindings": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
@@ -1920,6 +1934,12 @@
         "resolved": "1.0.0",
         "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
       },
+      "Nethermind.TurboPForBindings": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
+      },
       "RocksDB": {
         "type": "CentralTransitive",
         "requested": "[10.4.2.63147, 10.4.2.63147]",
@@ -2018,6 +2038,12 @@
         "resolved": "1.0.0",
         "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
       },
+      "Nethermind.TurboPForBindings": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
+      },
       "RocksDB": {
         "type": "CentralTransitive",
         "requested": "[10.4.2.63147, 10.4.2.63147]",
@@ -2109,6 +2135,12 @@
         "requested": "[1.0.5, )",
         "resolved": "1.0.5",
         "contentHash": "GVzsykooi0PAydDuhdWB7ugFyHPYYkwiBFGy5sVMlKeXsqBqUdvOgqnT/29bf74b3Uhm76gfC6fiW9nEW0xA3Q=="
+      },
+      "Nethermind.TurboPForBindings": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",

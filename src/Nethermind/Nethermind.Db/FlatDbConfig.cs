@@ -15,10 +15,15 @@ public class FlatDbConfig : IFlatDbConfig
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public int CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
-    public int MaxReorgDepth { get; set; } = 256;
+    public int MaxInMemoryReorgDepth { get; set; } = 256;
     public int MinCompactSize { get; set; } = 2;
     public int MinReorgDepth { get; set; } = 128;
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public long BlockCacheSizeBudget { get; set; } = 1.GiB();
     public long TrieCacheMemoryBudget { get; set; } = 512.MiB();
+    public bool EnableLongFinality { get; set; } = false;
+    public int LongFinalityReorgDepth { get; set; } = 90000;
+    public string PersistedSnapshotPath { get; set; } = "snapshots";
+    public long ArenaFileSizeBytes { get; set; } = 4L * 1024 * 1024 * 1024;
+    public int PersistedSnapshotMaxCompactSize { get; set; } = 1024;
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using Autofac;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Api.Steps;
@@ -18,10 +19,13 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
+using Nethermind.Api;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.Storage;
 
 namespace Nethermind.Init.Modules;
 
@@ -54,11 +58,25 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IPersistenceManager>(),
                 ctx.Resolve<IFlatDbConfig>(),
                 ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
+                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
+                ctx.Resolve<IPersistedSnapshotRepository>()))
             .AddSingleton<IResourcePool, ResourcePool>()
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
+            .AddSingleton<IArenaManager>((ctx) =>
+            {
+                string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
+                return new ArenaManager(Path.Combine(basePath, "arenas"));
+            })
+            .AddSingleton<IPersistedSnapshotRepository>((ctx) =>
+            {
+                string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
+                PersistedSnapshotRepository repo = new(ctx.Resolve<IArenaManager>(), basePath, ctx.Resolve<IFlatDbConfig>());
+                repo.LoadFromCatalog();
+                return repo;
+            })
+            .AddSingleton<IPersistedSnapshotCompactor, PersistedSnapshotCompactor>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()
