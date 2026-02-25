@@ -36,6 +36,7 @@ public sealed class BlockCachePreWarmer(
     private readonly int _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
+    private volatile int _lastExecutedTransaction = -1;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -52,10 +53,16 @@ public sealed class BlockCachePreWarmer(
     {
     }
 
+    public void NotifyTransactionProcessing(int txIndex)
+    {
+        _lastExecutedTransaction = txIndex;
+    }
+
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
         if (preBlockCaches is not null)
         {
+            _lastExecutedTransaction = -1;
             CacheType result = preBlockCaches.ClearCaches();
             nodeStorageCache.ClearCaches();
             nodeStorageCache.Enabled = true;
@@ -97,7 +104,25 @@ public sealed class BlockCachePreWarmer(
 
             if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
 
+            int txCount = suggestedBlock.Transactions.Length;
             WarmupTransactions(blockState, parallelOptions);
+
+            // Loop: if main thread has progressed but there are remaining txs, re-warm them.
+            // The trie node cache now contains nodes from real execution, improving cache hits.
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                int lastExecuted = _lastExecutedTransaction;
+                // No remaining txs to warm, or main thread hasn't started yet
+                if (lastExecuted < 0 || lastExecuted >= txCount - 1) break;
+
+                // Only re-warm if there's a meaningful number of remaining txs
+                int remaining = txCount - lastExecuted - 1;
+                if (remaining < 3) break;
+
+                if (_logger.IsDebug) _logger.Debug($"Re-warming txs [{lastExecuted + 1}..{txCount - 1}] for block {suggestedBlock.Number} (main at tx {lastExecuted}).");
+                WarmupTransactions(blockState, parallelOptions, startFromTx: lastExecuted + 1);
+            }
+
             WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
 
             if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
@@ -152,7 +177,7 @@ public sealed class BlockCachePreWarmer(
         }
     }
 
-    private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
+    private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions, int startFromTx = 0)
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
@@ -163,7 +188,8 @@ public sealed class BlockCachePreWarmer(
 
             // Group transactions by sender to process same-sender transactions sequentially
             // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
+            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block, startFromTx);
+            if (senderGroups.Count == 0) return;
 
             try
             {
@@ -193,6 +219,8 @@ public sealed class BlockCachePreWarmer(
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
                                 if (token.IsCancellationRequested) return tupleState;
+                                // Skip if main thread has already processed or is processing this tx
+                                if (blockState.PreWarmer._lastExecutedTransaction >= txIndex) continue;
                                 WarmupSingleTransaction(scope, tx, txIndex, blockState);
                             }
                         }
@@ -220,11 +248,11 @@ public sealed class BlockCachePreWarmer(
         }
     }
 
-    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
+    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block, int startFromTx = 0)
     {
         Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = new();
 
-        for (int i = 0; i < block.Transactions.Length; i++)
+        for (int i = startFromTx; i < block.Transactions.Length; i++)
         {
             Transaction tx = block.Transactions[i];
             Address sender = tx.SenderAddress!;
