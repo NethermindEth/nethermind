@@ -254,29 +254,27 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         void UpdateRootHashesSingleThread()
         {
-            foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
+            // Iterate _toUpdateRoots (only changed contracts) instead of _storages (all accessed contracts)
+            foreach (KeyValuePair<AddressAsKey, bool> kvp in _toUpdateRoots)
             {
-                if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
-                {
-                    // Wasn't updated don't recalculate
-                    continue;
-                }
+                if (!kvp.Value) continue;
 
-                PerContractState contractState = kvp.Value;
-                (int writes, int skipped) = contractState.ProcessStorageChanges(writeBatch.CreateStorageWriteBatch(kvp.Key, kvp.Value.EstimatedChanges));
+                PerContractState contractState = _storages[kvp.Key];
+                (int writes, int skipped) = contractState.ProcessStorageChanges(writeBatch.CreateStorageWriteBatch(kvp.Key, contractState.EstimatedChanges));
                 ReportMetrics(writes, skipped);
             }
         }
 
         void UpdateRootHashesMultiThread()
         {
-            // We can recalculate the roots in parallel as they are all independent tries
+            // Iterate _toUpdateRoots (only changed contracts) instead of _storages (all accessed contracts)
             using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = new(_toUpdateRoots.Count);
-            foreach (KeyValuePair<AddressAsKey, PerContractState> kv in _storages)
+            foreach (KeyValuePair<AddressAsKey, bool> kv in _toUpdateRoots)
             {
-                if (_toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
+                if (kv.Value)
                 {
-                    storages.Add((kv.Key, kv.Value, writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)));
+                    PerContractState contractState = _storages[kv.Key];
+                    storages.Add((kv.Key, contractState, writeBatch.CreateStorageWriteBatch(kv.Key, contractState.EstimatedChanges)));
                 }
             }
 

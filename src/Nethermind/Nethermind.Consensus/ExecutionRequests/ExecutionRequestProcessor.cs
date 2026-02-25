@@ -15,7 +15,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using System;
-using System.Linq;
 using Nethermind.Core.Messages;
 
 namespace Nethermind.Consensus.ExecutionRequests;
@@ -112,14 +111,14 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                     {
                         Span<byte> depositRequestBuffer = new byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
                         DecodeDepositRequest(block, log, depositRequestBuffer);
-                        depositRequests.AddRange(depositRequestBuffer.ToArray());
+                        depositRequests.AddRange(depositRequestBuffer);
                     }
                 }
             }
         }
 
         if (depositRequests.Count > 1)
-            requests.Add(depositRequests.ToArray());
+            requests.Add(depositRequests.AsSpan().ToArray());
     }
 
     private void DecodeDepositRequest(Block block, LogEntry log, Span<byte> buffer)
