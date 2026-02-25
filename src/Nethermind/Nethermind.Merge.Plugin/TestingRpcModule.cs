@@ -43,7 +43,7 @@ public class TestingRpcModule(
         {
             if (!TryResolveTargetFork(targetFork, out TargetFork resolvedFork))
             {
-                if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the target fork: {targetFork ?? "default"}");
+                if (_logger.IsWarn) _logger.Warn($"Target fork {targetFork ?? "default"} is not supported");
                 return ResultWrapper<object?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
             }
 
