@@ -30,8 +30,6 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 
     public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
 
-    public virtual bool IsPersisted(in TreePath path, in ValueHash256 keccak) => throw new UnsupportedOperationException("Persisted check not supported");
-
     public abstract class AbstractMinimalCommitter(ConcurrencyController quota) : ICommitter
     {
         public void Dispose() { }
