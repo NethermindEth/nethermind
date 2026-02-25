@@ -161,53 +161,19 @@ public sealed class BlockCachePreWarmer(
             Block block = blockState.Block;
             if (block.Transactions.Length == 0) return;
 
-            // Group transactions by sender to process same-sender transactions sequentially
-            // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
+            // Check if sender grouping is worthwhile: only group when there's meaningful sender reuse
+            int uniqueSenders = CountUniqueSenders(block);
+            bool useGrouping = block.Transactions.Length > uniqueSenders * 2;
 
-            try
+            if (_logger.IsInfo) _logger.Info($"Pre-warming block {block.Number}: {block.Transactions.Length} txs, {uniqueSenders} unique senders, strategy={( useGrouping ? "grouped" : "parallel" )}");
+
+            if (useGrouping)
             {
-                // Convert to array for parallel iteration
-                ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
-
-                // Parallel across different senders, sequential within the same sender
-                ParallelUnbalancedWork.For(
-                    0,
-                    groupArray.Count,
-                    parallelOptions,
-                    (blockState, groupArray, parallelOptions.CancellationToken),
-                    static (groupIndex, tupleState) =>
-                    {
-                        (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
-                        ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
-
-                        // Get thread-local processing state for this sender's transactions
-                        IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
-                        try
-                        {
-                            using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
-                            BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-                            scope.TransactionProcessor.SetBlockExecutionContext(context);
-
-                            // Sequential within the same sender-state changes propagate correctly
-                            foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
-                            {
-                                if (token.IsCancellationRequested) return tupleState;
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState);
-                            }
-                        }
-                        finally
-                        {
-                            blockState.PreWarmer._envPool.Return(env);
-                        }
-
-                        return tupleState;
-                    });
+                WarmupTransactionsGrouped(blockState, parallelOptions);
             }
-            finally
+            else
             {
-                foreach (KeyValuePair<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> kvp in senderGroups)
-                    kvp.Value.Dispose();
+                WarmupTransactionsParallel(blockState, parallelOptions);
             }
         }
         catch (OperationCanceledException)
@@ -217,6 +183,92 @@ public sealed class BlockCachePreWarmer(
         catch (Exception ex)
         {
             if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error pre-warming transactions", ex);
+        }
+    }
+
+    private static int CountUniqueSenders(Block block)
+    {
+        HashSet<AddressAsKey> senders = new();
+        for (int i = 0; i < block.Transactions.Length; i++)
+        {
+            senders.Add(block.Transactions[i].SenderAddress!);
+        }
+
+        return senders.Count;
+    }
+
+    private void WarmupTransactionsParallel(BlockState blockState, ParallelOptions parallelOptions)
+    {
+        Block block = blockState.Block;
+        ParallelUnbalancedWork.For(
+            0,
+            block.Transactions.Length,
+            parallelOptions,
+            blockState,
+            static (i, state) =>
+            {
+                Transaction tx = state.Block.Transactions[i];
+                IReadOnlyTxProcessorSource env = state.PreWarmer._envPool.Get();
+                try
+                {
+                    using IReadOnlyTxProcessingScope scope = env.Build(state.Parent);
+                    scope.TransactionProcessor.SetBlockExecutionContext(
+                        new BlockExecutionContext(state.Block.Header, state.Spec));
+                    WarmupSingleTransaction(scope, tx, i, state);
+                }
+                finally
+                {
+                    state.PreWarmer._envPool.Return(env);
+                }
+
+                return state;
+            });
+    }
+
+    private void WarmupTransactionsGrouped(BlockState blockState, ParallelOptions parallelOptions)
+    {
+        Block block = blockState.Block;
+        Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> senderGroups = GroupTransactionsBySender(block);
+
+        try
+        {
+            ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
+
+            ParallelUnbalancedWork.For(
+                0,
+                groupArray.Count,
+                parallelOptions,
+                (blockState, groupArray, parallelOptions.CancellationToken),
+                static (groupIndex, tupleState) =>
+                {
+                    (BlockState blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
+                    ArrayPoolList<(int Index, Transaction Tx)> txList = groups[groupIndex];
+
+                    IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
+                    try
+                    {
+                        using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
+                        scope.TransactionProcessor.SetBlockExecutionContext(
+                            new BlockExecutionContext(blockState.Block.Header, blockState.Spec));
+
+                        foreach ((int txIndex, Transaction tx) in txList.AsSpan())
+                        {
+                            if (token.IsCancellationRequested) return tupleState;
+                            WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                        }
+                    }
+                    finally
+                    {
+                        blockState.PreWarmer._envPool.Return(env);
+                    }
+
+                    return tupleState;
+                });
+        }
+        finally
+        {
+            foreach (KeyValuePair<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> kvp in senderGroups)
+                kvp.Value.Dispose();
         }
     }
 
