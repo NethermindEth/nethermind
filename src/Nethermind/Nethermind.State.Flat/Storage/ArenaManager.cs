@@ -98,7 +98,9 @@ public sealed class ArenaManager : IArenaManager
     {
         lock (_lock)
         {
-            ArenaFile file = GetOrCreateArena(estimatedSize);
+            ArenaFile file = estimatedSize >= DedicatedArenaThreshold
+                ? CreateArenaFile(estimatedSize, dedicated: true)
+                : GetOrCreateArena(estimatedSize);
             long offset = _frontiers[file.Id];
             _reservedArenas.Add(file.Id);
             ArenaFile.MmapWriteStream stream = file.CreateWriteStream(offset);
