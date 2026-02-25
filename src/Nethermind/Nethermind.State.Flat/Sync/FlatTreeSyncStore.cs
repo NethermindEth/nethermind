@@ -149,14 +149,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             {
                 // Branch→Branch: only delete where existing had hash ref but new doesn't
                 bool existingNodeHasChild = !existingNode!.IsChildNull(i);
-                if (existingNodeHasChild)
-                {
-                    needsDelete = newNodeIsNullOrInline;
-                }
-                else
-                {
-                    // Nothing to delete
-                }
+                needsDelete = existingNodeHasChild && newNodeIsNullOrInline;
             }
             else
             {
