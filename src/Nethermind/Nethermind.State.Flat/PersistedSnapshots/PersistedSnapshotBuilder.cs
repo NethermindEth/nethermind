@@ -177,7 +177,8 @@ public static class PersistedSnapshotBuilder
         {
             byte[] rlpBuffer = new byte[256];
             RlpStream rlpStream = new(rlpBuffer);
-            byte[] slotKey = new byte[32];
+            Span<byte> slotKey = stackalloc byte[32];
+            Span<byte> currentPrefixBuf = stackalloc byte[slotPrefixLength];
             int storageIdx = 0;
 
             foreach (Address address in uniqueAddresses)
@@ -197,8 +198,9 @@ public static class PersistedSnapshotBuilder
                     while (storageIdx < sortedStorages.Count &&
                         sortedStorages[storageIdx].Key.Addr.Value.Bytes.SequenceEqual(address.Bytes))
                     {
-                        sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey.AsSpan());
-                        ReadOnlySpan<byte> currentPrefix = slotKey.AsSpan(0, slotPrefixLength);
+                        sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey);
+                        slotKey.Slice(0, slotPrefixLength).CopyTo(currentPrefixBuf);
+                        ReadOnlySpan<byte> currentPrefix = currentPrefixBuf;
 
                         ref TWriter suffixWriter = ref prefixLevel.BeginValueWrite();
                         using HsstBuilder<TWriter> suffixLevel = new(ref suffixWriter, minSeparatorLength: 2, inlineValues: true);
@@ -206,19 +208,19 @@ public static class PersistedSnapshotBuilder
                         while (storageIdx < sortedStorages.Count &&
                             sortedStorages[storageIdx].Key.Addr.Value.Bytes.SequenceEqual(address.Bytes))
                         {
-                            sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey.AsSpan());
-                            if (!slotKey.AsSpan(0, slotPrefixLength).SequenceEqual(currentPrefix))
+                            sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey);
+                            if (!slotKey.Slice(0, slotPrefixLength).SequenceEqual(currentPrefix))
                                 break;
 
                             SlotValue? value = sortedStorages[storageIdx].Value;
                             if (value.HasValue)
                             {
                                 ReadOnlySpan<byte> withoutLeadingZeros = value.Value.AsReadOnlySpan.WithoutLeadingZeros();
-                                suffixLevel.Add(slotKey.AsSpan(slotPrefixLength, slotSuffixLength), withoutLeadingZeros);
+                                suffixLevel.Add(slotKey.Slice(slotPrefixLength, slotSuffixLength), withoutLeadingZeros);
                             }
                             else
                             {
-                                suffixLevel.Add(slotKey.AsSpan(slotPrefixLength, slotSuffixLength), ReadOnlySpan<byte>.Empty);
+                                suffixLevel.Add(slotKey.Slice(slotPrefixLength, slotSuffixLength), ReadOnlySpan<byte>.Empty);
                             }
                             storageIdx++;
                         }
