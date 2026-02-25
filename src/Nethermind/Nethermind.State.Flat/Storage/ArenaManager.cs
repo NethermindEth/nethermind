@@ -25,6 +25,7 @@ public sealed class ArenaManager : IArenaManager
     private readonly Dictionary<int, long> _deadBytes = [];
     private readonly HashSet<int> _reservedArenas = [];
     private readonly HashSet<int> _standaloneFiles = [];
+    private readonly HashSet<int> _mutableArenas = [];
     private readonly object _lock = new();
     private int _nextArenaId;
 
@@ -173,39 +174,45 @@ public sealed class ArenaManager : IArenaManager
 
             if (totalDead >= _frontiers[location.ArenaId])
             {
-                if (_standaloneFiles.Contains(location.ArenaId))
+                // All data is dead: dispose and delete the file
+                _standaloneFiles.Remove(location.ArenaId);
+                _mutableArenas.Remove(location.ArenaId);
+                if (_arenas.Remove(location.ArenaId, out ArenaFile? file))
                 {
-                    // Dedicated file: delete entirely
-                    _standaloneFiles.Remove(location.ArenaId);
-                    if (_arenas.Remove(location.ArenaId, out ArenaFile? file))
-                    {
-                        file.Dispose();
-                        File.Delete(file.Path);
-                    }
-                    _frontiers.Remove(location.ArenaId);
-                    _deadBytes.Remove(location.ArenaId);
+                    file.Dispose();
+                    File.Delete(file.Path);
                 }
-                else
-                {
-                    // Shared arena: reset for reuse
-                    _frontiers[location.ArenaId] = 0;
-                    _deadBytes[location.ArenaId] = 0;
-                }
+                _frontiers.Remove(location.ArenaId);
+                _deadBytes.Remove(location.ArenaId);
             }
         }
     }
 
     private ArenaFile GetOrCreateArena(int requiredSize)
     {
-        foreach (KeyValuePair<int, ArenaFile> kv in _arenas)
+        // Scan only mutable arenas; remove any that can't fit (they become permanently read-only)
+        List<int>? toRemove = null;
+        ArenaFile? result = null;
+        foreach (int id in _mutableArenas)
         {
-            if (_reservedArenas.Contains(kv.Key) || _standaloneFiles.Contains(kv.Key)) continue;
-            long frontier = _frontiers.GetValueOrDefault(kv.Key);
-            if (frontier + requiredSize <= kv.Value.MappedSize)
-                return kv.Value;
+            if (_reservedArenas.Contains(id)) continue;
+            long frontier = _frontiers.GetValueOrDefault(id);
+            if (frontier + requiredSize <= _arenas[id].MappedSize)
+            {
+                result = _arenas[id];
+                break;
+            }
+
+            (toRemove ??= []).Add(id);
         }
 
-        return CreateArenaFile();
+        if (toRemove is not null)
+        {
+            foreach (int id in toRemove)
+                _mutableArenas.Remove(id);
+        }
+
+        return result ?? CreateArenaFile();
     }
 
     private ArenaFile CreateArenaFile(long mappedSize = 0, bool dedicated = false)
@@ -219,6 +226,7 @@ public sealed class ArenaManager : IArenaManager
         _frontiers[id] = 0;
         _deadBytes[id] = 0;
         if (dedicated) _standaloneFiles.Add(id);
+        else _mutableArenas.Add(id);
         return arena;
     }
 
