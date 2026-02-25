@@ -126,7 +126,7 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
 
         SnapshotLocation location;
         ArenaReservation reservation;
-        using (ArenaWriter arenaWriter = arena.CreateWriter(0))
+        using (ArenaWriter arenaWriter = arena.CreateWriter(PersistedSnapshotBuilder.EstimateSize(snapshot)))
         {
             PersistedSnapshotBuilder.Build(snapshot, ref arenaWriter.GetWriter());
             if (isPersistable)
