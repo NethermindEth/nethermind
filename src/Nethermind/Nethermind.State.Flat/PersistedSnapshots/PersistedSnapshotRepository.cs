@@ -16,7 +16,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// </summary>
 public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
 {
-    private readonly IArenaManager _arenaManager;
+    private readonly IArenaManager _baseArenaManager;
+    private readonly IArenaManager _compactedArenaManager;
     private readonly SnapshotCatalog _catalog;
     private readonly int _compactSize;
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _baseSnapshots = new();
@@ -25,9 +26,10 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
     private readonly object _catalogLock = new();
     private int _nextId;
 
-    public PersistedSnapshotRepository(IArenaManager arenaManager, string basePath, IFlatDbConfig config)
+    public PersistedSnapshotRepository(IArenaManager baseArenaManager, IArenaManager compactedArenaManager, string basePath, IFlatDbConfig config)
     {
-        _arenaManager = arenaManager;
+        _baseArenaManager = baseArenaManager;
+        _compactedArenaManager = compactedArenaManager;
         _catalog = new SnapshotCatalog(Path.Combine(basePath, "catalog.bin"));
         _compactSize = config.CompactSize;
     }
@@ -44,7 +46,17 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
         lock (_catalogLock)
         {
             _catalog.Load();
-            _arenaManager.Initialize(_catalog.Entries);
+            List<SnapshotCatalog.CatalogEntry> baseEntries = new();
+            List<SnapshotCatalog.CatalogEntry> compactedEntries = new();
+            foreach (SnapshotCatalog.CatalogEntry entry in _catalog.Entries)
+            {
+                if (entry.Type == PersistedSnapshotType.Full)
+                    baseEntries.Add(entry);
+                else
+                    compactedEntries.Add(entry);
+            }
+            _baseArenaManager.Initialize(baseEntries);
+            _compactedArenaManager.Initialize(compactedEntries);
 
             // Load base snapshots first
             foreach (SnapshotCatalog.CatalogEntry entry in _catalog.Entries)
@@ -66,7 +78,7 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
 
     private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
     {
-        ArenaReservation reservation = _arenaManager.Open(entry.Location);
+        ArenaReservation reservation = ArenaFor(entry.Type).Open(entry.Location);
 
         PersistedSnapshot[]? referencedSnapshots = null;
         if (entry.Type == PersistedSnapshotType.Linked)
@@ -109,7 +121,7 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
     public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot)
     {
         int estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
-        ArenaReservation reservation = _arenaManager.ReserveForWrite(estimatedSize);
+        ArenaReservation reservation = _baseArenaManager.ReserveForWrite(estimatedSize);
         int actualSize;
         try
         {
@@ -379,12 +391,15 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
         return result.Count > 0 ? result.ToArray() : null;
     }
 
+    private IArenaManager ArenaFor(PersistedSnapshotType type) =>
+        type == PersistedSnapshotType.Full ? _baseArenaManager : _compactedArenaManager;
+
     private void RemoveFromCatalog(int snapshotId)
     {
         SnapshotCatalog.CatalogEntry? entry = _catalog.Find(snapshotId);
         if (entry is not null)
         {
-            _arenaManager.MarkDead(entry.Location);
+            ArenaFor(entry.Type).MarkDead(entry.Location);
             _catalog.Remove(snapshotId);
         }
     }
@@ -410,6 +425,7 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
             _baseSnapshots.Clear();
             _compactedSnapshots.Clear();
             _persistableCompactedSnapshots.Clear();
+            _baseArenaManager.Dispose();
         }
     }
 }
