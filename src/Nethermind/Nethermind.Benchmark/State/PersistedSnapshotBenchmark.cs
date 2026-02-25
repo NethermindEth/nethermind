@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using BenchmarkDotNet.Attributes;
@@ -347,17 +346,9 @@ public class PersistedSnapshotBenchmark
     private static byte[] BuildSnapshot(FlatSnapshot snapshot)
     {
         int estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(estimatedSize);
-        try
-        {
-            Nethermind.State.Flat.Hsst.SpanBufferWriter writer = new(buffer);
-            PersistedSnapshotBuilder.Build(snapshot, ref writer);
-            return buffer.AsSpan(0, writer.Written).ToArray();
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        using Nethermind.State.Flat.Hsst.PooledByteBufferWriter pooled = new(estimatedSize);
+        PersistedSnapshotBuilder.Build(snapshot, ref pooled.GetWriter());
+        return pooled.WrittenSpan.ToArray();
     }
 
     private sealed class NullCodeDb : IWorldStateScopeProvider.ICodeDb

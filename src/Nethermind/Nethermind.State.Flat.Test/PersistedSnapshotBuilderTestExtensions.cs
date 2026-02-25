@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.Storage;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -19,17 +17,9 @@ internal static class PersistedSnapshotBuilderTestExtensions
     public static byte[] Build(Snapshot snapshot)
     {
         int estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(estimatedSize);
-        try
-        {
-            SpanBufferWriter writer = new(buffer);
-            PersistedSnapshotBuilder.Build(snapshot, ref writer);
-            return buffer.AsSpan(0, writer.Written).ToArray();
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        using PooledByteBufferWriter pooled = new(estimatedSize);
+        PersistedSnapshotBuilder.Build(snapshot, ref pooled.GetWriter());
+        return pooled.WrittenSpan.ToArray();
     }
 
     public static byte[] MergeSnapshots(PersistedSnapshotList snapshots) =>
@@ -55,16 +45,8 @@ internal static class PersistedSnapshotBuilderTestExtensions
         for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
         totalSize += 4096;
 
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(totalSize);
-        try
-        {
-            SpanBufferWriter writer = new(buffer);
-            PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref writer, referencedIds);
-            return buffer.AsSpan(0, writer.Written).ToArray();
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        using PooledByteBufferWriter pooled = new(totalSize);
+        PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref pooled.GetWriter(), referencedIds);
+        return pooled.WrittenSpan.ToArray();
     }
 }
