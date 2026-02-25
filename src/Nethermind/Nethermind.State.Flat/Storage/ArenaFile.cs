@@ -14,6 +14,7 @@ namespace Nethermind.State.Flat.Storage;
 /// </summary>
 public sealed unsafe class ArenaFile : IDisposable
 {
+    private const int MADV_RANDOM = 1;
     private const int MADV_DONTNEED = 4;
     private static readonly nuint PageSize = (nuint)Environment.SystemPageSize;
 
@@ -45,6 +46,9 @@ public sealed unsafe class ArenaFile : IDisposable
         _accessor = _mmf.CreateViewAccessor(0, mappedSize, MemoryMappedFileAccess.Read);
 
         _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref _basePtr);
+
+        if (OperatingSystem.IsLinux())
+            Madvise(_basePtr, (nuint)mappedSize, MADV_RANDOM);
     }
 
     public ReadOnlySpan<byte> GetSpan(long offset, int size) =>
