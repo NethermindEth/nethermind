@@ -979,7 +979,6 @@ namespace Nethermind.Evm.TransactionProcessing
         Complete:
             if ((opts & ExecutionOptions.SkipValidation) == 0)
                 header.GasUsed += gasConsumed.SpentGas;
-            }
 
             return statusCode;
 

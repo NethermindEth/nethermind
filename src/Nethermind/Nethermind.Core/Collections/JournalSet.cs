@@ -19,7 +19,18 @@ namespace Nethermind.Core.Collections
     public sealed class JournalSet<T> : ICollection<T>, IJournal<int>
     {
         private readonly List<T> _items = [];
-        private readonly HashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
+        private readonly HashSet<T> _set;
+
+        public JournalSet()
+        {
+            _set = [];
+        }
+
+        public JournalSet(EqualityComparer<T> equalityComparer)
+        {
+            ArgumentNullException.ThrowIfNull(equalityComparer);
+            _set = new HashSet<T>(GenericEqualityComparer.GetOptimized(equalityComparer));
+        }
 
         public int TakeSnapshot() => Position;
 
