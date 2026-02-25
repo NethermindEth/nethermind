@@ -601,5 +601,30 @@ namespace Nethermind.Core.Test
                 modifiedHash.Should().NotBe(originalHash, $"Changing byte at index {i} should change the hash for length {length}");
             }
         }
+
+        [TestCase(1, 1000u, 2000u)]
+        [TestCase(8, 1000u, 2000u)]
+        [TestCase(16, 1000u, 2000u)]
+        [TestCase(16, 0u, 1u)]
+        [TestCase(16, 0u, 0xFFFFFFFFu)]
+        [TestCase(20, 1000u, 2000u)]
+        [TestCase(32, 1000u, 2000u)]
+        [TestCase(33, 1000u, 2000u)]
+        [TestCase(64, 1000u, 2000u)]
+        [TestCase(65, 1000u, 2000u)]
+        [TestCase(71, 1000u, 2000u)]
+        [TestCase(79, 1000u, 2000u)]
+        [TestCase(80, 1000u, 2000u)]
+        [TestCase(128, 1000u, 2000u)]
+        public void FastHash_SeedAffectsOutput(int length, uint seed1, uint seed2)
+        {
+            byte[] input = new byte[length];
+            for (int i = 0; i < length; i++)
+                input[i] = (byte)(i * 0x17 + 0x42);
+
+            SpanExtensions.FastHash(input, seed1).Should()
+                .NotBe(SpanExtensions.FastHash(input, seed2),
+                    $"seeds {seed1} vs {seed2} for {length} bytes");
+        }
     }
 }
