@@ -12,7 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Blockchain;
 

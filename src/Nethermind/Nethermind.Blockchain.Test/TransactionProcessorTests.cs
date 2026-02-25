@@ -39,8 +39,8 @@ public class TransactionProcessorTests
     private readonly bool _isEip155Enabled;
     private readonly ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
-    private ITransactionProcessor _transactionProcessor;
-    private IWorldState _stateProvider;
+    protected ITransactionProcessor _transactionProcessor;
+    protected IWorldState _stateProvider;
     private BlockHeader _baseBlock = null!;
     private IDisposable _stateCloser;
 
@@ -50,7 +50,7 @@ public class TransactionProcessorTests
         _specProvider = MainnetSpecProvider.Instance;
     }
 
-    private static readonly UInt256 AccountBalance = 1.Ether();
+    protected static readonly UInt256 AccountBalance = 1.Ether();
 
     [SetUp]
     public void Setup()
@@ -730,7 +730,7 @@ public class TransactionProcessorTests
         return tracer;
     }
 
-    private TransactionResult Execute(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
+    protected TransactionResult Execute(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
     {
         tracer?.StartNewBlockTrace(block);
         tracer?.StartNewTxTrace(tx);

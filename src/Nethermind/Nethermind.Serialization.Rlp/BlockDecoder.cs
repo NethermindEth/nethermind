@@ -1,17 +1,19 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using System;
 using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core;
+using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp
 {
     public sealed class BlockDecoder(IHeaderDecoder headerDecoder) : RlpValueDecoder<Block>
     {
         private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? throw new ArgumentNullException(nameof(headerDecoder));
-        private readonly BlockBodyDecoder _blockBodyDecoder = new BlockBodyDecoder(headerDecoder);
+        private readonly BlockBodyDecoder _blockBodyDecoder = new(headerDecoder);
+        private readonly BlockAccessListDecoder _blockAccessListDecoder = new();
 
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockDecoder))]
         public BlockDecoder() : this(new HeaderDecoder()) { }
@@ -22,6 +24,9 @@ namespace Nethermind.Serialization.Rlp
             {
                 throw new RlpException($"Received a 0 length stream when decoding a {nameof(Block)}");
             }
+
+            // Console.WriteLine("DECODING BLOCK");
+            // Console.WriteLine(Convert.ToHexString(rlpStream.Data));
 
             if (rlpStream.IsNextItemNull())
             {
@@ -92,7 +97,9 @@ namespace Nethermind.Serialization.Rlp
 
             Block block = new(header, body)
             {
-                EncodedSize = Rlp.LengthOfSequence(sequenceLength)
+                EncodedSize = Rlp.LengthOfSequence(sequenceLength),
+                // GeneratedBlockAccessList = decoderContext.PeekNumberOfItemsRemaining() == 0 ? null : _blockAccessListDecoder.Decode(ref decoderContext, rlpBehaviors),
+                // EncodedBlockAccessList = body.BlockAccessList is null ? null : Rlp.Encode(body.BlockAccessList.Value).Bytes // todo: possible without reencoding?
             };
 
             return block;
@@ -154,6 +161,18 @@ namespace Nethermind.Serialization.Rlp
                     stream.Encode(item.Withdrawals[i]);
                 }
             }
+
+            // if (item.BlockAccessList is not null)
+            // {
+            //     // stream.StartSequence(balLength.Value);
+            //     stream.Encode(item.BlockAccessList.Value);
+            // }
+
+            // if (item.GeneratedBlockAccessList is not null)
+            // {
+            //     // stream.StartSequence(genBalLength.Value);
+            //     stream.Encode(item.GeneratedBlockAccessList.Value);
+            // }
         }
 
         public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)

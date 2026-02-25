@@ -1081,6 +1081,11 @@ namespace Nethermind.Serialization.Rlp
 
                 byte[] buffer = Read(20).ToArray();
                 return new Address(buffer);
+
+                // static void ThrowInvalidPrefix(ref ValueDecoderContext ctx, int prefix)
+                // {
+                //     throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Address)} at position {ctx.Position} in the message of length {ctx.Data.Length} starting with {ctx.Data[..Math.Min(DebugMessageContentLength, ctx.Data.Length)].ToHexString()}");
+                // }
             }
 
             public void DecodeAddressStructRef(out AddressStructRef address)
@@ -1457,6 +1462,18 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
+            /// <summary>
+            /// Decodes a non-negative long value. Throws if the decoded value is negative.
+            /// Use this for fields that should never be negative (e.g., gas values).
+            /// </summary>
+            public long DecodePositiveLong()
+            {
+                long value = DecodeLong();
+                if (value < 0)
+                    RlpHelpers.ThrowNotPositiveLong();
+                return value;
+            }
+
             public ulong DecodeULong()
             {
                 int prefix = ReadByte();
@@ -1514,6 +1531,45 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 Check(checkPosition);
+
+                return result;
+            }
+
+            public ushort DecodeUShort()
+            {
+                int prefix = ReadByte();
+
+                switch (prefix)
+                {
+                    case 0:
+                        throw new RlpException($"Non-canonical ushort (leading zero bytes) at position {Position}");
+                    case < 128:
+                        return (ushort)prefix;
+                    case 128:
+                        return 0;
+                }
+
+                int length = prefix - 128;
+                if (length > 8)
+                {
+                    throw new RlpException($"Unexpected length of ushort value: {length}");
+                }
+
+                ushort result = 0;
+                for (int i = 2; i > 0; i--)
+                {
+                    result <<= 8;
+                    if (i <= length)
+                    {
+                        result |= PeekByte(length - i);
+                        if (result == 0)
+                        {
+                            throw new RlpException($"Non-canonical ushort (leading zero bytes) at position {Position}");
+                        }
+                    }
+                }
+
+                SkipBytes(length);
 
                 return result;
             }
@@ -1665,6 +1721,21 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static int LengthOf(int value) => LengthOf((long)value);
+
+        // public static int LengthOf(ushort value)
+        // {
+        //     if (value < 128)
+        //     {
+        //         return 1;
+        //     }
+        //     else
+        //     {
+        //         // everything has a length prefix
+        //         return 1 + sizeof(ushort) - (BitOperations.LeadingZeroCount(value) / 2);
+        //     }
+        // }
+
+        public static int LengthOf(ushort value) => LengthOf((long)value);
 
         public static int LengthOf(Hash256? item) => item is null ? 1 : 33;
 

@@ -220,6 +220,8 @@ internal static partial class EvmInstructions
         if (spec.UseShanghaiDDosProtection)
         {
             TGasPolicy.ConsumeSelfDestructGas(ref gas);
+            if (!TGasPolicy.UpdateGas(ref gas, 0))
+                goto OutOfGas;
         }
 
         // Pop the inheritor address from the stack; signal underflow if missing.
@@ -239,6 +241,16 @@ internal static partial class EvmInstructions
 
         // Retrieve the current balance for transfer.
         UInt256 result = state.GetBalance(executingAccount);
+
+        if (executingAccount == inheritor)
+        {
+            vm.AddSelfDestructLog(executingAccount, result);
+        }
+        else
+        {
+            vm.AddTransferLog(executingAccount, inheritor, result);
+        }
+
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 

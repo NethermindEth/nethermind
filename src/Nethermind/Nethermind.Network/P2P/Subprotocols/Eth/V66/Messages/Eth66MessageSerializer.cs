@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             NettyRlpStream rlpStream = new(byteBuffer);
             TEth66Message eth66Message = new();
             rlpStream.ReadSequenceLength();
-            eth66Message.RequestId = rlpStream.DecodeLong();
+            eth66Message.RequestId = rlpStream.DecodePositiveLong();
             eth66Message.EthMessage = _ethMessageSerializer.Deserialize(byteBuffer);
             return eth66Message;
         }

@@ -41,7 +41,6 @@ public class DebugRpcModule(
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
 
-
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
     {
         ChainLevelInfo levelInfo = debugBridge.GetLevelInfo(number);

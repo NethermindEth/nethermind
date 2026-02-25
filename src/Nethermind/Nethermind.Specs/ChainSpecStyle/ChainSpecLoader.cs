@@ -199,7 +199,14 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip7934TransitionTimestamp = chainSpecJson.Params.Eip7934TransitionTimestamp,
             Eip7934MaxRlpBlockSize = chainSpecJson.Params.Eip7934MaxRlpBlockSize ?? Eip7934Constants.DefaultMaxRlpBlockSize,
 
+            Eip7778TransitionTimestamp = chainSpecJson.Params.Eip7778TransitionTimestamp,
             Rip7728TransitionTimestamp = chainSpecJson.Params.Rip7728TransitionTimestamp,
+
+            Eip7928TransitionTimestamp = chainSpecJson.Params.Eip7928TransitionTimestamp,
+            Eip7708TransitionTimestamp = chainSpecJson.Params.Eip7708TransitionTimestamp,
+
+            Eip8024TransitionTimestamp = chainSpecJson.Params.Eip8024TransitionTimestamp,
+            Eip7843TransitionTimestamp = chainSpecJson.Params.Eip7843TransitionTimestamp,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
@@ -260,6 +267,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         chainSpec.CancunTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp;
         chainSpec.PragueTimestamp = chainSpec.Parameters.Eip7002TransitionTimestamp;
         chainSpec.OsakaTimestamp = chainSpec.Parameters.Eip7594TransitionTimestamp;
+        chainSpec.AmsterdamTimestamp = chainSpec.Parameters.Eip7928TransitionTimestamp;
 
         // TheMerge parameters
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
@@ -331,27 +339,36 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             0,
             (long)gasLimit,
             timestamp,
-            extraData);
+            extraData)
+        {
+            Author = beneficiary,
+            Hash = Keccak.Zero, // need to run the block to know the actual hash
+            Bloom = Bloom.Empty,
+            MixHash = mixHash,
+            Nonce = (ulong)nonce,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = stateRoot,
+            TxRoot = Keccak.EmptyTreeHash,
+            BaseFeePerGas = baseFee
+        };
 
-        genesisHeader.Author = beneficiary;
-        genesisHeader.Hash = Keccak.Zero; // need to run the block to know the actual hash
-        genesisHeader.Bloom = Bloom.Empty;
-        genesisHeader.MixHash = mixHash;
-        genesisHeader.Nonce = (ulong)nonce;
-        genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-        genesisHeader.StateRoot = stateRoot;
-        genesisHeader.TxRoot = Keccak.EmptyTreeHash;
-        genesisHeader.BaseFeePerGas = baseFee;
         bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
         bool depositsEnabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
         bool withdrawalRequestsEnabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
         bool consolidationRequestsEnabled = chainSpecJson.Params.Eip7251TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7251TransitionTimestamp;
+        bool blockAccessListsEnabled = chainSpecJson.Params.Eip7928TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7928TransitionTimestamp;
+        bool slotNumberEnabled = chainSpecJson.Params.Eip7843TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7843TransitionTimestamp;
+
         if (withdrawalsEnabled)
+        {
             genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
+        }
 
         var requestsEnabled = depositsEnabled || withdrawalRequestsEnabled || consolidationRequestsEnabled;
         if (requestsEnabled)
+        {
             genesisHeader.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+        }
 
         bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
@@ -371,16 +388,24 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
         }
 
+        if (blockAccessListsEnabled)
+        {
+            genesisHeader.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+        }
+
+        if (slotNumberEnabled)
+        {
+            genesisHeader.SlotNumber = 0;
+        }
+
         genesisHeader.AuRaStep = step;
         genesisHeader.AuRaSignature = auRaSignature;
 
-        chainSpec.Genesis = !withdrawalsEnabled
-            ? new Block(genesisHeader)
-            : new Block(
-                genesisHeader,
-                Array.Empty<Transaction>(),
-                Array.Empty<BlockHeader>(),
-                Array.Empty<Withdrawal>());
+        chainSpec.Genesis = !blockAccessListsEnabled ?
+            (!withdrawalsEnabled
+                ? new Block(genesisHeader)
+                : new Block(genesisHeader, [], [], []))
+            : new Block(genesisHeader, [], [], [], new());
     }
 
     private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

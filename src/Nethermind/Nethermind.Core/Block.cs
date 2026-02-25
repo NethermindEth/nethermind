@@ -12,25 +12,29 @@ using System.Text.Unicode;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Core;
 
 [DebuggerDisplay("{Hash} ({Number})")]
 public class Block
 {
-    public Block(BlockHeader header, BlockBody body)
+    public Block(BlockHeader header, BlockBody body, BlockAccessList? bal = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = body ?? throw new ArgumentNullException(nameof(body));
+        BlockAccessList = bal;
     }
 
     public Block(BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
-        IEnumerable<Withdrawal>? withdrawals = null)
+        IEnumerable<Withdrawal>? withdrawals = null,
+        BlockAccessList? blockAccessList = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
+        BlockAccessList = blockAccessList;
     }
 
     public Block(BlockHeader header) : this(
@@ -42,11 +46,11 @@ public class Block
     )
     { }
 
-    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList);
 
-    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody);
+    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList);
 
-    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody);
+    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList);
 
     public BlockHeader Header { get; }
 
@@ -108,6 +112,8 @@ public class Block
 
     public ulong? ExcessBlobGas => Header.ExcessBlobGas; // do not add setter here
 
+    public ulong? SlotNumber => Header.SlotNumber; // do not add setter here
+
     public bool IsPostMerge => Header.IsPostMerge; // do not add setter here
 
     public bool IsBodyMissing => Header.HasBody && Body.IsEmpty;
@@ -116,6 +122,14 @@ public class Block
     public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
 
     public Hash256? RequestsHash => Header.RequestsHash; // do not add setter here
+    public Hash256? BlockAccessListHash => Header.BlockAccessListHash; // do not add setter here
+
+    [JsonIgnore]
+    public BlockAccessList? BlockAccessList { get; set; }
+
+    // for debugging by rpc
+    [JsonIgnore]
+    public BlockAccessList? GeneratedBlockAccessList { get; set; }
 
     [JsonIgnore]
     public byte[][]? ExecutionRequests { get; set; }
@@ -132,6 +146,8 @@ public class Block
     /// </summary>
     [JsonIgnore]
     public byte[][]? EncodedTransactions { get; set; }
+    [JsonIgnore]
+    public byte[]? EncodedBlockAccessList { get; set; }
 
     public override string ToString() => ToString(Format.Short);
 

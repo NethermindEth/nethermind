@@ -87,6 +87,8 @@ public class DbConfig : IDbConfig
     public string BadBlocksDbRocksDbOptions { get; set; } = "";
     public string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
 
+    public string BlockAccessListsDbRocksDbOptions { get; set; } = "";
+    public string? BlockAccessListsDbAdditionalRocksDbOptions { get; set; }
 
     public string BlobTransactionsDbRocksDbOptions { get; set; } =
         "block_based_table_factory.block_cache=32000000;";

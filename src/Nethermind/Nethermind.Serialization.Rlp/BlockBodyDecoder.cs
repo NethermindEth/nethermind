@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using System;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core;
+using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -12,6 +12,7 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly IHeaderDecoder _headerDecoder;
     private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
+    private readonly BlockAccessListDecoder _blockAccessListDecoder = new();
 
     private static BlockBodyDecoder? _instance = null;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
@@ -94,13 +95,14 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
         return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength);
     }
 
-    public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
+    public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         Transaction[] transactions = ctx.DecodeArray(_txDecoder);
         BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
         Withdrawal[]? withdrawals = null;
 
-        if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
+        int remaining = ctx.PeekNumberOfItemsRemaining(lastPosition, 2);
+        if (remaining > 0)
         {
             withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);
         }
@@ -141,5 +143,10 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
                 stream.Encode(withdrawal);
             }
         }
+
+        // if (body.BlockAccessList is not null)
+        // {
+        //     stream.Encode(body.BlockAccessList.Value);
+        // }
     }
 }

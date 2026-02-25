@@ -21,11 +21,13 @@ public class CodeInfoRepository : ICodeInfoRepository
     private static readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
+    private readonly IBlockAccessListBuilder? _balBuilder;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
+        _balBuilder = _worldState as IBlockAccessListBuilder;
     }
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
@@ -33,6 +35,10 @@ public class CodeInfoRepository : ICodeInfoRepository
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource)) // _localPrecompiles have to have all precompiles
         {
+            if (_balBuilder is not null && _balBuilder.TracingEnabled)
+            {
+                _balBuilder.AddAccountRead(codeSource);
+            }
             return _localPrecompiles[codeSource];
         }
 
@@ -49,7 +55,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     private CodeInfo InternalGetCachedCode(Address codeSource, IReleaseSpec vmSpec)
     {
-        ref readonly ValueHash256 codeHash = ref _worldState.GetCodeHash(codeSource);
+        ValueHash256 codeHash = _worldState.GetCodeHash(codeSource);
         return InternalGetCachedCode(_worldState, in codeHash, vmSpec);
     }
 

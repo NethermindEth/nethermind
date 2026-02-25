@@ -75,7 +75,8 @@ public class BlockValidator(
                ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
                ValidateEip4844Fields(block, spec, ref errorMessage) &&
-               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage);
+               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage) &&
+               ValidateBlockLevelAccessList(block, spec, ref errorMessage);
     }
 
     private bool ValidateHeader<TOrphaned>(Block block, BlockHeader? parent, ref string? errorMessage)
@@ -210,6 +211,20 @@ public class BlockValidator(
         {
             if (_logger.IsWarn) _logger.Warn($"- requests root : expected {suggestedBlock.Header.RequestsHash}, got {processedBlock.Header.RequestsHash}");
             error ??= BlockErrorMessages.InvalidRequestsHash(suggestedBlock.Header.RequestsHash, processedBlock.Header.RequestsHash);
+        }
+
+        if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
+            error ??= BlockErrorMessages.InvalidBlockLevelAccessListHash(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
+            if (_logger.IsWarn) _logger.Warn($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
+            suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
+        }
+
+        if (processedBlock.Header.SlotNumber != suggestedBlock.Header.SlotNumber)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- slot number: expected {suggestedBlock.Header.SlotNumber}, got {processedBlock.Header.SlotNumber}");
+            error ??= BlockErrorMessages.SlotNumberMismatch(suggestedBlock.Header.SlotNumber, processedBlock.Header.SlotNumber);
         }
 
         if (receipts.Length != processedBlock.Transactions.Length)
@@ -381,6 +396,45 @@ public class BlockValidator(
         return true;
     }
 
+    public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
+    {
+        // if (spec.BlockLevelAccessListsEnabled && block.BlockAccessList is null)
+        // {
+        //     error = BlockErrorMessages.MissingBlockLevelAccessList;
+
+        //     if (_logger.IsWarn) _logger.Warn($"Block level access list cannot be null in block {block.Hash} when EIP-7928 activated.");
+
+        //     return false;
+        // }
+
+        if (!spec.BlockLevelAccessListsEnabled && block.BlockAccessList is not null)
+        {
+            error = BlockErrorMessages.BlockLevelAccessListNotEnabled;
+
+            if (_logger.IsWarn) _logger.Warn($"Block level access list must be null in block {block.Hash} when EIP-7928 not activated.");
+
+            return false;
+        }
+
+        if (block.BlockAccessList is not null)
+        {
+            if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256 blockLevelAccessListHash))
+            {
+                error = BlockErrorMessages.InvalidBlockLevelAccessListHash(block.Header.BlockAccessListHash, blockLevelAccessListHash);
+                if (_logger.IsWarn) _logger.Warn($"Block level access list hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.BlockAccessListHash}, got {blockLevelAccessListHash}");
+
+                return false;
+            }
+        }
+
+        error = null;
+
+        return true;
+
+    }
+
+    // public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
+    //     ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
     private bool ValidateTxRootMatchesTxs(Block block, bool validateHashes, [NotNullWhen(false)] ref string? errorMessage)
     {
         if (validateHashes && !ValidateTxRootMatchesTxs(block.Header, block.Body, out Hash256 txRoot))
@@ -414,6 +468,20 @@ public class BlockValidator(
         }
 
         return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
+    }
+
+    public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? balRoot)
+    {
+        BlockHeader header = block.Header;
+        if (block.BlockAccessList is null)
+        {
+            balRoot = null;
+            return header.BlockAccessListHash is null;
+        }
+
+        balRoot = new(ValueKeccak.Compute(block.EncodedBlockAccessList!).Bytes);
+
+        return balRoot == header.BlockAccessListHash;
     }
 
     private static string Invalid(Block block) => $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";

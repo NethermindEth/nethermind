@@ -28,6 +28,7 @@ using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
