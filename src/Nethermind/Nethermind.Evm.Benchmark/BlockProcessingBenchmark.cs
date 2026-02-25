@@ -57,6 +57,7 @@ namespace Nethermind.Evm.Benchmark;
 public class BlockProcessingBenchmark
 {
     /// <summary>
+    /// 500 data points per benchmark (5 launches x 100 iterations, 20 warmup each).
     /// [IterationSetup] rebuilds world state once per iteration.
     /// InvocationCount=1/UnrollFactor=1 ensures each invocation starts from a fresh state.
     /// </summary>
@@ -64,10 +65,13 @@ public class BlockProcessingBenchmark
     {
         public BlockProcessingConfig()
         {
-            AddJob(Job.MediumRun
+            AddJob(Job.Default
                 .WithToolchain(InProcessNoEmitToolchain.Instance)
                 .WithInvocationCount(1)
-                .WithUnrollFactor(1));
+                .WithUnrollFactor(1)
+                .WithLaunchCount(5)
+                .WithWarmupCount(20)
+                .WithIterationCount(100));
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
             AddColumn(StatisticColumn.Median);
