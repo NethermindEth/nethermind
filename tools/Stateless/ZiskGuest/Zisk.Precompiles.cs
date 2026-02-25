@@ -18,6 +18,9 @@ public static unsafe partial class Zisk
         public static extern byte bls12_381_fp_to_g1_c(byte* ret, byte* fp);
 
         [DllImport(Internal)]
+        public static extern byte bls12_381_fp2_to_g2_c(byte* ret, byte* fp2);
+
+        [DllImport(Internal)]
         public static extern byte bls12_381_g2_add_c(byte* ret, byte* a, byte* b);
 
         [DllImport(Internal)]
