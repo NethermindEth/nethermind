@@ -38,7 +38,9 @@ public class GasColumnProvider : IColumnProvider
         protected static (long? gas, Statistics? stats) GetBenchmarkData(Summary summary, BenchmarkCase benchmarkCase)
         {
             BenchmarkDotNet.Parameters.ParameterInstance? inputParam = benchmarkCase.Parameters.Items.FirstOrDefault(p => p.Name == "Input");
-            var gas = ((PrecompileBenchmarkBase.Param)inputParam!.Value).Gas(Cancun.Instance);
+            long? gas = inputParam?.Value is PrecompileBenchmarkBase.Param precompileInput
+                ? precompileInput.Gas(Cancun.Instance)
+                : (long?)null;
             Statistics? stats = summary.Reports.FirstOrDefault(r => r.BenchmarkCase == benchmarkCase)?.ResultStatistics;
             return (gas, stats);
         }
@@ -56,7 +58,10 @@ public class GasColumnProvider : IColumnProvider
 
         public bool IsDefault(Summary summary, BenchmarkCase benchmarkCase) => false;
 
-        public bool IsAvailable(Summary summary) => true;
+        public bool IsAvailable(Summary summary)
+            => summary.BenchmarksCases.Any(
+                c => c.Parameters.Items.Any(
+                    p => p.Name == "Input" && p.Value is PrecompileBenchmarkBase.Param));
     }
 
     private class GasColumn : BaseGasColumn
