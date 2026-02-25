@@ -19,7 +19,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - When fixing a bug, always add a regression test
 - Do not alter [src/bench_precompiles](./src/bench_precompiles/) or [src/tests](./src/tests/)
 
-> **Detailed conventions** live in `.claude/rules/` — coding style, DI patterns, test infrastructure, performance, package management, EVM conventions, and `.github` workflow rules. Path-scoped rules (e.g. tests, EVM, .github) are auto-loaded when editing matching files; see `.claude/rules/src-nethermind-index.md` for the index. Before opening a PR, run the **self-review** skill (plan, checkpoints, structured report) in `.claude/skills/self-review/`.
+> **Detailed conventions** live in `.claude/rules/` — coding style, DI patterns, test infrastructure, performance, robustness, package management, concurrency, serialization, EVM conventions, and `.github` workflow rules. Path-scoped rules (e.g. tests, EVM, .github, blockchain, state, network) are auto-loaded when editing matching files; see `.claude/rules/src-nethermind-index.md` for the index. Before opening a PR, run `/self-review` for convention checks or `/review` for a deep correctness/security audit.
 
 ## Project structure
 

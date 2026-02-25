@@ -1,8 +1,7 @@
 ---
 name: review
-description: Review branch changes for consensus correctness, security, robustness, breaking changes, and observability. Based on Nethermind's GitHub Copilot review instructions (PR #10602).
-disable-model-invocation: true
-allowed-tools: Read, Grep, Glob
+description: Deep code review for an Ethereum execution client. Checks consensus correctness, security, robustness, performance, breaking changes, and observability. Use when asked to "review", "check this PR", "look for bugs", "audit", or "review my changes".
+allowed-tools: [Read, Grep, Glob]
 ---
 
 # Code review
@@ -16,19 +15,7 @@ Be concise: one sentence per comment when possible. If uncertain, stay silent.
 
 ## Skip these — CI already handles it
 
-Do not comment on anything below. CI will block the merge if any of it fails.
-
-| Concern | Workflow |
-|---|---|
-| Code formatting, whitespace, EditorConfig | `code-formatting.yml` (`dotnet format`) |
-| Build errors | `build-solutions.yml` |
-| All unit & integration tests | `nethermind-tests.yml` |
-| CodeQL security analysis | `codeql.yml` |
-| Dependency vulnerabilities | `dependency-review.yml` |
-| Ethereum Foundation hive tests (consensus, RPC, Engine API) | `hive-tests.yml`, `hive-consensus-tests.yml` |
-| JSON-RPC output correctness | `rpc-comparison.yml` |
-
-Also skip: naming conventions, missing XML docs on `internal`/`private` members, minor grammar, refactoring suggestions that don't fix a real bug, logging improvements (unless security-related), build warnings that have no behavioural impact.
+Do not comment on formatting, build errors, test failures, CodeQL findings, dependency vulnerabilities, hive test results, or JSON-RPC output correctness. CI blocks the merge on all of these. Also skip: naming conventions, missing XML docs on `internal`/`private` members, minor grammar, refactoring suggestions that don't fix a real bug, logging improvements (unless security-related), build warnings with no behavioural impact.
 
 ---
 
@@ -56,9 +43,7 @@ Only flag when it genuinely affects correctness or usability:
 
 ---
 
-## Implementation
-
-### Consensus & EVM correctness (CRITICAL)
+## Consensus & EVM correctness (CRITICAL)
 
 Wrong EVM behaviour produces invalid blocks, causing chain desync and validators building on an invalid chain — leading to missed attestations and potential safety failures.
 
@@ -76,7 +61,18 @@ Wrong EVM behaviour produces invalid blocks, causing chain desync and validators
 - EIP-2930 access list gas accounting applied incorrectly — warm vs cold storage access costs (EIP-2929) must account for pre-warmed slots declared in the access list
 - Keccak-256 computed using `System.Security.Cryptography.SHA3_256` instead of Nethermind's `ValueKeccak` / `KeccakHash` — NIST SHA3 and Ethereum's Keccak-256 use different padding and produce different output on every input
 
-### Security
+### Key code locations
+
+- EVM instruction handlers: `src/Nethermind/Nethermind.Evm/VirtualMachine.cs`
+- Gas cost tables: `src/Nethermind/Nethermind.Evm/GasCostOf.cs`
+- Engine API handlers: `src/Nethermind/Nethermind.Merge.Plugin/Handlers/`
+- Fork activation specs: `src/Nethermind/Nethermind.Specs/`
+- State root computation: `src/Nethermind/Nethermind.State/`
+- Receipt processing: `src/Nethermind/Nethermind.Blockchain/Receipts/`
+
+---
+
+## Security
 
 - Hardcoded JWT token, private key, credential, or secret in any form
 - Engine API endpoints (`engine_*`) reachable without JWT authentication
@@ -86,7 +82,9 @@ Wrong EVM behaviour produces invalid blocks, causing chain desync and validators
 - Missing validation on data received from untrusted sources (peers, RPC callers)
 - P2P message handlers that process externally-supplied sizes or counts without an upper bound — Ethereum's devp2p has no built-in rate limiting, so unbounded `GetBlockHeaders` ranges or oversized transaction batches are a DoS vector
 
-### C# / .NET robustness
+---
+
+## C# / .NET robustness
 
 - `async void` — exceptions are silently swallowed; use `async Task`
 - `.Result` or `.Wait()` on a `Task` inside an `async` method — deadlock or thread-pool starvation risk; use `await` instead
@@ -97,7 +95,9 @@ Wrong EVM behaviour produces invalid blocks, causing chain desync and validators
 - `NullReferenceException` risk when processing untrusted external input without a null check or guard
 - Exception silently swallowed in an empty `catch` block — lost diagnostics
 
-### Performance
+---
+
+## Performance
 
 Nethermind is the fastest Ethereum execution client. Guard regressions in hot paths.
 
@@ -108,12 +108,16 @@ Nethermind is the fastest Ethereum execution client. Guard regressions in hot pa
 - LINQ with closures or `ToList()` in per-block or per-transaction logic — allocates on every call
 - Large object allocations that could be pooled with `ObjectPool<T>` or `ArrayPool<T>`
 
-### Observability
+---
+
+## Observability
 
 - A new code path that can fail silently with no log, metric, or counter — silent errors are the hardest to diagnose on a running node
 - A new sync stage, block processor step, or P2P handler with no metrics — throughput regressions will go undetected
 
-### Dependencies
+---
+
+## Dependencies
 
 - A new NuGet package added to a core or network project that is large, has a restrictive licence, or duplicates existing functionality — new dependencies increase binary size and attack surface
 
@@ -159,6 +163,64 @@ New source files missing the required SPDX header (replace year with the current
 
 > `GetGasCost` returns `long` but is compared against a `UInt256` balance — values above `long.MaxValue` will silently truncate and pass the check incorrectly.
 > Cast before the comparison: `if ((UInt256)gasCost > balance)`.
+
+---
+
+## Real-world examples
+
+### `async void` swallows exceptions
+
+**File:** `Nethermind.Merge.Plugin/Synchronization/StartingSyncPivotUpdater.cs`
+
+```csharp
+private async void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs syncMode)
+{
+    if ((syncMode.Current & SyncMode.UpdatingPivot) != 0 && ...)
+    {
+        if (await TrySetFreshPivot(_cancellation.Token))
+        ...
+```
+
+**Problem:** `async void` event handler — if `TrySetFreshPivot` throws, the exception is swallowed and the sync pivot silently stops updating.
+
+### `.Result` inside a lock — deadlock
+
+**File:** `Nethermind.Synchronization/FastBlocks/FastHeadersSyncFeed.cs`
+
+```csharp
+int requestSize =
+    _syncPeerPool.EstimateRequestLimit(..., cancellationToken).Result
+    ?? GethSyncLimits.MaxHeaderFetch;
+```
+
+**Problem:** `.Result` blocks the thread inside a lock. If the async continuation tries to reacquire the same lock, the node deadlocks and sync stalls permanently.
+
+### `.Wait()` in Dispose — shutdown hang
+
+**File:** `Nethermind.Trie/Pruning/TrieStore.cs`
+
+```csharp
+public void Dispose()
+{
+    _pruningTaskCancellationTokenSource.Cancel();
+    _pruningTask.Wait();
+```
+
+**Problem:** `.Wait()` in `Dispose()` can deadlock during shutdown, requiring a kill signal.
+
+### Wrong layer for state check (PR #10534)
+
+Reviewer flagged binding `IPruningConfig` into `BlockchainBridge`:
+
+> "Please don't bind IPruningConfig with BlockchainBridge. This will break flat as flat does not use this. Instead add the logic within TrieStore."
+
+**Problem:** Pruning boundary check added to the RPC facade instead of the trie layer. Flat-layout nodes get an unnecessary dependency, and other state-reading code paths remain unprotected.
+
+### Wrong constant for pruning boundary (PR #10534)
+
+> "use `PruningConfig.PruningBoundary` instead `Reorganization.MaxDepth`"
+
+**Problem:** Reorg depth and pruning boundary are independent values. Using the wrong one means nodes could reject valid state queries or serve partially pruned state, causing TrieExceptions.
 
 ---
 

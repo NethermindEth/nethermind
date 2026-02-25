@@ -47,8 +47,6 @@ IContainer container = new ContainerBuilder()
 
 ## DI anti-pattern — never manually new up infrastructure
 
-**Violation (PR #10541, CHANGES_REQUESTED by LukaszRozmej):**
-
 ```csharp
 // WRONG — manual construction makes the setup fragile and hard to refactor
 WorldState worldState = new WorldState(new TrieStore(...), new MemDb(), LimboLogs.Instance);

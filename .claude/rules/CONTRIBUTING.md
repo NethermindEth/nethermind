@@ -25,7 +25,6 @@ This file documents how to maintain the `.claude/rules/` knowledge base. It is *
 
 ```
 .claude/rules/
-├── before-you-code.md         ← always loaded (no paths: frontmatter)
 ├── common-review-feedback.md  ← always loaded
 ├── coding-style.md            ← always loaded
 ├── concurrency.md             ← src/Nethermind/**/*.cs (global — shared state patterns appear everywhere)
@@ -47,17 +46,15 @@ This file documents how to maintain the `.claude/rules/` knowledge base. It is *
 └── CONTRIBUTING.md            ← this file (not auto-loaded)
 ```
 
-## Seeding from PR reviews
+## Skills
 
-Read review comments from merged PRs (via `gh api repos/NethermindEth/nethermind/pulls/<N>/comments`) and extract patterns that appear across multiple PRs. Add them to the appropriate rule file.
+Two review skills live in `.claude/skills/`:
 
-## Review skill
-
-Use `/review` (or `/review <PR_NUMBER>`) to run a deep review for consensus correctness, security, robustness, breaking changes, and observability. The skill lives in `.claude/skills/review/SKILL.md`.
+- **`/review`** — Deep review for consensus correctness, security, robustness, performance, breaking changes, and observability. Read-only (no shell commands). Lives in `.claude/skills/review/`.
+- **`/self-review`** — Pre-PR convention check: format verification, SPDX headers, forbidden directories, and rule-based convention checks against `.claude/rules/`. Lives in `.claude/skills/self-review/`.
 
 ## Cross-tool portability
 
 `.claude/rules/` is Claude Code native. For other tools:
-- **Cursor**: Generate `.cursorrules` from rules content
 - **AGENTS.md**: Remains the tool-agnostic reference; points to `.claude/rules/` for details
 - The knowledge is plain markdown — portable to any tool that reads convention files

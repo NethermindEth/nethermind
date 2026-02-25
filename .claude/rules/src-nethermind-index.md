@@ -1,6 +1,6 @@
 # src/Nethermind — Rules index
 
-This file is the index for folder-scoped rules. **Always-loaded** rules (coding-style, di-patterns, performance, common-review-feedback, before-you-code) apply to all C# in `src/Nethermind/`. The rules below add **domain-specific** guidance when editing files in those paths.
+This file is the index for folder-scoped rules. **Always-loaded** rules (coding-style, di-patterns, performance, common-review-feedback) apply to all C# in `src/Nethermind/`. The rules below add **domain-specific** guidance when editing files in those paths.
 
 | Path glob(s) | Rule file | Domain |
 |--------------|-----------|--------|
