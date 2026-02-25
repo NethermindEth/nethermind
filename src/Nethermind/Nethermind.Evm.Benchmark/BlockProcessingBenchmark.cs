@@ -23,17 +23,25 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Container;
+using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Benchmark;
 
 /// <summary>
-/// Block-level processing benchmark measuring <see cref="BlockProcessor.ProcessOne"/>
+/// Block-level processing benchmark measuring <see cref="BranchProcessor.Process"/>
 /// with mainnet-like block scenarios under <see cref="Osaka"/> rules.
+///
+/// Uses the full <see cref="BranchProcessor"/> pipeline — including the
+/// <see cref="BlockCachePreWarmer"/> — to match the live client's block processing
+/// path. Pre-warming triggers for blocks with 3+ transactions.
 ///
 /// Uses <c>[IterationSetup]</c> (with <c>InvocationCount=1/UnrollFactor=1</c>) to
 /// recreate world state before each measured invocation.
@@ -97,9 +105,9 @@ public class BlockProcessingBenchmark
 
     // Per-iteration state
     private IWorldState _stateProvider = null!;
-    private IDisposable? _stateScope;
     private ILifetimeScope _processingScope = null!;
-    private IBlockProcessor _processor = null!;
+    private IBranchProcessor _branchProcessor = null!;
+    private BlockHeader _parentHeader = null!;
 
     // Pre-built blocks (immutable after GlobalSetup)
     private Block _emptyBlock = null!;
@@ -150,7 +158,7 @@ public class BlockProcessingBenchmark
         // Build DI container using standard modules instead of hand-wiring.
         // TestNethermindModule wires PseudoNethermindModule + TestEnvironmentModule
         // with TestSpecProvider(Osaka.Instance) and in-memory databases.
-        // IWorldState is overridden per iteration in IterationSetup.
+        // Includes PrewarmerModule (via NethermindModule) for block cache pre-warming.
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Osaka.Instance))
             .Build();
@@ -165,96 +173,110 @@ public class BlockProcessingBenchmark
     [IterationSetup]
     public void IterationSetup()
     {
-        // Fresh world state for this iteration
-        _stateProvider = TestWorldStateFactory.CreateForTest();
-        _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
+        // Fresh world state backed by a per-iteration db and trie store.
+        // WorldStateManager is needed so the pre-warmer can create isolated
+        // read-only snapshots via CreateResettableWorldState().
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
 
-        _stateProvider.CreateAccount(_sender, 1_000_000.Ether());
-
-        // Deploy contract for ContractCall benchmarks
-        _stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
-        _stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
-
-        // Deploy system contract stubs required by Osaka execution requests
-        _stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, UInt256.Zero);
-        _stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, StopCode, Spec);
-        _stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, UInt256.Zero);
-        _stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, StopCode, Spec);
-
-        _stateProvider.Commit(Spec);
-        _stateProvider.CommitTree(0);
-
-        // Create a new lifetime scope with the fresh IWorldState injected.
-        // All scoped components (EthereumTransactionProcessor, BlockProcessor, etc.)
-        // are resolved fresh within this scope, matching the BlockProcessingModule wiring.
-        // IBlockValidationModule[] (StandardBlockValidationModule) provides the
-        // IBlockTransactionsExecutor and ITransactionProcessorAdapter registrations
-        // that BlockProcessor requires — mirroring MainProcessingContext.
+        // Create processing scope with per-iteration state infrastructure.
+        // IWorldState is registered as scoped by BlockProcessingModule, so each
+        // child scope (including pre-warmer envs) gets its own WorldState instance
+        // backed by its own IWorldStateScopeProvider — avoiding nested scope errors.
         IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();
+        IMainProcessingModule[] mainProcessingModules = _container.Resolve<IMainProcessingModule[]>();
         _processingScope = _container.BeginLifetimeScope(b =>
         {
-            b.RegisterInstance(_stateProvider).As<IWorldState>().ExternallyOwned();
+            b.RegisterInstance(scopeProvider).As<IWorldStateScopeProvider>().ExternallyOwned();
+            b.RegisterInstance(wsm).As<IWorldStateManager>().ExternallyOwned();
             b.AddModule(validationModules);
+            b.AddModule(mainProcessingModules);
         });
 
-        _processor = _processingScope.Resolve<IBlockProcessor>();
+        // Resolve scoped WorldState and set up initial accounts
+        _stateProvider = _processingScope.Resolve<IWorldState>();
+
+        using (_stateProvider.BeginScope(IWorldState.PreGenesis))
+        {
+            _stateProvider.CreateAccount(_sender, 1_000_000.Ether());
+
+            // Deploy contract for ContractCall benchmarks
+            _stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
+            _stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
+
+            // Deploy system contract stubs required by Osaka execution requests
+            _stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, UInt256.Zero);
+            _stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, StopCode, Spec);
+            _stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, UInt256.Zero);
+            _stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, StopCode, Spec);
+
+            _stateProvider.Commit(Spec);
+            _stateProvider.CommitTree(0);
+
+            _parentHeader = Build.A.BlockHeader
+                .WithNumber(0)
+                .WithStateRoot(_stateProvider.StateRoot)
+                .WithGasLimit(30_000_000)
+                .TestObject;
+        }
+
+        _branchProcessor = _processingScope.Resolve<IBranchProcessor>();
     }
 
     [IterationCleanup]
     public void IterationCleanup()
     {
         _processingScope?.Dispose();
-        _stateScope?.Dispose();
         _processingScope = null!;
-        _stateScope = null;
     }
 
     // ── Benchmarks ────────────────────────────────────────────────────────
 
     [Benchmark]
-    public (Block, TxReceipt[]) EmptyBlock()
-        => _processor.ProcessOne(_emptyBlock, ProcessingOptions.NoValidation,
-            NullBlockTracer.Instance, Spec, CancellationToken.None);
+    public Block[] EmptyBlock()
+        => _branchProcessor.Process(_parentHeader, [_emptyBlock],
+            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
 
     [Benchmark]
-    public (Block, TxReceipt[]) SingleTransfer()
-        => _processor.ProcessOne(_singleTransferBlock, ProcessingOptions.NoValidation,
-            NullBlockTracer.Instance, Spec, CancellationToken.None);
+    public Block[] SingleTransfer()
+        => _branchProcessor.Process(_parentHeader, [_singleTransferBlock],
+            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
 
     [Benchmark]
-    public (Block, TxReceipt[]) Transfers_50()
-        => _processor.ProcessOne(_transfers50Block, ProcessingOptions.NoValidation,
-            NullBlockTracer.Instance, Spec, CancellationToken.None);
+    public Block[] Transfers_50()
+        => _branchProcessor.Process(_parentHeader, [_transfers50Block],
+            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
 
     [Benchmark(Baseline = true)]
-    public (Block, TxReceipt[]) Transfers_200()
-        => _processor.ProcessOne(_transfers200Block, ProcessingOptions.NoValidation,
-            NullBlockTracer.Instance, Spec, CancellationToken.None);
+    public Block[] Transfers_200()
+        => _branchProcessor.Process(_parentHeader, [_transfers200Block],
+            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
 
     [Benchmark]
-    public (Block, TxReceipt[]) Eip1559_200()
-        => _processor.ProcessOne(_eip1559_200Block, ProcessingOptions.NoValidation,
-            NullBlockTracer.Instance, Spec, CancellationToken.None);
+    public Block[] Eip1559_200()
+        => _branchProcessor.Process(_parentHeader, [_eip1559_200Block],
+            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
 
     [Benchmark]
-    public (Block, TxReceipt[]) AccessList_50()
-        => _processor.ProcessOne(_accessList50Block, ProcessingOptions.NoValidation,
-            NullBlockTracer.Instance, Spec, CancellationToken.None);
+    public Block[] AccessList_50()
+        => _branchProcessor.Process(_parentHeader, [_accessList50Block],
+            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
 
     [Benchmark]
-    public (Block, TxReceipt[]) ContractDeploy_10()
-        => _processor.ProcessOne(_contractDeploy10Block, ProcessingOptions.NoValidation,
-            NullBlockTracer.Instance, Spec, CancellationToken.None);
+    public Block[] ContractDeploy_10()
+        => _branchProcessor.Process(_parentHeader, [_contractDeploy10Block],
+            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
 
     [Benchmark]
-    public (Block, TxReceipt[]) ContractCall_200()
-        => _processor.ProcessOne(_contractCall200Block, ProcessingOptions.NoValidation,
-            NullBlockTracer.Instance, Spec, CancellationToken.None);
+    public Block[] ContractCall_200()
+        => _branchProcessor.Process(_parentHeader, [_contractCall200Block],
+            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
 
     [Benchmark]
-    public (Block, TxReceipt[]) MixedBlock()
-        => _processor.ProcessOne(_mixedBlock, ProcessingOptions.NoValidation,
-            NullBlockTracer.Instance, Spec, CancellationToken.None);
+    public Block[] MixedBlock()
+        => _branchProcessor.Process(_parentHeader, [_mixedBlock],
+            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
 
     // ── Block builder ─────────────────────────────────────────────────────
 
