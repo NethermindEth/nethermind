@@ -16,10 +16,7 @@ namespace Nethermind.Core.Crypto
     [DebuggerDisplay("{ToString()}")]
     public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>
     {
-        // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
-        // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
-        // the performance of the network as a whole.
-        private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+        public static GenericEqualityComparer<ValueHash256> EqualityComparer { get; } = new();
 
         private readonly Vector256<byte> _bytes;
 
@@ -63,7 +60,7 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(Hash256? other) => _bytes.Equals(other?.ValueHash256._bytes ?? default);
 
-        public override int GetHashCode() => GetChainedHashCode(s_instanceRandom);
+        public override int GetHashCode() => GetChainedHashCode(SpanExtensions.InstanceRandom);
 
         public int GetChainedHashCode(uint previousHash) => Bytes.FastHash() ^ (int)previousHash;
 
