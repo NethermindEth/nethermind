@@ -72,7 +72,7 @@ public class BlockProcessingBenchmark
                 .WithUnrollFactor(1)
                 .WithLaunchCount(5)
                 .WithWarmupCount(10)
-                .WithIterationCount(50)
+                .WithIterationCount(40)
                 .WithGcForce(true));
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
