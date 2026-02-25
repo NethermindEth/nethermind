@@ -30,7 +30,7 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
                 await Task.Delay(60_000);
                 if (Volatile.Read(ref _leases.Value) <= NoAccessors) return;
                 if (logger.IsWarn)
-                    logger.Warn($"Unexpected old snapshot created. Lease count {_leases.Value}");
+                    logger.Warn($"Unexpected old snapshot created. Lease count {_leases.Value}. State {CurrentState}");
             }
         });
     }
