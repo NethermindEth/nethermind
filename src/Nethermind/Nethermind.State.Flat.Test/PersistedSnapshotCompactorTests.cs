@@ -135,19 +135,19 @@ public class PersistedSnapshotCompactorTests
         SnapshotContent content1 = new();
         content1.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC0]);
         Snapshot snap1 = new(s0, s1, content1, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] data1 = PersistedSnapshotBuilder.Build(snap1);
+        byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1);
 
         SnapshotContent content2 = new();
         content2.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
         Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] data2 = PersistedSnapshotBuilder.Build(snap2);
+        byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2);
 
         PersistedSnapshot baseSnap0 = CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Full, data1);
         PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Full, data2);
         PersistedSnapshotList toMerge = new(2);
         toMerge.Add(baseSnap0);
         toMerge.Add(baseSnap1);
-        byte[] merged = PersistedSnapshotBuilder.MergeSnapshots(toMerge);
+        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
 
         // Read merged bytes directly to verify metadata
         Hsst.Hsst outer = new(merged);
@@ -288,12 +288,12 @@ public class PersistedSnapshotCompactorTests
         {
             StateId nextState = new(i + 1, Keccak.Compute($"{i + 1}"));
             Snapshot snap = new(prevState, nextState, contents[i], _pool, ResourcePool.Usage.MainBlockProcessing);
-            byte[] data = PersistedSnapshotBuilder.Build(snap);
+            byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap);
             toMerge.Add(CreatePersistedSnapshot(i, prevState, nextState, PersistedSnapshotType.Full, data));
             prevState = nextState;
         }
 
-        byte[] merged = PersistedSnapshotBuilder.MergeSnapshots(toMerge);
+        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
         PersistedSnapshot compacted = CreatePersistedSnapshot(100, toMerge[0].From, toMerge[toMerge.Count - 1].To,
             PersistedSnapshotType.Linked, merged);
         PersistedSnapshotUtils.ValidateCompactedPersistedSnapshot(compacted, toMerge, true);
@@ -308,7 +308,7 @@ public class PersistedSnapshotCompactorTests
         SnapshotContent content = new();
         content.StateNodes[new TreePath(Keccak.Compute("path"), 4)] = new TrieNode(NodeType.Leaf, [0xC0]);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] data = PersistedSnapshotBuilder.Build(snap);
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap);
 
         int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata(data);
         Assert.That(refIds, Is.Null);
@@ -329,19 +329,19 @@ public class PersistedSnapshotCompactorTests
         SnapshotContent content1 = new();
         content1.StateNodes[path1] = new TrieNode(NodeType.Leaf, rlp1);
         Snapshot snap1 = new(s0, s1, content1, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] data1 = PersistedSnapshotBuilder.Build(snap1);
+        byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1);
 
         SnapshotContent content2 = new();
         content2.StateNodes[path2] = new TrieNode(NodeType.Leaf, rlp2);
         Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] data2 = PersistedSnapshotBuilder.Build(snap2);
+        byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2);
 
         PersistedSnapshot baseSnap0 = CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Full, data1);
         PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Full, data2);
         PersistedSnapshotList toMerge = new(2);
         toMerge.Add(baseSnap0);
         toMerge.Add(baseSnap1);
-        byte[] merged = PersistedSnapshotBuilder.MergeSnapshots(toMerge);
+        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
 
         // With referenced snapshots: NodeRefs resolve to actual RLP
         PersistedSnapshot compactedWithRefs = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Linked, merged,

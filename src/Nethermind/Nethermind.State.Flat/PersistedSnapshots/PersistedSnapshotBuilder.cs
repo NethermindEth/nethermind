@@ -77,25 +77,6 @@ public static class PersistedSnapshotBuilder
         return (int)Math.Min(1.GiB(), snapshot.EstimateMemory() * 3 + 1.KiB());
     }
 
-    /// <summary>
-    /// Convenience method: allocate output buffer and build.
-    /// </summary>
-    public static byte[] Build(Snapshot snapshot)
-    {
-        int estimatedSize = EstimateSize(snapshot);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(estimatedSize);
-        try
-        {
-            SpanBufferWriter writer = new(buffer);
-            Build(snapshot, ref writer);
-            return buffer.AsSpan(0, writer.Written).ToArray();
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
-    }
-
     private static void WriteMetadataColumn<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
     {
         // Metadata keys must be in sorted order (ASCII): "from_block" < "from_hash" < "to_block" < "to_hash" < "version"
@@ -582,51 +563,6 @@ public static class PersistedSnapshotBuilder
         builder.Dispose();
         outerEnum.Dispose();
         return writer.Written;
-    }
-
-    // --- Merge/compaction methods (moved from PersistedSnapshotCompactor) ---
-
-    /// <summary>
-    /// Merge a list of persisted snapshots (oldest-first) into a single compacted byte[].
-    /// </summary>
-    internal static byte[] MergeSnapshots(PersistedSnapshotList snapshots) =>
-        NWayMergeSnapshots(snapshots);
-
-    /// <summary>
-    /// N-way merge a list of persisted snapshots (oldest-first) into a single compacted byte[].
-    /// Allocates a single output buffer.
-    /// </summary>
-    internal static byte[] NWayMergeSnapshots(PersistedSnapshotList snapshots)
-    {
-        if (snapshots.Count == 0) throw new ArgumentException("Cannot merge empty snapshot list");
-        if (snapshots.Count == 1) return snapshots[0].GetSpan().ToArray();
-
-        // Collect all base snapshot IDs for metadata
-        HashSet<int> referencedIds = new();
-        for (int i = 0; i < snapshots.Count; i++)
-        {
-            if (snapshots[i].Type == PersistedSnapshotType.Full)
-                referencedIds.Add(snapshots[i].Id);
-            else if (snapshots[i].ReferencedSnapshotIds is int[] ids)
-            {
-                for (int j = 0; j < ids.Length; j++) referencedIds.Add(ids[j]);
-            }
-        }
-
-        int totalSize = 0;
-        for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
-        totalSize += 4096;
-
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(totalSize);
-        try
-        {
-            int len = NWayMergeSnapshots(snapshots, buffer, referencedIds);
-            return buffer.AsSpan(0, len).ToArray();
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
     }
 
     /// <summary>
