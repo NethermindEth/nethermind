@@ -66,7 +66,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
             listBlockHash.Add(currentHash);
         }
 
-        var header = tree.FindHeader(parentHash, parentNumber) as XdcBlockHeader;
+        var header = (XdcBlockHeader)tree.FindHeader(parentHash, number - 1);
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header!);
         Address[] preMasternodes = epochSwitchManager.GetEpochSwitchInfo(parentHash)!.Masternodes;
         var penalties = new HashSet<Address>();
@@ -88,12 +88,10 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         if (!isTipUpgradePenalty)
         {
             long comebackHeight = (currentSpec.LimitPenaltyEpochV2 + 1) * currentSpec.EpochLength + currentSpec.SwitchBlock;
-            var penComebacks = new HashSet<Address>();
-
             if (number > comebackHeight)
             {
                 Address[] prevPenalties = GetPreviousPenalties(parentHash, currentSpec, (ulong)currentSpec.LimitPenaltyEpochV2);
-                penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
+                var penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
 
                 var blockHashes = new HashSet<Hash256>();
                 var startRange = Math.Min((int)currentSpec.RangeReturnSigner, listBlockHash.Count) - 1;

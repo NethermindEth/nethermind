@@ -49,4 +49,7 @@ internal static class XdcConstants
     public static readonly byte[] ProposeMethod = Bytes.FromHexString("0x01267951");
     public static readonly byte[] ResignMethod = Bytes.FromHexString("0xae6e43f5");
     public static readonly byte[] SignMethod = Bytes.FromHexString("0xe341eaa4");
+
+    // 4-byte selector + 32-byte block number + 32-byte block hash
+    public const int SignTransactionDataLength = 68;
 }

@@ -221,7 +221,7 @@ internal class PenaltyTests
         }
 
         blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>())
-            .Returns(ci => blockHeaders[(int)(long)ci.Args()[1]]);
+            .Returns(ci => hashToHeader[ci.ArgAt<Hash256>(0)]);
         blockTree.Head.Returns(blocks.Last());
 
         IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
