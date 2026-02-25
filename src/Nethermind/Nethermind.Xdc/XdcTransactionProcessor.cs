@@ -71,6 +71,8 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
         UInt256 fee = effectiveGasPrice * (ulong)spentGas;
 
+         WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
+
         if (tracer.IsTracingFees)
             tracer.ReportFees(fee, UInt256.Zero);
     }
