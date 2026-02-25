@@ -1035,7 +1035,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             using (VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
             {
-#if !ZKVM
                 substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
                 gasAvailable = state.Gas;
 
@@ -1089,7 +1088,6 @@ namespace Nethermind.Evm.TransactionProcessing
         Complete:
             if ((opts & ExecutionOptions.SkipValidation) == 0)
                 header.GasUsed += gasConsumed.SpentGas;
-            }
 
             return statusCode;
 

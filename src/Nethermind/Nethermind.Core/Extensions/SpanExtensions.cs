@@ -28,9 +28,6 @@ namespace Nethermind.Core.Extensions
 #endif
         internal static uint ComputeSeed(int len) => InstanceRandom + (uint)len;
 
-        internal static uint ComputeSeed(int len) => s_instanceRandom + (uint)len;
-        public static uint InstanceRandom => s_instanceRandom;
-
         /// <summary>
         /// Computes a very fast, non-cryptographic 32-bit hash of exactly 32 bytes.
         /// </summary>
@@ -41,7 +38,7 @@ namespace Nethermind.Core.Extensions
         {
             Debug.Assert(x64.Aes.IsSupported || Arm.Aes.IsSupported, "FastHash32 requires AES hardware support");
 
-            uint seed = s_instanceRandom + 32;
+            uint seed = InstanceRandom + 32;
             Vector128<byte> key = Unsafe.As<byte, Vector128<byte>>(ref start);
             Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, 16));
             key ^= Vector128.CreateScalar(seed).AsByte();
