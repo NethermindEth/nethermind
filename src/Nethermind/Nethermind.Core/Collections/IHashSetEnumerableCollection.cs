@@ -8,4 +8,5 @@ namespace Nethermind.Core.Collections;
 public interface IHashSetEnumerableCollection<T> : IReadOnlyCollection<T>
 {
     new HashSet<T>.Enumerator GetEnumerator();
+    bool Contains(T item);
 }

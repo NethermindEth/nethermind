@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -163,13 +162,21 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         }
     }
 
-    private class WorldStateWriteBatch(
-        TrieStoreWorldStateBackendScope scope,
-        int estimatedAccountCount,
-        ILogger logger) : IWorldStateScopeProvider.IWorldStateWriteBatch
+    private class WorldStateWriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
+        private readonly TrieStoreWorldStateBackendScope _scope;
+        private readonly ILogger _logger;
+        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts;
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+        private readonly Action<Address, Hash256> _markDirtyAction;
+
+        public WorldStateWriteBatch(TrieStoreWorldStateBackendScope scope, int estimatedAccountCount, ILogger logger)
+        {
+            _scope = scope;
+            _logger = logger;
+            _dirtyAccounts = new(estimatedAccountCount);
+            _markDirtyAction = (address, rootHash) => _dirtyStorageTree.Enqueue((address, rootHash));
+        }
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
@@ -180,11 +187,11 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
         {
-            return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address),
-                (address, rootHash) => MarkDirty(address, rootHash), address);
+            return new StorageTreeBulkWriteBatch(estimatedEntries, _scope.LookupStorageTree(address),
+                _markDirtyAction, address);
         }
 
-        public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
+        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
         {
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
         }
@@ -194,8 +201,8 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                if (!_dirtyAccounts.TryGetValue(key, out var account))
-                    account = scope.Get(key);
+                if (!_dirtyAccounts.TryGetValue(key, out Account? account))
+                    account = _scope.Get(key);
 
                 // Account may be null when EIP-161 deletes an empty account that had storage
                 // changes in the same block. Skip the storage root update since the account
@@ -204,23 +211,22 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 account = account.WithChangedStorageRoot(storageRoot);
                 _dirtyAccounts[key] = account;
                 OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
-                if (logger.IsTrace) Trace(key, storageRoot, account);
+                if (_logger.IsTrace) Trace(key, storageRoot, account);
             }
 
-            using (var stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
+            using (StateTree.StateTreeBulkSetter stateSetter = _scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
             {
-                foreach (var kv in _dirtyAccounts)
+                foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                 {
                     stateSetter.Set(kv.Key, kv.Value);
                 }
             }
 
-            scope.ClearLoadedAccounts();
-
+            _scope.ClearLoadedAccounts();
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, Hash256 storageRoot, Account? account)
-                => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
+                => _logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
     }
 
@@ -305,7 +311,8 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
     {
         public byte[]? GetCode(in ValueHash256 codeHash)
         {
-            return codeDb[codeHash.Bytes]?.ToArray();
+            byte[]? code = codeDb[codeHash.Bytes];
+            return code is not null ? code.AsSpan().ToArray() : null;
         }
 
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()

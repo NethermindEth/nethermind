@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -620,10 +619,13 @@ namespace Nethermind.State
 
                 return Task.Run(() =>
                 {
-                    using (var batch = codeDb.BeginCodeWrite())
+                    using (IWorldStateScopeProvider.ICodeSetter batch = codeDb.BeginCodeWrite())
                     {
                         // Insert ordered for improved performance
-                        foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
+                        KeyValuePair<Hash256AsKey, byte[]>[] sorted = new KeyValuePair<Hash256AsKey, byte[]>[dict.Count];
+                        ((ICollection<KeyValuePair<Hash256AsKey, byte[]>>)dict).CopyTo(sorted, 0);
+                        Array.Sort(sorted, static (a, b) => a.Key.CompareTo(b.Key));
+                        foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in sorted)
                         {
                             batch.Set(kvp.Key.Value, kvp.Value);
                         }
