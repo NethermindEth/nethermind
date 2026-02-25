@@ -43,19 +43,19 @@ public class TestingRpcModule(
             return ResultWrapper<object?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
         }
 
-        IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(parentBlock.Header.Number + 1, payloadAttributes.Timestamp));
-        if (!IsForkSupported(spec, targetFork))
+        if (!TryResolveTargetFork(targetFork, out TargetFork resolvedFork))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the target fork: {targetFork ?? "default"}");
             return ResultWrapper<object?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
         }
 
-        if (!ValidatePayloadAttributes(payloadAttributes, spec, out ResultWrapper<object?>? errorResult))
+        if (!ValidatePayloadAttributes(payloadAttributes, resolvedFork, out ResultWrapper<object?>? errorResult))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {errorResult!.Result.Error}");
             return errorResult!;
         }
 
+        IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(parentBlock.Header.Number + 1, payloadAttributes.Timestamp));
         BlockHeader header = PrepareBlockHeader(parentBlock.Header, payloadAttributes, extraData);
         Transaction[] transactions = GetTransactions(txRlps).ToArray();
         header.TxRoot = TxTrie.CalculateRoot(transactions);
@@ -69,7 +69,7 @@ public class TestingRpcModule(
             return ResultWrapper<object?>.Fail("payload processing failed", MergeErrorCodes.UnknownPayload);
         }
 
-        object getPayloadResult = CreateGetPayloadResult(processedBlock, feesTracer.Fees, spec);
+        object getPayloadResult = CreateGetPayloadResult(processedBlock, feesTracer.Fees, resolvedFork);
 
         if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {processedBlock.Header.ToString(BlockHeader.Format.Short)}.");
         return ResultWrapper<object?>.Success(getPayloadResult);
@@ -126,14 +126,14 @@ public class TestingRpcModule(
         }
     }
 
-    private object CreateGetPayloadResult(Block processedBlock, UInt256 blockFees, IReleaseSpec spec) =>
-        spec.IsEip7928Enabled
+    private object CreateGetPayloadResult(Block processedBlock, UInt256 blockFees, TargetFork resolvedFork) =>
+        resolvedFork == TargetFork.Amsterdam
             ? new GetPayloadV6Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false)
             : new GetPayloadV5Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false);
 
-    private bool ValidatePayloadAttributes(PayloadAttributes payloadAttributes, IReleaseSpec spec, out ResultWrapper<object?>? errorResult)
+    private bool ValidatePayloadAttributes(PayloadAttributes payloadAttributes, TargetFork resolvedFork, out ResultWrapper<object?>? errorResult)
     {
-        if (spec.IsEip7843Enabled)
+        if (resolvedFork == TargetFork.Amsterdam)
         {
             if (payloadAttributes.SlotNumber is null)
             {
@@ -151,13 +151,30 @@ public class TestingRpcModule(
         return true;
     }
 
-    private bool IsForkSupported(IReleaseSpec spec, string? targetFork) =>
-        targetFork?.ToLowerInvariant() switch
+    private static bool TryResolveTargetFork(string? targetFork, out TargetFork resolvedFork)
+    {
+        if (string.IsNullOrWhiteSpace(targetFork))
         {
-            "amsterdam" => spec.IsEip7928Enabled,
-            "prague" => spec.IsEip7594Enabled && !spec.IsEip7928Enabled,
-            "osaka" => spec.IsEip7594Enabled && !spec.IsEip7928Enabled,
-            null => spec.IsEip7594Enabled,
-            _ => false
+            resolvedFork = TargetFork.Prague;
+            return true;
+        }
+
+        resolvedFork = targetFork.Trim().ToLowerInvariant() switch
+        {
+            "amsterdam" => TargetFork.Amsterdam,
+            "glamsterdam" => TargetFork.Amsterdam,
+            "prague" => TargetFork.Prague,
+            "pectra" => TargetFork.Prague,
+            _ => TargetFork.Unknown
         };
+
+        return resolvedFork != TargetFork.Unknown;
+    }
+
+    private enum TargetFork
+    {
+        Unknown = 0,
+        Prague = 1,
+        Amsterdam = 2
+    }
 }

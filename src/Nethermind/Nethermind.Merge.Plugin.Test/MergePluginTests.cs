@@ -249,7 +249,7 @@ public class MergePluginTests
             ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot")
         };
 
-        ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>());
+        ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>(), targetFork: "amsterdam");
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         result.Data.Should().NotBeNull();
