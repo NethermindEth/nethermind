@@ -50,9 +50,9 @@ on:
         default: 1
       docker_images:
         description: >-
-          Force-test specific Docker image tags (comma-separated).
+          Force-test specific Docker images (comma-separated full image references including repo).
           Skips docker build; runs each image as a separate benchmark.
-          Example: master-21f1dca,master-9f78bef,flat
+          Example: nethermindeth/nethermind:master-21f1dca,nethermind/nethermind:latest
         required: false
         default: ""
       enable_retrospective:
@@ -1062,20 +1062,22 @@ jobs:
           set -euo pipefail
 
           all_tags=()
+          all_images=()
           all_dates=()
 
           if [[ -n "${DOCKER_IMAGES}" ]]; then
-            # Explicit docker images mode: parse comma-separated tags
+            # Explicit docker images mode: parse comma-separated full image references
             echo "Parsing explicit docker images: ${DOCKER_IMAGES}"
-            IFS=',' read -ra raw_tags <<< "${DOCKER_IMAGES}"
-            for raw in "${raw_tags[@]}"; do
-              tag="$(echo "${raw}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
-              if [[ -n "${tag}" ]]; then
-                all_tags+=("${tag}")
+            IFS=',' read -ra raw_images <<< "${DOCKER_IMAGES}"
+            for raw in "${raw_images[@]}"; do
+              image="$(echo "${raw}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+              if [[ -n "${image}" ]]; then
+                all_images+=("${image}")
+                all_tags+=("${image##*:}")
                 all_dates+=("n/a")
               fi
             done
-            echo "Parsed ${#all_tags[@]} explicit image tags."
+            echo "Parsed ${#all_images[@]} explicit docker images."
           else
             # Retrospective mode: scan Docker Hub for master-* images
             if ! [[ "${LAST}" =~ ^[0-9]+$ ]] || [[ "${LAST}" -lt 1 ]]; then
@@ -1112,6 +1114,7 @@ jobs:
 
               for i in "${!page_tags[@]}"; do
                 all_tags+=("${page_tags[$i]}")
+                all_images+=("nethermindeth/nethermind:${page_tags[$i]}")
                 all_dates+=("${page_dates[$i]}")
               done
 
@@ -1128,13 +1131,16 @@ jobs:
 
             # Apply step: pick every Nth image (newest first)
             selected_tags=()
+            selected_images=()
             selected_dates=()
             for (( i=0; i<${#all_tags[@]}; i+=STEP )); do
               selected_tags+=("${all_tags[$i]}")
+              selected_images+=("${all_images[$i]}")
               selected_dates+=("${all_dates[$i]}")
             done
 
             all_tags=("${selected_tags[@]}")
+            all_images=("${selected_images[@]}")
             all_dates=("${selected_dates[@]}")
             echo "Selected ${#all_tags[@]} images after applying step=${STEP}."
           fi
@@ -1148,6 +1154,7 @@ jobs:
           if [[ "${#all_tags[@]}" -gt 256 ]]; then
             echo "Warning: truncating to 256 matrix entries (GitHub Actions limit)."
             all_tags=("${all_tags[@]:0:256}")
+            all_images=("${all_images[@]:0:256}")
             all_dates=("${all_dates[@]:0:256}")
           fi
 
@@ -1163,14 +1170,15 @@ jobs:
           first_ordered=true
           for i in "${!all_tags[@]}"; do
             tag="${all_tags[$i]}"
+            image="${all_images[$i]}"
             date="${all_dates[$i]}"
             if [[ "${first_ordered}" != "true" ]]; then ordered_json+=','; fi
             first_ordered=false
-            ordered_json+="{\"tag\":\"${tag}\",\"date\":\"${date}\"}"
+            ordered_json+="{\"tag\":\"${tag}\",\"date\":\"${date}\",\"image\":\"${image}\"}"
             for (( r=1; r<=run_count; r++ )); do
               if [[ "${first_matrix}" != "true" ]]; then matrix_json+=','; fi
               first_matrix=false
-              matrix_json+="{\"tag\":\"${tag}\",\"date\":\"${date}\",\"run\":${r}}"
+              matrix_json+="{\"tag\":\"${tag}\",\"date\":\"${date}\",\"image\":\"${image}\",\"run\":${r}}"
             done
           done
           matrix_json+=']}'
@@ -1194,7 +1202,7 @@ jobs:
     env:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
       CONFIG_FILE: ${{ needs.resolve.outputs.config_file }}
-      NETHERMIND_IMAGE: nethermindeth/nethermind:${{ matrix.tag }}
+      NETHERMIND_IMAGE: ${{ matrix.image }}
       CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
     steps:
       - name: Print resolved inputs
