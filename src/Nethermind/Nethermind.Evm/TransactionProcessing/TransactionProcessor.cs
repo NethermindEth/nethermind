@@ -167,7 +167,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (Logger.IsTrace)
             {
                 if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-                if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
+                if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
                 {
                     _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                     return _systemTransactionProcessor.Execute<OnFlag>(tx, tracer, opts);
@@ -179,7 +179,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else
             {
-                if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
+                if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
                 {
                     _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                     return _systemTransactionProcessor.Execute<OffFlag>(tx, tracer, opts);
@@ -214,16 +214,24 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UpdateMetrics(opts, in effectiveGasPrice);
 
+            bool isWarmup = opts.HasFlag(ExecutionOptions.Warmup);
             bool deleteCallerAccount = RecoverSenderIfNeeded<TLogTracing>(tx, spec, opts, in effectiveGasPrice);
 
-            if (!(result = ValidateSender<TLogTracing>(tx, header, spec, tracer, opts)) ||
-                !(result = BuyGas<TLogTracing>(tx, spec, tracer, opts, in effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)) ||
-                !(result = IncrementNonce<TLogTracing>(tx, header, spec, tracer, opts)))
+            UInt256 premiumPerGas = UInt256.Zero;
+            UInt256 senderReservedGasPayment = UInt256.Zero;
+            UInt256 blobBaseFee = UInt256.Zero;
+
+            if (!(result = ValidateSender<TLogTracing>(tx, header, spec, tracer, opts)))
             {
-                if (restore)
-                {
-                    WorldState.Reset(resetBlockChanges: false);
-                }
+                if (restore) WorldState.Reset(resetBlockChanges: false);
+                return result;
+            }
+
+            if (!isWarmup &&
+                (!(result = BuyGas<TLogTracing>(tx, spec, tracer, opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee)) ||
+                 !(result = IncrementNonce<TLogTracing>(tx, header, spec, tracer, opts))))
+            {
+                if (restore) WorldState.Reset(resetBlockChanges: false);
                 return result;
             }
 
@@ -355,7 +363,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 InvokeEvm<TLogTracing, OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
             // Full PayFees for slow path (handles destroy list, blobs, etc.)
-            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+                PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
 
             return TransactionResult.Ok;
         }
@@ -825,11 +834,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
             substate = TransactionSubstate.SuccessfulTransfer;
             // Simplified refund: no refunds, no destroy list, no code insert refunds
-            spentGas = RefundSimpleTransfer(tx, spec, gasAvailable, gas.FloorGas, VirtualMachine.TxExecutionContext.GasPrice);
+            spentGas = RefundSimpleTransfer(tx, spec, opts, gasAvailable, gas.FloorGas, VirtualMachine.TxExecutionContext.GasPrice);
 
-            // Use virtual PayFees to respect derived class overrides (e.g., Taiko anchor transactions)
-            // DestroyList.Contains check is fast since SuccessfulTransfer has empty destroy list
-            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, StatusCode.Success);
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+            {
+                // Use virtual PayFees to respect derived class overrides (e.g., Taiko anchor transactions)
+                // DestroyList.Contains check is fast since SuccessfulTransfer has empty destroy list
+                PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, StatusCode.Success);
+            }
 
             // Update header gas used (same as InvokeEvm Complete: label)
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
@@ -1077,7 +1089,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
         {
-            WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+                WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
         }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
@@ -1154,7 +1167,8 @@ namespace Nethermind.Evm.TransactionProcessing
             spentGas = Math.Max(spentGas, TGasPolicy.GetRemainingGas(floorGas));
 
             UInt256 refundAmount = (ulong)(tx.GasLimit - spentGas) * gasPrice;
-            PayRefund(tx, refundAmount, spec);
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+                PayRefund(tx, refundAmount, spec);
 
             return new GasConsumed(spentGas, operationGas);
         }
@@ -1163,14 +1177,15 @@ namespace Nethermind.Evm.TransactionProcessing
         /// Simplified refund for simple ETH transfers: no refunds, no destroy list, no code insert refunds.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private GasConsumed RefundSimpleTransfer(Transaction tx, IReleaseSpec spec, TGasPolicy gasAvailable, TGasPolicy floorGas, in UInt256 gasPrice)
+        private GasConsumed RefundSimpleTransfer(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, TGasPolicy gasAvailable, TGasPolicy floorGas, in UInt256 gasPrice)
         {
             long spentGas = tx.GasLimit - TGasPolicy.GetRemainingGas(gasAvailable);
             long operationGas = spentGas;
             spentGas = Math.Max(spentGas, TGasPolicy.GetRemainingGas(floorGas));
 
             UInt256 refundAmount = (ulong)(tx.GasLimit - spentGas) * gasPrice;
-            PayRefund(tx, refundAmount, spec);
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+                PayRefund(tx, refundAmount, spec);
 
             return new GasConsumed(spentGas, operationGas);
         }

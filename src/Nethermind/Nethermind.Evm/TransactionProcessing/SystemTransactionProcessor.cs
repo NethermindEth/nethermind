@@ -43,7 +43,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         }
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
-        return base.Execute<TLogTracing>(tx, tracer, (coreOpts != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
+        return base.Execute<TLogTracing>(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
             ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }
