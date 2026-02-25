@@ -164,6 +164,8 @@ public class TestingRpcModule(
         {
             "amsterdam" => TargetFork.Amsterdam,
             "glamsterdam" => TargetFork.Amsterdam,
+            "osaka" => TargetFork.Osaka,
+            "fusaka" => TargetFork.Osaka,
             "prague" => TargetFork.Prague,
             "pectra" => TargetFork.Prague,
             _ => TargetFork.Unknown
@@ -176,6 +178,7 @@ public class TestingRpcModule(
     {
         Unknown = 0,
         Prague = 1,
-        Amsterdam = 2
+        Osaka = 2,
+        Amsterdam = 3
     }
 }
