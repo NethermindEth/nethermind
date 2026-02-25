@@ -668,7 +668,8 @@ public static class PersistedSnapshotBuilder
 
                 ReadOnlySpan<byte> minKey = enums[minIdx].CurrentKey;
                 ReadOnlySpan<byte> colSpan = snapshots[minIdx].GetSpan().Slice(columnBounds[minIdx].Offset, columnBounds[minIdx].Length);
-                builder.Add(minKey, enums[minIdx].GetCurrentValue(colSpan));
+                (int valOff, int valLen) = enums[minIdx].GetCurrentValueBound(colSpan);
+                builder.Add(minKey, colSpan.Slice(valOff, valLen));
 
                 // Advance all enumerators that had the min key.
                 // Advance minIdx LAST because minKey references its _keyBuffer which MoveNext overwrites.
@@ -742,7 +743,9 @@ public static class PersistedSnapshotBuilder
             {
                 // Single source: copy as-is
                 int srcIdx = matchingSources[0];
-                builder.Add(minKey, enums[srcIdx].GetCurrentValue(getColumnSpan(srcIdx)));
+                ReadOnlySpan<byte> cs = getColumnSpan(srcIdx);
+                (int valOff, int valLen) = enums[srcIdx].GetCurrentValueBound(cs);
+                builder.Add(minKey, cs.Slice(valOff, valLen));
             }
             else
             {
@@ -785,8 +788,9 @@ public static class PersistedSnapshotBuilder
             for (int j = 0; j < matchCount; j++)
             {
                 int srcIdx = matchingSources[j];
-                ReadOnlySpan<byte> value = outerEnums[srcIdx].GetCurrentValue(getColumnSpan(srcIdx));
-                innerData[j] = value.ToArray();
+                ReadOnlySpan<byte> cs = getColumnSpan(srcIdx);
+                (int valOff, int valLen) = outerEnums[srcIdx].GetCurrentValueBound(cs);
+                innerData[j] = cs.Slice(valOff, valLen).ToArray();
                 innerEnums[j] = new Hsst.Hsst.MergeEnumerator(innerData[j], isInline: inlineValues);
                 innerHasMore[j] = innerEnums[j].MoveNext(innerData[j]);
             }
@@ -812,7 +816,8 @@ public static class PersistedSnapshotBuilder
                 if (minIdx < 0) break;
 
                 ReadOnlySpan<byte> minKey = innerEnums[minIdx].CurrentKey;
-                builder.Add(minKey, innerEnums[minIdx].GetCurrentValue(innerData[minIdx]));
+                (int valOff, int valLen) = innerEnums[minIdx].GetCurrentValueBound(innerData[minIdx]);
+                builder.Add(minKey, ((ReadOnlySpan<byte>)innerData[minIdx]).Slice(valOff, valLen));
 
                 // Advance all with min key.
                 // Advance minIdx LAST because minKey references its _keyBuffer which MoveNext overwrites.
@@ -928,7 +933,8 @@ public static class PersistedSnapshotBuilder
                 {
                     int srcIdx = matchingSources[0];
                     ReadOnlySpan<byte> colSpan = snapshots[srcIdx].GetSpan().Slice(columnBounds[srcIdx].Offset, columnBounds[srcIdx].Length);
-                    builder.Add(minKey, enums[srcIdx].GetCurrentValue(colSpan));
+                    (int valOff, int valLen) = enums[srcIdx].GetCurrentValueBound(colSpan);
+                    builder.Add(minKey, colSpan.Slice(valOff, valLen));
                 }
                 else
                 {
@@ -973,7 +979,8 @@ public static class PersistedSnapshotBuilder
         {
             int srcIdx = matchingSources[j];
             ReadOnlySpan<byte> colSpan = snapshots[srcIdx].GetSpan().Slice(columnBounds[srcIdx].Offset, columnBounds[srcIdx].Length);
-            perAddrData[j] = outerEnums[srcIdx].GetCurrentValue(colSpan).ToArray();
+            (int valOff, int valLen) = outerEnums[srcIdx].GetCurrentValueBound(colSpan);
+            perAddrData[j] = colSpan.Slice(valOff, valLen).ToArray();
         }
 
         using HsstBuilder<TWriter> perAddrBuilder = new(ref writer);
