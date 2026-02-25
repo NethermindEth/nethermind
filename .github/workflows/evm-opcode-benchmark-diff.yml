@@ -1,0 +1,716 @@
+name: EVM Opcode Benchmark Diff
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "src/Nethermind/Nethermind.Evm/**"
+      - "Directory.Packages.props"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-trigger:
+    name: Check if EVM benchmark needed
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Determine if benchmark is needed
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          # Always run if EVM source changed
+          if git diff --name-only "$base" "$head" | grep -q "^src/Nethermind/Nethermind\.Evm/"; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Run if Nethermind.Numerics.Int256 version changed
+          if git diff "$base" "$head" -- Directory.Packages.props | grep -q "Nethermind.Numerics.Int256"; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "should_run=false" >> "$GITHUB_OUTPUT"
+
+  compare-evm-opcodes:
+    name: Compare EVM opcode benchmarks (base vs PR)
+    needs: check-trigger
+    if: needs.check-trigger.outputs.should_run == 'true'
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 720
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      # Default threshold; per-opcode thresholds come from the Threshold column in BDN output
+      THRESHOLD_PERCENT: "5"
+      # Noise guard for unchanged-code stability.
+      # Effective threshold = max(opcode threshold, max(baseCV, prCV) * NOISE_MULTIPLIER)
+      NOISE_MULTIPLIER: "2.0"
+      # Uncertainty guard from BDN Error column.
+      # Effective threshold also includes (baseError + prError) / baseMedian * ERROR_MULTIPLIER.
+      ERROR_MULTIPLIER: "1.0"
+      # Absolute delta floor in ns to avoid flagging tiny changes on ultra-fast opcodes.
+      ABS_DELTA_NS_FLOOR: "2.0"
+      # Hysteresis to prevent near-threshold flapping in repeated CI runs.
+      DELTA_MARGIN_PERCENT: "2.0"
+      # Extra reruns for opcodes that are both flagged and noisy in the first pass.
+      NOISY_RERUNS: "2"
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: false
+          tool-cache: false
+
+      - name: Check out PR head
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Create base worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_sha="${{ github.event.pull_request.base.sha }}"
+          base_dir="${RUNNER_TEMP}/nethermind-base-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git worktree prune
+          git worktree remove --force "${base_dir}" >/dev/null 2>&1 || true
+          git worktree add --detach -f "${base_dir}" "${base_sha}"
+          echo "BASE_WORKTREE=${base_dir}" >> "${GITHUB_ENV}"
+
+      - name: Run base benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          pushd "${BASE_WORKTREE}/src/Nethermind/Nethermind.Benchmark.Runner" >/dev/null
+          inputs_root="${BASE_WORKTREE}/src/Nethermind/artifacts/bin/Nethermind.Benchmark.Runner/release"
+          for d in blake2f blsg1add blsg1msm blsg1mul blsg2add blsg2msm blsg2mul blsmapfp2tog2 blsmapfptog1 blspairingcheck bnadd bnmul bnpair ec_recover modexp point_evaluation ripemd sha256; do
+            mkdir -p "${inputs_root}/${d}/current"
+            if [[ ! -f "${inputs_root}/${d}/current/sample.csv" ]]; then
+              echo "00" > "${inputs_root}/${d}/current/sample.csv"
+            fi
+          done
+          dotnet restore ../Benchmarks.slnx --locked-mode
+          dotnet run -c Release -- --filter "*EvmOpcodesBenchmark*" --join --buildTimeout 900 | tee "${GITHUB_WORKSPACE}/evm-opcodes-base.log"
+          popd >/dev/null
+
+      - name: Run PR benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          pushd "src/Nethermind/Nethermind.Benchmark.Runner" >/dev/null
+          inputs_root="${GITHUB_WORKSPACE}/src/Nethermind/artifacts/bin/Nethermind.Benchmark.Runner/release"
+          for d in blake2f blsg1add blsg1msm blsg1mul blsg2add blsg2msm blsg2mul blsmapfp2tog2 blsmapfptog1 blspairingcheck bnadd bnmul bnpair ec_recover modexp point_evaluation ripemd sha256; do
+            mkdir -p "${inputs_root}/${d}/current"
+            if [[ ! -f "${inputs_root}/${d}/current/sample.csv" ]]; then
+              echo "00" > "${inputs_root}/${d}/current/sample.csv"
+            fi
+          done
+          dotnet restore ../Benchmarks.slnx --locked-mode
+          dotnet run -c Release -- --filter "*EvmOpcodesBenchmark*" --join --buildTimeout 900 | tee "${GITHUB_WORKSPACE}/evm-opcodes-pr.log"
+          popd >/dev/null
+
+      - name: Detect flagged noisy opcodes for rerun
+        id: detect_noisy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import os
+          import re
+          import glob
+          import statistics
+
+          BASE_LOGS = sorted(glob.glob("evm-opcodes-base*.log"))
+          PR_LOGS = sorted(glob.glob("evm-opcodes-pr*.log"))
+          if not BASE_LOGS:
+              BASE_LOGS = ["evm-opcodes-base.log"]
+          if not PR_LOGS:
+              PR_LOGS = ["evm-opcodes-pr.log"]
+          DEFAULT_THRESHOLD = float(os.environ.get("THRESHOLD_PERCENT", "5"))
+          NOISE_MULTIPLIER = float(os.environ.get("NOISE_MULTIPLIER", "2.0"))
+          ERROR_MULTIPLIER = float(os.environ.get("ERROR_MULTIPLIER", "1.0"))
+          ABS_DELTA_NS_FLOOR = float(os.environ.get("ABS_DELTA_NS_FLOOR", "2.0"))
+          DELTA_MARGIN_PERCENT = float(os.environ.get("DELTA_MARGIN_PERCENT", "2.0"))
+
+          ansi_re = re.compile(r"\x1B\[[0-9;]*[A-Za-z]")
+          value_re = re.compile(r"^\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*([a-zA-Zµμ]+)\s*$")
+          unit_to_ns = {
+              "ns": 1.0,
+              "us": 1_000.0,
+              "µs": 1_000.0,
+              "μs": 1_000.0,
+              "ms": 1_000_000.0,
+              "s": 1_000_000_000.0,
+          }
+
+          def normalize_text(text: str) -> str:
+              text = text.replace("\xa0", " ")
+              return ansi_re.sub("", text)
+
+          def parse_ns(value: str):
+              m = value_re.match(value.strip())
+              if not m:
+                  return None
+              number = float(m.group(1).replace(",", ""))
+              unit = m.group(2)
+              scale = unit_to_ns.get(unit)
+              if scale is None:
+                  return None
+              return number * scale
+
+          def cv_percent(mean, stddev):
+              if mean is None or stddev is None or mean <= 0:
+                  return None
+              return (stddev / mean) * 100.0
+
+          def uncertainty_floor_percent(base_val, base_error, pr_error):
+              if base_val is None or base_val <= 0:
+                  return None
+              if base_error is None and pr_error is None:
+                  return None
+              be = base_error or 0.0
+              pe = pr_error or 0.0
+              return ((be + pe) / base_val) * 100.0 * ERROR_MULTIPLIER
+
+          def find_col(headers, name):
+              return headers.index(name) if name in headers else None
+
+          def pick_median(values):
+              values = [v for v in values if v is not None]
+              if not values:
+                  return None
+              return statistics.median(values)
+
+          def extract_opcode_data(path: str):
+              with open(path, "r", encoding="utf-8", errors="replace") as f:
+                  text = normalize_text(f.read())
+
+              lines = text.splitlines()
+              header_idx = -1
+              for i, line in enumerate(lines):
+                  if line.strip().startswith("|") and "Opcode" in line and "Mean" in line:
+                      header_idx = i
+
+              if header_idx < 0:
+                  raise RuntimeError(f"Could not find summary table header with Opcode/Mean in {path}")
+
+              headers = [c.strip() for c in lines[header_idx].strip().strip("|").split("|")]
+              opcode_col = find_col(headers, "Opcode")
+              median_col = find_col(headers, "Median")
+              mean_col = find_col(headers, "Mean")
+              error_col = find_col(headers, "Error")
+              stddev_col = find_col(headers, "StdDev")
+              threshold_col = find_col(headers, "Threshold")
+
+              if opcode_col is None or mean_col is None:
+                  raise RuntimeError(f"Could not find Opcode/Mean columns in header from {path}: {headers}")
+
+              data = {}
+              i = header_idx + 2
+              while i < len(lines):
+                  line = lines[i].strip()
+                  if not line.startswith("|"):
+                      break
+                  cells = [c.strip() for c in line.strip("|").split("|")]
+                  if len(cells) <= max(opcode_col, mean_col):
+                      i += 1
+                      continue
+
+                  opcode = cells[opcode_col]
+                  mean = parse_ns(cells[mean_col])
+                  if opcode and mean is not None:
+                      median = parse_ns(cells[median_col]) if median_col is not None and len(cells) > median_col else None
+                      error = parse_ns(cells[error_col]) if error_col is not None and len(cells) > error_col else None
+                      stddev = parse_ns(cells[stddev_col]) if stddev_col is not None and len(cells) > stddev_col else None
+                      threshold = None
+                      if threshold_col is not None and len(cells) > threshold_col:
+                          try:
+                              threshold = float(cells[threshold_col])
+                          except (ValueError, IndexError):
+                              pass
+                      data[opcode] = {"median": median, "mean": mean, "error": error, "stddev": stddev, "threshold": threshold}
+                  i += 1
+
+              return data
+
+          def aggregate(log_paths):
+              runs = [extract_opcode_data(path) for path in log_paths]
+              all_opcodes = sorted(set().union(*(r.keys() for r in runs)))
+              result = {}
+              for opcode in all_opcodes:
+                  rows = [r[opcode] for r in runs if opcode in r]
+                  medians = [x.get("median") for x in rows]
+                  means = [x.get("mean") for x in rows]
+                  errors = [x.get("error") for x in rows]
+                  stddevs = [x.get("stddev") for x in rows]
+                  thresholds = [x.get("threshold") for x in rows]
+
+                  result[opcode] = {
+                      "median": pick_median(medians),
+                      "mean": pick_median(means),
+                      "error": pick_median(errors),
+                      "stddev": pick_median(stddevs),
+                      "threshold": pick_median(thresholds),
+                  }
+              return result
+
+          base_data = aggregate(BASE_LOGS)
+          pr_data = aggregate(PR_LOGS)
+
+          rerun_opcodes = []
+          for opcode in sorted(set(base_data.keys()) | set(pr_data.keys())):
+              b = base_data.get(opcode)
+              p = pr_data.get(opcode)
+              base_val = (b.get("median") or b.get("mean")) if b else None
+              pr_val = (p.get("median") or p.get("mean")) if p else None
+              base_mean = b["mean"] if b else None
+              pr_mean = p["mean"] if p else None
+              base_error = b.get("error") if b else None
+              pr_error = p.get("error") if p else None
+              base_stddev = b["stddev"] if b else None
+              pr_stddev = p["stddev"] if p else None
+              threshold = (b or p or {}).get("threshold") or DEFAULT_THRESHOLD
+
+              if base_val is None or pr_val is None or base_val == 0:
+                  continue
+
+              base_cv_pct = cv_percent(base_mean, base_stddev)
+              pr_cv_pct = cv_percent(pr_mean, pr_stddev)
+              cv_values = [v for v in (base_cv_pct, pr_cv_pct) if v is not None]
+              noise_floor = (max(cv_values) * NOISE_MULTIPLIER) if cv_values else 0.0
+              uncertainty_floor = uncertainty_floor_percent(base_val, base_error, pr_error) or 0.0
+              effective_threshold = max(threshold, noise_floor, uncertainty_floor)
+
+              delta_pct = ((pr_val - base_val) / base_val) * 100.0
+              delta_abs_ns = abs(pr_val - base_val)
+              is_flagged = abs(delta_pct) >= (effective_threshold + DELTA_MARGIN_PERCENT) and delta_abs_ns >= ABS_DELTA_NS_FLOOR
+              is_noisy = noise_floor > threshold or uncertainty_floor > threshold
+
+              if is_flagged and is_noisy:
+                  rerun_opcodes.append(opcode)
+
+          with open("evm-rerun-opcodes.txt", "w", encoding="utf-8") as f:
+              for opcode in rerun_opcodes:
+                  f.write(opcode + "\n")
+
+          github_output = os.environ["GITHUB_OUTPUT"]
+          with open(github_output, "a", encoding="utf-8") as f:
+              f.write(f"rerun_needed={'true' if rerun_opcodes else 'false'}\n")
+              f.write(f"rerun_count={len(rerun_opcodes)}\n")
+          PY
+
+      - name: Rerun base benchmark for flagged noisy opcodes
+        if: steps.detect_noisy.outputs.rerun_needed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t opcodes < evm-rerun-opcodes.txt
+          filters=()
+          for opcode in "${opcodes[@]}"; do
+            [[ -z "${opcode}" ]] && continue
+            filters+=("*EvmOpcodesBenchmark*Opcode=${opcode}*")
+          done
+          if [[ "${#filters[@]}" -eq 0 ]]; then
+            exit 0
+          fi
+
+          pushd "${BASE_WORKTREE}/src/Nethermind/Nethermind.Benchmark.Runner" >/dev/null
+          repeats="${NOISY_RERUNS:-2}"
+          for i in $(seq 1 "${repeats}"); do
+            dotnet run -c Release -- --filter "${filters[@]}" --join --buildTimeout 900 \
+              | tee "${GITHUB_WORKSPACE}/evm-opcodes-base-rerun-${i}.log"
+          done
+          popd >/dev/null
+
+      - name: Rerun PR benchmark for flagged noisy opcodes
+        if: steps.detect_noisy.outputs.rerun_needed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t opcodes < evm-rerun-opcodes.txt
+          filters=()
+          for opcode in "${opcodes[@]}"; do
+            [[ -z "${opcode}" ]] && continue
+            filters+=("*EvmOpcodesBenchmark*Opcode=${opcode}*")
+          done
+          if [[ "${#filters[@]}" -eq 0 ]]; then
+            exit 0
+          fi
+
+          pushd "src/Nethermind/Nethermind.Benchmark.Runner" >/dev/null
+          repeats="${NOISY_RERUNS:-2}"
+          for i in $(seq 1 "${repeats}"); do
+            dotnet run -c Release -- --filter "${filters[@]}" --join --buildTimeout 900 \
+              | tee "${GITHUB_WORKSPACE}/evm-opcodes-pr-rerun-${i}.log"
+          done
+          popd >/dev/null
+
+      - name: Compare benchmark summaries
+        id: compare
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import os
+          import re
+          import glob
+          import statistics
+
+          BASE_LOGS = sorted(glob.glob("evm-opcodes-base*.log"))
+          PR_LOGS = sorted(glob.glob("evm-opcodes-pr*.log"))
+          if not BASE_LOGS:
+              BASE_LOGS = ["evm-opcodes-base.log"]
+          if not PR_LOGS:
+              PR_LOGS = ["evm-opcodes-pr.log"]
+          DEFAULT_THRESHOLD = float(os.environ.get("THRESHOLD_PERCENT", "5"))
+          NOISE_MULTIPLIER = float(os.environ.get("NOISE_MULTIPLIER", "2.0"))
+          ERROR_MULTIPLIER = float(os.environ.get("ERROR_MULTIPLIER", "1.0"))
+          ABS_DELTA_NS_FLOOR = float(os.environ.get("ABS_DELTA_NS_FLOOR", "2.0"))
+          DELTA_MARGIN_PERCENT = float(os.environ.get("DELTA_MARGIN_PERCENT", "2.0"))
+
+          ansi_re = re.compile(r"\x1B\[[0-9;]*[A-Za-z]")
+          value_re = re.compile(r"^\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*([a-zA-Zµμ]+)\s*$")
+          unit_to_ns = {
+              "ns": 1.0,
+              "us": 1_000.0,
+              "µs": 1_000.0,
+              "μs": 1_000.0,
+              "ms": 1_000_000.0,
+              "s": 1_000_000_000.0,
+          }
+
+          def normalize_text(text: str) -> str:
+              text = text.replace("\xa0", " ")
+              return ansi_re.sub("", text)
+
+          def parse_ns(value: str):
+              m = value_re.match(value.strip())
+              if not m:
+                  return None
+              number = float(m.group(1).replace(",", ""))
+              unit = m.group(2)
+              scale = unit_to_ns.get(unit)
+              if scale is None:
+                  return None
+              return number * scale
+
+          def fmt_cv(mean, stddev):
+              if mean is None or stddev is None or mean == 0:
+                  return "N/A"
+              cv = (stddev / mean) * 100
+              return f"{cv:.1f}%"
+
+          def cv_percent(mean, stddev):
+              if mean is None or stddev is None or mean <= 0:
+                  return None
+              return (stddev / mean) * 100.0
+
+          def uncertainty_floor_percent(base_val, base_error, pr_error):
+              if base_val is None or base_val <= 0:
+                  return None
+              if base_error is None and pr_error is None:
+                  return None
+              be = base_error or 0.0
+              pe = pr_error or 0.0
+              return ((be + pe) / base_val) * 100.0 * ERROR_MULTIPLIER
+
+          def find_col(headers, name):
+              return headers.index(name) if name in headers else None
+
+          def pick_median(values):
+              values = [v for v in values if v is not None]
+              if not values:
+                  return None
+              return statistics.median(values)
+
+          def extract_opcode_data(path: str):
+              """Extract opcode stats (median, mean, stddev, threshold) from BDN table output."""
+              with open(path, "r", encoding="utf-8", errors="replace") as f:
+                  text = normalize_text(f.read())
+
+              lines = text.splitlines()
+              header_idx = -1
+              for i, line in enumerate(lines):
+                  if line.strip().startswith("|") and "Opcode" in line and "Mean" in line:
+                      header_idx = i
+
+              if header_idx < 0:
+                  raise RuntimeError(f"Could not find summary table header with Opcode/Mean in {path}")
+
+              headers = [c.strip() for c in lines[header_idx].strip().strip("|").split("|")]
+              opcode_col = find_col(headers, "Opcode")
+              median_col = find_col(headers, "Median")
+              mean_col = find_col(headers, "Mean")
+              error_col = find_col(headers, "Error")
+              stddev_col = find_col(headers, "StdDev")
+              threshold_col = find_col(headers, "Threshold")
+
+              if opcode_col is None or mean_col is None:
+                  raise RuntimeError(f"Could not find Opcode/Mean columns in header from {path}: {headers}")
+
+              data = {}
+              i = header_idx + 2
+              while i < len(lines):
+                  line = lines[i].strip()
+                  if not line.startswith("|"):
+                      break
+
+                  cells = [c.strip() for c in line.strip("|").split("|")]
+                  if len(cells) <= max(opcode_col, mean_col):
+                      i += 1
+                      continue
+
+                  opcode = cells[opcode_col]
+                  mean = parse_ns(cells[mean_col])
+                  if opcode and mean is not None:
+                      median = parse_ns(cells[median_col]) if median_col is not None and len(cells) > median_col else None
+                      error = parse_ns(cells[error_col]) if error_col is not None and len(cells) > error_col else None
+                      stddev = parse_ns(cells[stddev_col]) if stddev_col is not None and len(cells) > stddev_col else None
+                      threshold = None
+                      if threshold_col is not None and len(cells) > threshold_col:
+                          try:
+                              threshold = float(cells[threshold_col])
+                          except (ValueError, IndexError):
+                              pass
+                      data[opcode] = {"median": median, "mean": mean, "error": error, "stddev": stddev, "threshold": threshold}
+                  i += 1
+
+              if not data:
+                  raise RuntimeError(f"No opcode rows parsed from {path}")
+
+              return data
+
+          def aggregate(log_paths):
+              runs = [extract_opcode_data(path) for path in log_paths]
+              all_opcodes = sorted(set().union(*(r.keys() for r in runs)))
+              result = {}
+              for opcode in all_opcodes:
+                  rows = [r[opcode] for r in runs if opcode in r]
+                  medians = [x.get("median") for x in rows]
+                  means = [x.get("mean") for x in rows]
+                  errors = [x.get("error") for x in rows]
+                  stddevs = [x.get("stddev") for x in rows]
+                  thresholds = [x.get("threshold") for x in rows]
+
+                  result[opcode] = {
+                      "median": pick_median(medians),
+                      "mean": pick_median(means),
+                      "error": pick_median(errors),
+                      "stddev": pick_median(stddevs),
+                      "threshold": pick_median(thresholds),
+                  }
+              return result
+
+          base_data = aggregate(BASE_LOGS)
+          pr_data = aggregate(PR_LOGS)
+
+          changed = []
+          all_opcodes = sorted(set(base_data.keys()) | set(pr_data.keys()))
+
+          for opcode in all_opcodes:
+              b = base_data.get(opcode)
+              p = pr_data.get(opcode)
+              # Use Median for comparison (robust to outliers); fall back to Mean if Median unavailable.
+              base_val = (b.get("median") or b.get("mean")) if b else None
+              pr_val = (p.get("median") or p.get("mean")) if p else None
+              base_mean = b["mean"] if b else None
+              pr_mean = p["mean"] if p else None
+              base_error = b.get("error") if b else None
+              pr_error = p.get("error") if p else None
+              base_stddev = b["stddev"] if b else None
+              pr_stddev = p["stddev"] if p else None
+              threshold = (b or p or {}).get("threshold") or DEFAULT_THRESHOLD
+              base_cv_pct = cv_percent(base_mean, base_stddev)
+              pr_cv_pct = cv_percent(pr_mean, pr_stddev)
+              cv_values = [v for v in (base_cv_pct, pr_cv_pct) if v is not None]
+              noise_floor = (max(cv_values) * NOISE_MULTIPLIER) if cv_values else 0.0
+              uncertainty_floor = uncertainty_floor_percent(base_val, base_error, pr_error) or 0.0
+              effective_threshold = max(threshold, noise_floor, uncertainty_floor)
+
+              if base_val is None or pr_val is None:
+                  changed.append((opcode, base_val, pr_val, None, None, threshold, uncertainty_floor, effective_threshold, base_mean, base_stddev, pr_mean, pr_stddev))
+                  continue
+
+              if base_val == 0:
+                  if pr_val != 0:
+                      changed.append((opcode, base_val, pr_val, None, None, threshold, uncertainty_floor, effective_threshold, base_mean, base_stddev, pr_mean, pr_stddev))
+                  continue
+
+              delta_pct = ((pr_val - base_val) / base_val) * 100.0
+              delta_abs_ns = abs(pr_val - base_val)
+              if abs(delta_pct) >= (effective_threshold + DELTA_MARGIN_PERCENT) and delta_abs_ns >= ABS_DELTA_NS_FLOOR:
+                  changed.append((opcode, base_val, pr_val, delta_pct, delta_abs_ns, threshold, uncertainty_floor, effective_threshold, base_mean, base_stddev, pr_mean, pr_stddev))
+
+          TABLE_HEADER = "| Opcode | Base Median (ns) | PR Median (ns) | Delta | Abs Δ (ns) | Base CV | PR CV | Threshold | Uncertainty | Effective |"
+          TABLE_SEPARATOR = "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+
+          def format_row(opcode, base_val, pr_val, delta_pct, delta_abs_ns, threshold, uncertainty_floor, effective_threshold, base_mean, base_sd, pr_mean, pr_sd):
+              base_str = "N/A" if base_val is None else f"{base_val:.3f}"
+              pr_str = "N/A" if pr_val is None else f"{pr_val:.3f}"
+              delta_str = "N/A" if delta_pct is None else f"{delta_pct:+.2f}%"
+              delta_abs_str = "N/A" if delta_abs_ns is None else f"{delta_abs_ns:.3f}"
+              base_cv = fmt_cv(base_mean, base_sd)
+              pr_cv = fmt_cv(pr_mean, pr_sd)
+              return f"| {opcode} | {base_str} | {pr_str} | {delta_str} | {delta_abs_str} | {base_cv} | {pr_cv} | ±{threshold:.1f}% | ±{uncertainty_floor:.1f}% | ±{effective_threshold:.1f}% |"
+
+          regressions = [c for c in changed if c[3] is not None and c[3] > 0]
+          improvements = [c for c in changed if c[3] is not None and c[3] < 0]
+          unknown = [c for c in changed if c[3] is None]
+
+          summary_lines = []
+          summary_lines.append("## EVM Opcode Benchmark Diff")
+          summary_lines.append("")
+          summary_lines.append(f"Aggregated runs: base={len(BASE_LOGS)}, pr={len(PR_LOGS)}")
+          if os.path.exists("evm-rerun-opcodes.txt"):
+              with open("evm-rerun-opcodes.txt", "r", encoding="utf-8") as f:
+                  rerun_ops = [line.strip() for line in f if line.strip()]
+              if rerun_ops:
+                  summary_lines.append(f"Noisy rerun opcodes: {', '.join(rerun_ops)}")
+          summary_lines.append("")
+
+          if regressions:
+              summary_lines.append(f"### Regressions ({len(regressions)})")
+              summary_lines.append("")
+              summary_lines.append(TABLE_HEADER)
+              summary_lines.append(TABLE_SEPARATOR)
+              for row in regressions:
+                  summary_lines.append(format_row(*row))
+              summary_lines.append("")
+
+          if improvements:
+              summary_lines.append(f"### Improvements ({len(improvements)})")
+              summary_lines.append("")
+              summary_lines.append(TABLE_HEADER)
+              summary_lines.append(TABLE_SEPARATOR)
+              for row in improvements:
+                  summary_lines.append(format_row(*row))
+              summary_lines.append("")
+
+          if unknown:
+              summary_lines.append(f"### New / Removed ({len(unknown)})")
+              summary_lines.append("")
+              summary_lines.append(TABLE_HEADER)
+              summary_lines.append(TABLE_SEPARATOR)
+              for row in unknown:
+                  summary_lines.append(format_row(*row))
+              summary_lines.append("")
+
+          if not changed:
+              summary_lines.append("No significant regressions or improvements detected.")
+
+          output = "\n".join(summary_lines) + "\n"
+          output = "<!-- evm-opcode-benchmark-diff -->\n" + output
+
+          summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_file:
+              with open(summary_file, "a", encoding="utf-8") as f:
+                  f.write(output)
+
+          with open("evm-opcode-comment.md", "w", encoding="utf-8") as f:
+              f.write(output)
+
+          print(output)
+          PY
+
+          {
+            echo "comment_body<<EOF"
+            cat "evm-opcode-comment.md"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Publish PR benchmark comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          COMMENT_BODY: ${{ steps.compare.outputs.comment_body }}
+        with:
+          script: |
+            const marker = '<!-- evm-opcode-benchmark-diff -->';
+            const body = process.env.COMMENT_BODY;
+            if (!body || body.trim().length === 0) {
+              core.setFailed('Missing COMMENT_BODY from compare step output.');
+              return;
+            }
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const matches = comments
+              .filter((comment) => comment.body && comment.body.includes(marker))
+              .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+            if (matches.length > 0) {
+              const latest = matches[0];
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: latest.id,
+                body,
+              });
+
+              for (const duplicate of matches.slice(1)) {
+                await github.rest.issues.deleteComment({
+                  owner,
+                  repo,
+                  comment_id: duplicate.id,
+                });
+              }
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
+
+      - name: Upload benchmark logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evm-opcode-benchmark-logs
+          path: |
+            evm-opcodes-base.log
+            evm-opcodes-pr.log
+            evm-opcodes-base-rerun-*.log
+            evm-opcodes-pr-rerun-*.log
+            evm-rerun-opcodes.txt
+          if-no-files-found: warn
+
+      - name: Cleanup base worktree
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${BASE_WORKTREE:-}" ]]; then
+            git worktree remove --force "${BASE_WORKTREE}" >/dev/null 2>&1 || true
+          fi
+          git worktree prune || true

@@ -33,7 +33,7 @@ internal static unsafe partial class EvmInstructions
             lookup[i] = &InstructionBadInstruction;
         }
 
-        // Set basic control and arithmetic opcodes.
+        // Set basic control and arithmetic opcodes
         lookup[(int)Instruction.STOP] = &InstructionStop;
         lookup[(int)Instruction.ADD] = &InstructionMath2Param<TGasPolicy, OpAdd, TTracingInst>;
         lookup[(int)Instruction.MUL] = &InstructionMath2Param<TGasPolicy, OpMul, TTracingInst>;
