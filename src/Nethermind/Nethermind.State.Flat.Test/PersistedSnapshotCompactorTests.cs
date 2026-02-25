@@ -47,13 +47,14 @@ public class PersistedSnapshotCompactorTests
         Directory.CreateDirectory(testDir);
         try
         {
-            using ArenaManager arenaM = new(Path.Combine(testDir, "arenas"), maxArenaSize: 64 * 1024);
-            using PersistedSnapshotRepository repo = new(arenaM, testDir, new FlatDbConfig());
+            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), maxArenaSize: 64 * 1024);
+            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), maxArenaSize: 64 * 1024);
+            using PersistedSnapshotRepository repo = new(baseArena, compactedArena, testDir, new FlatDbConfig());
             repo.LoadFromCatalog();
 
             // CompactSize=4, MinCompactSize=2 so compaction triggers at block 4
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
-            PersistedSnapshotCompactor compactor = new(repo, arenaM, config, Nethermind.Logging.LimboLogs.Instance);
+            PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, Nethermind.Logging.LimboLogs.Instance);
 
             StateId s0 = new(0, Keccak.EmptyTreeHash);
             StateId s1 = new(1, Keccak.Compute("1"));

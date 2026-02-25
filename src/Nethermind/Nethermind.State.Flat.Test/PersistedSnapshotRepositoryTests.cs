@@ -48,8 +48,9 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void PersistSnapshot_And_Query()
     {
-        using ArenaManager arena = new(Path.Combine(_testDir, "arenas"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(arena, _testDir, new FlatDbConfig());
+        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
+        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -74,8 +75,9 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void NewerSnapshot_OverridesOlderValue()
     {
-        using ArenaManager arena = new(Path.Combine(_testDir, "arenas"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(arena, _testDir, new FlatDbConfig());
+        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
+        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -112,8 +114,9 @@ public class PersistedSnapshotRepositoryTests
         StateId s1 = new(1, Keccak.Compute("1"));
 
         // Session 1: persist a snapshot
-        using (ArenaManager arena1 = new(Path.Combine(_testDir, "arenas"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(arena1, _testDir, new FlatDbConfig()))
+        using (ArenaManager baseArena1 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
+        using (ArenaManager compactedArena1 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
+        using (PersistedSnapshotRepository repo = new(baseArena1, compactedArena1, _testDir, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
             Snapshot snap = CreateTestSnapshot(s0, s1, TestItem.AddressA);
@@ -121,8 +124,9 @@ public class PersistedSnapshotRepositoryTests
         }
 
         // Session 2: reload from disk
-        using (ArenaManager arena2 = new(Path.Combine(_testDir, "arenas"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(arena2, _testDir, new FlatDbConfig()))
+        using (ArenaManager baseArena2 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
+        using (ArenaManager compactedArena2 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
+        using (PersistedSnapshotRepository repo = new(baseArena2, compactedArena2, _testDir, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
             Assert.That(repo.SnapshotCount, Is.EqualTo(1));
@@ -134,8 +138,9 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void PruneBefore_RemovesOldSnapshots()
     {
-        using ArenaManager arena = new(Path.Combine(_testDir, "arenas"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(arena, _testDir, new FlatDbConfig());
+        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
+        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);

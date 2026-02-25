@@ -37,12 +37,13 @@ public class PersistenceManagerPersistedTests
     [Test]
     public void ConvertToPersistedSnapshot_PersistsViaManager()
     {
-        using ArenaManager arenaM = new(Path.Combine(_testDir, "arenas"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(arenaM, _testDir, new FlatDbConfig());
+        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
+        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
-        PersistedSnapshotCompactor compactor = new(repo, arenaM, config, LimboLogs.Instance);
+        PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, LimboLogs.Instance);
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -60,12 +61,13 @@ public class PersistenceManagerPersistedTests
     [Test]
     public void PrunePersistedSnapshots_RemovesOldSnapshots()
     {
-        using ArenaManager arenaM = new(Path.Combine(_testDir, "arenas"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(arenaM, _testDir, new FlatDbConfig());
+        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
+        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
-        PersistedSnapshotCompactor compactor = new(repo, arenaM, config, LimboLogs.Instance);
+        PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, LimboLogs.Instance);
 
         // Persist snapshots at various block heights
         StateId s0 = new(0, Keccak.EmptyTreeHash);
