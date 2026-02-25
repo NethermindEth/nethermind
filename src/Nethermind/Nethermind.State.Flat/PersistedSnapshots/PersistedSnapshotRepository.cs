@@ -404,10 +404,7 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
     {
         SnapshotCatalog.CatalogEntry? entry = _catalog.Find(snapshotId);
         if (entry is not null)
-        {
-            ArenaForEntry(entry).MarkDead(entry.Location);
             _catalog.Remove(snapshotId);
-        }
     }
 
     private static long SumMemory(ConcurrentDictionary<StateId, PersistedSnapshot> dict)

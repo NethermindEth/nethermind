@@ -19,6 +19,7 @@ public sealed class ArenaManager : IArenaManager
 
     private readonly string _basePath;
     private readonly long _maxArenaSize;
+    // Make it prefer earlier arena.
     private readonly Dictionary<int, ArenaFile> _arenas = [];
     private readonly Dictionary<int, long> _frontiers = [];
     private readonly Dictionary<int, long> _deadBytes = [];
@@ -167,7 +168,30 @@ public sealed class ArenaManager : IArenaManager
         lock (_lock)
         {
             _deadBytes.TryGetValue(location.ArenaId, out long dead);
-            _deadBytes[location.ArenaId] = dead + location.Size;
+            long totalDead = dead + location.Size;
+            _deadBytes[location.ArenaId] = totalDead;
+
+            if (totalDead >= _frontiers[location.ArenaId])
+            {
+                if (_standaloneFiles.Contains(location.ArenaId))
+                {
+                    // Dedicated file: delete entirely
+                    _standaloneFiles.Remove(location.ArenaId);
+                    if (_arenas.Remove(location.ArenaId, out ArenaFile? file))
+                    {
+                        file.Dispose();
+                        File.Delete(file.Path);
+                    }
+                    _frontiers.Remove(location.ArenaId);
+                    _deadBytes.Remove(location.ArenaId);
+                }
+                else
+                {
+                    // Shared arena: reset for reuse
+                    _frontiers[location.ArenaId] = 0;
+                    _deadBytes[location.ArenaId] = 0;
+                }
+            }
         }
     }
 
