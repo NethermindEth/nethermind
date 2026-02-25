@@ -189,14 +189,14 @@ public class LongFinalityIntegrationTests
             c.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC1, 0x80, 0x80]); // Override
         });
 
-        byte[] data1 = PersistedSnapshotBuilder.Build(snap1);
-        byte[] data2 = PersistedSnapshotBuilder.Build(snap2);
+        byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1);
+        byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2);
         PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Full, data1);
         PersistedSnapshot baseSnap2 = CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Full, data2);
         PersistedSnapshotList toMerge = new(2);
         toMerge.Add(baseSnap1);
         toMerge.Add(baseSnap2);
-        byte[] merged = PersistedSnapshotBuilder.MergeSnapshots(toMerge);
+        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
 
         PersistedSnapshot mergedSnap = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Linked, merged,
             [baseSnap1, baseSnap2]);

@@ -42,7 +42,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         SnapshotContent content = new();
         content.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] hsstData = PersistedSnapshotBuilder.Build(snap);
+        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Full, hsstData);
         PersistedSnapshotList list = new(1);
@@ -77,7 +77,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         SnapshotContent content = new();
         content.StorageNodes[(address, path)] = new TrieNode(NodeType.Branch, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] hsstData = PersistedSnapshotBuilder.Build(snap);
+        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Full, hsstData);
         PersistedSnapshotList list = new(1);
@@ -112,7 +112,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         SnapshotContent content = new();
         content.StateNodes[storedPath] = new TrieNode(NodeType.Leaf, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] hsstData = PersistedSnapshotBuilder.Build(snap);
+        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Full, hsstData);
         PersistedSnapshotList list = new(1);

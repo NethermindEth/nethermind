@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using BenchmarkDotNet.Attributes;
@@ -214,7 +215,7 @@ public class PersistedSnapshotBenchmark
         _index = 0;
 
         _arenaManager = new MemoryArenaManager(arenaSize: 256 * 1024 * 1024);
-        byte[] data = PersistedSnapshotBuilder.Build(snapshot);
+        byte[] data = BuildSnapshot(snapshot);
         SnapshotLocation loc = _arenaManager.Allocate(data);
         ArenaReservation reservation = _arenaManager.Open(loc);
         _persistedSnapshot = new PersistedSnapshot(
@@ -238,7 +239,7 @@ public class PersistedSnapshotBenchmark
     }
 
     [Benchmark]
-    public byte[] Build() => PersistedSnapshotBuilder.Build(_snapshotForBuild);
+    public byte[] Build() => BuildSnapshot(_snapshotForBuild);
 
     [Benchmark]
     public bool TryGetAccount() =>
@@ -340,6 +341,22 @@ public class PersistedSnapshotBenchmark
         {
             LastSnapshot = snapshot;
             LastResource = transientResource;
+        }
+    }
+
+    private static byte[] BuildSnapshot(FlatSnapshot snapshot)
+    {
+        int estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(estimatedSize);
+        try
+        {
+            Nethermind.State.Flat.Hsst.SpanBufferWriter writer = new(buffer);
+            PersistedSnapshotBuilder.Build(snapshot, ref writer);
+            return buffer.AsSpan(0, writer.Written).ToArray();
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 

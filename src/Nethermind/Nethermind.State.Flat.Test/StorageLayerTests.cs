@@ -234,7 +234,7 @@ public class StorageLayerTests
         ResourcePool pool = new(new FlatDbConfig());
         Snapshot snapshot = new(from, to, content, pool, ResourcePool.Usage.MainBlockProcessing);
 
-        byte[] hsstData = PersistedSnapshotBuilder.Build(snapshot);
+        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snapshot);
 
         // Store in arena
         string arenaDir = Path.Combine(_testDir, "arenas");
