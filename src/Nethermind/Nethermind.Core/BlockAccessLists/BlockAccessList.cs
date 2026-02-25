@@ -3,12 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Data;
-using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -55,6 +52,13 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     {
         _changes.Clear();
         Index++;
+    }
+
+    public void RollbackCurrentIndex()
+    {
+        Restore(0);
+        _changes.Clear();
+        Index--;
     }
 
     public void Clear()
