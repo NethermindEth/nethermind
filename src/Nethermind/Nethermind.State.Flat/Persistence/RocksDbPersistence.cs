@@ -46,7 +46,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
         }
     }
 
-    public IPersistence.IPersistenceReader CreateReader()
+    public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
         IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();
         try
