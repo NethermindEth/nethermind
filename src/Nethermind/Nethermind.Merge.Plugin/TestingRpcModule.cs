@@ -35,37 +35,44 @@ public class TestingRpcModule(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly IBlockchainProcessor _processor = mainProcessingContext.BlockchainProcessor;
 
-    public Task<ResultWrapper<GetPayloadV5Result?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null, string? targetFork = null)
+    public Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null, string? targetFork = null)
     {
         Block? parentBlock = blockFinder.FindBlock(parentBlockHash);
-
-        if (parentBlock is not null)
+        if (parentBlock is null)
         {
-            BlockHeader header = PrepareBlockHeader(parentBlock.Header, payloadAttributes, extraData);
-            Transaction[] transactions = GetTransactions(txRlps).ToArray();
-            header.TxRoot = TxTrie.CalculateRoot(transactions);
-            Block block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
-
-            FeesTracer feesTracer = new();
-            Block? processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
-
-            if (processedBlock is not null)
-            {
-                GetPayloadV5Result getPayloadV5Result = new(processedBlock, feesTracer.Fees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false);
-
-                if (!ValidateFork(getPayloadV5Result, targetFork))
-                {
-                    if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the target fork: {targetFork ?? "prague"}");
-                    return ResultWrapper<GetPayloadV5Result?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
-                }
-
-                if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {processedBlock.Header.ToString(BlockHeader.Format.Short)}.");
-                return ResultWrapper<GetPayloadV5Result?>.Success(getPayloadV5Result);
-            }
-
-            return ResultWrapper<GetPayloadV5Result?>.Fail("payload processing failed", MergeErrorCodes.UnknownPayload);
+            return ResultWrapper<object?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
         }
-        return ResultWrapper<GetPayloadV5Result?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
+
+        IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(parentBlock.Header.Number + 1, payloadAttributes.Timestamp));
+        if (!IsForkSupported(spec, targetFork))
+        {
+            if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the target fork: {targetFork ?? "default"}");
+            return ResultWrapper<object?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
+        }
+
+        if (!ValidatePayloadAttributes(payloadAttributes, spec, out ResultWrapper<object?>? errorResult))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {errorResult!.Result.Error}");
+            return errorResult!;
+        }
+
+        BlockHeader header = PrepareBlockHeader(parentBlock.Header, payloadAttributes, extraData);
+        Transaction[] transactions = GetTransactions(txRlps).ToArray();
+        header.TxRoot = TxTrie.CalculateRoot(transactions);
+        Block block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
+
+        FeesTracer feesTracer = new();
+        Block? processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
+
+        if (processedBlock is null)
+        {
+            return ResultWrapper<object?>.Fail("payload processing failed", MergeErrorCodes.UnknownPayload);
+        }
+
+        object getPayloadResult = CreateGetPayloadResult(processedBlock, feesTracer.Fees, spec);
+
+        if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {processedBlock.Header.ToString(BlockHeader.Format.Short)}.");
+        return ResultWrapper<object?>.Success(getPayloadResult);
     }
 
     private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, byte[]? extraData)
@@ -83,7 +90,8 @@ public class TestingRpcModule(
         {
             Author = blockAuthor,
             MixHash = payloadAttributes.PrevRandao,
-            ParentBeaconBlockRoot = payloadAttributes.ParentBeaconBlockRoot
+            ParentBeaconBlockRoot = payloadAttributes.ParentBeaconBlockRoot,
+            SlotNumber = payloadAttributes.SlotNumber
         };
 
         UInt256 difficulty = UInt256.Zero;
@@ -118,16 +126,38 @@ public class TestingRpcModule(
         }
     }
 
-    private bool ValidateFork(GetPayloadV5Result payload, string? targetFork)
-    {
-        IReleaseSpec spec = specProvider.GetSpec(payload.ExecutionPayload.BlockNumber, payload.ExecutionPayload.Timestamp);
+    private object CreateGetPayloadResult(Block processedBlock, UInt256 blockFees, IReleaseSpec spec) =>
+        spec.IsEip7928Enabled
+            ? new GetPayloadV6Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false)
+            : new GetPayloadV5Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false);
 
-        return targetFork?.ToLowerInvariant() switch
+    private bool ValidatePayloadAttributes(PayloadAttributes payloadAttributes, IReleaseSpec spec, out ResultWrapper<object?>? errorResult)
+    {
+        if (spec.IsEip7843Enabled)
         {
-            "amsterdam" => spec.IsEip7702Enabled,
-            "prague" => spec.IsEip7594Enabled,
+            if (payloadAttributes.SlotNumber is null)
+            {
+                errorResult = ResultWrapper<object?>.Fail("payload attributes missing slotNumber", MergeErrorCodes.InvalidPayloadAttributes);
+                return false;
+            }
+        }
+        else if (payloadAttributes.SlotNumber is not null)
+        {
+            errorResult = ResultWrapper<object?>.Fail("slotNumber is not supported before Amsterdam", MergeErrorCodes.InvalidPayloadAttributes);
+            return false;
+        }
+
+        errorResult = null;
+        return true;
+    }
+
+    private bool IsForkSupported(IReleaseSpec spec, string? targetFork) =>
+        targetFork?.ToLowerInvariant() switch
+        {
+            "amsterdam" => spec.IsEip7928Enabled,
+            "prague" => spec.IsEip7594Enabled && !spec.IsEip7928Enabled,
+            "osaka" => spec.IsEip7594Enabled && !spec.IsEip7928Enabled,
             null => spec.IsEip7594Enabled,
             _ => false
         };
-    }
 }

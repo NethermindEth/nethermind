@@ -17,6 +17,7 @@ using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
@@ -248,12 +249,14 @@ public class MergePluginTests
             ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot")
         };
 
-        ResultWrapper<GetPayloadV5Result?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>());
+        ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>());
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         result.Data.Should().NotBeNull();
-        result.Data!.ExecutionPayload.BlobGasUsed.Should().Be(0);
-        result.Data!.ExecutionPayload.ExcessBlobGas.Should().Be(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance));
+        result.Data.Should().BeOfType<GetPayloadV5Result>();
+        GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
+        payloadResult.ExecutionPayload.BlobGasUsed.Should().Be(0);
+        payloadResult.ExecutionPayload.ExcessBlobGas.Should().Be(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance));
         suggestedWithdrawalsRoot.Should().Be(new WithdrawalTrie(payloadAttributes.Withdrawals!).RootHash);
     }
 
@@ -333,6 +336,85 @@ public class MergePluginTests
             Array.Empty<byte[]>());
 
         response.Should().BeOfType<JsonRpcSuccessResponse>();
+    }
+
+    [Test]
+    public async Task Testing_buildBlockV1_returns_block_access_list_and_slot_number_for_amsterdam()
+    {
+        Hash256 parentHash = Keccak.Compute("parent");
+        BlockHeader parentHeader = new(
+            Keccak.Compute("grandparent"),
+            Keccak.OfAnEmptySequenceRlp,
+            Address.Zero,
+            UInt256.Zero,
+            1,
+            30_000_000,
+            1,
+            [])
+        {
+            Hash = parentHash,
+            TotalDifficulty = UInt256.Zero,
+            BaseFeePerGas = UInt256.One,
+            GasUsed = 0,
+            StateRoot = Keccak.EmptyTreeHash,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            Bloom = Bloom.Empty,
+            SlotNumber = 1
+        };
+
+        Block parentBlock = new(parentHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBlock(parentHash).Returns(parentBlock);
+
+        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
+        blockchainProcessor
+            .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
+            .Returns(static callInfo =>
+            {
+                Block block = callInfo.Arg<Block>();
+                block.Header.StateRoot ??= Keccak.EmptyTreeHash;
+                block.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
+                block.Header.Bloom ??= Bloom.Empty;
+                block.Header.GasUsed = 0;
+                block.Header.Hash ??= Keccak.Compute("produced");
+                block.BlockAccessList = new BlockAccessList();
+                return block;
+            });
+
+        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
+        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Amsterdam.Instance);
+
+        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
+
+        TestingRpcModule module = new(
+            mainProcessingContext,
+            gasLimitCalculator,
+            specProvider,
+            blockFinder,
+            LimboLogs.Instance);
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = parentHeader.Timestamp + 12,
+            PrevRandao = Keccak.Compute("randao"),
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot"),
+            SlotNumber = 2
+        };
+
+        ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>());
+
+        result.Result.ResultType.Should().Be(ResultType.Success);
+        result.Data.Should().BeOfType<GetPayloadV6Result>();
+        GetPayloadV6Result payloadResult = (GetPayloadV6Result)result.Data!;
+        payloadResult.ExecutionPayload.SlotNumber.Should().Be(payloadAttributes.SlotNumber);
+        payloadResult.ExecutionPayload.BlockAccessList.Should().NotBeNull();
+        payloadResult.ExecutionPayload.BlockAccessList!.Length.Should().BeGreaterThan(0);
     }
 
     [TestCase(true, true)]
