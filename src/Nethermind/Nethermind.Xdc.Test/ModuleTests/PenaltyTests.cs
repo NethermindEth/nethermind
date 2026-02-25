@@ -163,7 +163,7 @@ internal class PenaltyTests
         chain.ChangeReleaseSpec(spec =>
         {
             spec.EpochLength = EpochLength;
-            spec.TipUpgradePenalty = activatePenaltyUpgrade ? 0 : long.MaxValue;
+            spec.IsTipUpgradePenaltyEnabled = activatePenaltyUpgrade;
             spec.RangeReturnSigner = 150;
             spec.LimitPenaltyEpoch = 2;
         });
@@ -228,7 +228,7 @@ internal class PenaltyTests
         xdcSpec.EpochLength.Returns(EpochLength);
         xdcSpec.SwitchBlock.Returns(0);
         xdcSpec.MergeSignRange.Returns(MergeSignRange);
-        xdcSpec.TipUpgradePenalty.Returns(0);
+        xdcSpec.IsTipUpgradePenaltyEnabled.Returns(true);
         xdcSpec.LimitPenaltyEpoch.Returns(limitPenaltyEpoch);
         xdcSpec.MinimumSigningTx.Returns(2);
         xdcSpec.MinimumMinerBlockPerEpoch.Returns(1);

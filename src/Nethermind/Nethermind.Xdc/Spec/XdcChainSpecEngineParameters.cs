@@ -49,6 +49,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     }
     public long? TipTrc21Fee { get; set; }
     public long TIP2019Block { get; set; }
+    public long? TipUpgradePenalty { get; set; }
     public long MergeSignRange { get; set; }
     public Address[] BlackListedAddresses { get; set; }
     public long BlackListHFNumber { get; set; }
@@ -76,6 +77,8 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     {
         if (TipTrc21Fee is not null)
             blockNumbers.Add(TipTrc21Fee.Value);
+        if (TipUpgradePenalty is not null)
+            blockNumbers.Add(TipUpgradePenalty.Value);
     }
 }
 
@@ -88,4 +91,3 @@ public sealed class V2ConfigParams
     public int TimeoutPeriod { get; init; }
     public int MinePeriod { get; init; }
 }
-
