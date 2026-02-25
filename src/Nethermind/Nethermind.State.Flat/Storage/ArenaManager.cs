@@ -105,7 +105,7 @@ public sealed class ArenaManager : IArenaManager
                 : GetOrCreateArena(estimatedSize);
             long offset = _frontiers[file.Id];
             _reservedArenas.Add(file.Id);
-            ArenaFile.MmapWriteStream stream = file.CreateWriteStream(offset);
+            FileStream stream = file.CreateWriteStream(offset);
             return new ArenaWriter(this, file.Id, offset, stream);
         }
     }

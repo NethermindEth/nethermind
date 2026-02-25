@@ -41,6 +41,7 @@ public struct StreamBufferWriter(Stream stream) : IByteBufferWriter, IDisposable
     public void Dispose()
     {
         Flush();
+        _stream.Dispose();
         byte[] buffer = _buffer;
         _buffer = null!;
         ArrayPool<byte>.Shared.Return(buffer);
