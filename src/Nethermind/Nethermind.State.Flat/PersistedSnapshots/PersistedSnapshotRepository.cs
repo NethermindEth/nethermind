@@ -4,7 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Db;
-using Nethermind.State.Flat.Hsst;
+
 using Nethermind.State.Flat.Storage;
 using Prometheus;
 
@@ -117,39 +117,28 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
 
     /// <summary>
     /// Persist an in-memory snapshot to disk as a base snapshot (keyed by To StateId).
-    /// Uses ReserveForWrite/FinalizedWrite to write HSST data directly into mmap'd arena memory (zero-copy).
+    /// Uses ArenaWriter for buffered writes to the arena file.
     /// </summary>
     public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot, bool isPersistable = false)
     {
-        int estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
         // Persistable compacted snapshots use compacted arena; base snapshots use base arena
         IArenaManager arena = isPersistable ? _compactedArenaManager : _baseArenaManager;
-        ArenaReservation reservation = arena.ReserveForWrite(estimatedSize);
-        int actualSize;
-        try
+
+        SnapshotLocation location;
+        ArenaReservation reservation;
+        using (ArenaWriter arenaWriter = arena.CreateWriter())
         {
-            SpanBufferWriter writer = new(reservation.GetSpan());
-            PersistedSnapshotBuilder.Build(snapshot, ref writer);
+            PersistedSnapshotBuilder.Build(snapshot, ref arenaWriter.GetWriter());
             if (isPersistable)
-            {
-                _persistedSnapshotSize.WithLabels("is_persistable").Observe(writer.Written);
-            }
+                _persistedSnapshotSize.WithLabels("is_persistable").Observe(arenaWriter.GetWriter().Written);
             else
-            {
-                _persistedSnapshotSize.WithLabels("base").Observe(writer.Written);
-            }
-            actualSize = writer.Written;
-        }
-        catch
-        {
-            reservation.Return();
-            throw;
+                _persistedSnapshotSize.WithLabels("base").Observe(arenaWriter.GetWriter().Written);
+            (location, reservation) = arenaWriter.Complete();
         }
 
         lock (_catalogLock)
         {
             int id = _nextId++;
-            SnapshotLocation location = reservation.FinalizedWrite(actualSize);
             // Full type: the snapshot contains all data inline, no need to seek to base snapshots during persistence
             _catalog.Add(new SnapshotCatalog.CatalogEntry(id, snapshot.From, snapshot.To, PersistedSnapshotType.Full, location));
             _catalog.Save();
@@ -164,15 +153,14 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
     }
 
     /// <summary>
-    /// Store a compacted snapshot from a pre-reserved arena buffer (zero-copy path).
+    /// Store a compacted snapshot with a pre-computed location and reservation.
     /// Referenced snapshot IDs are the base snapshots whose data is referenced via NodeRefs.
     /// </summary>
-    public void AddCompactedSnapshot(StateId from, StateId to, ArenaReservation reservation, int actualSize, HashSet<int> referencedSnapshotIds, bool isPersistable)
+    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedSnapshotIds, bool isPersistable)
     {
         lock (_catalogLock)
         {
             int id = _nextId++;
-            SnapshotLocation location = reservation.FinalizedWrite(actualSize);
             _catalog.Add(new SnapshotCatalog.CatalogEntry(id, from, to, PersistedSnapshotType.Linked, location));
             _catalog.Save();
 

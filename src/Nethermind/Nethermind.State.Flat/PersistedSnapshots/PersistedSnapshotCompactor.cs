@@ -5,7 +5,7 @@ using System.Diagnostics;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State.Flat.Hsst;
+
 using Nethermind.State.Flat.Storage;
 using Prometheus;
 
@@ -87,21 +87,18 @@ public class PersistedSnapshotCompactor(
             }
         }
 
-        int totalSize = 0;
-        for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
-        totalSize += 4096;
-
-        ArenaReservation reservation = arenaManager.ReserveForWrite(totalSize);
-        try
+        SnapshotLocation location;
+        ArenaReservation reservation;
+        using (ArenaWriter arenaWriter = arenaManager.CreateWriter())
         {
             long sw = Stopwatch.GetTimestamp();
-            SpanBufferWriter compactWriter = new(reservation.GetSpan());
-            PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref compactWriter, referencedIds);
-            int len = compactWriter.Written;
+            PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref arenaWriter.GetWriter(), referencedIds);
+            int len = arenaWriter.GetWriter().Written;
             _persistedSnapshotSize.WithLabels($"size{compactSize}").Observe(len);
             _persistedSnapshotCompactTime.WithLabels($"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);
 
-            reservation.Size = len;
+            (location, reservation) = arenaWriter.Complete();
+
             PersistedSnapshot compacted = new(0, from, to, PersistedSnapshotType.Linked, reservation);
             try
             {
@@ -111,14 +108,9 @@ public class PersistedSnapshotCompactor(
             {
                 compacted.Dispose();
             }
+        }
 
-            persistedSnapshotRepository.AddCompactedSnapshot(from, to, reservation, len, referencedIds, isPersistable);
-        }
-        catch
-        {
-            reservation.Return();
-            throw;
-        }
+        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedIds, isPersistable);
 
         Metrics.PersistedSnapshotCompactions++;
         Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;

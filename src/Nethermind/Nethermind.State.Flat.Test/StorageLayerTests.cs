@@ -31,7 +31,7 @@ public class StorageLayerTests
     }
 
     [Test]
-    public void ArenaFile_WriteAndRead_RoundTrips()
+    public void ArenaFile_WriteViaStreamAndRead_RoundTrips()
     {
         string path = Path.Combine(_testDir, "arena.bin");
         byte[] data1 = [1, 2, 3, 4, 5];
@@ -40,16 +40,16 @@ public class StorageLayerTests
 
         using ArenaFile arena = new(0, path, 1024 * 1024);
 
-        // Write at offset 0
-        arena.Write(0, data1);
-        Assert.That(arena.Read(0, data1.Length), Is.EqualTo(data1));
+        // Write via FileStream, read via mmap
+        using (FileStream fs = new(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite))
+        {
+            fs.Write(data1);
+            fs.Write(data2);
+            fs.Flush();
+        }
 
-        // Write at offset after first data
-        arena.Write(data1.Length, data2);
+        Assert.That(arena.Read(0, data1.Length), Is.EqualTo(data1));
         Assert.That(arena.Read(data1.Length, data2.Length), Is.EqualTo(data2));
-
-        // First data still intact
-        Assert.That(arena.Read(0, data1.Length), Is.EqualTo(data1));
         Assert.That(arena.MappedSize, Is.EqualTo(1024 * 1024));
     }
 
@@ -262,19 +262,22 @@ public class StorageLayerTests
     }
 
     [Test]
-    public void ArenaManager_ReserveAndFinalize_WritesToArena()
+    public void ArenaManager_CreateWriterAndComplete_WritesToArena()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         using ArenaManager manager = new(arenaDir, maxArenaSize: 4096);
         manager.Initialize([]);
 
         byte[] data = [1, 2, 3, 4, 5, 6, 7, 8];
-        ArenaReservation reservation = manager.ReserveForWrite(64);
 
-        // Write into the reserved mmap span
-        data.CopyTo(reservation.GetSpan());
-
-        SnapshotLocation location = reservation.FinalizedWrite(data.Length);
+        SnapshotLocation location;
+        using (ArenaWriter arenaWriter = manager.CreateWriter())
+        {
+            Span<byte> span = arenaWriter.GetWriter().GetSpan(data.Length);
+            data.CopyTo(span);
+            arenaWriter.GetWriter().Advance(data.Length);
+            (location, _) = arenaWriter.Complete();
+        }
 
         // Read back and verify
         Assert.That(manager.Open(location).GetSpan().ToArray(), Is.EqualTo(data));
@@ -282,7 +285,7 @@ public class StorageLayerTests
     }
 
     [Test]
-    public void ArenaManager_Return_RollsBackFrontier()
+    public void ArenaManager_CancelWrite_AllowsReuse()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         using ArenaManager manager = new(arenaDir, maxArenaSize: 4096);
@@ -292,82 +295,66 @@ public class StorageLayerTests
         byte[] baseline = [0xAA];
         SnapshotLocation baselineLoc = manager.Allocate(baseline);
 
-        // Reserve and then return
-        ArenaReservation reservation = manager.ReserveForWrite(100);
-        int arenaId = reservation.ArenaId;
-        reservation.Return();
+        // Create writer and then dispose without completing (cancel)
+        using (ArenaWriter arenaWriter = manager.CreateWriter())
+        {
+            // Don't call Complete — Dispose will call CancelWrite
+        }
 
-        // Allocate again — should reuse the space that was returned
+        // Allocate again — should reuse from the baseline offset
         byte[] data = new byte[50];
         SnapshotLocation loc = manager.Allocate(data);
         Assert.That(loc.Offset, Is.EqualTo(baselineLoc.Offset + baselineLoc.Size));
     }
 
     [Test]
-    public void ArenaManager_ReserveFinalize_TrimsFrontierOnPartialUse()
+    public void ArenaManager_CreateWriter_FrontierAdvancesExactly()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         using ArenaManager manager = new(arenaDir, maxArenaSize: 4096);
         manager.Initialize([]);
 
-        // Reserve large, finalize with smaller actualSize
-        ArenaReservation reservation = manager.ReserveForWrite(1000);
+        // Write small data via ArenaWriter
         byte[] data = [1, 2, 3];
-        data.CopyTo(reservation.GetSpan());
-        SnapshotLocation location = reservation.FinalizedWrite(data.Length);
+        SnapshotLocation location;
+        using (ArenaWriter arenaWriter = manager.CreateWriter())
+        {
+            Span<byte> span = arenaWriter.GetWriter().GetSpan(data.Length);
+            data.CopyTo(span);
+            arenaWriter.GetWriter().Advance(data.Length);
+            (location, _) = arenaWriter.Complete();
+        }
 
         Assert.That(location.Size, Is.EqualTo(3));
 
-        // Next allocation should start right after the finalized data, not after the full reservation
+        // Next allocation should start right after the written data
         byte[] next = [4, 5];
         SnapshotLocation nextLoc = manager.Allocate(next);
         Assert.That(nextLoc.Offset, Is.EqualTo(location.Offset + location.Size));
     }
 
     [Test]
-    public void ArenaManager_ConcurrentReserves_UseDifferentArenas()
+    public void ArenaManager_ConcurrentWriters_UseDifferentArenas()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         using ArenaManager manager = new(arenaDir, maxArenaSize: 200);
         manager.Initialize([]);
 
-        // First reserve takes the arena
-        ArenaReservation r1 = manager.ReserveForWrite(100);
-        // Second reserve should use a different arena since the first arena is reserved
-        ArenaReservation r2 = manager.ReserveForWrite(100);
+        // First writer takes the arena
+        using ArenaWriter w1 = manager.CreateWriter();
+        // Second writer should use a different arena since the first arena is reserved
+        using ArenaWriter w2 = manager.CreateWriter();
 
-        Assert.That(r1.ArenaId, Is.Not.EqualTo(r2.ArenaId));
+        // Write some data
+        byte[] data = [1, 2, 3];
+        data.CopyTo(w1.GetWriter().GetSpan(data.Length));
+        w1.GetWriter().Advance(data.Length);
+        data.CopyTo(w2.GetWriter().GetSpan(data.Length));
+        w2.GetWriter().Advance(data.Length);
 
-        r1.FinalizedWrite(50);
-        r2.FinalizedWrite(50);
-    }
+        (SnapshotLocation loc1, _) = w1.Complete();
+        (SnapshotLocation loc2, _) = w2.Complete();
 
-    [Test]
-    public void ArenaManager_Reserve_LargeSize_CreatesStandaloneFile()
-    {
-        string arenaDir = Path.Combine(_testDir, "arenas");
-        // Use a small maxArenaSize but reserve more than DedicatedArenaThreshold
-        using ArenaManager manager = new(arenaDir, maxArenaSize: 4096);
-        manager.Initialize([]);
-
-        // First allocate something in the shared arena
-        byte[] small = [1, 2, 3];
-        SnapshotLocation smallLoc = manager.Allocate(small);
-
-        // Reserve a large standalone file (>512MB threshold)
-        int largeSize = 512 * 1024 * 1024 + 1;
-        ArenaReservation reservation = manager.ReserveForWrite(largeSize);
-
-        // The standalone arena should be different from the shared one
-        Assert.That(reservation.ArenaId, Is.Not.EqualTo(smallLoc.ArenaId));
-
-        // Return the large reservation — standalone file should be deleted
-        reservation.Return();
-
-        // The shared arena should still work
-        byte[] more = [4, 5, 6];
-        SnapshotLocation moreLoc = manager.Allocate(more);
-        Assert.That(moreLoc.ArenaId, Is.EqualTo(smallLoc.ArenaId));
-        Assert.That(manager.Open(moreLoc).GetSpan().ToArray(), Is.EqualTo(more));
+        Assert.That(loc1.ArenaId, Is.Not.EqualTo(loc2.ArenaId));
     }
 }

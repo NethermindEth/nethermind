@@ -7,7 +7,8 @@ namespace Nethermind.State.Flat.Storage;
 
 /// <summary>
 /// Manages multiple arena files for snapshot storage. Handles allocation,
-/// reading, and dead space tracking.
+/// reading, and dead space tracking. Writes go through <see cref="ArenaWriter"/>
+/// backed by FileStream; reads use mmap.
 /// </summary>
 public sealed class ArenaManager : IArenaManager
 {
@@ -90,7 +91,7 @@ public sealed class ArenaManager : IArenaManager
     }
 
     /// <summary>
-    /// Allocate space for data and write it to an arena file.
+    /// Allocate space for data and write it to an arena file via mmap.
     /// </summary>
     public SnapshotLocation Allocate(ReadOnlySpan<byte> data)
     {
@@ -98,35 +99,65 @@ public sealed class ArenaManager : IArenaManager
         {
             ArenaFile arena = GetOrCreateArena(data.Length);
             long offset = _frontiers[arena.Id];
-            arena.Write(offset, data);
+            using ArenaFile.MmapWriteStream stream = arena.CreateWriteStream(offset);
+            stream.Write(data);
             _frontiers[arena.Id] = offset + data.Length;
             return new SnapshotLocation(arena.Id, offset, data.Length);
         }
     }
 
     /// <summary>
-    /// Reserve space in an arena file. The returned <see cref="ArenaReservation"/>
-    /// holds a reference to this manager for zero-copy access via <see cref="ArenaReservation.GetSpan"/>.
-    /// Caller must call either <see cref="ArenaReservation.FinalizedWrite"/> or <see cref="ArenaReservation.Return"/>.
+    /// Create an <see cref="ArenaWriter"/> for buffered writes.
+    /// The arena is marked as reserved until <see cref="CompleteWrite"/> or <see cref="CancelWrite"/>.
     /// </summary>
-    public ArenaReservation ReserveForWrite(int maximumSize)
+    public ArenaWriter CreateWriter()
     {
         lock (_lock)
         {
-            ArenaFile file;
-            if (maximumSize > DedicatedArenaThreshold)
-            {
-                file = CreateArenaFile(maximumSize, dedicated: true);
-            }
-            else
-            {
-                file = GetOrCreateArena(maximumSize);
-            }
-
+            ArenaFile file = GetOrCreateArena(0);
             long offset = _frontiers[file.Id];
-            _frontiers[file.Id] = offset + maximumSize;
             _reservedArenas.Add(file.Id);
-            return new ArenaReservation(this, file.Id, offset, maximumSize);
+            ArenaFile.MmapWriteStream stream = file.CreateWriteStream(offset);
+            return new ArenaWriter(this, file.Id, offset, stream);
+        }
+    }
+
+    /// <summary>
+    /// Complete a buffered write. Updates frontier and returns location + reservation.
+    /// </summary>
+    public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, int actualSize)
+    {
+        lock (_lock)
+        {
+            _frontiers[arenaId] = startOffset + actualSize;
+            _reservedArenas.Remove(arenaId);
+            SnapshotLocation location = new(arenaId, startOffset, actualSize);
+            ArenaReservation reservation = new(this, arenaId, startOffset, actualSize);
+            return (location, reservation);
+        }
+    }
+
+    /// <summary>
+    /// Cancel a buffered write. Unmarks arena as reserved.
+    /// For dedicated arenas, deletes the file; for shared arenas, data past frontier is ignored.
+    /// </summary>
+    public void CancelWrite(int arenaId, long startOffset)
+    {
+        lock (_lock)
+        {
+            _reservedArenas.Remove(arenaId);
+
+            if (_standaloneFiles.Contains(arenaId))
+            {
+                _standaloneFiles.Remove(arenaId);
+                if (_arenas.Remove(arenaId, out ArenaFile? file))
+                {
+                    file.Dispose();
+                    File.Delete(file.Path);
+                }
+                _frontiers.Remove(arenaId);
+                _deadBytes.Remove(arenaId);
+            }
         }
     }
 
@@ -137,62 +168,10 @@ public sealed class ArenaManager : IArenaManager
         new(this, location.ArenaId, location.Offset, location.Size);
 
     /// <summary>
-    /// Get a span for the reservation's data region.
+    /// Get a read-only span for the reservation's data region.
     /// </summary>
-    public Span<byte> GetSpan(ArenaReservation reservation) =>
+    public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) =>
         _arenas[reservation.ArenaId].GetSpan(reservation.Offset, reservation.Size);
-
-    /// <summary>
-    /// Finalize a reservation. Data is already in the file via mmap; this adjusts bookkeeping.
-    /// </summary>
-    public SnapshotLocation FinalizedWrite(ArenaReservation reservation, int actualSize)
-    {
-        lock (_lock)
-        {
-            SnapshotLocation location = new(reservation.ArenaId, reservation.Offset, actualSize);
-            _reservedArenas.Remove(reservation.ArenaId);
-            int waste = reservation.MaxSize - actualSize;
-            if (waste > 0)
-            {
-                if (_frontiers[reservation.ArenaId] == reservation.Offset + reservation.MaxSize)
-                    _frontiers[reservation.ArenaId] = reservation.Offset + actualSize;
-                else
-                    _deadBytes[reservation.ArenaId] += waste;
-            }
-            reservation.Size = actualSize;
-            return location;
-        }
-    }
-
-    /// <summary>
-    /// Cancel a reservation, rolling back the frontier or marking dead space.
-    /// </summary>
-    public void Return(ArenaReservation reservation)
-    {
-        lock (_lock)
-        {
-            _reservedArenas.Remove(reservation.ArenaId);
-
-            if (_standaloneFiles.Contains(reservation.ArenaId))
-            {
-                _standaloneFiles.Remove(reservation.ArenaId);
-                if (_arenas.Remove(reservation.ArenaId, out ArenaFile? file))
-                {
-                    file.Dispose();
-                    File.Delete(file.Path);
-                }
-                _frontiers.Remove(reservation.ArenaId);
-                _deadBytes.Remove(reservation.ArenaId);
-            }
-            else
-            {
-                if (_frontiers[reservation.ArenaId] == reservation.Offset + reservation.MaxSize)
-                    _frontiers[reservation.ArenaId] = reservation.Offset;
-                else
-                    _deadBytes[reservation.ArenaId] += reservation.MaxSize;
-            }
-        }
-    }
 
     /// <summary>
     /// Mark space as dead for compaction tracking.
@@ -246,9 +225,7 @@ public sealed class ArenaManager : IArenaManager
         lock (_lock)
         {
             foreach (ArenaFile arena in _arenas.Values)
-            {
                 arena.Dispose();
-            }
             _arenas.Clear();
         }
     }
