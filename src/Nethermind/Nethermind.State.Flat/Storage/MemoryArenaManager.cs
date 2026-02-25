@@ -57,6 +57,8 @@ public sealed class MemoryArenaManager : IArenaManager
     public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) =>
         _arenas[reservation.ArenaId].AsSpan((int)reservation.Offset, reservation.Size);
 
+    public void AdviseDontNeed(ArenaReservation reservation) { }
+
     public void MarkDead(in SnapshotLocation location)
     {
         _deadBytes.TryGetValue(location.ArenaId, out long dead);

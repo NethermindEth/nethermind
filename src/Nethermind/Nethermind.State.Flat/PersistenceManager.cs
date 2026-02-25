@@ -274,6 +274,10 @@ public class PersistenceManager(
                         if (compacted.To.BlockNumber - compacted.From.BlockNumber == _compactSize)
                         {
                             _persistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot(compacted, isPersistable: true);
+
+                            using PersistedSnapshotList existing = _persistedSnapshotRepository.AssembleSnapshotsForCompaction(compacted.To, compacted.From.BlockNumber);
+                            for (int i = 0; i < existing.Count; i++)
+                                existing[i].AdviseDontNeed();
                         }
                         compacted.Dispose();
                     }

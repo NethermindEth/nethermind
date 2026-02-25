@@ -96,6 +96,10 @@ public class PersistedSnapshotCompactor(
         {
             long sw = Stopwatch.GetTimestamp();
             PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref arenaWriter.GetWriter(), referencedIds);
+
+            for (int i = 0; i < snapshots.Count; i++)
+                snapshots[i].AdviseDontNeed();
+
             int len = arenaWriter.GetWriter().Written;
             _persistedSnapshotSize.WithLabels($"size{compactSize}").Observe(len);
             _persistedSnapshotCompactTime.WithLabels($"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);

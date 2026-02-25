@@ -19,6 +19,11 @@ public sealed class ArenaReservation(IArenaManager arenaManager, int arenaId, lo
 
     public ReadOnlySpan<byte> GetSpan() => _arenaManager.GetSpan(this);
 
-    protected override void CleanUp() =>
+    public void AdviseDontNeed() => _arenaManager.AdviseDontNeed(this);
+
+    protected override void CleanUp()
+    {
+        AdviseDontNeed();
         _arenaManager.MarkDead(new SnapshotLocation(ArenaId, Offset, Size));
+    }
 }

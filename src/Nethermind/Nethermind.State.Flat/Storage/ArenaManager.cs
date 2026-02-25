@@ -188,6 +188,15 @@ public sealed class ArenaManager : IArenaManager
         }
     }
 
+    public void AdviseDontNeed(ArenaReservation reservation)
+    {
+        lock (_lock)
+        {
+            if (_arenas.TryGetValue(reservation.ArenaId, out ArenaFile? arena))
+                arena.AdviseDontNeed(reservation.Offset, reservation.Size);
+        }
+    }
+
     private ArenaFile GetOrCreateArena(int requiredSize)
     {
         // Scan only mutable arenas; remove any that can't fit (they become permanently read-only)

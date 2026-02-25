@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.MemoryMappedFiles;
+using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
 namespace Nethermind.State.Flat.Storage;
@@ -13,6 +14,12 @@ namespace Nethermind.State.Flat.Storage;
 /// </summary>
 public sealed unsafe class ArenaFile : IDisposable
 {
+    private const int MADV_DONTNEED = 4;
+    private static readonly nuint PageSize = (nuint)Environment.SystemPageSize;
+
+    [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
+    private static extern int Madvise(void* addr, nuint length, int advice);
+
     private readonly SafeFileHandle _handle;
     private readonly MemoryMappedFile _mmf;
     private readonly MemoryMappedViewAccessor _accessor;
@@ -55,6 +62,19 @@ public sealed unsafe class ArenaFile : IDisposable
         FileStream fs = new(Path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite, bufferSize: 1);
         fs.Seek(startOffset, SeekOrigin.Begin);
         return fs;
+    }
+
+    public void AdviseDontNeed(long offset, int size)
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        // Round offset up to page boundary, round end down — only advise full pages
+        nuint pageSize = PageSize;
+        nuint start = ((nuint)offset + pageSize - 1) & ~(pageSize - 1);
+        nuint end = ((nuint)offset + (nuint)size) & ~(pageSize - 1);
+        if (end <= start) return;
+
+        Madvise(_basePtr + start, end - start, MADV_DONTNEED);
     }
 
     public void Dispose()
