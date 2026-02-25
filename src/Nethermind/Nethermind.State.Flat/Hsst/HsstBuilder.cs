@@ -109,7 +109,7 @@ public ref struct HsstBuilder<TWriter>
     /// Finish value write. Computes length from snapshot taken by BeginValueWrite.
     /// Key must be greater than previous key (sorted order).
     /// </summary>
-    public void FinishValueWrite(ReadOnlySpan<byte> key)
+    public void FinishValueWrite(scoped ReadOnlySpan<byte> key)
     {
         if (_inlineValues) throw new NotSupportedException("FinishValueWrite not supported in inline mode. Use Add() instead.");
 
@@ -153,7 +153,7 @@ public ref struct HsstBuilder<TWriter>
     /// <summary>
     /// Convenience: add key-value pair in one call.
     /// </summary>
-    public void Add(ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
+    public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
         if (_inlineValues)
         {
