@@ -15,6 +15,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Prometheus;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 
@@ -42,7 +43,7 @@ public class PersistenceManager(
     private readonly List<(Hash256AsKey, TreePath)> _trieNodesSortBuffer = new(); // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
-    private readonly Channel<StateId> _compactPersistedJobs = Channel.CreateBounded<StateId>(1);
+    private readonly Channel<StateId> _compactPersistedJobs = Channel.CreateBounded<StateId>(16);
     private readonly CancellationTokenSource _cancelTokenSource = new();
     private Task? _compactPersistedTask;
 
@@ -50,6 +51,9 @@ public class PersistenceManager(
 
     private Task EnsureCompactorStarted() =>
         _compactPersistedTask ??= RunPersistedCompactor(_cancelTokenSource.Token);
+
+    private Histogram _persistedSnapshotConvertTime =
+        Prometheus.Metrics.CreateHistogram("persisted_snapshot_convert_time", "persisted_snapshot_convert_time", "size");
 
     private async Task RunPersistedCompactor(CancellationToken cancellationToken)
     {
@@ -264,7 +268,9 @@ public class PersistenceManager(
                 {
                     if (_snapshotRepository.TryLeaseState(state, out Snapshot? snapshot))
                     {
+                        long sw = Stopwatch.GetTimestamp();
                         _persistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot(snapshot);
+                        _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
                         snapshot.Dispose();
                     }
 
@@ -273,7 +279,9 @@ public class PersistenceManager(
                     {
                         if (compacted.To.BlockNumber - compacted.From.BlockNumber == _compactSize)
                         {
+                            long sw = Stopwatch.GetTimestamp();
                             _persistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot(compacted, isPersistable: true);
+                            _persistedSnapshotConvertTime.WithLabels("full32").Observe(Stopwatch.GetTimestamp() - sw);
 
                             using PersistedSnapshotList existing = _persistedSnapshotRepository.AssembleSnapshotsForCompaction(compacted.To, compacted.From.BlockNumber);
                             for (int i = 0; i < existing.Count; i++)

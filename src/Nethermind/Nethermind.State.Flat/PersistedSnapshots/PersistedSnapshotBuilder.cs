@@ -780,8 +780,7 @@ public static class PersistedSnapshotBuilder
     {
         Hsst.Hsst.MergeEnumerator[] innerEnums = new Hsst.Hsst.MergeEnumerator[matchCount];
         bool[] innerHasMore = new bool[matchCount];
-        // Store inner data as byte[] since we can't keep ReadOnlySpan<byte> in arrays
-        byte[][] innerData = new byte[matchCount][];
+        (int Offset, int Length)[] innerBounds = new (int, int)[matchCount];
 
         try
         {
@@ -789,10 +788,10 @@ public static class PersistedSnapshotBuilder
             {
                 int srcIdx = matchingSources[j];
                 ReadOnlySpan<byte> cs = getColumnSpan(srcIdx);
-                (int valOff, int valLen) = outerEnums[srcIdx].GetCurrentValueBound(cs);
-                innerData[j] = cs.Slice(valOff, valLen).ToArray();
-                innerEnums[j] = new Hsst.Hsst.MergeEnumerator(innerData[j], isInline: inlineValues);
-                innerHasMore[j] = innerEnums[j].MoveNext(innerData[j]);
+                innerBounds[j] = outerEnums[srcIdx].GetCurrentValueBound(cs);
+                ReadOnlySpan<byte> innerSpan = cs.Slice(innerBounds[j].Offset, innerBounds[j].Length);
+                innerEnums[j] = new Hsst.Hsst.MergeEnumerator(innerSpan, isInline: inlineValues);
+                innerHasMore[j] = innerEnums[j].MoveNext(innerSpan);
             }
 
             using HsstBuilder<TWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
@@ -816,8 +815,9 @@ public static class PersistedSnapshotBuilder
                 if (minIdx < 0) break;
 
                 ReadOnlySpan<byte> minKey = innerEnums[minIdx].CurrentKey;
-                (int valOff, int valLen) = innerEnums[minIdx].GetCurrentValueBound(innerData[minIdx]);
-                builder.Add(minKey, ((ReadOnlySpan<byte>)innerData[minIdx]).Slice(valOff, valLen));
+                ReadOnlySpan<byte> innerSpan = getColumnSpan(matchingSources[minIdx]).Slice(innerBounds[minIdx].Offset, innerBounds[minIdx].Length);
+                (int valOff, int valLen) = innerEnums[minIdx].GetCurrentValueBound(innerSpan);
+                builder.Add(minKey, innerSpan.Slice(valOff, valLen));
 
                 // Advance all with min key.
                 // Advance minIdx LAST because minKey references its _keyBuffer which MoveNext overwrites.
@@ -825,9 +825,9 @@ public static class PersistedSnapshotBuilder
                 {
                     if (j == minIdx || !innerHasMore[j]) continue;
                     if (innerEnums[j].CurrentKey.SequenceCompareTo(minKey) == 0)
-                        innerHasMore[j] = innerEnums[j].MoveNext(innerData[j]);
+                        innerHasMore[j] = innerEnums[j].MoveNext(getColumnSpan(matchingSources[j]).Slice(innerBounds[j].Offset, innerBounds[j].Length));
                 }
-                innerHasMore[minIdx] = innerEnums[minIdx].MoveNext(innerData[minIdx]);
+                innerHasMore[minIdx] = innerEnums[minIdx].MoveNext(getColumnSpan(matchingSources[minIdx]).Slice(innerBounds[minIdx].Offset, innerBounds[minIdx].Length));
             }
 
             builder.Build();
@@ -973,14 +973,14 @@ public static class PersistedSnapshotBuilder
         PersistedSnapshotList snapshots, (int Offset, int Length)[] columnBounds,
         ref TWriter writer) where TWriter : IByteBufferWriter
     {
-        // Get per-address HSST data for each matching source
-        byte[][] perAddrData = new byte[matchCount][];
+        // Get per-address HSST bounds (absolute offset from snapshot start) for each matching source
+        (int Offset, int Length)[] perAddrBounds = new (int, int)[matchCount];
         for (int j = 0; j < matchCount; j++)
         {
             int srcIdx = matchingSources[j];
             ReadOnlySpan<byte> colSpan = snapshots[srcIdx].GetSpan().Slice(columnBounds[srcIdx].Offset, columnBounds[srcIdx].Length);
             (int valOff, int valLen) = outerEnums[srcIdx].GetCurrentValueBound(colSpan);
-            perAddrData[j] = colSpan.Slice(valOff, valLen).ToArray();
+            perAddrBounds[j] = (columnBounds[srcIdx].Offset + valOff, valLen);
         }
 
         using HsstBuilder<TWriter> perAddrBuilder = new(ref writer);
@@ -989,7 +989,8 @@ public static class PersistedSnapshotBuilder
         int destructBarrier = -1;
         for (int j = 0; j < matchCount; j++)
         {
-            Hsst.Hsst h = new(perAddrData[j]);
+            ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
+            Hsst.Hsst h = new(perAddr);
             if (h.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal) && sdVal.IsEmpty)
                 destructBarrier = j;
         }
@@ -1001,21 +1002,22 @@ public static class PersistedSnapshotBuilder
             // Collect sources that have slots in the range
             int slotSourceCount = 0;
             int[] slotSources = new int[matchCount - slotStart];
-            byte[][] slotData = new byte[matchCount - slotStart][];
+            (int Offset, int Length)[] slotBounds = new (int, int)[matchCount - slotStart];
             for (int j = slotStart; j < matchCount; j++)
             {
-                Hsst.Hsst h = new(perAddrData[j]);
-                if (h.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slots))
+                ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
+                Hsst.Hsst h = new(perAddr);
+                if (h.TryGetBound(PersistedSnapshot.SlotSubTag, out int slotOff, out int slotLen))
                 {
                     slotSources[slotSourceCount] = j;
-                    slotData[slotSourceCount] = slots.ToArray();
+                    slotBounds[slotSourceCount] = (perAddrBounds[j].Offset + slotOff, slotLen);
                     slotSourceCount++;
                 }
             }
 
             if (slotSourceCount == 1)
             {
-                perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, slotData[0]);
+                perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, snapshots[matchingSources[slotSources[0]]].GetSpan().Slice(slotBounds[0].Offset, slotBounds[0].Length));
             }
             else if (slotSourceCount > 1)
             {
@@ -1026,14 +1028,15 @@ public static class PersistedSnapshotBuilder
                 {
                     for (int j = 0; j < slotSourceCount; j++)
                     {
-                        slotEnums[j] = new Hsst.Hsst.MergeEnumerator(slotData[j], isInline: false);
-                        slotHasMore[j] = slotEnums[j].MoveNext(slotData[j]);
+                        ReadOnlySpan<byte> slotSpan = snapshots[matchingSources[slotSources[j]]].GetSpan().Slice(slotBounds[j].Offset, slotBounds[j].Length);
+                        slotEnums[j] = new Hsst.Hsst.MergeEnumerator(slotSpan, isInline: false);
+                        slotHasMore[j] = slotEnums[j].MoveNext(slotSpan);
                     }
 
                     ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
                     NWayNestedStreamingMerge(
                         slotEnums, slotHasMore, slotSourceCount,
-                        j => slotData[j].AsSpan(),
+                        j => snapshots[matchingSources[slotSources[j]]].GetSpan().Slice(slotBounds[j].Offset, slotBounds[j].Length),
                         ref slotWriter,
                         outerMinSep: 2, innerMinSep: 2, innerInline: true);
                     perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
@@ -1052,7 +1055,8 @@ public static class PersistedSnapshotBuilder
 
             for (int j = 0; j < matchCount; j++)
             {
-                Hsst.Hsst h = new(perAddrData[j]);
+                ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
+                Hsst.Hsst h = new(perAddr);
                 if (!h.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal)) continue;
 
                 if (!hasSd)
@@ -1078,7 +1082,8 @@ public static class PersistedSnapshotBuilder
         {
             for (int j = matchCount - 1; j >= 0; j--)
             {
-                Hsst.Hsst h = new(perAddrData[j]);
+                ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
+                Hsst.Hsst h = new(perAddr);
                 if (h.TryGet(PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> account))
                 {
                     perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, account);
