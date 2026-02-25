@@ -26,7 +26,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         byte[]? data = address is null
             ? reader.TryLoadStateRlp(path, ReadFlags.None)
             : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
@@ -67,7 +67,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
     private TrieNode? ReadExistingNode(Hash256? address, TreePath path)
     {
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         byte[]? existingData = address is null
             ? reader.TryLoadStateRlp(path, ReadFlags.None)
             : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
@@ -230,7 +230,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     {
         if (Interlocked.CompareExchange(ref _wasFinalized, true, false)) throw new InvalidOperationException("Db was finalized");
 
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         StateId from = reader.CurrentState;
         StateId to = new StateId(pivotHeader);
 
