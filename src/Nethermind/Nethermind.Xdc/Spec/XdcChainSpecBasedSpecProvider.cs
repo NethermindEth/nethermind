@@ -53,6 +53,10 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.LimitPenaltyEpochV2 = chainSpecEngineParameters.LimitPenaltyEpochV2;
         releaseSpec.RangeReturnSigner = chainSpecEngineParameters.RangeReturnSigner;
 
+        releaseSpec.RangeReturnSigner = 150;
+        releaseSpec.TipUpgradePenalty = long.MaxValue;
+
+        
         releaseSpec.ApplyV2Config(0);
 
         if (releaseSpec.SwitchBlock == 0)

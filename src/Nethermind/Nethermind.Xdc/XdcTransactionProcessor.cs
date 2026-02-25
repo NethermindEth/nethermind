@@ -22,6 +22,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
 {
     private readonly IMasternodeVotingContract _masternodeVotingContract;
 
+    private Address? _cachedCoinbaseOwner;
     public XdcTransactionProcessor(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
@@ -62,14 +63,13 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
             return;
         }
 
-        Address coinbase = header.GasBeneficiary!;
-        Address owner = _masternodeVotingContract.GetCandidateOwner(this, header, coinbase);
+        Address owner = _cachedCoinbaseOwner;
 
         if (owner is null || owner == Address.Zero)
             return;
 
-        UInt256 fee = tx.GasPrice * (ulong)spentGas;
-        WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
+        UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
+        UInt256 fee = effectiveGasPrice * (ulong)spentGas;
 
         if (tracer.IsTracingFees)
             tracer.ReportFees(fee, UInt256.Zero);
@@ -121,6 +121,11 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         {
             return ExecuteSpecialTransaction(tx, tracer, opts);
 
+        }
+
+        if (spec.IsTipTrc21FeeEnabled && !tx.IsSpecialTransaction(spec))
+        {
+            _cachedCoinbaseOwner = _masternodeVotingContract.GetCandidateOwner(this, header, header.GasBeneficiary!);
         }
 
         return base.Execute(tx, tracer, opts);
