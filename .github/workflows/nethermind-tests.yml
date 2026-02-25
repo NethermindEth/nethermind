@@ -154,7 +154,7 @@ jobs:
 
   codecov-upload:
     name: Upload Codecov reports
-    needs: [tests-summary]
+    needs: [tests, tests-summary]
     if: needs.tests.outputs.collect_coverage == 'true'
     runs-on: ubuntu-latest
     steps:
