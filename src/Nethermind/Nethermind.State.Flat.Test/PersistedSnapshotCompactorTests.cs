@@ -52,7 +52,8 @@ public class PersistedSnapshotCompactorTests
             using PersistedSnapshotRepository repo = new(baseArena, compactedArena, testDir, new FlatDbConfig());
             repo.LoadFromCatalog();
 
-            // CompactSize=4, MinCompactSize=2 so compaction triggers at block 4
+            // CompactSize=4, MinCompactSize=2. Use 8 blocks so compactSize = 8 & -8 = 8 > CompactSize=4, triggering compaction.
+            // (compactSize == _compactSize is now skipped since persistable snapshots are produced by PersistenceManager)
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, Nethermind.Logging.LimboLogs.Instance);
 
@@ -61,8 +62,12 @@ public class PersistedSnapshotCompactorTests
             StateId s2 = new(2, Keccak.Compute("2"));
             StateId s3 = new(3, Keccak.Compute("3"));
             StateId s4 = new(4, Keccak.Compute("4"));
+            StateId s5 = new(5, Keccak.Compute("5"));
+            StateId s6 = new(6, Keccak.Compute("6"));
+            StateId s7 = new(7, Keccak.Compute("7"));
+            StateId s8 = new(8, Keccak.Compute("8"));
 
-            // Create 4 consecutive base snapshots with different accounts
+            // Create 8 consecutive base snapshots with different accounts
             SnapshotContent c1 = new();
             c1.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
             repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s0, s1, c1, _pool, ResourcePool.Usage.MainBlockProcessing));
@@ -79,16 +84,36 @@ public class PersistedSnapshotCompactorTests
             c4.Accounts[TestItem.AddressD] = Build.An.Account.WithBalance(400).TestObject;
             repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s3, s4, c4, _pool, ResourcePool.Usage.MainBlockProcessing));
 
-            compactor.DoCompactSnapshot(s4);
+            SnapshotContent c5 = new();
+            c5.Accounts[TestItem.AddressE] = Build.An.Account.WithBalance(500).TestObject;
+            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s4, s5, c5, _pool, ResourcePool.Usage.MainBlockProcessing));
 
-            // Compaction should have been triggered at block 4 (4 & -4 == 4 >= MinCompactSize=2)
-            // Verify compacted snapshot exists and contains all data
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(s4, out PersistedSnapshot? compacted), Is.True);
+            SnapshotContent c6 = new();
+            c6.Accounts[TestItem.AddressF] = Build.An.Account.WithBalance(600).TestObject;
+            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s5, s6, c6, _pool, ResourcePool.Usage.MainBlockProcessing));
+
+            SnapshotContent c7 = new();
+            c7.Accounts[TestItem.Addresses[6]] = Build.An.Account.WithBalance(700).TestObject;
+            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s6, s7, c7, _pool, ResourcePool.Usage.MainBlockProcessing));
+
+            SnapshotContent c8 = new();
+            c8.Accounts[TestItem.Addresses[7]] = Build.An.Account.WithBalance(800).TestObject;
+            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s7, s8, c8, _pool, ResourcePool.Usage.MainBlockProcessing));
+
+            compactor.DoCompactSnapshot(s8);
+
+            // Compaction should have been triggered at block 8 (8 & -8 == 8 > CompactSize=4)
+            // Verify compacted snapshot exists spanning 0→8 and contains all accounts
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(s8, out PersistedSnapshot? compacted), Is.True);
             Assert.That(compacted!.From, Is.EqualTo(s0));
             Assert.That(compacted.TryGetAccount(TestItem.AddressA, out _), Is.True);
             Assert.That(compacted.TryGetAccount(TestItem.AddressB, out _), Is.True);
             Assert.That(compacted.TryGetAccount(TestItem.AddressC, out _), Is.True);
             Assert.That(compacted.TryGetAccount(TestItem.AddressD, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(TestItem.AddressE, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(TestItem.AddressF, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(TestItem.Addresses[6], out _), Is.True);
+            Assert.That(compacted.TryGetAccount(TestItem.Addresses[7], out _), Is.True);
             compacted.Dispose();
         }
         finally

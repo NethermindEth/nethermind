@@ -29,8 +29,8 @@ public class PersistedSnapshotCompactor(
     /// <summary>
     /// Try to compact persisted snapshots using logarithmic compaction.
     /// Mirrors <see cref="SnapshotCompactor.GetSnapshotsToCompact"/> logic.
-    /// When compactSize exceeds _compactSize, produces both a large compacted snapshot
-    /// and a persistable (_compactSize) snapshot for RocksDB writes.
+    /// Skips compactSize == _compactSize since persistable snapshots are now produced
+    /// directly by PersistenceManager from in-memory compacted snapshots.
     /// </summary>
     public void DoCompactSnapshot(StateId snapshotTo)
     {
@@ -41,20 +41,13 @@ public class PersistedSnapshotCompactor(
 
         int compactSize = (int)Math.Min(blockNumber & -blockNumber, _persistedSnapshotMaxCompactSize);
         if (compactSize < _minCompactSize) return;
+        if (compactSize == _compactSize) return; // persistable snapshots produced by PersistenceManager now
 
         // We need at least 2 snapshots to compact
         if (persistedSnapshotRepository.SnapshotCount < 2) return;
 
-        // When compactSize > _compactSize, also produce a persistable snapshot
-        if (compactSize > _compactSize)
-        {
-            long smallStartingBlockNumber = ((blockNumber - 1) / _compactSize) * _compactSize;
-            CompactRange(snapshotTo, smallStartingBlockNumber, _compactSize, isPersistable: true);
-        }
-
         long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
-        bool isPersistable = compactSize == _compactSize;
-        CompactRange(snapshotTo, startingBlockNumber, compactSize, isPersistable);
+        CompactRange(snapshotTo, startingBlockNumber, compactSize, isPersistable: false);
     }
 
 

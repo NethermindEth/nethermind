@@ -179,7 +179,14 @@ public class PersistenceManager(
         long snapshotsDepth = lastSnapshotNumber - currentPersistedState.BlockNumber;
         if (snapshotsDepth - _compactSize < _minReorgDepth)
         {
-            if (snapshotsDepth <= _maxInMemoryReorgDepth + _compactSize)
+            long? earliestInMemory = TryGetSnapshotLevelToConvert();
+            if (earliestInMemory == null)
+            {
+                return (null, null, null);
+            }
+
+            long inMemoryDepth = lastSnapshotNumber - earliestInMemory.Value;
+            if (inMemoryDepth <= _maxInMemoryReorgDepth + _compactSize)
             {
                 // No action needed
                 return (null, null, null);
@@ -253,16 +260,26 @@ public class PersistenceManager(
             {
                 using ArrayPoolList<StateId> snapshotIds = _snapshotRepository.GetStatesAtBlockNumber(snapshotLevelToConvert.Value);
 
-                // Todo: do this properly
                 foreach (StateId state in snapshotIds)
                 {
                     if (_snapshotRepository.TryLeaseState(state, out Snapshot? snapshot))
                     {
                         _persistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot(snapshot);
-                        EnsureCompactorStarted();
-                        _compactPersistedJobs.Writer.WriteAsync(state).AsTask().Wait();
                         snapshot.Dispose();
                     }
+
+                    // Also convert compacted snapshot of size _compactSize as persistable
+                    if (_snapshotRepository.TryLeaseCompactedState(state, out Snapshot? compacted))
+                    {
+                        if (compacted.To.BlockNumber - compacted.From.BlockNumber == _compactSize)
+                        {
+                            _persistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot(compacted, isPersistable: true);
+                        }
+                        compacted.Dispose();
+                    }
+
+                    EnsureCompactorStarted();
+                    _compactPersistedJobs.Writer.WriteAsync(state).AsTask().Wait();
                 }
 
                 _snapshotRepository.RemoveStatesUntil(snapshotLevelToConvert.Value);

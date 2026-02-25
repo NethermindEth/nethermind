@@ -50,7 +50,7 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
             List<SnapshotCatalog.CatalogEntry> compactedEntries = new();
             foreach (SnapshotCatalog.CatalogEntry entry in _catalog.Entries)
             {
-                if (entry.Type == PersistedSnapshotType.Full)
+                if (entry.Type == PersistedSnapshotType.Full && !IsPersistableSize(entry))
                     baseEntries.Add(entry);
                 else
                     compactedEntries.Add(entry);
@@ -78,7 +78,7 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
 
     private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
     {
-        ArenaReservation reservation = ArenaFor(entry.Type).Open(entry.Location);
+        ArenaReservation reservation = ArenaForEntry(entry).Open(entry.Location);
 
         PersistedSnapshot[]? referencedSnapshots = null;
         if (entry.Type == PersistedSnapshotType.Linked)
@@ -104,30 +104,40 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
 
         PersistedSnapshot snapshot = new(entry.Id, entry.From, entry.To, entry.Type, reservation, referencedSnapshots);
 
-        if (entry.Type == PersistedSnapshotType.Full)
+        bool isPersistableSize = IsPersistableSize(entry);
+        if (entry.Type == PersistedSnapshotType.Full && !isPersistableSize)
             _baseSnapshots[entry.To] = snapshot;
-        else if (entry.To.BlockNumber - entry.From.BlockNumber == _compactSize)
+        else if (isPersistableSize)
             _persistableCompactedSnapshots[entry.To] = snapshot;
         else
             _compactedSnapshots[entry.To] = snapshot;
     }
 
-    private Histogram _persistedSnapshotSize = Prometheus.Metrics.CreateHistogram("persisted_snapshot_size", "persisted_snapshot_size");
+    private Histogram _persistedSnapshotSize = Prometheus.Metrics.CreateHistogram("persisted_snapshot_size", "persisted_snapshot_size", "type");
 
     /// <summary>
     /// Persist an in-memory snapshot to disk as a base snapshot (keyed by To StateId).
     /// Uses ReserveForWrite/FinalizedWrite to write HSST data directly into mmap'd arena memory (zero-copy).
     /// </summary>
-    public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot)
+    public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot, bool isPersistable = false)
     {
         int estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
-        ArenaReservation reservation = _baseArenaManager.ReserveForWrite(estimatedSize);
+        // Persistable compacted snapshots use compacted arena; base snapshots use base arena
+        IArenaManager arena = isPersistable ? _compactedArenaManager : _baseArenaManager;
+        ArenaReservation reservation = arena.ReserveForWrite(estimatedSize);
         int actualSize;
         try
         {
             SpanBufferWriter writer = new(reservation.GetSpan());
             PersistedSnapshotBuilder.Build(snapshot, ref writer);
-            _persistedSnapshotSize.Observe(writer.Written);
+            if (isPersistable)
+            {
+                _persistedSnapshotSize.WithLabels("is_persistable").Observe(writer.Written);
+            }
+            else
+            {
+                _persistedSnapshotSize.WithLabels("base").Observe(writer.Written);
+            }
             actualSize = writer.Written;
         }
         catch
@@ -140,12 +150,16 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
         {
             int id = _nextId++;
             SnapshotLocation location = reservation.FinalizedWrite(actualSize);
+            // Full type: the snapshot contains all data inline, no need to seek to base snapshots during persistence
             _catalog.Add(new SnapshotCatalog.CatalogEntry(id, snapshot.From, snapshot.To, PersistedSnapshotType.Full, location));
             _catalog.Save();
 
             PersistedSnapshot persisted = new(id, snapshot.From, snapshot.To, PersistedSnapshotType.Full, reservation);
             PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
-            _baseSnapshots[snapshot.To] = persisted;
+            if (isPersistable)
+                _persistableCompactedSnapshots[snapshot.To] = persisted;
+            else
+                _baseSnapshots[snapshot.To] = persisted;
         }
     }
 
@@ -391,15 +405,19 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
         return result.Count > 0 ? result.ToArray() : null;
     }
 
-    private IArenaManager ArenaFor(PersistedSnapshotType type) =>
-        type == PersistedSnapshotType.Full ? _baseArenaManager : _compactedArenaManager;
+    private bool IsPersistableSize(SnapshotCatalog.CatalogEntry entry) =>
+        entry.To.BlockNumber - entry.From.BlockNumber == _compactSize;
+
+    private IArenaManager ArenaForEntry(SnapshotCatalog.CatalogEntry entry) =>
+        entry.Type == PersistedSnapshotType.Full && !IsPersistableSize(entry)
+            ? _baseArenaManager : _compactedArenaManager;
 
     private void RemoveFromCatalog(int snapshotId)
     {
         SnapshotCatalog.CatalogEntry? entry = _catalog.Find(snapshotId);
         if (entry is not null)
         {
-            ArenaFor(entry.Type).MarkDead(entry.Location);
+            ArenaForEntry(entry).MarkDead(entry.Location);
             _catalog.Remove(snapshotId);
         }
     }

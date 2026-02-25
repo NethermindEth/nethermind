@@ -14,7 +14,7 @@ public interface IPersistedSnapshotRepository : IDisposable
     void LoadFromCatalog();
 
     // Two-layer storage
-    void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot);
+    void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot, bool isPersistable = false);
     void AddCompactedSnapshot(StateId from, StateId to, ArenaReservation reservation, int actualSize, HashSet<int> referencedSnapshotIds, bool isPersistable);
 
     // Compaction assembly (mirrors SnapshotRepository.AssembleSnapshotsUntil)
