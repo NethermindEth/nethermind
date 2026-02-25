@@ -70,7 +70,7 @@ public class BlockProcessingBenchmark
                 .WithToolchain(InProcessNoEmitToolchain.Instance)
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
-                .WithLaunchCount(10)
+                .WithLaunchCount(5)
                 .WithWarmupCount(20)
                 .WithIterationCount(100)
                 .WithGcForce(true));
