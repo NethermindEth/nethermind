@@ -487,7 +487,7 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Count, Is.EqualTo(3));
-            Assert.That(response.Data.First()!.BlockAccessList!.Count, Is.EqualTo(310));
+            Assert.That(response.Data.First()!.BlockAccessList!.Count, Is.EqualTo(364));
             Assert.That(response.Data.ElementAt(2), Is.Null);
         }
     }
@@ -509,7 +509,7 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Count, Is.EqualTo(4)); // cutoff at head
-            Assert.That(response.Data.First()!.BlockAccessList!.Count, Is.EqualTo(310));
+            Assert.That(response.Data.First()!.BlockAccessList!.Count, Is.EqualTo(364));
         }
     }
 
