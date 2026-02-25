@@ -45,7 +45,9 @@
     "PivotNumber": 99446266,
     "PivotHash": "0x3c29f823a9b39daecbf32a717d37d7081b6801413295d4c83379a2d420ea7f3a",
     "PivotTotalDifficulty": 7443067750,
-    "VerifyTrieOnStateSyncFinished": true
+    "VerifyTrieOnStateSyncFinished": true,
+    "AncientBodiesBarrier": 99400000,
+    "AncientReceiptsBarrier": 99400000
   },
   "Merge": {
     "Enabled": false
