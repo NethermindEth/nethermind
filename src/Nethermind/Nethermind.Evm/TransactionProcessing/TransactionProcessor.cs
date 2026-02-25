@@ -220,7 +220,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // Fast path for plain ETH transfers to EOAs: skip all VM setup and execution.
             // Eligible when: message call, no calldata, no auth list, recipient is an EOA
             // (no code, no delegation), and not tracing instructions or actions.
-            if (!restore && tx.IsMessageCall && tx.Data.Span.IsEmpty
+            if (!restore && tx.IsMessageCall && tx.Data.Length == 0
                 && !tx.HasAuthorizationList
                 && !tracer.IsTracingInstructions && !tracer.IsTracingActions)
             {
@@ -228,7 +228,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (codeInfo.IsEmpty && delegationAddress is null)
                 {
                     return ExecutePlainTransfer(tx, header, spec, tracer, commit, effectiveGasPrice,
-                        in premiumPerGas, in blobBaseFee, in senderReservedGasPayment, in intrinsicGas, deleteCallerAccount);
+                        in premiumPerGas, in blobBaseFee, in intrinsicGas);
                 }
             }
 
@@ -322,9 +322,7 @@ namespace Nethermind.Evm.TransactionProcessing
             in UInt256 effectiveGasPrice,
             in UInt256 premiumPerGas,
             in UInt256 blobBaseFee,
-            in UInt256 senderReservedGasPayment,
-            in IntrinsicGas<TGasPolicy> intrinsicGas,
-            bool deleteCallerAccount)
+            in IntrinsicGas<TGasPolicy> intrinsicGas)
         {
             Address sender = tx.SenderAddress!;
             Address recipient = tx.To!;
