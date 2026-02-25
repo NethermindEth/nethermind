@@ -252,6 +252,113 @@ public readonly ref struct Hsst
         public void Dispose() { }
     }
 
+    /// <summary>
+    /// Non-ref-struct cursor-based enumerator for N-way merge.
+    /// Stores only int offsets per leaf entry — zero heap byte[] allocations per entry.
+    /// Reads keys and values on demand from the span passed to MoveNext/GetCurrentValue.
+    /// </summary>
+    internal sealed class MergeEnumerator : IDisposable
+    {
+        // Per-leaf-entry: separator offset+length in data, and metadata/value offset+length
+        private readonly (int SepOffset, int SepLength, int MetaOrValOffset, int ValLength)[] _entries;
+        private readonly bool _isInline;
+        private int _index = -1;
+
+        // Single reusable key buffer
+        private readonly byte[] _keyBuffer;
+        private int _keyLength;
+
+        public MergeEnumerator(ReadOnlySpan<byte> hsstData, bool isInline, int maxKeyLength = 64)
+        {
+            _keyBuffer = new byte[maxKeyLength];
+            _isInline = isInline;
+
+            if (hsstData.Length < 2)
+            {
+                _entries = [];
+                return;
+            }
+
+            HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, hsstData.Length);
+            List<(int, int, int, int)> entries = new();
+            CollectLeafOffsets(hsstData, rootIndex, entries, _isInline);
+            _entries = entries.ToArray();
+        }
+
+        private static void CollectLeafOffsets(ReadOnlySpan<byte> data, HsstIndex index,
+            List<(int, int, int, int)> entries, bool isInline)
+        {
+            if (!index.IsIntermediate)
+            {
+                for (int i = 0; i < index.EntryCount; i++)
+                {
+                    ReadOnlySpan<byte> sep = index.GetKey(i);
+                    int sepOffset = SpanOffset(data, sep);
+                    if (isInline)
+                    {
+                        ReadOnlySpan<byte> val = index.GetValue(i);
+                        int valOffset = val.IsEmpty ? 0 : SpanOffset(data, val);
+                        entries.Add((sepOffset, sep.Length, valOffset, val.Length));
+                    }
+                    else
+                    {
+                        int metaStart = index.GetIntValue(i);
+                        entries.Add((sepOffset, sep.Length, metaStart, 0));
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < index.EntryCount; i++)
+                {
+                    int childOffset = index.GetIntValue(i);
+                    HsstIndex child = HsstIndex.ReadFromEnd(data, childOffset + 1);
+                    CollectLeafOffsets(data, child, entries, isInline);
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int SpanOffset(ReadOnlySpan<byte> outer, ReadOnlySpan<byte> inner) =>
+            (int)Unsafe.ByteOffset(
+                ref Unsafe.AsRef(in MemoryMarshal.GetReference(outer)),
+                ref Unsafe.AsRef(in MemoryMarshal.GetReference(inner)));
+
+        public int Count => _entries.Length;
+
+        public bool MoveNext(ReadOnlySpan<byte> data)
+        {
+            if (++_index >= _entries.Length) return false;
+            (int sepOff, int sepLen, int metaOrValOff, _) = _entries[_index];
+            data.Slice(sepOff, sepLen).CopyTo(_keyBuffer.AsSpan());
+            if (_isInline)
+            {
+                _keyLength = sepLen;
+            }
+            else
+            {
+                ReadEntry(data, 1 + metaOrValOff, out ReadOnlySpan<byte> remainingKey, out _);
+                remainingKey.CopyTo(_keyBuffer.AsSpan(sepLen));
+                _keyLength = sepLen + remainingKey.Length;
+            }
+            return true;
+        }
+
+        public ReadOnlySpan<byte> CurrentKey => _keyBuffer.AsSpan(0, _keyLength);
+
+        public ReadOnlySpan<byte> GetCurrentValue(ReadOnlySpan<byte> data)
+        {
+            (_, _, int metaOrValOff, int valLen) = _entries[_index];
+            if (_isInline) return valLen == 0 ? ReadOnlySpan<byte>.Empty : data.Slice(metaOrValOff, valLen);
+            ReadEntry(data, 1 + metaOrValOff, out _, out ReadOnlySpan<byte> value);
+            return value;
+        }
+
+        public int CurrentMetadataStart => 1 + _entries[_index].MetaOrValOffset;
+
+        public void Dispose() { }
+    }
+
     public readonly ref struct KeyValueEntry(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
     {
         public ReadOnlySpan<byte> Key { get; } = key;

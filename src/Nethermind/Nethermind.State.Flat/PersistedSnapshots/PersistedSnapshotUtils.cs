@@ -388,7 +388,7 @@ internal static class PersistedSnapshotUtils
 
                     byte[]? bundleRlp = bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None);
                     if (!value.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
-                        throw new InvalidOperationException($"StateTopNode path length {path.Length}: RLP mismatch");
+                        throw new InvalidOperationException($"StateTopNode path {path}: RLP mismatch. Got {value.ToHexString()}, Expected: {bundleRlp?.ToHexString()}");
                 }
             }
 

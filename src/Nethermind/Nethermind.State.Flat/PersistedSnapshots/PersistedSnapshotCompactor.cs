@@ -83,7 +83,7 @@ public class PersistedSnapshotCompactor(
         HashSet<int> referencedIds = new();
         for (int i = 0; i < snapshots.Count; i++)
         {
-            if (snapshots[i].Type == PersistedSnapshotType.Base)
+            if (snapshots[i].Type == PersistedSnapshotType.Full)
             {
                 referencedIds.Add(snapshots[i].Id);
             }
@@ -97,21 +97,16 @@ public class PersistedSnapshotCompactor(
         for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
         totalSize += 4096;
 
-        ArenaReservation reservationA = arenaManager.ReserveForWrite(totalSize);
-        ArenaReservation reservationB = arenaManager.ReserveForWrite(totalSize);
+        ArenaReservation reservation = arenaManager.ReserveForWrite(totalSize);
         try
         {
             long sw = Stopwatch.GetTimestamp();
-            int len = PersistedSnapshotBuilder.MergeSnapshots(snapshots, reservationA.GetSpan(), reservationB.GetSpan(), out bool resultInA, referencedIds);
+            int len = PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, reservation.GetSpan(), referencedIds);
             _persistedSnapshotSize.WithLabels($"size{compactSize}").Observe(len);
             _persistedSnapshotCompactTime.WithLabels($"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);
 
-            ArenaReservation result = resultInA ? reservationA : reservationB;
-            ArenaReservation temp = resultInA ? reservationB : reservationA;
-            temp.Return();
-
-            result.Size = len;
-            PersistedSnapshot compacted = new(0, from, to, PersistedSnapshotType.Compacted, result);
+            reservation.Size = len;
+            PersistedSnapshot compacted = new(0, from, to, PersistedSnapshotType.Linked, reservation);
             try
             {
                 PersistedSnapshotUtils.ValidateCompactedPersistedSnapshot(compacted, snapshots, true);
@@ -121,12 +116,11 @@ public class PersistedSnapshotCompactor(
                 compacted.Dispose();
             }
 
-            persistedSnapshotRepository.AddCompactedSnapshot(from, to, result, len, referencedIds, isPersistable);
+            persistedSnapshotRepository.AddCompactedSnapshot(from, to, reservation, len, referencedIds, isPersistable);
         }
         catch
         {
-            reservationA.Return();
-            reservationB.Return();
+            reservation.Return();
             throw;
         }
 

@@ -162,7 +162,7 @@ public class PersistedSnapshotTests
 
         Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data = PersistedSnapshotBuilder.Build(snapshot);
-        PersistedSnapshot persisted = CreatePersistedSnapshot(1, from, to, PersistedSnapshotType.Base, data);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(1, from, to, PersistedSnapshotType.Full, data);
 
         Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted));
     }
@@ -202,8 +202,8 @@ public class PersistedSnapshotTests
         byte[] data1 = PersistedSnapshotBuilder.Build(snap1);
         byte[] data2 = PersistedSnapshotBuilder.Build(snap2);
 
-        PersistedSnapshot p1 = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Base, data1);
-        PersistedSnapshot p2 = CreatePersistedSnapshot(2, s1, s2, PersistedSnapshotType.Base, data2);
+        PersistedSnapshot p1 = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Full, data1);
+        PersistedSnapshot p2 = CreatePersistedSnapshot(2, s1, s2, PersistedSnapshotType.Full, data2);
 
         // Ordered oldest-first; query newest-first via indexer
         PersistedSnapshotList list = new(2);
@@ -239,7 +239,7 @@ public class PersistedSnapshotTests
         // Build HSST from original snapshot
         Snapshot snapshot = new Snapshot(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data = PersistedSnapshotBuilder.Build(snapshot);
-        PersistedSnapshot persisted = CreatePersistedSnapshot(1, from, to, PersistedSnapshotType.Base, data);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(1, from, to, PersistedSnapshotType.Full, data);
 
         PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, dumpWhenFailed: false);
     }
@@ -272,10 +272,10 @@ public class PersistedSnapshotTests
         byte[] data2 = PersistedSnapshotBuilder.Build(snap2);
 
         PersistedSnapshotList toMerge = new(2);
-        toMerge.Add(CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Base, data1));
-        toMerge.Add(CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Base, data2));
+        toMerge.Add(CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Full, data1));
+        toMerge.Add(CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Full, data2));
         byte[] merged = PersistedSnapshotBuilder.MergeSnapshots(toMerge);
-        PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s2, PersistedSnapshotType.Base, merged);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s2, PersistedSnapshotType.Full, merged);
 
         // addrA slot 1 should be overridden to val3
         Assert.That(persisted.TryGetSlot(addrA, (UInt256)1, out ReadOnlySpan<byte> slot1), Is.True);
@@ -312,10 +312,10 @@ public class PersistedSnapshotTests
         byte[] dataNewer = PersistedSnapshotBuilder.Build(newer);
 
         PersistedSnapshotList toMerge = new(2);
-        toMerge.Add(CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Base, dataOlder));
-        toMerge.Add(CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Base, dataNewer));
+        toMerge.Add(CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Full, dataOlder));
+        toMerge.Add(CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Full, dataNewer));
         byte[] merged = PersistedSnapshotBuilder.MergeSnapshots(toMerge);
-        PersistedSnapshot persisted = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Base, merged);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Full, merged);
 
         Assert.That(persisted.TryGetSlot(addr, (UInt256)1, out ReadOnlySpan<byte> slot), Is.True);
         Assert.That(slot.Length, Is.EqualTo(0), "Null slot should override value after merge");
@@ -343,10 +343,10 @@ public class PersistedSnapshotTests
         byte[] dataNewer = PersistedSnapshotBuilder.Build(newer);
 
         PersistedSnapshotList toMerge = new(2);
-        toMerge.Add(CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Base, dataOlder));
-        toMerge.Add(CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Base, dataNewer));
+        toMerge.Add(CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Full, dataOlder));
+        toMerge.Add(CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Full, dataNewer));
         byte[] merged = PersistedSnapshotBuilder.MergeSnapshots(toMerge);
-        PersistedSnapshot persisted = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Base, merged);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Full, merged);
 
         Assert.That(persisted.TryGetSlot(addr, (UInt256)1, out ReadOnlySpan<byte> slot), Is.True);
         Assert.That(slot.Length, Is.GreaterThan(0), "Value should override null slot after merge");
@@ -374,10 +374,10 @@ public class PersistedSnapshotTests
         byte[] dataNewer = PersistedSnapshotBuilder.Build(newer);
 
         PersistedSnapshotList toMerge = new(2);
-        toMerge.Add(CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Base, dataOlder));
-        toMerge.Add(CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Base, dataNewer));
+        toMerge.Add(CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Full, dataOlder));
+        toMerge.Add(CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Full, dataNewer));
         byte[] merged = PersistedSnapshotBuilder.MergeSnapshots(toMerge);
-        PersistedSnapshot persisted = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Base, merged);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Full, merged);
 
         Assert.That(persisted.TryGetSlot(addr, (UInt256)1, out ReadOnlySpan<byte> slot1), Is.True);
         Assert.That(slot1.Length, Is.EqualTo(0), "Null slot from older should be preserved");
@@ -385,4 +385,30 @@ public class PersistedSnapshotTests
         Assert.That(persisted.TryGetSlot(addr, (UInt256)2, out ReadOnlySpan<byte> slot2), Is.True);
         Assert.That(slot2.Length, Is.GreaterThan(0), "Value from newer should be present");
     }
+
+    [Test]
+    [Explicit]
+    public void DiagnosticCompactedJsonFile()
+    {
+        string jsonPath = "/home/amirul/repo/nethermind/broken.compacted.23447048.23447052.json";
+        List<string> base64List = System.Text.Json.JsonSerializer.Deserialize<List<string>>(System.IO.File.ReadAllText(jsonPath))!;
+
+        PersistedSnapshotList snapshots = new(base64List.Count);
+        for (int i = 0; i < base64List.Count; i++)
+        {
+            byte[] data = Convert.FromBase64String(base64List[i]);
+            StateId snapFrom = new(23447048 + i, Keccak.Compute($"{i}"));
+            StateId snapTo = new(23447048 + i + 1, Keccak.Compute($"{i + 1}"));
+            snapshots.Add(CreatePersistedSnapshot(i, snapFrom, snapTo, PersistedSnapshotType.Full, data));
+        }
+
+        byte[] merged = PersistedSnapshotBuilder.MergeSnapshots(snapshots);
+
+        StateId compFrom = snapshots[0].From;
+        StateId compTo = snapshots[snapshots.Count - 1].To;
+        PersistedSnapshot compacted = CreatePersistedSnapshot(100, compFrom, compTo,
+            PersistedSnapshotType.Linked, merged);
+        PersistedSnapshotUtils.ValidateCompactedPersistedSnapshot(compacted, snapshots, true);
+    }
+
 }

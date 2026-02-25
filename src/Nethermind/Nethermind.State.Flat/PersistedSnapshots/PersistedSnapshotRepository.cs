@@ -49,14 +49,14 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
             // Load base snapshots first
             foreach (SnapshotCatalog.CatalogEntry entry in _catalog.Entries)
             {
-                if (entry.Type != PersistedSnapshotType.Base) continue;
+                if (entry.Type != PersistedSnapshotType.Full) continue;
                 LoadSnapshot(entry);
             }
 
             // Then compacted
             foreach (SnapshotCatalog.CatalogEntry entry in _catalog.Entries)
             {
-                if (entry.Type != PersistedSnapshotType.Compacted) continue;
+                if (entry.Type != PersistedSnapshotType.Linked) continue;
                 LoadSnapshot(entry);
             }
 
@@ -69,7 +69,7 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
         ArenaReservation reservation = _arenaManager.Open(entry.Location);
 
         PersistedSnapshot[]? referencedSnapshots = null;
-        if (entry.Type == PersistedSnapshotType.Compacted)
+        if (entry.Type == PersistedSnapshotType.Linked)
         {
             int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata(reservation.GetSpan());
             if (refIds is { Length: > 0 })
@@ -92,7 +92,7 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
 
         PersistedSnapshot snapshot = new(entry.Id, entry.From, entry.To, entry.Type, reservation, referencedSnapshots);
 
-        if (entry.Type == PersistedSnapshotType.Base)
+        if (entry.Type == PersistedSnapshotType.Full)
             _baseSnapshots[entry.To] = snapshot;
         else if (entry.To.BlockNumber - entry.From.BlockNumber == _compactSize)
             _persistableCompactedSnapshots[entry.To] = snapshot;
@@ -128,10 +128,10 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
         {
             int id = _nextId++;
             SnapshotLocation location = reservation.FinalizedWrite(actualSize);
-            _catalog.Add(new SnapshotCatalog.CatalogEntry(id, snapshot.From, snapshot.To, PersistedSnapshotType.Base, location));
+            _catalog.Add(new SnapshotCatalog.CatalogEntry(id, snapshot.From, snapshot.To, PersistedSnapshotType.Full, location));
             _catalog.Save();
 
-            PersistedSnapshot persisted = new(id, snapshot.From, snapshot.To, PersistedSnapshotType.Base, reservation);
+            PersistedSnapshot persisted = new(id, snapshot.From, snapshot.To, PersistedSnapshotType.Full, reservation);
             PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
             _baseSnapshots[snapshot.To] = persisted;
         }
@@ -147,11 +147,11 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
         {
             int id = _nextId++;
             SnapshotLocation location = reservation.FinalizedWrite(actualSize);
-            _catalog.Add(new SnapshotCatalog.CatalogEntry(id, from, to, PersistedSnapshotType.Compacted, location));
+            _catalog.Add(new SnapshotCatalog.CatalogEntry(id, from, to, PersistedSnapshotType.Linked, location));
             _catalog.Save();
 
             PersistedSnapshot[]? referencedSnapshots = ResolveReferencedSnapshots(referencedSnapshotIds);
-            PersistedSnapshot snapshot = new(id, from, to, PersistedSnapshotType.Compacted, reservation, referencedSnapshots);
+            PersistedSnapshot snapshot = new(id, from, to, PersistedSnapshotType.Linked, reservation, referencedSnapshots);
             if (isPersistable)
                 _persistableCompactedSnapshots[to] = snapshot;
             else

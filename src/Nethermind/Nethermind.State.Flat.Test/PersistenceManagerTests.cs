@@ -224,7 +224,7 @@ public class PersistenceManagerTests
         StateId target = CreateStateId(16);
         SnapshotLocation emptyLoc = _memArena.Allocate([]);
         ArenaReservation emptyRes = _memArena.Open(emptyLoc);
-        PersistedSnapshot persisted = new PersistedSnapshot(1, Block0, target, PersistedSnapshotType.Base, emptyRes);
+        PersistedSnapshot persisted = new PersistedSnapshot(1, Block0, target, PersistedSnapshotType.Full, emptyRes);
         _persistedSnapshotRepository.TryLeasePersistableCompactedSnapshotTo(target, out Arg.Any<PersistedSnapshot?>())
             .Returns(x => { x[1] = persisted; return true; });
 
