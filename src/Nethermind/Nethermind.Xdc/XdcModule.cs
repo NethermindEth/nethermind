@@ -109,6 +109,8 @@ public class XdcModule : Module
             .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
             .AddSingleton<XdcStateSyncSnapshotManager>()
             .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
+            .AddSingleton<ISyncDownloader<StateSyncBatch>, XdcStateSyncDownloader>()
+
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
@@ -120,7 +122,7 @@ public class XdcModule : Module
             .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
             .AddSingleton(new BlockDecoder(new XdcHeaderDecoder()))
             .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
-            .AddMessageSerializer<SyncInfoMsg, SyncinfoMsgSerializer>()
+            .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
             .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
@@ -129,16 +131,7 @@ public class XdcModule : Module
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
             .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
-            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
-
-
-            //Sync
-            .AddSingleton<CreateSnapshotOnStateSyncFinished>()
-                .OnActivate<ISyncFeed<StateSyncBatch>>((_, ctx) =>
-                {
-                    ctx.Resolve<CreateSnapshotOnStateSyncFinished>();
-                })
-            ;
+            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
     }
 
     private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)

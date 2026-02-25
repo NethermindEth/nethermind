@@ -55,7 +55,7 @@ public class StartXdcBlockProducer(
     public IBlockProducer BuildProducer()
     {
         ILogger logger = logManager.GetClassLogger();
-        if (logger.IsInfo) logger.Info("Starting XDC block producer & sealer");
+        if (logger.IsDebug) logger.Debug("Starting XDC block producer & sealer");
 
         IBlockProducerEnv env = nethermindApi.BlockProducerEnvFactory.Create();
 

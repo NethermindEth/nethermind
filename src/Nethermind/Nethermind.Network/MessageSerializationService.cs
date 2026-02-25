@@ -68,7 +68,7 @@ namespace Nethermind.Network
             {
                 if (message is P2PMessage p2PMessage)
                 {
-                    buffer.WriteBytes(Rlp.Encode((long)p2PMessage.AdaptivePacketType).Bytes);
+                    buffer.WriteBytes(Rlp.Encode(p2PMessage.AdaptivePacketType, stackalloc byte[sizeof(long) + 1]));
                 }
             }
 

@@ -1271,14 +1271,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (_logger.IsDebug) _logger.Debug($"On shutdown persisting {candidateSets.Count} commit sets. Finalized block is {finalizedBlockNumber}.");
 
-        INodeStorage.IWriteBatch writeBatch = _nodeStorage.StartWriteBatch();
         for (int index = 0; index < candidateSets.Count; index++)
         {
             BlockCommitSet blockCommitSet = candidateSets[index];
             if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
             ParallelPersistBlockCommitSet(blockCommitSet, _persistedNodeRecorderNoop);
         }
-        writeBatch.Dispose();
         _nodeStorage.Flush(onlyWal: false);
 
         if (candidateSets.Count == 0)
@@ -1421,6 +1419,20 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (node.NodeType == NodeType.Unknown)
         {
             return TryLoadRlp(null, TreePath.Empty, node.Keccak!) is not null;
+        }
+
+        return true;
+    }
+
+    public bool HasRoot(Hash256 stateRoot, long blockNumber)
+    {
+        if (!HasRoot(stateRoot)) return false;
+
+        // Reject blocks whose state may have been partially pruned (root exists but child nodes don't)
+        long lastPersisted = LastPersistedBlockNumber;
+        if (lastPersisted > 0 && blockNumber < lastPersisted - _maxDepth)
+        {
+            return false;
         }
 
         return true;

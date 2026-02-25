@@ -21,7 +21,6 @@ public class XdcStateSyncPivot : IStateSyncPivot
     private readonly IBlockTree _blockTree;
     private readonly ISyncConfig _syncConfig;
     private readonly IStateReader _stateReader;
-    private readonly ILogger _logger;
     private readonly Queue<XdcBlockHeader> _targets = new();
     private XdcBlockHeader? _pivotHeader;
     private bool _initialized;
@@ -31,14 +30,12 @@ public class XdcStateSyncPivot : IStateSyncPivot
         IBlockTree blockTree,
         ISyncConfig syncConfig,
         IStateReader stateReader,
-        XdcStateSyncSnapshotManager syncSnapshotManager,
-        ILogManager logManager)
+        XdcStateSyncSnapshotManager syncSnapshotManager)
     {
         _blockTree = blockTree;
         _syncConfig = syncConfig;
         _stateReader = stateReader;
         _syncSnapshotManager = syncSnapshotManager;
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
     public BlockHeader? GetPivotHeader()

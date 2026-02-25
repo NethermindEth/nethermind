@@ -20,6 +20,11 @@ public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature s
     public Address? Signer { get; set; }
     public Hash256 Hash => _hash ??= Keccak.Compute(_decoder.Encode(this, RlpBehaviors.None).Bytes);
 
+    public override bool Equals(object? obj) =>
+        obj is Vote other && Hash == other.Hash;
+
+    public override int GetHashCode() => Hash.GetHashCode();
+
     public override string ToString() =>
         $"{ProposedBlockInfo.Round}:{GapNumber}:{ProposedBlockInfo.BlockNumber}";
 

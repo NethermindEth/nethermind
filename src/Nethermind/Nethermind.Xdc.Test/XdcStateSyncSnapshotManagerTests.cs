@@ -27,6 +27,8 @@ internal class XdcStateSyncSnapshotManagerTests
         TestCase(25, 10, 5, new int[] { 0, 9, 18, 23 }, new int[] { 15, 25 }),
         TestCase(26, 10, 5, new int[] { 0, 9, 18, 23 }, new int[] { 15, 25 }),
         TestCase(26, 10, 5, new int[] { 0, 9, 18, 28 }, new int[] { 5, 15, 25 }),
+        TestCase(11, 10, 5, new int[] { 0, 9 }, new int[] { 5 }),
+        TestCase(4, 10, 5, new int[] { 0 }, new int[] { }),
     ]
     public async Task GetGapBlocks_ReturnsExpectedGapBlockNumbers(
         int pivotNumber,

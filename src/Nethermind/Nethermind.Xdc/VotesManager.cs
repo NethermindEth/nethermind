@@ -204,8 +204,8 @@ internal class VotesManager(
     {
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
-            if (peer.SyncPeer is Xdpos2ProtocolHandler xdpos2Protocol)
-                xdpos2Protocol.SendVote(vote);
+            if (peer.SyncPeer is XdcProtocolHandler xdcProtocol)
+                xdcProtocol.SendVote(vote);
         }
     }
 

@@ -75,8 +75,6 @@ namespace Nethermind.Network.Rlpx
         {
             Rlp.ValueDecoderContext rlpContext = new(input.AsSpan());
             ulong rlpPacketType = rlpContext.DecodeULong();
-            if (rlpPacketType > byte.MaxValue)
-                throw new NotSupportedException($"Received unsupported packet code={rlpPacketType}. We currently only support values 0-255.");
             int read = rlpContext.Position;
             input.SkipBytes(read);
             IByteBuffer content;
@@ -98,7 +96,7 @@ namespace Nethermind.Network.Rlpx
             // otherwise we need to read into the freshly allocated buffer.
             if (frame.IsChunked)
             {
-                input.ReadBytes(_zeroPacket.Content, frame.Size - 1);
+                input.ReadBytes(_zeroPacket.Content, frame.Size - read);
                 // do not call Release since the input buffer is managed by
             }
         }

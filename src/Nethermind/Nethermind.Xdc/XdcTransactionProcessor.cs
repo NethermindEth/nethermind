@@ -63,7 +63,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         }
 
         Address coinbase = header.GasBeneficiary!;
-        Address owner = _masternodeVotingContract.GetCandidateOwnerDuringProcessing(this, header, coinbase);
+        Address owner = _masternodeVotingContract.GetCandidateOwner(this, header, coinbase);
 
         if (owner is null || owner == Address.Zero)
             return;
@@ -181,15 +181,10 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         return base.CalculateEffectiveGasPrice(tx, eip1559Enabled, in baseFee, out opcodeGasPrice);
     }
 
-    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
-    {
-        if (tx.RequiresSpecialHandling((IXdcReleaseSpec)spec))
-        {
-            return new IntrinsicGas<EthereumGasPolicy>();
-        }
-
-        return base.CalculateIntrinsicGas(tx, spec);
-    }
+    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
+        tx.RequiresSpecialHandling((IXdcReleaseSpec)spec)
+            ? new IntrinsicGas<EthereumGasPolicy>()
+            : base.CalculateIntrinsicGas(tx, spec);
 
     private TransactionResult ExecuteSpecialTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
