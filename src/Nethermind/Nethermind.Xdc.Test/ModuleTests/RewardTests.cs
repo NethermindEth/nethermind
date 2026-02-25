@@ -30,7 +30,7 @@ public class RewardTests
     [Test]
     public async Task TestHookRewardV2()
     {
-        var chain = await XdcTestBlockchain.Create();
+        using var chain = await XdcTestBlockchain.Create();
         var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
         var signingTxCache = new SigningTxCache(chain.BlockTree, chain.SpecProvider);
         chain.ChangeReleaseSpec(spec =>

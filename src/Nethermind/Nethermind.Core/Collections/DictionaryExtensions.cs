@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Resettables;
 
@@ -19,6 +20,12 @@ public static class DictionaryExtensions
 
     extension<TKey, TValue>(Dictionary<TKey, TValue> dictionary) where TKey : notnull
     {
+        /// <summary>
+        /// Mirrors <see cref="System.Collections.Concurrent.ConcurrentDictionary{TKey,TValue}.TryRemove(TKey, out TValue)"/>
+        /// so that <see cref="Dictionary{TKey,TValue}"/> can be used with the same API.
+        /// </summary>
+        public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => dictionary.Remove(key, out value);
+
         public ref TValue GetOrAdd(TKey key, Func<TKey, TValue> factory, out bool exists)
         {
             ref TValue? existing = ref CollectionsMarshal.GetValueRefOrAddDefault(dictionary, key, out exists);
@@ -31,6 +38,22 @@ public static class DictionaryExtensions
 
         public ref TValue GetOrAdd(TKey key, Func<TKey, TValue> factory) => ref dictionary.GetOrAdd(key, factory, out _);
 
+        public bool TryUpdate(TKey key, TValue newValue, TValue comparisonValue)
+        {
+            ref TValue value = ref CollectionsMarshal.GetValueRefOrNullRef(dictionary, key);
+            if (!Unsafe.IsNullRef(ref value) && EqualityComparer<TValue>.Default.Equals(value, comparisonValue))
+            {
+                value = newValue;
+                return true;
+            }
+            return false;
+        }
+
+        public bool NoResizeClear()
+        {
+            dictionary.Clear();
+            return true;
+        }
     }
 
     /// <param name="dictionary">The dictionary whose values will be returned and cleared.</param>
