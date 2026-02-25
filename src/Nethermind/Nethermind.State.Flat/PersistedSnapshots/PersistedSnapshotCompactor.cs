@@ -89,7 +89,10 @@ public class PersistedSnapshotCompactor(
 
         SnapshotLocation location;
         ArenaReservation reservation;
-        using (ArenaWriter arenaWriter = arenaManager.CreateWriter(0))
+        int estimatedSize = 0;
+        for (int i = 0; i < snapshots.Count; i++)
+            estimatedSize += snapshots[i].Size;
+        using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize))
         {
             long sw = Stopwatch.GetTimestamp();
             PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref arenaWriter.GetWriter(), referencedIds);
