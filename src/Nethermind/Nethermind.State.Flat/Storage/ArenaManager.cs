@@ -91,22 +91,6 @@ public sealed class ArenaManager : IArenaManager
     }
 
     /// <summary>
-    /// Allocate space for data and write it to an arena file via mmap.
-    /// </summary>
-    public SnapshotLocation Allocate(ReadOnlySpan<byte> data)
-    {
-        lock (_lock)
-        {
-            ArenaFile arena = GetOrCreateArena(data.Length);
-            long offset = _frontiers[arena.Id];
-            using ArenaFile.MmapWriteStream stream = arena.CreateWriteStream(offset);
-            stream.Write(data);
-            _frontiers[arena.Id] = offset + data.Length;
-            return new SnapshotLocation(arena.Id, offset, data.Length);
-        }
-    }
-
-    /// <summary>
     /// Create an <see cref="ArenaWriter"/> for buffered writes.
     /// The arena is marked as reserved until <see cref="CompleteWrite"/> or <see cref="CancelWrite"/>.
     /// </summary>

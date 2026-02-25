@@ -65,8 +65,11 @@ public class LongFinalityIntegrationTests
     private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, byte[] data,
         PersistedSnapshot[]? referencedSnapshots = null)
     {
-        SnapshotLocation loc = _memArena.Allocate(data);
-        ArenaReservation reservation = _memArena.Open(loc);
+        using ArenaWriter writer = _memArena.CreateWriter();
+        Span<byte> span = writer.GetWriter().GetSpan(data.Length);
+        data.CopyTo(span);
+        writer.GetWriter().Advance(data.Length);
+        (_, ArenaReservation reservation) = writer.Complete();
         return new PersistedSnapshot(id, from, to, type, reservation, referencedSnapshots);
     }
 
