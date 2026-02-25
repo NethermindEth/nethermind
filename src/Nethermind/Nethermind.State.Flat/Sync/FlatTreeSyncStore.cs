@@ -85,7 +85,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         foreach (DeletionRange range in ranges.AsSpan())
         {
             writeBatch.DeleteAccountRange(range.From, range.To);
-            writeBatch.DeleteStateTrieNodeRange(ComputeTreePathForHash(range.From, 64), ComputeTreePathForHash(range.To, 64));
+            writeBatch.DeleteStateTrieNodeRange(new TreePath(range.From, 64), new TreePath(range.To, 64));
         }
     }
 
@@ -97,7 +97,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         foreach (DeletionRange range in ranges.AsSpan())
         {
             writeBatch.DeleteStorageRange(addressHash, range.From, range.To);
-            writeBatch.DeleteStorageTrieNodeRange(addressHash, ComputeTreePathForHash(range.From, 64), ComputeTreePathForHash(range.To, 64));
+            writeBatch.DeleteStorageTrieNodeRange(addressHash, new TreePath(range.From, 64), new TreePath(range.To, 64));
         }
     }
 
@@ -232,12 +232,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     /// </summary>
     private static DeletionRange ComputeSubtreeRangeForNibble(TreePath path, int from, int to) =>
         new(path.Append(from).ToLowerBoundPath(), path.Append(to).ToUpperBoundPath());
-
-    /// <summary>
-    /// Create a TreePath from a ValueHash256 with specified length.
-    /// </summary>
-    private static TreePath ComputeTreePathForHash(in ValueHash256 hash, int length) =>
-        new(hash, length);
 
     public void FinalizeSync(BlockHeader pivotHeader)
     {
