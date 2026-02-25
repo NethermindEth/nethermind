@@ -165,7 +165,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
+            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                 return _systemTransactionProcessor.Execute(tx, tracer, opts);
