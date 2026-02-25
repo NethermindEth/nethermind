@@ -24,7 +24,7 @@ public class BSearchIndexTests
     [Test]
     public void IndexMetadata_ReadFromEnd_MinimalNode()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<SpanBufferWriter> builder) => { });
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) => { });
 
         BSearchIndexReader index = BSearchIndexReader.ReadFromEnd(data, data.Length);
         Assert.That(index.EntryCount, Is.EqualTo(0));
@@ -35,7 +35,7 @@ public class BSearchIndexTests
     [Test]
     public void IndexMetadata_WithBaseOffset_ParsedCorrectly()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<SpanBufferWriter> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) =>
         {
             for (int i = 0; i < 10; i++)
             {
@@ -53,7 +53,7 @@ public class BSearchIndexTests
     [Test]
     public void BSearchIndex_EmptyIndex_HandlesCorrectly()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<SpanBufferWriter> builder) => { });
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) => { });
 
         BSearchIndexReader index = BSearchIndexReader.ReadFromEnd(data, data.Length);
         Assert.That(index.EntryCount, Is.EqualTo(0));
@@ -64,7 +64,7 @@ public class BSearchIndexTests
     [Test]
     public void BSearchIndex_SingleLeafNode_StructureValid()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<SpanBufferWriter> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) =>
         {
             builder.Add([0x41, 0x42], [0x01, 0x02, 0x03]);
         });
@@ -344,7 +344,7 @@ public class BSearchIndexTests
     [Test]
     public void MultiLevel_Tree_RootIsIntermediate()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<SpanBufferWriter> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) =>
         {
             for (int i = 0; i < 20; i++)
             {
@@ -363,7 +363,7 @@ public class BSearchIndexTests
     public void FullHsst_AllKeysReachableViaIndex()
     {
         int count = 100;
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<SpanBufferWriter> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) =>
         {
             for (int i = 0; i < count; i++)
             {

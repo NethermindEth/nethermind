@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -581,21 +580,13 @@ public static class PersistedSnapshotBuilder
                 if (snapshots[i].Type == PersistedSnapshotType.Full)
                 {
                     int estimatedSize = snapshots[i].Size / 2 + 4096;
-                    byte[] buffer = ArrayPool<byte>.Shared.Rent(Math.Max(estimatedSize, snapshots[i].Size));
-                    try
-                    {
-                        SpanBufferWriter convertWriter = new(buffer);
-                        ConvertFullToLinked(snapshots[i], ref convertWriter);
-                        SnapshotLocation loc = tempArena.Allocate(buffer.AsSpan(0, convertWriter.Written));
-                        ArenaReservation tempRes = tempArena.Open(loc);
-                        PersistedSnapshot convertedSnap = new(snapshots[i].Id, snapshots[i].From, snapshots[i].To,
-                            PersistedSnapshotType.Linked, tempRes);
-                        mergeSnapshots.Add(convertedSnap);
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(buffer);
-                    }
+                    using PooledByteBufferWriter pooled = new(Math.Max(estimatedSize, snapshots[i].Size));
+                    ConvertFullToLinked(snapshots[i], ref pooled.GetWriter());
+                    SnapshotLocation loc = tempArena.Allocate(pooled.WrittenSpan);
+                    ArenaReservation tempRes = tempArena.Open(loc);
+                    PersistedSnapshot convertedSnap = new(snapshots[i].Id, snapshots[i].From, snapshots[i].To,
+                        PersistedSnapshotType.Linked, tempRes);
+                    mergeSnapshots.Add(convertedSnap);
                 }
                 else
                 {
