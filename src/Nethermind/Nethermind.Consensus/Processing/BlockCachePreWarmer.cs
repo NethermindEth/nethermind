@@ -170,38 +170,37 @@ public sealed class BlockCachePreWarmer(
                 // Convert to array for parallel iteration
                 ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
 
-                // Parallel across different senders, sequential within the same sender
+                // Parallel across different senders, sequential within the same sender.
+                // Use init/finally to create one scope per thread instead of per group,
+                // reducing scope creation overhead from ~180 to ~16.
                 ParallelUnbalancedWork.For(
                     0,
                     groupArray.Count,
                     parallelOptions,
-                    (blockState, groupArray, parallelOptions.CancellationToken),
-                    static (groupIndex, tupleState) =>
+                    () =>
                     {
-                        (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
-                        ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
-
-                        // Get thread-local processing state for this sender's transactions
                         IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
-                        try
-                        {
-                            using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
-                            BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-                            scope.TransactionProcessor.SetBlockExecutionContext(context);
+                        IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
+                        scope.TransactionProcessor.SetBlockExecutionContext(
+                            new BlockExecutionContext(blockState.Block.Header, blockState.Spec));
+                        return (Env: env, Scope: scope, BlockState: blockState, Groups: groupArray, Token: parallelOptions.CancellationToken);
+                    },
+                    static (groupIndex, state) =>
+                    {
+                        ArrayPoolList<(int Index, Transaction Tx)> txList = state.Groups[groupIndex];
 
-                            // Sequential within the same sender-state changes propagate correctly
-                            foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
-                            {
-                                if (token.IsCancellationRequested) return tupleState;
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState);
-                            }
-                        }
-                        finally
+                        foreach ((int txIndex, Transaction tx) in txList.AsSpan())
                         {
-                            blockState.PreWarmer._envPool.Return(env);
+                            if (state.Token.IsCancellationRequested) return state;
+                            WarmupSingleTransaction(state.Scope, tx, txIndex, state.BlockState);
                         }
 
-                        return tupleState;
+                        return state;
+                    },
+                    static (state) =>
+                    {
+                        state.Scope.Dispose();
+                        state.BlockState.PreWarmer._envPool.Return(state.Env);
                     });
             }
             finally
