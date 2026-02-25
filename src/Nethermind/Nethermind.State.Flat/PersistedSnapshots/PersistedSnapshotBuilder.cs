@@ -431,82 +431,81 @@ public static class PersistedSnapshotBuilder
     /// Trie columns (0x03, 0x05, 0x06) have values replaced with NodeRef(snapshotId, offset).
     /// Nested trie columns (0x07, 0x08) have inner values replaced with NodeRefs.
     /// </summary>
-    internal static byte[] ConvertFullToLinked(PersistedSnapshot fullSnapshot)
+    internal static void ConvertFullToLinked<TWriter>(PersistedSnapshot fullSnapshot, ref TWriter writer) where TWriter : IByteBufferWriter
     {
-        int estimatedSize = fullSnapshot.Size / 2 + 4096;
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(Math.Max(estimatedSize, fullSnapshot.Size));
-        try
+        ReadOnlySpan<byte> snapshotData = fullSnapshot.GetSpan();
+        Hsst.Hsst outer = new(snapshotData);
+        using HsstBuilder<TWriter> outerBuilder = new(ref writer);
+
+        byte[][] tags = [
+            PersistedSnapshot.MetadataTag,
+            PersistedSnapshot.AccountColumnTag,
+            PersistedSnapshot.StateNodeTag,
+            PersistedSnapshot.StateTopNodesTag,
+            PersistedSnapshot.StateNodeFallbackTag,
+            PersistedSnapshot.StorageNodeTag,
+            PersistedSnapshot.StorageNodeFallbackTag,
+        ];
+
+        int snapshotId = fullSnapshot.Id;
+
+        foreach (byte[] tag in tags)
         {
-            ReadOnlySpan<byte> snapshotData = fullSnapshot.GetSpan();
-            Hsst.Hsst outer = new(snapshotData);
-            SpanBufferWriter outerWriter = new(buffer);
-            using HsstBuilder<SpanBufferWriter> outerBuilder = new(ref outerWriter);
+            if (!outer.TryGet(tag, out ReadOnlySpan<byte> column)) continue;
+            int columnOffset = SpanOffset(snapshotData, column);
 
-            byte[][] tags = [
-                PersistedSnapshot.MetadataTag,
-                PersistedSnapshot.AccountColumnTag,
-                PersistedSnapshot.StateNodeTag,
-                PersistedSnapshot.StateTopNodesTag,
-                PersistedSnapshot.StateNodeFallbackTag,
-                PersistedSnapshot.StorageNodeTag,
-                PersistedSnapshot.StorageNodeFallbackTag,
-            ];
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
 
-            int snapshotId = fullSnapshot.Id;
-            Span<byte> refBytes = stackalloc byte[NodeRef.Size];
-
-            foreach (byte[] tag in tags)
+            switch (tag[0])
             {
-                if (!outer.TryGet(tag, out ReadOnlySpan<byte> column)) continue;
-                int columnOffset = SpanOffset(snapshotData, column);
-
-                ref SpanBufferWriter valueWriter = ref outerBuilder.BeginValueWrite();
-
-                int columnLen = tag[0] switch
-                {
-                    // Metadata and account: copy as-is
-                    0x00 or 0x01 => CopyColumn(column, valueWriter.GetSpan(0)),
-                    // Flat trie columns: convert values to NodeRefs
-                    0x03 => ConvertFlatColumnToNodeRefs(column, valueWriter.GetSpan(0), snapshotId, columnOffset, minSeparatorLength: 8),
-                    0x05 => ConvertFlatColumnToNodeRefs(column, valueWriter.GetSpan(0), snapshotId, columnOffset, minSeparatorLength: 3),
-                    0x06 => ConvertFlatColumnToNodeRefs(column, valueWriter.GetSpan(0), snapshotId, columnOffset),
-                    // Nested trie columns: convert inner values to NodeRefs
-                    0x07 => ConvertNestedColumnToNodeRefs(column, snapshotData, valueWriter.GetSpan(0), snapshotId, outerMinSep: 2, innerMinSep: 8),
-                    0x08 => ConvertNestedColumnToNodeRefs(column, snapshotData, valueWriter.GetSpan(0), snapshotId, outerMinSep: 2),
-                    _ => throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}"),
-                };
-
-                valueWriter.Advance(columnLen);
-                outerBuilder.FinishValueWrite(tag);
+                // Metadata and account: copy as-is
+                case 0x00 or 0x01:
+                    CopyColumn(column, ref valueWriter);
+                    break;
+                // Flat trie columns: convert values to NodeRefs
+                case 0x03:
+                    ConvertFlatColumnToNodeRefs(column, ref valueWriter, snapshotId, columnOffset, minSeparatorLength: 8);
+                    break;
+                case 0x05:
+                    ConvertFlatColumnToNodeRefs(column, ref valueWriter, snapshotId, columnOffset, minSeparatorLength: 3);
+                    break;
+                case 0x06:
+                    ConvertFlatColumnToNodeRefs(column, ref valueWriter, snapshotId, columnOffset);
+                    break;
+                // Nested trie columns: convert inner values to NodeRefs
+                case 0x07:
+                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 2, innerMinSep: 8);
+                    break;
+                case 0x08:
+                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 2);
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}");
             }
 
-            outerBuilder.Build();
-            return buffer.AsSpan(0, outerWriter.Written).ToArray();
+            outerBuilder.FinishValueWrite(tag);
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+
+        outerBuilder.Build();
     }
 
-    private static int CopyColumn(ReadOnlySpan<byte> column, Span<byte> output)
+    private static void CopyColumn<TWriter>(ReadOnlySpan<byte> column, ref TWriter writer) where TWriter : IByteBufferWriter
     {
-        column.CopyTo(output);
-        return column.Length;
+        column.CopyTo(writer.GetSpan(column.Length));
+        writer.Advance(column.Length);
     }
 
     /// <summary>
     /// Convert a flat (non-nested) trie column's values to NodeRefs.
     /// Each entry's RLP value is replaced with a NodeRef pointing back to the Full snapshot.
     /// </summary>
-    private static int ConvertFlatColumnToNodeRefs(
-        ReadOnlySpan<byte> column, Span<byte> output,
+    private static void ConvertFlatColumnToNodeRefs<TWriter>(
+        ReadOnlySpan<byte> column, ref TWriter writer,
         int snapshotId, int columnOffset,
-        int minSeparatorLength = 0)
+        int minSeparatorLength = 0) where TWriter : IByteBufferWriter
     {
         Hsst.Hsst hsst = new(column);
-        SpanBufferWriter writer = new(output);
-        HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength, inlineValues: true);
+        HsstBuilder<TWriter> builder = new(ref writer, minSeparatorLength, inlineValues: true);
         Hsst.Hsst.Enumerator e = hsst.GetEnumerator();
         Span<byte> refBytes = stackalloc byte[NodeRef.Size];
 
@@ -519,21 +518,19 @@ public static class PersistedSnapshotBuilder
         builder.Build();
         builder.Dispose();
         e.Dispose();
-        return writer.Written;
     }
 
     /// <summary>
     /// Convert a nested trie column (storage nodes) to NodeRefs.
     /// Outer keys (address hash prefixes) are preserved. Inner values are replaced with NodeRefs.
     /// </summary>
-    private static int ConvertNestedColumnToNodeRefs(
-        ReadOnlySpan<byte> column, ReadOnlySpan<byte> snapshotData, Span<byte> output,
+    private static void ConvertNestedColumnToNodeRefs<TWriter>(
+        ReadOnlySpan<byte> column, ReadOnlySpan<byte> snapshotData, ref TWriter writer,
         int snapshotId,
-        int outerMinSep = 0, int innerMinSep = 0)
+        int outerMinSep = 0, int innerMinSep = 0) where TWriter : IByteBufferWriter
     {
         Hsst.Hsst outerHsst = new(column);
-        SpanBufferWriter writer = new(output);
-        HsstBuilder<SpanBufferWriter> builder = new(ref writer, outerMinSep);
+        HsstBuilder<TWriter> builder = new(ref writer, outerMinSep);
         Hsst.Hsst.Enumerator outerEnum = outerHsst.GetEnumerator();
         Span<byte> refBytes = stackalloc byte[NodeRef.Size];
 
@@ -543,8 +540,8 @@ public static class PersistedSnapshotBuilder
             int innerOffset = SpanOffset(snapshotData, innerData);
 
             Hsst.Hsst innerHsst = new(innerData);
-            ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
-            HsstBuilder<SpanBufferWriter> innerBuilder = new(ref innerWriter, innerMinSep, inlineValues: true);
+            ref TWriter innerWriter = ref builder.BeginValueWrite();
+            HsstBuilder<TWriter> innerBuilder = new(ref innerWriter, innerMinSep, inlineValues: true);
             Hsst.Hsst.Enumerator innerEnum = innerHsst.GetEnumerator();
 
             while (innerEnum.MoveNext())
@@ -562,7 +559,6 @@ public static class PersistedSnapshotBuilder
         builder.Build();
         builder.Dispose();
         outerEnum.Dispose();
-        return writer.Written;
     }
 
     /// <summary>
@@ -584,12 +580,22 @@ public static class PersistedSnapshotBuilder
             {
                 if (snapshots[i].Type == PersistedSnapshotType.Full)
                 {
-                    byte[] converted = ConvertFullToLinked(snapshots[i]);
-                    SnapshotLocation loc = tempArena.Allocate(converted);
-                    ArenaReservation tempRes = tempArena.Open(loc);
-                    PersistedSnapshot convertedSnap = new(snapshots[i].Id, snapshots[i].From, snapshots[i].To,
-                        PersistedSnapshotType.Linked, tempRes);
-                    mergeSnapshots.Add(convertedSnap);
+                    int estimatedSize = snapshots[i].Size / 2 + 4096;
+                    byte[] buffer = ArrayPool<byte>.Shared.Rent(Math.Max(estimatedSize, snapshots[i].Size));
+                    try
+                    {
+                        SpanBufferWriter convertWriter = new(buffer);
+                        ConvertFullToLinked(snapshots[i], ref convertWriter);
+                        SnapshotLocation loc = tempArena.Allocate(buffer.AsSpan(0, convertWriter.Written));
+                        ArenaReservation tempRes = tempArena.Open(loc);
+                        PersistedSnapshot convertedSnap = new(snapshots[i].Id, snapshots[i].From, snapshots[i].To,
+                            PersistedSnapshotType.Linked, tempRes);
+                        mergeSnapshots.Add(convertedSnap);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(buffer);
+                    }
                 }
                 else
                 {

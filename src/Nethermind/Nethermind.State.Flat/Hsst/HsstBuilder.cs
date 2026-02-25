@@ -153,7 +153,7 @@ public ref struct HsstBuilder<TWriter>
     /// <summary>
     /// Convenience: add key-value pair in one call.
     /// </summary>
-    public void Add(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+    public void Add(ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
         if (_inlineValues)
         {
