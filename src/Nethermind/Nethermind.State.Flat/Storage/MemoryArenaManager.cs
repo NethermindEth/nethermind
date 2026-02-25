@@ -12,6 +12,7 @@ public sealed class MemoryArenaManager : IArenaManager
     private readonly Dictionary<int, byte[]> _arenas = [];
     private readonly Dictionary<int, long> _frontiers = [];
     private readonly Dictionary<int, long> _deadBytes = [];
+    private readonly Dictionary<(int ArenaId, long Offset), MemoryStream> _pendingStreams = [];
     private int _nextArenaId;
     private readonly int _arenaSize;
 
@@ -31,52 +32,55 @@ public sealed class MemoryArenaManager : IArenaManager
         return new SnapshotLocation(arenaId, offset, data.Length);
     }
 
-    public ArenaReservation ReserveForWrite(int maximumSize)
+    public ArenaWriter CreateWriter()
     {
-        int arenaId = GetOrCreateArena(maximumSize);
+        int arenaId = GetOrCreateArena(0);
         long offset = _frontiers[arenaId];
-        _frontiers[arenaId] = offset + maximumSize;
-        return new ArenaReservation(this, arenaId, offset, maximumSize);
+        MemoryStream stream = new();
+        _pendingStreams[(arenaId, offset)] = stream;
+        return new ArenaWriter(this, arenaId, offset, stream);
     }
+
+    public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, int actualSize)
+    {
+        if (_pendingStreams.Remove((arenaId, startOffset), out MemoryStream? stream))
+        {
+            // Ensure arena has enough space
+            EnsureCapacity(arenaId, (int)(startOffset + actualSize));
+            stream.GetBuffer().AsSpan(0, actualSize).CopyTo(_arenas[arenaId].AsSpan((int)startOffset));
+        }
+
+        _frontiers[arenaId] = startOffset + actualSize;
+        SnapshotLocation location = new(arenaId, startOffset, actualSize);
+        ArenaReservation reservation = new(this, arenaId, startOffset, actualSize);
+        return (location, reservation);
+    }
+
+    public void CancelWrite(int arenaId, long startOffset) =>
+        _pendingStreams.Remove((arenaId, startOffset));
 
     public ArenaReservation Open(in SnapshotLocation location) =>
         new(this, location.ArenaId, location.Offset, location.Size);
 
-    public Span<byte> GetSpan(ArenaReservation reservation) =>
+    public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) =>
         _arenas[reservation.ArenaId].AsSpan((int)reservation.Offset, reservation.Size);
-
-    public SnapshotLocation FinalizedWrite(ArenaReservation reservation, int actualSize)
-    {
-        int waste = reservation.MaxSize - actualSize;
-        if (waste > 0)
-        {
-            if (_frontiers[reservation.ArenaId] == reservation.Offset + reservation.MaxSize)
-                _frontiers[reservation.ArenaId] = reservation.Offset + actualSize;
-            else
-            {
-                _deadBytes.TryGetValue(reservation.ArenaId, out long dead);
-                _deadBytes[reservation.ArenaId] = dead + waste;
-            }
-        }
-        reservation.Size = actualSize;
-        return new SnapshotLocation(reservation.ArenaId, reservation.Offset, actualSize);
-    }
-
-    public void Return(ArenaReservation reservation)
-    {
-        if (_frontiers[reservation.ArenaId] == reservation.Offset + reservation.MaxSize)
-            _frontiers[reservation.ArenaId] = reservation.Offset;
-        else
-        {
-            _deadBytes.TryGetValue(reservation.ArenaId, out long dead);
-            _deadBytes[reservation.ArenaId] = dead + reservation.MaxSize;
-        }
-    }
 
     public void MarkDead(in SnapshotLocation location)
     {
         _deadBytes.TryGetValue(location.ArenaId, out long dead);
         _deadBytes[location.ArenaId] = dead + location.Size;
+    }
+
+    private void EnsureCapacity(int arenaId, int needed)
+    {
+        if (!_arenas.TryGetValue(arenaId, out byte[]? arena) || needed > arena.Length)
+        {
+            int newSize = Math.Max(_arenaSize, needed);
+            byte[] newArena = new byte[newSize];
+            if (arena is not null)
+                arena.AsSpan(0, Math.Min(arena.Length, newSize)).CopyTo(newArena);
+            _arenas[arenaId] = newArena;
+        }
     }
 
     private int GetOrCreateArena(int requiredSize)
@@ -101,5 +105,6 @@ public sealed class MemoryArenaManager : IArenaManager
         _arenas.Clear();
         _frontiers.Clear();
         _deadBytes.Clear();
+        _pendingStreams.Clear();
     }
 }

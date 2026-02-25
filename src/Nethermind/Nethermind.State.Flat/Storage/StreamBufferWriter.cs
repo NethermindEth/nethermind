@@ -6,11 +6,11 @@ using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.State.Flat.Storage;
 
-public struct FileStreamBufferWriter(FileStream stream) : IByteBufferWriter, IDisposable
+public struct StreamBufferWriter(Stream stream) : IByteBufferWriter, IDisposable
 {
     private const int BufferSize = 1024 * 1024; // 1MB
 
-    private readonly FileStream _stream = stream;
+    private readonly Stream _stream = stream;
     private byte[] _buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
     private int _buffered;
     private long _flushed;
@@ -35,6 +35,7 @@ public struct FileStreamBufferWriter(FileStream stream) : IByteBufferWriter, IDi
             _flushed += _buffered;
             _buffered = 0;
         }
+        _stream.Flush();
     }
 
     public void Dispose()
