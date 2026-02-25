@@ -287,6 +287,7 @@ public class BlockProcessingBenchmark
 
         IWorldState stateProvider = processingScope.Resolve<IWorldState>();
 
+        BlockHeader parentHeader;
         using (stateProvider.BeginScope(IWorldState.PreGenesis))
         {
             stateProvider.CreateAccount(_sender, 1_000_000.Ether());
@@ -301,13 +302,13 @@ public class BlockProcessingBenchmark
 
             stateProvider.Commit(Spec);
             stateProvider.CommitTree(0);
-        }
 
-        BlockHeader parentHeader = Build.A.BlockHeader
-            .WithNumber(0)
-            .WithStateRoot(stateProvider.StateRoot)
-            .WithGasLimit(30_000_000)
-            .TestObject;
+            parentHeader = Build.A.BlockHeader
+                .WithNumber(0)
+                .WithStateRoot(stateProvider.StateRoot)
+                .WithGasLimit(30_000_000)
+                .TestObject;
+        }
 
         IBranchProcessor branchProcessor = processingScope.Resolve<IBranchProcessor>();
 
