@@ -56,15 +56,7 @@ public class SnapshotCompactor : ISnapshotCompactor
                 Snapshot compactedSnapshot = CompactSnapshotBundle(snapshots);
                 if (_snapshotRepository.TryAddCompactedSnapshot(compactedSnapshot))
                 {
-                    StateId stateId1 = snapshot.To;
-                    if (stateId1.BlockNumber % _compactSize == 0)
-                    {
-                        Metrics.CompactTime.Observe(Stopwatch.GetTimestamp() - sw);
-                    }
-                    else
-                    {
-                        Metrics.MidCompactTime.Observe(Stopwatch.GetTimestamp() - sw);
-                    }
+                    Metrics.CompactTime.Observe(Stopwatch.GetTimestamp() - sw);
 
                     return true;
                 }
