@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -159,23 +160,22 @@ public sealed class BlockCachePreWarmer(
         try
         {
             Block block = blockState.Block;
-            if (block.Transactions.Length == 0) return;
+            int txCount = block.Transactions.Length;
+            if (txCount == 0) return;
 
-            // Group transactions by sender to process same-sender transactions sequentially
-            // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
+            // Group transactions by sender using flat arrays — no per-sender list allocations.
+            // sorted[] has tx indices grouped by sender; groupStarts[g..g+1] defines each group's range.
+            int[] sorted = ArrayPool<int>.Shared.Rent(txCount);
+            int[] groupStarts = ArrayPool<int>.Shared.Rent(txCount + 1);
+            int groupCount = BuildSenderGroups(block, sorted, groupStarts);
 
             try
             {
-                // Convert to array for parallel iteration
-                ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
-
                 // Parallel across different senders, sequential within the same sender.
-                // Use init/finally to create one scope per thread instead of per group,
-                // reducing scope creation overhead from ~180 to ~16.
+                // Use init/finally to create one scope per thread instead of per group.
                 ParallelUnbalancedWork.For(
                     0,
-                    groupArray.Count,
+                    groupCount,
                     parallelOptions,
                     () =>
                     {
@@ -183,15 +183,17 @@ public sealed class BlockCachePreWarmer(
                         IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
                         scope.TransactionProcessor.SetBlockExecutionContext(
                             new BlockExecutionContext(blockState.Block.Header, blockState.Spec));
-                        return (Env: env, Scope: scope, BlockState: blockState, Groups: groupArray, Token: parallelOptions.CancellationToken);
+                        return (Env: env, Scope: scope, BlockState: blockState, Sorted: sorted, GroupStarts: groupStarts, Token: parallelOptions.CancellationToken);
                     },
                     static (groupIndex, state) =>
                     {
-                        ArrayPoolList<(int Index, Transaction Tx)> txList = state.Groups[groupIndex];
-
-                        foreach ((int txIndex, Transaction tx) in txList.AsSpan())
+                        int start = state.GroupStarts[groupIndex];
+                        int end = state.GroupStarts[groupIndex + 1];
+                        for (int i = start; i < end; i++)
                         {
                             if (state.Token.IsCancellationRequested) return state;
+                            int txIndex = state.Sorted[i];
+                            Transaction tx = state.BlockState.Block.Transactions[txIndex];
                             WarmupSingleTransaction(state.Scope, tx, txIndex, state.BlockState);
                         }
 
@@ -205,8 +207,8 @@ public sealed class BlockCachePreWarmer(
             }
             finally
             {
-                foreach (KeyValuePair<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> kvp in senderGroups)
-                    kvp.Value.Dispose();
+                ArrayPool<int>.Shared.Return(sorted);
+                ArrayPool<int>.Shared.Return(groupStarts);
             }
         }
         catch (OperationCanceledException)
@@ -219,24 +221,49 @@ public sealed class BlockCachePreWarmer(
         }
     }
 
-    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
+    /// <summary>
+    /// Groups transaction indices by sender into flat arrays.
+    /// Returns the number of groups. sorted[groupStarts[g]..groupStarts[g+1]) are the tx indices for group g,
+    /// preserving original block order within each group.
+    /// </summary>
+    private static int BuildSenderGroups(Block block, int[] sorted, int[] groupStarts)
     {
-        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = new();
+        int txCount = block.Transactions.Length;
+        Dictionary<AddressAsKey, int> senderToGroup = new();
+        int[] txGroupMap = ArrayPool<int>.Shared.Rent(txCount);
+        int groupCount = 0;
 
-        for (int i = 0; i < block.Transactions.Length; i++)
+        // Assign each sender a group index
+        for (int i = 0; i < txCount; i++)
         {
-            Transaction tx = block.Transactions[i];
-            Address sender = tx.SenderAddress!;
-
-            if (!groups.TryGetValue(sender, out ArrayPoolList<(int, Transaction)> list))
+            AddressAsKey sender = block.Transactions[i].SenderAddress!;
+            if (!senderToGroup.TryGetValue(sender, out int g))
             {
-                list = new(4);
-                groups[sender] = list;
+                g = groupCount++;
+                senderToGroup[sender] = g;
             }
-            list.Add((i, tx));
+            txGroupMap[i] = g;
         }
 
-        return groups;
+        // Count transactions per group using groupStarts[1..] as scratch
+        Array.Clear(groupStarts, 0, groupCount + 1);
+        for (int i = 0; i < txCount; i++)
+            groupStarts[txGroupMap[i] + 1]++;
+
+        // Prefix sum to get group start positions
+        for (int g = 1; g <= groupCount; g++)
+            groupStarts[g] += groupStarts[g - 1];
+
+        // Scatter tx indices into sorted array (preserves order within each group)
+        int[] writePos = ArrayPool<int>.Shared.Rent(groupCount);
+        Array.Copy(groupStarts, writePos, groupCount);
+        for (int i = 0; i < txCount; i++)
+            sorted[writePos[txGroupMap[i]]++] = i;
+
+        ArrayPool<int>.Shared.Return(writePos);
+        ArrayPool<int>.Shared.Return(txGroupMap);
+
+        return groupCount;
     }
 
     private static void WarmupSingleTransaction(
