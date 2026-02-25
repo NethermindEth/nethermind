@@ -97,12 +97,12 @@ public class BaseSyncPeerMock : ISyncPeer, ISnapSyncPeer
         throw new System.NotImplementedException();
     }
 
-    public virtual Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+    public virtual Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
     {
         throw new System.NotImplementedException();
     }
 
-    public virtual Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+    public virtual Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
     {
         throw new System.NotImplementedException();
     }

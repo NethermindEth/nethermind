@@ -319,7 +319,7 @@ public abstract class StateSyncFeedTestsBase(
             return Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
         }
 
-        public override Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+        public override Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
         {
             IOwnedReadOnlyList<PathGroup> groups = SnapProtocolHandler.GetPathGroups(request);
             return GetTrieNodes(new GetTrieNodesRequest()
@@ -329,10 +329,11 @@ public abstract class StateSyncFeedTestsBase(
             }, token);
         }
 
-        public override Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+        public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
         {
-            var nodes = _snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
-            return Task.FromResult(nodes!);
+            IOwnedReadOnlyList<byte[]>? nodes = _snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
+            IByteArrayList result = nodes as IByteArrayList ?? new ByteArrayListAdapter(nodes!);
+            return Task.FromResult(result);
         }
     }
 }

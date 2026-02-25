@@ -54,7 +54,7 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
         return Task.FromResult(codes);
     }
 
-    public Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+    public Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
     {
         ArrayPoolList<PathGroup> groups = new(request.Paths.Count);
 
@@ -65,12 +65,14 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
         }
 
         IOwnedReadOnlyList<byte[]>? res = snapServer.GetTrieNodes(groups, request.RootHash, token);
-        return Task.FromResult(res!);
+        IByteArrayList result = res as IByteArrayList ?? new ByteArrayListAdapter(res!);
+        return Task.FromResult(result);
     }
 
-    public Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+    public Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
     {
         IOwnedReadOnlyList<byte[]>? res = snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
-        return Task.FromResult(res!);
+        IByteArrayList result = res as IByteArrayList ?? new ByteArrayListAdapter(res!);
+        return Task.FromResult(result);
     }
 }
