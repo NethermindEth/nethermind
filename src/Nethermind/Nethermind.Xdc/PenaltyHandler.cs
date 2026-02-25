@@ -37,7 +37,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         if (results is null) return [];
 
         var header = (XdcBlockHeader)tree.FindHeader(results.Hash, results.BlockNumber);
-        if (header is null || header.PenaltiesAddress is null) return [];
+        if (header?.PenaltiesAddress is null) return [];
 
         return [.. header.PenaltiesAddress];
     }
