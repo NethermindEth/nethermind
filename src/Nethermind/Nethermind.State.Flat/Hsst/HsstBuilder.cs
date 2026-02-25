@@ -140,8 +140,7 @@ public ref struct HsstBuilder<TWriter>
 
         if (remainingKey.Length > 0)
         {
-            remainingKey.CopyTo(_writer.GetSpan(remainingKey.Length));
-            _writer.Advance(remainingKey.Length);
+            IByteBufferWriter.Copy(ref _writer, remainingKey);
         }
 
         _entriesBuffer.Add(new HsstEntry(sepOffset, sepLen, metadataStart));
@@ -173,8 +172,7 @@ public ref struct HsstBuilder<TWriter>
         else
         {
             _writtenBeforeValue = _writer.Written;
-            value.CopyTo(_writer.GetSpan(value.Length));
-            _writer.Advance(value.Length);
+            IByteBufferWriter.Copy(ref _writer, value);
             FinishValueWrite(key);
         }
     }
