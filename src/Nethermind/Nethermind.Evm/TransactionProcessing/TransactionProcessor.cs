@@ -194,8 +194,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
 
-            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
-
             UpdateMetrics(opts, effectiveGasPrice);
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
@@ -211,7 +209,16 @@ namespace Nethermind.Evm.TransactionProcessing
                 return result;
             }
 
-            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
+            // When restoring (CallAndRestore), we must commit because Reset() clears
+            // the journal and the undo logic relies on _blockChanges having committed state.
+            // When tracing state, commit so the tracer sees pre-EVM diffs separately.
+            // Otherwise, skip this commit: the snapshot taken in ExecuteEvmCall protects
+            // these journal entries from EVM reverts, and the final Commit flushes all at once.
+            if (commit && (restore || tracer.IsTracingState))
+                WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
+
+            // Defer VM context setup until after validation - not needed for BuyGas/IncrementNonce
+            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
 
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();
