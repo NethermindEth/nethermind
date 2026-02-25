@@ -30,4 +30,6 @@ public readonly struct StorageRead(UInt256 key) : IEquatable<StorageRead>, IComp
 
     public static bool operator !=(StorageRead left, StorageRead right) =>
         !(left == right);
+
+    public override readonly string ToString() => Key.ToString();
 }
