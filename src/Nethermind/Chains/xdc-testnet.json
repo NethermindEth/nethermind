@@ -9,7 +9,19 @@
         "rewardCheckpoint": 900,
         "gap": 450,
         "foundationWalletAddr": "0x746249c61f5832c5eed53172776b460491bdcd5c",
-        "foudationWalletAddr": "0x746249c61f5832c5eed53172776b460491bdcd5c"
+        "foudationWalletAddr": "0x746249c61f5832c5eed53172776b460491bdcd5c",
+        "switchBlock": 56828700,
+        "switchEpoch": 63143,
+        "v2Configs": [
+          {
+            "switchRound": 0,
+            "maxMasternodes": 15,
+            "certThreshold": 0.667,
+            "timeoutSyncThreshold": 3,
+            "timeoutPeriod": 10,
+            "minePeriod": 2
+          }
+        ]
       }
     }
   },
