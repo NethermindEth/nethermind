@@ -12,25 +12,30 @@ public static unsafe partial class Zisk
 {
     public static class Precompiles
     {
-        [DllImport("__Internal")]
+        private const string Internal = "__Internal";
+
+        [DllImport(Internal)]
+        public static extern byte bls12_381_fp_to_g1_c(byte* ret, byte* fp);
+
+        [DllImport(Internal)]
         public static extern byte bls12_381_g2_add_c(byte* ret, byte* a, byte* b);
 
-        [DllImport("__Internal")]
+        [DllImport(Internal)]
         public static extern byte bls12_381_g2_msm_c(byte* ret, byte* pairs, nuint num_pairs);
 
-        [DllImport("__Internal")]
+        [DllImport(Internal)]
         public static extern byte bls12_381_pairing_check_c(byte* pairs, nuint num_pairs);
 
-        [DllImport("__Internal")]
+        [DllImport(Internal)]
         public static extern byte bn254_g1_add_c(byte* p1, byte* p2, byte* ret);
 
-        [DllImport("__Internal")]
+        [DllImport(Internal)]
         public static extern byte bn254_g1_mul_c(byte* point, byte* scalar, byte* ret);
 
-        [DllImport("__Internal")]
+        [DllImport(Internal)]
         public static extern byte bn254_pairing_check_c(byte* pairs, nuint num_pairs);
 
-        [DllImport("__Internal")]
+        [DllImport(Internal)]
         public static extern nuint modexp_bytes_c(
             byte* base_ptr,
             nuint base_len,
