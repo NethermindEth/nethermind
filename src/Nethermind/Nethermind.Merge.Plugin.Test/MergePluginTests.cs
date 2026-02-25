@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
-using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Autofac;
@@ -20,7 +20,9 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.HealthChecks;
@@ -40,6 +42,10 @@ using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
 using NSubstitute;
+using System.Text.Json;
+using Nethermind.Serialization.Rlp;
+using CoreBuild = Nethermind.Core.Test.Builders.Build;
+using RunnerBuild = Nethermind.Runner.Test.Ethereum.Build;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -94,7 +100,7 @@ public class MergePluginTests
             .OnBuild((ctx) =>
             {
                 INethermindApi api = ctx.Resolve<INethermindApi>();
-                Build.MockOutNethermindApi((NethermindApi)api);
+                RunnerBuild.MockOutNethermindApi((NethermindApi)api);
 
                 api.BlockProcessingQueue?.IsEmpty.Returns(true);
             })
@@ -249,7 +255,7 @@ public class MergePluginTests
             ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot")
         };
 
-        ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>(), targetFork: "amsterdam");
+        ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>(), targetFork: "osaka");
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         result.Data.Should().NotBeNull();
@@ -407,7 +413,7 @@ public class MergePluginTests
             SlotNumber = 2
         };
 
-        ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>());
+        ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>(), targetFork: "amsterdam");
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         result.Data.Should().BeOfType<GetPayloadV6Result>();
@@ -415,6 +421,181 @@ public class MergePluginTests
         payloadResult.ExecutionPayload.SlotNumber.Should().Be(payloadAttributes.SlotNumber);
         payloadResult.ExecutionPayload.BlockAccessList.Should().NotBeNull();
         payloadResult.ExecutionPayload.BlockAccessList!.Length.Should().BeGreaterThan(0);
+    }
+
+    [TestCaseSource(nameof(BuildBlockV1ForkCases))]
+    public async Task Testing_buildBlockV1_returns_fork_specific_payload(
+        string targetFork,
+        IReleaseSpec spec,
+        bool expectsBlockAccessList,
+        bool expectsSlotNumber)
+    {
+        Hash256 parentHash = Keccak.Compute("parent");
+        BlockHeader parentHeader = new(
+            Keccak.Compute("grandparent"),
+            Keccak.OfAnEmptySequenceRlp,
+            Address.Zero,
+            UInt256.Zero,
+            1,
+            30_000_000,
+            1,
+            [])
+        {
+            Hash = parentHash,
+            TotalDifficulty = UInt256.Zero,
+            BaseFeePerGas = UInt256.One,
+            GasUsed = 0,
+            StateRoot = Keccak.EmptyTreeHash,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            Bloom = Bloom.Empty,
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0,
+            SlotNumber = expectsSlotNumber ? 1 : null
+        };
+
+        Block parentBlock = new(parentHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
+
+        TestingRpcModule module = CreateTestingRpcModule(parentHash, parentBlock, specProvider, gasLimitCalculator);
+
+        Transaction[] transactions = BuildSignedTransactions(2);
+        byte[][] txRlps = EncodeTransactions(transactions, out string[] txHex);
+
+        ulong? slotNumber = expectsSlotNumber ? parentHeader.SlotNumber!.Value + 1 : null;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = parentHeader.Timestamp + 12,
+            PrevRandao = Keccak.Compute("randao"),
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot"),
+            SlotNumber = slotNumber
+        };
+
+        string json = await RpcTest.TestSerializedRequest<ITestingRpcModule>(
+            module,
+            nameof(ITestingRpcModule.testing_buildBlockV1),
+            parentHash,
+            payloadAttributes,
+            txRlps,
+            Array.Empty<byte>(),
+            targetFork);
+
+        using JsonDocument doc = JsonDocument.Parse(json);
+        JsonElement executionPayload = doc.RootElement.GetProperty("result").GetProperty("executionPayload");
+        JsonElement transactionsJson = executionPayload.GetProperty("transactions");
+
+        transactionsJson.GetArrayLength().Should().Be(txHex.Length);
+        for (int i = 0; i < txHex.Length; i++)
+        {
+            transactionsJson[i].GetString().Should().Be(txHex[i]);
+        }
+
+        if (expectsBlockAccessList)
+        {
+            executionPayload.TryGetProperty("blockAccessList", out JsonElement blockAccessList).Should().BeTrue();
+            blockAccessList.GetString().Should().NotBeNullOrEmpty();
+        }
+        else
+        {
+            executionPayload.TryGetProperty("blockAccessList", out _).Should().BeFalse();
+        }
+
+        if (expectsSlotNumber)
+        {
+            executionPayload.TryGetProperty("slotNumber", out JsonElement slotNumberJson).Should().BeTrue();
+            slotNumberJson.GetString().Should().Be(slotNumber!.Value.ToHexString(skipLeadingZeros: true));
+        }
+        else
+        {
+            executionPayload.TryGetProperty("slotNumber", out _).Should().BeFalse();
+        }
+    }
+
+    public static IEnumerable<TestCaseData> BuildBlockV1ForkCases()
+    {
+        yield return new TestCaseData("prague", Prague.Instance, false, false)
+            .SetName("Testing_buildBlockV1_json_rpc_returns_payload_with_txs_for_prague");
+        yield return new TestCaseData("osaka", Osaka.Instance, false, false)
+            .SetName("Testing_buildBlockV1_json_rpc_returns_payload_with_txs_for_osaka");
+        yield return new TestCaseData("amsterdam", Amsterdam.Instance, true, true)
+            .SetName("Testing_buildBlockV1_json_rpc_returns_payload_with_txs_for_amsterdam");
+    }
+
+    private static TestingRpcModule CreateTestingRpcModule(
+        Hash256 parentHash,
+        Block parentBlock,
+        ISpecProvider specProvider,
+        IGasLimitCalculator gasLimitCalculator)
+    {
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBlock(parentHash).Returns(parentBlock);
+
+        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
+        blockchainProcessor
+            .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
+            .Returns(static callInfo =>
+            {
+                Block block = callInfo.Arg<Block>();
+                block.Header.StateRoot ??= Keccak.EmptyTreeHash;
+                block.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
+                block.Header.Bloom ??= Bloom.Empty;
+                block.Header.GasUsed = 0;
+                block.Header.Hash ??= Keccak.Compute("produced");
+                if (block.Header.SlotNumber is not null)
+                {
+                    block.BlockAccessList = new BlockAccessList();
+                }
+                return block;
+            });
+
+        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
+        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
+
+        return new TestingRpcModule(
+            mainProcessingContext,
+            gasLimitCalculator,
+            specProvider,
+            blockFinder,
+            LimboLogs.Instance);
+    }
+
+    private static Transaction[] BuildSignedTransactions(int count)
+    {
+        Transaction[] transactions = new Transaction[count];
+        for (int i = 0; i < count; i++)
+        {
+            Transaction tx = CoreBuild.A.Transaction
+                .WithNonce((UInt256)i)
+                .WithTo(TestItem.AddressA)
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithType(TxType.EIP1559)
+                .WithGasPrice(1.GWei())
+                .WithMaxFeePerGas(1.GWei())
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject;
+            transactions[i] = tx;
+        }
+
+        return transactions;
+    }
+
+    private static byte[][] EncodeTransactions(Transaction[] transactions, out string[] txHex)
+    {
+        byte[][] encoded = new byte[transactions.Length][];
+        txHex = new string[transactions.Length];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            byte[] rlp = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+            encoded[i] = rlp;
+            txHex[i] = rlp.ToHexString(true);
+        }
+
+        return encoded;
     }
 
     [TestCase(true, true)]

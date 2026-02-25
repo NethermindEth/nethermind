@@ -108,7 +108,7 @@ public class UInt256Converter : JsonConverter<UInt256>
         switch (conversion)
         {
             case NumberConversion.Hex:
-                HexWriter.WriteUInt256HexRawValue(writer, value);
+                writer.WriteStringValue(value.ToHexString(skipLeadingZeros: true));
                 break;
             case NumberConversion.Decimal:
                 writer.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
@@ -117,7 +117,7 @@ public class UInt256Converter : JsonConverter<UInt256>
                 writer.WriteStringValue(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
                 break;
             case NumberConversion.ZeroPaddedHex:
-                HexWriter.WriteUInt256HexRawValue(writer, value, zeroPadded: true);
+                writer.WriteStringValue(value.ToHexString(skipLeadingZeros: false));
                 break;
             default:
                 throw new NotSupportedException($"{conversion} format is not supported for {nameof(UInt256)}");
@@ -133,7 +133,7 @@ public class UInt256Converter : JsonConverter<UInt256>
         switch (conversion)
         {
             case NumberConversion.Hex:
-                HexWriter.WriteUInt256HexPropertyName(writer, value);
+                writer.WritePropertyName(value.ToHexString(skipLeadingZeros: true));
                 break;
             case NumberConversion.Decimal:
                 writer.WritePropertyName(value.ToString(CultureInfo.InvariantCulture));
@@ -142,7 +142,7 @@ public class UInt256Converter : JsonConverter<UInt256>
                 writer.WritePropertyName(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
                 break;
             case NumberConversion.ZeroPaddedHex:
-                HexWriter.WriteUInt256HexPropertyName(writer, value, zeroPadded: true);
+                writer.WritePropertyName(value.ToHexString(skipLeadingZeros: false));
                 break;
             default:
                 throw new NotSupportedException($"{conversion} format is not supported for {nameof(UInt256)}");

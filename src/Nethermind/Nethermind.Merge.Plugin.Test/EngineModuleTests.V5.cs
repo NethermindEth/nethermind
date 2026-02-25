@@ -60,7 +60,7 @@ public partial class EngineModuleTests
             ParentBeaconBlockRoot = TestItem.KeccakB
         };
 
-        ResultWrapper<GetPayloadV5Result?> buildResult = await testingRpcModule.testing_buildBlockV1(
+        ResultWrapper<object?> buildResult = await testingRpcModule.testing_buildBlockV1(
             head.Hash!,
             payloadAttributes,
             [],
@@ -69,15 +69,16 @@ public partial class EngineModuleTests
         buildResult.Result.Should().Be(Result.Success);
         buildResult.Data.Should().NotBeNull();
 
-        ExecutionPayloadV3 executionPayload = buildResult.Data!.ExecutionPayload;
-        executionPayload.ExecutionRequests = buildResult.Data.ExecutionRequests;
+        GetPayloadV5Result payloadResult = (GetPayloadV5Result)buildResult.Data!;
+        ExecutionPayloadV3 executionPayload = payloadResult.ExecutionPayload;
+        executionPayload.ExecutionRequests = payloadResult.ExecutionRequests;
         executionPayload.TryGetBlock().Block!.CalculateHash().Should().Be(executionPayload.BlockHash);
 
         ResultWrapper<PayloadStatusV1> newPayloadResult = await chain.EngineRpcModule.engine_newPayloadV4(
             executionPayload,
             [],
             payloadAttributes.ParentBeaconBlockRoot,
-            buildResult.Data.ExecutionRequests);
+            payloadResult.ExecutionRequests);
 
         newPayloadResult.Result.Should().Be(Result.Success);
         newPayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
