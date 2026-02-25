@@ -17,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
@@ -134,6 +135,12 @@ public class FullPruningDiskTest
                 WaitHandle.Set();
             }
         }
+    }
+
+    [SetUp]
+    public void Setup()
+    {
+        if (PseudoNethermindModule.TestUseFlat) Assert.Ignore("Disabled in flat");
     }
 
     [Test, MaxTime(Timeout.LongTestTime)]
