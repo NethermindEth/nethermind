@@ -29,6 +29,7 @@ using Nethermind.TxPool;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.TxPool;
 
 namespace Nethermind.Xdc;
 
@@ -105,8 +106,6 @@ public class XdcModule : Module
             .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
             .AddSingleton<ISyncDownloader<StateSyncBatch>, XdcStateSyncDownloader>()
 
-
-            .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
             //Network
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
