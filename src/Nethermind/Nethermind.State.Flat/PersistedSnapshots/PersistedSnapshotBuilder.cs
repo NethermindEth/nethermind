@@ -445,11 +445,8 @@ public static class PersistedSnapshotBuilder
         outerBuilder.Build();
     }
 
-    private static void CopyColumn<TWriter>(ReadOnlySpan<byte> column, ref TWriter writer) where TWriter : IByteBufferWriter
-    {
-        column.CopyTo(writer.GetSpan(column.Length));
-        writer.Advance(column.Length);
-    }
+    private static void CopyColumn<TWriter>(ReadOnlySpan<byte> column, ref TWriter writer) where TWriter : IByteBufferWriter =>
+        IByteBufferWriter.Copy(ref writer, column);
 
     /// <summary>
     /// Convert a flat (non-nested) trie column's values to NodeRefs.

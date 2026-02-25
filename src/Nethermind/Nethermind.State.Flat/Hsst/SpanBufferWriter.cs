@@ -11,6 +11,17 @@ public interface IByteBufferWriter
     Span<byte> GetSpan(int sizeHint = 0);
     void Advance(int count);
     int Written { get; }
+
+    static void Copy<TWriter>(ref TWriter writer, ReadOnlySpan<byte> value) where TWriter : IByteBufferWriter
+    {
+        while (value.Length > 0)
+        {
+            int chunk = Math.Min(value.Length, 256);
+            value[..chunk].CopyTo(writer.GetSpan(chunk));
+            writer.Advance(chunk);
+            value = value[chunk..];
+        }
+    }
 }
 
 public unsafe struct SpanBufferWriter(Span<byte> buffer) : IByteBufferWriter

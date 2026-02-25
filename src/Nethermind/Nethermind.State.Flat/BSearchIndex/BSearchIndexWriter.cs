@@ -101,8 +101,7 @@ internal ref struct BSearchIndexWriter<TWriter>
         else
         {
             // Write value forward via writer
-            value.CopyTo(_writer.GetSpan(value.Length));
-            _writer.Advance(value.Length);
+            IByteBufferWriter.Copy(ref _writer, value);
         }
 
         // Store key in keyBuf: [u16 length][key bytes]
@@ -170,8 +169,7 @@ internal ref struct BSearchIndexWriter<TWriter>
         for (int i = 0; i < _count; i++)
         {
             keySrc += 2; // skip u16 length (known from keyLen)
-            _keyBuf.Slice(keySrc, keyLen).CopyTo(_writer.GetSpan(keyLen));
-            _writer.Advance(keyLen);
+            IByteBufferWriter.Copy(ref _writer, _keyBuf.Slice(keySrc, keyLen));
             keySrc += keyLen;
         }
         return keyLen;
@@ -231,8 +229,7 @@ internal ref struct BSearchIndexWriter<TWriter>
 
             if (len > 0)
             {
-                _keyBuf.Slice(keySrc, len).CopyTo(_writer.GetSpan(len));
-                _writer.Advance(len);
+                IByteBufferWriter.Copy(ref _writer, _keyBuf.Slice(keySrc, len));
             }
             keySrc += len;
         }
@@ -250,8 +247,7 @@ internal ref struct BSearchIndexWriter<TWriter>
             valSrc += 2; // skip u16 length
             if (valLen > 0)
             {
-                _valueBuf.Slice(valSrc, valLen).CopyTo(_writer.GetSpan(valLen));
-                _writer.Advance(valLen);
+                IByteBufferWriter.Copy(ref _writer, _valueBuf.Slice(valSrc, valLen));
             }
             valSrc += valLen;
         }
@@ -312,8 +308,7 @@ internal ref struct BSearchIndexWriter<TWriter>
 
             if (len > 0)
             {
-                _valueBuf.Slice(valSrc, len).CopyTo(_writer.GetSpan(len));
-                _writer.Advance(len);
+                IByteBufferWriter.Copy(ref _writer, _valueBuf.Slice(valSrc, len));
             }
             valSrc += len;
         }
