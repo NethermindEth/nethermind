@@ -3,13 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Data;
-using System.Diagnostics;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text.Json;
+using System.Text;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -56,6 +52,13 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     {
         _changes.Clear();
         Index++;
+    }
+
+    public void RollbackCurrentIndex()
+    {
+        Restore(0);
+        _changes.Clear();
+        Index--;
     }
 
     public void Clear()
@@ -338,8 +341,16 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
     }
 
-    public override string? ToString()
-        => JsonSerializer.Serialize(this);
+    public override string ToString()
+    {
+        StringBuilder sb = new();
+        sb.AppendLine($"BlockAccessList (Index={Index}, Accounts={_accountChanges.Count})");
+        foreach (AccountChanges ac in _accountChanges.Values)
+        {
+            sb.AppendLine($"  {ac}");
+        }
+        return sb.ToString();
+    }
 
     // for testing
     internal void AddAccountChanges(params AccountChanges[] accountChanges)

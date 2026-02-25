@@ -147,6 +147,17 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         _innerWorldState.SubtractFromBalance(address, balanceChange, spec);
     }
 
+    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    {
+        _innerWorldState.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
+
+        if (TracingEnabled)
+        {
+            UInt256 newBalance = oldBalance - balanceChange;
+            GeneratedBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        }
+    }
+
     public override void DeleteAccount(Address address)
     {
         if (TracingEnabled)
@@ -271,6 +282,17 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         {
             if (suggestedHead is null)
             {
+                if (HasNoChanges(generatedHead.Value))
+                {
+                    // keep scanning rest of generated (read-only entries)
+                    generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
+
+                    if (generatedHead is not null)
+                    {
+                        generatedReads += generatedHead.Value.Reads;
+                    }
+                    continue;
+                }
                 throw new InvalidBlockLevelAccessListException($"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
             }
             else if (generatedHead is null)
@@ -324,6 +346,18 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             }
             else
             {
+                if (HasNoChanges(generatedHead.Value))
+                {
+                    // skip generated with no changes (read-only entries from side-effects)
+                    generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
+
+                    if (generatedHead is not null)
+                    {
+                        generatedReads += generatedHead.Value.Reads;
+                    }
+                    continue;
+                }
+
                 throw new InvalidBlockLevelAccessListException($"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
             }
 
