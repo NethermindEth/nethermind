@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
@@ -13,6 +14,7 @@ using BenchmarkDotNet.Configs;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Evm.CodeAnalysis;
@@ -37,6 +39,8 @@ public unsafe class EvmOpcodesBenchmark
 {
     private const int InnerCount = 4096;
     private const int KeccakWordSize = EvmStack.WordSize;
+    private const int DynamicStorageKeyCount = InnerCount * 8;
+    private const int DynamicCallTargetCount = InnerCount;
 
     private delegate*<VirtualMachine<EthereumGasPolicy>, ref EvmStack, ref EthereumGasPolicy, ref int, EvmExceptionType>[] _opcodes = null!;
     private BenchmarkVm _vm = null!;
@@ -51,6 +55,8 @@ public unsafe class EvmOpcodesBenchmark
     private int _iterationId;
     private UInt256[] _dynamicStorageKeys = null!;
     private UInt256[] _dynamicKeccakOffsets = null!;
+    private UInt256[] _dynamicCallTargets = null!;
+    private EthereumCodeInfoRepository _codeInfoRepository = null!;
 
     // Full-width 256-bit test values for 2-param ops (a is popped first from slot[1], b from slot[0]).
     private static readonly UInt256 ValueA = UInt256.Parse("0x6F1D2C3B4A59687766554433221100FFEEDDCCBBAA99887766554433221100FF");
@@ -69,6 +75,7 @@ public unsafe class EvmOpcodesBenchmark
     private static readonly UInt256 One = UInt256.One;
     private static readonly UInt256 CallTarget = new(0x1000UL);
     private static readonly UInt256 CallGasLimit = new(100_000UL);
+    private const ulong DynamicCallTargetBase = 0x2000UL;
     private static readonly UInt256 DynamicStorageBase = new(1_000_000UL);
     private static readonly UInt256 KeccakLength = new((ulong)KeccakWordSize);
     private static readonly Address CallTargetAddress = Address.FromNumber(0x1000);
@@ -84,6 +91,10 @@ public unsafe class EvmOpcodesBenchmark
         Instruction.SSTORE,
         Instruction.TLOAD,
         Instruction.TSTORE,
+        Instruction.CALL,
+        Instruction.CALLCODE,
+        Instruction.DELEGATECALL,
+        Instruction.STATICCALL,
     ];
     public IEnumerable<Instruction> Opcodes => AllValidLegacyOpcodes;
 
@@ -112,10 +123,18 @@ public unsafe class EvmOpcodesBenchmark
         _stateProvider.CreateAccount(address, UInt256.One);
         _stateProvider.CreateAccount(CallTargetAddress, UInt256.Zero);
         _stateProvider.InsertCode(CallTargetAddress, StopCode, spec);
-        InitializeDynamicStorageLocations(address);
+        if (Opcode is Instruction.SSTORE or Instruction.SLOAD or Instruction.TSTORE or Instruction.TLOAD)
+        {
+            InitializeDynamicStorageLocations(address);
+        }
+        if (IsCallOpcode(Opcode))
+        {
+            InitializeDynamicCallTargets(spec);
+        }
         _stateProvider.Commit(spec);
 
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        _codeInfoRepository = codeInfoRepository;
 
         BlockHeader header = new(
             Keccak.Zero,
@@ -258,6 +277,13 @@ public unsafe class EvmOpcodesBenchmark
         }
 
         return result;
+    }
+
+    [IterationCleanup]
+    public void CleanupStack()
+    {
+        _stateProvider.Reset(resetBlockChanges: true);
+        CodeInfoRepository.Clear();
     }
 
     [IterationSetup]
@@ -498,6 +524,11 @@ public unsafe class EvmOpcodesBenchmark
 
     private void SetupCallStack(bool hasValue)
     {
+        SetupCallStack(hasValue, in CallTarget);
+    }
+
+    private void SetupCallStack(bool hasValue, in UInt256 target)
+    {
         // Stack order from top to bottom:
         // CALL/CALLCODE: gas, addr, value, inOffset, inLength, outOffset, outLength
         // DELEGATECALL/STATICCALL: gas, addr, inOffset, inLength, outOffset, outLength
@@ -509,12 +540,12 @@ public unsafe class EvmOpcodesBenchmark
         if (hasValue)
         {
             WriteStackSlot(_stackBuffer, 4, UInt256.Zero); // value
-            WriteStackSlot(_stackBuffer, 5, in CallTarget); // addr
+            WriteStackSlot(_stackBuffer, 5, in target); // addr
             WriteStackSlot(_stackBuffer, 6, in CallGasLimit); // gas
         }
         else
         {
-            WriteStackSlot(_stackBuffer, 4, in CallTarget); // addr
+            WriteStackSlot(_stackBuffer, 4, in target); // addr
             WriteStackSlot(_stackBuffer, 5, in CallGasLimit); // gas
         }
     }
@@ -569,24 +600,27 @@ public unsafe class EvmOpcodesBenchmark
 
     private void InitializeDynamicStorageLocations(Address executingAddress)
     {
-        _dynamicStorageKeys = new UInt256[InnerCount];
-        for (int i = 0; i < InnerCount; i++)
+        _dynamicStorageKeys = new UInt256[DynamicStorageKeyCount];
+        for (int i = 0; i < DynamicStorageKeyCount; i++)
         {
             UInt256 key = DynamicStorageBase + (UInt256)(ulong)i;
             _dynamicStorageKeys[i] = key;
 
-            // Seed locations once so SLOAD/SSTORE rotate over existing slots.
+            // Seed a larger storage keyspace so SLOAD/SSTORE do not benchmark an empty trie
+            // or repeatedly hit the same small hot subset across benchmark iterations.
             UInt256 initialValue = (i & 1) == 0 ? ValueA : ValueB;
             _stateProvider.Set(new StorageCell(executingAddress, key), ToStorageBytes(initialValue));
         }
     }
 
+    private static ulong s_keccak;
     private void InitializeKeccakMemoryLocations()
     {
         _dynamicKeccakOffsets = new UInt256[InnerCount];
         Span<byte> word = stackalloc byte[KeccakWordSize];
         for (int i = 0; i < InnerCount; i++)
         {
+            s_keccak++;
             UInt256 offset = (UInt256)(ulong)(i * KeccakWordSize);
             _dynamicKeccakOffsets[i] = offset;
 
@@ -594,6 +628,11 @@ public unsafe class EvmOpcodesBenchmark
             {
                 word[b] = (byte)((i * 131 + b * 17 + 11) & 0xFF);
             }
+
+            ulong adjust = s_keccak;
+            ValueHash256 hash = ValueKeccak.Compute(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref adjust, 1)));
+
+            word.Xor(hash.Bytes);
 
             _vmState.Memory.TrySave(in offset, word);
         }
@@ -609,6 +648,14 @@ public unsafe class EvmOpcodesBenchmark
     private static bool RequiresPerRunLocationSetup(Instruction opcode)
     {
         return PerRunRefreshedOpcodes.Contains(opcode);
+    }
+
+    private static bool IsCallOpcode(Instruction opcode)
+    {
+        return opcode is Instruction.CALL
+            or Instruction.CALLCODE
+            or Instruction.DELEGATECALL
+            or Instruction.STATICCALL;
     }
 
     private static bool RequiresIndependentBinaryInputs(Instruction opcode)
@@ -648,29 +695,77 @@ public unsafe class EvmOpcodesBenchmark
         second = DivisorOperand;
     }
 
+    private void InitializeDynamicCallTargets(IReleaseSpec spec)
+    {
+        _dynamicCallTargets = new UInt256[DynamicCallTargetCount];
+        for (int i = 0; i < DynamicCallTargetCount; i++)
+        {
+            ulong addressNumber = DynamicCallTargetBase + (ulong)i;
+            UInt256 target = new(addressNumber);
+            _dynamicCallTargets[i] = target;
+
+            Address targetAddress = Address.FromNumber(addressNumber);
+            _stateProvider.CreateAccount(targetAddress, UInt256.Zero);
+            _stateProvider.InsertCode(targetAddress, CreateDynamicCallCode(i), spec);
+        }
+    }
+
+    private static byte[] CreateDynamicCallCode(int index)
+    {
+        // STOP halts immediately; trailing bytes make each code hash distinct.
+        return
+        [
+            (byte)Instruction.STOP,
+            (byte)(index & 0xFF),
+            (byte)((index >> 8) & 0xFF),
+            (byte)((index * 31 + 17) & 0xFF),
+            (byte)((index * 73 + 41) & 0xFF),
+            (byte)Instruction.ADD,
+            (byte)Instruction.POP,
+        ];
+    }
+
     private void PreparePerRunLocationSetup(int runIndex)
     {
-        int index = runIndex % InnerCount;
-        UInt256 key = _dynamicStorageKeys[index];
+        long sequence = ((long)_iterationId * InnerCount) + runIndex;
 
         switch (Opcode)
         {
             case Instruction.KECCAK256:
-                UInt256 offset = _dynamicKeccakOffsets[index];
+                int keccakIndex = (int)(sequence % _dynamicKeccakOffsets.Length);
+                UInt256 offset = _dynamicKeccakOffsets[keccakIndex];
                 WriteStackSlot(_stackBuffer, 0, in KeccakLength); // length
                 WriteStackSlot(_stackBuffer, 1, in offset); // offset (popped first)
                 break;
 
             case Instruction.SLOAD:
             case Instruction.TLOAD:
-                WriteStackSlot(_stackBuffer, 0, in key);
+                int loadStorageIndex = (int)(sequence % _dynamicStorageKeys.Length);
+                UInt256 loadKey = _dynamicStorageKeys[loadStorageIndex];
+                WriteStackSlot(_stackBuffer, 0, in loadKey);
                 break;
 
             case Instruction.SSTORE:
             case Instruction.TSTORE:
+                int storeStorageIndex = (int)(sequence % _dynamicStorageKeys.Length);
+                UInt256 storeKey = _dynamicStorageKeys[storeStorageIndex];
                 UInt256 value = ((runIndex + _iterationId) & 1) == 0 ? ValueA : ValueB;
                 WriteStackSlot(_stackBuffer, 0, in value); // value (popped second)
-                WriteStackSlot(_stackBuffer, 1, in key); // key (popped first)
+                WriteStackSlot(_stackBuffer, 1, in storeKey); // key (popped first)
+                break;
+
+            case Instruction.CALL:
+            case Instruction.CALLCODE:
+                int callStoreIndex = (int)(sequence % _dynamicCallTargets.Length);
+                UInt256 callTarget = _dynamicCallTargets[callStoreIndex];
+                SetupCallStack(hasValue: true, in callTarget);
+                break;
+
+            case Instruction.DELEGATECALL:
+            case Instruction.STATICCALL:
+                int delegateCallIndex = (int)(sequence % _dynamicCallTargets.Length);
+                UInt256 delegateCallTarget = _dynamicCallTargets[delegateCallIndex];
+                SetupCallStack(hasValue: false, in delegateCallTarget);
                 break;
         }
     }
