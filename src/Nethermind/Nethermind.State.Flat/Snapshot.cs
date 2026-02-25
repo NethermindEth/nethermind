@@ -55,6 +55,9 @@ public class Snapshot(
 
     public bool HasSelfDestruct(Address address) => content.SelfDestructedStorageAddresses.TryGetValue(address, out bool _);
 
+    public bool TryGetSelfDestruct(AddressAsKey key, out bool isNewAccount) =>
+        content.SelfDestructedStorageAddresses.TryGetValue(key, out isNewAccount);
+
     public bool TryGetStorage(Address address, in UInt256 index, out SlotValue? value) => content.Storages.TryGetValue((address, index), out value);
 
     public bool TryGetStateNode(in TreePath path, [NotNullWhen(true)] out TrieNode? node) => content.StateNodes.TryGetValue(path, out node);

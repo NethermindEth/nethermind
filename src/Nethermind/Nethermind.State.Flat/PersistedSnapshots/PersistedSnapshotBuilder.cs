@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -141,23 +142,14 @@ public static class PersistedSnapshotBuilder
 
     private static void WriteAccountColumn<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
     {
-        // Build lookup dictionaries
-        Dictionary<AddressAsKey, Account?> accountLookup = new();
         HashSet<AddressAsKey> seen = new();
         foreach (KeyValuePair<AddressAsKey, Account?> kv in snapshot.Accounts)
-        {
-            accountLookup[kv.Key] = kv.Value;
             seen.Add(kv.Key);
-        }
-        Dictionary<AddressAsKey, bool> sdLookup = new();
         foreach (KeyValuePair<AddressAsKey, bool> kv in snapshot.SelfDestructedStorageAddresses)
-        {
-            sdLookup[kv.Key] = kv.Value;
             seen.Add(kv.Key);
-        }
 
         // Pre-sort storages by (Address, Slot) for efficient iteration
-        List<((AddressAsKey Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages = new();
+        using ArrayPoolList<((AddressAsKey Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages = new(Math.Max(1, snapshot.StoragesCount));
         foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in snapshot.Storages)
         {
             sortedStorages.Add((kv.Key, kv.Value));
@@ -170,8 +162,8 @@ public static class PersistedSnapshotBuilder
             return a.Key.Slot.CompareTo(b.Key.Slot);
         });
 
-        // Build sorted unique address list without per-address .ToArray()
-        List<Address> uniqueAddresses = new(seen.Count);
+        // Build sorted unique address list
+        using ArrayPoolList<Address> uniqueAddresses = new(Math.Max(1, seen.Count));
         foreach (AddressAsKey addr in seen)
             uniqueAddresses.Add(addr);
         uniqueAddresses.Sort((a, b) => a.Bytes.SequenceCompareTo(b.Bytes));
@@ -190,7 +182,6 @@ public static class PersistedSnapshotBuilder
 
             foreach (Address address in uniqueAddresses)
             {
-
                 // Begin per-address HSST
                 ref TWriter perAddrWriter = ref addressLevel.BeginValueWrite();
                 using HsstBuilder<TWriter> perAddr = new(ref perAddrWriter);
@@ -207,7 +198,7 @@ public static class PersistedSnapshotBuilder
                         sortedStorages[storageIdx].Key.Addr.Value.Bytes.SequenceEqual(address.Bytes))
                     {
                         sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey.AsSpan());
-                        byte[] currentPrefix = slotKey[..slotPrefixLength].ToArray();
+                        ReadOnlySpan<byte> currentPrefix = slotKey.AsSpan(0, slotPrefixLength);
 
                         ref TWriter suffixWriter = ref prefixLevel.BeginValueWrite();
                         using HsstBuilder<TWriter> suffixLevel = new(ref suffixWriter, minSeparatorLength: 2, inlineValues: true);
@@ -241,13 +232,13 @@ public static class PersistedSnapshotBuilder
                 }
 
                 // Sub-tag 0x02: Self-destruct
-                if (sdLookup.TryGetValue(address, out bool sdValue))
+                if (snapshot.TryGetSelfDestruct(address, out bool sdValue))
                 {
                     perAddr.Add(PersistedSnapshot.SelfDestructSubTag, sdValue ? [0x01] : ReadOnlySpan<byte>.Empty);
                 }
 
                 // Sub-tag 0x03: Account
-                if (accountLookup.TryGetValue(address, out Account? account))
+                if (snapshot.TryGetAccount(address, out Account? account))
                 {
                     if (account is null)
                     {
