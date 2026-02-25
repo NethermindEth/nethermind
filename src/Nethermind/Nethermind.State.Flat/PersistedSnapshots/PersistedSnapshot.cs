@@ -139,6 +139,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public PersistedSnapshotReader.StateNodeEnumerable StateNodes => new(this);
     public PersistedSnapshotReader.StorageNodeEnumerable StorageNodes => new(this);
 
+    public void AdviseDontNeed() => _reservation.AdviseDontNeed();
+
     public bool TryAcquire() => TryAcquireLease();
 
     protected override void CleanUp()

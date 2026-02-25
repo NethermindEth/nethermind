@@ -12,4 +12,5 @@ public interface IArenaManager : IDisposable
     ArenaReservation Open(in SnapshotLocation location);
     ReadOnlySpan<byte> GetSpan(ArenaReservation reservation);
     void MarkDead(in SnapshotLocation location);
+    void AdviseDontNeed(ArenaReservation reservation);
 }
