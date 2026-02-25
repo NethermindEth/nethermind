@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using Autofac;
 using BenchmarkDotNet.Attributes;
@@ -43,8 +44,9 @@ namespace Nethermind.Evm.Benchmark;
 /// <see cref="BlockCachePreWarmer"/> — to match the live client's block processing
 /// path. Pre-warming triggers for blocks with 3+ transactions.
 ///
-/// Uses <c>[IterationSetup]</c> (with <c>InvocationCount=1/UnrollFactor=1</c>) to
-/// recreate world state before each measured invocation.
+/// Per-iteration state (DB, world state, DI scope) is pre-built in
+/// <see cref="GlobalSetup"/> to keep allocation noise out of the measurement window.
+/// <c>[IterationSetup]</c> only picks the next pre-built state from the pool.
 ///
 /// Scenarios:
 /// - EmptyBlock, SingleTransfer, Transfers_50, Transfers_200
@@ -57,9 +59,8 @@ namespace Nethermind.Evm.Benchmark;
 public class BlockProcessingBenchmark
 {
     /// <summary>
-    /// 500 data points per benchmark (5 launches x 100 iterations, 20 warmup each).
-    /// [IterationSetup] rebuilds world state once per iteration.
-    /// InvocationCount=1/UnrollFactor=1 ensures each invocation starts from a fresh state.
+    /// 1000 data points per benchmark (10 launches x 100 iterations, 20 warmup each).
+    /// GcForce ensures a GC collection between iterations to reduce allocation noise.
     /// </summary>
     private class BlockProcessingConfig : ManualConfig
     {
@@ -69,9 +70,10 @@ public class BlockProcessingBenchmark
                 .WithToolchain(InProcessNoEmitToolchain.Instance)
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
-                .WithLaunchCount(5)
+                .WithLaunchCount(10)
                 .WithWarmupCount(20)
-                .WithIterationCount(100));
+                .WithIterationCount(100)
+                .WithGcForce(true));
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
             AddColumn(StatisticColumn.Median);
@@ -79,6 +81,9 @@ public class BlockProcessingBenchmark
             AddColumn(StatisticColumn.P95);
         }
     }
+
+    // 20 warmup + 100 iterations + safety margin
+    private const int PoolSize = 150;
 
     private static readonly IReleaseSpec Spec = Osaka.Instance;
 
@@ -107,7 +112,11 @@ public class BlockProcessingBenchmark
     // DI container — built once, shared across all iterations
     private IContainer _container = null!;
 
-    // Per-iteration state
+    // Pre-built state pool — avoids allocation noise in the measurement window
+    private IterationState[] _statePool = null!;
+    private int _stateIndex;
+
+    // Per-iteration state (assigned from pool in IterationSetup)
     private IWorldState _stateProvider = null!;
     private ILifetimeScope _processingScope = null!;
     private IBranchProcessor _branchProcessor = null!;
@@ -129,6 +138,12 @@ public class BlockProcessingBenchmark
     [GlobalSetup]
     public void GlobalSetup()
     {
+        // Pin to a single core to reduce OS scheduler jitter
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+        {
+            Process.GetCurrentProcess().ProcessorAffinity = new IntPtr(1);
+        }
+
         _sender = _senderKey.Address;
 
         _header = Build.A.BlockHeader
@@ -166,72 +181,42 @@ public class BlockProcessingBenchmark
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Osaka.Instance))
             .Build();
+
+        // Pre-build state pool so IterationSetup is allocation-free
+        _statePool = new IterationState[PoolSize];
+        _stateIndex = 0;
+        for (int i = 0; i < PoolSize; i++)
+        {
+            _statePool[i] = BuildIterationState();
+        }
     }
 
     [GlobalCleanup]
     public void GlobalCleanup()
     {
+        for (int i = 0; i < _statePool.Length; i++)
+        {
+            _statePool[i].Scope?.Dispose();
+        }
+
         _container.Dispose();
     }
 
     [IterationSetup]
     public void IterationSetup()
     {
-        // Fresh world state backed by a per-iteration db and trie store.
-        // WorldStateManager is needed so the pre-warmer can create isolated
-        // read-only snapshots via CreateResettableWorldState().
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
-        IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
-
-        // Create processing scope with per-iteration state infrastructure.
-        // IWorldState is registered as scoped by BlockProcessingModule, so each
-        // child scope (including pre-warmer envs) gets its own WorldState instance
-        // backed by its own IWorldStateScopeProvider — avoiding nested scope errors.
-        IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();
-        IMainProcessingModule[] mainProcessingModules = _container.Resolve<IMainProcessingModule[]>();
-        _processingScope = _container.BeginLifetimeScope(b =>
-        {
-            b.RegisterInstance(scopeProvider).As<IWorldStateScopeProvider>().ExternallyOwned();
-            b.RegisterInstance(wsm).As<IWorldStateManager>().ExternallyOwned();
-            b.AddModule(validationModules);
-            b.AddModule(mainProcessingModules);
-        });
-
-        // Resolve scoped WorldState and set up initial accounts
-        _stateProvider = _processingScope.Resolve<IWorldState>();
-
-        using (_stateProvider.BeginScope(IWorldState.PreGenesis))
-        {
-            _stateProvider.CreateAccount(_sender, 1_000_000.Ether());
-
-            // Deploy contract for ContractCall benchmarks
-            _stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
-            _stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
-
-            // Deploy system contract stubs required by Osaka execution requests
-            _stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, UInt256.Zero);
-            _stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, StopCode, Spec);
-            _stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, UInt256.Zero);
-            _stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, StopCode, Spec);
-
-            _stateProvider.Commit(Spec);
-            _stateProvider.CommitTree(0);
-
-            _parentHeader = Build.A.BlockHeader
-                .WithNumber(0)
-                .WithStateRoot(_stateProvider.StateRoot)
-                .WithGasLimit(30_000_000)
-                .TestObject;
-        }
-
-        _branchProcessor = _processingScope.Resolve<IBranchProcessor>();
+        IterationState state = _statePool[_stateIndex++];
+        _processingScope = state.Scope;
+        _stateProvider = state.WorldState;
+        _branchProcessor = state.BranchProcessor;
+        _parentHeader = state.ParentHeader;
     }
 
     [IterationCleanup]
     public void IterationCleanup()
     {
-        _processingScope?.Dispose();
+        // Scope disposal is handled by GlobalCleanup to avoid
+        // per-iteration teardown noise leaking into measurement.
         _processingScope = null!;
     }
 
@@ -281,6 +266,59 @@ public class BlockProcessingBenchmark
     public Block[] MixedBlock()
         => _branchProcessor.Process(_parentHeader, [_mixedBlock],
             ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+
+    // ── State pool builder ──────────────────────────────────────────────
+
+    private IterationState BuildIterationState()
+    {
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
+
+        IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();
+        IMainProcessingModule[] mainProcessingModules = _container.Resolve<IMainProcessingModule[]>();
+        ILifetimeScope processingScope = _container.BeginLifetimeScope(b =>
+        {
+            b.RegisterInstance(scopeProvider).As<IWorldStateScopeProvider>().ExternallyOwned();
+            b.RegisterInstance(wsm).As<IWorldStateManager>().ExternallyOwned();
+            b.AddModule(validationModules);
+            b.AddModule(mainProcessingModules);
+        });
+
+        IWorldState stateProvider = processingScope.Resolve<IWorldState>();
+
+        using (stateProvider.BeginScope(IWorldState.PreGenesis))
+        {
+            stateProvider.CreateAccount(_sender, 1_000_000.Ether());
+
+            stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
+            stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
+
+            stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, UInt256.Zero);
+            stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, StopCode, Spec);
+            stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, UInt256.Zero);
+            stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, StopCode, Spec);
+
+            stateProvider.Commit(Spec);
+            stateProvider.CommitTree(0);
+        }
+
+        BlockHeader parentHeader = Build.A.BlockHeader
+            .WithNumber(0)
+            .WithStateRoot(stateProvider.StateRoot)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+        IBranchProcessor branchProcessor = processingScope.Resolve<IBranchProcessor>();
+
+        return new IterationState(processingScope, stateProvider, branchProcessor, parentHeader);
+    }
+
+    private readonly record struct IterationState(
+        ILifetimeScope Scope,
+        IWorldState WorldState,
+        IBranchProcessor BranchProcessor,
+        BlockHeader ParentHeader);
 
     // ── Block builder ─────────────────────────────────────────────────────
 

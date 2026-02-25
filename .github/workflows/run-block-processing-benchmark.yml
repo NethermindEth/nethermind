@@ -1,0 +1,377 @@
+name: Run Block Processing Benchmark
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: "BenchmarkDotNet filter pattern (e.g. 'ContractCall_200'). Empty runs all BlockProcessingBenchmark methods."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+  pull-requests: write
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  TERM: xterm
+  BENCHMARK_PROJECT: src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj
+
+jobs:
+  resolve-inputs:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.action == 'labeled' &&
+       startsWith(github.event.label.name, 'block-processing-benchmark') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.resolve.outputs.should_run }}
+      filter: ${{ steps.resolve.outputs.filter }}
+    steps:
+      - name: Resolve workflow inputs
+        id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          LABEL_NAME: ${{ github.event.label.name }}
+          DISPATCH_FILTER: ${{ inputs.filter }}
+        run: |
+          set -euo pipefail
+
+          should_run="true"
+          filter=""
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            filter="${DISPATCH_FILTER:-}"
+          elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            label="${LABEL_NAME:-}"
+
+            if [[ "${label}" == "block-processing-benchmark" ]]; then
+              filter=""
+            elif [[ "${label}" == block-processing-benchmark-* ]]; then
+              suffix="${label#block-processing-benchmark-}"
+              if [[ -z "${suffix}" ]]; then
+                filter=""
+              elif [[ "${suffix}" =~ ^[A-Za-z0-9_.*-]+$ ]]; then
+                filter="${suffix}"
+              else
+                echo "::warning::Invalid filter suffix: ${suffix}"
+                should_run="false"
+              fi
+            else
+              should_run="false"
+            fi
+          fi
+
+          {
+            echo "should_run=${should_run}"
+            echo "filter=${filter}"
+          } >> "${GITHUB_OUTPUT}"
+
+  benchmark:
+    needs: resolve-inputs
+    if: needs.resolve-inputs.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out base branch (master)
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha || 'master' }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Build base branch
+        run: |
+          dotnet restore ${{ env.BENCHMARK_PROJECT }}
+          dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
+
+      - name: Run benchmark on base branch
+        id: run-base
+        continue-on-error: true
+        shell: bash
+        env:
+          FILTER: ${{ needs.resolve-inputs.outputs.filter }}
+        run: |
+          if [[ -z "${FILTER}" ]]; then
+            FILTER_ARG="*BlockProcessingBenchmark*"
+          else
+            FILTER_ARG="*${FILTER}*"
+          fi
+
+          dotnet run -c Release --no-build \
+            --project ${{ env.BENCHMARK_PROJECT }} \
+            -- --filter "${FILTER_ARG}" \
+               --exporters json \
+               --artifacts "${RUNNER_TEMP}/bdn-base"
+
+      - name: Check out PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          clean: false
+
+      - name: Build PR branch
+        run: |
+          dotnet restore ${{ env.BENCHMARK_PROJECT }}
+          dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
+
+      - name: Run benchmark on PR branch
+        id: run-pr
+        continue-on-error: true
+        shell: bash
+        env:
+          FILTER: ${{ needs.resolve-inputs.outputs.filter }}
+        run: |
+          if [[ -z "${FILTER}" ]]; then
+            FILTER_ARG="*BlockProcessingBenchmark*"
+          else
+            FILTER_ARG="*${FILTER}*"
+          fi
+
+          dotnet run -c Release --no-build \
+            --project ${{ env.BENCHMARK_PROJECT }} \
+            -- --filter "${FILTER_ARG}" \
+               --exporters json \
+               --artifacts "${RUNNER_TEMP}/bdn-pr"
+
+      - name: Compare results and build comment
+        id: compare
+        if: always()
+        shell: bash
+        env:
+          BASE_ARTIFACTS: ${{ runner.temp }}/bdn-base
+          PR_ARTIFACTS: ${{ runner.temp }}/bdn-pr
+          BASE_SHA: ${{ github.event.pull_request.base.sha || 'master' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BASE_OUTCOME: ${{ steps.run-base.outcome }}
+          PR_OUTCOME: ${{ steps.run-pr.outcome }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PYEOF'
+          import json, glob, os, sys
+
+          def load_results(artifacts_dir):
+              pattern = os.path.join(artifacts_dir, "results", "*-report-full-compressed.json")
+              files = glob.glob(pattern)
+              if not files:
+                  return None
+              with open(files[0]) as f:
+                  data = json.load(f)
+              results = {}
+              for bm in data["Benchmarks"]:
+                  method = bm["Method"]
+                  stats = bm["Statistics"]
+                  mem = bm.get("Memory", {})
+                  pcts = stats.get("Percentiles", {})
+                  results[method] = {
+                      "mean": stats["Mean"],
+                      "median": stats["Median"],
+                      "min": stats["Min"],
+                      "max": stats["Max"],
+                      "stddev": stats["StandardDeviation"],
+                      "p90": pcts.get("P90", 0),
+                      "p95": pcts.get("P95", 0),
+                      "allocated": mem.get("BytesAllocatedPerOperation", 0),
+                  }
+              return results
+
+          def ns_to_us(ns):
+              return ns / 1000.0
+
+          def bytes_to_kb(b):
+              return b / 1024.0 if b else 0
+
+          def fmt_us(ns):
+              us = ns_to_us(ns)
+              if us >= 1000:
+                  return f"{us:,.1f}"
+              return f"{us:.1f}"
+
+          def fmt_kb(b):
+              kb = bytes_to_kb(b)
+              if kb >= 1000:
+                  return f"{kb:,.1f}"
+              return f"{kb:.1f}"
+
+          def delta_pct(pr_val, base_val):
+              if base_val == 0:
+                  return None
+              return ((pr_val - base_val) / base_val) * 100
+
+          def fmt_delta(pct):
+              if pct is None:
+                  return "n/a"
+              sign = "+" if pct >= 0 else ""
+              return f"{sign}{pct:.1f}%"
+
+          def indicator(pct):
+              if pct is None:
+                  return ""
+              if pct <= -3:
+                  return " :arrow_down:"
+              elif pct >= 3:
+                  return " :arrow_up_small:"
+              return ""
+
+          marker = "<!-- block-processing-benchmark-report -->"
+          run_url = os.environ["RUN_URL"]
+          base_sha = os.environ["BASE_SHA"][:8]
+          head_sha = os.environ["HEAD_SHA"][:8]
+          base_outcome = os.environ["BASE_OUTCOME"]
+          pr_outcome = os.environ["PR_OUTCOME"]
+
+          lines = [marker]
+          lines.append("### Block Processing Benchmark Comparison")
+          lines.append("")
+          lines.append(f"Run: [View workflow run]({run_url})")
+          lines.append(f"Base: `{base_sha}` | Head: `{head_sha}`")
+          lines.append("")
+
+          if base_outcome != "success":
+              lines.append(":x: **Base branch benchmark failed.** Check the workflow run for details.")
+              body = "\n".join(lines)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+              sys.exit(0)
+
+          if pr_outcome != "success":
+              lines.append(":x: **PR branch benchmark failed.** Check the workflow run for details.")
+              body = "\n".join(lines)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+              sys.exit(0)
+
+          base = load_results(os.environ["BASE_ARTIFACTS"])
+          pr = load_results(os.environ["PR_ARTIFACTS"])
+
+          if not base:
+              lines.append(":warning: No base branch benchmark results found.")
+              body = "\n".join(lines)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+              sys.exit(0)
+
+          if not pr:
+              lines.append(":warning: No PR branch benchmark results found.")
+              body = "\n".join(lines)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+              sys.exit(0)
+
+          # Build summary table
+          methods = [m for m in base if m in pr]
+          # Sort by baseline order: Baseline first, then alphabetical
+          methods.sort()
+
+          lines.append("| Method | Base (us) | PR (us) | Delta | Alloc Base | Alloc PR | Alloc Delta |")
+          lines.append("|--------|----------:|--------:|------:|-----------:|---------:|------------:|")
+
+          for m in methods:
+              b = base[m]
+              p = pr[m]
+              mean_d = delta_pct(p["mean"], b["mean"])
+              alloc_d = delta_pct(p["allocated"], b["allocated"])
+              lines.append(
+                  f"| {m} "
+                  f"| {fmt_us(b['mean'])} "
+                  f"| {fmt_us(p['mean'])} "
+                  f"| {fmt_delta(mean_d)}{indicator(mean_d)} "
+                  f"| {fmt_kb(b['allocated'])} KB "
+                  f"| {fmt_kb(p['allocated'])} KB "
+                  f"| {fmt_delta(alloc_d)} |"
+              )
+
+          # Detailed stats in collapsible section
+          lines.append("")
+          lines.append("<details><summary>Detailed statistics</summary>")
+          lines.append("")
+          lines.append("| Method | Metric | Base | PR | Delta |")
+          lines.append("|--------|--------|-----:|---:|------:|")
+
+          for m in methods:
+              b = base[m]
+              p = pr[m]
+              for metric, key in [("Mean", "mean"), ("Median", "median"),
+                                  ("P90", "p90"), ("P95", "p95"),
+                                  ("Min", "min"), ("Max", "max"),
+                                  ("StdDev", "stddev")]:
+                  d = delta_pct(p[key], b[key])
+                  lines.append(
+                      f"| {m} | {metric} "
+                      f"| {fmt_us(b[key])} us "
+                      f"| {fmt_us(p[key])} us "
+                      f"| {fmt_delta(d)} |"
+                  )
+
+          lines.append("")
+          lines.append("</details>")
+
+          body = "\n".join(lines)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+          PYEOF
+
+      - name: Post benchmark comparison comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          COMMENT_BODY: ${{ steps.compare.outputs.body }}
+        with:
+          script: |
+            const marker = '<!-- block-processing-benchmark-report -->';
+            const body = process.env.COMMENT_BODY;
+            if (!body) {
+              console.log('No comment body produced, skipping.');
+              return;
+            }
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) =>
+              comment.body && comment.body.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            ${{ runner.temp }}/bdn-base/results/
+            ${{ runner.temp }}/bdn-pr/results/
+          retention-days: 30
