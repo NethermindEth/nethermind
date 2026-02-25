@@ -36,6 +36,7 @@ public sealed class BlockCachePreWarmer(
     private readonly int _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
+    private volatile int _lastExecutedTransaction = -1;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -52,10 +53,16 @@ public sealed class BlockCachePreWarmer(
     {
     }
 
+    public void NotifyTransactionProcessing(int txIndex)
+    {
+        _lastExecutedTransaction = txIndex;
+    }
+
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
         if (preBlockCaches is not null)
         {
+            _lastExecutedTransaction = -1;
             CacheType result = preBlockCaches.ClearCaches();
             nodeStorageCache.ClearCaches();
             nodeStorageCache.Enabled = true;
@@ -193,6 +200,8 @@ public sealed class BlockCachePreWarmer(
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
                                 if (token.IsCancellationRequested) return tupleState;
+                                // Skip if main thread has already processed or is processing this tx
+                                if (blockState.PreWarmer._lastExecutedTransaction >= txIndex) continue;
                                 WarmupSingleTransaction(scope, tx, txIndex, blockState);
                             }
                         }

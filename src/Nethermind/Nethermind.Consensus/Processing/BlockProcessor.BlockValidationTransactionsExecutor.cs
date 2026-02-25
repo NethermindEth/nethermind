@@ -20,7 +20,8 @@ namespace Nethermind.Consensus.Processing
         public class BlockValidationTransactionsExecutor(
             ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider,
-            BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
+            BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null,
+            IBlockCachePreWarmer? preWarmer = null)
             : IBlockProcessor.IBlockTransactionsExecutor
         {
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -34,6 +35,7 @@ namespace Nethermind.Consensus.Processing
 
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
+                    preWarmer?.NotifyTransactionProcessing(i);
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 }

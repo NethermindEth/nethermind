@@ -15,4 +15,10 @@ public interface IBlockCachePreWarmer
 {
     Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists);
     CacheType ClearCaches();
+
+    /// <summary>
+    /// Notifies the prewarmer that the main thread is about to process transaction at <paramref name="txIndex"/>.
+    /// Prewarmer threads should skip transactions at or below this index.
+    /// </summary>
+    void NotifyTransactionProcessing(int txIndex) { }
 }
