@@ -159,7 +159,7 @@ public class ReadOnlySnapshotBundlePersistedTests
 
     private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, byte[] data)
     {
-        using ArenaWriter writer = _memArena.CreateWriter();
+        using ArenaWriter writer = _memArena.CreateWriter(data.Length);
         Span<byte> span = writer.GetWriter().GetSpan(data.Length);
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);

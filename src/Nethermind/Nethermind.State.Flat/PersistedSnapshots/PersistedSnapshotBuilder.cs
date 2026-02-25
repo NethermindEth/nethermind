@@ -582,7 +582,7 @@ public static class PersistedSnapshotBuilder
                     int estimatedSize = snapshots[i].Size / 2 + 4096;
                     using PooledByteBufferWriter pooled = new(Math.Max(estimatedSize, snapshots[i].Size));
                     ConvertFullToLinked(snapshots[i], ref pooled.GetWriter());
-                    using ArenaWriter tempWriter = tempArena.CreateWriter();
+                    using ArenaWriter tempWriter = tempArena.CreateWriter(pooled.WrittenSpan.Length);
                     ReadOnlySpan<byte> written = pooled.WrittenSpan;
                     Span<byte> dest = tempWriter.GetWriter().GetSpan(written.Length);
                     written.CopyTo(dest);

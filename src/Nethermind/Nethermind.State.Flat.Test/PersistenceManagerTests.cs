@@ -222,7 +222,7 @@ public class PersistenceManagerTests
 
         // Don't create any in-memory snapshots — configure persisted snapshot fallback
         StateId target = CreateStateId(16);
-        using ArenaWriter emptyWriter = _memArena.CreateWriter();
+        using ArenaWriter emptyWriter = _memArena.CreateWriter(0);
         (_, ArenaReservation emptyRes) = emptyWriter.Complete();
         PersistedSnapshot persisted = new PersistedSnapshot(1, Block0, target, PersistedSnapshotType.Full, emptyRes);
         _persistedSnapshotRepository.TryLeasePersistableCompactedSnapshotTo(target, out Arg.Any<PersistedSnapshot?>())
