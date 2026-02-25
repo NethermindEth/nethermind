@@ -5,6 +5,7 @@ using System.Diagnostics;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Storage;
 using Prometheus;
 
@@ -94,7 +95,9 @@ public class PersistedSnapshotCompactor(
         try
         {
             long sw = Stopwatch.GetTimestamp();
-            int len = PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, reservation.GetSpan(), referencedIds);
+            SpanBufferWriter compactWriter = new(reservation.GetSpan());
+            PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref compactWriter, referencedIds);
+            int len = compactWriter.Written;
             _persistedSnapshotSize.WithLabels($"size{compactSize}").Observe(len);
             _persistedSnapshotCompactTime.WithLabels($"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);
 

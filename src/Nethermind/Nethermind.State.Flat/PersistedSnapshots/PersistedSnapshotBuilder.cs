@@ -570,7 +570,7 @@ public static class PersistedSnapshotBuilder
     /// Pre-converts all Full snapshots to Linked so the merge only handles Linked snapshots
     /// (all trie values are already NodeRefs). This eliminates the dual code path in trie merges.
     /// </summary>
-    internal static int NWayMergeSnapshots(PersistedSnapshotList snapshots, Span<byte> output, HashSet<int> referencedIds)
+    internal static void NWayMergeSnapshots<TWriter>(PersistedSnapshotList snapshots, ref TWriter writer, HashSet<int> referencedIds) where TWriter : IByteBufferWriter
     {
         int n = snapshots.Count;
 
@@ -599,8 +599,7 @@ public static class PersistedSnapshotBuilder
                 }
             }
 
-            SpanBufferWriter outerWriter = new(output);
-            using HsstBuilder<SpanBufferWriter> outerBuilder = new(ref outerWriter);
+            using HsstBuilder<TWriter> outerBuilder = new(ref writer);
 
             byte[][] tags = [
                 PersistedSnapshot.MetadataTag,
@@ -614,32 +613,45 @@ public static class PersistedSnapshotBuilder
 
             foreach (byte[] tag in tags)
             {
-                ref SpanBufferWriter valueWriter = ref outerBuilder.BeginValueWrite();
+                ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
 
                 // All trie columns now use NWayStreamingMerge since all inputs are Linked (values are NodeRefs)
-                int columnLen = tag[0] switch
+                switch (tag[0])
                 {
-                    0x00 => NWayMetadataMerge(snapshots, valueWriter.GetSpan(0), referencedIds),
-                    0x01 => NWayMergeAccountColumn(mergeSnapshots, tag, valueWriter.GetSpan(0)),
-                    0x03 => NWayStreamingMerge(mergeSnapshots, tag, valueWriter.GetSpan(0),
-                        minSeparatorLength: 8, inlineValues: true),
-                    0x05 => NWayStreamingMerge(mergeSnapshots, tag, valueWriter.GetSpan(0),
-                        minSeparatorLength: 3, inlineValues: true),
-                    0x06 => NWayStreamingMerge(mergeSnapshots, tag, valueWriter.GetSpan(0),
-                        inlineValues: true),
-                    0x07 => NWayNestedStreamingMerge(mergeSnapshots, tag, valueWriter.GetSpan(0),
-                        outerMinSep: 2, innerMinSep: 8, innerInline: true),
-                    0x08 => NWayNestedStreamingMerge(mergeSnapshots, tag, valueWriter.GetSpan(0),
-                        outerMinSep: 2, innerInline: true),
-                    _ => throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}"),
-                };
+                    case 0x00:
+                        NWayMetadataMerge(snapshots, ref valueWriter, referencedIds);
+                        break;
+                    case 0x01:
+                        NWayMergeAccountColumn(mergeSnapshots, tag, ref valueWriter);
+                        break;
+                    case 0x03:
+                        NWayStreamingMerge(mergeSnapshots, tag, ref valueWriter,
+                            minSeparatorLength: 8, inlineValues: true);
+                        break;
+                    case 0x05:
+                        NWayStreamingMerge(mergeSnapshots, tag, ref valueWriter,
+                            minSeparatorLength: 3, inlineValues: true);
+                        break;
+                    case 0x06:
+                        NWayStreamingMerge(mergeSnapshots, tag, ref valueWriter,
+                            inlineValues: true);
+                        break;
+                    case 0x07:
+                        NWayNestedStreamingMerge(mergeSnapshots, tag, ref valueWriter,
+                            outerMinSep: 2, innerMinSep: 8, innerInline: true);
+                        break;
+                    case 0x08:
+                        NWayNestedStreamingMerge(mergeSnapshots, tag, ref valueWriter,
+                            outerMinSep: 2, innerInline: true);
+                        break;
+                    default:
+                        throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}");
+                }
 
-                valueWriter.Advance(columnLen);
                 outerBuilder.FinishValueWrite(tag);
             }
 
             outerBuilder.Build();
-            return outerWriter.Written;
         }
         finally
         {
@@ -658,9 +670,9 @@ public static class PersistedSnapshotBuilder
     /// N-way streaming merge of a column across N snapshots. On key collision, newest (highest index) wins.
     /// Uses <see cref="Hsst.Hsst.MergeEnumerator"/> for zero-allocation cursor-based enumeration.
     /// </summary>
-    internal static int NWayStreamingMerge(
-        PersistedSnapshotList snapshots, byte[] tag, Span<byte> output,
-        int minSeparatorLength = 0, bool inlineValues = false)
+    internal static void NWayStreamingMerge<TWriter>(
+        PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer,
+        int minSeparatorLength = 0, bool inlineValues = false) where TWriter : IByteBufferWriter
     {
         int n = snapshots.Count;
         Hsst.Hsst.MergeEnumerator[] enums = new Hsst.Hsst.MergeEnumerator[n];
@@ -677,8 +689,7 @@ public static class PersistedSnapshotBuilder
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
-            SpanBufferWriter writer = new(output);
-            using HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
+            using HsstBuilder<TWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
 
             while (true)
             {
@@ -729,7 +740,6 @@ public static class PersistedSnapshotBuilder
             }
 
             builder.Build();
-            return writer.Written;
         }
         finally
         {
@@ -742,14 +752,13 @@ public static class PersistedSnapshotBuilder
     /// when M sources share an outer key their inner HSST values are merged via NWayStreamingMerge.
     /// Single-source keys are copied as-is.
     /// </summary>
-    internal static int NWayNestedStreamingMerge(
+    internal static void NWayNestedStreamingMerge<TWriter>(
         Hsst.Hsst.MergeEnumerator[] enums, bool[] hasMore, int n,
         Func<int, ReadOnlySpan<byte>> getColumnSpan,
-        Span<byte> output,
-        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false)
+        ref TWriter writer,
+        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false) where TWriter : IByteBufferWriter
     {
-        SpanBufferWriter writer = new(output);
-        using HsstBuilder<SpanBufferWriter> builder = new(ref writer, outerMinSep);
+        using HsstBuilder<TWriter> builder = new(ref writer, outerMinSep);
 
         // Temp array for collecting matching source indices
         int[] matchingSources = new int[n];
@@ -790,10 +799,9 @@ public static class PersistedSnapshotBuilder
             else
             {
                 // M sources: create M inner enumerators and merge
-                ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
-                int mergedLen = NWayInnerMerge(enums, matchingSources, matchCount, getColumnSpan,
-                    innerWriter.GetSpan(0), innerMinSep, innerInline);
-                innerWriter.Advance(mergedLen);
+                ref TWriter innerWriter = ref builder.BeginValueWrite();
+                NWayInnerMerge(enums, matchingSources, matchCount, getColumnSpan,
+                    ref innerWriter, innerMinSep, innerInline);
                 builder.FinishValueWrite(minKey);
             }
 
@@ -806,7 +814,6 @@ public static class PersistedSnapshotBuilder
         }
 
         builder.Build();
-        return writer.Written;
     }
 
     /// <summary>
@@ -814,11 +821,11 @@ public static class PersistedSnapshotBuilder
     /// Each source's current value (from outer enumerator) is an inner HSST.
     /// Creates M inner MergeEnumerators and performs N-way merge with newest-wins.
     /// </summary>
-    private static int NWayInnerMerge(
+    private static void NWayInnerMerge<TWriter>(
         Hsst.Hsst.MergeEnumerator[] outerEnums, int[] matchingSources, int matchCount,
         Func<int, ReadOnlySpan<byte>> getColumnSpan,
-        Span<byte> output,
-        int minSeparatorLength = 0, bool inlineValues = false)
+        ref TWriter writer,
+        int minSeparatorLength = 0, bool inlineValues = false) where TWriter : IByteBufferWriter
     {
         Hsst.Hsst.MergeEnumerator[] innerEnums = new Hsst.Hsst.MergeEnumerator[matchCount];
         bool[] innerHasMore = new bool[matchCount];
@@ -836,8 +843,7 @@ public static class PersistedSnapshotBuilder
                 innerHasMore[j] = innerEnums[j].MoveNext(innerData[j]);
             }
 
-            SpanBufferWriter writer = new(output);
-            using HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
+            using HsstBuilder<TWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
 
             while (true)
             {
@@ -872,7 +878,6 @@ public static class PersistedSnapshotBuilder
             }
 
             builder.Build();
-            return writer.Written;
         }
         finally
         {
@@ -884,9 +889,9 @@ public static class PersistedSnapshotBuilder
     /// N-way nested streaming merge across N persisted snapshots.
     /// Initializes enumerators from snapshot data and delegates to the core merge method.
     /// </summary>
-    internal static int NWayNestedStreamingMerge(
-        PersistedSnapshotList snapshots, byte[] tag, Span<byte> output,
-        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false)
+    internal static void NWayNestedStreamingMerge<TWriter>(
+        PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer,
+        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false) where TWriter : IByteBufferWriter
     {
         int n = snapshots.Count;
         Hsst.Hsst.MergeEnumerator[] enums = new Hsst.Hsst.MergeEnumerator[n];
@@ -903,7 +908,7 @@ public static class PersistedSnapshotBuilder
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
-            return NWayNestedStreamingMerge(enums, hasMore, n,
+            NWayNestedStreamingMerge(enums, hasMore, n,
                 i =>
                 {
                     ReadOnlySpan<byte> sd = snapshots[i].GetSpan();
@@ -911,7 +916,7 @@ public static class PersistedSnapshotBuilder
                     so.TryGet(tag, out ReadOnlySpan<byte> col);
                     return col;
                 },
-                output, outerMinSep, innerMinSep, innerInline);
+                ref writer, outerMinSep, innerMinSep, innerInline);
         }
         finally
         {
@@ -924,8 +929,8 @@ public static class PersistedSnapshotBuilder
     /// Outer: 20-byte address keys (minSep=2). For matching addresses with M sources,
     /// calls <see cref="NWayMergePerAddressHsst"/>. Single source: copy as-is.
     /// </summary>
-    internal static int NWayMergeAccountColumn(
-        PersistedSnapshotList snapshots, byte[] tag, Span<byte> output)
+    internal static void NWayMergeAccountColumn<TWriter>(
+        PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer) where TWriter : IByteBufferWriter
     {
         int n = snapshots.Count;
         Hsst.Hsst.MergeEnumerator[] enums = new Hsst.Hsst.MergeEnumerator[n];
@@ -942,8 +947,7 @@ public static class PersistedSnapshotBuilder
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
-            SpanBufferWriter writer = new(output);
-            using HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength: 2);
+            using HsstBuilder<TWriter> builder = new(ref writer, minSeparatorLength: 2);
             int[] matchingSources = new int[n];
 
             while (true)
@@ -983,11 +987,10 @@ public static class PersistedSnapshotBuilder
                 else
                 {
                     // M sources share this address: merge per-address HSSTs
-                    ref SpanBufferWriter perAddrWriter = ref builder.BeginValueWrite();
-                    int len = NWayMergePerAddressHsst(
+                    ref TWriter perAddrWriter = ref builder.BeginValueWrite();
+                    NWayMergePerAddressHsst(
                         enums, matchingSources, matchCount, snapshots, tag,
-                        perAddrWriter.GetSpan(0));
-                    perAddrWriter.Advance(len);
+                        ref perAddrWriter);
                     builder.FinishValueWrite(minKey);
                 }
 
@@ -1002,7 +1005,6 @@ public static class PersistedSnapshotBuilder
             }
 
             builder.Build();
-            return writer.Written;
         }
         finally
         {
@@ -1016,10 +1018,10 @@ public static class PersistedSnapshotBuilder
     /// - SelfDestruct: iterate 0..M-1, apply TryAdd semantics
     /// - Account: newest wins (walk M-1..0, first with AccountSubTag)
     /// </summary>
-    private static int NWayMergePerAddressHsst(
+    private static void NWayMergePerAddressHsst<TWriter>(
         Hsst.Hsst.MergeEnumerator[] outerEnums, int[] matchingSources, int matchCount,
         PersistedSnapshotList snapshots, byte[] tag,
-        Span<byte> output)
+        ref TWriter writer) where TWriter : IByteBufferWriter
     {
         // Get per-address HSST data for each matching source
         byte[][] perAddrData = new byte[matchCount][];
@@ -1032,8 +1034,7 @@ public static class PersistedSnapshotBuilder
             perAddrData[j] = outerEnums[srcIdx].GetCurrentValue(col).ToArray();
         }
 
-        SpanBufferWriter writer = new(output);
-        using HsstBuilder<SpanBufferWriter> perAddrBuilder = new(ref writer);
+        using HsstBuilder<TWriter> perAddrBuilder = new(ref writer);
 
         // Find newest destruct barrier: newest j where SelfDestructSubTag value is empty (destructed)
         int destructBarrier = -1;
@@ -1080,13 +1081,12 @@ public static class PersistedSnapshotBuilder
                         slotHasMore[j] = slotEnums[j].MoveNext(slotData[j]);
                     }
 
-                    ref SpanBufferWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
-                    int slotLen = NWayNestedStreamingMerge(
+                    ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
+                    NWayNestedStreamingMerge(
                         slotEnums, slotHasMore, slotSourceCount,
                         j => slotData[j].AsSpan(),
-                        slotWriter.GetSpan(0),
+                        ref slotWriter,
                         outerMinSep: 2, innerMinSep: 2, innerInline: true);
-                    slotWriter.Advance(slotLen);
                     perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
                 }
                 finally
@@ -1139,7 +1139,6 @@ public static class PersistedSnapshotBuilder
         }
 
         perAddrBuilder.Build();
-        return writer.Written;
     }
 
     /// <summary>
@@ -1147,8 +1146,8 @@ public static class PersistedSnapshotBuilder
     /// Injects noderefs=[0x01] and ref_ids from referencedIds set.
     /// Emits in sorted key order.
     /// </summary>
-    internal static int NWayMetadataMerge(
-        PersistedSnapshotList snapshots, Span<byte> output, HashSet<int> refIds)
+    internal static void NWayMetadataMerge<TWriter>(
+        PersistedSnapshotList snapshots, ref TWriter writer, HashSet<int> refIds) where TWriter : IByteBufferWriter
     {
         int n = snapshots.Count;
         ReadOnlySpan<byte> oldestData = snapshots[0].GetSpan();
@@ -1178,8 +1177,7 @@ public static class PersistedSnapshotBuilder
             idx++;
         }
 
-        SpanBufferWriter writer = new(output);
-        using HsstBuilder<SpanBufferWriter> builder = new(ref writer);
+        using HsstBuilder<TWriter> builder = new(ref writer);
 
         // Emit all keys in sorted ASCII order:
         // "from_block" < "from_hash" < "noderefs" < "ref_ids" < "to_block" < "to_hash" < "version"
@@ -1192,6 +1190,5 @@ public static class PersistedSnapshotBuilder
         builder.Add("version"u8, version);
 
         builder.Build();
-        return writer.Written;
     }
 }

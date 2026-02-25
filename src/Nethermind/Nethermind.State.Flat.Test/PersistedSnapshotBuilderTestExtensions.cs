@@ -58,8 +58,9 @@ internal static class PersistedSnapshotBuilderTestExtensions
         byte[] buffer = ArrayPool<byte>.Shared.Rent(totalSize);
         try
         {
-            int len = PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, buffer, referencedIds);
-            return buffer.AsSpan(0, len).ToArray();
+            SpanBufferWriter writer = new(buffer);
+            PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref writer, referencedIds);
+            return buffer.AsSpan(0, writer.Written).ToArray();
         }
         finally
         {
