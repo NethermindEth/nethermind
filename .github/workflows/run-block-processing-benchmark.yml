@@ -216,6 +216,12 @@ jobs:
               sign = "+" if pct >= 0 else ""
               return f"{sign}{pct:.1f}%"
 
+          def fmt_cv(mean, stddev):
+              if mean == 0:
+                  return "n/a"
+              cv = (stddev / mean) * 100
+              return f"{cv:.1f}%"
+
           def indicator(pct):
               if pct is None:
                   return ""
@@ -275,8 +281,8 @@ jobs:
           # Sort by baseline order: Baseline first, then alphabetical
           methods.sort()
 
-          lines.append("| Method | Base (us) | PR (us) | Delta | Alloc Base | Alloc PR | Alloc Delta |")
-          lines.append("|--------|----------:|--------:|------:|-----------:|---------:|------------:|")
+          lines.append("| Method | Base (us) | PR (us) | Delta | Base CV | PR CV | Alloc Base | Alloc PR | Alloc Delta |")
+          lines.append("|--------|----------:|--------:|------:|--------:|------:|-----------:|---------:|------------:|")
 
           for m in methods:
               b = base[m]
@@ -288,6 +294,8 @@ jobs:
                   f"| {fmt_us(b['mean'])} "
                   f"| {fmt_us(p['mean'])} "
                   f"| {fmt_delta(mean_d)}{indicator(mean_d)} "
+                  f"| {fmt_cv(b['mean'], b['stddev'])} "
+                  f"| {fmt_cv(p['mean'], p['stddev'])} "
                   f"| {fmt_kb(b['allocated'])} KB "
                   f"| {fmt_kb(p['allocated'])} KB "
                   f"| {fmt_delta(alloc_d)} |"
