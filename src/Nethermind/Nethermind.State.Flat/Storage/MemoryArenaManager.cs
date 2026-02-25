@@ -23,15 +23,6 @@ public sealed class MemoryArenaManager : IArenaManager
 
     public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) { }
 
-    public SnapshotLocation Allocate(ReadOnlySpan<byte> data)
-    {
-        int arenaId = GetOrCreateArena(data.Length);
-        long offset = _frontiers[arenaId];
-        data.CopyTo(_arenas[arenaId].AsSpan((int)offset));
-        _frontiers[arenaId] = offset + data.Length;
-        return new SnapshotLocation(arenaId, offset, data.Length);
-    }
-
     public ArenaWriter CreateWriter()
     {
         int arenaId = GetOrCreateArena(0);

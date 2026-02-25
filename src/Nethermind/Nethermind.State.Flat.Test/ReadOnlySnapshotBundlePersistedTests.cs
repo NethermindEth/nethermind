@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -158,8 +159,11 @@ public class ReadOnlySnapshotBundlePersistedTests
 
     private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, byte[] data)
     {
-        SnapshotLocation loc = _memArena.Allocate(data);
-        ArenaReservation reservation = _memArena.Open(loc);
+        using ArenaWriter writer = _memArena.CreateWriter();
+        Span<byte> span = writer.GetWriter().GetSpan(data.Length);
+        data.CopyTo(span);
+        writer.GetWriter().Advance(data.Length);
+        (_, ArenaReservation reservation) = writer.Complete();
         return new PersistedSnapshot(id, from, to, type, reservation);
     }
 }

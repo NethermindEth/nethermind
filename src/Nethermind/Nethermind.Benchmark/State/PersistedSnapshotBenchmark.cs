@@ -215,8 +215,11 @@ public class PersistedSnapshotBenchmark
 
         _arenaManager = new MemoryArenaManager(arenaSize: 256 * 1024 * 1024);
         byte[] data = BuildSnapshot(snapshot);
-        SnapshotLocation loc = _arenaManager.Allocate(data);
-        ArenaReservation reservation = _arenaManager.Open(loc);
+        using ArenaWriter writer = _arenaManager.CreateWriter();
+        Span<byte> span = writer.GetWriter().GetSpan(data.Length);
+        data.CopyTo(span);
+        writer.GetWriter().Advance(data.Length);
+        (_, ArenaReservation reservation) = writer.Complete();
         _persistedSnapshot = new PersistedSnapshot(
             id: 0,
             from: initialStateId,

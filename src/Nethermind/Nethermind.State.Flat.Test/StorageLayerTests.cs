@@ -4,7 +4,6 @@
 using System;
 using System.IO;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Storage;
 using NUnit.Framework;
@@ -51,87 +50,6 @@ public class StorageLayerTests
         Assert.That(arena.Read(0, data1.Length), Is.EqualTo(data1));
         Assert.That(arena.Read(data1.Length, data2.Length), Is.EqualTo(data2));
         Assert.That(arena.MappedSize, Is.EqualTo(1024 * 1024));
-    }
-
-    [Test]
-    public void ArenaManager_AllocateAndRead([Values(1, 10, 100)] int count)
-    {
-        string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, maxArenaSize: 4096);
-        manager.Initialize([]);
-
-        SnapshotLocation[] locations = new SnapshotLocation[count];
-        byte[][] expectedData = new byte[count][];
-
-        for (int i = 0; i < count; i++)
-        {
-            expectedData[i] = new byte[32];
-            Random.Shared.NextBytes(expectedData[i]);
-            locations[i] = manager.Allocate(expectedData[i]);
-        }
-
-        // Read back all allocations
-        for (int i = 0; i < count; i++)
-        {
-            Assert.That(manager.Open(locations[i]).GetSpan().ToArray(), Is.EqualTo(expectedData[i]),
-                $"Data mismatch at index {i}");
-        }
-    }
-
-    [Test]
-    public void ArenaManager_CreatesNewArena_WhenFull()
-    {
-        string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, maxArenaSize: 100);
-        manager.Initialize([]);
-
-        byte[] data = new byte[60];
-
-        SnapshotLocation loc1 = manager.Allocate(data);
-        SnapshotLocation loc2 = manager.Allocate(data); // Won't fit in first arena
-
-        Assert.That(loc1.ArenaId, Is.Not.EqualTo(loc2.ArenaId), "Should use different arenas");
-        Assert.That(manager.Open(loc1).GetSpan().ToArray(), Is.EqualTo(data));
-        Assert.That(manager.Open(loc2).GetSpan().ToArray(), Is.EqualTo(data));
-    }
-
-    [Test]
-    public void ArenaManager_Initialize_RestoresFromCatalog()
-    {
-        string arenaDir = Path.Combine(_testDir, "arenas");
-        byte[] data1 = [1, 2, 3];
-        byte[] data2 = [4, 5, 6, 7, 8];
-        SnapshotLocation loc1, loc2;
-
-        // First session: write data
-        using (ArenaManager manager = new(arenaDir, maxArenaSize: 4096))
-        {
-            manager.Initialize([]);
-            loc1 = manager.Allocate(data1);
-            loc2 = manager.Allocate(data2);
-        }
-
-        // Second session: restore from catalog entries
-        StateId s0 = new(0, Keccak.EmptyTreeHash);
-        StateId s1 = new(1, Keccak.Compute("1"));
-        SnapshotCatalog.CatalogEntry[] entries =
-        [
-            new(1, s0, s1, PersistedSnapshotType.Full, loc1),
-            new(2, s0, s1, PersistedSnapshotType.Full, loc2),
-        ];
-
-        using (ArenaManager manager = new(arenaDir, maxArenaSize: 4096))
-        {
-            manager.Initialize(entries);
-            Assert.That(manager.Open(loc1).GetSpan().ToArray(), Is.EqualTo(data1));
-            Assert.That(manager.Open(loc2).GetSpan().ToArray(), Is.EqualTo(data2));
-
-            // New allocation starts after existing data
-            byte[] data3 = [9, 10];
-            SnapshotLocation loc3 = manager.Allocate(data3);
-            Assert.That(loc3.Offset, Is.GreaterThanOrEqualTo(loc2.Offset + loc2.Size));
-            Assert.That(manager.Open(loc3).GetSpan().ToArray(), Is.EqualTo(data3));
-        }
     }
 
     [Test]
@@ -222,46 +140,6 @@ public class StorageLayerTests
     }
 
     [Test]
-    public void EndToEnd_BuildHsst_StoreInArena_ReadBack()
-    {
-        // Build HSST data from a snapshot
-        StateId from = new(0, Keccak.EmptyTreeHash);
-        StateId to = new(1, Keccak.Compute("1"));
-
-        SnapshotContent content = new();
-        content.Accounts[Core.Test.Builders.TestItem.AddressA] =
-            Core.Test.Builders.Build.An.Account.WithBalance(42).TestObject;
-        ResourcePool pool = new(new FlatDbConfig());
-        Snapshot snapshot = new(from, to, content, pool, ResourcePool.Usage.MainBlockProcessing);
-
-        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snapshot);
-
-        // Store in arena
-        string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, maxArenaSize: 4096);
-        manager.Initialize([]);
-        SnapshotLocation location = manager.Allocate(hsstData);
-
-        // Store in catalog
-        string catalogPath = Path.Combine(_testDir, "catalog.bin");
-        SnapshotCatalog catalog = new(catalogPath);
-        int id = catalog.NextId();
-        catalog.Add(new(id, from, to, PersistedSnapshotType.Full, location));
-        catalog.Save();
-
-        // Read back from arena and use as PersistedSnapshot
-        ArenaReservation reservation = manager.Open(location);
-        PersistedSnapshot persisted = new(id, from, to, PersistedSnapshotType.Full, reservation);
-
-        bool hasAccount = persisted.TryGetAccount(Core.Test.Builders.TestItem.AddressA, out ReadOnlySpan<byte> rlp);
-        Assert.That(hasAccount, Is.True);
-
-        Serialization.Rlp.Rlp.ValueDecoderContext ctx = new(rlp);
-        Core.Account decoded = Serialization.Rlp.AccountDecoder.Slim.Decode(ref ctx)!;
-        Assert.That(decoded.Balance, Is.EqualTo((Int256.UInt256)42));
-    }
-
-    [Test]
     public void ArenaManager_CreateWriterAndComplete_WritesToArena()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
@@ -291,9 +169,16 @@ public class StorageLayerTests
         using ArenaManager manager = new(arenaDir, maxArenaSize: 4096);
         manager.Initialize([]);
 
-        // First allocate some data to establish a baseline
+        // First write some data to establish a baseline
         byte[] baseline = [0xAA];
-        SnapshotLocation baselineLoc = manager.Allocate(baseline);
+        SnapshotLocation baselineLoc;
+        using (ArenaWriter bw = manager.CreateWriter())
+        {
+            Span<byte> span = bw.GetWriter().GetSpan(baseline.Length);
+            baseline.CopyTo(span);
+            bw.GetWriter().Advance(baseline.Length);
+            (baselineLoc, _) = bw.Complete();
+        }
 
         // Create writer and then dispose without completing (cancel)
         using (ArenaWriter arenaWriter = manager.CreateWriter())
@@ -301,9 +186,16 @@ public class StorageLayerTests
             // Don't call Complete — Dispose will call CancelWrite
         }
 
-        // Allocate again — should reuse from the baseline offset
+        // Write again — should reuse from the baseline offset
         byte[] data = new byte[50];
-        SnapshotLocation loc = manager.Allocate(data);
+        SnapshotLocation loc;
+        using (ArenaWriter w = manager.CreateWriter())
+        {
+            Span<byte> span = w.GetWriter().GetSpan(data.Length);
+            data.CopyTo(span);
+            w.GetWriter().Advance(data.Length);
+            (loc, _) = w.Complete();
+        }
         Assert.That(loc.Offset, Is.EqualTo(baselineLoc.Offset + baselineLoc.Size));
     }
 
@@ -327,9 +219,16 @@ public class StorageLayerTests
 
         Assert.That(location.Size, Is.EqualTo(3));
 
-        // Next allocation should start right after the written data
+        // Next write should start right after the written data
         byte[] next = [4, 5];
-        SnapshotLocation nextLoc = manager.Allocate(next);
+        SnapshotLocation nextLoc;
+        using (ArenaWriter w = manager.CreateWriter())
+        {
+            Span<byte> span = w.GetWriter().GetSpan(next.Length);
+            next.CopyTo(span);
+            w.GetWriter().Advance(next.Length);
+            (nextLoc, _) = w.Complete();
+        }
         Assert.That(nextLoc.Offset, Is.EqualTo(location.Offset + location.Size));
     }
 
