@@ -20,7 +20,7 @@ namespace Nethermind.Benchmarks.Core
             (Keccak.EmptyTreeHash.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
             (Keccak.OfAnEmptyString.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
             (Keccak.OfAnEmptyString.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
-            (TestItem.AddressA.Bytes, TestItem.AddressB.Bytes),
+            (TestItem.AddressA.ToArray(), TestItem.AddressB.ToArray()),
         };
 
         [Params(0, 1, 2, 3, 4, 5)]
