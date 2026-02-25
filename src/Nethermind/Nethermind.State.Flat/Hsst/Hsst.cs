@@ -342,7 +342,7 @@ public readonly ref struct Hsst
         private readonly byte[] _keyBuffer;
         private int _keyLength;
 
-        public MergeEnumerator(ReadOnlySpan<byte> hsstData, bool isInline, int maxKeyLength = 64)
+        public MergeEnumerator(scoped ReadOnlySpan<byte> hsstData, bool isInline, int maxKeyLength = 64)
         {
             _keyBuffer = new byte[maxKeyLength];
             _isInline = isInline;
