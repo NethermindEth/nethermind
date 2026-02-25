@@ -20,8 +20,6 @@ public sealed class MemoryArenaManager : IArenaManager
         _arenaSize = arenaSize;
     }
 
-    public IReadOnlyDictionary<int, long> DeadBytes => _deadBytes;
-
     public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) { }
 
     public SnapshotLocation Allocate(ReadOnlySpan<byte> data)
