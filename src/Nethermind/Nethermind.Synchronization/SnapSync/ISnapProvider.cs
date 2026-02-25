@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IOwnedReadOnlyList<byte[]> codes);
 
-        void RefreshAccounts(AccountsToRefreshRequest request, IOwnedReadOnlyList<byte[]> response);
+        void RefreshAccounts(AccountsToRefreshRequest request, IByteArrayList response);
 
         void RetryRequest(SnapSyncBatch batch);
 

@@ -166,7 +166,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
                 };
             }
 
-            using IOwnedReadOnlyList<byte[]>? item = await snapSyncPeer.GetTrieNodes(new GetTrieNodesRequest()
+            using IByteArrayList? item = await snapSyncPeer.GetTrieNodes(new GetTrieNodesRequest()
             {
                 RootHash = rootHash,
                 AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
@@ -175,7 +175,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
             if (item is not null && item.Count > 0)
             {
-                return item[0];
+                return item[0].ToArray();
             }
         }
 

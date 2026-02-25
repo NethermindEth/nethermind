@@ -242,7 +242,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void RefreshAccounts(AccountsToRefreshRequest request, IOwnedReadOnlyList<byte[]> response)
+        public void RefreshAccounts(AccountsToRefreshRequest request, IByteArrayList response)
         {
             int respLength = response.Count;
             for (int reqIndex = 0; reqIndex < request.Paths.Count; reqIndex++)
@@ -251,7 +251,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (reqIndex < respLength)
                 {
-                    byte[] nodeData = response[reqIndex];
+                    ReadOnlySpan<byte> nodeData = response[reqIndex];
 
                     if (nodeData.Length == 0)
                     {
