@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -272,17 +271,17 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         void UpdateRootHashesMultiThread()
         {
             // We can recalculate the roots in parallel as they are all independent tries
-            using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = _storages
-                // Only consider contracts that actually have pending changes
-                .Where(kv => _toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
-                // Schedule larger changes first to help balance the work
-                .OrderByDescending(kv => kv.Value.EstimatedChanges)
-                .Select((kv) => (
-                    kv.Key,
-                    kv.Value,
-                    writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
-                ))
-                .ToPooledList(_storages.Count);
+            using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = new(_toUpdateRoots.Count);
+            foreach (KeyValuePair<AddressAsKey, PerContractState> kv in _storages)
+            {
+                if (_toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
+                {
+                    storages.Add((kv.Key, kv.Value, writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)));
+                }
+            }
+
+            // Schedule larger changes first to help balance the work
+            storages.Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
 
             ParallelUnbalancedWork.For(
                 0,
