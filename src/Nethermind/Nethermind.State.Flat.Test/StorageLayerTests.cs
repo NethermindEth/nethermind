@@ -3,7 +3,6 @@
 
 using System;
 using System.IO;
-using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -94,68 +93,6 @@ public class StorageLayerTests
         Assert.That(loc1.ArenaId, Is.Not.EqualTo(loc2.ArenaId), "Should use different arenas");
         Assert.That(manager.Open(loc1).GetSpan().ToArray(), Is.EqualTo(data));
         Assert.That(manager.Open(loc2).GetSpan().ToArray(), Is.EqualTo(data));
-    }
-
-    [Test]
-    public void ArenaManager_MarkDead_TracksDeadSpace()
-    {
-        string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, maxArenaSize: 4096);
-        manager.Initialize([]);
-
-        byte[] data = new byte[100];
-        SnapshotLocation loc1 = manager.Allocate(data);
-        SnapshotLocation loc2 = manager.Allocate(data);
-        SnapshotLocation loc3 = manager.Allocate(data);
-
-        Assert.That(manager.ShouldCompact(loc1.ArenaId), Is.False);
-
-        // Mark two of three as dead (>50%)
-        manager.MarkDead(loc1);
-        manager.MarkDead(loc2);
-        Assert.That(manager.ShouldCompact(loc1.ArenaId), Is.True);
-    }
-
-    [Test]
-    public void ArenaManager_Compact_MovesLiveData()
-    {
-        string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, maxArenaSize: 4096);
-        manager.Initialize([]);
-
-        byte[] data1 = [1, 2, 3];
-        byte[] data2 = [4, 5, 6, 7];
-        byte[] data3 = [8, 9];
-
-        SnapshotLocation loc1 = manager.Allocate(data1);
-        SnapshotLocation loc2 = manager.Allocate(data2);
-        SnapshotLocation loc3 = manager.Allocate(data3);
-        int origArena = loc1.ArenaId;
-
-        // Compact with only loc2 and loc3 live (loc1 is dead)
-        var mapping = manager.Compact(origArena, [loc2, loc3]);
-
-        Assert.That(mapping.Count, Is.EqualTo(2));
-        Assert.That(manager.Open(mapping[loc2]).GetSpan().ToArray(), Is.EqualTo(data2));
-        Assert.That(manager.Open(mapping[loc3]).GetSpan().ToArray(), Is.EqualTo(data3));
-    }
-
-    [Test]
-    public void ArenaManager_Compact_EmptyArena_DeletesFile()
-    {
-        string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, maxArenaSize: 4096);
-        manager.Initialize([]);
-
-        byte[] data = [1, 2, 3];
-        SnapshotLocation loc = manager.Allocate(data);
-        int arenaId = loc.ArenaId;
-
-        // Compact with no live data
-        var mapping = manager.Compact(arenaId, []);
-
-        Assert.That(mapping, Is.Empty);
-        Assert.That(manager.GetArenaIds(), Does.Not.Contain(arenaId));
     }
 
     [Test]

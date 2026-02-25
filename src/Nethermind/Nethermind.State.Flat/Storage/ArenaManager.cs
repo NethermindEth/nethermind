@@ -7,7 +7,7 @@ namespace Nethermind.State.Flat.Storage;
 
 /// <summary>
 /// Manages multiple arena files for snapshot storage. Handles allocation,
-/// reading, dead space tracking, and arena-level compaction.
+/// reading, and dead space tracking.
 /// </summary>
 public sealed class ArenaManager : IArenaManager
 {
@@ -32,8 +32,6 @@ public sealed class ArenaManager : IArenaManager
         _maxArenaSize = maxArenaSize;
         Directory.CreateDirectory(basePath);
     }
-
-    public IReadOnlyDictionary<int, long> DeadBytes => _deadBytes;
 
     /// <summary>
     /// Initialize from existing arena files and catalog entries.
@@ -197,12 +195,6 @@ public sealed class ArenaManager : IArenaManager
     }
 
     /// <summary>
-    /// Read snapshot data from an arena file. Used internally by Compact.
-    /// </summary>
-    private byte[] Read(in SnapshotLocation location) =>
-        _arenas[location.ArenaId].Read(location.Offset, location.Size);
-
-    /// <summary>
     /// Mark space as dead for compaction tracking.
     /// </summary>
     public void MarkDead(in SnapshotLocation location)
@@ -211,79 +203,6 @@ public sealed class ArenaManager : IArenaManager
         {
             _deadBytes.TryGetValue(location.ArenaId, out long dead);
             _deadBytes[location.ArenaId] = dead + location.Size;
-        }
-    }
-
-    /// <summary>
-    /// Check if an arena should be compacted (>50% dead space).
-    /// </summary>
-    public bool ShouldCompact(int arenaId)
-    {
-        lock (_lock)
-        {
-            if (!_frontiers.TryGetValue(arenaId, out long frontier) || frontier == 0) return false;
-            _deadBytes.TryGetValue(arenaId, out long dead);
-            return dead > frontier / 2;
-        }
-    }
-
-    /// <summary>
-    /// Compact an arena by copying live entries to a new arena.
-    /// Returns a mapping from old locations to new locations.
-    /// The caller is responsible for updating the catalog.
-    /// </summary>
-    public Dictionary<SnapshotLocation, SnapshotLocation> Compact(int arenaId, IReadOnlyList<SnapshotLocation> liveLocations)
-    {
-        lock (_lock)
-        {
-            if (!_arenas.TryGetValue(arenaId, out ArenaFile? oldArena))
-                return [];
-
-            Dictionary<SnapshotLocation, SnapshotLocation> mapping = new(liveLocations.Count);
-            if (liveLocations.Count == 0)
-            {
-                // No live data, just remove the arena
-                _arenas.Remove(arenaId);
-                _frontiers.Remove(arenaId);
-                _deadBytes.Remove(arenaId);
-                oldArena.Dispose();
-                File.Delete(oldArena.Path);
-                return mapping;
-            }
-
-            // Create new arena
-            ArenaFile newArena = CreateArenaFile();
-
-            // Copy live entries
-            long newOffset = 0;
-            foreach (SnapshotLocation oldLoc in liveLocations)
-            {
-                byte[] data = oldArena.Read(oldLoc.Offset, oldLoc.Size);
-                newArena.Write(newOffset, data);
-                SnapshotLocation newLoc = new(newArena.Id, newOffset, oldLoc.Size);
-                mapping[oldLoc] = newLoc;
-                newOffset += oldLoc.Size;
-            }
-
-            _frontiers[newArena.Id] = newOffset;
-            _deadBytes[newArena.Id] = 0;
-
-            // Remove old arena
-            _arenas.Remove(arenaId);
-            _frontiers.Remove(arenaId);
-            _deadBytes.Remove(arenaId);
-            oldArena.Dispose();
-            File.Delete(oldArena.Path);
-
-            return mapping;
-        }
-    }
-
-    public IEnumerable<int> GetArenaIds()
-    {
-        lock (_lock)
-        {
-            return _arenas.Keys.ToArray();
         }
     }
 
