@@ -9,20 +9,15 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp;
 
-public sealed class RlpByteArrayList(IMemoryOwner<byte> memoryOwner, (int Offset, int Length)[] items) : IOwnedReadOnlyList<byte[]>
+public sealed class RlpByteArrayList(IMemoryOwner<byte> memoryOwner, (int Offset, int Length)[] items) : IOwnedReadOnlyList<byte[]>, IByteArrayList
 {
     private readonly Memory<byte> _memory = memoryOwner.Memory;
 
     public int Count => items.Length;
 
-    public byte[] this[int index]
-    {
-        get
-        {
-            (int offset, int length) = items[index];
-            return length == 0 ? Array.Empty<byte>() : _memory.Slice(offset, length).ToArray();
-        }
-    }
+    ReadOnlySpan<byte> IByteArrayList.this[int index] => GetSpan(index);
+
+    byte[] IReadOnlyList<byte[]>.this[int index] => GetSpan(index).ToArray();
 
     public ReadOnlySpan<byte[]> AsSpan() => throw new NotSupportedException();
 
@@ -32,9 +27,15 @@ public sealed class RlpByteArrayList(IMemoryOwner<byte> memoryOwner, (int Offset
     {
         for (int i = 0; i < items.Length; i++)
         {
-            yield return this[i];
+            yield return GetSpan(i).ToArray();
         }
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    private ReadOnlySpan<byte> GetSpan(int index)
+    {
+        (int offset, int length) = items[index];
+        return length == 0 ? ReadOnlySpan<byte>.Empty : _memory.Span.Slice(offset, length);
+    }
 }
