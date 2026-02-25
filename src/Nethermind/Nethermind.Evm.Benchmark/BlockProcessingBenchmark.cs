@@ -44,9 +44,16 @@ namespace Nethermind.Evm.Benchmark;
 /// <see cref="BlockCachePreWarmer"/> — to match the live client's block processing
 /// path. Pre-warming triggers for blocks with 3+ transactions.
 ///
-/// Per-iteration state (DB, world state, DI scope) is pre-built in
-/// <see cref="GlobalSetup"/> to keep allocation noise out of the measurement window.
-/// <c>[IterationSetup]</c> only picks the next pre-built state from the pool.
+/// A single world state and branch processor are built once in <see cref="GlobalSetup"/>.
+/// <see cref="BranchProcessor.Process"/> manages its own scope internally, so each
+/// iteration opens a fresh scope at the genesis root and disposes it on exit —
+/// exactly as the runtime does.
+///
+/// Each benchmark method loops <see cref="N"/> times with
+/// <c>OperationsPerInvoke = N</c> so BDN divides the total time by N.
+/// This keeps iteration time well above the 100 ms minimum, eliminating
+/// MinIterationTime warnings and reducing coefficient of variation caused
+/// by OS scheduling noise on sub-millisecond measurements.
 ///
 /// Scenarios:
 /// - EmptyBlock, SingleTransfer, Transfers_50, Transfers_200
@@ -58,6 +65,12 @@ namespace Nethermind.Evm.Benchmark;
 [JsonExporterAttribute.FullCompressed]
 public class BlockProcessingBenchmark
 {
+    /// <summary>
+    /// Repetitions per BDN invocation. With the fastest method (EmptyBlock ~0.28 ms),
+    /// 500 reps ≈ 140 ms per iteration — comfortably above BDN's 100 ms minimum.
+    /// </summary>
+    private const int N = 500;
+
     /// <summary>
     /// 1000 data points per benchmark (10 launches x 100 iterations, 20 warmup each).
     /// GcForce ensures a GC collection between iterations to reduce allocation noise.
@@ -71,8 +84,8 @@ public class BlockProcessingBenchmark
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
                 .WithLaunchCount(5)
-                .WithWarmupCount(10)
-                .WithIterationCount(40)
+                .WithWarmupCount(5)
+                .WithIterationCount(20)
                 .WithGcForce(true));
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
@@ -81,9 +94,6 @@ public class BlockProcessingBenchmark
             AddColumn(StatisticColumn.P95);
         }
     }
-
-    // 20 warmup + 100 iterations + safety margin
-    private const int PoolSize = 150;
 
     private static readonly IReleaseSpec Spec = Osaka.Instance;
 
@@ -112,12 +122,7 @@ public class BlockProcessingBenchmark
     // DI container — built once, shared across all iterations
     private IContainer _container = null!;
 
-    // Pre-built state pool — avoids allocation noise in the measurement window
-    private IterationState[] _statePool = null!;
-    private int _stateIndex;
-
-    // Per-iteration state (assigned from pool in IterationSetup)
-    private IWorldState _stateProvider = null!;
+    // Single processing scope, branch processor and parent header — shared across all iterations
     private ILifetimeScope _processingScope = null!;
     private IBranchProcessor _branchProcessor = null!;
     private BlockHeader _parentHeader = null!;
@@ -182,102 +187,15 @@ public class BlockProcessingBenchmark
             .AddModule(new TestNethermindModule(Osaka.Instance))
             .Build();
 
-        // Pre-build state pool so IterationSetup is allocation-free
-        _statePool = new IterationState[PoolSize];
-        _stateIndex = 0;
-        for (int i = 0; i < PoolSize; i++)
-        {
-            _statePool[i] = BuildIterationState();
-        }
-    }
-
-    [GlobalCleanup]
-    public void GlobalCleanup()
-    {
-        for (int i = 0; i < _statePool.Length; i++)
-        {
-            _statePool[i].Scope?.Dispose();
-        }
-
-        _container.Dispose();
-    }
-
-    [IterationSetup]
-    public void IterationSetup()
-    {
-        IterationState state = _statePool[_stateIndex++];
-        _processingScope = state.Scope;
-        _stateProvider = state.WorldState;
-        _branchProcessor = state.BranchProcessor;
-        _parentHeader = state.ParentHeader;
-    }
-
-    [IterationCleanup]
-    public void IterationCleanup()
-    {
-        // Scope disposal is handled by GlobalCleanup to avoid
-        // per-iteration teardown noise leaking into measurement.
-        _processingScope = null!;
-    }
-
-    // ── Benchmarks ────────────────────────────────────────────────────────
-
-    [Benchmark]
-    public Block[] EmptyBlock()
-        => _branchProcessor.Process(_parentHeader, [_emptyBlock],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
-
-    [Benchmark]
-    public Block[] SingleTransfer()
-        => _branchProcessor.Process(_parentHeader, [_singleTransferBlock],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
-
-    [Benchmark]
-    public Block[] Transfers_50()
-        => _branchProcessor.Process(_parentHeader, [_transfers50Block],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
-
-    [Benchmark(Baseline = true)]
-    public Block[] Transfers_200()
-        => _branchProcessor.Process(_parentHeader, [_transfers200Block],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
-
-    [Benchmark]
-    public Block[] Eip1559_200()
-        => _branchProcessor.Process(_parentHeader, [_eip1559_200Block],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
-
-    [Benchmark]
-    public Block[] AccessList_50()
-        => _branchProcessor.Process(_parentHeader, [_accessList50Block],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
-
-    [Benchmark]
-    public Block[] ContractDeploy_10()
-        => _branchProcessor.Process(_parentHeader, [_contractDeploy10Block],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
-
-    [Benchmark]
-    public Block[] ContractCall_200()
-        => _branchProcessor.Process(_parentHeader, [_contractCall200Block],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
-
-    [Benchmark]
-    public Block[] MixedBlock()
-        => _branchProcessor.Process(_parentHeader, [_mixedBlock],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
-
-    // ── State pool builder ──────────────────────────────────────────────
-
-    private IterationState BuildIterationState()
-    {
+        // Single world state — BranchProcessor.Process() manages scope internally,
+        // matching the live client's block processing path.
         IDbProvider dbProvider = TestMemDbProvider.Init();
         IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
         IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
 
         IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();
         IMainProcessingModule[] mainProcessingModules = _container.Resolve<IMainProcessingModule[]>();
-        ILifetimeScope processingScope = _container.BeginLifetimeScope(b =>
+        _processingScope = _container.BeginLifetimeScope(b =>
         {
             b.RegisterInstance(scopeProvider).As<IWorldStateScopeProvider>().ExternallyOwned();
             b.RegisterInstance(wsm).As<IWorldStateManager>().ExternallyOwned();
@@ -285,9 +203,8 @@ public class BlockProcessingBenchmark
             b.AddModule(mainProcessingModules);
         });
 
-        IWorldState stateProvider = processingScope.Resolve<IWorldState>();
+        IWorldState stateProvider = _processingScope.Resolve<IWorldState>();
 
-        BlockHeader parentHeader;
         using (stateProvider.BeginScope(IWorldState.PreGenesis))
         {
             stateProvider.CreateAccount(_sender, 1_000_000.Ether());
@@ -303,23 +220,114 @@ public class BlockProcessingBenchmark
             stateProvider.Commit(Spec);
             stateProvider.CommitTree(0);
 
-            parentHeader = Build.A.BlockHeader
+            _parentHeader = Build.A.BlockHeader
                 .WithNumber(0)
                 .WithStateRoot(stateProvider.StateRoot)
                 .WithGasLimit(30_000_000)
                 .TestObject;
         }
 
-        IBranchProcessor branchProcessor = processingScope.Resolve<IBranchProcessor>();
-
-        return new IterationState(processingScope, stateProvider, branchProcessor, parentHeader);
+        _branchProcessor = _processingScope.Resolve<IBranchProcessor>();
     }
 
-    private readonly record struct IterationState(
-        ILifetimeScope Scope,
-        IWorldState WorldState,
-        IBranchProcessor BranchProcessor,
-        BlockHeader ParentHeader);
+    [GlobalCleanup]
+    public void GlobalCleanup()
+    {
+        _processingScope.Dispose();
+        _container.Dispose();
+    }
+
+    // ── Benchmarks ────────────────────────────────────────────────────────
+
+    [Benchmark(OperationsPerInvoke = N)]
+    public Block[] EmptyBlock()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N; i++)
+            result = _branchProcessor.Process(_parentHeader, [_emptyBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N)]
+    public Block[] SingleTransfer()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N; i++)
+            result = _branchProcessor.Process(_parentHeader, [_singleTransferBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N)]
+    public Block[] Transfers_50()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N; i++)
+            result = _branchProcessor.Process(_parentHeader, [_transfers50Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(Baseline = true, OperationsPerInvoke = N)]
+    public Block[] Transfers_200()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N; i++)
+            result = _branchProcessor.Process(_parentHeader, [_transfers200Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N)]
+    public Block[] Eip1559_200()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N; i++)
+            result = _branchProcessor.Process(_parentHeader, [_eip1559_200Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N)]
+    public Block[] AccessList_50()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N; i++)
+            result = _branchProcessor.Process(_parentHeader, [_accessList50Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N)]
+    public Block[] ContractDeploy_10()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N; i++)
+            result = _branchProcessor.Process(_parentHeader, [_contractDeploy10Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N)]
+    public Block[] ContractCall_200()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N; i++)
+            result = _branchProcessor.Process(_parentHeader, [_contractCall200Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N)]
+    public Block[] MixedBlock()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N; i++)
+            result = _branchProcessor.Process(_parentHeader, [_mixedBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
 
     // ── Block builder ─────────────────────────────────────────────────────
 
