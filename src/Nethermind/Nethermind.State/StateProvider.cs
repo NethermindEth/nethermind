@@ -54,7 +54,7 @@ namespace Nethermind.State
         public StateProvider(
             ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public void RecalculateStateRoot()
