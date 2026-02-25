@@ -13,6 +13,7 @@ public sealed class MemoryArenaManager : IArenaManager
     private readonly Dictionary<int, long> _frontiers = [];
     private readonly Dictionary<int, long> _deadBytes = [];
     private readonly Dictionary<(int ArenaId, long Offset), MemoryStream> _pendingStreams = [];
+    private readonly HashSet<int> _mutableArenas = [];
     private int _nextArenaId;
     private readonly int _arenaSize;
 
@@ -59,7 +60,16 @@ public sealed class MemoryArenaManager : IArenaManager
     public void MarkDead(in SnapshotLocation location)
     {
         _deadBytes.TryGetValue(location.ArenaId, out long dead);
-        _deadBytes[location.ArenaId] = dead + location.Size;
+        long totalDead = dead + location.Size;
+        _deadBytes[location.ArenaId] = totalDead;
+
+        if (totalDead >= _frontiers[location.ArenaId])
+        {
+            _mutableArenas.Remove(location.ArenaId);
+            _arenas.Remove(location.ArenaId);
+            _frontiers.Remove(location.ArenaId);
+            _deadBytes.Remove(location.ArenaId);
+        }
     }
 
     private void EnsureCapacity(int arenaId, int needed)
@@ -76,19 +86,36 @@ public sealed class MemoryArenaManager : IArenaManager
 
     private int GetOrCreateArena(int requiredSize)
     {
-        foreach (KeyValuePair<int, byte[]> kv in _arenas)
+        // Scan only mutable arenas; remove any that can't fit (they become permanently read-only)
+        List<int>? toRemove = null;
+        int result = -1;
+        foreach (int id in _mutableArenas)
         {
-            long frontier = _frontiers.GetValueOrDefault(kv.Key);
-            if (frontier + requiredSize <= kv.Value.Length)
-                return kv.Key;
+            long frontier = _frontiers.GetValueOrDefault(id);
+            if (frontier + requiredSize <= _arenas[id].Length)
+            {
+                result = id;
+                break;
+            }
+
+            (toRemove ??= []).Add(id);
         }
 
-        int id = _nextArenaId++;
+        if (toRemove is not null)
+        {
+            foreach (int id in toRemove)
+                _mutableArenas.Remove(id);
+        }
+
+        if (result >= 0) return result;
+
+        int newId = _nextArenaId++;
         int size = Math.Max(_arenaSize, requiredSize);
-        _arenas[id] = new byte[size];
-        _frontiers[id] = 0;
-        _deadBytes[id] = 0;
-        return id;
+        _arenas[newId] = new byte[size];
+        _frontiers[newId] = 0;
+        _deadBytes[newId] = 0;
+        _mutableArenas.Add(newId);
+        return newId;
     }
 
     public void Dispose()
@@ -97,5 +124,6 @@ public sealed class MemoryArenaManager : IArenaManager
         _frontiers.Clear();
         _deadBytes.Clear();
         _pendingStreams.Clear();
+        _mutableArenas.Clear();
     }
 }
