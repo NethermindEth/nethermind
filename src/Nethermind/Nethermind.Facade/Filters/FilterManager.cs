@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -23,11 +24,7 @@ namespace Nethermind.Blockchain.Filters
         private readonly ConcurrentDictionary<int, ConcurrentQueue<Hash256>> _blockHashes =
             new();
 
-        private readonly ConcurrentDictionary<int, ConcurrentQueue<Hash256>> _pendingTransactions =
-            new();
-
-        // Tracks transaction hashes marked as removed before the next poll drains the queue.
-        private readonly ConcurrentDictionary<int, ConcurrentDictionary<Hash256, byte>> _removedTransactions =
+        private readonly ConcurrentDictionary<int, ConcurrentQueue<Option<Hash256>>> _pendingTransactions =
             new();
 
         private Hash256? _lastBlockHash;
@@ -57,7 +54,6 @@ namespace Nethermind.Blockchain.Filters
             if (_blockHashes.TryRemove(id, out _)) return;
             if (_logs.TryRemove(id, out _)) return;
             _pendingTransactions.TryRemove(id, out _);
-            _removedTransactions.TryRemove(id, out _);
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
@@ -78,8 +74,8 @@ namespace Nethermind.Blockchain.Filters
             foreach (PendingTransactionFilter filter in filters)
             {
                 int filterId = filter.Id;
-                ConcurrentQueue<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new ConcurrentQueue<Hash256>());
-                transactions.Enqueue(e.Transaction.Hash);
+                ConcurrentQueue<Option<Hash256>> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new ConcurrentQueue<Option<Hash256>>());
+                transactions.Enqueue(new Option<Hash256>(e.Transaction.Hash));
                 if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId} contains {transactions.Count} transactions.");
             }
         }
@@ -91,10 +87,19 @@ namespace Nethermind.Blockchain.Filters
             foreach (PendingTransactionFilter filter in filters)
             {
                 int filterId = filter.Id;
-                // Mark removed rather than mutating the queue; the mark is consumed during the next poll.
-                ConcurrentDictionary<Hash256, byte> removed = _removedTransactions.GetOrAdd(filterId, static _ => new ConcurrentDictionary<Hash256, byte>());
-                removed.TryAdd(e.Transaction.Hash, 0);
-                if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId}: transaction {e.Transaction.Hash} marked as removed.");
+                if (!_pendingTransactions.TryGetValue(filterId, out ConcurrentQueue<Option<Hash256>>? transactions))
+                    continue;
+
+                // Scan the queue and mark the matching item as removed.
+                foreach (Option<Hash256> option in transactions)
+                {
+                    if (!option.IsRemoved && option.Value == e.Transaction.Hash)
+                    {
+                        option.MarkRemoved();
+                        if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId}: transaction {e.Transaction.Hash} marked as removed.");
+                        break;
+                    }
+                }
             }
         }
 
@@ -147,16 +152,14 @@ namespace Nethermind.Blockchain.Filters
         public Hash256[] PollPendingTransactionHashes(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            if (!_pendingTransactions.TryGetValue(filterId, out ConcurrentQueue<Hash256> pendingTransactions))
+            if (!_pendingTransactions.TryGetValue(filterId, out ConcurrentQueue<Option<Hash256>>? pendingTransactions))
                 return [];
 
-            _removedTransactions.TryGetValue(filterId, out ConcurrentDictionary<Hash256, byte>? removed);
-
             List<Hash256> result = new();
-            while (pendingTransactions.TryDequeue(out Hash256? hash))
+            while (pendingTransactions.TryDequeue(out Option<Hash256>? option))
             {
-                if (removed is null || !removed.TryRemove(hash, out _))
-                    result.Add(hash);
+                if (!option.IsRemoved)
+                    result.Add(option.Value);
             }
             return result.ToArray();
         }
@@ -254,6 +257,21 @@ namespace Nethermind.Blockchain.Filters
             }
 
             return new FilterLog(index, txReceipt, logEntry, blockTimestamp);
+        }
+
+        private sealed class Option<T>
+        {
+            private bool _isRemoved;
+
+            public T Value { get; }
+            public bool IsRemoved => Volatile.Read(ref _isRemoved);
+
+            public Option(T value)
+            {
+                Value = value;
+            }
+
+            public void MarkRemoved() => Volatile.Write(ref _isRemoved, true);
         }
     }
 }
