@@ -194,8 +194,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
 
-            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
-
             UpdateMetrics(opts, effectiveGasPrice);
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
@@ -211,7 +209,31 @@ namespace Nethermind.Evm.TransactionProcessing
                 return result;
             }
 
-            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
+            // When restoring (CallAndRestore), we must commit because Reset() clears
+            // the journal and the undo logic relies on _blockChanges having committed state.
+            // When tracing state, commit so the tracer sees pre-EVM diffs separately.
+            // Otherwise, skip this commit: the snapshot taken in ExecuteEvmCall protects
+            // these journal entries from EVM reverts, and the final Commit flushes all at once.
+            if (commit && (restore || tracer.IsTracingState))
+                WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
+
+            // Fast path for plain ETH transfers to EOAs: skip all VM setup and execution.
+            // Eligible when: message call, no calldata, no auth list, recipient is an EOA
+            // (no code, no delegation), and not tracing instructions or actions.
+            if (!restore && tx.IsMessageCall && tx.Data.Length == 0
+                && !tx.HasAuthorizationList
+                && !tracer.IsTracingInstructions && !tracer.IsTracingActions)
+            {
+                CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(tx.To!, spec, out Address? delegationAddress);
+                if (codeInfo.IsEmpty && delegationAddress is null)
+                {
+                    return ExecutePlainTransfer(tx, header, spec, tracer, commit, effectiveGasPrice,
+                        in premiumPerGas, in blobBaseFee, in intrinsicGas);
+                }
+            }
+
+            // Defer VM context setup until after validation - not needed for BuyGas/IncrementNonce
+            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
 
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();
@@ -227,10 +249,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
-
-            //only main thread updates transaction
-            if (!opts.HasFlag(ExecutionOptions.Warmup))
-                tx.SpentGas = spentGas.SpentGas;
+            tx.SpentGas = spentGas.SpentGas;
 
             // Finalize
             if (restore)
@@ -285,6 +304,103 @@ namespace Nethermind.Evm.TransactionProcessing
             return substate.EvmExceptionType != EvmExceptionType.None
                 ? TransactionResult.EvmException(substate.EvmExceptionType, substate.SubstateError)
                 : TransactionResult.Ok;
+        }
+
+        /// <summary>
+        /// Fast path for plain ETH transfers to EOA recipients.
+        /// Bypasses all VM setup (VmState, ExecutionEnvironment, StackAccessTracker, PrepareOpcodes)
+        /// since there is no code to execute. Performs the value transfer, gas accounting, fee
+        /// payment, and receipt reporting directly.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private TransactionResult ExecutePlainTransfer(
+            Transaction tx,
+            BlockHeader header,
+            IReleaseSpec spec,
+            ITxTracer tracer,
+            bool commit,
+            in UInt256 effectiveGasPrice,
+            in UInt256 premiumPerGas,
+            in UInt256 blobBaseFee,
+            in IntrinsicGas<TGasPolicy> intrinsicGas)
+        {
+            Address sender = tx.SenderAddress!;
+            Address recipient = tx.To!;
+
+            // Transfer value
+            if (!tx.ValueRef.IsZero)
+            {
+                WorldState.SubtractFromBalance(sender, in tx.ValueRef, spec);
+                WorldState.AddToBalanceAndCreateIfNotExists(recipient, tx.ValueRef, spec);
+            }
+            else
+            {
+                // Touch the recipient to ensure it exists in state (matches VM behavior)
+                WorldState.AddToBalanceAndCreateIfNotExists(recipient, UInt256.Zero, spec);
+            }
+
+            // Gas: for a plain transfer the entire execution cost is the intrinsic gas
+            long spentGas = TGasPolicy.GetRemainingGas(intrinsicGas.Standard);
+            GasConsumed gasConsumed = new(spentGas, spentGas);
+
+            // Refund unspent gas to sender
+            UInt256 refundAmount = (ulong)(tx.GasLimit - spentGas) * effectiveGasPrice;
+            if (!refundAmount.IsZero)
+                WorldState.AddToBalance(sender, refundAmount, spec);
+
+            // Pay fees (mirrors PayFees logic for the success path with empty destroy list)
+            UInt256 fees = premiumPerGas * (ulong)spentGas;
+            WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
+
+            UInt256 collectedFees = UInt256.Zero;
+            if (spec.IsEip1559Enabled && !tx.IsFree())
+            {
+                collectedFees = header.BaseFeePerGas * (ulong)spentGas;
+            }
+
+            if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
+            {
+                collectedFees += blobBaseFee;
+            }
+
+            if (spec.FeeCollector is not null && !collectedFees.IsZero)
+            {
+                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
+            }
+
+            if (tracer.IsTracingFees)
+            {
+                UInt256 eip1559Fees = spec.IsEip1559Enabled && !tx.IsFree() ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;
+                tracer.ReportFees(fees, eip1559Fees + blobBaseFee);
+            }
+
+            tx.SpentGas = spentGas;
+            header.GasUsed += spentGas;
+
+            // Commit
+            if (commit)
+            {
+                WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
+            }
+            else
+            {
+                WorldState.ResetTransient();
+            }
+
+            // Receipt
+            if (tracer.IsTracingReceipt)
+            {
+                Hash256? stateRoot = null;
+                if (!spec.IsEip658Enabled)
+                {
+                    WorldState.RecalculateStateRoot();
+                    stateRoot = WorldState.StateRoot;
+                }
+
+                tracer.MarkAsSuccess(recipient, gasConsumed, [], [], stateRoot);
+            }
+
+            return TransactionResult.Ok;
         }
 
         protected virtual TransactionResult CalculateAvailableGas(Transaction tx, in IntrinsicGas<TGasPolicy> intrinsicGas, out TGasPolicy gasAvailable)
@@ -712,10 +828,13 @@ namespace Nethermind.Evm.TransactionProcessing
 
             using (VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
             {
+#if !ZKVM
+                substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
+#else
                 substate = !TTracingInst.IsActive
-                    ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer) // no GVM trick for ZK
+                    ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer)
                     : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
-
+#endif
                 Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
                 gasAvailable = state.Gas;
 

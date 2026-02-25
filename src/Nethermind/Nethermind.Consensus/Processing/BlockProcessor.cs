@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -114,7 +115,12 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        // Compute receipts root on thread pool, overlapped with post-tx state changes and final commit.
+        // CalculateBlooms has already populated per-receipt Bloom fields that the trie encoding needs.
+        IReceiptsRootCalculator calc = _receiptsRootCalculator;
+        var suggestedReceiptsRoot = block.ReceiptsRoot;
+        Task<Core.Crypto.Hash256> receiptsRootTask = Task.Run(() => calc.GetReceiptsRoot(receipts, spec, suggestedReceiptsRoot));
+
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
@@ -141,6 +147,7 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
+        header.ReceiptsRoot = receiptsRootTask.GetAwaiter().GetResult();
         header.Hash = header.CalculateHash();
 
         return receipts;
