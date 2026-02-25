@@ -58,8 +58,11 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         using IPersistence.IPersistenceReader reader = CreateReader();
     }
 
-    public IPersistence.IPersistenceReader CreateReader()
+    public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
+        if ((flags & ReaderFlags.Sync) != 0)
+            return _inner.CreateReader(flags);
+
         RefCountingPersistenceReader? cachedReader = _cachedReader;
         if (cachedReader is not null && cachedReader.TryAcquire())
         {

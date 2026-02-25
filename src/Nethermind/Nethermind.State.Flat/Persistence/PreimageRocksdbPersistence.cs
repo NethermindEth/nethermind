@@ -63,7 +63,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
         kv.PutSpan(CurrentStateKey, bytes);
     }
 
-    public IPersistence.IPersistenceReader CreateReader()
+    public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
         IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();
         BaseTriePersistence.Reader trieReader = new(

@@ -9,9 +9,16 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
+[Flags]
+public enum ReaderFlags
+{
+    None = 0,
+    Sync = 1,
+}
+
 public interface IPersistence
 {
-    IPersistenceReader CreateReader();
+    IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None);
     IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None);
 
     // Note: RocksdbPersistence already flush WAL on writing batch dispose. You don't need this unless you are skipping WAL.
