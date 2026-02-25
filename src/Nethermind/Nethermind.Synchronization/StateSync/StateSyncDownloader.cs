@@ -77,7 +77,8 @@ namespace Nethermind.Synchronization.StateSync
 
             try
             {
-                batch.Responses = await task;
+                IOwnedReadOnlyList<byte[]> result = await task;
+                batch.Responses = result as IByteArrayList ?? new ByteArrayListAdapter(result);
 
                 if (hashList is not null) HashList.Return(hashList);
                 getTrieNodesRequest?.Dispose();
