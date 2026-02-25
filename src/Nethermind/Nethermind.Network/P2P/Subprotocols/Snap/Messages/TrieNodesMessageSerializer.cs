@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 
@@ -28,13 +29,30 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public TrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new(byteBuffer);
+            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
 
-            rlpStream.ReadSequenceLength();
+            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            int startingPosition = ctx.Position;
 
-            long requestId = rlpStream.DecodeLong();
-            IOwnedReadOnlyList<byte[]> result = rlpStream.DecodeArrayPoolList(static stream => stream.DecodeByteArray());
-            return new TrieNodesMessage(result) { RequestId = requestId };
+            ctx.ReadSequenceLength();
+            long requestId = ctx.DecodeLong();
+
+            int innerLength = ctx.ReadSequenceLength();
+            int checkPosition = ctx.Position + innerLength;
+            int count = ctx.PeekNumberOfItemsRemaining(checkPosition);
+
+            (int Offset, int Length)[] items = new (int, int)[count];
+            for (int i = 0; i < count; i++)
+            {
+                (int prefixLength, int contentLength) = ctx.PeekPrefixAndContentLength();
+                items[i] = (ctx.Position + prefixLength, contentLength);
+                ctx.Position += prefixLength + contentLength;
+            }
+
+            RlpByteArrayList list = new(memoryOwner, items);
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
+
+            return new TrieNodesMessage(list) { RequestId = requestId };
         }
 
         public static (int contentLength, int nodesLength) GetLength(TrieNodesMessage message)
