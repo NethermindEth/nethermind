@@ -81,7 +81,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                 penalties.Add(miner);
         }
         penalties.UnionWith(
-            preMasternodes.Where(address => !minerStatistics.ContainsKey(address))
+            preMasternodes.Except(minerStatistics.Keys)
         );
 
         bool isTipUpgradePenalty = currentSpec.TipUpgradePenalty <= number;
