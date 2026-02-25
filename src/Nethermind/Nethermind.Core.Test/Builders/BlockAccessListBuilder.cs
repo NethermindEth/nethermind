@@ -9,6 +9,8 @@ namespace Nethermind.Core.Test.Builders
 {
     public class BlockAccessListBuilder : BuilderBase<BlockAccessList>
     {
+        private static readonly AccountChanges SystemUserChanges = new(Address.SystemUser);
+        private static readonly AccountChanges WithdrawalContractChanges = new(new Address("0xbabe2bed00000000000000000000000000000003"));
 
         public BlockAccessListBuilder()
         {
@@ -28,7 +30,9 @@ namespace Nethermind.Core.Test.Builders
                 Eip2935Changes(parentHash),
                 Eip4788Changes(timestamp),
                 Eip7002Changes,
-                Eip7251Changes
+                Eip7251Changes,
+                SystemUserChanges,
+                WithdrawalContractChanges
             ]);
             return this;
         }
