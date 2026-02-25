@@ -59,6 +59,80 @@ public readonly ref struct Hsst
         return total;
     }
 
+    public bool TryGetBound(scoped ReadOnlySpan<byte> key, out int offset, out int length)
+    {
+        if (_data.Length < 2)
+        {
+            offset = 0; length = 0;
+            return false;
+        }
+
+        bool isInline = IsInline;
+        HsstIndex currentIndex = HsstIndex.ReadFromEnd(_data, _data.Length);
+
+        while (currentIndex.IsIntermediate)
+        {
+            if (!currentIndex.TryGetFloor(key, out _, out ReadOnlySpan<byte> childValueBytes))
+            {
+                offset = 0; length = 0;
+                return false;
+            }
+            int childOffset = BinaryPrimitives.ReadInt32LittleEndian(childValueBytes) + currentIndex.Metadata.BaseOffset;
+            currentIndex = HsstIndex.ReadFromEnd(_data, childOffset + 1);
+        }
+
+        if (isInline)
+        {
+            int floorIdx = currentIndex.FindFloorIndex(key);
+            if (floorIdx < 0 || !key.SequenceEqual(currentIndex.GetKey(floorIdx)))
+            {
+                offset = 0; length = 0;
+                return false;
+            }
+            ReadOnlySpan<byte> leafVal = currentIndex.GetValue(floorIdx);
+            if (leafVal.IsEmpty)
+            {
+                offset = 0; length = 0;
+                return true;
+            }
+            offset = SpanOffset(_data, leafVal);
+            length = leafVal.Length;
+            return true;
+        }
+
+        if (!currentIndex.TryGetFloor(key, out ReadOnlySpan<byte> sepKey, out ReadOnlySpan<byte> metadataBytes))
+        {
+            offset = 0; length = 0;
+            return false;
+        }
+
+        int metadataStart = BinaryPrimitives.ReadInt32LittleEndian(metadataBytes) + currentIndex.Metadata.BaseOffset;
+        ReadEntry(_data, 1 + metadataStart, out ReadOnlySpan<byte> remainingKey, out ReadOnlySpan<byte> entryValue);
+
+        if (key.Length != sepKey.Length + remainingKey.Length ||
+            !key.StartsWith(sepKey) ||
+            (remainingKey.Length > 0 && !key.Slice(sepKey.Length).SequenceEqual(remainingKey)))
+        {
+            offset = 0; length = 0;
+            return false;
+        }
+
+        if (entryValue.IsEmpty)
+        {
+            offset = 0; length = 0;
+            return true;
+        }
+        offset = SpanOffset(_data, entryValue);
+        length = entryValue.Length;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int SpanOffset(ReadOnlySpan<byte> outer, ReadOnlySpan<byte> inner) =>
+        (int)Unsafe.ByteOffset(
+            ref Unsafe.AsRef(in MemoryMarshal.GetReference(outer)),
+            ref Unsafe.AsRef(in MemoryMarshal.GetReference(inner)));
+
     public bool TryGet(scoped ReadOnlySpan<byte> key, out ReadOnlySpan<byte> value)
     {
         if (_data.Length < 2)
@@ -352,6 +426,15 @@ public readonly ref struct Hsst
             if (_isInline) return valLen == 0 ? ReadOnlySpan<byte>.Empty : data.Slice(metaOrValOff, valLen);
             ReadEntry(data, 1 + metaOrValOff, out _, out ReadOnlySpan<byte> value);
             return value;
+        }
+
+        public (int Offset, int Length) GetCurrentValueBound(ReadOnlySpan<byte> data)
+        {
+            (_, _, int metaOrValOff, int valLen) = _entries[_index];
+            if (_isInline) return (metaOrValOff, valLen);
+            int pos = 1 + metaOrValOff;
+            int valueLength = Leb128.Read(data, ref pos);
+            return (1 + metaOrValOff - valueLength, valueLength);
         }
 
         public int CurrentMetadataStart => 1 + _entries[_index].MetaOrValOffset;

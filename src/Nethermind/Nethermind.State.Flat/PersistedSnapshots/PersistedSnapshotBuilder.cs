@@ -34,8 +34,46 @@ public static class PersistedSnapshotBuilder
     private const int CompactPathThreshold = 15;
     private const int StorageHashPrefixLength = 20;
 
+    private static readonly Comparison<(TreePath Path, TrieNode Node)> StateNodeComparer = (a, b) =>
+    {
+        int cmp = a.Path.Path.Bytes.SequenceCompareTo(b.Path.Path.Bytes);
+        return cmp != 0 ? cmp : a.Path.Length.CompareTo(b.Path.Length);
+    };
+
+    private static readonly Comparison<((Hash256AsKey Addr, TreePath Path) Key, TrieNode Node)> StorageNodeComparer = (a, b) =>
+    {
+        int cmp = a.Key.Addr.Value.Bytes.SequenceCompareTo(b.Key.Addr.Value.Bytes);
+        if (cmp != 0) return cmp;
+        cmp = a.Key.Path.Path.Bytes.SequenceCompareTo(b.Key.Path.Path.Bytes);
+        return cmp != 0 ? cmp : a.Key.Path.Length.CompareTo(b.Key.Path.Length);
+    };
+
     public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer) where TWriter : IByteBufferWriter
     {
+        // Single pass: partition state nodes into top/compact/fallback
+        List<(TreePath Path, TrieNode Node)> stateTop = new(), stateCompact = new(), stateFallback = new();
+        foreach (KeyValuePair<TreePath, TrieNode> kv in snapshot.StateNodes)
+        {
+            if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
+            if (kv.Key.Length <= TopPathThreshold) stateTop.Add((kv.Key, kv.Value));
+            else if (kv.Key.Length <= CompactPathThreshold) stateCompact.Add((kv.Key, kv.Value));
+            else stateFallback.Add((kv.Key, kv.Value));
+        }
+        stateTop.Sort(StateNodeComparer);
+        stateCompact.Sort(StateNodeComparer);
+        stateFallback.Sort(StateNodeComparer);
+
+        // Single pass: partition storage nodes into compact/fallback
+        List<((Hash256AsKey Addr, TreePath Path) Key, TrieNode Node)> storCompact = new(), storFallback = new();
+        foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in snapshot.StorageNodes)
+        {
+            if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
+            if (kv.Key.Item2.Length <= CompactPathThreshold) storCompact.Add((kv.Key, kv.Value));
+            else storFallback.Add((kv.Key, kv.Value));
+        }
+        storCompact.Sort(StorageNodeComparer);
+        storFallback.Sort(StorageNodeComparer);
+
         HsstBuilder<TWriter> outer = new(ref writer);
         try
         {
@@ -46,19 +84,19 @@ public static class PersistedSnapshotBuilder
             WriteAccountColumn(ref outer, snapshot);
 
             // Column 0x03: State nodes (compact, path length 6-15)
-            WriteStateNodesColumnCompact(ref outer, snapshot);
+            WriteStateNodesColumnCompact(ref outer, stateCompact);
 
             // Column 0x05: State top nodes (path length 0-5)
-            WriteStateTopNodesColumn(ref outer, snapshot);
+            WriteStateTopNodesColumn(ref outer, stateTop);
 
             // Column 0x06: State nodes fallback (path length 16+)
-            WriteStateNodesColumnFallback(ref outer, snapshot);
+            WriteStateNodesColumnFallback(ref outer, stateFallback);
 
             // Column 0x07: Storage nodes (compact, path length 6-15)
-            WriteStorageNodesColumnCompact(ref outer, snapshot);
+            WriteStorageNodesColumnCompact(ref outer, storCompact);
 
             // Column 0x08: Storage nodes fallback (path length 16+)
-            WriteStorageNodesColumnFallback(ref outer, snapshot);
+            WriteStorageNodesColumnFallback(ref outer, storFallback);
 
             outer.Build();
         }
@@ -103,34 +141,40 @@ public static class PersistedSnapshotBuilder
 
     private static void WriteAccountColumn<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
     {
-        // Collect all unique addresses across accounts, self-destructs, and storages
-        // Also build lookup dictionaries for direct access
-        SortedSet<byte[]> uniqueAddresses = new(Bytes.Comparer);
+        // Build lookup dictionaries
         Dictionary<AddressAsKey, Account?> accountLookup = new();
+        HashSet<AddressAsKey> seen = new();
         foreach (KeyValuePair<AddressAsKey, Account?> kv in snapshot.Accounts)
         {
-            uniqueAddresses.Add(kv.Key.Value.Bytes.ToArray());
             accountLookup[kv.Key] = kv.Value;
+            seen.Add(kv.Key);
         }
         Dictionary<AddressAsKey, bool> sdLookup = new();
         foreach (KeyValuePair<AddressAsKey, bool> kv in snapshot.SelfDestructedStorageAddresses)
         {
-            uniqueAddresses.Add(kv.Key.Value.Bytes.ToArray());
             sdLookup[kv.Key] = kv.Value;
+            seen.Add(kv.Key);
         }
-        foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in snapshot.Storages)
-            uniqueAddresses.Add(kv.Key.Item1.Value.Bytes.ToArray());
 
         // Pre-sort storages by (Address, Slot) for efficient iteration
         List<((AddressAsKey Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages = new();
         foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in snapshot.Storages)
+        {
             sortedStorages.Add((kv.Key, kv.Value));
+            seen.Add(kv.Key.Item1);
+        }
         sortedStorages.Sort((a, b) =>
         {
             int cmp = a.Key.Addr.Value.Bytes.SequenceCompareTo(b.Key.Addr.Value.Bytes);
             if (cmp != 0) return cmp;
             return a.Key.Slot.CompareTo(b.Key.Slot);
         });
+
+        // Build sorted unique address list without per-address .ToArray()
+        List<Address> uniqueAddresses = new(seen.Count);
+        foreach (AddressAsKey addr in seen)
+            uniqueAddresses.Add(addr);
+        uniqueAddresses.Sort((a, b) => a.Bytes.SequenceCompareTo(b.Bytes));
 
         const int slotPrefixLength = 30;
         const int slotSuffixLength = 2;
@@ -144,9 +188,8 @@ public static class PersistedSnapshotBuilder
             byte[] slotKey = new byte[32];
             int storageIdx = 0;
 
-            foreach (byte[] addrBytes in uniqueAddresses)
+            foreach (Address address in uniqueAddresses)
             {
-                Address address = new(addrBytes);
 
                 // Begin per-address HSST
                 ref TWriter perAddrWriter = ref addressLevel.BeginValueWrite();
@@ -154,14 +197,14 @@ public static class PersistedSnapshotBuilder
 
                 // Sub-tag 0x01: Slots
                 bool hasStorage = storageIdx < sortedStorages.Count &&
-                    sortedStorages[storageIdx].Key.Addr.Value.Bytes.SequenceEqual(addrBytes);
+                    sortedStorages[storageIdx].Key.Addr.Value.Bytes.SequenceEqual(address.Bytes);
                 if (hasStorage)
                 {
                     ref TWriter slotWriter = ref perAddr.BeginValueWrite();
                     using HsstBuilder<TWriter> prefixLevel = new(ref slotWriter, minSeparatorLength: 2);
 
                     while (storageIdx < sortedStorages.Count &&
-                        sortedStorages[storageIdx].Key.Addr.Value.Bytes.SequenceEqual(addrBytes))
+                        sortedStorages[storageIdx].Key.Addr.Value.Bytes.SequenceEqual(address.Bytes))
                     {
                         sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey.AsSpan());
                         byte[] currentPrefix = slotKey[..slotPrefixLength].ToArray();
@@ -170,7 +213,7 @@ public static class PersistedSnapshotBuilder
                         using HsstBuilder<TWriter> suffixLevel = new(ref suffixWriter, minSeparatorLength: 2, inlineValues: true);
 
                         while (storageIdx < sortedStorages.Count &&
-                            sortedStorages[storageIdx].Key.Addr.Value.Bytes.SequenceEqual(addrBytes))
+                            sortedStorages[storageIdx].Key.Addr.Value.Bytes.SequenceEqual(address.Bytes))
                         {
                             sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey.AsSpan());
                             if (!slotKey.AsSpan(0, slotPrefixLength).SequenceEqual(currentPrefix))
@@ -220,7 +263,7 @@ public static class PersistedSnapshotBuilder
                 }
 
                 perAddr.Build();
-                addressLevel.FinishValueWrite(addrBytes);
+                addressLevel.FinishValueWrite(address.Bytes);
             }
 
             addressLevel.Build();
@@ -228,23 +271,8 @@ public static class PersistedSnapshotBuilder
         }
     }
 
-    private static void WriteStateTopNodesColumn<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
+    private static void WriteStateTopNodesColumn<TWriter>(ref HsstBuilder<TWriter> outer, List<(TreePath Path, TrieNode Node)> stateNodes) where TWriter : IByteBufferWriter
     {
-        // Sort state nodes with top paths (length 0-5)
-        List<(TreePath Path, TrieNode Node)> stateNodes = new();
-        foreach (KeyValuePair<TreePath, TrieNode> kv in snapshot.StateNodes)
-        {
-            if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
-            if (kv.Key.Length <= TopPathThreshold)
-                stateNodes.Add((kv.Key, kv.Value));
-        }
-        stateNodes.Sort((a, b) =>
-        {
-            int cmp = a.Path.Path.Bytes.SequenceCompareTo(b.Path.Path.Bytes);
-            if (cmp != 0) return cmp;
-            return a.Path.Length.CompareTo(b.Path.Length);
-        });
-
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using (HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 3))
         {
@@ -260,23 +288,8 @@ public static class PersistedSnapshotBuilder
         }
     }
 
-    private static void WriteStateNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
+    private static void WriteStateNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, List<(TreePath Path, TrieNode Node)> stateNodes) where TWriter : IByteBufferWriter
     {
-        // Sort state nodes with compact paths (length 6-15)
-        List<(TreePath Path, TrieNode Node)> stateNodes = new();
-        foreach (KeyValuePair<TreePath, TrieNode> kv in snapshot.StateNodes)
-        {
-            if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
-            if (kv.Key.Length > TopPathThreshold && kv.Key.Length <= CompactPathThreshold)
-                stateNodes.Add((kv.Key, kv.Value));
-        }
-        stateNodes.Sort((a, b) =>
-        {
-            int cmp = a.Path.Path.Bytes.SequenceCompareTo(b.Path.Path.Bytes);
-            if (cmp != 0) return cmp;
-            return a.Path.Length.CompareTo(b.Path.Length);
-        });
-
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using (HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 8))
         {
@@ -292,23 +305,8 @@ public static class PersistedSnapshotBuilder
         }
     }
 
-    private static void WriteStateNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
+    private static void WriteStateNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, List<(TreePath Path, TrieNode Node)> stateNodes) where TWriter : IByteBufferWriter
     {
-        // Sort state nodes with fallback paths (length 16+)
-        List<(TreePath Path, TrieNode Node)> stateNodes = new();
-        foreach (KeyValuePair<TreePath, TrieNode> kv in snapshot.StateNodes)
-        {
-            if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
-            if (kv.Key.Length > CompactPathThreshold)
-                stateNodes.Add((kv.Key, kv.Value));
-        }
-        stateNodes.Sort((a, b) =>
-        {
-            int cmp = a.Path.Path.Bytes.SequenceCompareTo(b.Path.Path.Bytes);
-            if (cmp != 0) return cmp;
-            return a.Path.Length.CompareTo(b.Path.Length);
-        });
-
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using (HsstBuilder<TWriter> inner = new(ref innerWriter))
         {
@@ -325,25 +323,8 @@ public static class PersistedSnapshotBuilder
         }
     }
 
-    private static void WriteStorageNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
+    private static void WriteStorageNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, List<((Hash256AsKey Addr, TreePath Path) Key, TrieNode Node)> storageNodes) where TWriter : IByteBufferWriter
     {
-        // Sort storage nodes with compact paths (length 0-15)
-        List<((Hash256AsKey Addr, TreePath Path) Key, TrieNode Node)> storageNodes = new();
-        foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in snapshot.StorageNodes)
-        {
-            if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
-            if (kv.Key.Item2.Length <= CompactPathThreshold)
-                storageNodes.Add((kv.Key, kv.Value));
-        }
-        storageNodes.Sort((a, b) =>
-        {
-            int cmp = a.Key.Addr.Value.Bytes.SequenceCompareTo(b.Key.Addr.Value.Bytes);
-            if (cmp != 0) return cmp;
-            cmp = a.Key.Path.Path.Bytes.SequenceCompareTo(b.Key.Path.Path.Bytes);
-            if (cmp != 0) return cmp;
-            return a.Key.Path.Length.CompareTo(b.Key.Path.Length);
-        });
-
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(8) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
         using (HsstBuilder<TWriter> hashLevel = new(ref hashWriter, minSeparatorLength: 2))
@@ -374,25 +355,8 @@ public static class PersistedSnapshotBuilder
         }
     }
 
-    private static void WriteStorageNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
+    private static void WriteStorageNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, List<((Hash256AsKey Addr, TreePath Path) Key, TrieNode Node)> storageNodes) where TWriter : IByteBufferWriter
     {
-        // Sort storage nodes with fallback paths (length 16+)
-        List<((Hash256AsKey Addr, TreePath Path) Key, TrieNode Node)> storageNodes = new();
-        foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in snapshot.StorageNodes)
-        {
-            if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
-            if (kv.Key.Item2.Length > CompactPathThreshold)
-                storageNodes.Add((kv.Key, kv.Value));
-        }
-        storageNodes.Sort((a, b) =>
-        {
-            int cmp = a.Key.Addr.Value.Bytes.SequenceCompareTo(b.Key.Addr.Value.Bytes);
-            if (cmp != 0) return cmp;
-            cmp = a.Key.Path.Path.Bytes.SequenceCompareTo(b.Key.Path.Path.Bytes);
-            if (cmp != 0) return cmp;
-            return a.Key.Path.Length.CompareTo(b.Key.Path.Length);
-        });
-
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(33) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
         using (HsstBuilder<TWriter> hashLevel = new(ref hashWriter, minSeparatorLength: 2))
@@ -580,13 +544,8 @@ public static class PersistedSnapshotBuilder
                 if (snapshots[i].Type == PersistedSnapshotType.Full)
                 {
                     int estimatedSize = snapshots[i].Size / 2 + 4096;
-                    using PooledByteBufferWriter pooled = new(Math.Max(estimatedSize, snapshots[i].Size));
-                    ConvertFullToLinked(snapshots[i], ref pooled.GetWriter());
-                    using ArenaWriter tempWriter = tempArena.CreateWriter(pooled.WrittenSpan.Length);
-                    ReadOnlySpan<byte> written = pooled.WrittenSpan;
-                    Span<byte> dest = tempWriter.GetWriter().GetSpan(written.Length);
-                    written.CopyTo(dest);
-                    tempWriter.GetWriter().Advance(written.Length);
+                    using ArenaWriter tempWriter = tempArena.CreateWriter(Math.Max(estimatedSize, snapshots[i].Size));
+                    ConvertFullToLinked(snapshots[i], ref tempWriter.GetWriter());
                     (_, ArenaReservation tempRes) = tempWriter.Complete();
                     PersistedSnapshot convertedSnap = new(snapshots[i].Id, snapshots[i].From, snapshots[i].To,
                         PersistedSnapshotType.Linked, tempRes);
@@ -678,6 +637,7 @@ public static class PersistedSnapshotBuilder
         int n = snapshots.Count;
         Hsst.Hsst.MergeEnumerator[] enums = new Hsst.Hsst.MergeEnumerator[n];
         bool[] hasMore = new bool[n];
+        (int Offset, int Length)[] columnBounds = new (int, int)[n];
 
         try
         {
@@ -685,7 +645,9 @@ public static class PersistedSnapshotBuilder
             {
                 ReadOnlySpan<byte> snapshotData = snapshots[i].GetSpan();
                 Hsst.Hsst outer = new(snapshotData);
-                outer.TryGet(tag, out ReadOnlySpan<byte> column);
+                if (outer.TryGetBound(tag, out int colOff, out int colLen))
+                    columnBounds[i] = (colOff, colLen);
+                ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
                 enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: inlineValues);
                 hasMore[i] = enums[i].MoveNext(column);
             }
@@ -712,12 +674,8 @@ public static class PersistedSnapshotBuilder
                 if (minIdx < 0) break;
 
                 ReadOnlySpan<byte> minKey = enums[minIdx].CurrentKey;
-
-                // Get column span for the winner to read its value
-                ReadOnlySpan<byte> winnerSnapshotData = snapshots[minIdx].GetSpan();
-                Hsst.Hsst winnerOuter = new(winnerSnapshotData);
-                winnerOuter.TryGet(tag, out ReadOnlySpan<byte> winnerColumn);
-                builder.Add(minKey, enums[minIdx].GetCurrentValue(winnerColumn));
+                ReadOnlySpan<byte> colSpan = snapshots[minIdx].GetSpan().Slice(columnBounds[minIdx].Offset, columnBounds[minIdx].Length);
+                builder.Add(minKey, enums[minIdx].GetCurrentValue(colSpan));
 
                 // Advance all enumerators that had the min key.
                 // Advance minIdx LAST because minKey references its _keyBuffer which MoveNext overwrites.
@@ -726,17 +684,13 @@ public static class PersistedSnapshotBuilder
                     if (i == minIdx || !hasMore[i]) continue;
                     if (enums[i].CurrentKey.SequenceCompareTo(minKey) == 0)
                     {
-                        ReadOnlySpan<byte> sd = snapshots[i].GetSpan();
-                        Hsst.Hsst so = new(sd);
-                        so.TryGet(tag, out ReadOnlySpan<byte> col);
-                        hasMore[i] = enums[i].MoveNext(col);
+                        ReadOnlySpan<byte> cs = snapshots[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length);
+                        hasMore[i] = enums[i].MoveNext(cs);
                     }
                 }
                 {
-                    ReadOnlySpan<byte> sd = snapshots[minIdx].GetSpan();
-                    Hsst.Hsst so = new(sd);
-                    so.TryGet(tag, out ReadOnlySpan<byte> col);
-                    hasMore[minIdx] = enums[minIdx].MoveNext(col);
+                    ReadOnlySpan<byte> cs = snapshots[minIdx].GetSpan().Slice(columnBounds[minIdx].Offset, columnBounds[minIdx].Length);
+                    hasMore[minIdx] = enums[minIdx].MoveNext(cs);
                 }
             }
 
@@ -897,6 +851,7 @@ public static class PersistedSnapshotBuilder
         int n = snapshots.Count;
         Hsst.Hsst.MergeEnumerator[] enums = new Hsst.Hsst.MergeEnumerator[n];
         bool[] hasMore = new bool[n];
+        (int Offset, int Length)[] columnBounds = new (int, int)[n];
 
         try
         {
@@ -904,19 +859,15 @@ public static class PersistedSnapshotBuilder
             {
                 ReadOnlySpan<byte> snapshotData = snapshots[i].GetSpan();
                 Hsst.Hsst outer = new(snapshotData);
-                outer.TryGet(tag, out ReadOnlySpan<byte> column);
+                if (outer.TryGetBound(tag, out int colOff, out int colLen))
+                    columnBounds[i] = (colOff, colLen);
+                ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
                 enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: false);
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
             NWayNestedStreamingMerge(enums, hasMore, n,
-                i =>
-                {
-                    ReadOnlySpan<byte> sd = snapshots[i].GetSpan();
-                    Hsst.Hsst so = new(sd);
-                    so.TryGet(tag, out ReadOnlySpan<byte> col);
-                    return col;
-                },
+                i => snapshots[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length),
                 ref writer, outerMinSep, innerMinSep, innerInline);
         }
         finally
@@ -936,6 +887,7 @@ public static class PersistedSnapshotBuilder
         int n = snapshots.Count;
         Hsst.Hsst.MergeEnumerator[] enums = new Hsst.Hsst.MergeEnumerator[n];
         bool[] hasMore = new bool[n];
+        (int Offset, int Length)[] columnBounds = new (int, int)[n];
 
         try
         {
@@ -943,7 +895,9 @@ public static class PersistedSnapshotBuilder
             {
                 ReadOnlySpan<byte> snapshotData = snapshots[i].GetSpan();
                 Hsst.Hsst outer = new(snapshotData);
-                outer.TryGet(tag, out ReadOnlySpan<byte> column);
+                if (outer.TryGetBound(tag, out int colOff, out int colLen))
+                    columnBounds[i] = (colOff, colLen);
+                ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
                 enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: false);
                 hasMore[i] = enums[i].MoveNext(column);
             }
@@ -980,17 +934,15 @@ public static class PersistedSnapshotBuilder
                 if (matchCount == 1)
                 {
                     int srcIdx = matchingSources[0];
-                    ReadOnlySpan<byte> sd = snapshots[srcIdx].GetSpan();
-                    Hsst.Hsst so = new(sd);
-                    so.TryGet(tag, out ReadOnlySpan<byte> col);
-                    builder.Add(minKey, enums[srcIdx].GetCurrentValue(col));
+                    ReadOnlySpan<byte> colSpan = snapshots[srcIdx].GetSpan().Slice(columnBounds[srcIdx].Offset, columnBounds[srcIdx].Length);
+                    builder.Add(minKey, enums[srcIdx].GetCurrentValue(colSpan));
                 }
                 else
                 {
                     // M sources share this address: merge per-address HSSTs
                     ref TWriter perAddrWriter = ref builder.BeginValueWrite();
                     NWayMergePerAddressHsst(
-                        enums, matchingSources, matchCount, snapshots, tag,
+                        enums, matchingSources, matchCount, snapshots, columnBounds,
                         ref perAddrWriter);
                     builder.FinishValueWrite(minKey);
                 }
@@ -998,10 +950,8 @@ public static class PersistedSnapshotBuilder
                 for (int j = 0; j < matchCount; j++)
                 {
                     int i = matchingSources[j];
-                    ReadOnlySpan<byte> sd = snapshots[i].GetSpan();
-                    Hsst.Hsst so = new(sd);
-                    so.TryGet(tag, out ReadOnlySpan<byte> col);
-                    hasMore[i] = enums[i].MoveNext(col);
+                    ReadOnlySpan<byte> cs = snapshots[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length);
+                    hasMore[i] = enums[i].MoveNext(cs);
                 }
             }
 
@@ -1021,7 +971,7 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     private static void NWayMergePerAddressHsst<TWriter>(
         Hsst.Hsst.MergeEnumerator[] outerEnums, int[] matchingSources, int matchCount,
-        PersistedSnapshotList snapshots, byte[] tag,
+        PersistedSnapshotList snapshots, (int Offset, int Length)[] columnBounds,
         ref TWriter writer) where TWriter : IByteBufferWriter
     {
         // Get per-address HSST data for each matching source
@@ -1029,10 +979,8 @@ public static class PersistedSnapshotBuilder
         for (int j = 0; j < matchCount; j++)
         {
             int srcIdx = matchingSources[j];
-            ReadOnlySpan<byte> sd = snapshots[srcIdx].GetSpan();
-            Hsst.Hsst outer = new(sd);
-            outer.TryGet(tag, out ReadOnlySpan<byte> col);
-            perAddrData[j] = outerEnums[srcIdx].GetCurrentValue(col).ToArray();
+            ReadOnlySpan<byte> colSpan = snapshots[srcIdx].GetSpan().Slice(columnBounds[srcIdx].Offset, columnBounds[srcIdx].Length);
+            perAddrData[j] = outerEnums[srcIdx].GetCurrentValue(colSpan).ToArray();
         }
 
         using HsstBuilder<TWriter> perAddrBuilder = new(ref writer);
