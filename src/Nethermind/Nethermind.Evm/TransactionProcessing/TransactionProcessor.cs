@@ -165,7 +165,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
+            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                 return _systemTransactionProcessor.Execute(tx, tracer, opts);
@@ -198,24 +198,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UpdateMetrics(opts, effectiveGasPrice);
 
-            bool isWarmup = opts.HasFlag(ExecutionOptions.Warmup);
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
-            UInt256 premiumPerGas = UInt256.Zero;
-            UInt256 senderReservedGasPayment = UInt256.Zero;
-            UInt256 blobBaseFee = UInt256.Zero;
-
-            if (!(result = ValidateSender(tx, header, spec, tracer, opts)))
+            if (!(result = ValidateSender(tx, header, spec, tracer, opts)) ||
+                !(result = BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)) ||
+                !(result = IncrementNonce(tx, header, spec, tracer, opts)))
             {
-                if (restore) WorldState.Reset(resetBlockChanges: false);
-                return result;
-            }
-
-            if (!isWarmup &&
-                (!(result = BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee)) ||
-                 !(result = IncrementNonce(tx, header, spec, tracer, opts))))
-            {
-                if (restore) WorldState.Reset(resetBlockChanges: false);
+                if (restore)
+                {
+                    WorldState.Reset(resetBlockChanges: false);
+                }
                 return result;
             }
 
@@ -234,11 +226,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
-            if (!isWarmup)
-            {
-                PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+
+            //only main thread updates transaction
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
                 tx.SpentGas = spentGas.SpentGas;
-            }
 
             // Finalize
             if (restore)
@@ -873,8 +865,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
         {
-            if (!opts.HasFlag(ExecutionOptions.Warmup))
-                WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
+            WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
         }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
@@ -957,8 +948,7 @@ namespace Nethermind.Evm.TransactionProcessing
             spentGas = Math.Max(spentGas, TGasPolicy.GetRemainingGas(floorGas));
 
             UInt256 refundAmount = (ulong)(tx.GasLimit - spentGas) * gasPrice;
-            if (!opts.HasFlag(ExecutionOptions.Warmup))
-                PayRefund(tx, refundAmount, spec);
+            PayRefund(tx, refundAmount, spec);
 
             return new GasConsumed(spentGas, operationGas);
         }
