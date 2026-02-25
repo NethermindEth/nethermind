@@ -976,10 +976,10 @@ namespace Nethermind.Evm.TransactionProcessing
             if (TLogTracing.IsActive) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
             gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
-
         Complete:
             if ((opts & ExecutionOptions.SkipValidation) == 0)
                 header.GasUsed += gasConsumed.SpentGas;
+            }
 
             return statusCode;
 
@@ -1002,10 +1002,8 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts)
-        {
-            return tx.GasLimit;
-        }
+
+        protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts) => tx.GasLimit;
 
         protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {

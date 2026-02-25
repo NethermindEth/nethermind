@@ -91,7 +91,7 @@ namespace Nethermind.Evm.Test
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
             TransactionSubstate transactionSubstate = new(
                 0,
-                new JournalSet<Address>(),
+                new JournalSet<Address>(Address.EqualityComparer),
                 new JournalCollection<LogEntry>(),
                 true,
                 Tracer,
@@ -165,7 +165,7 @@ namespace Nethermind.Evm.Test
             ReadOnlyMemory<byte> readOnlyMemory = new(tc.data);
             TransactionSubstate transactionSubstate = new(
                 0,
-                new JournalSet<Address>(),
+                new JournalSet<Address>(Address.EqualityComparer),
                 new JournalCollection<LogEntry>(),
                 true,
                 Tracer,
@@ -190,7 +190,7 @@ namespace Nethermind.Evm.Test
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
             TransactionSubstate transactionSubstate = new(
                 0,
-                new JournalSet<Address>(),
+                new JournalSet<Address>(Address.EqualityComparer),
                 new JournalCollection<LogEntry>(),
                 true,
                 Tracer,

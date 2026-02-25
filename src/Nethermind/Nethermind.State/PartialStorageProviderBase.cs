@@ -32,7 +32,7 @@ namespace Nethermind.State
 
         protected PartialStorageProviderBase(ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         /// <summary>

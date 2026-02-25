@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -14,8 +15,10 @@ namespace Nethermind.Serialization.Rlp
         public static AccountDecoder Instance => new();
         public static AccountDecoder Slim => new(slimFormat: true);
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
         public AccountDecoder() { }
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
         public AccountDecoder(bool slimFormat = false)
         {
             _slimFormat = slimFormat;

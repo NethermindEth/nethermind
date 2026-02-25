@@ -24,6 +24,7 @@ namespace Nethermind.Core
     [DebuggerDisplay("{ToString()}")]
     public sealed class Address : MemoryManager<byte>, IEquatable<Address>, IComparable<Address>
     {
+        public static GenericEqualityComparer<Address> EqualityComparer { get; } = new();
         public const int Size = 20;
         private const int HexCharsCount = 2 * Size; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
@@ -65,10 +66,7 @@ namespace Nethermind.Core
             for (int i = hasPrefix ? 2 : 0; i < hexString.Length; i++)
             {
                 char c = hexString[i];
-                bool isHex = (c >= '0' && c <= '9') ||
-                             (c >= 'a' && c <= 'f') ||
-                             (c >= 'A' && c <= 'F');
-
+                bool isHex = c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
                 if (!isHex) return false;
             }
 
@@ -115,7 +113,7 @@ namespace Nethermind.Core
                 {
                     if (allowOverflow)
                     {
-                        span = span[(span.Length - size)..];
+                        span = span[^size..];
                     }
                     else
                     {
@@ -302,6 +300,7 @@ namespace Nethermind.Core
 
     public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>, IHash64, IHash64bit<AddressAsKey>
     {
+        public static GenericEqualityComparer<AddressAsKey> EqualityComparer { get; } = new();
         private readonly Address _key = key;
         public Address Value => _key;
 
