@@ -179,8 +179,8 @@ public class StorageLayerTests
         StateId s1 = new(1, Keccak.Compute("1"));
         SnapshotCatalog.CatalogEntry[] entries =
         [
-            new(1, s0, s1, PersistedSnapshotType.Base, loc1),
-            new(2, s0, s1, PersistedSnapshotType.Base, loc2),
+            new(1, s0, s1, PersistedSnapshotType.Full, loc1),
+            new(2, s0, s1, PersistedSnapshotType.Full, loc2),
         ];
 
         using (ArenaManager manager = new(arenaDir, maxArenaSize: 4096))
@@ -208,8 +208,8 @@ public class StorageLayerTests
         SnapshotCatalog catalog = new(catalogPath);
         int id1 = catalog.NextId();
         int id2 = catalog.NextId();
-        catalog.Add(new(id1, s0, s1, PersistedSnapshotType.Base, new(0, 0, 1024)));
-        catalog.Add(new(id2, s1, s2, PersistedSnapshotType.Compacted, new(0, 1024, 2048)));
+        catalog.Add(new(id1, s0, s1, PersistedSnapshotType.Full, new(0, 0, 1024)));
+        catalog.Add(new(id2, s1, s2, PersistedSnapshotType.Linked, new(0, 1024, 2048)));
         catalog.Save();
 
         // Load in new instance
@@ -222,14 +222,14 @@ public class StorageLayerTests
         Assert.That(e1.Id, Is.EqualTo(id1));
         Assert.That(e1.From.BlockNumber, Is.EqualTo(0));
         Assert.That(e1.To.BlockNumber, Is.EqualTo(100));
-        Assert.That(e1.Type, Is.EqualTo(PersistedSnapshotType.Base));
+        Assert.That(e1.Type, Is.EqualTo(PersistedSnapshotType.Full));
         Assert.That(e1.Location, Is.EqualTo(new SnapshotLocation(0, 0, 1024)));
 
         SnapshotCatalog.CatalogEntry e2 = loaded.Entries[1];
         Assert.That(e2.Id, Is.EqualTo(id2));
         Assert.That(e2.From.BlockNumber, Is.EqualTo(100));
         Assert.That(e2.To.BlockNumber, Is.EqualTo(200));
-        Assert.That(e2.Type, Is.EqualTo(PersistedSnapshotType.Compacted));
+        Assert.That(e2.Type, Is.EqualTo(PersistedSnapshotType.Linked));
         Assert.That(e2.Location, Is.EqualTo(new SnapshotLocation(0, 1024, 2048)));
 
         // NextId should be preserved
@@ -246,8 +246,8 @@ public class StorageLayerTests
         SnapshotCatalog catalog = new(catalogPath);
         int id1 = catalog.NextId();
         int id2 = catalog.NextId();
-        catalog.Add(new(id1, s0, s1, PersistedSnapshotType.Base, new(0, 0, 100)));
-        catalog.Add(new(id2, s0, s1, PersistedSnapshotType.Base, new(0, 100, 200)));
+        catalog.Add(new(id1, s0, s1, PersistedSnapshotType.Full, new(0, 0, 100)));
+        catalog.Add(new(id2, s0, s1, PersistedSnapshotType.Full, new(0, 100, 200)));
 
         Assert.That(catalog.Find(id1), Is.Not.Null);
         Assert.That(catalog.Remove(id1), Is.True);
@@ -267,7 +267,7 @@ public class StorageLayerTests
         int id = catalog.NextId();
         SnapshotLocation origLoc = new(0, 0, 100);
         SnapshotLocation newLoc = new(1, 500, 100);
-        catalog.Add(new(id, s0, s1, PersistedSnapshotType.Base, origLoc));
+        catalog.Add(new(id, s0, s1, PersistedSnapshotType.Full, origLoc));
 
         catalog.UpdateLocation(id, newLoc);
 
@@ -309,12 +309,12 @@ public class StorageLayerTests
         string catalogPath = Path.Combine(_testDir, "catalog.bin");
         SnapshotCatalog catalog = new(catalogPath);
         int id = catalog.NextId();
-        catalog.Add(new(id, from, to, PersistedSnapshotType.Base, location));
+        catalog.Add(new(id, from, to, PersistedSnapshotType.Full, location));
         catalog.Save();
 
         // Read back from arena and use as PersistedSnapshot
         ArenaReservation reservation = manager.Open(location);
-        PersistedSnapshot persisted = new(id, from, to, PersistedSnapshotType.Base, reservation);
+        PersistedSnapshot persisted = new(id, from, to, PersistedSnapshotType.Full, reservation);
 
         bool hasAccount = persisted.TryGetAccount(Core.Test.Builders.TestItem.AddressA, out ReadOnlySpan<byte> rlp);
         Assert.That(hasAccount, Is.True);

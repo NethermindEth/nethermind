@@ -4,11 +4,11 @@
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// Distinguishes between base persisted snapshots (containing actual data) and
-/// compacted snapshots (merging multiple snapshots, may use NodeRef references).
+/// Distinguishes between full persisted snapshots (containing actual data) and
+/// linked snapshots (merging multiple snapshots, all trie values are NodeRef references).
 /// </summary>
 public enum PersistedSnapshotType : byte
 {
-    Base = 0,
-    Compacted = 1,
+    Full = 0,
+    Linked = 1,
 }

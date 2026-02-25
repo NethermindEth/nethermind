@@ -11,7 +11,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
+using Org.BouncyCastle.Operators;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
@@ -19,6 +21,13 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// Builds columnar HSST byte data from an in-memory <see cref="Snapshot"/>.
 /// The outer HSST has 7 column entries, each containing an inner HSST.
 /// Inner HSST keys are the entity keys without the tag prefix.
+///
+/// Snapshot types:
+/// - Full: all values written directly. Trie RLP values are non-inline (large).
+///   Slot suffix values are inline (small).
+/// - Linked: only trie columns (0x03, 0x05, 0x06, 0x07 inner, 0x08 inner) become
+///   NodeRef(8 bytes, inline) pointing to the Full snapshot's data region.
+///   Account (0x01), slot, and self-destruct values are copied as-is (not NodeRefs).
 /// </summary>
 public static class PersistedSnapshotBuilder
 {
@@ -435,13 +444,159 @@ public static class PersistedSnapshotBuilder
         }
     }
 
+    /// <summary>
+    /// Convert a Full snapshot into a Linked snapshot where trie RLP columns have NodeRefs.
+    /// Account column (0x01) is copied as-is. Metadata column (0x00) is copied as-is.
+    /// Trie columns (0x03, 0x05, 0x06) have values replaced with NodeRef(snapshotId, offset).
+    /// Nested trie columns (0x07, 0x08) have inner values replaced with NodeRefs.
+    /// </summary>
+    internal static byte[] ConvertFullToLinked(PersistedSnapshot fullSnapshot)
+    {
+        int estimatedSize = fullSnapshot.Size / 2 + 4096;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(Math.Max(estimatedSize, fullSnapshot.Size));
+        try
+        {
+            ReadOnlySpan<byte> snapshotData = fullSnapshot.GetSpan();
+            Hsst.Hsst outer = new(snapshotData);
+            SpanBufferWriter outerWriter = new(buffer);
+            using HsstBuilder<SpanBufferWriter> outerBuilder = new(ref outerWriter);
+
+            byte[][] tags = [
+                PersistedSnapshot.MetadataTag,
+                PersistedSnapshot.AccountColumnTag,
+                PersistedSnapshot.StateNodeTag,
+                PersistedSnapshot.StateTopNodesTag,
+                PersistedSnapshot.StateNodeFallbackTag,
+                PersistedSnapshot.StorageNodeTag,
+                PersistedSnapshot.StorageNodeFallbackTag,
+            ];
+
+            int snapshotId = fullSnapshot.Id;
+            Span<byte> refBytes = stackalloc byte[NodeRef.Size];
+
+            foreach (byte[] tag in tags)
+            {
+                if (!outer.TryGet(tag, out ReadOnlySpan<byte> column)) continue;
+                int columnOffset = SpanOffset(snapshotData, column);
+
+                ref SpanBufferWriter valueWriter = ref outerBuilder.BeginValueWrite();
+
+                int columnLen = tag[0] switch
+                {
+                    // Metadata and account: copy as-is
+                    0x00 or 0x01 => CopyColumn(column, valueWriter.GetSpan(0)),
+                    // Flat trie columns: convert values to NodeRefs
+                    0x03 => ConvertFlatColumnToNodeRefs(column, valueWriter.GetSpan(0), snapshotId, columnOffset, minSeparatorLength: 8),
+                    0x05 => ConvertFlatColumnToNodeRefs(column, valueWriter.GetSpan(0), snapshotId, columnOffset, minSeparatorLength: 3),
+                    0x06 => ConvertFlatColumnToNodeRefs(column, valueWriter.GetSpan(0), snapshotId, columnOffset),
+                    // Nested trie columns: convert inner values to NodeRefs
+                    0x07 => ConvertNestedColumnToNodeRefs(column, snapshotData, valueWriter.GetSpan(0), snapshotId, outerMinSep: 2, innerMinSep: 8),
+                    0x08 => ConvertNestedColumnToNodeRefs(column, snapshotData, valueWriter.GetSpan(0), snapshotId, outerMinSep: 2),
+                    _ => throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}"),
+                };
+
+                valueWriter.Advance(columnLen);
+                outerBuilder.FinishValueWrite(tag);
+            }
+
+            outerBuilder.Build();
+            return buffer.AsSpan(0, outerWriter.Written).ToArray();
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private static int CopyColumn(ReadOnlySpan<byte> column, Span<byte> output)
+    {
+        column.CopyTo(output);
+        return column.Length;
+    }
+
+    /// <summary>
+    /// Convert a flat (non-nested) trie column's values to NodeRefs.
+    /// Each entry's RLP value is replaced with a NodeRef pointing back to the Full snapshot.
+    /// </summary>
+    private static int ConvertFlatColumnToNodeRefs(
+        ReadOnlySpan<byte> column, Span<byte> output,
+        int snapshotId, int columnOffset,
+        int minSeparatorLength = 0)
+    {
+        Hsst.Hsst hsst = new(column);
+        SpanBufferWriter writer = new(output);
+        HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength, inlineValues: true);
+        Hsst.Hsst.Enumerator e = hsst.GetEnumerator();
+        Span<byte> refBytes = stackalloc byte[NodeRef.Size];
+
+        while (e.MoveNext())
+        {
+            NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffset + e.CurrentMetadataStart));
+            builder.Add(e.Current.Key, refBytes);
+        }
+
+        builder.Build();
+        builder.Dispose();
+        e.Dispose();
+        return writer.Written;
+    }
+
+    /// <summary>
+    /// Convert a nested trie column (storage nodes) to NodeRefs.
+    /// Outer keys (address hash prefixes) are preserved. Inner values are replaced with NodeRefs.
+    /// </summary>
+    private static int ConvertNestedColumnToNodeRefs(
+        ReadOnlySpan<byte> column, ReadOnlySpan<byte> snapshotData, Span<byte> output,
+        int snapshotId,
+        int outerMinSep = 0, int innerMinSep = 0)
+    {
+        Hsst.Hsst outerHsst = new(column);
+        SpanBufferWriter writer = new(output);
+        HsstBuilder<SpanBufferWriter> builder = new(ref writer, outerMinSep);
+        Hsst.Hsst.Enumerator outerEnum = outerHsst.GetEnumerator();
+        Span<byte> refBytes = stackalloc byte[NodeRef.Size];
+
+        while (outerEnum.MoveNext())
+        {
+            ReadOnlySpan<byte> innerData = outerEnum.Current.Value;
+            int innerOffset = SpanOffset(snapshotData, innerData);
+
+            Hsst.Hsst innerHsst = new(innerData);
+            ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
+            HsstBuilder<SpanBufferWriter> innerBuilder = new(ref innerWriter, innerMinSep, inlineValues: true);
+            Hsst.Hsst.Enumerator innerEnum = innerHsst.GetEnumerator();
+
+            while (innerEnum.MoveNext())
+            {
+                NodeRef.Write(refBytes, new NodeRef(snapshotId, innerOffset + innerEnum.CurrentMetadataStart));
+                innerBuilder.Add(innerEnum.Current.Key, refBytes);
+            }
+
+            innerBuilder.Build();
+            innerBuilder.Dispose();
+            innerEnum.Dispose();
+            builder.FinishValueWrite(outerEnum.Current.Key);
+        }
+
+        builder.Build();
+        builder.Dispose();
+        outerEnum.Dispose();
+        return writer.Written;
+    }
+
     // --- Merge/compaction methods (moved from PersistedSnapshotCompactor) ---
 
     /// <summary>
     /// Merge a list of persisted snapshots (oldest-first) into a single compacted byte[].
-    /// Uses pairwise self-destruct-aware merge from oldest to newest.
     /// </summary>
-    internal static byte[] MergeSnapshots(PersistedSnapshotList snapshots)
+    internal static byte[] MergeSnapshots(PersistedSnapshotList snapshots) =>
+        NWayMergeSnapshots(snapshots);
+
+    /// <summary>
+    /// N-way merge a list of persisted snapshots (oldest-first) into a single compacted byte[].
+    /// Allocates a single output buffer.
+    /// </summary>
+    internal static byte[] NWayMergeSnapshots(PersistedSnapshotList snapshots)
     {
         if (snapshots.Count == 0) throw new ArgumentException("Cannot merge empty snapshot list");
         if (snapshots.Count == 1) return snapshots[0].GetSpan().ToArray();
@@ -450,7 +605,7 @@ public static class PersistedSnapshotBuilder
         HashSet<int> referencedIds = new();
         for (int i = 0; i < snapshots.Count; i++)
         {
-            if (snapshots[i].Type == PersistedSnapshotType.Base)
+            if (snapshots[i].Type == PersistedSnapshotType.Full)
                 referencedIds.Add(snapshots[i].Id);
             else if (snapshots[i].ReferencedSnapshotIds is int[] ids)
             {
@@ -462,177 +617,256 @@ public static class PersistedSnapshotBuilder
         for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
         totalSize += 4096;
 
-        byte[] bufA = ArrayPool<byte>.Shared.Rent(totalSize);
-        byte[] bufB = ArrayPool<byte>.Shared.Rent(totalSize);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(totalSize);
         try
         {
-            int len = MergeSnapshots(snapshots, bufA, bufB, out bool resultInA, referencedIds);
-            return (resultInA ? bufA : bufB).AsSpan(0, len).ToArray();
+            int len = NWayMergeSnapshots(snapshots, buffer, referencedIds);
+            return buffer.AsSpan(0, len).ToArray();
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(bufA);
-            ArrayPool<byte>.Shared.Return(bufB);
+            ArrayPool<byte>.Shared.Return(buffer);
         }
-    }
-
-    internal static int MergeSnapshots(PersistedSnapshotList snapshots, Span<byte> bufferA, Span<byte> bufferB, out bool resultInA,
-        HashSet<int> referencedIds)
-    {
-        // Reversed: start with newest, iterate backward — smaller intermediates early
-        int last = snapshots.Count - 1;
-        snapshots[last].GetSpan().CopyTo(bufferA);
-        int currentLen = snapshots[last].Size;
-        int newerSnapshotId = snapshots[last].Id;
-        bool newerHasNodeRefs = snapshots[last].Type == PersistedSnapshotType.Compacted;
-        resultInA = true;
-
-        for (int i = last - 1; i >= 0; i--)
-        {
-            bool olderHasNodeRefs = snapshots[i].Type == PersistedSnapshotType.Compacted;
-            ReadOnlySpan<byte> newerSrc = resultInA ? bufferA[..currentLen] : bufferB[..currentLen];
-            Span<byte> dst = resultInA ? bufferB : bufferA;
-            currentLen = MergeTwoPersisted(snapshots[i].GetSpan(), newerSrc, dst,
-                snapshots[i].Id, newerSnapshotId,
-                olderHasNodeRefs, newerHasNodeRefs,
-                referencedIds);
-            // After first merge, accumulator (newer side) always has NodeRefs
-            newerHasNodeRefs = true;
-            newerSnapshotId = 0;
-            resultInA = !resultInA;
-        }
-
-        return currentLen;
     }
 
     /// <summary>
-    /// Merge two columnar HSST snapshots.
-    ///   - Account column (0x01): unified per-address merge with self-destruct awareness
-    ///   - Trie node columns (0x03,0x05,0x06): emit NodeRef instead of copying RLP
-    ///   - StorageNodes columns (0x07,0x08): nested merge with NodeRef for inner values
+    /// N-way merge of N persisted snapshots (oldest-first) into output buffer.
+    /// Pre-converts all Full snapshots to Linked so the merge only handles Linked snapshots
+    /// (all trie values are already NodeRefs). This eliminates the dual code path in trie merges.
     /// </summary>
-    private static int MergeTwoPersisted(ReadOnlySpan<byte> olderData, ReadOnlySpan<byte> newerData, Span<byte> output,
-        int olderSnapshotId, int newerSnapshotId,
-        bool olderHasNodeRefs, bool newerHasNodeRefs,
-        HashSet<int> referencedIds)
+    internal static int NWayMergeSnapshots(PersistedSnapshotList snapshots, Span<byte> output, HashSet<int> referencedIds)
     {
-        Hsst.Hsst olderOuter = new(olderData);
-        Hsst.Hsst newerOuter = new(newerData);
+        int n = snapshots.Count;
 
-        SpanBufferWriter outerWriter = new(output);
-        using HsstBuilder<SpanBufferWriter> outerBuilder = new(ref outerWriter);
-        byte[][] tags = [
-            PersistedSnapshot.MetadataTag,
-            PersistedSnapshot.AccountColumnTag,
-            PersistedSnapshot.StateNodeTag,
-            PersistedSnapshot.StateTopNodesTag,
-            PersistedSnapshot.StateNodeFallbackTag,
-            PersistedSnapshot.StorageNodeTag,
-            PersistedSnapshot.StorageNodeFallbackTag,
-        ];
+        // Pre-convert Full snapshots to Linked using a temporary MemoryArenaManager
+        using MemoryArenaManager tempArena = new(1024 * 1024);
+        PersistedSnapshotList mergeSnapshots = new(n);
 
-        foreach (byte[] tag in tags)
+        try
         {
-            bool hasOlder = olderOuter.TryGet(tag, out ReadOnlySpan<byte> olderColumn);
-            bool hasNewer = newerOuter.TryGet(tag, out ReadOnlySpan<byte> newerColumn);
-            Debug.Assert(hasOlder && hasNewer, $"Missing required tag 0x{tag[0]:X2} in persisted snapshot");
-
-            ref SpanBufferWriter valueWriter = ref outerBuilder.BeginValueWrite();
-
-            int columnLen = tag[0] switch
+            for (int i = 0; i < n; i++)
             {
-                0x00 => MetadataMergeWithCompactedFlags(olderColumn, newerColumn, valueWriter.GetSpan(0), referencedIds),
-                0x01 => MergeAccountColumn(olderColumn, newerColumn, valueWriter.GetSpan(0)),
-                0x03 => StreamingMergeWithNodeRef(olderColumn, newerColumn, valueWriter.GetSpan(0),
-                    olderSnapshotId, olderData, newerSnapshotId, newerData,
-                    olderHasNodeRefs, newerHasNodeRefs, minSeparatorLength: 8, inlineValues: true),
-                0x05 => StreamingMergeWithNodeRef(olderColumn, newerColumn, valueWriter.GetSpan(0),
-                    olderSnapshotId, olderData, newerSnapshotId, newerData,
-                    olderHasNodeRefs, newerHasNodeRefs, minSeparatorLength: 3, inlineValues: true),
-                0x06 => StreamingMergeWithNodeRef(olderColumn, newerColumn, valueWriter.GetSpan(0),
-                    olderSnapshotId, olderData, newerSnapshotId, newerData,
-                    olderHasNodeRefs, newerHasNodeRefs),
-                0x07 => NestedStreamingMergeWithNodeRef(olderColumn, newerColumn, valueWriter.GetSpan(0),
-                    olderSnapshotId, olderData, newerSnapshotId, newerData,
-                    olderHasNodeRefs, newerHasNodeRefs, outerMinSep: 2, innerMinSep: 8, innerInline: true),
-                0x08 => NestedStreamingMergeWithNodeRef(olderColumn, newerColumn, valueWriter.GetSpan(0),
-                    olderSnapshotId, olderData, newerSnapshotId, newerData,
-                    olderHasNodeRefs, newerHasNodeRefs, outerMinSep: 2),
-                _ => StreamingMerge(olderColumn, newerColumn, valueWriter.GetSpan(0), 0),
-            };
-
-            valueWriter.Advance(columnLen);
-            outerBuilder.FinishValueWrite(tag);
-        }
-
-        outerBuilder.Build();
-        return outerWriter.Written;
-    }
-
-    /// <summary>
-    /// Merge self-destruct columns with TryAdd semantics:
-    ///   - newer=empty (destructed) -> always empty
-    ///   - newer=0x01 (new account) -> use older value if exists, else 0x01
-    /// </summary>
-    internal static int SelfDestructMerge(ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output, int minSeparatorLength = 0)
-    {
-        Hsst.Hsst olderHsst = new(older);
-        Hsst.Hsst newerHsst = new(newer);
-
-        if (olderHsst.EntryCount == 0 && newerHsst.EntryCount == 0)
-        {
-            // Return minimal empty HSST (version byte + empty index)
-            SpanBufferWriter emptyWriter = new(output);
-            using HsstBuilder<SpanBufferWriter> empty = new(ref emptyWriter);
-            empty.Build();
-            return emptyWriter.Written;
-        }
-
-        SpanBufferWriter writer = new(output);
-        using HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength);
-        using Hsst.Hsst.Enumerator olderEnum = olderHsst.GetEnumerator();
-        using Hsst.Hsst.Enumerator newerEnum = newerHsst.GetEnumerator();
-
-        bool hasOlder = olderEnum.MoveNext();
-        bool hasNewer = newerEnum.MoveNext();
-
-        while (hasOlder && hasNewer)
-        {
-            ReadOnlySpan<byte> olderKey = olderEnum.Current.Key;
-            ReadOnlySpan<byte> newerKey = newerEnum.Current.Key;
-
-            int cmp = olderKey.SequenceCompareTo(newerKey);
-            if (cmp < 0)
-            {
-                builder.Add(olderKey, olderEnum.Current.Value);
-                hasOlder = olderEnum.MoveNext();
+                if (snapshots[i].Type == PersistedSnapshotType.Full)
+                {
+                    byte[] converted = ConvertFullToLinked(snapshots[i]);
+                    SnapshotLocation loc = tempArena.Allocate(converted);
+                    ArenaReservation tempRes = tempArena.Open(loc);
+                    PersistedSnapshot convertedSnap = new(snapshots[i].Id, snapshots[i].From, snapshots[i].To,
+                        PersistedSnapshotType.Linked, tempRes);
+                    mergeSnapshots.Add(convertedSnap);
+                }
+                else
+                {
+                    if (!snapshots[i].TryAcquire())
+                        throw new InvalidOperationException("Cannot acquire lease for snapshot");
+                    mergeSnapshots.Add(snapshots[i]);
+                }
             }
-            else if (cmp > 0)
+
+            SpanBufferWriter outerWriter = new(output);
+            using HsstBuilder<SpanBufferWriter> outerBuilder = new(ref outerWriter);
+
+            byte[][] tags = [
+                PersistedSnapshot.MetadataTag,
+                PersistedSnapshot.AccountColumnTag,
+                PersistedSnapshot.StateNodeTag,
+                PersistedSnapshot.StateTopNodesTag,
+                PersistedSnapshot.StateNodeFallbackTag,
+                PersistedSnapshot.StorageNodeTag,
+                PersistedSnapshot.StorageNodeFallbackTag,
+            ];
+
+            foreach (byte[] tag in tags)
             {
-                builder.Add(newerKey, newerEnum.Current.Value);
-                hasNewer = newerEnum.MoveNext();
+                ref SpanBufferWriter valueWriter = ref outerBuilder.BeginValueWrite();
+
+                // All trie columns now use NWayStreamingMerge since all inputs are Linked (values are NodeRefs)
+                int columnLen = tag[0] switch
+                {
+                    0x00 => NWayMetadataMerge(snapshots, valueWriter.GetSpan(0), referencedIds),
+                    0x01 => NWayMergeAccountColumn(mergeSnapshots, tag, valueWriter.GetSpan(0)),
+                    0x03 => NWayStreamingMerge(mergeSnapshots, tag, valueWriter.GetSpan(0),
+                        minSeparatorLength: 8, inlineValues: true),
+                    0x05 => NWayStreamingMerge(mergeSnapshots, tag, valueWriter.GetSpan(0),
+                        minSeparatorLength: 3, inlineValues: true),
+                    0x06 => NWayStreamingMerge(mergeSnapshots, tag, valueWriter.GetSpan(0),
+                        inlineValues: true),
+                    0x07 => NWayNestedStreamingMerge(mergeSnapshots, tag, valueWriter.GetSpan(0),
+                        outerMinSep: 2, innerMinSep: 8, innerInline: true),
+                    0x08 => NWayNestedStreamingMerge(mergeSnapshots, tag, valueWriter.GetSpan(0),
+                        outerMinSep: 2, innerInline: true),
+                    _ => throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}"),
+                };
+
+                valueWriter.Advance(columnLen);
+                outerBuilder.FinishValueWrite(tag);
+            }
+
+            outerBuilder.Build();
+            return outerWriter.Written;
+        }
+        finally
+        {
+            mergeSnapshots.Dispose();
+        }
+    }
+
+    private static int SpanOffset(ReadOnlySpan<byte> outer, ReadOnlySpan<byte> inner) =>
+        inner.IsEmpty ? 0 : (int)Unsafe.ByteOffset(
+            ref Unsafe.AsRef(in MemoryMarshal.GetReference(outer)),
+            ref Unsafe.AsRef(in MemoryMarshal.GetReference(inner)));
+
+    // --- N-Way merge methods ---
+
+    /// <summary>
+    /// N-way streaming merge of a column across N snapshots. On key collision, newest (highest index) wins.
+    /// Uses <see cref="Hsst.Hsst.MergeEnumerator"/> for zero-allocation cursor-based enumeration.
+    /// </summary>
+    internal static int NWayStreamingMerge(
+        PersistedSnapshotList snapshots, byte[] tag, Span<byte> output,
+        int minSeparatorLength = 0, bool inlineValues = false)
+    {
+        int n = snapshots.Count;
+        Hsst.Hsst.MergeEnumerator[] enums = new Hsst.Hsst.MergeEnumerator[n];
+        bool[] hasMore = new bool[n];
+
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                ReadOnlySpan<byte> snapshotData = snapshots[i].GetSpan();
+                Hsst.Hsst outer = new(snapshotData);
+                outer.TryGet(tag, out ReadOnlySpan<byte> column);
+                enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: inlineValues);
+                hasMore[i] = enums[i].MoveNext(column);
+            }
+
+            SpanBufferWriter writer = new(output);
+            using HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
+
+            while (true)
+            {
+                // Find min key across all active enumerators, newest wins on tie
+                int minIdx = -1;
+                for (int i = 0; i < n; i++)
+                {
+                    if (!hasMore[i]) continue;
+                    if (minIdx < 0)
+                    {
+                        minIdx = i;
+                        continue;
+                    }
+                    int cmp = enums[i].CurrentKey.SequenceCompareTo(enums[minIdx].CurrentKey);
+                    if (cmp < 0) minIdx = i;
+                    else if (cmp == 0) minIdx = i; // newer (higher index) wins
+                }
+
+                if (minIdx < 0) break;
+
+                ReadOnlySpan<byte> minKey = enums[minIdx].CurrentKey;
+
+                // Get column span for the winner to read its value
+                ReadOnlySpan<byte> winnerSnapshotData = snapshots[minIdx].GetSpan();
+                Hsst.Hsst winnerOuter = new(winnerSnapshotData);
+                winnerOuter.TryGet(tag, out ReadOnlySpan<byte> winnerColumn);
+                builder.Add(minKey, enums[minIdx].GetCurrentValue(winnerColumn));
+
+                // Advance all enumerators that had the min key.
+                // Advance minIdx LAST because minKey references its _keyBuffer which MoveNext overwrites.
+                for (int i = 0; i < n; i++)
+                {
+                    if (i == minIdx || !hasMore[i]) continue;
+                    if (enums[i].CurrentKey.SequenceCompareTo(minKey) == 0)
+                    {
+                        ReadOnlySpan<byte> sd = snapshots[i].GetSpan();
+                        Hsst.Hsst so = new(sd);
+                        so.TryGet(tag, out ReadOnlySpan<byte> col);
+                        hasMore[i] = enums[i].MoveNext(col);
+                    }
+                }
+                {
+                    ReadOnlySpan<byte> sd = snapshots[minIdx].GetSpan();
+                    Hsst.Hsst so = new(sd);
+                    so.TryGet(tag, out ReadOnlySpan<byte> col);
+                    hasMore[minIdx] = enums[minIdx].MoveNext(col);
+                }
+            }
+
+            builder.Build();
+            return writer.Written;
+        }
+        finally
+        {
+            for (int i = 0; i < n; i++) enums[i]?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// N-way nested streaming merge: outer keys merged across N sources,
+    /// when M sources share an outer key their inner HSST values are merged via NWayStreamingMerge.
+    /// Single-source keys are copied as-is.
+    /// </summary>
+    internal static int NWayNestedStreamingMerge(
+        Hsst.Hsst.MergeEnumerator[] enums, bool[] hasMore, int n,
+        Func<int, ReadOnlySpan<byte>> getColumnSpan,
+        Span<byte> output,
+        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false)
+    {
+        SpanBufferWriter writer = new(output);
+        using HsstBuilder<SpanBufferWriter> builder = new(ref writer, outerMinSep);
+
+        // Temp array for collecting matching source indices
+        int[] matchingSources = new int[n];
+
+        while (true)
+        {
+            int minIdx = -1;
+            for (int i = 0; i < n; i++)
+            {
+                if (!hasMore[i]) continue;
+                if (minIdx < 0)
+                {
+                    minIdx = i;
+                    continue;
+                }
+                int cmp = enums[i].CurrentKey.SequenceCompareTo(enums[minIdx].CurrentKey);
+                if (cmp < 0) minIdx = i;
+            }
+
+            if (minIdx < 0) break;
+
+            ReadOnlySpan<byte> minKey = enums[minIdx].CurrentKey;
+
+            // Collect all sources with this key
+            int matchCount = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (hasMore[i] && enums[i].CurrentKey.SequenceCompareTo(minKey) == 0)
+                    matchingSources[matchCount++] = i;
+            }
+
+            if (matchCount == 1)
+            {
+                // Single source: copy as-is
+                int srcIdx = matchingSources[0];
+                builder.Add(minKey, enums[srcIdx].GetCurrentValue(getColumnSpan(srcIdx)));
             }
             else
             {
-                // Keys match: newer=empty -> empty, newer=0x01 -> use older (TryAdd)
-                builder.Add(newerKey, newerEnum.Current.Value.IsEmpty
-                    ? ReadOnlySpan<byte>.Empty
-                    : olderEnum.Current.Value);
-                hasOlder = olderEnum.MoveNext();
-                hasNewer = newerEnum.MoveNext();
+                // M sources: create M inner enumerators and merge
+                ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
+                int mergedLen = NWayInnerMerge(enums, matchingSources, matchCount, getColumnSpan,
+                    innerWriter.GetSpan(0), innerMinSep, innerInline);
+                innerWriter.Advance(mergedLen);
+                builder.FinishValueWrite(minKey);
             }
-        }
 
-        while (hasOlder)
-        {
-            builder.Add(olderEnum.Current.Key, olderEnum.Current.Value);
-            hasOlder = olderEnum.MoveNext();
-        }
-
-        while (hasNewer)
-        {
-            builder.Add(newerEnum.Current.Key, newerEnum.Current.Value);
-            hasNewer = newerEnum.MoveNext();
+            // Advance all matching
+            for (int j = 0; j < matchCount; j++)
+            {
+                int i = matchingSources[j];
+                hasMore[i] = enums[i].MoveNext(getColumnSpan(i));
+            }
         }
 
         builder.Build();
@@ -640,555 +874,366 @@ public static class PersistedSnapshotBuilder
     }
 
     /// <summary>
-    /// Merge unified account columns. Each address maps to a per-address HSST with sub-tags:
-    ///   0x01 (SlotSubTag): nested storage HSST
-    ///   0x02 (SelfDestructSubTag): SD flag
-    ///   0x03 (AccountSubTag): account RLP
-    /// Merge rules per sub-tag:
-    ///   SlotSubTag: if newer has SelfDestructSubTag with empty value (destructed), use newer slots only; otherwise nested merge
-    ///   SelfDestructSubTag: TryAdd semantics (newer=empty→empty, newer=0x01→older if exists)
-    ///   AccountSubTag: newer wins
+    /// Merge inner HSST values from M sources (identified by matchingSources indices).
+    /// Each source's current value (from outer enumerator) is an inner HSST.
+    /// Creates M inner MergeEnumerators and performs N-way merge with newest-wins.
     /// </summary>
-    internal static int MergeAccountColumn(ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output)
+    private static int NWayInnerMerge(
+        Hsst.Hsst.MergeEnumerator[] outerEnums, int[] matchingSources, int matchCount,
+        Func<int, ReadOnlySpan<byte>> getColumnSpan,
+        Span<byte> output,
+        int minSeparatorLength = 0, bool inlineValues = false)
     {
-        Hsst.Hsst olderHsst = new(older);
-        Hsst.Hsst newerHsst = new(newer);
+        Hsst.Hsst.MergeEnumerator[] innerEnums = new Hsst.Hsst.MergeEnumerator[matchCount];
+        bool[] innerHasMore = new bool[matchCount];
+        // Store inner data as byte[] since we can't keep ReadOnlySpan<byte> in arrays
+        byte[][] innerData = new byte[matchCount][];
 
-        SpanBufferWriter writer = new(output);
-        using HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength: 2);
-        using Hsst.Hsst.Enumerator olderEnum = olderHsst.GetEnumerator();
-        using Hsst.Hsst.Enumerator newerEnum = newerHsst.GetEnumerator();
-
-        bool hasOlder = olderEnum.MoveNext();
-        bool hasNewer = newerEnum.MoveNext();
-
-        while (hasOlder && hasNewer)
+        try
         {
-            ReadOnlySpan<byte> olderKey = olderEnum.Current.Key;
-            ReadOnlySpan<byte> newerKey = newerEnum.Current.Key;
+            for (int j = 0; j < matchCount; j++)
+            {
+                int srcIdx = matchingSources[j];
+                ReadOnlySpan<byte> value = outerEnums[srcIdx].GetCurrentValue(getColumnSpan(srcIdx));
+                innerData[j] = value.ToArray();
+                innerEnums[j] = new Hsst.Hsst.MergeEnumerator(innerData[j], isInline: inlineValues);
+                innerHasMore[j] = innerEnums[j].MoveNext(innerData[j]);
+            }
 
-            int cmp = olderKey.SequenceCompareTo(newerKey);
-            if (cmp < 0)
+            SpanBufferWriter writer = new(output);
+            using HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
+
+            while (true)
             {
-                builder.Add(olderKey, olderEnum.Current.Value);
-                hasOlder = olderEnum.MoveNext();
+                int minIdx = -1;
+                for (int j = 0; j < matchCount; j++)
+                {
+                    if (!innerHasMore[j]) continue;
+                    if (minIdx < 0)
+                    {
+                        minIdx = j;
+                        continue;
+                    }
+                    int cmp = innerEnums[j].CurrentKey.SequenceCompareTo(innerEnums[minIdx].CurrentKey);
+                    if (cmp < 0) minIdx = j;
+                    else if (cmp == 0) minIdx = j; // newer (higher j = higher source index) wins
+                }
+
+                if (minIdx < 0) break;
+
+                ReadOnlySpan<byte> minKey = innerEnums[minIdx].CurrentKey;
+                builder.Add(minKey, innerEnums[minIdx].GetCurrentValue(innerData[minIdx]));
+
+                // Advance all with min key.
+                // Advance minIdx LAST because minKey references its _keyBuffer which MoveNext overwrites.
+                for (int j = 0; j < matchCount; j++)
+                {
+                    if (j == minIdx || !innerHasMore[j]) continue;
+                    if (innerEnums[j].CurrentKey.SequenceCompareTo(minKey) == 0)
+                        innerHasMore[j] = innerEnums[j].MoveNext(innerData[j]);
+                }
+                innerHasMore[minIdx] = innerEnums[minIdx].MoveNext(innerData[minIdx]);
             }
-            else if (cmp > 0)
-            {
-                builder.Add(newerKey, newerEnum.Current.Value);
-                hasNewer = newerEnum.MoveNext();
-            }
-            else
-            {
-                // Same address: merge per-address sub-HSSTs
-                ref SpanBufferWriter perAddrWriter = ref builder.BeginValueWrite();
-                int len = MergePerAddressHsst(olderEnum.Current.Value, newerEnum.Current.Value, perAddrWriter.GetSpan(0));
-                perAddrWriter.Advance(len);
-                builder.FinishValueWrite(newerKey);
-                hasOlder = olderEnum.MoveNext();
-                hasNewer = newerEnum.MoveNext();
-            }
+
+            builder.Build();
+            return writer.Written;
         }
-
-        while (hasOlder)
+        finally
         {
-            builder.Add(olderEnum.Current.Key, olderEnum.Current.Value);
-            hasOlder = olderEnum.MoveNext();
+            for (int j = 0; j < matchCount; j++) innerEnums[j]?.Dispose();
         }
-
-        while (hasNewer)
-        {
-            builder.Add(newerEnum.Current.Key, newerEnum.Current.Value);
-            hasNewer = newerEnum.MoveNext();
-        }
-
-        builder.Build();
-        return writer.Written;
     }
 
     /// <summary>
-    /// Merge two per-address sub-HSSTs (sub-tags 0x01, 0x02, 0x03).
+    /// N-way nested streaming merge across N persisted snapshots.
+    /// Initializes enumerators from snapshot data and delegates to the core merge method.
     /// </summary>
-    private static int MergePerAddressHsst(ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output)
+    internal static int NWayNestedStreamingMerge(
+        PersistedSnapshotList snapshots, byte[] tag, Span<byte> output,
+        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false)
     {
-        Hsst.Hsst olderHsst = new(older);
-        Hsst.Hsst newerHsst = new(newer);
+        int n = snapshots.Count;
+        Hsst.Hsst.MergeEnumerator[] enums = new Hsst.Hsst.MergeEnumerator[n];
+        bool[] hasMore = new bool[n];
 
-        // Check if newer has self-destruct with empty value (address was destructed)
-        bool isDestructed = newerHsst.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> newerSdValue) && newerSdValue.IsEmpty;
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                ReadOnlySpan<byte> snapshotData = snapshots[i].GetSpan();
+                Hsst.Hsst outer = new(snapshotData);
+                outer.TryGet(tag, out ReadOnlySpan<byte> column);
+                enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: false);
+                hasMore[i] = enums[i].MoveNext(column);
+            }
+
+            return NWayNestedStreamingMerge(enums, hasMore, n,
+                i =>
+                {
+                    ReadOnlySpan<byte> sd = snapshots[i].GetSpan();
+                    Hsst.Hsst so = new(sd);
+                    so.TryGet(tag, out ReadOnlySpan<byte> col);
+                    return col;
+                },
+                output, outerMinSep, innerMinSep, innerInline);
+        }
+        finally
+        {
+            for (int i = 0; i < n; i++) enums[i]?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// N-way merge of the account column (tag 0x01) across N snapshots.
+    /// Outer: 20-byte address keys (minSep=2). For matching addresses with M sources,
+    /// calls <see cref="NWayMergePerAddressHsst"/>. Single source: copy as-is.
+    /// </summary>
+    internal static int NWayMergeAccountColumn(
+        PersistedSnapshotList snapshots, byte[] tag, Span<byte> output)
+    {
+        int n = snapshots.Count;
+        Hsst.Hsst.MergeEnumerator[] enums = new Hsst.Hsst.MergeEnumerator[n];
+        bool[] hasMore = new bool[n];
+
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                ReadOnlySpan<byte> snapshotData = snapshots[i].GetSpan();
+                Hsst.Hsst outer = new(snapshotData);
+                outer.TryGet(tag, out ReadOnlySpan<byte> column);
+                enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: false);
+                hasMore[i] = enums[i].MoveNext(column);
+            }
+
+            SpanBufferWriter writer = new(output);
+            using HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength: 2);
+            int[] matchingSources = new int[n];
+
+            while (true)
+            {
+                int minIdx = -1;
+                for (int i = 0; i < n; i++)
+                {
+                    if (!hasMore[i]) continue;
+                    if (minIdx < 0)
+                    {
+                        minIdx = i;
+                        continue;
+                    }
+                    int cmp = enums[i].CurrentKey.SequenceCompareTo(enums[minIdx].CurrentKey);
+                    if (cmp < 0) minIdx = i;
+                }
+
+                if (minIdx < 0) break;
+
+                ReadOnlySpan<byte> minKey = enums[minIdx].CurrentKey;
+
+                int matchCount = 0;
+                for (int i = 0; i < n; i++)
+                {
+                    if (hasMore[i] && enums[i].CurrentKey.SequenceCompareTo(minKey) == 0)
+                        matchingSources[matchCount++] = i;
+                }
+
+                if (matchCount == 1)
+                {
+                    int srcIdx = matchingSources[0];
+                    ReadOnlySpan<byte> sd = snapshots[srcIdx].GetSpan();
+                    Hsst.Hsst so = new(sd);
+                    so.TryGet(tag, out ReadOnlySpan<byte> col);
+                    builder.Add(minKey, enums[srcIdx].GetCurrentValue(col));
+                }
+                else
+                {
+                    // M sources share this address: merge per-address HSSTs
+                    ref SpanBufferWriter perAddrWriter = ref builder.BeginValueWrite();
+                    int len = NWayMergePerAddressHsst(
+                        enums, matchingSources, matchCount, snapshots, tag,
+                        perAddrWriter.GetSpan(0));
+                    perAddrWriter.Advance(len);
+                    builder.FinishValueWrite(minKey);
+                }
+
+                for (int j = 0; j < matchCount; j++)
+                {
+                    int i = matchingSources[j];
+                    ReadOnlySpan<byte> sd = snapshots[i].GetSpan();
+                    Hsst.Hsst so = new(sd);
+                    so.TryGet(tag, out ReadOnlySpan<byte> col);
+                    hasMore[i] = enums[i].MoveNext(col);
+                }
+            }
+
+            builder.Build();
+            return writer.Written;
+        }
+        finally
+        {
+            for (int i = 0; i < n; i++) enums[i]?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// N-way merge of per-address HSSTs from M sources (oldest-first by matchingSources order).
+    /// - Slots: find newest destruct barrier, merge slots from barrier..M-1 via nested streaming merge
+    /// - SelfDestruct: iterate 0..M-1, apply TryAdd semantics
+    /// - Account: newest wins (walk M-1..0, first with AccountSubTag)
+    /// </summary>
+    private static int NWayMergePerAddressHsst(
+        Hsst.Hsst.MergeEnumerator[] outerEnums, int[] matchingSources, int matchCount,
+        PersistedSnapshotList snapshots, byte[] tag,
+        Span<byte> output)
+    {
+        // Get per-address HSST data for each matching source
+        byte[][] perAddrData = new byte[matchCount][];
+        for (int j = 0; j < matchCount; j++)
+        {
+            int srcIdx = matchingSources[j];
+            ReadOnlySpan<byte> sd = snapshots[srcIdx].GetSpan();
+            Hsst.Hsst outer = new(sd);
+            outer.TryGet(tag, out ReadOnlySpan<byte> col);
+            perAddrData[j] = outerEnums[srcIdx].GetCurrentValue(col).ToArray();
+        }
 
         SpanBufferWriter writer = new(output);
         using HsstBuilder<SpanBufferWriter> perAddrBuilder = new(ref writer);
 
+        // Find newest destruct barrier: newest j where SelfDestructSubTag value is empty (destructed)
+        int destructBarrier = -1;
+        for (int j = 0; j < matchCount; j++)
+        {
+            Hsst.Hsst h = new(perAddrData[j]);
+            if (h.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal) && sdVal.IsEmpty)
+                destructBarrier = j;
+        }
+
         // Sub-tag 0x01: Slots
-        bool olderHasSlots = olderHsst.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> olderSlots);
-        bool newerHasSlots = newerHsst.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> newerSlots);
-        if (olderHasSlots || newerHasSlots)
+        // Merge slots only from max(0, destructBarrier)..matchCount-1
+        int slotStart = Math.Max(0, destructBarrier);
         {
-            if (isDestructed || !olderHasSlots)
+            // Collect sources that have slots in the range
+            int slotSourceCount = 0;
+            int[] slotSources = new int[matchCount - slotStart];
+            byte[][] slotData = new byte[matchCount - slotStart][];
+            for (int j = slotStart; j < matchCount; j++)
             {
-                // Destructed or only newer has slots: use newer only
-                if (newerHasSlots)
-                    perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, newerSlots);
+                Hsst.Hsst h = new(perAddrData[j]);
+                if (h.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slots))
+                {
+                    slotSources[slotSourceCount] = j;
+                    slotData[slotSourceCount] = slots.ToArray();
+                    slotSourceCount++;
+                }
             }
-            else if (!newerHasSlots)
+
+            if (slotSourceCount == 1)
             {
-                // Only older has slots
-                perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, olderSlots);
+                perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, slotData[0]);
             }
-            else
+            else if (slotSourceCount > 1)
             {
-                // Both have slots, not destructed: merge prefix-level HSSTs
-                ref SpanBufferWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
-                int slotLen = NestedStreamingMerge(olderSlots, newerSlots, slotWriter.GetSpan(0),
-                    outerMinSep: 2, innerMinSep: 2, innerInline: true);
-                slotWriter.Advance(slotLen);
-                perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
+                // N-way nested streaming merge on slot prefix-level HSSTs
+                Hsst.Hsst.MergeEnumerator[] slotEnums = new Hsst.Hsst.MergeEnumerator[slotSourceCount];
+                bool[] slotHasMore = new bool[slotSourceCount];
+                try
+                {
+                    for (int j = 0; j < slotSourceCount; j++)
+                    {
+                        slotEnums[j] = new Hsst.Hsst.MergeEnumerator(slotData[j], isInline: false);
+                        slotHasMore[j] = slotEnums[j].MoveNext(slotData[j]);
+                    }
+
+                    ref SpanBufferWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
+                    int slotLen = NWayNestedStreamingMerge(
+                        slotEnums, slotHasMore, slotSourceCount,
+                        j => slotData[j].AsSpan(),
+                        slotWriter.GetSpan(0),
+                        outerMinSep: 2, innerMinSep: 2, innerInline: true);
+                    slotWriter.Advance(slotLen);
+                    perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
+                }
+                finally
+                {
+                    for (int j = 0; j < slotSourceCount; j++) slotEnums[j]?.Dispose();
+                }
             }
         }
 
-        // Sub-tag 0x02: Self-destruct
-        bool olderHasSd = olderHsst.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> olderSdValue);
-        if (isDestructed)
+        // Sub-tag 0x02: SelfDestruct — iterate 0..M-1, apply TryAdd semantics
         {
-            // newer=empty (destructed) → always empty
-            perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, ReadOnlySpan<byte>.Empty);
-        }
-        else if (newerHsst.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> newerSdVal))
-        {
-            // newer=0x01 (new account) → use older if exists (TryAdd)
-            perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, olderHasSd ? olderSdValue : newerSdVal);
-        }
-        else if (olderHasSd)
-        {
-            perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, olderSdValue);
+            bool hasSd = false;
+            ReadOnlySpan<byte> sdResult = default;
+
+            for (int j = 0; j < matchCount; j++)
+            {
+                Hsst.Hsst h = new(perAddrData[j]);
+                if (!h.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal)) continue;
+
+                if (!hasSd)
+                {
+                    // First SD entry
+                    hasSd = true;
+                    sdResult = sdVal;
+                }
+                else
+                {
+                    // TryAdd: newer=empty -> empty, newer=0x01 -> keep older
+                    if (sdVal.IsEmpty)
+                        sdResult = ReadOnlySpan<byte>.Empty;
+                    // else newer=0x01 (new account): keep existing sdResult (TryAdd)
+                }
+            }
+
+            if (hasSd)
+                perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, sdResult);
         }
 
-        // Sub-tag 0x03: Account — newer wins
-        bool olderHasAccount = olderHsst.TryGet(PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> olderAccount);
-        bool newerHasAccount = newerHsst.TryGet(PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> newerAccount);
-        if (newerHasAccount)
-            perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, newerAccount);
-        else if (olderHasAccount)
-            perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, olderAccount);
+        // Sub-tag 0x03: Account — newest wins (walk M-1..0, first with AccountSubTag)
+        {
+            for (int j = matchCount - 1; j >= 0; j--)
+            {
+                Hsst.Hsst h = new(perAddrData[j]);
+                if (h.TryGet(PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> account))
+                {
+                    perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, account);
+                    break;
+                }
+            }
+        }
 
         perAddrBuilder.Build();
         return writer.Written;
     }
 
     /// <summary>
-    /// Like <see cref="NestedStreamingMerge"/> but skips older storage for destructed addresses.
-    /// When address is destructed:
-    ///   - Key in both: use newer only (don't merge inner HSSTs)
-    ///   - Key only in older: skip entirely
-    ///   - Key only in newer: include (new storage after self-destruct)
+    /// N-way metadata merge: from_block/from_hash from oldest, to_block/to_hash/version from newest.
+    /// Injects noderefs=[0x01] and ref_ids from referencedIds set.
+    /// Emits in sorted key order.
     /// </summary>
-    internal static int NestedStreamingMergeWithSelfDestruct(
-        ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output,
-        HashSet<byte[]> destructedAddresses,
-        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false)
+    internal static int NWayMetadataMerge(
+        PersistedSnapshotList snapshots, Span<byte> output, HashSet<int> refIds)
     {
-        Hsst.Hsst olderHsst = new(older);
-        Hsst.Hsst newerHsst = new(newer);
+        int n = snapshots.Count;
+        ReadOnlySpan<byte> oldestData = snapshots[0].GetSpan();
+        ReadOnlySpan<byte> newestData = snapshots[n - 1].GetSpan();
 
-        if (olderHsst.EntryCount == 0 && newerHsst.EntryCount == 0)
-        {
-            SpanBufferWriter emptyWriter = new(output);
-            using HsstBuilder<SpanBufferWriter> empty = new(ref emptyWriter);
-            empty.Build();
-            return emptyWriter.Written;
-        }
+        Hsst.Hsst oldestOuter = new(oldestData);
+        Hsst.Hsst newestOuter = new(newestData);
+        oldestOuter.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> oldestMeta);
+        newestOuter.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> newestMeta);
 
-        var lookup = destructedAddresses.GetAlternateLookup<ReadOnlySpan<byte>>();
+        Hsst.Hsst oldestHsst = new(oldestMeta);
+        Hsst.Hsst newestHsst = new(newestMeta);
 
-        SpanBufferWriter writer = new(output);
-        using HsstBuilder<SpanBufferWriter> builder = new(ref writer, outerMinSep);
-        using Hsst.Hsst.Enumerator olderEnum = olderHsst.GetEnumerator();
-        using Hsst.Hsst.Enumerator newerEnum = newerHsst.GetEnumerator();
+        // Extract fields
+        oldestHsst.TryGet("from_block"u8, out ReadOnlySpan<byte> fromBlock);
+        oldestHsst.TryGet("from_hash"u8, out ReadOnlySpan<byte> fromHash);
+        newestHsst.TryGet("to_block"u8, out ReadOnlySpan<byte> toBlock);
+        newestHsst.TryGet("to_hash"u8, out ReadOnlySpan<byte> toHash);
+        newestHsst.TryGet("version"u8, out ReadOnlySpan<byte> version);
 
-        bool hasOlder = olderEnum.MoveNext();
-        bool hasNewer = newerEnum.MoveNext();
-
-        while (hasOlder && hasNewer)
-        {
-            ReadOnlySpan<byte> olderKey = olderEnum.Current.Key;
-            ReadOnlySpan<byte> newerKey = newerEnum.Current.Key;
-
-            int cmp = olderKey.SequenceCompareTo(newerKey);
-            if (cmp < 0)
-            {
-                // Only in older: skip if destructed
-                if (!lookup.Contains(olderKey))
-                    builder.Add(olderKey, olderEnum.Current.Value);
-                hasOlder = olderEnum.MoveNext();
-            }
-            else if (cmp > 0)
-            {
-                builder.Add(newerKey, newerEnum.Current.Value);
-                hasNewer = newerEnum.MoveNext();
-            }
-            else
-            {
-                if (lookup.Contains(newerKey))
-                {
-                    // Destructed: use newer only, don't merge inner HSSTs
-                    builder.Add(newerKey, newerEnum.Current.Value);
-                }
-                else
-                {
-                    // Not destructed: merge prefix-level HSSTs (each prefix maps to a suffix HSST)
-                    ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
-                    int mergedLen = NestedStreamingMerge(
-                        olderEnum.Current.Value, newerEnum.Current.Value, innerWriter.GetSpan(0),
-                        innerMinSep, innerMinSep, innerInline);
-                    innerWriter.Advance(mergedLen);
-                    builder.FinishValueWrite(newerKey);
-                }
-                hasOlder = olderEnum.MoveNext();
-                hasNewer = newerEnum.MoveNext();
-            }
-        }
-
-        while (hasOlder)
-        {
-            if (!lookup.Contains(olderEnum.Current.Key))
-                builder.Add(olderEnum.Current.Key, olderEnum.Current.Value);
-            hasOlder = olderEnum.MoveNext();
-        }
-
-        while (hasNewer)
-        {
-            builder.Add(newerEnum.Current.Key, newerEnum.Current.Value);
-            hasNewer = newerEnum.MoveNext();
-        }
-
-        builder.Build();
-        return writer.Written;
-    }
-
-    /// <summary>
-    /// Merge two address-grouped HSSTs where values are inner HSSTs.
-    /// For matching address keys, the inner HSSTs are merged via StreamingMerge.
-    /// For non-matching keys, inner HSSTs are copied as-is.
-    /// </summary>
-    internal static int NestedStreamingMerge(ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output,
-        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false)
-    {
-        Hsst.Hsst olderHsst = new(older);
-        Hsst.Hsst newerHsst = new(newer);
-
-        if (olderHsst.EntryCount == 0 && newerHsst.EntryCount == 0)
-        {
-            SpanBufferWriter emptyWriter = new(output);
-            using HsstBuilder<SpanBufferWriter> empty = new(ref emptyWriter);
-            empty.Build();
-            return emptyWriter.Written;
-        }
-
-        SpanBufferWriter writer = new(output);
-        using HsstBuilder<SpanBufferWriter> builder = new(ref writer, outerMinSep);
-        using Hsst.Hsst.Enumerator olderEnum = olderHsst.GetEnumerator();
-        using Hsst.Hsst.Enumerator newerEnum = newerHsst.GetEnumerator();
-
-        bool hasOlder = olderEnum.MoveNext();
-        bool hasNewer = newerEnum.MoveNext();
-
-        while (hasOlder && hasNewer)
-        {
-            ReadOnlySpan<byte> olderKey = olderEnum.Current.Key;
-            ReadOnlySpan<byte> newerKey = newerEnum.Current.Key;
-
-            int cmp = olderKey.SequenceCompareTo(newerKey);
-            if (cmp < 0)
-            {
-                builder.Add(olderKey, olderEnum.Current.Value);
-                hasOlder = olderEnum.MoveNext();
-            }
-            else if (cmp > 0)
-            {
-                builder.Add(newerKey, newerEnum.Current.Value);
-                hasNewer = newerEnum.MoveNext();
-            }
-            else
-            {
-                // Matching address key: merge the inner HSSTs directly into output
-                ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
-                int mergedLen = StreamingMerge(
-                    olderEnum.Current.Value, newerEnum.Current.Value, innerWriter.GetSpan(0), 0, innerMinSep, innerInline);
-                innerWriter.Advance(mergedLen);
-                builder.FinishValueWrite(newerKey);
-                hasOlder = olderEnum.MoveNext();
-                hasNewer = newerEnum.MoveNext();
-            }
-        }
-
-        while (hasOlder)
-        {
-            builder.Add(olderEnum.Current.Key, olderEnum.Current.Value);
-            hasOlder = olderEnum.MoveNext();
-        }
-
-        while (hasNewer)
-        {
-            builder.Add(newerEnum.Current.Key, newerEnum.Current.Value);
-            hasNewer = newerEnum.MoveNext();
-        }
-
-        builder.Build();
-        return writer.Written;
-    }
-
-    /// <summary>
-    /// Byte offset from outer span start to inner span start.
-    /// Both spans must reference the same underlying memory (inner is a sub-span of outer).
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int SpanOffset(ReadOnlySpan<byte> outer, ReadOnlySpan<byte> inner) =>
-        inner.IsEmpty ? 0 : (int)Unsafe.ByteOffset(
-            ref Unsafe.AsRef(in MemoryMarshal.GetReference(outer)),
-            ref Unsafe.AsRef(in MemoryMarshal.GetReference(inner)));
-
-    /// <summary>
-    /// Like <see cref="StreamingMerge"/> but emits 8-byte <see cref="NodeRef"/> values instead of copying
-    /// trie node RLP inline. If <paramref name="olderHasNodeRefs"/> or <paramref name="newerHasNodeRefs"/>
-    /// is true, existing values from that side are already NodeRefs and are forwarded as-is.
-    /// </summary>
-    internal static int StreamingMergeWithNodeRef(
-        ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output,
-        int olderSnapshotId, ReadOnlySpan<byte> olderFullData,
-        int newerSnapshotId, ReadOnlySpan<byte> newerFullData,
-        bool olderHasNodeRefs, bool newerHasNodeRefs,
-        int startOffset = 0, int minSeparatorLength = 0, bool inlineValues = false)
-    {
-        Hsst.Hsst olderHsst = new(older);
-        Hsst.Hsst newerHsst = new(newer);
-
-        SpanBufferWriter writer = new(output[startOffset..]);
-        HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
-
-        Hsst.Hsst.Enumerator olderEnum = olderHsst.GetEnumerator();
-        Hsst.Hsst.Enumerator newerEnum = newerHsst.GetEnumerator();
-
-        bool hasOlder = olderEnum.MoveNext();
-        bool hasNewer = newerEnum.MoveNext();
-
-        int olderColumnOffset = SpanOffset(olderFullData, older);
-        int newerColumnOffset = SpanOffset(newerFullData, newer);
-        Span<byte> refBytes = stackalloc byte[NodeRef.Size];
-
-        while (hasOlder && hasNewer)
-        {
-            ReadOnlySpan<byte> olderKey = olderEnum.Current.Key;
-            ReadOnlySpan<byte> newerKey = newerEnum.Current.Key;
-
-            int cmp = olderKey.SequenceCompareTo(newerKey);
-            if (cmp < 0)
-            {
-                AddAsNodeRef(ref builder, olderEnum, olderSnapshotId, olderColumnOffset, olderHasNodeRefs, refBytes);
-                hasOlder = olderEnum.MoveNext();
-            }
-            else if (cmp > 0)
-            {
-                AddAsNodeRef(ref builder, newerEnum, newerSnapshotId, newerColumnOffset, newerHasNodeRefs, refBytes);
-                hasNewer = newerEnum.MoveNext();
-            }
-            else
-            {
-                AddAsNodeRef(ref builder, newerEnum, newerSnapshotId, newerColumnOffset, newerHasNodeRefs, refBytes);
-                hasOlder = olderEnum.MoveNext();
-                hasNewer = newerEnum.MoveNext();
-            }
-        }
-
-        while (hasOlder)
-        {
-            AddAsNodeRef(ref builder, olderEnum, olderSnapshotId, olderColumnOffset, olderHasNodeRefs, refBytes);
-            hasOlder = olderEnum.MoveNext();
-        }
-
-        while (hasNewer)
-        {
-            AddAsNodeRef(ref builder, newerEnum, newerSnapshotId, newerColumnOffset, newerHasNodeRefs, refBytes);
-            hasNewer = newerEnum.MoveNext();
-        }
-
-        builder.Build();
-        builder.Dispose();
-        olderEnum.Dispose();
-        newerEnum.Dispose();
-        return startOffset + writer.Written;
-    }
-
-    /// <summary>
-    /// Emit an entry as a NodeRef (or forward existing NodeRef) into the builder.
-    /// If <paramref name="hasNodeRefs"/> is true, the value is already a NodeRef and is forwarded as-is.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void AddAsNodeRef(ref HsstBuilder<SpanBufferWriter> builder,
-        in Hsst.Hsst.Enumerator enumerator, int snapshotId, int columnOffset,
-        bool hasNodeRefs, Span<byte> refBytes)
-    {
-        ReadOnlySpan<byte> value = enumerator.Current.Value;
-        if (hasNodeRefs)
-        {
-            builder.Add(enumerator.Current.Key, value);
-            return;
-        }
-
-        NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffset + enumerator.CurrentMetadataStart));
-        builder.Add(enumerator.Current.Key, refBytes);
-    }
-
-    /// <summary>
-    /// Convert all values in a single HSST to NodeRefs. Used for non-matching address keys
-    /// in nested trie node column merges. If <paramref name="hasNodeRefs"/> is true, values are
-    /// already NodeRefs and are forwarded as-is.
-    /// </summary>
-    private static int ConvertToNodeRefs(
-        ReadOnlySpan<byte> innerData, Span<byte> output,
-        int snapshotId, ReadOnlySpan<byte> fullData, bool hasNodeRefs,
-        int minSeparatorLength = 0, bool inlineValues = false)
-    {
-        Hsst.Hsst hsst = new(innerData);
-        SpanBufferWriter writer = new(output);
-        HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
-        Hsst.Hsst.Enumerator e = hsst.GetEnumerator();
-
-        int dataOffset = SpanOffset(fullData, innerData);
-        Span<byte> refBytes = stackalloc byte[NodeRef.Size];
-
-        while (e.MoveNext())
-        {
-            AddAsNodeRef(ref builder, in e, snapshotId, dataOffset, hasNodeRefs, refBytes);
-        }
-
-        builder.Build();
-        builder.Dispose();
-        e.Dispose();
-        return writer.Written;
-    }
-
-    /// <summary>
-    /// Like <see cref="NestedStreamingMerge"/> but the inner merge uses <see cref="StreamingMergeWithNodeRef"/>
-    /// to emit NodeRef values for trie node RLP. Non-matching address keys have their inner HSSTs
-    /// converted to NodeRefs via <see cref="ConvertToNodeRefs"/>.
-    /// </summary>
-    internal static int NestedStreamingMergeWithNodeRef(
-        ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output,
-        int olderSnapshotId, ReadOnlySpan<byte> olderFullData,
-        int newerSnapshotId, ReadOnlySpan<byte> newerFullData,
-        bool olderHasNodeRefs, bool newerHasNodeRefs,
-        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false)
-    {
-        Hsst.Hsst olderHsst = new(older);
-        Hsst.Hsst newerHsst = new(newer);
-
-        if (olderHsst.EntryCount == 0 && newerHsst.EntryCount == 0)
-        {
-            SpanBufferWriter emptyWriter = new(output);
-            using HsstBuilder<SpanBufferWriter> empty = new(ref emptyWriter);
-            empty.Build();
-            return emptyWriter.Written;
-        }
-
-        SpanBufferWriter writer = new(output);
-        using HsstBuilder<SpanBufferWriter> builder = new(ref writer, outerMinSep);
-        using Hsst.Hsst.Enumerator olderEnum = olderHsst.GetEnumerator();
-        using Hsst.Hsst.Enumerator newerEnum = newerHsst.GetEnumerator();
-
-        bool hasOlder = olderEnum.MoveNext();
-        bool hasNewer = newerEnum.MoveNext();
-
-        while (hasOlder && hasNewer)
-        {
-            ReadOnlySpan<byte> olderKey = olderEnum.Current.Key;
-            ReadOnlySpan<byte> newerKey = newerEnum.Current.Key;
-
-            int cmp = olderKey.SequenceCompareTo(newerKey);
-            if (cmp < 0)
-            {
-                ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
-                int len = ConvertToNodeRefs(olderEnum.Current.Value, innerWriter.GetSpan(0),
-                    olderSnapshotId, olderFullData, olderHasNodeRefs, innerMinSep, innerInline);
-                innerWriter.Advance(len);
-                builder.FinishValueWrite(olderKey);
-                hasOlder = olderEnum.MoveNext();
-            }
-            else if (cmp > 0)
-            {
-                ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
-                int len = ConvertToNodeRefs(newerEnum.Current.Value, innerWriter.GetSpan(0),
-                    newerSnapshotId, newerFullData, newerHasNodeRefs, innerMinSep, innerInline);
-                innerWriter.Advance(len);
-                builder.FinishValueWrite(newerKey);
-                hasNewer = newerEnum.MoveNext();
-            }
-            else
-            {
-                // Matching address key: merge inner HSSTs with NodeRef emission
-                ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
-                int mergedLen = StreamingMergeWithNodeRef(
-                    olderEnum.Current.Value, newerEnum.Current.Value, innerWriter.GetSpan(0),
-                    olderSnapshotId, olderFullData, newerSnapshotId, newerFullData,
-                    olderHasNodeRefs, newerHasNodeRefs,
-                    minSeparatorLength: innerMinSep, inlineValues: innerInline);
-                innerWriter.Advance(mergedLen);
-                builder.FinishValueWrite(newerKey);
-                hasOlder = olderEnum.MoveNext();
-                hasNewer = newerEnum.MoveNext();
-            }
-        }
-
-        while (hasOlder)
-        {
-            ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
-            int len = ConvertToNodeRefs(olderEnum.Current.Value, innerWriter.GetSpan(0),
-                olderSnapshotId, olderFullData, olderHasNodeRefs, innerMinSep, innerInline);
-            innerWriter.Advance(len);
-            builder.FinishValueWrite(olderEnum.Current.Key);
-            hasOlder = olderEnum.MoveNext();
-        }
-
-        while (hasNewer)
-        {
-            ref SpanBufferWriter innerWriter = ref builder.BeginValueWrite();
-            int len = ConvertToNodeRefs(newerEnum.Current.Value, innerWriter.GetSpan(0),
-                newerSnapshotId, newerFullData, newerHasNodeRefs, innerMinSep, innerInline);
-            innerWriter.Advance(len);
-            builder.FinishValueWrite(newerEnum.Current.Key);
-            hasNewer = newerEnum.MoveNext();
-        }
-
-        builder.Build();
-        return writer.Written;
-    }
-
-    /// <summary>
-    /// Merge metadata columns and inject compacted-snapshot flags:
-    ///   "noderefs" → [0x01]
-    ///   "ref_ids"  → [id1_le32, id2_le32, ...]
-    /// Keys are emitted in sorted order.
-    /// </summary>
-    private static int MetadataMergeWithCompactedFlags(
-        ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output, HashSet<int> refIds)
-    {
-        Hsst.Hsst olderHsst = new(older);
-        Hsst.Hsst newerHsst = new(newer);
-
-        SpanBufferWriter writer = new(output);
-        using HsstBuilder<SpanBufferWriter> builder = new(ref writer);
-        using Hsst.Hsst.Enumerator olderEnum = olderHsst.GetEnumerator();
-        using Hsst.Hsst.Enumerator newerEnum = newerHsst.GetEnumerator();
-
-        bool hasOlder = olderEnum.MoveNext();
-        bool hasNewer = newerEnum.MoveNext();
-
-        // Synthetic entries to inject at correct sorted positions
-        ReadOnlySpan<byte> nodeRefsKey = "noderefs"u8;
-        byte[] nodeRefsValue = [0x01];
-        bool nodeRefsEmitted = false;
-
-        ReadOnlySpan<byte> refIdsKey = "ref_ids"u8;
+        // Build ref_ids value
         byte[] refIdsValue = new byte[refIds.Count * 4];
         int idx = 0;
         foreach (int id in refIds)
@@ -1196,128 +1241,21 @@ public static class PersistedSnapshotBuilder
             BitConverter.TryWriteBytes(refIdsValue.AsSpan(idx * 4, 4), id);
             idx++;
         }
-        bool refIdsEmitted = false;
 
-        while (hasOlder && hasNewer)
-        {
-            ReadOnlySpan<byte> olderKey = olderEnum.Current.Key;
-            ReadOnlySpan<byte> newerKey = newerEnum.Current.Key;
+        SpanBufferWriter writer = new(output);
+        using HsstBuilder<SpanBufferWriter> builder = new(ref writer);
 
-            int cmp = olderKey.SequenceCompareTo(newerKey);
-            ReadOnlySpan<byte> emitKey;
-            ReadOnlySpan<byte> emitValue;
-            if (cmp < 0)
-            {
-                emitKey = olderKey;
-                emitValue = olderEnum.Current.Value;
-                hasOlder = olderEnum.MoveNext();
-            }
-            else if (cmp > 0)
-            {
-                emitKey = newerKey;
-                emitValue = newerEnum.Current.Value;
-                hasNewer = newerEnum.MoveNext();
-            }
-            else
-            {
-                emitKey = newerKey;
-                emitValue = newerEnum.Current.Value;
-                hasOlder = olderEnum.MoveNext();
-                hasNewer = newerEnum.MoveNext();
-            }
-
-            // Skip old synthetic entries — we'll re-emit fresh ones
-            if (emitKey.SequenceEqual(nodeRefsKey) || emitKey.SequenceEqual(refIdsKey)) continue;
-
-            if (!nodeRefsEmitted && nodeRefsKey.SequenceCompareTo(emitKey) < 0) { builder.Add(nodeRefsKey, nodeRefsValue); nodeRefsEmitted = true; }
-            if (!refIdsEmitted && refIdsKey.SequenceCompareTo(emitKey) < 0) { builder.Add(refIdsKey, refIdsValue); refIdsEmitted = true; }
-            builder.Add(emitKey, emitValue);
-        }
-
-        while (hasOlder)
-        {
-            ReadOnlySpan<byte> key = olderEnum.Current.Key;
-            if (!key.SequenceEqual(nodeRefsKey) && !key.SequenceEqual(refIdsKey))
-            {
-                if (!nodeRefsEmitted && nodeRefsKey.SequenceCompareTo(key) < 0) { builder.Add(nodeRefsKey, nodeRefsValue); nodeRefsEmitted = true; }
-                if (!refIdsEmitted && refIdsKey.SequenceCompareTo(key) < 0) { builder.Add(refIdsKey, refIdsValue); refIdsEmitted = true; }
-                builder.Add(key, olderEnum.Current.Value);
-            }
-            hasOlder = olderEnum.MoveNext();
-        }
-
-        while (hasNewer)
-        {
-            ReadOnlySpan<byte> key = newerEnum.Current.Key;
-            if (!key.SequenceEqual(nodeRefsKey) && !key.SequenceEqual(refIdsKey))
-            {
-                if (!nodeRefsEmitted && nodeRefsKey.SequenceCompareTo(key) < 0) { builder.Add(nodeRefsKey, nodeRefsValue); nodeRefsEmitted = true; }
-                if (!refIdsEmitted && refIdsKey.SequenceCompareTo(key) < 0) { builder.Add(refIdsKey, refIdsValue); refIdsEmitted = true; }
-                builder.Add(key, newerEnum.Current.Value);
-            }
-            hasNewer = newerEnum.MoveNext();
-        }
-
-        // Emit any remaining synthetic entries
-        if (!nodeRefsEmitted) builder.Add(nodeRefsKey, nodeRefsValue);
-        if (!refIdsEmitted) builder.Add(refIdsKey, refIdsValue);
+        // Emit all keys in sorted ASCII order:
+        // "from_block" < "from_hash" < "noderefs" < "ref_ids" < "to_block" < "to_hash" < "version"
+        builder.Add("from_block"u8, fromBlock);
+        builder.Add("from_hash"u8, fromHash);
+        builder.Add("noderefs"u8, [0x01]);
+        builder.Add("ref_ids"u8, refIdsValue);
+        builder.Add("to_block"u8, toBlock);
+        builder.Add("to_hash"u8, toHash);
+        builder.Add("version"u8, version);
 
         builder.Build();
         return writer.Written;
-    }
-
-    [MethodImpl(MethodImplOptions.NoOptimization)]
-    internal static int StreamingMerge(ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, Span<byte> output, int startOffset = 0, int minSeparatorLength = 0, bool inlineValues = false)
-    {
-        Hsst.Hsst olderHsst = new(older);
-        Hsst.Hsst newerHsst = new(newer);
-
-        SpanBufferWriter writer = new(output[startOffset..]);
-        using HsstBuilder<SpanBufferWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
-
-        using Hsst.Hsst.Enumerator olderEnum = olderHsst.GetEnumerator();
-        using Hsst.Hsst.Enumerator newerEnum = newerHsst.GetEnumerator();
-
-        bool hasOlder = olderEnum.MoveNext();
-        bool hasNewer = newerEnum.MoveNext();
-
-        while (hasOlder && hasNewer)
-        {
-            ReadOnlySpan<byte> olderKey = olderEnum.Current.Key;
-            ReadOnlySpan<byte> newerKey = newerEnum.Current.Key;
-
-            int cmp = olderKey.SequenceCompareTo(newerKey);
-            if (cmp < 0)
-            {
-                builder.Add(olderKey, olderEnum.Current.Value);
-                hasOlder = olderEnum.MoveNext();
-            }
-            else if (cmp > 0)
-            {
-                builder.Add(newerKey, newerEnum.Current.Value);
-                hasNewer = newerEnum.MoveNext();
-            }
-            else
-            {
-                builder.Add(newerKey, newerEnum.Current.Value);
-                hasOlder = olderEnum.MoveNext();
-                hasNewer = newerEnum.MoveNext();
-            }
-        }
-
-        while (hasOlder)
-        {
-            builder.Add(olderEnum.Current.Key, olderEnum.Current.Value);
-            hasOlder = olderEnum.MoveNext();
-        }
-
-        while (hasNewer)
-        {
-            builder.Add(newerEnum.Current.Key, newerEnum.Current.Value);
-            hasNewer = newerEnum.MoveNext();
-        }
-
-        builder.Build();
-        return startOffset + writer.Written;
     }
 }

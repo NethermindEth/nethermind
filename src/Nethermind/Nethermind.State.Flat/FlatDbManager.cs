@@ -12,6 +12,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie.Pruning;
+using Prometheus;
 
 namespace Nethermind.State.Flat;
 
@@ -229,6 +230,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             usage: usage);
     }
 
+    private Histogram _snapshotBundleBlockNumberDepth =
+        Prometheus.Metrics.CreateHistogram("snapshot_bundle_blocknumber_depth", "snapshot_bundle_blocknumber_depth", "part");
+
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
     {
         // Note to self: The current verdict on trying to use a linked list of snapshots is that it is error prone and
@@ -285,6 +289,15 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             }
 
             if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {assembled.InMemory.Count} known states, {assembled.Persisted.Count} persisted, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
+
+            int inMemoryDepth = 0;
+            int persistedDepth = 0;
+
+            if (assembled.InMemory.Count > 0) inMemoryDepth = (int)(assembled.InMemory[^1].To.BlockNumber - assembled.InMemory[0].From.BlockNumber);
+            if (assembled.Persisted.Count > 0) persistedDepth = (int)(assembled.Persisted[^1].To.BlockNumber - assembled.Persisted[0].From.BlockNumber);
+
+            _snapshotBundleBlockNumberDepth.WithLabels("in_memory").Observe(inMemoryDepth);
+            _snapshotBundleBlockNumberDepth.WithLabels("persisted").Observe(persistedDepth);
 
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics, assembled.Persisted);
 

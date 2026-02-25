@@ -44,7 +44,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
         byte[] hsstData = PersistedSnapshotBuilder.Build(snap);
 
-        PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Base, hsstData);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Full, hsstData);
         PersistedSnapshotList list = new(1);
         list.Add(persisted);
 
@@ -79,7 +79,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
         byte[] hsstData = PersistedSnapshotBuilder.Build(snap);
 
-        PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Base, hsstData);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Full, hsstData);
         PersistedSnapshotList list = new(1);
         list.Add(persisted);
 
@@ -114,7 +114,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
         byte[] hsstData = PersistedSnapshotBuilder.Build(snap);
 
-        PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Base, hsstData);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Full, hsstData);
         PersistedSnapshotList list = new(1);
         list.Add(persisted);
 

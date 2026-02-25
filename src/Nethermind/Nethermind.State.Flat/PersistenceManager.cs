@@ -57,7 +57,14 @@ public class PersistenceManager(
         {
             await foreach (StateId stateId in _compactPersistedJobs.Reader.ReadAllAsync(cancellationToken))
             {
-                _persistedSnapshotCompactor.DoCompactSnapshot(stateId);
+                try
+                {
+                    _persistedSnapshotCompactor.DoCompactSnapshot(stateId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Error compacting persisted snapshot. {ex}");
+                }
             }
         }
         catch (OperationCanceledException) { }
