@@ -17,6 +17,16 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
 {
     private static readonly XdcHeaderDecoder _headerDecoder = new();
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
+
+    private static ImmutableArray<Address>? GetOrExtractAddresses(Span<byte> data, ref ImmutableArray<Address>? cached)
+    {
+        if (cached is not null)
+            return cached;
+
+        cached = XdcExtensions.ExtractAddresses(data);
+        return cached;
+    }
+
     public XdcBlockHeader(
         Hash256 parentHash,
         Hash256 unclesHash,
@@ -37,10 +47,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
     {
         get
         {
-            if (_validatorsAddress is not null)
-                return _validatorsAddress;
-            _validatorsAddress = XdcExtensions.ExtractAddresses(Validators);
-            return _validatorsAddress;
+            return GetOrExtractAddresses(Validators, ref _validatorsAddress);
         }
         set { _validatorsAddress = value; }
     }
@@ -52,10 +59,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
     {
         get
         {
-            if (_penaltiesAddress is not null)
-                return _penaltiesAddress;
-            _penaltiesAddress = XdcExtensions.ExtractAddresses(Penalties);
-            return _penaltiesAddress;
+            return GetOrExtractAddresses(Penalties, ref _penaltiesAddress);
         }
         set { _penaltiesAddress = value; }
     }
