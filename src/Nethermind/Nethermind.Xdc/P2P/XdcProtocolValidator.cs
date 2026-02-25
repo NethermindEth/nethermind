@@ -5,8 +5,6 @@ using Nethermind.Blockchain;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.EventArg;
 using Nethermind.Stats;
 
 namespace Nethermind.Xdc.P2P;

@@ -3,9 +3,7 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Api;
-using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -17,10 +15,6 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 

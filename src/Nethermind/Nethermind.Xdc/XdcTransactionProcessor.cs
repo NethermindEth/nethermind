@@ -14,7 +14,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
-using System.Linq;
 
 namespace Nethermind.Xdc;
 

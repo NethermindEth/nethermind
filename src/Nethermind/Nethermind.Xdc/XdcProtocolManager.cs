@@ -24,7 +24,6 @@ using Nethermind.TxPool;
 using Nethermind.Xdc.P2P;
 using System;
 using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc;
 

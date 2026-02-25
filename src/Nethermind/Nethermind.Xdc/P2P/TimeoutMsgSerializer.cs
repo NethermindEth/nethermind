@@ -3,15 +3,11 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Stats.SyncLimits;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc.P2P;
 

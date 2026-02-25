@@ -3,9 +3,7 @@
 
 using FluentAssertions;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;

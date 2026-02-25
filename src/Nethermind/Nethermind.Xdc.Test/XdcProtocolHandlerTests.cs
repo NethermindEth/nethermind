@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -11,7 +10,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;

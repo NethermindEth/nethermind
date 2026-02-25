@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Evm.TransactionProcessing;
-using System;
-using System.Collections.Generic;
-using System.Text;
 using static Nethermind.Evm.TransactionProcessing.TransactionResult;
 
 namespace Nethermind.Xdc;

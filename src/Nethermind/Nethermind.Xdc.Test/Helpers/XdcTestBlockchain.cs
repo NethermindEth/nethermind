@@ -11,7 +11,6 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -32,7 +31,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Filters;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Types;
@@ -279,21 +277,6 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.BlockSignerContract = new Address("0x00000000000000000000000000000000b000089");
         xdcSpec.RandomizeSMCBinary = new Address("0x00000000000000000000000000000000b000090");
         xdcSpec.FoundationWallet = new Address("0x0000000000000000000000000000000000000068");
-
-        xdcSpec.BlackListedAddresses =
-            [
-            new Address("0x00000000000000000000000000000000b1Ac701"),
-            new Address("0x00000000000000000000000000000000b1Ac702"),
-            new Address("0x00000000000000000000000000000000b1Ac703"),
-            new Address("0x00000000000000000000000000000000b1Ac704"),
-            new Address("0x00000000000000000000000000000000b1Ac705"),
-            new Address("0x00000000000000000000000000000000b1Ac706"),
-            new Address("0x00000000000000000000000000000000b1Ac707"),
-            ];
-        xdcSpec.MergeSignRange = 15;
-
-        xdcSpec.BlockSignerContract = new Address("0x00000000000000000000000000000000b000089");
-        xdcSpec.RandomizeSMCBinary = new Address("0x00000000000000000000000000000000b000090");
 
         V2ConfigParams[] v2ConfigParams = [
             new V2ConfigParams {

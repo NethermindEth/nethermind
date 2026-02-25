@@ -5,13 +5,10 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
-using Nethermind.Xdc;
 using Nethermind.Xdc.Spec;
-using System;
 
 namespace Nethermind.Xdc.TxPool;
 

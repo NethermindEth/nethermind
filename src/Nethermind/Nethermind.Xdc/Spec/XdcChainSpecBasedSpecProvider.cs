@@ -6,7 +6,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using System;
-using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Spec;
 

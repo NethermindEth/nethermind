@@ -20,7 +20,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
@@ -108,9 +107,6 @@ public class XdcModule : Module
 
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
-
-            // block processing
-            .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
 
             //Network
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()

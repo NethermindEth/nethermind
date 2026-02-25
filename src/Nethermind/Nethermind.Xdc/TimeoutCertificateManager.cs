@@ -97,7 +97,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         ProcessTimeoutCertificate(timeoutCertificate);
 
         SyncInfo syncInfo = GetSyncInfo();
-        //TODO: Broadcast syncInfo
     }
 
     public void ProcessTimeoutCertificate(TimeoutCertificate timeoutCertificate)

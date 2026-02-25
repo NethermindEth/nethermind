@@ -3,16 +3,11 @@
 
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc;
 

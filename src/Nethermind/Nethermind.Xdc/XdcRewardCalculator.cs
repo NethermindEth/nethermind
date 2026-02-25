@@ -29,11 +29,9 @@ namespace Nethermind.Xdc
     public class XdcRewardCalculator : IRewardCalculator
     {
         private LruCache<Hash256, Transaction[]> _signingTxsCache = new(9000, "XDC Signing Txs Cache");
-        private const long BlocksPerYear = 15768000;
         // XDC rule: signing transactions are sampled/merged every N blocks (N=15 on XDC).
         // Only block numbers that are multiples of MergeSignRange are considered when tallying signers.
         private readonly EthereumEcdsa _ethereumEcdsa;
-        private const long MergeSignRange = 15;
         private readonly IEpochSwitchManager _epochSwitchManager;
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
