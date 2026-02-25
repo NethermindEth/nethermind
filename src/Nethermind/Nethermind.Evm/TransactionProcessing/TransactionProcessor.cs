@@ -227,10 +227,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
-
-            //only main thread updates transaction
-            if (!opts.HasFlag(ExecutionOptions.Warmup))
-                tx.SpentGas = spentGas.SpentGas;
+            tx.SpentGas = spentGas.SpentGas;
 
             // Finalize
             if (restore)
@@ -712,10 +709,13 @@ namespace Nethermind.Evm.TransactionProcessing
 
             using (VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
             {
+#if !ZKVM
+                substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
+#else
                 substate = !TTracingInst.IsActive
-                    ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer) // no GVM trick for ZK
+                    ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer)
                     : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
-
+#endif
                 Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
                 gasAvailable = state.Gas;
 
