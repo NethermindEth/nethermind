@@ -17,7 +17,7 @@ This file documents how to maintain the `.claude/rules/` knowledge base. It is *
 ## How to add
 
 1. Identify which rules file the pattern fits (or create a new one if it's a new domain)
-2. For project-scoped rules, add a YAML frontmatter with `paths:` globs
+2. For project-scoped rules, add a YAML frontmatter with `paths:` globs (see `src-nethermind-index.md` for the list of path-scoped rules)
 3. Keep rules concise — one bullet per convention, with a brief "why" if non-obvious
 4. PR it like code — rules changes should be reviewed by the team
 
@@ -28,17 +28,32 @@ This file documents how to maintain the `.claude/rules/` knowledge base. It is *
 ├── before-you-code.md         ← always loaded (no paths: frontmatter)
 ├── common-review-feedback.md  ← always loaded
 ├── coding-style.md            ← always loaded
+├── concurrency.md             ← src/Nethermind/**/*.cs (global — shared state patterns appear everywhere)
 ├── di-patterns.md             ← src/Nethermind/**/*.cs
-├── test-infrastructure.md     ← **/*Test*/**/*.cs, **/*Benchmark*/**/*.cs
-├── package-management.md      ← **/*.csproj, **/Directory.*.props
 ├── performance.md             ← src/Nethermind/**/*.cs
+├── test-infrastructure.md     ← **/*Test*/**/*.cs, **/*Benchmark*/**/*.cs (single rule for tests)
+├── package-management.md      ← **/*.csproj, **/Directory.*.props
 ├── evm/evm-conventions.md     ← src/Nethermind/Nethermind.Evm*/**/*.cs
+├── serialization.md           ← src/Nethermind/Nethermind.Serialization.*/**/*.cs
+├── blockchain.md              ← src/Nethermind/Nethermind.Blockchain/**/*.cs
+├── state.md                   ← src/Nethermind/Nethermind.State*/**/*.cs
+├── txpool.md                  ← src/Nethermind/Nethermind.TxPool/**/*.cs
+├── network.md                 ← src/Nethermind/Nethermind.Network*/**/*.cs
+├── specs.md                   ← src/Nethermind/Nethermind.Specs/**/*.cs
+├── init.md                    ← src/Nethermind/Nethermind.Init/**/*.cs
+├── robustness.md              ← always loaded (async, dispose, unsafe, catch patterns)
+├── github-workflows.md        ← .github/** (workflows, actions, CODEOWNERS, PR template)
+├── src-nethermind-index.md    ← index of folder-scoped rules (not path-loaded, documentation only)
 └── CONTRIBUTING.md            ← this file (not auto-loaded)
 ```
 
 ## Seeding from PR reviews
 
-Use the `/learn-from-review <PR_NUMBER>` skill to mine review comments from a merged PR and propose rule additions. Run periodically on recent PRs to keep rules current.
+Read review comments from merged PRs (via `gh api repos/NethermindEth/nethermind/pulls/<N>/comments`) and extract patterns that appear across multiple PRs. Add them to the appropriate rule file.
+
+## Review skill
+
+Use `/review` (or `/review <PR_NUMBER>`) to run a deep review for consensus correctness, security, robustness, breaking changes, and observability. The skill lives in `.claude/skills/review/SKILL.md`.
 
 ## Cross-tool portability
 

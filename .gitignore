@@ -440,7 +440,12 @@ FodyWeavers.xsd
 .DS_Store
 
 # AI
-.claude/
+.claude/*
+!.claude/rules
+!.claude/rules/**
+!.claude/skills
+!.claude/skills/**
+!.claude/settings.json
 .gemini/
 
 # Worktrees

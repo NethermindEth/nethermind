@@ -12,7 +12,9 @@
 - Use documentation comments for all public APIs
 - Avoid `var` — spell out types (exception: very long nested generic types)
 - Trust null annotations, don't add redundant null checks
-- Code comments explain _why_, not _what_
+- Code comments explain _why_, not _what_ — a comment that contradicts the code is worse than no comment; fix or remove it
+- Non-obvious consensus rules or algorithms must reference the EIP number or Yellow Paper section
+- Config keys must document their units and defaults in XML docs (e.g. is it milliseconds or seconds?)
 - Keep changes minimal and focused — don't rename variables, reformat surrounding code, or refactor unrelated logic
 - Follow DRY — extract repeated blocks (5+ lines) into shared methods, but don't over-extract trivial one-liners
 - In generic types, move methods that don't depend on the type parameter to a non-generic base class or static helper
