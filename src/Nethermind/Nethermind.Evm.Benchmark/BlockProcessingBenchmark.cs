@@ -66,13 +66,13 @@ namespace Nethermind.Evm.Benchmark;
 public class BlockProcessingBenchmark
 {
     /// <summary>
-    /// Repetitions per BDN invocation. With the fastest method (EmptyBlock ~0.28 ms),
-    /// 500 reps ≈ 140 ms per iteration — comfortably above BDN's 100 ms minimum.
+    /// Repetitions per BDN invocation. With the fastest method (EmptyBlock ~21 us),
+    /// 5000 reps ≈ 105 ms per iteration — above BDN's 100 ms minimum.
     /// </summary>
-    private const int N = 500;
+    private const int N = 5000;
 
     /// <summary>
-    /// 1000 data points per benchmark (10 launches x 100 iterations, 20 warmup each).
+    /// 20 data points per benchmark (2 launches x 10 iterations, 2 warmup each).
     /// GcForce ensures a GC collection between iterations to reduce allocation noise.
     /// </summary>
     private class BlockProcessingConfig : ManualConfig
@@ -83,9 +83,9 @@ public class BlockProcessingBenchmark
                 .WithToolchain(InProcessNoEmitToolchain.Instance)
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
-                .WithLaunchCount(5)
-                .WithWarmupCount(5)
-                .WithIterationCount(20)
+                .WithLaunchCount(2)
+                .WithWarmupCount(2)
+                .WithIterationCount(10)
                 .WithGcForce(true));
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
