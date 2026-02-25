@@ -38,41 +38,42 @@ public class TestingRpcModule(
     public Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null, string? targetFork = null)
     {
         Block? parentBlock = blockFinder.FindBlock(parentBlockHash);
-        if (parentBlock is null)
+
+        if (parentBlock is not null)
         {
-            return ResultWrapper<object?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
-        }
+            if (!TryResolveTargetFork(targetFork, out TargetFork resolvedFork))
+            {
+                if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the target fork: {targetFork ?? "default"}");
+                return ResultWrapper<object?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
+            }
 
-        if (!TryResolveTargetFork(targetFork, out TargetFork resolvedFork))
-        {
-            if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the target fork: {targetFork ?? "default"}");
-            return ResultWrapper<object?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
-        }
+            if (!ValidatePayloadAttributes(payloadAttributes, resolvedFork, out ResultWrapper<object?>? errorResult))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {errorResult!.Result.Error}");
+                return errorResult!;
+            }
 
-        if (!ValidatePayloadAttributes(payloadAttributes, resolvedFork, out ResultWrapper<object?>? errorResult))
-        {
-            if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {errorResult!.Result.Error}");
-            return errorResult!;
-        }
+            IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(parentBlock.Header.Number + 1, payloadAttributes.Timestamp));
+            BlockHeader header = PrepareBlockHeader(parentBlock.Header, payloadAttributes, extraData);
+            Transaction[] transactions = GetTransactions(txRlps).ToArray();
+            header.TxRoot = TxTrie.CalculateRoot(transactions);
+            Block block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
 
-        IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(parentBlock.Header.Number + 1, payloadAttributes.Timestamp));
-        BlockHeader header = PrepareBlockHeader(parentBlock.Header, payloadAttributes, extraData);
-        Transaction[] transactions = GetTransactions(txRlps).ToArray();
-        header.TxRoot = TxTrie.CalculateRoot(transactions);
-        Block block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
+            FeesTracer feesTracer = new();
+            Block? processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
 
-        FeesTracer feesTracer = new();
-        Block? processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
+            if (processedBlock is not null)
+            {
+                object getPayloadResult = CreateGetPayloadResult(processedBlock, feesTracer.Fees, resolvedFork);
 
-        if (processedBlock is null)
-        {
+                if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {processedBlock.Header.ToString(BlockHeader.Format.Short)}.");
+                return ResultWrapper<object?>.Success(getPayloadResult);
+            }
+
             return ResultWrapper<object?>.Fail("payload processing failed", MergeErrorCodes.UnknownPayload);
         }
 
-        object getPayloadResult = CreateGetPayloadResult(processedBlock, feesTracer.Fees, resolvedFork);
-
-        if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {processedBlock.Header.ToString(BlockHeader.Format.Short)}.");
-        return ResultWrapper<object?>.Success(getPayloadResult);
+        return ResultWrapper<object?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
     }
 
     private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, byte[]? extraData)
