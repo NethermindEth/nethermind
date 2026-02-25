@@ -1,5 +1,8 @@
 # rpc-compat
 
+eth_simulateV1/ethSimulate-basefee-too-low-with-validation-38012 (nethermind)
+eth_simulateV1/ethSimulate-simple-more-params-validate (nethermind)
+
 # graphql
 
 01_eth_blockNumber (nethermind)
@@ -58,6 +61,12 @@
 
 Blob Transaction Ordering, Multiple Accounts (Cancun) (nethermind)
 Blob Transaction Ordering, Multiple Clients (Cancun) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, Timestamp, EmptyTxs=False, CanonicalReOrg=False, Invalid P8 (Cancun) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, Timestamp, EmptyTxs=False, CanonicalReOrg=True, Invalid P8 (Cancun) (nethermind)
+
+#sync
+
+sync nethermind from nethermind
 
 #devp2p
 
