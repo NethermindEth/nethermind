@@ -94,11 +94,11 @@ public sealed class ArenaManager : IArenaManager
     /// Create an <see cref="ArenaWriter"/> for buffered writes.
     /// The arena is marked as reserved until <see cref="CompleteWrite"/> or <see cref="CancelWrite"/>.
     /// </summary>
-    public ArenaWriter CreateWriter()
+    public ArenaWriter CreateWriter(int estimatedSize)
     {
         lock (_lock)
         {
-            ArenaFile file = GetOrCreateArena(0);
+            ArenaFile file = GetOrCreateArena(estimatedSize);
             long offset = _frontiers[file.Id];
             _reservedArenas.Add(file.Id);
             ArenaFile.MmapWriteStream stream = file.CreateWriteStream(offset);

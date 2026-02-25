@@ -23,9 +23,9 @@ public sealed class MemoryArenaManager : IArenaManager
 
     public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) { }
 
-    public ArenaWriter CreateWriter()
+    public ArenaWriter CreateWriter(int estimatedSize)
     {
-        int arenaId = GetOrCreateArena(0);
+        int arenaId = GetOrCreateArena(estimatedSize);
         long offset = _frontiers[arenaId];
         MemoryStream stream = new();
         _pendingStreams[(arenaId, offset)] = stream;
