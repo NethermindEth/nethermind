@@ -73,7 +73,7 @@ public static class PersistedSnapshotBuilder
         // Use a conservative multiplier on the snapshot memory estimate.
         // Clamp to 1 GiB so the buffer stays within ArrayPool's poolable range,
         // and all arithmetic is done in long to avoid int overflow for large snapshots.
-        return (int)Math.Min(1.GiB(), snapshot.EstimateMemory() * 3 + 1.KiB());
+        return (int)Math.Min(1.GiB(), snapshot.EstimateMemory() + 1.KiB());
     }
 
     private static void WriteMetadataColumn<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
