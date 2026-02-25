@@ -585,11 +585,21 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             await Task.Delay(pruneDelayMs);
         }
 
-        using (_pruningLock.EnterScope())
+        if (!_pruningLock.TryEnter(TimeSpan.FromMilliseconds(500)))
         {
-            // Skip triggering GC while pruning so they don't fight each other causing pruning to take longer
-            GCScheduler.Instance.SkipNextGC();
+            // Wait briefly to get past a short commit hold, but do not queue behind a full prune.
+            return;
+        }
+
+        // Skip triggering GC while pruning so they don't fight each other causing pruning to take longer
+        GCScheduler.Instance.SkipNextGC();
+        try
+        {
             SyncPruneNonLocked();
+        }
+        finally
+        {
+            _pruningLock.Exit();
         }
 
         TryExitCommitBufferMode();
