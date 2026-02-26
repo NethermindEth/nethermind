@@ -68,7 +68,7 @@ public sealed partial class RlpItemList : IByteArrayList
         return contentLength == 0 ? ReadOnlySpan<byte>.Empty : rawRlp.Slice(prefixLength, contentLength);
     }
 
-    public RlpListReader CreateNestedReader(int index) => new(this[index]);
+    public RefRlpListReader CreateNestedReader(int index) => new(this[index]);
 
     public RlpItemList ReadNestedItemList(int index)
     {

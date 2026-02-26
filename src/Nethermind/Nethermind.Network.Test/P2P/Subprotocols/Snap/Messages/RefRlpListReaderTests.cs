@@ -10,7 +10,7 @@ using NUnit.Framework;
 namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages;
 
 [TestFixture, Parallelizable(ParallelScope.All)]
-public class RlpListReaderTests
+public class RefRlpListReaderTests
 {
     private static byte[][] SingleByteItems => [
         [0x01], [0x42], [0x7f]
@@ -50,7 +50,7 @@ public class RlpListReaderTests
     public void SequentialAccess_ReturnsRawRlpItems(byte[][] items)
     {
         byte[] data = EncodeList(items);
-        RlpListReader reader = new(data);
+        RefRlpListReader reader = new(data);
 
         reader.Count.Should().Be(items.Length);
         for (int i = 0; i < items.Length; i++)
@@ -64,7 +64,7 @@ public class RlpListReaderTests
     public void SameIndexReAccess_ReturnsSameResult(byte[][] items)
     {
         byte[] data = EncodeList(items);
-        RlpListReader reader = new(data);
+        RefRlpListReader reader = new(data);
 
         for (int i = 0; i < items.Length; i++)
         {
@@ -80,7 +80,7 @@ public class RlpListReaderTests
         if (items.Length < 2) return;
 
         byte[] data = EncodeList(items);
-        RlpListReader reader = new(data);
+        RefRlpListReader reader = new(data);
 
         byte[] lastExpected = Rlp.Encode(items[^1]).Bytes;
         reader[items.Length - 1].ToArray().Should().BeEquivalentTo(lastExpected);
@@ -100,7 +100,7 @@ public class RlpListReaderTests
     public void LazyCount_MatchesExpected(byte[][] items)
     {
         byte[] data = EncodeList(items);
-        RlpListReader reader = new(data);
+        RefRlpListReader reader = new(data);
         reader.Count.Should().Be(items.Length);
         reader.Count.Should().Be(items.Length, "second access should return same count");
     }
@@ -123,19 +123,19 @@ public class RlpListReaderTests
         outerStream.Write(rlpInner2);
         byte[] outerData = outerStream.Data.ToArray()!;
 
-        RlpListReader outerReader = new(outerData);
+        RefRlpListReader outerReader = new(outerData);
         outerReader.Count.Should().Be(2);
 
         // Parse first sub-list
         ReadOnlySpan<byte> subItem0 = outerReader[0];
-        RlpListReader subReader0 = new(subItem0);
+        RefRlpListReader subReader0 = new(subItem0);
         subReader0.Count.Should().Be(2);
         subReader0[0].ToArray().Should().BeEquivalentTo(Rlp.Encode(inner1[0]).Bytes);
         subReader0[1].ToArray().Should().BeEquivalentTo(Rlp.Encode(inner1[1]).Bytes);
 
         // Parse second sub-list
         ReadOnlySpan<byte> subItem1 = outerReader[1];
-        RlpListReader subReader1 = new(subItem1);
+        RefRlpListReader subReader1 = new(subItem1);
         subReader1.Count.Should().Be(2);
         subReader1[0].ToArray().Should().BeEquivalentTo(Rlp.Encode(inner2[0]).Bytes);
         subReader1[1].ToArray().Should().BeEquivalentTo(Rlp.Encode(inner2[1]).Bytes);

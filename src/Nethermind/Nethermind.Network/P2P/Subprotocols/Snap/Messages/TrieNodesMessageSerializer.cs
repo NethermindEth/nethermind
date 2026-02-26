@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             int innerLength = ctx.ReadSequenceLength();
             int dataStart = ctx.Position;
 
-            RlpByteArrayList list = new(memoryOwner, dataStart, innerLength);
+            RlpByteArrayList list = new(memoryOwner, memoryOwner.Memory.Slice(dataStart, innerLength));
             ctx.Position = dataStart + innerLength;
             byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
 
