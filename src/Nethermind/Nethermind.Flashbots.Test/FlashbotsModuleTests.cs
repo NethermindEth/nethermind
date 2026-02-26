@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Flashbots.Data;
 using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Int256;
@@ -50,7 +51,7 @@ public partial class FlashbotsModuleTests
             expectedPayload.BlobsBundle,
             [],
             block.Header.GasLimit,
-            new Hash256("0x0000000000000000000000000000000000000000000000000000000000000042")
+            block.Header.ParentBeaconBlockRoot!
         );
 
         ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(BlockRequest);
@@ -91,10 +92,9 @@ public partial class FlashbotsModuleTests
 
         Hash256 prevRandao = Keccak.Zero;
 
-        Hash256 expectedBlockHash = new("0xf96547f16f2d140931e4a026b15a5490538d5479518bbd46338bbada948b403a");
         string stateRoot = "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154";
 
-        return new(
+        Block block = new(
             new(
                 currentHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
@@ -111,7 +111,6 @@ public partial class FlashbotsModuleTests
                 BaseFeePerGas = 0,
                 Bloom = Bloom.Empty,
                 GasUsed = 0,
-                Hash = expectedBlockHash,
                 MixHash = prevRandao,
                 ParentBeaconBlockRoot = Keccak.Zero,
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
@@ -121,5 +120,16 @@ public partial class FlashbotsModuleTests
             Array.Empty<BlockHeader>(),
             withdrawals
         );
+
+        ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
+        BlockDecodingResult decodingResult = payload.TryGetBlock();
+        if (decodingResult.Block is null)
+        {
+            throw new InvalidOperationException($"Unable to decode block payload: {decodingResult.Error}");
+        }
+        block = decodingResult.Block;
+        block.Header.Hash = block.CalculateHash();
+
+        return block;
     }
 }

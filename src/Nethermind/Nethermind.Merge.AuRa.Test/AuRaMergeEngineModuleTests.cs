@@ -17,17 +17,21 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.Merge.AuRa.Contracts;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
@@ -83,13 +87,54 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         "0x8d8fa83b6c3adb40b8f2e1f4798e9d900564b8548e209a65c8cd29fde02e7a32",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
         "0x3e98244425fbc5413150a01fd823bece9ae66ef182f11597f0abdfd251d9aa16")]
-    public override Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
-        => base.NewPayloadV5_accepts_valid_BAL(blockHash, receiptsRoot, stateRoot);
+    public override async Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
+    {
+        _ = blockHash;
+        _ = receiptsRoot;
+        _ = stateRoot;
+
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 headHash = chain.BlockTree.HeadHash;
+
+        ForkchoiceStateV1 forkchoiceState = new(headHash, headHash, Keccak.Zero);
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp + 999,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = TestItem.AddressC,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Zero,
+            SlotNumber = chain.BlockTree.Head!.SlotNumber + 1,
+        };
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceResponse = await rpc.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes);
+        Assert.That(forkchoiceResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(forkchoiceResponse.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(forkchoiceResponse.Data.PayloadId, Is.Not.Null);
+
+        ResultWrapper<GetPayloadV6Result?> payloadResponse =
+            await rpc.engine_getPayloadV6(Bytes.FromHexString(forkchoiceResponse.Data.PayloadId!));
+        Assert.That(payloadResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(payloadResponse.Data, Is.Not.Null);
+        Assert.That(payloadResponse.Data!.ExecutionPayload.BlockAccessList, Is.Not.Null);
+
+        ResultWrapper<PayloadStatusV1> newPayloadResponse = await rpc.engine_newPayloadV5(
+            payloadResponse.Data.ExecutionPayload,
+            payloadResponse.Data.BlobsBundle.Blobs,
+            Keccak.Zero,
+            []);
+
+        Assert.That(newPayloadResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(newPayloadResponse.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(newPayloadResponse.Data.LatestValidHash, Is.EqualTo(payloadResponse.Data.ExecutionPayload.BlockHash));
+        Assert.That(newPayloadResponse.Data.ValidationError, Is.Null);
+    }
 
     [TestCase(
         "0xcb284697c29b108d9820ab65ca8b44c6abc50f2598f9412dbfc88d84db5e6fc5",
         "0x914892da85e1a085a90e8a02f9a9cf0777d73c5798047c7324859b1c5ad9b67f",
-        "0xf33cd1904c18109e882bfa965997ba802d408bd834a61920aba651fbaeb78dd3")]
+        "0x7255eb3f45136fccaa3449d2787f80e33e197b4fbc417f1d62423a72a76b5d43")]
     public override Task NewPayloadV5_rejects_invalid_BAL(string blockHash, string stateRoot, string balHash)
         => base.NewPayloadV5_rejects_invalid_BAL(blockHash, stateRoot, balHash);
 
