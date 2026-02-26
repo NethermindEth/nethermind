@@ -437,7 +437,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return 0;
     }
 
-    [GeneratedRegex("(?<optionName>[A-Za-z0-9_\\.]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
+    [GeneratedRegex("(?<optionName>[^; ]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractDbOptionsRegex();
 
     public static IDictionary<string, string> ExtractOptions(string dbOptions)
@@ -531,7 +531,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             Marshal.FreeHGlobal(optsPtr);
         }
 
-        if (dbConfig.WriteBufferSize > 0)
+        if (dbConfig.WriteBufferSize is not null)
         {
             _writeBufferSize = dbConfig.WriteBufferSize.Value;
             options.SetWriteBufferSize(dbConfig.WriteBufferSize.Value);
@@ -1483,7 +1483,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public void Dispose()
     {
-        if (Interlocked.CompareExchange(ref _isDisposing, true, false)) return;
+        if (_isDisposing) return;
+        _isDisposing = true;
 
         if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
 

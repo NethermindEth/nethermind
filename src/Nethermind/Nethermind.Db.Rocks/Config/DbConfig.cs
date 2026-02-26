@@ -183,7 +183,7 @@ public class DbConfig : IDbConfig
 
     public ulong StateDbWriteBufferSize { get; set; } = (ulong)64.MB();
     public ulong StateDbWriteBufferNumber { get; set; } = 4;
-    public bool? StateDbVerifyChecksum { get; set; } = true;
+    public bool? StateDbVerifyChecksum { get; set; }
     public ulong? StateDbRowCacheSize { get; set; }
     public bool StateDbEnableFileWarmer { get; set; } = false;
     public double StateDbCompressibilityHint { get; set; } = 0.45;
