@@ -883,9 +883,9 @@ public unsafe class EvmOpcodesBenchmark
                 .WithEnvironmentVariable("DOTNET_gcConcurrent", "0")
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
-                .WithLaunchCount(2)
-                .WithWarmupCount(4)
-                .WithIterationCount(10));
+                .WithLaunchCount(3)
+                .WithWarmupCount(5)
+                .WithIterationCount(15));
             HideColumns(Column.Method);
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
