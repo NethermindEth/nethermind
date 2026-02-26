@@ -202,6 +202,11 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public ArrayPoolList<StateId> GetSnapshotBeforeStateId(StateId stateId)
     {
+        if (stateId.BlockNumber < 0)
+        {
+            return new ArrayPoolList<StateId>(0);
+        }
+
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
         return sortedSnapshots

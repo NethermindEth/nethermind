@@ -167,7 +167,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (Logger.IsTrace)
             {
                 if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-                if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
+                if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation || opts.HasFlag(ExecutionOptions.Warmup))
                 {
                     _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                     return _systemTransactionProcessor.Execute<OnFlag>(tx, tracer, opts);
@@ -179,7 +179,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else
             {
-                if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
+                if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation || opts.HasFlag(ExecutionOptions.Warmup))
                 {
                     _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                     return _systemTransactionProcessor.Execute<OffFlag>(tx, tracer, opts);

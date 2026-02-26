@@ -7,7 +7,7 @@ namespace Nethermind.Db;
 
 public class FlatDbConfig : IFlatDbConfig
 {
-    public bool Enabled { get; set; } = true; // Enable by default temporarily
+    public bool Enabled { get; set; } = false;
     public bool EnablePreimageRecording { get; set; } = false;
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
