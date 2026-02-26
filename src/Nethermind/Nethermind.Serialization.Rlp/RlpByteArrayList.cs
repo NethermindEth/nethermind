@@ -3,39 +3,90 @@
 
 using System;
 using System.Buffers;
-using System.Collections;
-using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp;
 
-public sealed class RlpByteArrayList(IMemoryOwner<byte> memoryOwner, (int Offset, int Length)[] items) : IOwnedReadOnlyList<byte[]>, IByteArrayList
+public sealed class RlpByteArrayList : IByteArrayList
 {
-    private readonly Memory<byte> _memory = memoryOwner.Memory;
+    private readonly IMemoryOwner<byte> _memoryOwner;
+    private readonly Memory<byte> _memory;
+    private readonly int _dataStart;
+    private readonly int _count;
 
-    public int Count => items.Length;
+    private int _cachedIndex;
+    private int _cachedPosition;
 
-    ReadOnlySpan<byte> IByteArrayList.this[int index] => GetSpan(index);
-
-    byte[] IReadOnlyList<byte[]>.this[int index] => GetSpan(index).ToArray();
-
-    public ReadOnlySpan<byte[]> AsSpan() => throw new NotSupportedException();
-
-    public void Dispose() => memoryOwner.Dispose();
-
-    public IEnumerator<byte[]> GetEnumerator()
+    public RlpByteArrayList(IMemoryOwner<byte> memoryOwner, int dataStart, int count)
     {
-        for (int i = 0; i < items.Length; i++)
+        _memoryOwner = memoryOwner;
+        _memory = memoryOwner.Memory;
+        _dataStart = dataStart;
+        _count = count;
+        _cachedIndex = 0;
+        _cachedPosition = dataStart;
+    }
+
+    public int Count => _count;
+
+    public ReadOnlySpan<byte> this[int index]
+    {
+        get
         {
-            yield return GetSpan(i).ToArray();
+            ReadOnlySpan<byte> span = _memory.Span;
+            int position = GetPosition(span, index);
+            (int prefixLength, int contentLength) = PeekPrefixAndContentLength(span, position);
+            _cachedIndex = index;
+            _cachedPosition = position;
+            return contentLength == 0
+                ? ReadOnlySpan<byte>.Empty
+                : span.Slice(position + prefixLength, contentLength);
         }
     }
 
-    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    public void Dispose() => _memoryOwner.Dispose();
 
-    private ReadOnlySpan<byte> GetSpan(int index)
+    private int GetPosition(ReadOnlySpan<byte> span, int index)
     {
-        (int offset, int length) = items[index];
-        return length == 0 ? ReadOnlySpan<byte>.Empty : _memory.Span.Slice(offset, length);
+        int scanFrom;
+        int position;
+        if (index >= _cachedIndex)
+        {
+            scanFrom = _cachedIndex;
+            position = _cachedPosition;
+        }
+        else
+        {
+            scanFrom = 0;
+            position = _dataStart;
+        }
+
+        for (int i = scanFrom; i < index; i++)
+        {
+            (int pLen, int cLen) = PeekPrefixAndContentLength(span, position);
+            position += pLen + cLen;
+        }
+
+        return position;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static (int prefixLength, int contentLength) PeekPrefixAndContentLength(
+        ReadOnlySpan<byte> span, int position)
+    {
+        int prefix = span[position];
+        int prefixLengthForContent = RlpHelpers.GetPrefixLengthForContent(prefix);
+        if (prefixLengthForContent >= 0)
+            return (prefixLengthForContent, RlpHelpers.GetContentLength(prefix));
+
+        int lengthOfLength = RlpHelpers.IsLongString(prefixLengthForContent)
+            ? prefix - 183
+            : prefix - 247;
+        int cLen = RlpHelpers.DeserializeLengthRef(
+            ref Unsafe.Add(ref MemoryMarshal.GetReference(span), position + 1),
+            lengthOfLength);
+        return (1 + lengthOfLength, cLen);
     }
 }

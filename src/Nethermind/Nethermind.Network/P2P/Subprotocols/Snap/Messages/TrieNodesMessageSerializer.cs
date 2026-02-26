@@ -38,18 +38,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             long requestId = ctx.DecodeLong();
 
             int innerLength = ctx.ReadSequenceLength();
-            int checkPosition = ctx.Position + innerLength;
+            int dataStart = ctx.Position;
+            int checkPosition = dataStart + innerLength;
             int count = ctx.PeekNumberOfItemsRemaining(checkPosition);
 
-            (int Offset, int Length)[] items = new (int, int)[count];
-            for (int i = 0; i < count; i++)
-            {
-                (int prefixLength, int contentLength) = ctx.PeekPrefixAndContentLength();
-                items[i] = (ctx.Position + prefixLength, contentLength);
-                ctx.Position += prefixLength + contentLength;
-            }
-
-            RlpByteArrayList list = new(memoryOwner, items);
+            RlpByteArrayList list = new(memoryOwner, dataStart, count);
+            ctx.Position = checkPosition;
             byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
 
             return new TrieNodesMessage(list) { RequestId = requestId };
