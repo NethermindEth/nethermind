@@ -88,7 +88,7 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
         Description = "Sets the L1 origin signature for the given block ID.",
         IsSharable = true,
         IsImplemented = true)]
-    ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, int[] signature);
+    ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, byte[] signature);
 
     /// <summary>
     /// Clears txpool state (hash cache, account cache, pending transactions) after a chain reorg.
