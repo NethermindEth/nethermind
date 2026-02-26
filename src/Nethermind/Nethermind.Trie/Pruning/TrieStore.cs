@@ -586,14 +586,55 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             await Task.Delay(pruneDelayMs);
         }
 
+        // Phase 1: Persist dirty cache and prune newly-persisted nodes.
+        // This is the heavy operation (~1-2s). BeginScope falls to commit buffer mode during this.
         using (_pruningLock.EnterScope())
         {
             // Skip triggering GC while pruning so they don't fight each other causing pruning to take longer
             GCScheduler.Instance.SkipNextGC();
-            SyncPruneNonLocked();
+
+            if (_pruningStrategy.ShouldPruneDirtyNode(CaptureCurrentState()))
+            {
+                PersistAndPruneDirtyCache();
+            }
         }
 
+        // Lock released between phases — BeginScope can grab it and process blocks without
+        // commit buffer overhead. This eliminates lock-contention stalls on block processing.
         TryExitCommitBufferMode();
+
+        // Phase 2: Prune persisted nodes in chunks, releasing the lock between each chunk.
+        // Each chunk processes a subset of shards. Releasing the lock between chunks gives
+        // BeginScope a window to acquire it, preventing blocks from stalling.
+        if (_prunePersistedNodePortion > 0)
+        {
+            int startingShard = _lastPrunedShardIdx;
+            while (_lastPrunedShardIdx - startingShard < _shardedDirtyNodeCount && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
+            {
+                using (_pruningLock.EnterScope())
+                {
+                    // BeginScope checks _toBePersistedBlockNumber when it can't get the lock
+                    // to determine the commit buffer boundary. Set it before each chunk.
+                    _toBePersistedBlockNumber = LastPersistedBlockNumber;
+                    try
+                    {
+                        PrunePersistedNodes();
+                    }
+                    finally
+                    {
+                        _toBePersistedBlockNumber = -1;
+                    }
+                }
+
+                // Lock released — let BeginScope grab it between chunks
+                TryExitCommitBufferMode();
+            }
+
+            if (!IsInCommitBufferMode && _lastPrunedShardIdx - startingShard >= _shardedDirtyNodeCount && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Unable to completely prune persisted nodes. Consider increasing pruning cache limit or reducing pruning boundary");
+            }
+        }
     }
 
     // Testing purpose only
