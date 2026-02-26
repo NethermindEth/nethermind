@@ -138,6 +138,6 @@ public class CodeInfoRepository : ICodeInfoRepository
             : codeHash;
     }
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, out Address? delegatedAddress) =>
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(address, spec).CodeSpan, out delegatedAddress);
 }

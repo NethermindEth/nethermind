@@ -59,7 +59,7 @@
     <PackageVersion Include="Nethermind.Libp2p" Version="1.0.0-preview.45" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.0.0-preview.45" />
     <PackageVersion Include="Nethermind.MclBindings" Version="1.0.5" />
-    <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.4.0" />
+    <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.5.0" />
     <PackageVersion Include="Nethermind.TurboPForBindings" Version="1.0.0" />
     <PackageVersion Include="Nito.Collections.Deque" Version="1.2.1" />
     <PackageVersion Include="NJsonSchema" Version="11.3.2" />
@@ -84,6 +84,7 @@
     <PackageVersion Include="Spectre.Console" Version="0.54.0" />
     <PackageVersion Include="System.CommandLine" Version="2.0.3" />
     <PackageVersion Include="System.Configuration.ConfigurationManager" Version="10.0.3" />
+    <PackageVersion Include="System.IO.Hashing" Version="10.0.2" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.3" />
     <PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="22.1.0" />
     <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.1.0" />

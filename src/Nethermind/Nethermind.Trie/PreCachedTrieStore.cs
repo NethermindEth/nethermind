@@ -37,6 +37,8 @@ public sealed class PreCachedTrieStore : ITrieStore
 
     public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
 
+    public bool HasRoot(Hash256 stateRoot, long blockNumber) => _inner.HasRoot(stateRoot, blockNumber);
+
     public IDisposable BeginScope(BlockHeader? baseBlock) => _inner.BeginScope(baseBlock);
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);

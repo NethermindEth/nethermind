@@ -407,7 +407,7 @@ namespace Nethermind.Facade
             stateReader.RunTreeVisitor(treeVisitor, baseBlock);
         }
 
-        public bool HasStateForBlock(BlockHeader baseBlock)
+        public bool HasStateForBlock(BlockHeader? baseBlock)
         {
             return stateReader.HasStateForBlock(baseBlock);
         }

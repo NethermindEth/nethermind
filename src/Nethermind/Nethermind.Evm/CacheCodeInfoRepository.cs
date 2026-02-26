@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -83,7 +84,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
             for (int i = 0; i < _caches.Length; i++)
             {
                 // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new ClockCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount);
+                _caches[i] = new ClockCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, comparer: ValueHash256.EqualityComparer);
             }
         }
 
@@ -100,5 +101,11 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         }
 
         private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
+
+        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out CodeInfo? codeInfo)
+        {
+            codeInfo = Get(in codeHash);
+            return codeInfo is not null;
+        }
     }
 }

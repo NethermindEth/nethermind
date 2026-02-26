@@ -45,7 +45,7 @@ namespace Nethermind.State
             _state.Accept(treeVisitor, header?.StateRoot ?? Keccak.EmptyTreeHash, visitingOptions);
         }
 
-        public bool HasStateForBlock(BlockHeader? baseBlock) => trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
+        public bool HasStateForBlock(BlockHeader? baseBlock) => trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash, baseBlock?.Number ?? 0);
 
         public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : _codeDb[codeHash.Bytes];
 

@@ -663,7 +663,7 @@
         "dependencies": {
           "Nethermind.Core": "[1.37.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
-          "System.Configuration.ConfigurationManager": "[10.0.3, )"
+"System.Configuration.ConfigurationManager": "[10.0.3, )"
         }
       },
       "nethermind.consensus": {
@@ -723,7 +723,7 @@
           "Microsoft.IdentityModel.JsonWebTokens": "[8.15.0, )",
           "Nethermind.Crypto.SecP256k1": "[1.5.0, )",
           "Nethermind.Logging": "[1.37.0-unstable, )",
-          "Nethermind.Numerics.Int256": "[1.4.0, )",
+          "Nethermind.Numerics.Int256": "[1.5.0, )",
           "NonBlocking": "[2.1.2, )",
           "TestableIO.System.IO.Abstractions.Wrappers": "[22.1.0, )"
         }
@@ -886,7 +886,8 @@
           "Nethermind.Network.Discovery": "[1.37.0-unstable, )",
           "Nethermind.Network.Dns": "[1.37.0-unstable, )",
           "Nethermind.Network.Enr": "[1.37.0-unstable, )",
-          "Nethermind.Specs": "[1.37.0-unstable, )"
+          "Nethermind.Specs": "[1.37.0-unstable, )",
+          "Nethermind.State.Flat": "[1.37.0-unstable, )"
         }
       },
       "nethermind.init.snapshot": {
@@ -1116,6 +1117,19 @@
           "Nethermind.Evm": "[1.37.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
           "Nethermind.Trie": "[1.37.0-unstable, )"
+        }
+      },
+      "nethermind.state.flat": {
+        "type": "Project",
+        "dependencies": {
+          "Collections.Pooled": "[1.0.82, )",
+          "Nethermind.Core": "[1.37.0-unstable, )",
+          "Nethermind.Db": "[1.37.0-unstable, )",
+          "Nethermind.Evm": "[1.37.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
+          "Nethermind.State": "[1.37.0-unstable, )",
+          "Nethermind.Trie": "[1.37.0-unstable, )",
+          "System.IO.Hashing": "[10.0.2, )"
         }
       },
       "nethermind.synchronization": {
@@ -1491,9 +1505,9 @@
       },
       "Nethermind.Numerics.Int256": {
         "type": "CentralTransitive",
-        "requested": "[1.4.0, )",
-        "resolved": "1.4.0",
-        "contentHash": "w8HRMsdpX9fG9kcELJeJPEKIZgOUTCe47ebtejCvfBYQVlabA9blqba6QWIt5oG8cRSgnVlQ24DsdGsLzqFM+Q=="
+        "requested": "[1.5.0, )",
+        "resolved": "1.5.0",
+        "contentHash": "MWNOdamJdcWMmytUNNGn0xmwa+GGY97j8TRtqp4UiqOWjn4Ygxs9m+7t2OoTh1Wd+DtouGsjzPuUdS8tyI3Ygw=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
@@ -1581,6 +1595,12 @@
         "dependencies": {
           "System.Security.Cryptography.ProtectedData": "10.0.3"
         }
+      },
+      "System.IO.Hashing": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.2, )",
+        "resolved": "10.0.2",
+        "contentHash": "AKJknIFi9O3+rGExxTry188JPvUoZAPcCtS2qdqyFhIzsxQ1Ap94BeGDG0VzVEHakhmRxmJtVih6TsHoghIt/g=="
       },
       "System.Security.Cryptography.ProtectedData": {
         "type": "CentralTransitive",
