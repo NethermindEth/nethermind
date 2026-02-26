@@ -26,5 +26,5 @@ public readonly struct NonceChange(ushort blockAccessIndex, ulong newNonce) : IE
     public static bool operator !=(NonceChange left, NonceChange right) =>
         !(left == right);
 
-    public override readonly string ToString() => $"@{BlockAccessIndex}:{NewNonce}";
+    public override readonly string ToString() => $"{BlockAccessIndex}:{NewNonce}";
 }
