@@ -21,7 +21,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = PathGroup.EncodeToRlpItemList([]),
+                Paths = PathGroup.EncodeToRlpPathGroupList([]),
                 Bytes = 10
             };
             GetTrieNodesMessageSerializer serializer = new();
@@ -36,7 +36,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = PathGroup.EncodeToRlpItemList([
+                Paths = PathGroup.EncodeToRlpPathGroupList([
                     new() { Group = [TestItem.RandomDataA] }
                 ]),
                 Bytes = 10
@@ -53,7 +53,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = PathGroup.EncodeToRlpItemList([
+                Paths = PathGroup.EncodeToRlpPathGroupList([
                     new() { Group = [TestItem.RandomDataA, TestItem.RandomDataB] },
                     new() { Group = [TestItem.RandomDataC] }
                 ]),
@@ -71,7 +71,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = PathGroup.EncodeToRlpItemList([
+                Paths = PathGroup.EncodeToRlpPathGroupList([
                     new() { Group = [TestItem.RandomDataA, TestItem.RandomDataB, TestItem.RandomDataD] },
                     new() { Group = [TestItem.RandomDataC] },
                     new() { Group = [TestItem.RandomDataC, TestItem.RandomDataA, TestItem.RandomDataB, TestItem.RandomDataD] }

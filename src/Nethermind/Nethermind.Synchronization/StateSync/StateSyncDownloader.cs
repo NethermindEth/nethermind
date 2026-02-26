@@ -158,7 +158,7 @@ namespace Nethermind.Synchronization.StateSync
                 Logger.Warn($"INCORRECT number of paths RequestedNodes.Length:{batch.RequestedNodes.Count} <> requestedNodeIndex:{requestedNodeIndex}");
             }
 
-            request.AccountAndStoragePaths = builder.ToRlpItemList();
+            request.AccountAndStoragePaths = new RlpPathGroupList(builder.ToRlpItemList());
             return request;
         }
 

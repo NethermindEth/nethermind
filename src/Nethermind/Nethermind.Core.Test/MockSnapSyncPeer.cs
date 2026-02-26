@@ -64,7 +64,7 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
             groups[i] = new PathGroup { Group = [path.PathAndAccount.Path.Bytes.ToArray(), _emptyBytes] };
         }
 
-        using var encoded = PathGroup.EncodeToRlpItemList(groups);
+        using RlpPathGroupList encoded = PathGroup.EncodeToRlpPathGroupList(groups);
         RlpByteArrayList? res = snapServer.GetTrieNodes(encoded, request.RootHash, token);
         return Task.FromResult<IByteArrayList>(res!);
     }
