@@ -199,7 +199,7 @@ public class SnapServerTest
         using var context = CreateContext();
         FillWithTestAccounts(context);
 
-        using RlpItemList pathSet = PathGroup.EncodeToRlpItemList([
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([
             new PathGroup()
             {
                 Group = [[]]
@@ -216,7 +216,7 @@ public class SnapServerTest
         using var context = CreateContext();
         FillWithTestAccounts(context);
 
-        using RlpItemList pathSet = PathGroup.EncodeToRlpItemList([
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([
             new PathGroup()
             {
                 Group = [TestItem.Tree.AccountsWithPaths[0].Path.Bytes.ToArray(), []]
@@ -238,7 +238,7 @@ public class SnapServerTest
         for (int i = 0; i < requestCount; i++)
             groups[i] = new PathGroup { Group = [[]] };
 
-        using RlpItemList pathSet = PathGroup.EncodeToRlpItemList(groups);
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(groups);
         using RlpByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
         result.Count.Should().BeLessThan(requestCount);

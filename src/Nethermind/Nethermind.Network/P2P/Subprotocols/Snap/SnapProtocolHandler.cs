@@ -210,7 +210,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private TrieNodesMessage FulfillTrieNodesMessage(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
         {
             if (SyncServer is null) return EmptyTrieNodesMessage;
-            RlpByteArrayList? trieNodes = SyncServer.GetTrieNodes(getTrieNodesMessage.Paths, getTrieNodesMessage.RootHash, cancellationToken);
+            IOwnedReadOnlyList<PathGroup> paths = getTrieNodesMessage.Paths;
+            RlpByteArrayList? trieNodes = SyncServer.GetTrieNodes(paths, getTrieNodesMessage.RootHash, cancellationToken);
             return new TrieNodesMessage(trieNodes);
         }
 
@@ -287,7 +288,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         public async Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
         {
-            RlpItemList groups = GetPathGroups(request);
+            RlpPathGroupList groups = GetPathGroups(request);
 
             return await GetTrieNodes(request.RootHash, groups, token);
         }
@@ -295,7 +296,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public async Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token) =>
             await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
 
-        private async Task<IByteArrayList> GetTrieNodes(Hash256 rootHash, RlpItemList paths, CancellationToken token)
+        private async Task<IByteArrayList> GetTrieNodes(Hash256 rootHash, IOwnedReadOnlyList<PathGroup> paths, CancellationToken token)
         {
             TrieNodesMessage response = await _nodeStats.RunLatencyRequestSizer(RequestType.SnapRanges, bytesLimit =>
                 SendRequest(new GetTrieNodesMessage
@@ -308,7 +309,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return response.Nodes;
         }
 
-        public static RlpItemList GetPathGroups(AccountsToRefreshRequest request)
+        public static RlpPathGroupList GetPathGroups(AccountsToRefreshRequest request)
         {
             using RlpItemList.Builder builder = new();
             RlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
@@ -321,7 +322,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             }
             rootWriter.Dispose();
 
-            return builder.ToRlpItemList();
+            return new RlpPathGroupList(builder.ToRlpItemList());
         }
 
         private async Task<TOut> SendRequest<TIn, TOut>(TIn msg, MessageDictionary<TIn, TOut> messageDictionary, CancellationToken token)

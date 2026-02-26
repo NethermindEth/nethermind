@@ -69,7 +69,7 @@ public class SnapServer : ISnapServer
         return (!_store.HasRoot(stateRoot)) || _lastNStateRootTracker?.HasStateRoot(stateRoot) == false;
     }
 
-    public RlpByteArrayList? GetTrieNodes(RlpItemList pathSet, Hash256 rootHash, CancellationToken cancellationToken)
+    public RlpByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return BuildEmptyRlpByteArrayList();
 
@@ -85,16 +85,15 @@ public class SnapServer : ISnapServer
 
         for (int i = 0; i < pathLength && !abort && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; i++)
         {
-            using RlpItemList group = pathSet.CreateNestedItemList(i);
-            switch (group.Count)
+            byte[][] group = pathSet[i].Group;
+            switch (group.Length)
             {
                 case 0:
                     return null;
                 case 1:
                     try
                     {
-                        byte[] path0 = group.ReadContent(0).ToArray();
-                        byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(path0), rootHash);
+                        byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(group[0]), rootHash);
                         writer.WriteValue(rlp);
                         responseSize += rlp?.Length ?? 0;
                         count++;
@@ -107,7 +106,7 @@ public class SnapServer : ISnapServer
                 default:
                     try
                     {
-                        byte[] accountPathBytes = group.ReadContent(0).ToArray();
+                        byte[] accountPathBytes = group[0];
                         Hash256 storagePath = new Hash256(
                             accountPathBytes.Length == Hash256.Size
                                 ? accountPathBytes
@@ -118,10 +117,9 @@ public class SnapServer : ISnapServer
                             Hash256? storageRoot = account.StorageRoot;
                             StorageTree sTree = new(_store.GetTrieStore(storagePath), storageRoot, _logManager);
 
-                            for (int reqStorage = 1; reqStorage < group.Count && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
+                            for (int reqStorage = 1; reqStorage < group.Length && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
                             {
-                                byte[] sp = group.ReadContent(reqStorage).ToArray();
-                                byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(sp));
+                                byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(group[reqStorage]));
                                 writer.WriteValue(sRlp);
                                 responseSize += sRlp?.Length ?? 0;
                                 count++;
