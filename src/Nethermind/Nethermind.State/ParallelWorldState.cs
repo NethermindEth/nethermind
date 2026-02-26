@@ -147,17 +147,6 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         _innerWorldState.SubtractFromBalance(address, balanceChange, spec);
     }
 
-    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
-    {
-        _innerWorldState.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
-
-        if (TracingEnabled)
-        {
-            UInt256 newBalance = oldBalance - balanceChange;
-            GeneratedBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
-        }
-    }
-
     public override void DeleteAccount(Address address)
     {
         if (TracingEnabled)
@@ -262,21 +251,23 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         (Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads)? generatedHead;
         (Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads)? suggestedHead;
 
-        generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
-        suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
-
         int generatedReads = 0;
         int suggestedReads = 0;
 
-        if (generatedHead is not null)
+        void AdvanceGenerated()
         {
-            generatedReads += generatedHead.Value.Reads;
+            generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
+            if (generatedHead is not null) generatedReads += generatedHead.Value.Reads;
         }
 
-        if (suggestedHead is not null)
+        void AdvanceSuggested()
         {
-            suggestedReads += suggestedHead.Value.Reads;
+            suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+            if (suggestedHead is not null) suggestedReads += suggestedHead.Value.Reads;
         }
+
+        AdvanceGenerated();
+        AdvanceSuggested();
 
         while (generatedHead is not null || suggestedHead is not null)
         {
@@ -284,13 +275,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             {
                 if (HasNoChanges(generatedHead.Value))
                 {
-                    // keep scanning rest of generated (read-only entries)
-                    generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
-
-                    if (generatedHead is not null)
-                    {
-                        generatedReads += generatedHead.Value.Reads;
-                    }
+                    AdvanceGenerated();
                     continue;
                 }
                 throw new InvalidBlockLevelAccessListException($"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
@@ -299,19 +284,10 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             {
                 if (HasNoChanges(suggestedHead.Value))
                 {
-                    // keep scanning rest of suggested
-                    suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
-
-                    if (suggestedHead is not null)
-                    {
-                        suggestedReads += suggestedHead.Value.Reads;
-                    }
+                    AdvanceSuggested();
                     continue;
                 }
-                else
-                {
-                    throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
-                }
+                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
             }
 
             int cmp = generatedHead.Value.Address.CompareTo(suggestedHead.Value.Address);
@@ -330,49 +306,23 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             {
                 if (HasNoChanges(suggestedHead.Value))
                 {
-                    // skip suggested with no changes
-                    suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
-
-                    if (suggestedHead is not null)
-                    {
-                        suggestedReads += suggestedHead.Value.Reads;
-                    }
+                    AdvanceSuggested();
                     continue;
                 }
-                else
-                {
-                    throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
-                }
+                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
             }
             else
             {
                 if (HasNoChanges(generatedHead.Value))
                 {
-                    // skip generated with no changes (read-only entries from side-effects)
-                    generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
-
-                    if (generatedHead is not null)
-                    {
-                        generatedReads += generatedHead.Value.Reads;
-                    }
+                    AdvanceGenerated();
                     continue;
                 }
-
                 throw new InvalidBlockLevelAccessListException($"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
             }
 
-            generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
-            suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
-
-            if (generatedHead is not null)
-            {
-                generatedReads += generatedHead.Value.Reads;
-            }
-
-            if (suggestedHead is not null)
-            {
-                suggestedReads += suggestedHead.Value.Reads;
-            }
+            AdvanceGenerated();
+            AdvanceSuggested();
         }
 
         if (gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
