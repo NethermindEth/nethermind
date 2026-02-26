@@ -4,7 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.IO.Pipelines;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +17,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -684,6 +688,33 @@ public partial class EngineModuleTests
                 resultBlobsAndProofs[i].Should().BeNull();
             }
         }
+    }
+
+    [Test]
+    public async Task BlobsV1DirectResponse_WriteToAsync_produces_valid_json()
+    {
+        byte[] blob = new byte[16];
+        Random.Shared.NextBytes(blob);
+        byte[] proof = new byte[48];
+        Random.Shared.NextBytes(proof);
+
+        ArrayPoolList<BlobAndProofV1?> items = new(2);
+        items.Add(new BlobAndProofV1(blob, proof));
+        items.Add(null);
+
+        using BlobsV1DirectResponse response = new(items);
+
+        Pipe pipe = new();
+        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
+        await pipe.Writer.CompleteAsync();
+
+        ReadResult readResult = await pipe.Reader.ReadAsync();
+        string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
+        pipe.Reader.AdvanceTo(readResult.Buffer.End);
+
+        string stjJson = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions);
+
+        streamedJson.Should().Be(stjJson);
     }
 
     [Test]

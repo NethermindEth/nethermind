@@ -225,8 +225,9 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[][]? cellProofs)
             => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
 
-        public int GetBlobCounts(byte[][] blobVersionedHashes)
-            => _blobTransactions.GetBlobCounts(blobVersionedHashes);
+        public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
+            byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs)
+            => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {

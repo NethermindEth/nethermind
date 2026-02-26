@@ -6,16 +6,14 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Text.Json.Serialization;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
 public class SlotChanges(UInt256 slot, SortedList<ushort, StorageChange> changes) : IEquatable<SlotChanges>
 {
-    [JsonConverter(typeof(UInt256Converter))]
     public UInt256 Slot { get; init; } = slot;
+
     public SortedList<ushort, StorageChange> Changes { get; init; } = changes;
 
     public SlotChanges(UInt256 slot) : this(slot, [])

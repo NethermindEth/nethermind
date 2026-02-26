@@ -21,5 +21,6 @@ namespace Nethermind.Db
         public const string DiscoveryNodes = "discoveryNodes";
         public const string DiscoveryV5Nodes = "discoveryV5Nodes";
         public const string PeersDb = "peers";
+        public const string LogIndex = "logIndex";
     }
 }

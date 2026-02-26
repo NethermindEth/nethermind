@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
-using System.Collections.Generic;
+using System;
 
 namespace Nethermind.Xdc.Spec;
 
@@ -14,6 +14,9 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
     ILogManager logManager)
     : ChainSpecBasedSpecProvider(chainSpec, logManager)
 {
+    private const int ExtraVanity = 32; // Fixed number of extra-data prefix bytes reserved for signer vanity
+    private const int ExtraSeal = 65; // Fixed number of extra-data suffix bytes reserved for signer seal
+
     protected override ReleaseSpec CreateEmptyReleaseSpec() => new XdcReleaseSpec();
     protected override ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
     {
@@ -29,9 +32,11 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.MasternodeVotingContract = chainSpecEngineParameters.MasternodeVotingContract;
         releaseSpec.BlockSignerContract = chainSpecEngineParameters.BlockSignerContract;
 
+        releaseSpec.IsTipTrc21FeeEnabled = (chainSpecEngineParameters.TipTrc21Fee ?? 0) <= releaseStartBlock;
         releaseSpec.IsBlackListingEnabled = chainSpecEngineParameters.BlackListHFNumber <= releaseStartBlock;
         releaseSpec.IsTIP2019 = chainSpecEngineParameters.TIP2019Block <= releaseStartBlock;
         releaseSpec.IsTIPXDCXMiner = chainSpecEngineParameters.TipXDCX <= releaseStartBlock && releaseStartBlock < chainSpecEngineParameters.TIPXDCXMinerDisable;
+        releaseSpec.IsDynamicGasLimitBlock = chainSpecEngineParameters.DynamicGasLimitBlock <= releaseStartBlock;
 
         releaseSpec.MergeSignRange = chainSpecEngineParameters.MergeSignRange;
         releaseSpec.BlackListedAddresses = new(chainSpecEngineParameters.BlackListedAddresses ?? []);
@@ -45,7 +50,28 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
 
         releaseSpec.ApplyV2Config(0);
 
+        if (releaseSpec.SwitchBlock == 0)
+        {
+            //We can parse genesis masternodes from genesis if the chain starts as V2
+            releaseSpec.GenesisMasterNodes = ParseGenesisMasternodes(chainSpec);
+        }
+        else
+        {
+            releaseSpec.GenesisMasterNodes = chainSpecEngineParameters.GenesisMasternodes;
+        }
+
         return releaseSpec;
+    }
+
+    private Address[] ParseGenesisMasternodes(ChainSpec chainSpec)
+    {
+        int length = (chainSpec.Genesis.ExtraData.Length - ExtraVanity - ExtraSeal) / Address.Size;
+        Address[] signers = new Address[length];
+        for (int i = 0; i < length; i++)
+        {
+            signers[i] = new Address(chainSpec.Genesis.ExtraData.AsSpan(ExtraVanity + i * Address.Size, Address.Size));
+        }
+        return signers;
     }
 
 }
