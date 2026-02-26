@@ -53,11 +53,6 @@ public abstract class BlockchainTestBase
         _logger = _logManager.GetClassLogger();
     }
 
-    [SetUp]
-    public void Setup()
-    {
-    }
-
     private class DifficultyCalculatorWrapper : IDifficultyCalculator
     {
         public IDifficultyCalculator? Wrapped { get; set; }
