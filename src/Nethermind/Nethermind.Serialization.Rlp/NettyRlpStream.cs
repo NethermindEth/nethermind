@@ -4,6 +4,8 @@
 using System;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -105,6 +107,25 @@ namespace Nethermind.Serialization.Rlp
         public void Dispose()
         {
             _buffer.SafeRelease();
+        }
+
+        public static bool TryWriteByteArrayList(IByteBuffer byteBuffer, IByteArrayList list)
+        {
+            if (list is not IRlpWrapper rlpWrapper) return false;
+            ReadOnlySpan<byte> rlpSpan = rlpWrapper.RlpSpan;
+            byteBuffer.EnsureWritable(rlpSpan.Length);
+            new NettyRlpStream(byteBuffer).Write(rlpSpan);
+            return true;
+        }
+
+        public static RlpByteArrayList DecodeByteArrayList(IByteBuffer byteBuffer)
+        {
+            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            int startPos = ctx.Position;
+            RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+            return list;
         }
     }
 }
