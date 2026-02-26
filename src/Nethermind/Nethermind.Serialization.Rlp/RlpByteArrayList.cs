@@ -29,5 +29,8 @@ public sealed class RlpByteArrayList : IByteArrayList, IRlpWrapper
     public ReadOnlySpan<byte> RlpContentSpan => _inner.RlpContentSpan;
     public ReadOnlySpan<byte> RlpSpan => _inner.RlpSpan;
 
+    public static RlpByteArrayList DecodeList(ref Rlp.ValueDecoderContext ctx, IMemoryOwner<byte> memoryOwner) =>
+        new(RlpItemList.DecodeList(ref ctx, memoryOwner));
+
     public void Dispose() => _inner.Dispose();
 }

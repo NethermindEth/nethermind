@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -13,24 +12,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, ByteCodesMessage message)
         {
-            if (message.Codes is IRlpWrapper rlpList)
+            NettyRlpStream rlpStream = new(byteBuffer);
+            if (message.Codes is IRlpWrapper rlpWrapper)
             {
-                ReadOnlySpan<byte> rlpSpan = rlpList.RlpSpan;
-                int contentLength = rlpSpan.Length + Rlp.LengthOf(message.RequestId);
-
+                int contentLength = rlpWrapper.RlpSpan.Length + Rlp.LengthOf(message.RequestId);
                 byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-
-                NettyRlpStream rlpStream = new(byteBuffer);
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(message.RequestId);
-                rlpStream.Write(rlpSpan);
+                rlpStream.Write(rlpWrapper.RlpSpan);
                 return;
             }
 
             {
                 (int contentLength, int codesLength) = GetLength(message);
                 byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-                RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(message.RequestId);
@@ -51,12 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             ctx.ReadSequenceLength();
             long requestId = ctx.DecodeLong();
 
-            int prefixStart = ctx.Position;
-            int innerLength = ctx.ReadSequenceLength();
-            int totalLength = (ctx.Position - prefixStart) + innerLength;
-
-            RlpByteArrayList list = new(memoryOwner, memoryOwner.Memory.Slice(prefixStart, totalLength));
-            ctx.Position = prefixStart + totalLength;
+            RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
             byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
 
             return new ByteCodesMessage(list) { RequestId = requestId };

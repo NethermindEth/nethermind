@@ -44,20 +44,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 }
             }
 
-            if (message.Proofs is IRlpWrapper rlpList)
+            if (!stream.TryWriteRlpWrapper(message.Proofs))
             {
-                stream.Write(rlpList.RlpSpan);
-            }
-            else if (message.Proofs is null || message.Proofs.Count == 0)
-            {
-                stream.EncodeNullObject();
-            }
-            else
-            {
-                stream.StartSequence(proofsLength);
-                for (int i = 0; i < message.Proofs.Count; i++)
+                if (message.Proofs is null || message.Proofs.Count == 0)
                 {
-                    stream.Encode(message.Proofs[i]);
+                    stream.EncodeNullObject();
+                }
+                else
+                {
+                    stream.StartSequence(proofsLength);
+                    for (int i = 0; i < message.Proofs.Count; i++)
+                    {
+                        stream.Encode(message.Proofs[i]);
+                    }
                 }
             }
         }
@@ -65,32 +64,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
-            Memory<byte> memory = memoryOwner.Memory; // Capture before reads advance ReaderIndex
+            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            int startPos = ctx.Position;
+
+            ctx.ReadSequenceLength();
+
             AccountRangeMessage message = new();
-            NettyRlpStream rlpStream = new(byteBuffer);
+            message.RequestId = ctx.DecodeLong();
 
-            rlpStream.ReadSequenceLength();
+            int pwasCheck = ctx.ReadSequenceLength() + ctx.Position;
+            int count = ctx.PeekNumberOfItemsRemaining(pwasCheck);
+            ArrayPoolList<PathWithAccount> pathsWithAccounts = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                ctx.ReadSequenceLength();
+                pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.Decode(ref ctx)));
+            }
 
-            message.RequestId = rlpStream.DecodeLong();
-            message.PathsWithAccounts = rlpStream.DecodeArrayPoolList(DecodePathWithRlpData);
+            message.PathsWithAccounts = pathsWithAccounts;
+            message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
 
-            // Capture proofs as zero-copy RlpByteArrayList
-            int proofStart = rlpStream.Position;
-            int proofInnerLength = rlpStream.ReadSequenceLength();
-            int proofTotalLength = (rlpStream.Position - proofStart) + proofInnerLength;
-            rlpStream.Position = proofStart + proofTotalLength;
-            message.Proofs = new RlpByteArrayList(memoryOwner, memory.Slice(proofStart, proofTotalLength));
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
 
             return message;
-        }
-
-        private PathWithAccount DecodePathWithRlpData(RlpStream stream)
-        {
-            stream.ReadSequenceLength();
-
-            PathWithAccount data = new(stream.DecodeKeccak(), _decoder.Decode(stream));
-
-            return data;
         }
 
         private (int contentLength, int pwasLength, int proofsLength) GetLength(AccountRangeMessage message)

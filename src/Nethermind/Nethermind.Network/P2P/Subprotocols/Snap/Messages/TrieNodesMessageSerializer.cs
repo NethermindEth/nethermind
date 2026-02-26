@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -13,26 +12,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, TrieNodesMessage message)
         {
-            if (message.Nodes is IRlpWrapper rlpList)
+            NettyRlpStream rlpStream = new(byteBuffer);
+            if (message.Nodes is IRlpWrapper rlpWrapper)
             {
-                ReadOnlySpan<byte> rlpSpan = rlpList.RlpSpan;
-                int contentLength = rlpSpan.Length + Rlp.LengthOf(message.RequestId);
-
+                int contentLength = rlpWrapper.RlpSpan.Length + Rlp.LengthOf(message.RequestId);
                 byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-
-                NettyRlpStream rlpStream = new(byteBuffer);
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(message.RequestId);
-                rlpStream.Write(rlpSpan);
+                rlpStream.Write(rlpWrapper.RlpSpan);
                 return;
             }
 
             {
                 (int contentLength, int nodesLength) = GetLength(message);
-
                 byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-
-                NettyRlpStream rlpStream = new(byteBuffer);
 
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(message.RequestId);
@@ -47,20 +40,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public TrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
-
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
-            int startingPosition = ctx.Position;
+            int startPos = ctx.Position;
 
             ctx.ReadSequenceLength();
             long requestId = ctx.DecodeLong();
 
-            int prefixStart = ctx.Position;
-            int innerLength = ctx.ReadSequenceLength();
-            int totalLength = (ctx.Position - prefixStart) + innerLength;
-
-            RlpByteArrayList list = new(memoryOwner, memoryOwner.Memory.Slice(prefixStart, totalLength));
-            ctx.Position = prefixStart + totalLength;
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
+            RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
 
             return new TrieNodesMessage(list) { RequestId = requestId };
         }

@@ -11,10 +11,12 @@ public interface IByteArrayList : IDisposable
     ReadOnlySpan<byte> this[int index] { get; }
 }
 
-public sealed class EmptyByteArrayList : IByteArrayList
+public sealed class EmptyByteArrayList : IByteArrayList, IRlpWrapper
 {
     public static readonly EmptyByteArrayList Instance = new();
+    private static readonly byte[] EmptySequenceRlp = [192]; // 0xC0 = RLP empty list
     public int Count => 0;
     public ReadOnlySpan<byte> this[int index] => throw new IndexOutOfRangeException();
+    public ReadOnlySpan<byte> RlpSpan => EmptySequenceRlp;
     public void Dispose() { }
 }
