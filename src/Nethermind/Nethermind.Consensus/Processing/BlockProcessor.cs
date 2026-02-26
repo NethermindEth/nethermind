@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -92,6 +93,9 @@ public partial class BlockProcessor(
         IReleaseSpec spec,
         CancellationToken token)
     {
+        long tsStart = Stopwatch.GetTimestamp();
+        int gc0 = GC.CollectionCount(0), gc1 = GC.CollectionCount(1), gc2 = GC.CollectionCount(2);
+
         BlockHeader header = block.Header;
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
@@ -103,9 +107,15 @@ public partial class BlockProcessor(
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
+        long tsAfterSetup = Stopwatch.GetTimestamp();
+
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
+        long tsAfterTxs = Stopwatch.GetTimestamp();
+
         _stateProvider.Commit(spec, commitRoots: false);
+
+        long tsAfterPostTxCommit = Stopwatch.GetTimestamp();
 
         CalculateBlooms(receipts);
 
@@ -127,7 +137,11 @@ public partial class BlockProcessor(
 
         ReceiptsTracer.EndBlockTrace();
 
+        long tsAfterMisc = Stopwatch.GetTimestamp();
+
         _stateProvider.Commit(spec, commitRoots: true);
+
+        long tsAfterFinalCommit = Stopwatch.GetTimestamp();
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
@@ -141,7 +155,28 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
+        long tsAfterStateRoot = Stopwatch.GetTimestamp();
+
         header.Hash = header.CalculateHash();
+
+        long tsEnd = Stopwatch.GetTimestamp();
+        double totalMs = Stopwatch.GetElapsedTime(tsStart, tsEnd).TotalMilliseconds;
+        if (totalMs > 500 || _logger.IsDebug)
+        {
+            int dgc0 = GC.CollectionCount(0) - gc0;
+            int dgc1 = GC.CollectionCount(1) - gc1;
+            int dgc2 = GC.CollectionCount(2) - gc2;
+            if (_logger.IsInfo) _logger.Info(
+                $"DIAG Block {block.Number} took {totalMs:F1}ms | " +
+                $"setup={Stopwatch.GetElapsedTime(tsStart, tsAfterSetup).TotalMilliseconds:F1} " +
+                $"txs={Stopwatch.GetElapsedTime(tsAfterSetup, tsAfterTxs).TotalMilliseconds:F1} " +
+                $"postCommit={Stopwatch.GetElapsedTime(tsAfterTxs, tsAfterPostTxCommit).TotalMilliseconds:F1} " +
+                $"misc={Stopwatch.GetElapsedTime(tsAfterPostTxCommit, tsAfterMisc).TotalMilliseconds:F1} " +
+                $"finalCommit={Stopwatch.GetElapsedTime(tsAfterMisc, tsAfterFinalCommit).TotalMilliseconds:F1} " +
+                $"stateRoot={Stopwatch.GetElapsedTime(tsAfterFinalCommit, tsAfterStateRoot).TotalMilliseconds:F1} " +
+                $"headerHash={Stopwatch.GetElapsedTime(tsAfterStateRoot, tsEnd).TotalMilliseconds:F1} " +
+                $"GC={dgc0}/{dgc1}/{dgc2} txCount={block.Transactions.Length} gas={block.GasUsed}");
+        }
 
         return receipts;
     }

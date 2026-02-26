@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -120,6 +121,8 @@ public class BranchProcessor(
                 Block processedBlock;
                 TxReceipt[] receipts;
 
+                long tsProcessOne = Stopwatch.GetTimestamp();
+
                 if (preWarmTask is not null)
                 {
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
@@ -135,14 +138,25 @@ public class BranchProcessor(
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
 
+                double processOneMs = Stopwatch.GetElapsedTime(tsProcessOne).TotalMilliseconds;
+
                 // Block is processed, we can cancel background tasks
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
 
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
+                long tsCommitTree = Stopwatch.GetTimestamp();
                 PreCommitBlock(suggestedBlock.Header);
+                double commitTreeMs = Stopwatch.GetElapsedTime(tsCommitTree).TotalMilliseconds;
+
                 QueueClearCaches(preWarmTask);
+
+                if (processOneMs + commitTreeMs > 500)
+                {
+                    if (_logger.IsInfo) _logger.Info(
+                        $"DIAG BranchProc block {suggestedBlock.Number} processOne={processOneMs:F1}ms commitTree={commitTreeMs:F1}ms merkleTime={_stateProvider.StateMerkleizationTime:F1}ms");
+                }
 
                 if (notReadOnly)
                 {
