@@ -26,6 +26,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
     public static Address Address { get; } = Address.FromNumber(0xe);
 
     public static string Name => "BLS12_G2MSM";
+    public bool SupportsFastPath => true;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 

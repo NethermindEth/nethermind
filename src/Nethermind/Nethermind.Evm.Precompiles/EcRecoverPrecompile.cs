@@ -24,6 +24,7 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
     public static Address Address { get; } = Address.FromNumber(1);
 
     public static string Name => "ECREC";
+    public bool SupportsFastPath => false;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
