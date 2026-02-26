@@ -18,6 +18,7 @@ public sealed class EvmOpcodeGasColumnProvider : IColumnProvider
     [
         new OpcodeGasColumn(),
         new OpcodeGasThroughputColumn(),
+        new OpcodeThresholdColumn(),
     ];
 
     private static readonly ConcurrentDictionary<Instruction, long?> GasByOpcode = new();
@@ -115,5 +116,45 @@ public sealed class EvmOpcodeGasColumnProvider : IColumnProvider
             double mGasPerSecond = gas * 1_000.0 / stats.Mean;
             return mGasPerSecond.ToString("F2", CultureInfo.InvariantCulture);
         }
+    }
+
+    private sealed class OpcodeThresholdColumn : IColumn
+    {
+        public string Id => "OpcodeThreshold";
+        public string ColumnName => "Threshold";
+        public string Legend => "Regression detection threshold (%) for this opcode category";
+        public bool AlwaysShow => true;
+        public ColumnCategory Category => ColumnCategory.Custom;
+        public int PriorityInCategory => 1;
+        public bool IsNumeric => true;
+        public UnitType UnitType => UnitType.Dimensionless;
+
+        public string GetValue(Summary summary, BenchmarkCase benchmarkCase)
+        {
+            if (benchmarkCase.Descriptor.Type != typeof(EvmOpcodesBenchmark))
+            {
+                return "N/A";
+            }
+
+            object opcodeValue = benchmarkCase.Parameters.Items
+                .FirstOrDefault(p => p.Name == nameof(EvmOpcodesBenchmark.Opcode))
+                ?.Value;
+
+            if (opcodeValue is not Instruction opcode)
+            {
+                return "N/A";
+            }
+
+            return EvmOpcodesBenchmark.GetThresholdPercent(opcode)
+                .ToString("F1", CultureInfo.InvariantCulture);
+        }
+
+        public string GetValue(Summary summary, BenchmarkCase benchmarkCase, SummaryStyle style) =>
+            GetValue(summary, benchmarkCase);
+
+        public bool IsDefault(Summary summary, BenchmarkCase benchmarkCase) => false;
+
+        public bool IsAvailable(Summary summary) =>
+            summary.BenchmarksCases.Any(static c => c.Descriptor.Type == typeof(EvmOpcodesBenchmark));
     }
 }

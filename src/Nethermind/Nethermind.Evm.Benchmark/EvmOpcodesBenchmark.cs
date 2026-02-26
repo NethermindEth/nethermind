@@ -11,6 +11,8 @@ using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Environments;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -96,6 +98,27 @@ public unsafe class EvmOpcodesBenchmark
         Instruction.DELEGATECALL,
         Instruction.STATICCALL,
     ];
+
+    // Regression detection thresholds per opcode category.
+    // Comparison uses Median (robust to outliers), so thresholds can be tighter than Mean-based.
+    // Call opcodes involve nested frames and GC pressure.
+    // State opcodes touch storage tries and caches with cold-access variance.
+    // Log opcodes allocate variable-size log entries.
+    private const double DefaultThresholdPercent = 5.0;
+    private const double CallThresholdPercent = 15.0;
+    private const double StateThresholdPercent = 20.0;
+    private const double LogThresholdPercent = 15.0;
+
+    internal static double GetThresholdPercent(Instruction opcode) => opcode switch
+    {
+        Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL
+            => CallThresholdPercent,
+        Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE or Instruction.KECCAK256
+            => StateThresholdPercent,
+        Instruction.LOG0 or Instruction.LOG1 or Instruction.LOG2 or Instruction.LOG3 or Instruction.LOG4
+            => LogThresholdPercent,
+        _ => DefaultThresholdPercent,
+    };
     public IEnumerable<Instruction> Opcodes => AllValidLegacyOpcodes;
 
     [ParamsSource(nameof(Opcodes))]
@@ -824,7 +847,21 @@ public unsafe class EvmOpcodesBenchmark
     {
         public EvmOpcodesBenchmarkConfig()
         {
-            HideColumns(Column.Method, Column.StdDev, Column.Median);
+            // 3 process launches x 15 measurement iterations = 45 data points.
+            // GcForce ensures a GC collection between iterations to reduce allocation noise.
+            // Without an explicit job, BDN falls back to Job.Default (1 launch, auto-pilot)
+            // because the runner's DashboardConfig.AddJob is commented out.
+            AddJob(Job.MediumRun
+                .WithRuntime(CoreRuntime.Core10_0)
+                .WithGcForce(true)
+                .WithEnvironmentVariable("DOTNET_GCServer", "1")
+                .WithEnvironmentVariable("DOTNET_gcConcurrent", "0"));
+            HideColumns(Column.Method);
+            AddColumn(StatisticColumn.Min);
+            AddColumn(StatisticColumn.Max);
+            AddColumn(StatisticColumn.Median);
+            AddColumn(StatisticColumn.P90);
+            AddColumn(StatisticColumn.P95);
             AddColumnProvider(new EvmOpcodeGasColumnProvider());
         }
     }
