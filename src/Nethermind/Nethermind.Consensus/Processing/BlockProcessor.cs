@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -93,6 +94,9 @@ public partial class BlockProcessor(
         CancellationToken token,
         Action? onTransactionsProcessed = null)
     {
+        long tsStart = Stopwatch.GetTimestamp();
+        int gc0 = GC.CollectionCount(0), gc1 = GC.CollectionCount(1), gc2 = GC.CollectionCount(2);
+
         BlockHeader header = block.Header;
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
@@ -104,7 +108,11 @@ public partial class BlockProcessor(
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
+        long tsAfterSetup = Stopwatch.GetTimestamp();
+
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+
+        long tsAfterTxs = Stopwatch.GetTimestamp();
 
         // Signal that transactions are done so background work (e.g. prewarmer) can be cancelled,
         // freeing thread pool threads for the critical-path parallel work below (blooms, receipts root, state root).
@@ -112,7 +120,11 @@ public partial class BlockProcessor(
 
         _stateProvider.Commit(spec, commitRoots: false);
 
+        long tsAfterPostTxCommit = Stopwatch.GetTimestamp();
+
         CalculateBlooms(receipts);
+
+        long tsAfterBlooms = Stopwatch.GetTimestamp();
 
         if (spec.IsEip4844Enabled)
         {
@@ -120,19 +132,32 @@ public partial class BlockProcessor(
         }
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+
+        long tsAfterReceiptsRoot = Stopwatch.GetTimestamp();
+
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
+
+        long tsAfterWithdrawals = Stopwatch.GetTimestamp();
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
         // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
         _stateProvider.Commit(spec, commitRoots: false);
 
+        long tsAfterPreExecCommit = Stopwatch.GetTimestamp();
+
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+
+        long tsAfterExecRequests = Stopwatch.GetTimestamp();
 
         ReceiptsTracer.EndBlockTrace();
 
+        long tsAfterMisc = Stopwatch.GetTimestamp();
+
         _stateProvider.Commit(spec, commitRoots: true);
+
+        long tsAfterFinalCommit = Stopwatch.GetTimestamp();
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
@@ -146,7 +171,33 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
+        long tsAfterStateRoot = Stopwatch.GetTimestamp();
+
         header.Hash = header.CalculateHash();
+
+        long tsEnd = Stopwatch.GetTimestamp();
+        double totalMs = Stopwatch.GetElapsedTime(tsStart, tsEnd).TotalMilliseconds;
+        if (totalMs > 500 || _logger.IsDebug)
+        {
+            int dgc0 = GC.CollectionCount(0) - gc0;
+            int dgc1 = GC.CollectionCount(1) - gc1;
+            int dgc2 = GC.CollectionCount(2) - gc2;
+            if (_logger.IsInfo) _logger.Info(
+                $"DIAG Block {block.Number} took {totalMs:F1}ms | " +
+                $"setup={Stopwatch.GetElapsedTime(tsStart, tsAfterSetup).TotalMilliseconds:F1} " +
+                $"txs={Stopwatch.GetElapsedTime(tsAfterSetup, tsAfterTxs).TotalMilliseconds:F1} " +
+                $"postCommit={Stopwatch.GetElapsedTime(tsAfterTxs, tsAfterPostTxCommit).TotalMilliseconds:F1} " +
+                $"blooms={Stopwatch.GetElapsedTime(tsAfterPostTxCommit, tsAfterBlooms).TotalMilliseconds:F1} " +
+                $"rcptRoot={Stopwatch.GetElapsedTime(tsAfterBlooms, tsAfterReceiptsRoot).TotalMilliseconds:F1} " +
+                $"rewards+wdrl={Stopwatch.GetElapsedTime(tsAfterReceiptsRoot, tsAfterWithdrawals).TotalMilliseconds:F1} " +
+                $"preExecCommit={Stopwatch.GetElapsedTime(tsAfterWithdrawals, tsAfterPreExecCommit).TotalMilliseconds:F1} " +
+                $"execRequests={Stopwatch.GetElapsedTime(tsAfterPreExecCommit, tsAfterExecRequests).TotalMilliseconds:F1} " +
+                $"endTrace={Stopwatch.GetElapsedTime(tsAfterExecRequests, tsAfterMisc).TotalMilliseconds:F1} " +
+                $"finalCommit={Stopwatch.GetElapsedTime(tsAfterMisc, tsAfterFinalCommit).TotalMilliseconds:F1} " +
+                $"stateRoot={Stopwatch.GetElapsedTime(tsAfterFinalCommit, tsAfterStateRoot).TotalMilliseconds:F1} " +
+                $"headerHash={Stopwatch.GetElapsedTime(tsAfterStateRoot, tsEnd).TotalMilliseconds:F1} " +
+                $"GC={dgc0}/{dgc1}/{dgc2} txCount={block.Transactions.Length} gas={block.GasUsed}");
+        }
 
         return receipts;
     }
