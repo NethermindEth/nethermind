@@ -1231,8 +1231,11 @@ internal class TransactionProcessorEip7702Tests
         public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
             => inner.SetDelegation(codeSource, authority, spec);
 
-        public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress)
-            => inner.TryGetDelegation(address, spec, out delegatedAddress);
+        public bool TryGetDelegation(Address address, IReleaseSpec spec, out CodeInfo codeInfo, [NotNullWhen(true)] out Address? delegatedAddress)
+            => inner.TryGetDelegation(address, spec, out codeInfo, out delegatedAddress);
+
+        public bool IsDelegated(Address address, IReleaseSpec spec)
+            => inner.IsDelegated(address, spec);
     }
 
     private void DeployCode(Address codeSource, byte[] code)
