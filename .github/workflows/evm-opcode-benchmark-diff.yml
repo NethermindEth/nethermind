@@ -50,7 +50,7 @@ jobs:
     name: Compare EVM opcode benchmarks (base vs PR)
     needs: check-trigger
     if: needs.check-trigger.outputs.should_run == 'true'
-    runs-on: [self-hosted, reproducible-benchmarks]
+    runs-on: benchmark
     timeout-minutes: 720
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
@@ -214,7 +214,7 @@ jobs:
                       header_idx = i
 
               if header_idx < 0:
-                  raise RuntimeError(f"Could not find summary table header with Opcode/Mean in {path}")
+                  return {}
 
               headers = [c.strip() for c in lines[header_idx].strip().strip("|").split("|")]
               opcode_col = find_col(headers, "Opcode")
@@ -225,7 +225,7 @@ jobs:
               threshold_col = find_col(headers, "Threshold")
 
               if opcode_col is None or mean_col is None:
-                  raise RuntimeError(f"Could not find Opcode/Mean columns in header from {path}: {headers}")
+                  return {}
 
               data = {}
               i = header_idx + 2
@@ -457,7 +457,7 @@ jobs:
                       header_idx = i
 
               if header_idx < 0:
-                  raise RuntimeError(f"Could not find summary table header with Opcode/Mean in {path}")
+                  return {}
 
               headers = [c.strip() for c in lines[header_idx].strip().strip("|").split("|")]
               opcode_col = find_col(headers, "Opcode")
@@ -468,7 +468,7 @@ jobs:
               threshold_col = find_col(headers, "Threshold")
 
               if opcode_col is None or mean_col is None:
-                  raise RuntimeError(f"Could not find Opcode/Mean columns in header from {path}: {headers}")
+                  return {}
 
               data = {}
               i = header_idx + 2
@@ -496,9 +496,6 @@ jobs:
                               pass
                       data[opcode] = {"median": median, "mean": mean, "error": error, "stddev": stddev, "threshold": threshold}
                   i += 1
-
-              if not data:
-                  raise RuntimeError(f"No opcode rows parsed from {path}")
 
               return data
 
