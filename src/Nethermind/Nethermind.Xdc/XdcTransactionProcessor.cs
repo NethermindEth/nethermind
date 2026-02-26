@@ -170,7 +170,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         //
         // Also: IsSpecialTransaction requires the IXdcReleaseSpec to decide Randomize vs BlockSigner, so
         // we need the current block spec here.
-        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)VirtualMachine.BlockExecutionContext.Spec;
+        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)VirtualMachine.BlockExecutionContext.OriginalSpec;
 
         if (tx.IsSpecialTransaction(xdcSpec))
         {

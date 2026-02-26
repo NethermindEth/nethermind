@@ -13,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 

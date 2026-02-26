@@ -103,7 +103,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     public ILogger Logger => _logger;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
-    public IReleaseSpec Spec => _blockExecutionContext.Spec;
+    public ref readonly SpecSnapshot Spec => ref _blockExecutionContext.Spec;
+    public ref readonly Eip158Spec Eip158 => ref _blockExecutionContext.Eip158;
+    public IReleaseSpec OriginalSpec => _blockExecutionContext.OriginalSpec;
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
@@ -159,7 +161,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _worldState = worldState;
 
         // Prepare the specification and opcode mapping based on the current block header.
-        IReleaseSpec spec = BlockExecutionContext.Spec;
+        IReleaseSpec spec = BlockExecutionContext.OriginalSpec;
         PrepareOpcodes<TTracingInst>(spec);
         OpCodeCount = 0;
         // Initialize the code repository and set up the initial execution state.
@@ -403,15 +405,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         byte[] bytecodeResultArray = bytecodeResult.ToArray();
 
-        IReleaseSpec spec = BlockExecutionContext.Spec;
+        ref readonly SpecSnapshot spec = ref Spec;
         // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
         bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
-        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, bytecodeResultArray?.Length ?? 0);
+        long codeDepositGasCost = CodeDepositHandler.CalculateCost(in spec, bytecodeResultArray?.Length ?? 0);
         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
         {
             // 4 - set state[new_address].code to the updated deploy container
             // push new_address onto the stack (already done before the ifs)
-            _codeInfoRepository.InsertCode(bytecodeResultArray, callCodeOwner, spec);
+            _codeInfoRepository.InsertCode(bytecodeResultArray, callCodeOwner, BlockExecutionContext.OriginalSpec);
             TGasPolicy.Consume(ref _currentState.Gas, codeDepositGasCost);
 
             if (_txTracer.IsTracingActions)
@@ -475,19 +477,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Get the address of the account that initiated the contract creation.
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
-        IReleaseSpec spec = BlockExecutionContext.Spec;
+        ref readonly SpecSnapshot spec = ref Spec;
         // Calculate the gas cost required to deposit the contract code using legacy cost rules.
-        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+        long codeDepositGasCost = CodeDepositHandler.CalculateCost(in spec, callResult.Output.Bytes.Length);
 
         // Validate the code against legacy rules; mark it invalid if it fails these checks.
-        bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, callResult.Output.Bytes);
+        bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(in spec, callResult.Output.Bytes);
 
         // Check if there is sufficient gas and the code is valid.
         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
         {
             // Deposit the contract code into the repository.
             ReadOnlyMemory<byte> code = callResult.Output.Bytes;
-            _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
+            _codeInfoRepository.InsertCode(code, callCodeOwner, BlockExecutionContext.OriginalSpec);
 
             // Deduct the gas cost for the code deposit from the current state's available gas.
             TGasPolicy.Consume(ref _currentState.Gas, codeDepositGasCost);
@@ -878,9 +880,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// </param>
     protected void TraceTransactionActionEnd(VmState<TGasPolicy> currentState, in CallResult callResult)
     {
-        IReleaseSpec spec = BlockExecutionContext.Spec;
+        ref readonly SpecSnapshot spec = ref Spec;
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
-        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+        long codeDepositGasCost = CodeDepositHandler.CalculateCost(in spec, callResult.Output.Bytes.Length);
 
         // Cache the output bytes for reuse in the tracing reports.
         ReadOnlyMemory<byte> outputBytes = callResult.Output.Bytes;
@@ -917,7 +919,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 }
             }
             // If the generated code is invalid (e.g., violates EIP-3541 by starting with 0xEF), report an invalid code error.
-            else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes, callResult.FromVersion))
+            else if (CodeDepositHandler.CodeIsInvalid(in spec, outputBytes, callResult.FromVersion))
             {
                 _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
             }
@@ -940,7 +942,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             if (_worldState.AccountExists(_parityTouchBugAccount.Address))
             {
-                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec);
+                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Eip158);
             }
 
             _parityTouchBugAccount.ShouldDelete = false;
@@ -955,11 +957,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         IPrecompile precompile = state.Env.CodeInfo.Precompile!;
 
-        IReleaseSpec spec = BlockExecutionContext.Spec;
+        IReleaseSpec spec = BlockExecutionContext.OriginalSpec;
         long baseGasCost = precompile.BaseGasCost(spec);
         long dataGasCost = precompile.DataGasCost(callData, spec);
 
-        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
+        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, BlockExecutionContext.Eip158);
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
         // An additional issue was found in Parity,
@@ -971,7 +973,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // in about one week once the state clearing process finishes.
         if (!wasCreated &&
             transferValue.IsZero &&
-            spec.ClearEmptyAccountWhenTouched &&
+            Spec.ClearEmptyAccountWhenTouched &&
             state.Env.ExecutingAccount.Equals(_parityTouchBugAccount.Address))
         {
             _parityTouchBugAccount.ShouldDelete = true;
@@ -1069,12 +1071,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // If this is the first call frame (not a continuation), adjust account balances and nonces.
         if (!vmState.IsContinuation)
         {
-            IReleaseSpec spec = BlockExecutionContext.Spec;
             // Ensure the executing account has sufficient balance and exists in the world state.
-            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
+            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, BlockExecutionContext.Eip158);
 
             // For contract creation calls, increment the nonce if the specification requires it.
-            if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
+            if (vmState.ExecutionType.IsAnyCreate() && Spec.ClearEmptyAccountWhenTouched)
             {
                 _worldState.IncrementNonce(env.ExecutingAccount);
             }

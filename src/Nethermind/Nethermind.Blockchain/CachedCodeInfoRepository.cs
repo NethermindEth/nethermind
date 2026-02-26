@@ -25,15 +25,15 @@ public class CachedCodeInfoRepository(
         ? precompileProvider.GetPrecompiles()
         : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
 
-    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
+    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, in SpecSnapshot vmSpec,
         out Address? delegationAddress)
     {
-        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out var cachedCodeInfo))
+        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out CodeInfo? cachedCodeInfo))
         {
             delegationAddress = null;
             return cachedCodeInfo;
         }
-        return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+        return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, in vmSpec, out delegationAddress);
     }
 
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
@@ -51,10 +51,10 @@ public class CachedCodeInfoRepository(
         baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
     }
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec,
+    public bool TryGetDelegation(Address address, in SpecSnapshot spec,
         [NotNullWhen(true)] out Address? delegatedAddress)
     {
-        return baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
+        return baseCodeInfoRepository.TryGetDelegation(address, in spec, out delegatedAddress);
     }
 
     private static CodeInfo CreateCachedPrecompile(

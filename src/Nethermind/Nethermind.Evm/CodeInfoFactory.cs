@@ -10,9 +10,15 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public static class CodeInfoFactory
 {
+    public static CodeInfo CreateCodeInfo(ReadOnlyMemory<byte> code, in SpecSnapshot spec, ValidationStrategy validationRules = ValidationStrategy.ExtractHeader)
+        => CreateCodeInfo(code, spec.IsEofEnabled, validationRules);
+
     public static CodeInfo CreateCodeInfo(ReadOnlyMemory<byte> code, IReleaseSpec spec, ValidationStrategy validationRules = ValidationStrategy.ExtractHeader)
+        => CreateCodeInfo(code, spec.IsEofEnabled, validationRules);
+
+    internal static CodeInfo CreateCodeInfo(ReadOnlyMemory<byte> code, bool isEofEnabled, ValidationStrategy validationRules = ValidationStrategy.ExtractHeader)
     {
-        if (spec.IsEofEnabled
+        if (isEofEnabled
             && code.Span.StartsWith(EofValidator.MAGIC)
             && EofValidator.IsValidEof(code, validationRules, out EofContainer? container))
         {
@@ -23,10 +29,16 @@ public static class CodeInfoFactory
         return codeInfo;
     }
 
+    public static bool CreateInitCodeInfo(ReadOnlyMemory<byte> data, in SpecSnapshot spec, [NotNullWhen(true)] out CodeInfo? codeInfo, out ReadOnlyMemory<byte> extraCallData)
+        => CreateInitCodeInfo(data, spec.IsEofEnabled, out codeInfo, out extraCallData);
+
     public static bool CreateInitCodeInfo(ReadOnlyMemory<byte> data, IReleaseSpec spec, [NotNullWhen(true)] out CodeInfo? codeInfo, out ReadOnlyMemory<byte> extraCallData)
+        => CreateInitCodeInfo(data, spec.IsEofEnabled, out codeInfo, out extraCallData);
+
+    private static bool CreateInitCodeInfo(ReadOnlyMemory<byte> data, bool isEofEnabled, [NotNullWhen(true)] out CodeInfo? codeInfo, out ReadOnlyMemory<byte> extraCallData)
     {
         extraCallData = default;
-        if (spec.IsEofEnabled && data.Span.StartsWith(EofValidator.MAGIC))
+        if (isEofEnabled && data.Span.StartsWith(EofValidator.MAGIC))
         {
             if (EofValidator.IsValidEof(data, ValidationStrategy.ValidateInitCodeMode | ValidationStrategy.ValidateFullBody | ValidationStrategy.AllowTrailingBytes, out EofContainer? eofContainer))
             {

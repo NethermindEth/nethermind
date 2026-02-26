@@ -549,7 +549,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        IReleaseSpec spec = vm.Spec;
+        ref readonly SpecSnapshot spec = ref vm.Spec;
         // Deduct gas cost for balance operation as per specification.
         TGasPolicy.Consume(ref gas, spec.GetBalanceCost());
 
@@ -557,7 +557,7 @@ internal static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
 
         // Charge gas for account access. If insufficient gas remains, abort.
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, in spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
         stack.PushUInt256<TTracingInst>(in result);
@@ -614,13 +614,13 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        IReleaseSpec spec = vm.Spec;
+        ref readonly SpecSnapshot spec = ref vm.Spec;
         TGasPolicy.Consume(ref gas, spec.GetExtCodeHashCost());
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, in spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
         // For dead accounts, the specification requires pushing zero.
@@ -662,12 +662,12 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        IReleaseSpec spec = vm.Spec;
+        ref readonly SpecSnapshot spec = ref vm.Spec;
         TGasPolicy.Consume(ref gas, spec.GetExtCodeHashCost());
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, in spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
         if (state.IsDeadAccount(address))
@@ -830,7 +830,7 @@ internal static partial class EvmInstructions
         BlockHeader header = vm.BlockExecutionContext.Header;
         Hash256? blockHash = number >= header.Number ?
             null : // Current block or higher is null, don't bother looking up
-            vm.BlockHashProvider.GetBlockhash(header, number, vm.Spec);
+            vm.BlockHashProvider.GetBlockhash(header, number, vm.OriginalSpec);
 
         // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
         stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);

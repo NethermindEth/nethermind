@@ -205,6 +205,11 @@ namespace Nethermind.Core.Specs
         Address? Eip158IgnoredAccount => null;
 
         /// <summary>
+        /// Pre-packed EIP-158 info for <c>IWorldState</c> balance/code methods.
+        /// </summary>
+        Eip158Spec Eip158 => new(IsEip158Enabled, Eip158IgnoredAccount);
+
+        /// <summary>
         /// BaseFee opcode
         /// </summary>
         bool IsEip3198Enabled { get; }

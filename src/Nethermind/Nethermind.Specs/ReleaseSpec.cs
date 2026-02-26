@@ -32,7 +32,11 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip140Enabled { get; set; }
     public bool IsEip150Enabled { get; set; }
     public bool IsEip155Enabled { get; set; }
-    public bool IsEip158Enabled { get; set; }
+    public bool IsEip158Enabled
+    {
+        get => Eip158.IsEnabled;
+        set => Eip158 = new(value, Eip158.IgnoredAccount);
+    }
     public bool IsEip160Enabled { get; set; }
     public bool IsEip170Enabled { get; set; }
     public bool IsEip196Enabled { get; set; }
@@ -58,7 +62,12 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip2929Enabled { get; set; }
     public bool IsEip2930Enabled { get; set; }
     public bool IsEip1559Enabled { get => field || IsEip4844Enabled; set; }
-    public Address? Eip158IgnoredAccount { get; set; }
+    public Address? Eip158IgnoredAccount
+    {
+        get => Eip158.IgnoredAccount;
+        set => Eip158 = new(Eip158.IsEnabled, value);
+    }
+    public Eip158Spec Eip158 { get; set; }
     public bool IsEip3198Enabled { get; set; }
     public bool IsEip3529Enabled { get; set; }
     public bool IsEip3607Enabled { get; set; }
@@ -163,6 +172,10 @@ public class ReleaseSpec : IReleaseSpec
         return cache.ToFrozenSet();
     }
 
+    private SpecSnapshot? _snapshot;
+
+    public SpecSnapshot Snapshot => _snapshot ??= new SpecSnapshot(this);
+
     private ReleaseSpec? _systemSpec;
 
     internal ReleaseSpec SystemSpec => _systemSpec ??= CreateSystemSpec();
@@ -170,6 +183,8 @@ public class ReleaseSpec : IReleaseSpec
     private ReleaseSpec CreateSystemSpec()
     {
         ReleaseSpec clone = Clone();
+        clone._snapshot = null;
+        clone._systemSpec = null;
         clone.IsEip158Enabled = false;
         return clone;
     }

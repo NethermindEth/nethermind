@@ -111,13 +111,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="isGenesis">Indicates whether the insertion is part of the genesis block setup.</param>
     /// <returns>True if the code was inserted to the database at that hash; otherwise false if it was already there.
     /// Note: This is different from whether the account has its hash updated</returns>
-    bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
+    bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, in Eip158Spec eip158, bool isGenesis = false);
 
-    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    void AddToBalance(Address address, in UInt256 balanceChange, in Eip158Spec eip158);
 
-    bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, in Eip158Spec eip158);
 
-    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    void SubtractFromBalance(Address address, in UInt256 balanceChange, in Eip158Spec eip158);
 
     void IncrementNonce(Address address, UInt256 delta);
 

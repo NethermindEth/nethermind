@@ -7,6 +7,9 @@ namespace Nethermind.Specs;
 
 public static class ReleaseSpecExtensions
 {
+    public static SpecSnapshot GetSnapshot(this IReleaseSpec spec) =>
+        spec is ReleaseSpec rs ? rs.Snapshot : new SpecSnapshot(spec);
+
     public static IReleaseSpec ForSystemTransaction(this IReleaseSpec spec, bool isAura, bool isGenesis) =>
         spec switch
         {

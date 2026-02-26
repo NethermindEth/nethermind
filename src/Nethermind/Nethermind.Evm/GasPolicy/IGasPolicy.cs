@@ -77,7 +77,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="chargeForWarm">If true, charge even if the account is already warm.</param>
     /// <returns>True if gas was successfully charged; otherwise false.</returns>
     static abstract bool ConsumeAccountAccessGasWithDelegation(ref TSelf gas,
-        IReleaseSpec spec,
+        in SpecSnapshot spec,
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
@@ -96,7 +96,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="chargeForWarm">If true, applies the warm read gas cost even if the account is warm.</param>
     /// <returns>True if the gas charge was successful; otherwise false.</returns>
     static abstract bool ConsumeAccountAccessGas(ref TSelf gas,
-        IReleaseSpec spec,
+        in SpecSnapshot spec,
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
@@ -121,7 +121,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         bool isTracingAccess,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
-        IReleaseSpec spec);
+        in SpecSnapshot spec);
 
     /// <summary>
     /// Calculates and deducts the gas cost for accessing a specific memory region.
@@ -158,7 +158,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="isSlotCreation">True if creating a new slot (original was zero).</param>
     /// <param name="spec">The release specification for determining reset cost.</param>
     /// <returns>True if sufficient gas available</returns>
-    static abstract bool ConsumeStorageWrite(ref TSelf gas, bool isSlotCreation, IReleaseSpec spec);
+    static abstract bool ConsumeStorageWrite(ref TSelf gas, bool isSlotCreation, in SpecSnapshot spec);
 
     /// <summary>
     /// Charges gas for CALL value transfer.

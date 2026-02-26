@@ -115,7 +115,7 @@ namespace Nethermind.State
             return ref account is not null ? ref account.Balance : ref _zero;
         }
 
-        public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, in Eip158Spec eip158, bool isGenesis = false)
         {
             bool inserted = false;
 
@@ -153,12 +153,12 @@ namespace Nethermind.State
 
                 PushUpdate(address, changedAccount);
             }
-            else if (spec.IsEip158Enabled && !isGenesis)
+            else if (eip158.IsEnabled && !isGenesis)
             {
                 if (_logger.IsTrace) Trace(address);
                 if (account.IsEmpty)
                 {
-                    PushTouch(address, account, spec, account.Balance.IsZero);
+                    PushTouch(address, account, in eip158, account.Balance.IsZero);
                 }
             }
 
@@ -176,7 +176,7 @@ namespace Nethermind.State
                 => throw new InvalidOperationException($"Account {address} is null when updating code hash");
         }
 
-        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
+        private void SetNewBalance(Address address, in UInt256 balanceChange, in Eip158Spec eip158, bool isSubtracting)
         {
             _needsStateRootUpdate = true;
 
@@ -201,14 +201,14 @@ namespace Nethermind.State
                 // this also works like this in Geth (they don't follow the spec ¯\_(*~*)_/¯)
                 // however we don't do it because of a consensus issue with Geth, just to avoid
                 // hitting non-existing account when subtracting Zero-value from the sender
-                if (releaseSpec.IsEip158Enabled && !isSubtracting)
+                if (eip158.IsEnabled && !isSubtracting)
                 {
                     Account touched = GetThroughCacheCheckExists();
 
                     if (_logger.IsTrace) TraceTouch(address);
                     if (touched.IsEmpty)
                     {
-                        PushTouch(address, touched, releaseSpec, true);
+                        PushTouch(address, touched, in eip158, true);
                     }
                 }
 
@@ -241,14 +241,14 @@ namespace Nethermind.State
                 => throw new InsufficientBalanceException(address);
         }
 
-        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, in Eip158Spec eip158)
         {
-            SetNewBalance(address, balanceChange, releaseSpec, true);
+            SetNewBalance(address, balanceChange, in eip158, true);
         }
 
-        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
+        public void AddToBalance(Address address, in UInt256 balanceChange, in Eip158Spec eip158)
         {
-            SetNewBalance(address, balanceChange, releaseSpec, false);
+            SetNewBalance(address, balanceChange, in eip158, false);
         }
 
         public void IncrementNonce(Address address, UInt256 delta)
@@ -461,11 +461,11 @@ namespace Nethermind.State
             }
         }
 
-        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, in Eip158Spec eip158)
         {
             if (AccountExists(address))
             {
-                AddToBalance(address, balance, spec);
+                AddToBalance(address, balance, in eip158);
                 return false;
             }
             else
@@ -474,6 +474,9 @@ namespace Nethermind.State
                 return true;
             }
         }
+
+
+
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
         {
@@ -766,9 +769,9 @@ namespace Nethermind.State
         private void PushUpdate(Address address, Account account)
             => Push(address, account, ChangeType.Update);
 
-        private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
+        private void PushTouch(Address address, Account account, in Eip158Spec eip158, bool isZero)
         {
-            if (isZero && address == releaseSpec.Eip158IgnoredAccount) return;
+            if (isZero && address == eip158.IgnoredAccount) return;
             Push(address, account, ChangeType.Touch);
         }
 

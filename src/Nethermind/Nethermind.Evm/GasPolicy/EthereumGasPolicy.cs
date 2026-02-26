@@ -41,7 +41,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeAccountAccessGasWithDelegation(ref EthereumGasPolicy gas,
-        IReleaseSpec spec,
+        in SpecSnapshot spec,
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
@@ -56,7 +56,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     public static bool ConsumeAccountAccessGas(ref EthereumGasPolicy gas,
-        IReleaseSpec spec,
+        in SpecSnapshot spec,
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
@@ -91,7 +91,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         bool isTracingAccess,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
-        IReleaseSpec spec)
+        in SpecSnapshot spec)
     {
         // If the spec requires hot/cold storage tracking, determine if extra gas should be charged.
         if (!spec.UseHotAndColdStorage)
@@ -141,7 +141,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool ConsumeStorageWrite(ref EthereumGasPolicy gas, bool isSlotCreation, IReleaseSpec spec)
+    public static bool ConsumeStorageWrite(ref EthereumGasPolicy gas, bool isSlotCreation, in SpecSnapshot spec)
     {
         long cost = isSlotCreation ? GasCostOf.SSet : spec.GetSStoreResetCost();
         return UpdateGas(ref gas, cost);

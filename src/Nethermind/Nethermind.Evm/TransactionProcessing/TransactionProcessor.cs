@@ -372,7 +372,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;
+        protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.OriginalSpec;
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
@@ -468,7 +468,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 // hacky fix for the potential recovery issue
                 if (tx.Signature is not null)
-                    tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+                    tx.SenderAddress = Ecdsa.RecoverAddress(tx, !VirtualMachine.BlockExecutionContext.Spec.ValidateChainId);
 
                 if (sender != tx.SenderAddress)
                 {
@@ -510,7 +510,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
 
-            if (validate && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!))
+            if (validate && WorldState.IsInvalidContractSender(VirtualMachine.BlockExecutionContext.Spec, tx.SenderAddress!))
             {
                 TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");
                 return TransactionResult.SenderHasDeployedCode;
@@ -785,13 +785,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {
-            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length);
-            if (TGasPolicy.GetRemainingGas(unspentGas) < codeDepositGasCost && spec.ChargeForTopLevelCreate)
+            ref readonly SpecSnapshot snapshot = ref VirtualMachine.BlockExecutionContext.Spec;
+            long codeDepositGasCost = CodeDepositHandler.CalculateCost(in snapshot, substate.Output.Bytes.Length);
+            if (TGasPolicy.GetRemainingGas(unspentGas) < codeDepositGasCost && snapshot.ChargeForTopLevelCreate)
             {
                 return false;
             }
 
-            if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output.Bytes, 0))
+            if (CodeDepositHandler.CodeIsInvalid(in snapshot, substate.Output.Bytes, 0))
             {
                 return false;
             }
@@ -818,14 +819,15 @@ namespace Nethermind.Evm.TransactionProcessing
             ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;
             EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.Output.DeployCode;
 
-            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, deployCodeInfo.Code.Length + auxExtraData.Length);
-            if (TGasPolicy.GetRemainingGas(unspentGas) < codeDepositGasCost && spec.ChargeForTopLevelCreate)
+            ref readonly SpecSnapshot snapshot = ref VirtualMachine.BlockExecutionContext.Spec;
+            long codeDepositGasCost = CodeDepositHandler.CalculateCost(in snapshot, deployCodeInfo.Code.Length + auxExtraData.Length);
+            if (TGasPolicy.GetRemainingGas(unspentGas) < codeDepositGasCost && snapshot.ChargeForTopLevelCreate)
             {
                 return false;
             }
             int codeLength = deployCodeInfo.Code.Length + auxExtraData.Length;
             // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-            if (codeLength > spec.MaxCodeSize)
+            if (codeLength > snapshot.MaxCodeSize)
             {
                 return false;
             }
@@ -879,10 +881,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
             }
 
+            ref readonly SpecSnapshot snapshot = ref VirtualMachine.BlockExecutionContext.Spec;
             UInt256 eip1559Fees = !tx.IsFree() ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;
-            UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
+            UInt256 collectedFees = snapshot.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
 
-            if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
+            if (tx.SupportsBlobs && snapshot.IsEip4844FeeCollectorEnabled)
             {
                 collectedFees += blobBaseFee;
             }

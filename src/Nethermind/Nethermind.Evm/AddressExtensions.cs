@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Evm.State;
+using Nethermind.Specs;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm
@@ -42,9 +43,17 @@ namespace Nethermind.Evm
         }
 
         // See https://eips.ethereum.org/EIPS/eip-7610
+        public static bool IsNonZeroAccount(this Address contractAddress, in SpecSnapshot spec, ICodeInfoRepository codeInfoRepository, IWorldState state)
+        {
+            return codeInfoRepository.GetCachedCodeInfo(contractAddress, in spec).CodeSpan.Length != 0 ||
+                   state.GetNonce(contractAddress) != 0 ||
+                   !state.IsStorageEmpty(contractAddress);
+        }
+
         public static bool IsNonZeroAccount(this Address contractAddress, IReleaseSpec spec, ICodeInfoRepository codeInfoRepository, IWorldState state)
         {
-            return codeInfoRepository.GetCachedCodeInfo(contractAddress, spec).CodeSpan.Length != 0 ||
+            SpecSnapshot snapshot = spec.GetSnapshot();
+            return codeInfoRepository.GetCachedCodeInfo(contractAddress, in snapshot).CodeSpan.Length != 0 ||
                    state.GetNonce(contractAddress) != 0 ||
                    !state.IsStorageEmpty(contractAddress);
         }

@@ -111,5 +111,84 @@ namespace Nethermind.Evm
                     : 0;
 
         }
+
+        extension(SpecSnapshot spec)
+        {
+            public long GetClearReversalRefund() =>
+                spec.UseHotAndColdStorage
+                    ? RefundOf.SResetReversedHotCold
+                    : spec.UseIstanbulNetGasMetering
+                        ? RefundOf.SResetReversedEip2200
+                        : spec.UseConstantinopleNetGasMetering
+                            ? RefundOf.SResetReversedEip1283
+                            : throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled");
+
+            public long GetSetReversalRefund() =>
+                spec.UseHotAndColdStorage
+                    ? RefundOf.SSetReversedHotCold
+                    : spec.UseIstanbulNetGasMetering
+                        ? RefundOf.SSetReversedEip2200
+                        : spec.UseConstantinopleNetGasMetering
+                            ? RefundOf.SSetReversedEip1283
+                            : throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled");
+
+            public long GetSStoreResetCost() =>
+                spec.UseHotAndColdStorage
+                    ? GasCostOf.SReset - GasCostOf.ColdSLoad
+                    : GasCostOf.SReset;
+
+            public long GetNetMeteredSStoreCost() =>
+                spec.UseHotAndColdStorage
+                    ? GasCostOf.WarmStateRead
+                    : spec.UseIstanbulNetGasMetering
+                        ? GasCostOf.SStoreNetMeteredEip2200
+                        : spec.UseConstantinopleNetGasMetering
+                            ? GasCostOf.SStoreNetMeteredEip1283
+                            : throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled");
+
+            public long GetBalanceCost() =>
+                spec.UseHotAndColdStorage
+                    ? 0L
+                    : spec.UseLargeStateDDosProtection
+                        ? GasCostOf.BalanceEip1884
+                        : spec.UseShanghaiDDosProtection
+                            ? GasCostOf.BalanceEip150
+                            : GasCostOf.Balance;
+
+            public long GetSLoadCost() =>
+                spec.UseHotAndColdStorage
+                    ? 0L
+                    : spec.UseLargeStateDDosProtection
+                        ? GasCostOf.SLoadEip1884
+                        : spec.UseShanghaiDDosProtection
+                            ? GasCostOf.SLoadEip150
+                            : GasCostOf.SLoad;
+
+            public long GetExtCodeHashCost() =>
+                spec.UseHotAndColdStorage
+                    ? 0L
+                    : spec.UseLargeStateDDosProtection
+                        ? GasCostOf.ExtCodeHashEip1884
+                        : GasCostOf.ExtCodeHash;
+
+            public long GetExtCodeCost() =>
+                spec.UseHotAndColdStorage
+                    ? 0L
+                    : spec.UseShanghaiDDosProtection
+                        ? GasCostOf.ExtCodeEip150
+                        : GasCostOf.ExtCode;
+
+            public long GetCallCost() =>
+                spec.UseHotAndColdStorage
+                    ? 0L
+                    : spec.UseShanghaiDDosProtection
+                        ? GasCostOf.CallEip150
+                        : GasCostOf.Call;
+
+            public long GetExpByteCost() =>
+                spec.UseExpDDosProtection
+                    ? GasCostOf.ExpByteEip160
+                    : GasCostOf.ExpByte;
+        }
     }
 }

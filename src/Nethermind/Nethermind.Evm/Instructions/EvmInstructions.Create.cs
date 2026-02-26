@@ -81,7 +81,7 @@ internal static partial class EvmInstructions
         Metrics.IncrementCreates();
 
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
-        IReleaseSpec spec = vm.Spec;
+        ref readonly SpecSnapshot spec = ref vm.Spec;
         if (vm.VmState.IsStatic)
             goto StaticCallViolation;
 
@@ -200,7 +200,7 @@ internal static partial class EvmInstructions
         state.IncrementNonce(env.ExecutingAccount);
 
         // Analyze and compile the initialization code.
-        CodeInfoFactory.CreateInitCodeInfo(initCode, spec, out CodeInfo? codeInfo, out _);
+        CodeInfoFactory.CreateInitCodeInfo(initCode, in spec, out CodeInfo? codeInfo, out _);
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
@@ -208,7 +208,7 @@ internal static partial class EvmInstructions
         // Check for contract address collision. If the contract already exists and contains code or non-zero state,
         // then the creation should be aborted.
         bool accountExists = state.AccountExists(contractAddress);
-        if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
+        if (accountExists && contractAddress.IsNonZeroAccount(in spec, vm.CodeInfoRepository, state))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
@@ -223,7 +223,7 @@ internal static partial class EvmInstructions
         }
 
         // Deduct the transfer value from the executing account's balance.
-        state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+        state.SubtractFromBalance(env.ExecutingAccount, value, vm.Eip158);
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.

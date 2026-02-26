@@ -348,7 +348,7 @@ internal static partial class EvmInstructions
         // Disallow storage modifications in static calls.
         if (vmState.IsStatic) goto StaticCallViolation;
 
-        IReleaseSpec spec = vm.Spec;
+        ref readonly SpecSnapshot spec = ref vm.Spec;
 
         // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
         if (!TGasPolicy.UpdateGas(ref gas, spec.GetSStoreResetCost()))
@@ -366,7 +366,7 @@ internal static partial class EvmInstructions
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
         // Charge gas based on whether this is a cold or warm storage access.
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, in spec))
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
@@ -451,7 +451,7 @@ internal static partial class EvmInstructions
         // Disallow storage modifications in static calls.
         if (vmState.IsStatic) goto StaticCallViolation;
 
-        IReleaseSpec spec = vm.Spec;
+        ref readonly SpecSnapshot spec = ref vm.Spec;
 
         // In net metering with stipend fix, ensure extra gas pressure is reported and that sufficient gas remains.
         if (TUseNetGasStipendFix.IsActive)
@@ -474,7 +474,7 @@ internal static partial class EvmInstructions
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
         // Charge gas based on whether this is a cold or warm storage access.
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, in spec))
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
@@ -503,12 +503,12 @@ internal static partial class EvmInstructions
             {
                 if (currentIsZero)
                 {
-                    if (!TGasPolicy.ConsumeStorageWrite(ref gas, isSlotCreation: true, spec))
+                    if (!TGasPolicy.ConsumeStorageWrite(ref gas, isSlotCreation: true, in spec))
                         goto OutOfGas;
                 }
                 else
                 {
-                    if (!TGasPolicy.ConsumeStorageWrite(ref gas, isSlotCreation: false, spec))
+                    if (!TGasPolicy.ConsumeStorageWrite(ref gas, isSlotCreation: false, in spec))
                         goto OutOfGas;
 
                     if (newIsZero)
@@ -612,7 +612,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        IReleaseSpec spec = vm.Spec;
+        ref readonly SpecSnapshot spec = ref vm.Spec;
 
         // Increment the SLOAD opcode metric.
         Metrics.IncrementSLoadOpcode();
@@ -628,7 +628,7 @@ internal static partial class EvmInstructions
         StorageCell storageCell = new(executingAccount, in result);
 
         // Charge additional gas based on whether the storage cell is hot or cold.
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, in spec))
             goto OutOfGas;
 
         // Retrieve the persistent storage value and push it onto the stack.

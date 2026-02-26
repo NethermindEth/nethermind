@@ -209,7 +209,7 @@ internal static partial class EvmInstructions
         Metrics.IncrementSelfDestructs();
 
         VmState<TGasPolicy> vmState = vm.VmState;
-        IReleaseSpec spec = vm.Spec;
+        ref readonly SpecSnapshot spec = ref vm.Spec;
         IWorldState state = vm.WorldState;
 
         // SELFDESTRUCT is forbidden during static calls.
@@ -228,7 +228,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Charge gas for account access; if insufficient, signal out-of-gas.
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor, false))
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, in spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor, false))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
@@ -264,7 +264,7 @@ internal static partial class EvmInstructions
         }
         else if (!inheritor.Equals(executingAccount))
         {
-            state.AddToBalance(inheritor, result, spec);
+            state.AddToBalance(inheritor, result, vm.Eip158);
         }
 
         // Special handling when SELFDESTRUCT is limited to the same transaction.
@@ -272,7 +272,7 @@ internal static partial class EvmInstructions
             goto Stop; // Avoid burning ETH if contract is not destroyed per EIP clarification
 
         // Subtract the balance from the executing account.
-        state.SubtractFromBalance(executingAccount, result, spec);
+        state.SubtractFromBalance(executingAccount, result, vm.Eip158);
 
     // Jump forward to be unpredicted by the branch predictor.
     Stop:

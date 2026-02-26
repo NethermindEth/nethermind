@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Specs;
 
 namespace Nethermind.Evm;
 
@@ -17,7 +18,9 @@ public readonly struct BlockExecutionContext(BlockHeader blockHeader, IReleaseSp
     public readonly ulong Number = (ulong)blockHeader.Number;
     public readonly ulong GasLimit = (ulong)blockHeader.GasLimit;
     public readonly ValueHash256 BlobBaseFee = blobBaseFee.ToValueHash();
-    public readonly IReleaseSpec Spec = spec;
+    public readonly SpecSnapshot Spec = spec.GetSnapshot();
+    public readonly Eip158Spec Eip158 = spec.Eip158;
+    public readonly IReleaseSpec OriginalSpec = spec;
 
     // Use the random value if post-merge; otherwise, use block difficulty.
     public readonly ValueHash256 PrevRandao = blockHeader.IsPostMerge

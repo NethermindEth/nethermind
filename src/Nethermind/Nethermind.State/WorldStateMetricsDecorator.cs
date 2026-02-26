@@ -66,17 +66,17 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
     public void CreateEmptyAccountIfDeleted(Address address) =>
         innerState.CreateEmptyAccountIfDeleted(address);
 
-    public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false) =>
-        innerState.InsertCode(address, in codeHash, code, spec, isGenesis);
+    public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, in Eip158Spec eip158, bool isGenesis = false) =>
+        innerState.InsertCode(address, in codeHash, code, in eip158, isGenesis);
 
-    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec) =>
-        innerState.AddToBalance(address, in balanceChange, spec);
+    public void AddToBalance(Address address, in UInt256 balanceChange, in Eip158Spec eip158) =>
+        innerState.AddToBalance(address, in balanceChange, in eip158);
 
-    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec) =>
-        innerState.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec);
+    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, in Eip158Spec eip158) =>
+        innerState.AddToBalanceAndCreateIfNotExists(address, in balanceChange, in eip158);
 
-    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec) =>
-        innerState.SubtractFromBalance(address, in balanceChange, spec);
+    public void SubtractFromBalance(Address address, in UInt256 balanceChange, in Eip158Spec eip158) =>
+        innerState.SubtractFromBalance(address, in balanceChange, in eip158);
 
     public void IncrementNonce(Address address, UInt256 delta) => innerState.IncrementNonce(address, delta);
 

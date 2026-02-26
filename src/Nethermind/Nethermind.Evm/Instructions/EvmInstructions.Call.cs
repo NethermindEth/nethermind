@@ -134,10 +134,12 @@ internal static partial class EvmInstructions
             !stack.PopUInt256(out UInt256 outputLength))
             goto StackUnderflow;
 
+        ref readonly SpecSnapshot spec = ref vm.Spec;
+
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
-        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm.Spec, in vm.VmState.AccessTracker,
+            .TryGetDelegation(codeSource, in spec, out Address delegated);
+        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, in spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource, delegated)) goto OutOfGas;
 
         // For non-delegate calls, the transfer value is the call value.
@@ -158,7 +160,6 @@ internal static partial class EvmInstructions
             if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
         }
 
-        IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
         // Charge additional gas if the target account is new or considered empty.
         if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
@@ -177,7 +178,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Retrieve code information for the call and schedule background analysis if needed.
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, in spec);
 
         // If contract is large, charge for access
         if (spec.IsEip7907Enabled)
@@ -244,7 +245,7 @@ internal static partial class EvmInstructions
         // Take a snapshot of the state for potential rollback.
         Snapshot snapshot = state.TakeSnapshot();
         // Subtract the transfer value from the caller's balance.
-        state.SubtractFromBalance(caller, in transferValue, spec);
+        state.SubtractFromBalance(caller, in transferValue, vm.Eip158);
 
         // Fast-path for calls to externally owned accounts (non-contracts)
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
@@ -252,7 +253,7 @@ internal static partial class EvmInstructions
             vm.ReturnDataBuffer = default;
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            return FastCall(vm, spec, in transferValue, target);
+            return FastCall(vm, vm.Eip158, in transferValue, target);
         }
 
         // Load call data from memory.
@@ -292,10 +293,10 @@ internal static partial class EvmInstructions
 
         // Fast-call path for non-contract calls:
         // Directly credit the target account and avoid constructing a full call frame.
-        static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
+        static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, in Eip158Spec eip158, in UInt256 transferValue, Address target)
         {
             IWorldState state = vm.WorldState;
-            state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
+            state.AddToBalanceAndCreateIfNotExists(target, transferValue, in eip158);
             Metrics.IncrementEmptyCalls();
 
             vm.ReturnData = null;

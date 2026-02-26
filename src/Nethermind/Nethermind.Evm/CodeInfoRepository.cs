@@ -28,7 +28,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         _worldState = worldState;
     }
 
-    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
+    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, in SpecSnapshot vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource)) // _localPrecompiles have to have all precompiles
@@ -36,30 +36,30 @@ public class CodeInfoRepository : ICodeInfoRepository
             return _localPrecompiles[codeSource];
         }
 
-        CodeInfo cachedCodeInfo = InternalGetCachedCode(_worldState, codeSource, vmSpec);
+        CodeInfo cachedCodeInfo = InternalGetCachedCode(_worldState, codeSource, vmSpec.IsEofEnabled);
 
         if (!cachedCodeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(cachedCodeInfo.CodeSpan, out delegationAddress))
         {
             if (followDelegation)
-                cachedCodeInfo = InternalGetCachedCode(_worldState, delegationAddress, vmSpec);
+                cachedCodeInfo = InternalGetCachedCode(_worldState, delegationAddress, vmSpec.IsEofEnabled);
         }
 
         return cachedCodeInfo;
     }
 
-    private CodeInfo InternalGetCachedCode(Address codeSource, IReleaseSpec vmSpec)
+    private CodeInfo InternalGetCachedCode(Address codeSource, bool isEofEnabled)
     {
         ref readonly ValueHash256 codeHash = ref _worldState.GetCodeHash(codeSource);
-        return InternalGetCachedCode(_worldState, in codeHash, vmSpec);
+        return InternalGetCachedCode(_worldState, in codeHash, isEofEnabled);
     }
 
-    private static CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, Address codeSource, IReleaseSpec vmSpec)
+    private static CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, Address codeSource, bool isEofEnabled)
     {
         ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
-        return InternalGetCachedCode(worldState, in codeHash, vmSpec);
+        return InternalGetCachedCode(worldState, in codeHash, isEofEnabled);
     }
 
-    private static CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    private static CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, bool isEofEnabled)
     {
         CodeInfo? cachedCodeInfo = null;
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
@@ -77,7 +77,7 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(in codeHash);
             }
 
-            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, ValidationStrategy.ExtractHeader);
+            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, isEofEnabled: isEofEnabled);
             _codeCache.Set(in codeHash, cachedCodeInfo);
         }
         else
@@ -138,17 +138,17 @@ public class CodeInfoRepository : ICodeInfoRepository
             return Keccak.OfAnEmptyString.ValueHash256;
         }
 
-        CodeInfo codeInfo = InternalGetCachedCode(_worldState, address, spec);
+        CodeInfo codeInfo = InternalGetCachedCode(_worldState, address, spec.IsEofEnabled);
         return codeInfo.IsEmpty
             ? Keccak.OfAnEmptyString.ValueHash256
             : codeHash;
     }
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, address, spec).CodeSpan, out delegatedAddress);
+    public bool TryGetDelegation(Address address, in SpecSnapshot spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
+        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, address, spec.IsEofEnabled).CodeSpan, out delegatedAddress);
 
-    public bool TryGetDelegation(in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, in codeHash, spec).CodeSpan, out delegatedAddress);
+    public bool TryGetDelegation(in ValueHash256 codeHash, in SpecSnapshot spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
+        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, in codeHash, spec.IsEofEnabled).CodeSpan, out delegatedAddress);
 
     private sealed class CodeLruCache
     {
@@ -187,4 +187,3 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 }
-

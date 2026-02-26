@@ -622,7 +622,7 @@ internal static partial class EvmInstructions
         Metrics.IncrementCreates();
         vm.ReturnData = null;
 
-        IReleaseSpec spec = vm.Spec;
+        ref readonly SpecSnapshot spec = ref vm.Spec;
         ExecutionEnvironment env = vm.VmState.Env;
         if (env.CodeInfo.Version == 0)
             goto BadInstruction;
@@ -715,7 +715,7 @@ internal static partial class EvmInstructions
         bool accountExists = state.AccountExists(contractAddress);
 
         // If the account already exists and is non-zero, then the creation fails.
-        if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
+        if (accountExists && contractAddress.IsNonZeroAccount(in spec, vm.CodeInfoRepository, state))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
@@ -729,10 +729,10 @@ internal static partial class EvmInstructions
         }
 
         // Deduct the transferred value from the caller's balance.
-        state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+        state.SubtractFromBalance(env.ExecutingAccount, value, vm.Eip158);
 
         // Create new code info for the init code.
-        CodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer, spec, ValidationStrategy.ExtractHeader);
+        CodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer, in spec, ValidationStrategy.ExtractHeader);
 
         // 8. Prepare the callData from the caller’s memory slice.
         if (!vm.VmState.Memory.TryLoad(dataOffset, dataSize, out ReadOnlyMemory<byte> callData))
@@ -785,14 +785,14 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.ReturnCode))
             goto OutOfGas;
 
-        IReleaseSpec spec = vm.Spec;
+        ref readonly SpecSnapshot spec = ref vm.Spec;
         EofCodeInfo codeInfo = (EofCodeInfo)vm.VmState.Env.CodeInfo;
 
         // Read the container section index from the code.
         byte sectionIdx = codeInfo.CodeSection.Span[programCounter++];
         // Retrieve the deployment code using the container section offset.
         ReadOnlyMemory<byte> deployCode = codeInfo.ContainerSection[(Range)codeInfo.ContainerSectionOffset(sectionIdx)];
-        EofCodeInfo deployCodeInfo = (EofCodeInfo)CodeInfoFactory.CreateCodeInfo(deployCode, spec, ValidationStrategy.ExtractHeader);
+        EofCodeInfo deployCodeInfo = (EofCodeInfo)CodeInfoFactory.CreateCodeInfo(deployCode, in spec, ValidationStrategy.ExtractHeader);
 
         // Pop memory offset and size for the return data.
         stack.PopUInt256(out UInt256 a);
@@ -832,7 +832,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        IReleaseSpec spec = vm.Spec;
+        ref readonly SpecSnapshot spec = ref vm.Spec;
         CodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (!spec.IsEofEnabled || codeInfo.Version == 0)
             goto BadInstruction;
@@ -874,7 +874,7 @@ internal static partial class EvmInstructions
 
         const int MIN_RETAINED_GAS = 5000;
 
-        IReleaseSpec spec = vm.Spec;
+        ref readonly SpecSnapshot spec = ref vm.Spec;
         vm.ReturnData = null;
         ExecutionEnvironment env = vm.VmState.Env;
         IWorldState state = vm.WorldState;
@@ -936,8 +936,8 @@ internal static partial class EvmInstructions
             goto OutOfGas;
         // 7. Account access gas: ensure target is warm or charge extra gas for cold access.
         bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
-        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm.Spec, in vm.VmState.AccessTracker,
+            .TryGetDelegation(codeSource, in spec, out Address delegated);
+        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, in spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource, delegated)) goto OutOfGas;
 
         // 8. If the target does not exist or is considered a "dead" account when value is transferred,
@@ -977,7 +977,7 @@ internal static partial class EvmInstructions
         }
 
         // 11. Retrieve and prepare the target code for execution.
-        CodeInfo targetCodeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
+        CodeInfo targetCodeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, in spec);
 
         // For delegate calls, calling a non-EOF (legacy) target is disallowed.
         if (typeof(TOpEofCall) == typeof(OpEofDelegateCall)
@@ -999,7 +999,7 @@ internal static partial class EvmInstructions
         // Snapshot the state before the call.
         Snapshot snapshot = state.TakeSnapshot();
         // Deduct the transferred value from the caller.
-        state.SubtractFromBalance(caller, transferValue, spec);
+        state.SubtractFromBalance(caller, transferValue, vm.Eip158);
 
         // Set up the new execution environment for the call.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(

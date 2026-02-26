@@ -25,7 +25,7 @@ public class SimulateBlockValidationTransactionsExecutor(
 
         baseTransactionExecutor.SetBlockExecutionContext(
             new BlockExecutionContext(blockExecutionContext.Header,
-                blockExecutionContext.Spec,
+                blockExecutionContext.OriginalSpec,
                 simulateState.BlobBaseFeeOverride.Value)
         );
     }

@@ -193,25 +193,25 @@ namespace Nethermind.State
             _stateProvider.CreateEmptyAccountIfDeletedOrNew(address);
         }
 
-        public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, in Eip158Spec eip158, bool isGenesis = false)
         {
             DebugGuardInScope();
-            return _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
+            return _stateProvider.InsertCode(address, codeHash, code, in eip158, isGenesis);
         }
-        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        public void AddToBalance(Address address, in UInt256 balanceChange, in Eip158Spec eip158)
         {
             DebugGuardInScope();
-            _stateProvider.AddToBalance(address, balanceChange, spec);
+            _stateProvider.AddToBalance(address, balanceChange, in eip158);
         }
-        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, in Eip158Spec eip158)
         {
             DebugGuardInScope();
-            return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
+            return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, in eip158);
         }
-        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, in Eip158Spec eip158)
         {
             DebugGuardInScope();
-            _stateProvider.SubtractFromBalance(address, balanceChange, spec);
+            _stateProvider.SubtractFromBalance(address, balanceChange, in eip158);
         }
         public void IncrementNonce(Address address, UInt256 delta)
         {
