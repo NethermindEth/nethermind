@@ -9,7 +9,7 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp;
 
-public sealed class RlpItemList : IByteArrayList
+public sealed partial class RlpItemList : IByteArrayList
 {
     private readonly RefCountingMemoryOwner<byte> _memoryOwner;
     private readonly Memory<byte> _rlpRegion;
