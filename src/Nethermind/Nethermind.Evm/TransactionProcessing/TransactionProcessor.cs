@@ -212,9 +212,18 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
 
-            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
-
             UpdateMetrics(opts, in effectiveGasPrice);
+
+            // Direct path: plain ether transfer to EOA – bypass journal entirely.
+            // Runs BEFORE RecoverSenderIfNeeded: if SenderAddress is null (not yet recovered),
+            // falls through to the slow path which calls RecoverSenderIfNeeded.
+            if (TryPlainTransferDirect(tx, tracer, opts, spec, commit, restore,
+                    in intrinsicGas, in effectiveGasPrice, in opcodeGasPrice, out TransactionResult directResult))
+            {
+                return directResult;
+            }
+
+            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
 
             bool deleteCallerAccount = RecoverSenderIfNeeded<TLogTracing>(tx, spec, opts, in effectiveGasPrice);
 
@@ -290,6 +299,148 @@ namespace Nethermind.Evm.TransactionProcessing
             return substate.EvmExceptionType != EvmExceptionType.None
                 ? TransactionResult.EvmException(substate.EvmExceptionType, substate.SubstateError)
                 : TransactionResult.Ok;
+        }
+
+        /// <summary>
+        /// Checks eligibility for the direct transfer fast path and executes it if applicable.
+        /// Excluded: pre-EIP-658 (needs commitRoots), state/action-tracing (needs journal diffs),
+        /// blob txs, SkipValidation (system txs), precompile recipients, contract recipients,
+        /// and non-sealed subclasses (Taiko/Xdc/Optimism override PayFees/BuyGas).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool TryPlainTransferDirect(
+            Transaction tx, ITxTracer tracer, ExecutionOptions opts, IReleaseSpec spec,
+            bool commit, bool restore,
+            in IntrinsicGas<TGasPolicy> intrinsicGas,
+            in UInt256 effectiveGasPrice, in UInt256 opcodeGasPrice,
+            out TransactionResult result)
+        {
+            result = default;
+
+            if (!GetType().IsSealed || !commit || restore
+                || opts.HasFlag(ExecutionOptions.SkipValidation)
+                || tx.SenderAddress is null
+                || !spec.IsEip658Enabled
+                || tracer.IsTracingState || tracer.IsTracingActions
+                || tx.IsContractCreation || tx.SupportsBlobs
+                || (spec.IsEip7702Enabled && tx.HasAuthorizationList)
+                || WorldState is not IDirectTransferState directState)
+                return false;
+
+            Account? senderAccount = directState.GetAccountDirect(tx.SenderAddress);
+            if (senderAccount is null || senderAccount.HasCode || spec.IsPrecompile(tx.To!))
+                return false;
+
+            Account? recipient = tx.SenderAddress == tx.To ? senderAccount : directState.GetAccountDirect(tx.To!);
+            if (recipient is not null && recipient.HasCode)
+                return false;
+
+            result = ExecutePlainTransferDirect(tx, tracer, opts, spec,
+                VirtualMachine.BlockExecutionContext.Header, senderAccount, directState,
+                in intrinsicGas, in effectiveGasPrice, in opcodeGasPrice);
+            return true;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private TransactionResult ExecutePlainTransferDirect(
+            Transaction tx, ITxTracer tracer, ExecutionOptions opts, IReleaseSpec spec,
+            BlockHeader header, Account senderAccount, IDirectTransferState directState,
+            in IntrinsicGas<TGasPolicy> intrinsicGas,
+            in UInt256 effectiveGasPrice, in UInt256 opcodeGasPrice)
+        {
+            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
+            Address sender = tx.SenderAddress!;
+            Address recipient = tx.To!;
+
+            // Inline nonce validation (from IncrementNonce)
+            if (validate && tx.Nonce != senderAccount.Nonce)
+            {
+                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {senderAccount.Nonce})");
+                return tx.Nonce > senderAccount.Nonce ? TransactionResult.TransactionNonceTooHigh : TransactionResult.TransactionNonceTooLow;
+            }
+
+            // Inline BuyGas validation
+            bool shouldValidateGas = ShouldValidateGas(tx, opts);
+            UInt256 premiumPerGas = UInt256.Zero;
+            if (shouldValidateGas && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
+            {
+                TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
+                return TransactionResult.MinerPremiumNegative;
+            }
+
+            if (UInt256.SubtractUnderflow(in senderAccount.Balance, in tx.ValueRef, out UInt256 balanceLeft))
+            {
+                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderAccount.Balance}");
+                return TransactionResult.InsufficientSenderBalance;
+            }
+
+            if (spec.IsEip1559Enabled && !tx.IsFree())
+            {
+                bool overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
+                if (overflows || balanceLeft < maxGasFee)
+                {
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({sender})_BALANCE = {senderAccount.Balance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
+                    return TransactionResult.InsufficientMaxFeePerGasForSenderBalance;
+                }
+            }
+
+            bool gasOverflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out UInt256 senderReservedGasPayment);
+            if (gasOverflows || senderReservedGasPayment > balanceLeft)
+            {
+                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderAccount.Balance}");
+                return TransactionResult.InsufficientSenderBalance;
+            }
+
+            // Calculate gas
+            TransactionResult gasResult = CalculateAvailableGas(tx, in intrinsicGas, out TGasPolicy fastGas);
+            if (!gasResult) return gasResult;
+
+            long spentGas = tx.GasLimit - TGasPolicy.GetRemainingGas(fastGas);
+            long opGas = spentGas;
+            spentGas = Math.Max(spentGas, TGasPolicy.GetRemainingGas(intrinsicGas.FloorGas));
+            UInt256 senderRefund = (ulong)(tx.GasLimit - spentGas) * opcodeGasPrice;
+
+            // PayFees calculation
+            UInt256 beneficiaryFee = premiumPerGas * (ulong)spentGas;
+            UInt256 collectedFees = !tx.IsFree() && spec.IsEip1559Enabled ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;
+
+            // Compute new sender nonce
+            UInt256 newNonce = validate || senderAccount.Nonce < ulong.MaxValue ? senderAccount.Nonce + 1 : 0;
+
+            // Apply all state changes directly to block-level state – no journal, no Commit
+            directState.ApplyPlainTransferDirect(
+                sender, newNonce, in senderReservedGasPayment, in senderRefund,
+                recipient, in tx.ValueRef,
+                header.GasBeneficiary!, in beneficiaryFee,
+                spec.FeeCollector, in collectedFees,
+                spec);
+
+            // Gas tracking
+            GasConsumed spent = new(spentGas, opGas);
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+                tx.SpentGas = spent.SpentGas;
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+                header.GasUsed += spent.SpentGas;
+
+            // Receipt tracing
+            if (tracer.IsTracingReceipt)
+            {
+                Hash256 stateRoot = null;
+                if (!spec.IsEip658Enabled)
+                {
+                    WorldState.RecalculateStateRoot();
+                    stateRoot = WorldState.StateRoot;
+                }
+                tracer.MarkAsSuccess(recipient, spent, [], [], stateRoot);
+            }
+
+            if (tracer.IsTracingFees)
+            {
+                UInt256 eip1559Fees = !tx.IsFree() ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;
+                tracer.ReportFees(beneficiaryFee, eip1559Fees);
+            }
+
+            return TransactionResult.Ok;
         }
 
         protected virtual TransactionResult CalculateAvailableGas(Transaction tx, in IntrinsicGas<TGasPolicy> intrinsicGas, out TGasPolicy gasAvailable)

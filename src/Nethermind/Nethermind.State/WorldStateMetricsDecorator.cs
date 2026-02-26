@@ -14,7 +14,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
+public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState, IDirectTransferState
 {
     public void Restore(Snapshot snapshot) => innerState.Restore(snapshot);
 
@@ -110,6 +110,22 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
     public ArrayPoolList<AddressAsKey>? GetAccountChanges() => innerState.GetAccountChanges();
 
     public void ResetTransient() => innerState.ResetTransient();
+
+    public Account? GetAccountDirect(Address address) => ((IDirectTransferState)innerState).GetAccountDirect(address);
+
+    public void ApplyPlainTransferDirect(
+        Address sender, UInt256 newSenderNonce,
+        in UInt256 senderGasReservation, in UInt256 senderRefund,
+        Address recipient, in UInt256 transferValue,
+        Address beneficiary, in UInt256 beneficiaryFee,
+        Address? feeCollector, in UInt256 collectedFees,
+        IReleaseSpec spec)
+        => ((IDirectTransferState)innerState).ApplyPlainTransferDirect(sender, newSenderNonce,
+            in senderGasReservation, in senderRefund,
+            recipient, in transferValue,
+            beneficiary, in beneficiaryFee,
+            feeCollector, in collectedFees,
+            spec);
 
     public byte[]? GetCode(Address address) => innerState.GetCode(address);
 
