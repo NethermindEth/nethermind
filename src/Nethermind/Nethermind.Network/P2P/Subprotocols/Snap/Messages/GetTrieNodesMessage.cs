@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.State.Snap;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
@@ -19,7 +18,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// <summary>
         /// Trie paths to retrieve the nodes for, grouped by account
         /// </summary>
-        public IOwnedReadOnlyList<PathGroup> Paths { get; set; }
+        public RlpItemList Paths { get; set; }
 
         /// <summary>
         /// Soft limit at which to stop returning data

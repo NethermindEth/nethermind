@@ -126,17 +126,15 @@ namespace Nethermind.Synchronization.StateSync
                 }
             }
 
-            ArrayPoolList<PathGroup> accountAndStoragePath = new ArrayPoolList<PathGroup>(
-                accountTreePaths.Count + itemsGroupedByAccount.Count,
-                accountTreePaths.Count + itemsGroupedByAccount.Count);
-            request.AccountAndStoragePaths = accountAndStoragePath;
+            int totalGroupCount = accountTreePaths.Count + itemsGroupedByAccount.Count;
+            PathGroup[] groups = new PathGroup[totalGroupCount];
 
             int requestedNodeIndex = 0;
             int accountPathIndex = 0;
             for (; accountPathIndex < accountTreePaths.Count; accountPathIndex++)
             {
                 (TreePath path, StateSyncItem syncItem) = accountTreePaths[accountPathIndex];
-                accountAndStoragePath[accountPathIndex] = new PathGroup() { Group = new[] { Nibbles.EncodePath(path) } };
+                groups[accountPathIndex] = new PathGroup() { Group = new[] { Nibbles.EncodePath(path) } };
 
                 // We validate the order of the response later and it has to be the same as RequestedNodes
                 batch.RequestedNodes[requestedNodeIndex] = syncItem;
@@ -160,7 +158,7 @@ namespace Nethermind.Synchronization.StateSync
                     requestedNodeIndex++;
                 }
 
-                accountAndStoragePath[accountPathIndex] = new PathGroup() { Group = group };
+                groups[accountPathIndex] = new PathGroup() { Group = group };
 
                 accountPathIndex++;
             }
@@ -170,6 +168,7 @@ namespace Nethermind.Synchronization.StateSync
                 Logger.Warn($"INCORRECT number of paths RequestedNodes.Length:{batch.RequestedNodes.Count} <> requestedNodeIndex:{requestedNodeIndex}");
             }
 
+            request.AccountAndStoragePaths = PathGroup.EncodeToRlpItemList(groups);
             return request;
         }
 

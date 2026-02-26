@@ -169,8 +169,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
             using IByteArrayList? item = await snapSyncPeer.GetTrieNodes(new GetTrieNodesRequest()
             {
                 RootHash = rootHash,
-                AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
-                { group },
+                AccountAndStoragePaths = PathGroup.EncodeToRlpItemList([group]),
             }, cancellationToken);
 
             if (item is not null && item.Count > 0)

@@ -58,6 +58,16 @@ public sealed class RlpItemList : IByteArrayList
         }
     }
 
+    public int RlpContentLength => _rlpRegion.Length;
+    public ReadOnlySpan<byte> RlpContentSpan => _rlpRegion.Span;
+
+    public ReadOnlySpan<byte> ReadContent(int index)
+    {
+        ReadOnlySpan<byte> rawRlp = this[index];
+        (int prefixLength, int contentLength) = PeekPrefixAndContentLength(rawRlp, 0);
+        return contentLength == 0 ? ReadOnlySpan<byte>.Empty : rawRlp.Slice(prefixLength, contentLength);
+    }
+
     public RlpListReader CreateNestedReader(int index) => new(this[index]);
 
     public RlpItemList ReadNestedItemList(int index)
@@ -70,6 +80,15 @@ public sealed class RlpItemList : IByteArrayList
 
         _memoryOwner.AcquireLease();
         return new RlpItemList(_memoryOwner, nestedRegion);
+    }
+
+    public static RlpItemList DecodeList(ref Rlp.ValueDecoderContext ctx, IMemoryOwner<byte> memoryOwner)
+    {
+        int innerLength = ctx.ReadSequenceLength();
+        int dataStart = ctx.Position;
+        RlpItemList list = new(memoryOwner, memoryOwner.Memory.Slice(dataStart, innerLength));
+        ctx.Position = dataStart + innerLength;
+        return list;
     }
 
     public void Dispose() => _memoryOwner.Dispose();
