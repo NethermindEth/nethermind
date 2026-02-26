@@ -1,0 +1,378 @@
+name: EVM Opcode Benchmark Diff
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "src/Nethermind/Nethermind.Evm/**"
+      - "Directory.Packages.props"
+      - ".github/workflows/evm-opcode-benchmark-diff.yml"
+      - ".github/scripts/evm_benchmark_utils.py"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-trigger:
+    name: Check if EVM benchmark needed
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Determine if benchmark is needed
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          # Always run if EVM source changed
+          if git diff --name-only "$base" "$head" | grep -q "^src/Nethermind/Nethermind\.Evm/"; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Run if the workflow or its utility script changed
+          if git diff --name-only "$base" "$head" | grep -qE "^\.github/(workflows/evm-opcode-benchmark-diff\.yml|scripts/evm_benchmark_utils\.py)$"; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Run if Nethermind.Numerics.Int256 version changed
+          if git diff "$base" "$head" -- Directory.Packages.props | grep -q "Nethermind.Numerics.Int256"; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "should_run=false" >> "$GITHUB_OUTPUT"
+
+  compare-evm-opcodes:
+    name: Compare EVM opcode benchmarks (base vs PR)
+    needs: check-trigger
+    if: needs.check-trigger.outputs.should_run == 'true'
+    runs-on: benchmark
+    timeout-minutes: 720
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      # Default threshold; per-opcode thresholds come from the Threshold column in BDN output
+      THRESHOLD_PERCENT: "5"
+      # Noise guard for unchanged-code stability.
+      # Effective threshold = max(opcode threshold, max(baseCV, prCV) * NOISE_MULTIPLIER)
+      NOISE_MULTIPLIER: "2.0"
+      # Uncertainty guard from BDN Error column.
+      # Effective threshold also includes (baseError + prError) / baseMedian * ERROR_MULTIPLIER.
+      ERROR_MULTIPLIER: "1.0"
+      # Absolute delta floor in ns to avoid flagging tiny changes on ultra-fast opcodes.
+      ABS_DELTA_NS_FLOOR: "2.0"
+      # Hysteresis to prevent near-threshold flapping in repeated CI runs.
+      DELTA_MARGIN_PERCENT: "2.0"
+      # Extra reruns for opcodes that are both flagged and noisy in the first pass.
+      NOISY_RERUNS: "2"
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: false
+          tool-cache: false
+
+      - name: Check out PR head
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Create base worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_sha="${{ github.event.pull_request.base.sha }}"
+          base_dir="${RUNNER_TEMP}/nethermind-base-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git worktree prune
+          git worktree remove --force "${base_dir}" >/dev/null 2>&1 || true
+          git worktree add --detach -f "${base_dir}" "${base_sha}"
+          echo "BASE_WORKTREE=${base_dir}" >> "${GITHUB_ENV}"
+
+      - name: Run base benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          pushd "${BASE_WORKTREE}/src/Nethermind/Nethermind.Benchmark.Runner" >/dev/null
+          inputs_root="${BASE_WORKTREE}/src/Nethermind/artifacts/bin/Nethermind.Benchmark.Runner/release"
+          for d in blake2f blsg1add blsg1msm blsg1mul blsg2add blsg2msm blsg2mul blsmapfp2tog2 blsmapfptog1 blspairingcheck bnadd bnmul bnpair ec_recover modexp point_evaluation ripemd sha256; do
+            mkdir -p "${inputs_root}/${d}/current"
+            if [[ ! -f "${inputs_root}/${d}/current/sample.csv" ]]; then
+              echo "00" > "${inputs_root}/${d}/current/sample.csv"
+            fi
+          done
+          dotnet restore ../Benchmarks.slnx --locked-mode
+          dotnet run -c Release -- --filter "*EvmOpcodesBenchmark*" --join --buildTimeout 900 | tee "${GITHUB_WORKSPACE}/evm-opcodes-base.log"
+          popd >/dev/null
+
+      - name: Run PR benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          pushd "src/Nethermind/Nethermind.Benchmark.Runner" >/dev/null
+          inputs_root="${GITHUB_WORKSPACE}/src/Nethermind/artifacts/bin/Nethermind.Benchmark.Runner/release"
+          for d in blake2f blsg1add blsg1msm blsg1mul blsg2add blsg2msm blsg2mul blsmapfp2tog2 blsmapfptog1 blspairingcheck bnadd bnmul bnpair ec_recover modexp point_evaluation ripemd sha256; do
+            mkdir -p "${inputs_root}/${d}/current"
+            if [[ ! -f "${inputs_root}/${d}/current/sample.csv" ]]; then
+              echo "00" > "${inputs_root}/${d}/current/sample.csv"
+            fi
+          done
+          dotnet restore ../Benchmarks.slnx --locked-mode
+          dotnet run -c Release -- --filter "*EvmOpcodesBenchmark*" --join --buildTimeout 900 | tee "${GITHUB_WORKSPACE}/evm-opcodes-pr.log"
+          popd >/dev/null
+
+      - name: Detect flagged noisy opcodes for rerun
+        id: detect_noisy
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="${GITHUB_WORKSPACE}/.github/scripts${PYTHONPATH:+:$PYTHONPATH}"
+          python3 <<'PY'
+          import os
+          from evm_benchmark_utils import collect_logs, read_env_config, aggregate, compare_opcodes
+
+          config = read_env_config()
+          base_logs, pr_logs = collect_logs()
+          base_data = aggregate(base_logs)
+          pr_data = aggregate(pr_logs)
+
+          rerun_opcodes = [
+              opcode for opcode, info in compare_opcodes(base_data, pr_data, config)
+              if info["is_flagged"] and info["is_noisy"]
+          ]
+
+          with open("evm-rerun-opcodes.txt", "w", encoding="utf-8") as f:
+              for opcode in rerun_opcodes:
+                  f.write(opcode + "\n")
+
+          github_output = os.environ["GITHUB_OUTPUT"]
+          with open(github_output, "a", encoding="utf-8") as f:
+              f.write(f"rerun_needed={'true' if rerun_opcodes else 'false'}\n")
+              f.write(f"rerun_count={len(rerun_opcodes)}\n")
+          PY
+
+      - name: Rerun base benchmark for flagged noisy opcodes
+        if: steps.detect_noisy.outputs.rerun_needed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t opcodes < evm-rerun-opcodes.txt
+          filter_args=()
+          for opcode in "${opcodes[@]}"; do
+            [[ -z "${opcode}" ]] && continue
+            filter_args+=(--filter "*EvmOpcodesBenchmark*Opcode=${opcode}*")
+          done
+          if [[ "${#filter_args[@]}" -eq 0 ]]; then
+            exit 0
+          fi
+
+          pushd "${BASE_WORKTREE}/src/Nethermind/Nethermind.Benchmark.Runner" >/dev/null
+          repeats="${NOISY_RERUNS:-2}"
+          for i in $(seq 1 "${repeats}"); do
+            dotnet run -c Release -- "${filter_args[@]}" --join --buildTimeout 900 \
+              | tee "${GITHUB_WORKSPACE}/evm-opcodes-base-rerun-${i}.log"
+          done
+          popd >/dev/null
+
+      - name: Rerun PR benchmark for flagged noisy opcodes
+        if: steps.detect_noisy.outputs.rerun_needed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t opcodes < evm-rerun-opcodes.txt
+          filter_args=()
+          for opcode in "${opcodes[@]}"; do
+            [[ -z "${opcode}" ]] && continue
+            filter_args+=(--filter "*EvmOpcodesBenchmark*Opcode=${opcode}*")
+          done
+          if [[ "${#filter_args[@]}" -eq 0 ]]; then
+            exit 0
+          fi
+
+          pushd "src/Nethermind/Nethermind.Benchmark.Runner" >/dev/null
+          repeats="${NOISY_RERUNS:-2}"
+          for i in $(seq 1 "${repeats}"); do
+            dotnet run -c Release -- "${filter_args[@]}" --join --buildTimeout 900 \
+              | tee "${GITHUB_WORKSPACE}/evm-opcodes-pr-rerun-${i}.log"
+          done
+          popd >/dev/null
+
+      - name: Compare benchmark summaries
+        id: compare
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="${GITHUB_WORKSPACE}/.github/scripts${PYTHONPATH:+:$PYTHONPATH}"
+          python3 <<'PY'
+          import os
+          from evm_benchmark_utils import (
+              collect_logs, read_env_config, aggregate, compare_opcodes, fmt_cv,
+          )
+
+          config = read_env_config()
+          base_logs, pr_logs = collect_logs()
+          base_data = aggregate(base_logs)
+          pr_data = aggregate(pr_logs)
+
+          flagged = [
+              (opcode, info) for opcode, info in compare_opcodes(base_data, pr_data, config)
+              if info["is_flagged"]
+          ]
+
+          TABLE_HEADER = "| Opcode | Base Median (ns) | PR Median (ns) | Delta | Abs Δ (ns) | Base CV | PR CV | Threshold | Uncertainty | Effective |"
+          TABLE_SEPARATOR = "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+
+          def format_row(opcode, d):
+              base_str = "N/A" if d["base_val"] is None else f"{d['base_val']:.3f}"
+              pr_str = "N/A" if d["pr_val"] is None else f"{d['pr_val']:.3f}"
+              delta_str = "N/A" if d["delta_pct"] is None else f"{d['delta_pct']:+.2f}%"
+              delta_abs_str = "N/A" if d["delta_abs_ns"] is None else f"{d['delta_abs_ns']:.3f}"
+              base_cv = fmt_cv(d["base_mean"], d["base_stddev"])
+              pr_cv = fmt_cv(d["pr_mean"], d["pr_stddev"])
+              return f"| {opcode} | {base_str} | {pr_str} | {delta_str} | {delta_abs_str} | {base_cv} | {pr_cv} | ±{d['threshold']:.1f}% | ±{d['uncertainty_floor']:.1f}% | ±{d['effective_threshold']:.1f}% |"
+
+          regressions = [(op, d) for op, d in flagged if d["delta_pct"] is not None and d["delta_pct"] > 0]
+          improvements = [(op, d) for op, d in flagged if d["delta_pct"] is not None and d["delta_pct"] < 0]
+          unknown = [(op, d) for op, d in flagged if d["delta_pct"] is None]
+
+          summary_lines = []
+          summary_lines.append("## EVM Opcode Benchmark Diff")
+          summary_lines.append("")
+          summary_lines.append(f"Aggregated runs: base={len(base_logs)}, pr={len(pr_logs)}")
+          if os.path.exists("evm-rerun-opcodes.txt"):
+              with open("evm-rerun-opcodes.txt", "r", encoding="utf-8") as f:
+                  rerun_ops = [line.strip() for line in f if line.strip()]
+              if rerun_ops:
+                  summary_lines.append(f"Noisy rerun opcodes: {', '.join(rerun_ops)}")
+          summary_lines.append("")
+
+          def append_table(title, rows):
+              summary_lines.append(f"### {title} ({len(rows)})")
+              summary_lines.append("")
+              summary_lines.append(TABLE_HEADER)
+              summary_lines.append(TABLE_SEPARATOR)
+              for opcode, d in rows:
+                  summary_lines.append(format_row(opcode, d))
+              summary_lines.append("")
+
+          if regressions:
+              append_table("Regressions", regressions)
+          if improvements:
+              append_table("Improvements", improvements)
+          if unknown:
+              append_table("New / Removed", unknown)
+
+          if not flagged:
+              summary_lines.append("No significant regressions or improvements detected.")
+
+          output = "\n".join(summary_lines) + "\n"
+          output = "<!-- evm-opcode-benchmark-diff -->\n" + output
+
+          summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_file:
+              with open(summary_file, "a", encoding="utf-8") as f:
+                  f.write(output)
+
+          with open("evm-opcode-comment.md", "w", encoding="utf-8") as f:
+              f.write(output)
+
+          print(output)
+          PY
+
+          {
+            echo "comment_body<<EOF"
+            cat "evm-opcode-comment.md"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Publish PR benchmark comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          COMMENT_BODY: ${{ steps.compare.outputs.comment_body }}
+        with:
+          script: |
+            const marker = '<!-- evm-opcode-benchmark-diff -->';
+            const body = process.env.COMMENT_BODY;
+            if (!body || body.trim().length === 0) {
+              core.setFailed('Missing COMMENT_BODY from compare step output.');
+              return;
+            }
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const matches = comments
+              .filter((comment) => comment.body && comment.body.includes(marker))
+              .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+            if (matches.length > 0) {
+              const latest = matches[0];
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: latest.id,
+                body,
+              });
+
+              for (const duplicate of matches.slice(1)) {
+                await github.rest.issues.deleteComment({
+                  owner,
+                  repo,
+                  comment_id: duplicate.id,
+                });
+              }
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
+
+      - name: Upload benchmark logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evm-opcode-benchmark-logs
+          path: |
+            evm-opcodes-base.log
+            evm-opcodes-pr.log
+            evm-opcodes-base-rerun-*.log
+            evm-opcodes-pr-rerun-*.log
+            evm-rerun-opcodes.txt
+          if-no-files-found: warn
+
+      - name: Cleanup base worktree
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${BASE_WORKTREE:-}" ]]; then
+            git worktree remove --force "${BASE_WORKTREE}" >/dev/null 2>&1 || true
+          fi
+          git worktree prune || true
