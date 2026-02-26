@@ -69,16 +69,18 @@ public class SnapServer : ISnapServer
         return (!_store.HasRoot(stateRoot)) || _lastNStateRootTracker?.HasStateRoot(stateRoot) == false;
     }
 
-    public IOwnedReadOnlyList<byte[]>? GetTrieNodes(RlpItemList pathSet, Hash256 rootHash, CancellationToken cancellationToken)
+    public RlpByteArrayList? GetTrieNodes(RlpItemList pathSet, Hash256 rootHash, CancellationToken cancellationToken)
     {
-        if (IsRootMissing(rootHash)) return ArrayPoolList<byte[]>.Empty();
+        if (IsRootMissing(rootHash)) return BuildEmptyRlpByteArrayList();
 
         if (_logger.IsDebug) _logger.Debug($"Get trie nodes {pathSet.Count}");
         // TODO: use cache to reduce node retrieval from disk
         int pathLength = pathSet.Count;
-        ArrayPoolList<byte[]> response = new(pathLength);
+        using RlpItemList.Builder builder = new(pathLength);
+        RlpItemList.Builder.Writer writer = builder.BeginContainer();
         StateTree tree = new(_store, _logManager);
         bool abort = false;
+        int count = 0;
 
         for (int i = 0; i < pathLength && !abort && !cancellationToken.IsCancellationRequested; i++)
         {
@@ -92,7 +94,8 @@ public class SnapServer : ISnapServer
                     {
                         byte[] path0 = group.ReadContent(0).ToArray();
                         byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(path0), rootHash);
-                        response.Add(rlp);
+                        writer.WriteValue(rlp);
+                        count++;
                     }
                     catch (MissingTrieNodeException)
                     {
@@ -117,7 +120,8 @@ public class SnapServer : ISnapServer
                             {
                                 byte[] sp = group.ReadContent(reqStorage).ToArray();
                                 byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(sp));
-                                response.Add(sRlp);
+                                writer.WriteValue(sRlp);
+                                count++;
                             }
                         }
                     }
@@ -129,8 +133,10 @@ public class SnapServer : ISnapServer
             }
         }
 
-        if (response.Count == 0) return ArrayPoolList<byte[]>.Empty();
-        return response;
+        writer.Dispose();
+
+        if (count == 0) return BuildEmptyRlpByteArrayList();
+        return new RlpByteArrayList(builder.ToRlpItemList());
     }
 
     public IOwnedReadOnlyList<byte[]> GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
@@ -286,6 +292,12 @@ public class SnapServer : ISnapServer
 
         ArrayPoolList<byte[]> proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? visitor.GetProofs() : ArrayPoolList<byte[]>.Empty();
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
+    }
+
+    private static RlpByteArrayList BuildEmptyRlpByteArrayList()
+    {
+        using RlpItemList.Builder b = new(0, 0);
+        return new RlpByteArrayList(b.ToRlpItemList());
     }
 
     private Account? GetAccountByPath(StateTree tree, in ValueHash256 rootHash, byte[] accountPath)

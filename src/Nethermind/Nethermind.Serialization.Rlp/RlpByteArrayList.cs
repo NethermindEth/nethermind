@@ -16,9 +16,17 @@ public sealed class RlpByteArrayList : IByteArrayList
         _inner = new RlpItemList(memoryOwner, rlpRegion);
     }
 
+    public RlpByteArrayList(RlpItemList inner)
+    {
+        _inner = inner;
+    }
+
     public int Count => _inner.Count;
 
     public ReadOnlySpan<byte> this[int index] => _inner.ReadContent(index);
+
+    public int RlpContentLength => _inner.RlpContentLength;
+    public ReadOnlySpan<byte> RlpContentSpan => _inner.RlpContentSpan;
 
     public void Dispose() => _inner.Dispose();
 }
