@@ -85,7 +85,24 @@ public class XdcModule : Module
             var blockTree = ctx.Resolve<IBlockTree>();
             var worldState = ctx.Resolve<IWorldState>();
             var ecdsa = ctx.Resolve<IEthereumEcdsa>();
-            return new XdcRewardCalculator(logManager, blockTree, worldState, ecdsa);
+            var chainSpec = ctx.Resolve<ChainSpec>();
+            
+            // Get foundation wallet address from chainspec engine parameters
+            Address? foundationWallet = null;
+            if (chainSpec.EngineChainSpecParametersProvider is not null)
+            {
+                try
+                {
+                    var xdcParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>();
+                    foundationWallet = xdcParams.FoundationWalletAddr;
+                }
+                catch
+                {
+                    // Fallback to default constant if not found in chainspec
+                }
+            }
+            
+            return new XdcRewardCalculator(logManager, blockTree, worldState, ecdsa, foundationWallet);
         }).As<IRewardCalculatorSource>()
           .InstancePerLifetimeScope();
 

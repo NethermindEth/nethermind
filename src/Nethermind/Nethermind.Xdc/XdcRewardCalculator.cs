@@ -35,7 +35,6 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
     private const int RewardMasterPercent = 90;
     private const int RewardFoundationPercent = 10;
     
-    private static readonly Address FoundationWallet = new("0x92a289fe95a85c53b8d0d113cbaef0c1ec98ac65");
     private static readonly Address BlockSignersContract = new("0x0000000000000000000000000000000000000089");
     private static readonly Address ValidatorContract = new("0x0000000000000000000000000000000000000088");
 
@@ -43,13 +42,15 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
     private readonly IWorldState? _stateProvider;
     private readonly IEthereumEcdsa? _ecdsa;
     private readonly ILogger _logger;
+    private readonly Address _foundationWallet;
 
-    public XdcRewardCalculator(ILogManager logManager, IBlockTree? blockTree = null, IWorldState? stateProvider = null, IEthereumEcdsa? ecdsa = null)
+    public XdcRewardCalculator(ILogManager logManager, IBlockTree? blockTree = null, IWorldState? stateProvider = null, IEthereumEcdsa? ecdsa = null, Address? foundationWallet = null)
     {
         _blockTree = blockTree;
         _stateProvider = stateProvider;
         _ecdsa = ecdsa;
         _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
+        _foundationWallet = foundationWallet ?? XdcConstants.FoundationWalletAddress;
     }
 
     public IRewardCalculator Get(ITransactionProcessor processor) => this;
@@ -247,7 +248,7 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
 
             // 10% to foundation  
             UInt256 foundationReward = calcReward * (UInt256)RewardFoundationPercent / 100;
-            result.Add(new BlockReward(FoundationWallet, foundationReward, BlockRewardType.External));
+            result.Add(new BlockReward(_foundationWallet, foundationReward, BlockRewardType.External));
             total += foundationReward;
 
             // Console.WriteLine($"[XDC-REWARD]   {signer} -> owner {owner}: {ownerReward} wei, foundation: {foundationReward} wei");
