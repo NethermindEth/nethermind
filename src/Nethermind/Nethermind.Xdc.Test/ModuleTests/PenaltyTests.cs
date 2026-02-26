@@ -200,6 +200,7 @@ internal class PenaltyTests
 
         var blockHeaders = new XdcBlockHeader[chainSize];
         var hashToHeader = new Dictionary<Hash256, XdcBlockHeader>();
+        var hashToBlock = new Dictionary<Hash256, Block>();
         var blocks = new Block[chainSize];
 
         for (int i = 0; i < chainSize; i++)
@@ -218,10 +219,13 @@ internal class PenaltyTests
             Hash256 hash = blockHeaders[i].Hash ?? blockHeaders[i].CalculateHash().ToHash256();
             hashToHeader[hash] = blockHeaders[i];
             blocks[i] = new Block(blockHeaders[i]);
+            hashToBlock[hash] = blocks[i];
         }
 
         blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>())
             .Returns(ci => hashToHeader[ci.ArgAt<Hash256>(0)]);
+        blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<long>())
+            .Returns(ci => hashToBlock.TryGetValue(ci.ArgAt<Hash256>(0), out Block? block) ? block : null);
         blockTree.Head.Returns(blocks.Last());
 
         IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
