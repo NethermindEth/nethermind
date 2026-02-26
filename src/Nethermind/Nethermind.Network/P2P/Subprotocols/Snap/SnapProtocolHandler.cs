@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
-        private static readonly TrieNodesMessage EmptyTrieNodesMessage = new(ArrayPoolList<byte[]>.Empty());
+        private static readonly TrieNodesMessage EmptyTrieNodesMessage = new(EmptyByteArrayList.Instance);
 
         private ISnapServer? SyncServer { get; }
         private bool ServingEnabled { get; }
@@ -210,7 +210,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         {
             if (SyncServer is null) return EmptyTrieNodesMessage;
             IOwnedReadOnlyList<byte[]>? trieNodes = SyncServer.GetTrieNodes(getTrieNodesMessage.Paths, getTrieNodesMessage.RootHash, cancellationToken);
-            return new TrieNodesMessage(trieNodes);
+            return new TrieNodesMessage(trieNodes as IByteArrayList ?? new ByteArrayListAdapter(trieNodes));
         }
 
         private AccountRangeMessage FulfillAccountRangeMessage(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
@@ -306,7 +306,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Bytes = bytesLimit
                 }, _getTrieNodesRequests, token));
 
-            return response.Nodes as IByteArrayList ?? new ByteArrayListAdapter(response.Nodes);
+            return response.Nodes;
         }
 
         public static IOwnedReadOnlyList<PathGroup> GetPathGroups(AccountsToRefreshRequest request)
