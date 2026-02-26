@@ -124,7 +124,8 @@ public class BranchProcessor(
 
                 if (preWarmTask is not null)
                 {
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token,
+                        backgroundCancellation!.Cancel);
                 }
                 else
                 {

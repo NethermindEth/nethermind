@@ -234,10 +234,6 @@ public class DbConfig : IDbConfig
 
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
-
-        // Dont do periodic compaction
-        "ttl=0;" +
-        "periodic_compaction_seconds=0;" +
         "";
 
     public string StateDbLargeMemoryRocksDbOptions { get; set; } =
@@ -311,8 +307,6 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.partition_filters=false;" +
         "block_based_table_factory.index_type=kBinarySearch;" +
 
-        "ttl=0;" +
-        "periodic_compaction_seconds=0;" +
         "compression=kLZ4Compression;" +
 
         // Reduce num of files. Tend to be a good thing.
