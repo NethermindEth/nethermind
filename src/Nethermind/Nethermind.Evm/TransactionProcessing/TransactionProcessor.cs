@@ -355,7 +355,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // Inline nonce validation (from IncrementNonce)
             if (validate && tx.Nonce != senderAccount.Nonce)
             {
-                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {senderAccount.Nonce})");
+                if (Logger.IsTrace) Logger.Trace($"Invalid tx {tx.Hash} (WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {senderAccount.Nonce}))");
                 return tx.Nonce > senderAccount.Nonce ? TransactionResult.TransactionNonceTooHigh : TransactionResult.TransactionNonceTooLow;
             }
 
@@ -364,13 +364,13 @@ namespace Nethermind.Evm.TransactionProcessing
             UInt256 premiumPerGas = UInt256.Zero;
             if (shouldValidateGas && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
             {
-                TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
+                if (Logger.IsTrace) Logger.Trace($"Invalid tx {tx.Hash} (MINER_PREMIUM_IS_NEGATIVE)");
                 return TransactionResult.MinerPremiumNegative;
             }
 
             if (UInt256.SubtractUnderflow(in senderAccount.Balance, in tx.ValueRef, out UInt256 balanceLeft))
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderAccount.Balance}");
+                if (Logger.IsTrace) Logger.Trace($"Invalid tx {tx.Hash} (INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderAccount.Balance})");
                 return TransactionResult.InsufficientSenderBalance;
             }
 
@@ -379,7 +379,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 bool overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
                 if (overflows || balanceLeft < maxGasFee)
                 {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({sender})_BALANCE = {senderAccount.Balance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
+                    if (Logger.IsTrace) Logger.Trace($"Invalid tx {tx.Hash} (INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({sender})_BALANCE = {senderAccount.Balance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas})");
                     return TransactionResult.InsufficientMaxFeePerGasForSenderBalance;
                 }
             }
@@ -387,7 +387,7 @@ namespace Nethermind.Evm.TransactionProcessing
             bool gasOverflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out UInt256 senderReservedGasPayment);
             if (gasOverflows || senderReservedGasPayment > balanceLeft)
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderAccount.Balance}");
+                if (Logger.IsTrace) Logger.Trace($"Invalid tx {tx.Hash} (INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderAccount.Balance})");
                 return TransactionResult.InsufficientSenderBalance;
             }
 

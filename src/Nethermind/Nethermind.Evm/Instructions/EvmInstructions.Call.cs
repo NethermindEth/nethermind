@@ -544,19 +544,6 @@ internal static partial class EvmInstructions
     OutOfGas:
         return new(programCounter, EvmExceptionType.OutOfGas);
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void TraceValueTransfer(VirtualMachine<TGasPolicy> vm)
-        {
-            vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void TraceMemoryChange(VirtualMachine<TGasPolicy> vm, UInt256 dataOffset)
-        {
-            // Specific to Parity tracing: inspect 32 bytes from data offset.
-            ReadOnlyMemory<byte>? memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
-            vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
-        }
     }
 
     private static bool ChargeForLargeContractAccess<TGasPolicy>(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref TGasPolicy gas)
