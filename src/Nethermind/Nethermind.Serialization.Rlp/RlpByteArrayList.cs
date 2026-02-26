@@ -11,24 +11,14 @@ public sealed class RlpByteArrayList : IByteArrayList
 {
     private readonly RlpItemList _inner;
 
-    public RlpByteArrayList(IMemoryOwner<byte> memoryOwner, int dataStart, int innerLength)
+    public RlpByteArrayList(IMemoryOwner<byte> memoryOwner, Memory<byte> rlpRegion)
     {
-        _inner = new RlpItemList(memoryOwner, memoryOwner.Memory.Slice(dataStart, innerLength));
+        _inner = new RlpItemList(memoryOwner, rlpRegion);
     }
 
     public int Count => _inner.Count;
 
-    public ReadOnlySpan<byte> this[int index]
-    {
-        get
-        {
-            ReadOnlySpan<byte> rawRlp = _inner[index];
-            (int prefixLength, int contentLength) = RlpItemList.PeekPrefixAndContentLength(rawRlp, 0);
-            return contentLength == 0
-                ? ReadOnlySpan<byte>.Empty
-                : rawRlp.Slice(prefixLength, contentLength);
-        }
-    }
+    public ReadOnlySpan<byte> this[int index] => _inner.ReadContent(index);
 
     public void Dispose() => _inner.Dispose();
 }

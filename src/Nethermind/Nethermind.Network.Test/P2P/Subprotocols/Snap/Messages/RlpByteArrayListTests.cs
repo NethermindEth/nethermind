@@ -111,7 +111,7 @@ public class RlpByteArrayListTests
 
         byte[] data = rlpStream.Data.ToArray()!;
         ExactMemoryOwner memoryOwner = new(data);
-        return new RlpByteArrayList(memoryOwner, dataStart, items.Length);
+        return new RlpByteArrayList(memoryOwner, memoryOwner.Memory.Slice(dataStart, contentLength));
     }
 
     private sealed class ExactMemoryOwner(byte[] data) : IMemoryOwner<byte>

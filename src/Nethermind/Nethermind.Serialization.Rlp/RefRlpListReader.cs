@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Serialization.Rlp;
 
-public ref struct RlpListReader
+public ref struct RefRlpListReader
 {
     private readonly ReadOnlySpan<byte> _data;
     private readonly int _dataStart;
@@ -16,7 +16,7 @@ public ref struct RlpListReader
     private int _cachedIndex;
     private int _cachedPosition;
 
-    public RlpListReader(ReadOnlySpan<byte> data)
+    public RefRlpListReader(ReadOnlySpan<byte> data)
     {
         _data = data;
         (int prefixLength, int contentLength) = RlpItemList.PeekPrefixAndContentLength(data, 0);
