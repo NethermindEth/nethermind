@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
@@ -17,7 +17,7 @@ internal static partial class DisassemblyParser
     [GeneratedRegex(@"^; Total bytes of code", RegexOptions.Compiled | RegexOptions.Multiline)]
     private static partial Regex MethodEndPattern();
 
-    public static string Parse(string jitOutput, bool lastOnly = false)
+    public static string Parse(string jitOutput)
     {
         if (string.IsNullOrWhiteSpace(jitOutput))
         {
@@ -37,11 +37,7 @@ internal static partial class DisassemblyParser
             return string.Empty;
         }
 
-        // In tier1 mode, JitDisasm captures both Tier-0 and Tier-1 compilations.
-        // We want the LAST compilation (Tier-1 with full optimizations).
-        int startIdx = lastOnly ? matches.Count - 1 : 0;
-
-        for (int i = startIdx; i < matches.Count; i++)
+        for (int i = 0; i < matches.Count; i++)
         {
             var match = matches[i];
             var startIndex = match.Index;

@@ -42,11 +42,7 @@ public class PrewarmerScopeProvider(
 
     private sealed class ScopeWrapper : IWorldStateScopeProvider.IScope
     {
-        private readonly IWorldStateScopeProvider.IScope baseScope;
-        private readonly SeqlockCache<AddressAsKey, Account> preBlockCache;
-        private readonly SeqlockCache<StorageCell, byte[]> storageCache;
-        private readonly bool populatePreBlockCache;
-        private readonly SeqlockCache<AddressAsKey, Account>.ValueFactory _getFromBaseTree;
+        private readonly PreWarmCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
@@ -162,7 +158,12 @@ public class PrewarmerScopeProvider(
         }
     }
 
-    private sealed class StorageTreeWrapper : IWorldStateScopeProvider.IStorageTree
+    private sealed class StorageTreeWrapper(
+        IWorldStateScopeProvider.IStorageTree baseStorageTree,
+        PreWarmCache<StorageCell, byte[]> preBlockCache,
+        Address address,
+        bool populatePreBlockCache
+    ) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache;

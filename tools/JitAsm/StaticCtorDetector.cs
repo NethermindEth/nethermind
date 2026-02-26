@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.RegularExpressions;
@@ -13,11 +13,8 @@ internal static partial class StaticCtorDetector
     private static partial Regex CctorCallPattern();
 
     // JIT helpers for static field initialization
-    // Matches both shared and non-shared variants, with optional brackets:
-    //   call CORINFO_HELP_GETSHARED_NONGCSTATIC_BASE
-    //   call [CORINFO_HELP_GET_NONGCSTATIC_BASE]
-    //   call CORINFO_HELP_CLASSINIT_SHARED_DYNAMICCLASS
-    [GeneratedRegex(@"call\s+\[?CORINFO_HELP_(?:(?:GETSHARED_|GET_)(?:NON)?GCSTATIC_BASE|CLASSINIT_SHARED_DYNAMICCLASS)\]?", RegexOptions.Compiled)]
+    // Example: call     CORINFO_HELP_GETSHARED_NONGCSTATIC_BASE
+    [GeneratedRegex(@"call\s+CORINFO_HELP_(?:GETSHARED_(?:NON)?GCSTATIC_BASE|CLASSINIT_SHARED_DYNAMICCLASS)", RegexOptions.Compiled)]
     private static partial Regex StaticHelperPattern();
 
     // Pattern for type references in static helper context
@@ -30,16 +27,6 @@ internal static partial class StaticCtorDetector
     // Example: cmp     dword ptr [Namespace.Type:initialized], 0
     [GeneratedRegex(@"\[(?<type>[\w.+`\[\],]+):", RegexOptions.Compiled)]
     private static partial Regex StaticFieldAccessPattern();
-
-    // Pattern for extracting types from call targets in JIT output.
-    // In diffable mode, long call targets wrap to the next line, e.g.:
-    //   call
-    //   [Nethermind.Core.Eip4844Constants:get_MinBlobGasPrice():...]
-    // In non-diffable mode, they appear on one line:
-    //   call [Nethermind.Core.Eip4844Constants:get_MinBlobGasPrice():...]
-    // This pattern matches the "[Type:Method" portion (possibly with [r11] prefix for callvirt).
-    [GeneratedRegex(@"(?:\[(?:r\d+\])?)?\[?(?<type>[\w.+`\[\],]+):(?!:)", RegexOptions.Compiled)]
-    private static partial Regex CallTargetTypePattern();
 
     public static IReadOnlyList<string> DetectStaticCtors(string disassemblyOutput)
     {
@@ -58,9 +45,7 @@ internal static partial class StaticCtorDetector
         // Check for static helper calls and try to find associated types
         if (StaticHelperPattern().IsMatch(disassemblyOutput))
         {
-            int typesBeforeHelperScan = detectedTypes.Count;
-
-            // Look for type references near the helper calls (±3 lines)
+            // Look for type references near the helper calls
             var lines = disassemblyOutput.Split('\n');
             for (int i = 0; i < lines.Length; i++)
             {
@@ -91,39 +76,9 @@ internal static partial class StaticCtorDetector
                     }
                 }
             }
-
-            // Fallback: if helpers were found but no types extracted from nearby context
-            // (common when JitDiffableDasm strips annotations or helper has no nearby type comment),
-            // scan the entire method for types referenced in call instructions.
-            // In diffable mode, long call targets wrap to the next line:
-            //   call
-            //   [Nethermind.Core.Eip4844Constants:get_MinBlobGasPrice():...]
-            // Pre-running extra cctors is cheap; missing the right one means stale output.
-            if (detectedTypes.Count == typesBeforeHelperScan)
-            {
-                for (int i = 0; i < lines.Length; i++)
-                {
-                    var line = lines[i];
-                    // Check current line and continuation lines after bare "call" instructions
-                    if (line.TrimStart().StartsWith("call") || (i > 0 && lines[i - 1].TrimEnd().EndsWith("call")))
-                    {
-                        var callMatch = CallTargetTypePattern().Match(line);
-                        if (callMatch.Success)
-                        {
-                            var typeName = NormalizeTypeName(callMatch.Groups["type"].Value);
-                            if (!string.IsNullOrEmpty(typeName) && IsValidTypeName(typeName))
-                            {
-                                detectedTypes.Add(typeName);
-                            }
-                        }
-                    }
-                }
-            }
         }
 
-        var result = new List<string>(detectedTypes);
-        result.Sort(StringComparer.Ordinal);
-        return result;
+        return detectedTypes.ToList();
     }
 
     private static string NormalizeTypeName(string typeName)

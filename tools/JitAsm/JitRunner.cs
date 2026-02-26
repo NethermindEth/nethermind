@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
@@ -6,7 +6,7 @@ using System.Text;
 
 namespace JitAsm;
 
-internal sealed class JitRunner(string assemblyPath, string? typeName, string methodName, string? typeParams, string? classTypeParams, bool verbose, bool tier1 = false)
+internal sealed class JitRunner(string assemblyPath, string? typeName, string methodName, string? typeParams, string? classTypeParams, bool verbose)
 {
     public async Task<JitResult> RunSinglePassAsync(IReadOnlyList<string>? cctorsToInit = null)
     {
@@ -49,7 +49,7 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
     private async Task<JitResult> RunJitProcessAsync(IReadOnlyList<string>? cctorsToInit)
     {
         // Get the path to the JitAsm executable
-        var (executablePath, argumentPrefix) = GetExecutablePath();
+        var executablePath = GetExecutablePath();
 
         // Build the method pattern for JitDisasm
         var methodPattern = BuildMethodPattern();
@@ -64,32 +64,13 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
         };
 
         // Set JIT environment variables - these must be set before the process starts
-        if (tier1)
-        {
-            // Tier-1 simulation: enable tiered compilation so the method compiles at Tier-0 first,
-            // then gets recompiled at Tier-1 with full optimizations after the cctors have run.
-            startInfo.EnvironmentVariables["DOTNET_TieredCompilation"] = "1";
-            startInfo.EnvironmentVariables["DOTNET_TieredPGO"] = "1";
-            startInfo.EnvironmentVariables["DOTNET_TC_CallCountThreshold"] = "1";
-            startInfo.EnvironmentVariables["DOTNET_TC_CallCountingDelayMs"] = "0";
-        }
-        else
-        {
-            startInfo.EnvironmentVariables["DOTNET_TieredCompilation"] = "0";
-            startInfo.EnvironmentVariables["DOTNET_TC_QuickJit"] = "0";
-        }
+        startInfo.EnvironmentVariables["DOTNET_TieredCompilation"] = "0";
+        startInfo.EnvironmentVariables["DOTNET_TC_QuickJit"] = "0";
         startInfo.EnvironmentVariables["DOTNET_JitDisasm"] = methodPattern;
         startInfo.EnvironmentVariables["DOTNET_JitDiffableDasm"] = "1";
-        if (verbose)
-            startInfo.EnvironmentVariables["JITASM_VERBOSE"] = "1";
 
         // Build arguments for internal runner
         var args = new StringBuilder();
-        if (argumentPrefix is not null)
-        {
-            args.Append(EscapeArg(argumentPrefix));
-            args.Append(' ');
-        }
         args.Append("--internal-runner ");
         args.Append(EscapeArg(assemblyPath));
         args.Append(' ');
@@ -119,11 +100,6 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
             args.Append(EscapeArg(string.Join(";", cctorsToInit)));
         }
 
-        if (tier1)
-        {
-            args.Append(" --tier1");
-        }
-
         startInfo.Arguments = args.ToString();
 
         if (verbose)
@@ -150,13 +126,12 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
             var stderr = await stderrTask;
 
             // Parse the JIT output from stdout (JIT diagnostics can go to either stream)
-            // In tier1 mode, multiple compilations are captured; take only the last (Tier-1)
-            var disassembly = DisassemblyParser.Parse(stdout, lastOnly: tier1);
+            var disassembly = DisassemblyParser.Parse(stdout);
 
             if (string.IsNullOrWhiteSpace(disassembly))
             {
                 // Try stderr
-                disassembly = DisassemblyParser.Parse(stderr, lastOnly: tier1);
+                disassembly = DisassemblyParser.Parse(stderr);
             }
 
             if (string.IsNullOrWhiteSpace(disassembly))
@@ -196,54 +171,39 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
         return methodName;
     }
 
-    /// <summary>
-    /// Returns the executable path and any prefix arguments needed (e.g., DLL path for dotnet host).
-    /// </summary>
-    private static (string FileName, string? ArgumentPrefix) GetExecutablePath()
+    private static string GetExecutablePath()
     {
         // Get the path to the current executable
         var currentExe = Environment.ProcessPath;
         if (currentExe is not null && File.Exists(currentExe))
         {
-            // When running via "dotnet run", ProcessPath is the dotnet host, not our tool.
-            // Detect this by checking if it ends with "dotnet" (or "dotnet.exe").
-            var exeName = Path.GetFileNameWithoutExtension(currentExe);
-            if (exeName.Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-            {
-                var assemblyLocation = typeof(JitRunner).Assembly.Location;
-                if (!string.IsNullOrEmpty(assemblyLocation))
-                {
-                    return ("dotnet", assemblyLocation);
-                }
-            }
-
-            return (currentExe, null);
+            return currentExe;
         }
 
         // Fallback to assembly location
-        var location = typeof(JitRunner).Assembly.Location;
-        if (!string.IsNullOrEmpty(location))
+        var assemblyLocation = typeof(JitRunner).Assembly.Location;
+        if (!string.IsNullOrEmpty(assemblyLocation))
         {
             // For .dll, try to find the corresponding .exe
-            var directory = Path.GetDirectoryName(location)!;
-            var baseName = Path.GetFileNameWithoutExtension(location);
+            var directory = Path.GetDirectoryName(assemblyLocation)!;
+            var exeName = Path.GetFileNameWithoutExtension(assemblyLocation);
 
             // Try .exe first (Windows)
-            var exePath = Path.Combine(directory, baseName + ".exe");
+            var exePath = Path.Combine(directory, exeName + ".exe");
             if (File.Exists(exePath))
             {
-                return (exePath, null);
+                return exePath;
             }
 
             // Try without extension (Linux/macOS)
-            exePath = Path.Combine(directory, baseName);
+            exePath = Path.Combine(directory, exeName);
             if (File.Exists(exePath))
             {
-                return (exePath, null);
+                return exePath;
             }
 
             // Use dotnet to run the dll
-            return ("dotnet", location);
+            return "dotnet";
         }
 
         throw new InvalidOperationException("Could not determine executable path");

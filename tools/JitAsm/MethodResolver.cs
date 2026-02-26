@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Reflection;
@@ -231,33 +231,6 @@ internal sealed class MethodResolver(Assembly assembly)
                 var nestedName = typeName[(t.FullName.Length + 1)..];
                 var nested = t.GetNestedType(nestedName, BindingFlags.Public | BindingFlags.NonPublic);
                 if (nested is not null) return nested;
-            }
-        }
-
-        // Search referenced assemblies for cross-assembly types
-        foreach (var refName in assembly.GetReferencedAssemblies())
-        {
-            try
-            {
-                var refAssembly = Assembly.Load(refName);
-                type = refAssembly.GetType(typeName);
-                if (type is not null) return type;
-
-                // Try matching generic types by base name (e.g., "ClockCache" matches "ClockCache`2")
-                Type[] refTypes;
-                try { refTypes = refAssembly.GetTypes(); }
-                catch (ReflectionTypeLoadException ex) { refTypes = ex.Types.Where(t => t is not null).ToArray()!; }
-
-                type = refTypes.FirstOrDefault(t =>
-                    t.FullName == typeName || t.Name == typeName ||
-                    (t.IsGenericTypeDefinition &&
-                     (t.FullName?.StartsWith(typeName + "`") == true ||
-                      t.Name.StartsWith(typeName + "`"))));
-                if (type is not null) return type;
-            }
-            catch
-            {
-                // Skip assemblies that can't be loaded
             }
         }
 

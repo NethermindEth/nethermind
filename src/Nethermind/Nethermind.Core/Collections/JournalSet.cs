@@ -16,7 +16,7 @@ namespace Nethermind.Core.Collections
     /// </summary>
     /// <typeparam name="T">Item type.</typeparam>
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
-    public sealed class JournalSet<T>(EqualityComparer<T> equalityComparer) : IHashSetEnumerableCollection<T>, ICollection<T>, IJournal<int>
+    public sealed class JournalSet<T> : ICollection<T>, IJournal<int>
     {
         private readonly List<T> _items = [];
         private readonly HashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));

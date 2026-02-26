@@ -11,6 +11,23 @@ namespace Nethermind.Consensus.Clique
         {
             return header.Difficulty == Clique.DifficultyInTurn;
         }
+
+        internal static Address[] ExtractSigners(BlockHeader blockHeader)
+        {
+            if (blockHeader.ExtraData is null)
+            {
+                throw new BlockchainException("Block header ExtraData cannot be null when extracting signers");
+            }
+
+            Span<byte> signersData = blockHeader.ExtraData.AsSpan(Clique.ExtraVanityLength, (blockHeader.ExtraData.Length - Clique.ExtraSealLength));
+            Address[] signers = new Address[signersData.Length / Address.Size];
+            for (int i = 0; i < signers.Length; i++)
+            {
+                signers[i] = new Address(signersData.Slice(i * 20, 20));
+            }
+
+            return signers;
+        }
     }
 
     internal static class BlockExtensions
