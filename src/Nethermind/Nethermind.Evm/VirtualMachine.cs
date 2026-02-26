@@ -48,8 +48,7 @@ public sealed class EthereumVirtualMachine(
 public static class VirtualMachineStatics
 {
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
-
-    public static readonly UInt256 P255Int = (UInt256)BigInteger.Pow(2, 255);
+    public static readonly UInt256 P255Int = new(0, 0, 0, 9223372036854775808); // 2^255
     public static readonly byte[] EofHash256 = KeccakHash.ComputeHashBytes(EvmObjectFormat.EofValidator.MAGIC);
     public static ref readonly UInt256 P255 => ref P255Int;
     public static readonly UInt256 BigInt256 = 256;
@@ -96,9 +95,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected ITxTracer _txTracer = NullTxTracer.Instance;
 
     private ICodeInfoRepository _codeInfoRepository;
-
-    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
-    private static long _txCount;
 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     protected VmState<TGasPolicy> _currentState;
@@ -148,7 +144,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-    public virtual TransactionSubstate ExecuteTransaction<TTracingInst>(
+#if !ZKVM
+    virtual
+#endif
+    public TransactionSubstate ExecuteTransaction<TTracingInst>(
+
         VmState<TGasPolicy> vmState,
         IWorldState worldState,
         ITxTracer txTracer)
@@ -324,6 +324,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             }
         }
     }
+
+    public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
+        ExecuteTransaction<OffFlag>(vmState, worldState, txTracer);
 
     protected void PrepareCreateData(VmState<TGasPolicy> previousState, ref ZeroPaddedSpan previousCallOutput)
     {
@@ -858,39 +861,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// <param name="spec">
     /// The release specification, which is used to prepare the appropriate opcodes.
     /// </param>
-    private void PrepareOpcodes<TTracingInst>(IReleaseSpec spec)
-        where TTracingInst : struct, IFlag
-    {
-        // Check if tracing instructions are inactive.
-        if (!TTracingInst.IsActive)
-        {
-            // Occasionally refresh the opcode cache for non-tracing opcodes.
-            // The cache is flushed every 10,000 transactions until a threshold of 500,000 transactions.
-            // This is to have the function pointers directly point at any PGO optimized methods rather than via pre-stubs
-            // May be a few cycles to pick up pointers to the re-Jitted optimized methods depending on what's in the blocks,
-            // however the the refreshes don't take long. (re-Jitting doesn't update prior captured function pointers)
-            if (_txCount < 500_000 && Interlocked.Increment(ref _txCount) % 10_000 == 0)
-            {
-                if (_logger.IsDebug)
-                {
-                    _logger.Debug("Refreshing EVM instruction cache");
-                }
-                // Regenerate the non-traced opcode set to pick up any updated PGO optimized methods.
-                spec.EvmInstructionsNoTrace = GenerateOpCodes<TTracingInst>(spec);
-            }
-            // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
-            _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])(spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
-        }
-        else
-        {
-            // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-            _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
-        }
-    }
-
-    protected virtual delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
-        where TTracingInst : struct, IFlag
-        => EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
+    private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag;
 
     /// <summary>
     /// Reports the final outcome of a transaction action to the transaction tracer, taking into account
@@ -1205,7 +1176,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
     [SkipLocalsInit]
-    protected virtual unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
+#if !ZKVM
+    virtual
+#endif
+    protected CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas)
         where TTracingInst : struct, IFlag
@@ -1232,8 +1206,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         var opcodeArray = _opcodeMethods;
-        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>*
-               opcodeMethods = &opcodeArray[0])
+        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
         {
             int opCodeCount = 0;
             ref Instruction code = ref MemoryMarshal.GetReference(codeSection);

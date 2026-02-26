@@ -67,7 +67,9 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         if (owner is null || owner == Address.Zero)
             return;
 
-        UInt256 fee = tx.GasPrice * (ulong)spentGas;
+        UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
+        UInt256 fee = effectiveGasPrice * (ulong)spentGas;
+
         WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
 
         if (tracer.IsTracingFees)
@@ -179,15 +181,10 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         return base.CalculateEffectiveGasPrice(tx, eip1559Enabled, in baseFee, out opcodeGasPrice);
     }
 
-    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
-    {
-        if (tx.RequiresSpecialHandling((IXdcReleaseSpec)spec))
-        {
-            return new IntrinsicGas<EthereumGasPolicy>();
-        }
-
-        return base.CalculateIntrinsicGas(tx, spec);
-    }
+    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
+        tx.RequiresSpecialHandling((IXdcReleaseSpec)spec)
+            ? new IntrinsicGas<EthereumGasPolicy>()
+            : base.CalculateIntrinsicGas(tx, spec);
 
     private TransactionResult ExecuteSpecialTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {

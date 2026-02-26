@@ -19,9 +19,9 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     private bool _disposed;
     private int _count = 0;
 
-    public ArrayPoolList(int capacity) : this(ArrayPool<T>.Shared, capacity) { }
+    public ArrayPoolList(int capacity) : this(SafeArrayPool<T>.Shared, capacity) { }
 
-    public ArrayPoolList(int capacity, int count) : this(ArrayPool<T>.Shared, capacity, count) { }
+    public ArrayPoolList(int capacity, int count) : this(SafeArrayPool<T>.Shared, capacity, count) { }
 
     public ArrayPoolList(int capacity, IEnumerable<T> enumerable) : this(capacity) => this.AddRange(enumerable);
 
