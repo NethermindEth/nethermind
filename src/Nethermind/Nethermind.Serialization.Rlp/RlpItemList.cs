@@ -11,6 +11,7 @@ public sealed partial class RlpItemList : IDisposable
 {
     private readonly RefCountingMemoryOwner<byte> _memoryOwner;
     private readonly Memory<byte> _rlpRegion;
+    private readonly int _prefixLength;
     private int _count;
 
     private int _cachedIndex;
@@ -20,18 +21,20 @@ public sealed partial class RlpItemList : IDisposable
     {
         _memoryOwner = new RefCountingMemoryOwner<byte>(memoryOwner);
         _rlpRegion = rlpRegion;
+        _prefixLength = PeekPrefixAndContentLength(rlpRegion.Span, 0).prefixLength;
         _count = -1;
         _cachedIndex = 0;
-        _cachedPosition = 0;
+        _cachedPosition = _prefixLength;
     }
 
     private RlpItemList(RefCountingMemoryOwner<byte> memoryOwner, Memory<byte> rlpRegion)
     {
         _memoryOwner = memoryOwner;
         _rlpRegion = rlpRegion;
+        _prefixLength = PeekPrefixAndContentLength(rlpRegion.Span, 0).prefixLength;
         _count = -1;
         _cachedIndex = 0;
-        _cachedPosition = 0;
+        _cachedPosition = _prefixLength;
     }
 
     public int Count
@@ -56,8 +59,10 @@ public sealed partial class RlpItemList : IDisposable
         }
     }
 
-    public int RlpContentLength => _rlpRegion.Length;
-    public ReadOnlySpan<byte> RlpContentSpan => _rlpRegion.Span;
+    public int RlpContentLength => _rlpRegion.Length - _prefixLength;
+    public ReadOnlySpan<byte> RlpContentSpan => _rlpRegion.Span.Slice(_prefixLength);
+    public int RlpLength => _rlpRegion.Length;
+    public ReadOnlySpan<byte> RlpSpan => _rlpRegion.Span;
 
     public ReadOnlySpan<byte> ReadContent(int index)
     {
@@ -74,7 +79,7 @@ public sealed partial class RlpItemList : IDisposable
         if (item[0] < 0xc0) throw new RlpException("Item is not an RLP list");
 
         (int prefixLength, int contentLength) = PeekPrefixAndContentLength(_rlpRegion.Span, _cachedPosition);
-        Memory<byte> nestedRegion = _rlpRegion.Slice(_cachedPosition + prefixLength, contentLength);
+        Memory<byte> nestedRegion = _rlpRegion.Slice(_cachedPosition, prefixLength + contentLength);
 
         _memoryOwner.AcquireLease();
         return new RlpItemList(_memoryOwner, nestedRegion);
@@ -82,10 +87,11 @@ public sealed partial class RlpItemList : IDisposable
 
     public static RlpItemList DecodeList(ref Rlp.ValueDecoderContext ctx, IMemoryOwner<byte> memoryOwner)
     {
+        int prefixStart = ctx.Position;
         int innerLength = ctx.ReadSequenceLength();
-        int dataStart = ctx.Position;
-        RlpItemList list = new(memoryOwner, memoryOwner.Memory.Slice(dataStart, innerLength));
-        ctx.Position = dataStart + innerLength;
+        int totalLength = (ctx.Position - prefixStart) + innerLength;
+        RlpItemList list = new(memoryOwner, memoryOwner.Memory.Slice(prefixStart, totalLength));
+        ctx.Position = prefixStart + totalLength;
         return list;
     }
 
@@ -94,7 +100,7 @@ public sealed partial class RlpItemList : IDisposable
     private int ComputeCount()
     {
         ReadOnlySpan<byte> span = _rlpRegion.Span;
-        int position = 0;
+        int position = _prefixLength;
         int count = 0;
         while (position < span.Length)
         {
@@ -118,7 +124,7 @@ public sealed partial class RlpItemList : IDisposable
         else
         {
             scanFrom = 0;
-            position = 0;
+            position = _prefixLength;
         }
 
         for (int i = scanFrom; i < index; i++)

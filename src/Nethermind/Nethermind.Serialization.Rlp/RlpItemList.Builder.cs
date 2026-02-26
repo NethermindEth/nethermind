@@ -33,11 +33,12 @@ public sealed partial class RlpItemList
         public RlpItemList ToRlpItemList()
         {
             Span<Entry> entries = _entries.AsSpan();
-            int totalLength = entries[0].Length;
-            IMemoryOwner<byte> owner = MemoryPool<byte>.Shared.Rent(totalLength);
+            int contentLength = entries[0].Length;
+            int outerLength = Rlp.LengthOfSequence(contentLength);
+            IMemoryOwner<byte> owner = MemoryPool<byte>.Shared.Rent(outerLength);
             Span<byte> buf = owner.Memory.Span;
             Span<byte> values = _valueBuffer.AsSpan();
-            int pos = 0;
+            int pos = EncodeSequencePrefix(buf, 0, contentLength);
 
             for (int i = 1; i < entries.Length; i++)
             {

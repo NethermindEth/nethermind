@@ -103,7 +103,6 @@ public class RlpByteArrayListTests
         RlpStream rlpStream = new(totalLength);
 
         rlpStream.StartSequence(contentLength);
-        int dataStart = rlpStream.Position;
         for (int i = 0; i < items.Length; i++)
         {
             rlpStream.Encode(items[i]);
@@ -111,7 +110,7 @@ public class RlpByteArrayListTests
 
         byte[] data = rlpStream.Data.ToArray()!;
         ExactMemoryOwner memoryOwner = new(data);
-        return new RlpByteArrayList(memoryOwner, memoryOwner.Memory.Slice(dataStart, contentLength));
+        return new RlpByteArrayList(memoryOwner, memoryOwner.Memory.Slice(0, totalLength));
     }
 
     private sealed class ExactMemoryOwner(byte[] data) : IMemoryOwner<byte>
