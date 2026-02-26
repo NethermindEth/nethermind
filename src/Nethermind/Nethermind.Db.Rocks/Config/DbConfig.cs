@@ -235,9 +235,6 @@ public class DbConfig : IDbConfig
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
 
-        // Dont do periodic compaction
-        "ttl=0;" +
-        "periodic_compaction_seconds=0;" +
         "";
 
     public string StateDbLargeMemoryRocksDbOptions { get; set; } =
