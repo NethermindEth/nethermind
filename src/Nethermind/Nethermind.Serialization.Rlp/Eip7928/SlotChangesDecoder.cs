@@ -31,8 +31,7 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
             ushort index = s.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
-                Console.WriteLine($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
-                throw new RlpException("Storage changes were in incorrect order.");
+                throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
             }
             lastIndex = index;
             return index;

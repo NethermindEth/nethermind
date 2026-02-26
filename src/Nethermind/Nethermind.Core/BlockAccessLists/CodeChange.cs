@@ -1,4 +1,3 @@
-
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -9,20 +8,13 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct CodeChange(ushort blockAccessIndex, byte[] newCode) : IEquatable<CodeChange>, IIndexedChange
+public readonly record struct CodeChange(ushort BlockAccessIndex, [property: JsonConverter(typeof(ByteArrayConverter))] byte[] NewCode) : IIndexedChange
 {
-    public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
-    [JsonConverter(typeof(ByteArrayConverter))]
-    public byte[] NewCode { get; init; } = newCode;
-
-    public readonly bool Equals(CodeChange other) =>
+    public bool Equals(CodeChange other) =>
         BlockAccessIndex == other.BlockAccessIndex &&
         CompareByteArrays(NewCode, other.NewCode);
 
-    public override readonly bool Equals(object? obj) =>
-        obj is CodeChange other && Equals(other);
-
-    public override readonly int GetHashCode() =>
+    public override int GetHashCode() =>
         HashCode.Combine(BlockAccessIndex, NewCode);
 
     private static bool CompareByteArrays(byte[]? left, byte[]? right) =>
@@ -34,11 +26,5 @@ public readonly struct CodeChange(ushort blockAccessIndex, byte[] newCode) : IEq
             _ => left.SequenceEqual(right)
         };
 
-    public static bool operator ==(CodeChange left, CodeChange right) =>
-        left.Equals(right);
-
-    public static bool operator !=(CodeChange left, CodeChange right) =>
-        !(left == right);
-
-    public override readonly string ToString() => $"{BlockAccessIndex}:0x{Convert.ToHexString(NewCode ?? [])}";
+    public override string ToString() => $"{BlockAccessIndex}:0x{Convert.ToHexString(NewCode ?? [])}";
 }

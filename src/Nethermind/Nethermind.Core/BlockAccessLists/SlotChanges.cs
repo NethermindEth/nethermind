@@ -1,4 +1,3 @@
-
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -10,36 +9,21 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public class SlotChanges(UInt256 slot, SortedList<ushort, StorageChange> changes) : IEquatable<SlotChanges>
+public record SlotChanges(UInt256 Slot, SortedList<ushort, StorageChange> Changes)
 {
-    public UInt256 Slot { get; init; } = slot;
+    public SlotChanges(UInt256 slot) : this(slot, []) { }
 
-    public SortedList<ushort, StorageChange> Changes { get; init; } = changes;
-
-    public SlotChanges(UInt256 slot) : this(slot, [])
-    {
-    }
-
-    public bool Equals(SlotChanges? other) =>
+    public virtual bool Equals(SlotChanges? other) =>
         other is not null &&
         Slot.Equals(other.Slot) &&
         Changes.SequenceEqual(other.Changes);
 
-    public override bool Equals(object? obj) =>
-        obj is SlotChanges other && Equals(other);
-
     public override int GetHashCode() =>
         HashCode.Combine(Slot, Changes);
 
-    public static bool operator ==(SlotChanges left, SlotChanges right) =>
-        left.Equals(right);
-
-    public static bool operator !=(SlotChanges left, SlotChanges right) =>
-        !(left == right);
-
     public override string ToString() => $"{Slot}:[{string.Join(", ", Changes.Values)}]";
 
-    public bool PopStorageChange(ushort index, [NotNullWhen(true)] out StorageChange? storageChange)
+    public bool TryPopStorageChange(ushort index, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         storageChange = null;
 
