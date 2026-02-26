@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.JsonRpc.Modules;
 
@@ -27,6 +28,20 @@ namespace Nethermind.JsonRpc
         public IJsonRpcDuplexClient? DuplexClient { get; }
         public JsonRpcUrl? Url { get; }
         public bool IsAuthenticated { get; }
+
+        public IDictionary<string, string>? ResponseHeaders { get; private set; }
+
+        public static void SetResponseHeader(string key, string value)
+        {
+            JsonRpcContext? context = Current.Value;
+            if (context is null)
+            {
+                return;
+            }
+
+            context.ResponseHeaders ??= new Dictionary<string, string>();
+            context.ResponseHeaders[key] = value;
+        }
 
         public void Dispose()
         {

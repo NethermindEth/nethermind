@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
@@ -200,6 +201,14 @@ internal sealed class HttpJsonRpcResponseSink(
         context.Response.StatusCode = isCollection
             ? StatusCodes.Status200OK
             : GetStatusCode(response);
+
+        if (JsonRpcContext.Current.Value?.ResponseHeaders is { } responseHeaders)
+        {
+            foreach (KeyValuePair<string, string> header in responseHeaders)
+            {
+                context.Response.Headers[header.Key] = header.Value;
+            }
+        }
     }
 
     private static int GetStatusCode(JsonRpcResponse? response) =>
