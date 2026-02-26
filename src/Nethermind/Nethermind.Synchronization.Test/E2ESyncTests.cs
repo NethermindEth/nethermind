@@ -728,11 +728,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         {
 
             public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
-                IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
+                IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default, Action? onTransactionsExecuted = null)
             {
                 try
                 {
-                    return blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                    return blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token, onTransactionsExecuted);
                 }
                 catch (Exception ex)
                 {
