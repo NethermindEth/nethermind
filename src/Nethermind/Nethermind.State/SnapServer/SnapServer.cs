@@ -81,8 +81,9 @@ public class SnapServer : ISnapServer
         StateTree tree = new(_store, _logManager);
         bool abort = false;
         int count = 0;
+        long responseSize = 0;
 
-        for (int i = 0; i < pathLength && !abort && !cancellationToken.IsCancellationRequested; i++)
+        for (int i = 0; i < pathLength && !abort && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; i++)
         {
             using RlpItemList group = pathSet.CreateNestedItemList(i);
             switch (group.Count)
@@ -95,6 +96,7 @@ public class SnapServer : ISnapServer
                         byte[] path0 = group.ReadContent(0).ToArray();
                         byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(path0), rootHash);
                         writer.WriteValue(rlp);
+                        responseSize += rlp?.Length ?? 0;
                         count++;
                     }
                     catch (MissingTrieNodeException)
@@ -116,11 +118,12 @@ public class SnapServer : ISnapServer
                             Hash256? storageRoot = account.StorageRoot;
                             StorageTree sTree = new(_store.GetTrieStore(storagePath), storageRoot, _logManager);
 
-                            for (int reqStorage = 1; reqStorage < group.Count; reqStorage++)
+                            for (int reqStorage = 1; reqStorage < group.Count && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
                             {
                                 byte[] sp = group.ReadContent(reqStorage).ToArray();
                                 byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(sp));
                                 writer.WriteValue(sRlp);
+                                responseSize += sRlp?.Length ?? 0;
                                 count++;
                             }
                         }
