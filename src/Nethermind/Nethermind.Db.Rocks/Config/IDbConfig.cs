@@ -103,21 +103,6 @@ public interface IDbConfig : IConfig
     string L1OriginDbRocksDbOptions { get; set; }
     string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 
-    string LogIndexStorageDbRocksDbOptions { get; set; }
-    string LogIndexStorageDbAdditionalRocksDbOptions { get; set; }
-    string LogIndexStorageMetaDbRocksDbOptions { get; set; }
-    string LogIndexStorageMetaDbAdditionalRocksDbOptions { get; set; }
-    string LogIndexStorageAddressesDbRocksDbOptions { get; set; }
-    string LogIndexStorageAddressesDbAdditionalRocksDbOptions { get; set; }
-    string LogIndexStorageTopics0DbRocksDbOptions { get; set; }
-    string LogIndexStorageTopics0DbAdditionalRocksDbOptions { get; set; }
-    string LogIndexStorageTopics1DbRocksDbOptions { get; set; }
-    string LogIndexStorageTopics1DbAdditionalRocksDbOptions { get; set; }
-    string LogIndexStorageTopics2DbRocksDbOptions { get; set; }
-    string LogIndexStorageTopics2DbAdditionalRocksDbOptions { get; set; }
-    string LogIndexStorageTopics3DbRocksDbOptions { get; set; }
-    string LogIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; }
-
     bool? FlatDbVerifyChecksum { get; set; }
     string FlatDbRocksDbOptions { get; set; }
     string? FlatDbAdditionalRocksDbOptions { get; set; }

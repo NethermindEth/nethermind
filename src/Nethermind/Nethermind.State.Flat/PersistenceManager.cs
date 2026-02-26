@@ -220,6 +220,12 @@ public class PersistenceManager(
         return currentPersistedState;
     }
 
+    public void ResetPersistedStateId()
+    {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        _currentPersistedStateId = reader.CurrentState;
+    }
+
     internal void PersistSnapshot(Snapshot snapshot)
     {
         long compactLength = snapshot.To.BlockNumber! - snapshot.From.BlockNumber!;
@@ -254,10 +260,7 @@ public class PersistenceManager(
             }
 
             _trieNodesSortBuffer.Clear();
-            foreach (TreePath path in snapshot.StateNodeKeys)
-            {
-                _trieNodesSortBuffer.Add((new Hash256AsKey(Hash256.Zero), path));
-            }
+            _trieNodesSortBuffer.AddRange(snapshot.StateNodeKeys.Select<TreePath, (Hash256AsKey, TreePath)>((path) => (new Hash256AsKey(Hash256.Zero), path)));
             _trieNodesSortBuffer.Sort();
 
             long stateNodesSize = 0;

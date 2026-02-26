@@ -26,15 +26,13 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync
 {
-    [TestFixture(1, 0)]
-    [TestFixture(1, 100)]
-    [TestFixture(4, 0)]
-    [TestFixture(4, 100)]
+    [TestFixtureSource(typeof(StateSyncFeedTestsFixtureSource))]
     [Parallelizable(ParallelScope.Fixtures)]
     public class StateSyncFeedTests(
+        Action<ContainerBuilder> registerTreeSyncStore,
         int peerCount,
         int maxNodeLatency)
-        : StateSyncFeedTestsBase(defaultPeerCount: peerCount, defaultPeerMaxRandomLatency: maxNodeLatency)
+        : StateSyncFeedTestsBase(registerTreeSyncStore, peerCount, maxNodeLatency)
     {
         // Useful for set and forget run. But this test is taking a long time to have it set to other than 1.
         private const int TestRepeatCount = 1;
@@ -54,7 +52,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             await using IContainer container = PrepareDownloader(remote, mock =>
                 mock.SetFilter(((MemDb)remote.StateDb).Keys.Take(((MemDb)remote.StateDb).Keys.Count - 4).Select(HashKey).ToArray()));
-            var local = container.Resolve<IStateSyncTestOperation>();
+            LocalDbContext local = container.Resolve<LocalDbContext>();
 
             local.CompareTrees(remote, _logger, "BEFORE FIRST SYNC", true);
 
@@ -63,6 +61,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             local.CompareTrees(remote, _logger, "AFTER FIRST SYNC", true);
 
+            local.RootHash = remote.StateTree.RootHash;
             for (byte i = 0; i < 8; i++)
                 remote.StateTree
                     .Set(TestItem.Addresses[i], TrieScenarios.AccountJustState0.WithChangedBalance(i)
@@ -82,6 +81,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             local.CompareTrees(remote, _logger, "AFTER SECOND SYNC", true);
 
+            local.RootHash = remote.StateTree.RootHash;
             for (byte i = 0; i < 16; i++)
                 remote.StateTree
                     .Set(TestItem.Addresses[i], TrieScenarios.AccountJustState0.WithChangedBalance(i)
@@ -121,7 +121,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             testCase.SetupTree(remote.StateTree, remote.TrieStore, remote.CodeDb);
 
             await using IContainer container = PrepareDownloader(remote);
-            var local = container.Resolve<IStateSyncTestOperation>();
+            LocalDbContext local = container.Resolve<LocalDbContext>();
 
             local.CompareTrees(remote, _logger, "BEGIN");
 
@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             RemoteDbContext remote = new(_logManager);
             await using IContainer container = PrepareDownloader(remote);
-            var local = container.Resolve<IStateSyncTestOperation>();
+            LocalDbContext local = container.Resolve<LocalDbContext>();
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
             local.CompareTrees(remote, _logger, "END");
@@ -153,7 +153,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             await using IContainer container = PrepareDownloader(remote, mock =>
                 mock.SetFilter(new[] { remote.StateTree.RootHash }));
-            var local = container.Resolve<IStateSyncTestOperation>();
+            LocalDbContext local = container.Resolve<LocalDbContext>();
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx, 1000);
 
@@ -178,7 +178,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             testCase.SetupTree(remote.StateTree, remote.TrieStore, remote.CodeDb);
 
             await using IContainer container = PrepareDownloader(remote, static mock => mock.MaxResponseLength = 1);
-            var local = container.Resolve<IStateSyncTestOperation>();
+            LocalDbContext local = container.Resolve<LocalDbContext>();
 
             local.CompareTrees(remote, _logger, "BEGIN");
 
@@ -196,7 +196,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remote.StateTree.Commit();
 
             await using IContainer container = PrepareDownloader(remote);
-            var local = container.Resolve<IStateSyncTestOperation>();
+            LocalDbContext local = container.Resolve<LocalDbContext>();
 
             local.CompareTrees(remote, _logger, "BEGIN");
 
@@ -219,7 +219,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             await using IContainer container = PrepareDownloader(remote, mock =>
                 mock.SetFilter(((MemDb)remote.StateDb).Keys.Take(((MemDb)remote.StateDb).Keys.Count - 1).Select(k => HashKey(k)).ToArray()));
-            var local = container.Resolve<IStateSyncTestOperation>();
+            LocalDbContext local = container.Resolve<LocalDbContext>();
 
             local.CompareTrees(remote, _logger, "BEFORE FIRST SYNC");
 
@@ -228,6 +228,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             local.CompareTrees(remote, _logger, "AFTER FIRST SYNC");
 
+            local.RootHash = remote.StateTree.RootHash;
             remote.StateTree.Set(TestItem.AddressA, TrieScenarios.AccountJustState0.WithChangedBalance(123.Ether()));
             remote.StateTree.Set(TestItem.AddressB, TrieScenarios.AccountJustState1.WithChangedBalance(123.Ether()));
             remote.StateTree.Set(TestItem.AddressC, TrieScenarios.AccountJustState2.WithChangedBalance(123.Ether()));
@@ -278,7 +279,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remote.StateTree.Commit();
 
             await using IContainer container = PrepareDownloader(remote);
-            var local = container.Resolve<IStateSyncTestOperation>();
+            LocalDbContext local = container.Resolve<LocalDbContext>();
 
             local.CompareTrees(remote, _logger, "BEGIN");
 
@@ -303,7 +304,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remote.StateTree.Commit();
 
             await using IContainer container = PrepareDownloader(remote);
-            var local = container.Resolve<IStateSyncTestOperation>();
+            LocalDbContext local = container.Resolve<LocalDbContext>();
 
             local.CompareTrees(remote, _logger, "BEGIN");
 
@@ -331,7 +332,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remote.StateTree.Commit();
 
             await using IContainer container = PrepareDownloader(remote);
-            var local = container.Resolve<IStateSyncTestOperation>();
+            LocalDbContext local = container.Resolve<LocalDbContext>();
 
             local.CompareTrees(remote, _logger, "BEGIN");
 
@@ -358,7 +359,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remote.StateTree.Commit();
 
             await using IContainer container = PrepareDownloader(remote);
-            var local = container.Resolve<IStateSyncTestOperation>();
+            LocalDbContext local = container.Resolve<LocalDbContext>();
 
             local.CompareTrees(remote, _logger, "BEGIN");
 
@@ -431,13 +432,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             state.Commit();
 
             await using IContainer container = PrepareDownloader(remote);
-            var local = container.Resolve<IStateSyncTestOperation>();
+            LocalDbContext local = container.Resolve<LocalDbContext>();
 
             // Local state only have the state
-            local.SetAccountsAndCommit(
-                (TestItem.KeccakA, Build.An.Account.WithNonce(1).WithStorageRoot(storageTree.RootHash).TestObject),
-                (TestItem.KeccakB, Build.An.Account.WithNonce(1).TestObject),
-                (TestItem.KeccakC, Build.An.Account.WithNonce(1).TestObject));
+            local.Set(TestItem.KeccakA, Build.An.Account.WithNonce(1).WithStorageRoot(storageTree.RootHash).TestObject);
+            local.Set(TestItem.KeccakB, Build.An.Account.WithNonce(1).TestObject);
+            local.Set(TestItem.KeccakC, Build.An.Account.WithNonce(1).TestObject);
+            local.Commit();
 
             // Local state missing root so that it would start
             local.DeleteStateRoot();

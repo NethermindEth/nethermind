@@ -13,7 +13,6 @@ namespace Nethermind.State.Flat.Persistence;
 
 public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader
 {
-    private const int NoAccessors = 0; // Same as parent's constant
     private const int Disposing = -1; // Same as parent's constant
     private readonly IPersistence.IPersistenceReader _innerReader;
 
@@ -25,12 +24,10 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
         {
             // Reader should be re-created every block unless something holds it for very long.
             // It prevent database compaction, so this need to be closed eventually.
-            while (true)
+            await Task.Delay(60_000);
+            if (logger.IsWarn && Volatile.Read(ref _leases.Value) != Disposing)
             {
-                await Task.Delay(60_000);
-                if (Volatile.Read(ref _leases.Value) <= NoAccessors) return;
-                if (logger.IsWarn)
-                    logger.Warn($"Unexpected old snapshot created. Lease count {_leases.Value}. State {CurrentState}");
+                logger.Warn($"Unexpected old snapshot created. Lease count {_leases.Value}");
             }
         });
     }
@@ -55,11 +52,11 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value) =>
         _innerReader.TryGetStorageRaw(addrHash, slotHash, ref value);
 
-    public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
-        _innerReader.CreateAccountIterator(startKey, endKey);
+    public IPersistence.IFlatIterator CreateAccountIterator() =>
+        _innerReader.CreateAccountIterator();
 
-    public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
-        _innerReader.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
+    public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey) =>
+        _innerReader.CreateStorageIterator(accountKey);
 
     public bool IsPreimageMode => _innerReader.IsPreimageMode;
 

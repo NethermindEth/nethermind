@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
 using System.Numerics;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -32,9 +30,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public int CachedNodes => Nodes.Count;
 
-    public ConcurrentDictionary<TreePath, TrieNode> ReadStateNodes = new();
-    public ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> ReadStorageNodes = new();
-
     public void Reset()
     {
         Nodes.Reset();
@@ -52,9 +47,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         {
             PrewarmedAddresses.Clear();
         }
-
-        ReadStateNodes.NoResizeClear();
-        ReadStorageNodes.NoResizeClear();
     }
 
     public bool ShouldPrewarm(Address address, UInt256? slot)

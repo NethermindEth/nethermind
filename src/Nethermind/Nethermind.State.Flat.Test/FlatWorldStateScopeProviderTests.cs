@@ -759,63 +759,6 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(storageTree.Get(slotAfter), Is.EqualTo(valueAfter), "Slot after self-destruct should be found");
     }
 
-    [Test]
-    public void TestSelfDestructInReadOnlySnapshotDoesNotBlockNewerLocalSnapshots()
-    {
-        // When DetermineSelfDestructSnapshotIdx finds the self-destruct in ReadOnlySnapshotBundle,
-        // selfDestructStateIdx is in [0, readOnlySnapshotCount-1]. In GetSlot,
-        // currentBundleSelfDestructIdx becomes negative, which previously caused the entire
-        // _snapshots loop to be skipped, making storage written after self-destruct invisible.
-
-        using TestContext ctx = new TestContext();
-        FlatWorldStateScope scope = ctx.Scope;
-
-        Address addr = TestItem.AddressA;
-        UInt256 slotBefore = 1;
-        UInt256 slotAfter1 = 2;
-        UInt256 slotAfter2 = 3;
-        byte[] valueBeforeSelfDestruct = { 0x01 };
-        byte[] valueAfter1 = { 0x02 };
-        byte[] valueAfter2 = { 0x03 };
-
-        Account acc = TestItem.GenerateRandomAccount();
-        ctx.PersistenceReader.GetAccount(addr).Returns(acc);
-
-        // Read-only snapshot 0: slot exists before self-destruct
-        ctx.AddSnapshot(content =>
-            content.Storages[(addr, slotBefore)] = SlotValue.FromSpanWithoutLeadingZero(valueBeforeSelfDestruct));
-
-        // Read-only snapshot 1: self-destruct marker (in ReadOnlySnapshotBundle)
-        ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[addr] = false);
-
-        // Local commit 1: write storage after self-destruct
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
-        {
-            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotAfter1, valueAfter1);
-            storageBatch.Dispose();
-        }
-        scope.Commit(1);
-
-        // Local commit 2: write another storage slot after self-destruct
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
-        {
-            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotAfter2, valueAfter2);
-            storageBatch.Dispose();
-        }
-        scope.Commit(2);
-
-        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
-
-        // Slots written after self-destruct in local snapshots should be visible
-        Assert.That(storageTree.Get(slotAfter1), Is.EqualTo(valueAfter1), "Slot in local snapshot after read-only self-destruct should be visible");
-        Assert.That(storageTree.Get(slotAfter2), Is.EqualTo(valueAfter2), "Slot in local snapshot after read-only self-destruct should be visible");
-
-        // Slot from before self-destruct (in read-only snapshot) should be blocked
-        Assert.That(storageTree.Get(slotBefore), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
-    }
-
     #endregion
 
 }

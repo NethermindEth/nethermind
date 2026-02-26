@@ -168,4 +168,54 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
         public ReadOnlySpan<byte> CurrentKey => list[idx].Item1;
         public ReadOnlySpan<byte> CurrentValue => list[idx].Item2;
     }
+
+    public byte[]? FirstKey => Keys.Min();
+    public byte[]? LastKey => Keys.Max();
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+    {
+        ArrayPoolList<(byte[], byte[]?)> sortedValue = new(1);
+        sortedValue.AddRange(GetAll().Select(kv => (kv.Key, kv.Value)));
+        sortedValue.AsSpan().Sort((it1, it2) => Bytes.BytesComparer.CompareWithCorrectLength(it1.Item1, it2.Item1));
+        return new FakeSortedView(sortedValue);
+    }
+
+    private class FakeSortedView(ArrayPoolList<(byte[], byte[]?)> list) : ISortedView
+    {
+        private int idx = -1;
+
+        public void Dispose()
+        {
+            list.Dispose();
+        }
+
+        public bool StartBefore(ReadOnlySpan<byte> value)
+        {
+            if (list.Count == 0) return false;
+
+            idx = 0;
+            while (idx < list.Count)
+            {
+                if (Bytes.BytesComparer.CompareWithCorrectLength(list[idx].Item1, value) >= 0)
+                {
+                    idx--;
+                    return true;
+                }
+                idx++;
+            }
+
+            // All keys are less than value - position at last element (largest key <= value)
+            idx = list.Count - 1;
+            return true;
+        }
+
+        public bool MoveNext()
+        {
+            idx++;
+            if (idx >= list.Count) return false;
+            return true;
+        }
+
+        public ReadOnlySpan<byte> CurrentKey => list[idx].Item1;
+        public ReadOnlySpan<byte> CurrentValue => list[idx].Item2;
+    }
 }

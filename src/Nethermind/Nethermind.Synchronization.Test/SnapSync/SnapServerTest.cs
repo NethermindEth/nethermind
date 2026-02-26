@@ -19,7 +19,6 @@ using Nethermind.State.SnapServer;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -52,10 +51,7 @@ public class SnapServerTest
         private readonly StateTree _tree;
         private readonly MemDb _clientStateDb;
 
-        public ISnapServer Server { get; }
-        public SnapProvider SnapProvider { get; }
-        public Hash256 RootHash => _tree.RootHash;
-        public int PersistedNodeCount => _clientStateDb.Keys.Count;
+        SnapProvider snapProvider = new(progressTracker, new MemDb(), new PatriciaSnapTrieFactory(nodeStorage, LimboLogs.Instance), LimboLogs.Instance);
 
         internal TrieSnapServerContext(ILastNStateRootTracker? lastNStateRootTracker = null)
         {
@@ -363,8 +359,19 @@ public class SnapServerTest
     [Test]
     public void TestGetStorageRange()
     {
-        using var context = CreateContext();
-        Hash256 storageRoot = FillAccountWithDefaultStorage(context);
+        MemDb stateDb = new MemDb();
+        MemDb codeDb = new MemDb();
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
+
+        (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store);
+
+        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
+
+        IDb codeDb2 = new MemDb();
+        IDb stateDb2 = new MemDb();
+
+        using ProgressTracker progressTracker = new(stateDb2, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, codeDb2, new PatriciaSnapTrieFactory(new NodeStorage(stateDb2), LimboLogs.Instance), LimboLogs.Instance);
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
             context.Server.GetStorageRanges(context.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
@@ -412,8 +419,19 @@ public class SnapServerTest
     [Test]
     public void TestGetStorageRangeMulti()
     {
-        using var context = CreateContext();
-        Hash256 storageRoot = FillAccountWithStorage(context, 10000);
+        MemDb stateDb = new MemDb();
+        MemDb codeDb = new MemDb();
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
+
+        (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store, 10000);
+
+        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
+
+        IDb stateDb2 = new MemDb();
+        IDb codeDb2 = new MemDb();
+
+        using ProgressTracker progressTracker = new(stateDb2, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, codeDb2, new PatriciaSnapTrieFactory(new NodeStorage(stateDb2), LimboLogs.Instance), LimboLogs.Instance);
 
         Hash256 startRange = Keccak.Zero;
         while (true)
@@ -462,7 +480,9 @@ public class SnapServerTest
         List<PathWithAccount> accountWithStorage = new();
         using (var batch = context.BeginWriteBatch())
         {
-            for (int i = 1000; i < 10000; i += 1000)
+            Address address = TestItem.GetRandomAddress();
+            StorageTree storageTree = new(store.GetTrieStore(address.ToAccountPath.ToCommitment()), LimboLogs.Instance);
+            for (int j = 0; j < i; j += 1)
             {
                 Address address = TestItem.GetRandomAddress();
                 Hash256 storagePath = address.ToAccountPath.ToCommitment();

@@ -4,6 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.SnapSync;
@@ -12,18 +13,25 @@ public class PatriciaSnapTrieFactory(INodeStorage nodeStorage, ILogManager logMa
 {
     private readonly RawScopedTrieStore _stateTrieStore = new(nodeStorage, null);
 
-    public ISnapTree CreateStateTree()
-    {
-        var adapter = new SnapUpperBoundAdapter(_stateTrieStore);
-        return new PatriciaSnapStateTree(new StateTree(adapter, logManager), adapter, nodeStorage);
-    }
+    public ISnapStateTree CreateStateTree() =>
+        new PatriciaSnapStateTree(new StateTree(_stateTrieStore, logManager));
 
-    public ISnapTree CreateStorageTree(in ValueHash256 accountPath)
-    {
-        Hash256 address = accountPath.ToCommitment();
-        var storageTrieStore = new RawScopedTrieStore(nodeStorage, address);
-        var adapter = new SnapUpperBoundAdapter(storageTrieStore);
-        return new PatriciaSnapStorageTree(new StorageTree(adapter, logManager), adapter, nodeStorage, address);
-    }
+    public ISnapStorageTree CreateStorageTree(in ValueHash256 accountPath) =>
+        new PatriciaSnapStorageTree(new StorageTree(new RawScopedTrieStore(nodeStorage, accountPath.ToCommitment()), logManager));
 
+    public Hash256? ResolveStorageRoot(byte[] nodeData)
+    {
+        try
+        {
+            TreePath emptyTreePath = TreePath.Empty;
+            TrieNode node = new(NodeType.Unknown, nodeData, isDirty: true);
+            node.ResolveNode(_stateTrieStore, emptyTreePath);
+            node.ResolveKey(_stateTrieStore, ref emptyTreePath);
+            return node.Keccak;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

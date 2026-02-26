@@ -32,10 +32,8 @@ public interface IPersistence
         byte[]? GetAccountRaw(Hash256 addrHash);
         bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value);
 
-        IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
-        IFlatIterator CreateAccountIterator() => CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
-        IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
-        IFlatIterator CreateStorageIterator(in ValueHash256 accountKey) => CreateStorageIterator(accountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
+        IFlatIterator CreateAccountIterator();
+        IFlatIterator CreateStorageIterator(in ValueHash256 accountKey);
         bool IsPreimageMode { get; }
     }
 
@@ -49,6 +47,11 @@ public interface IPersistence
 
         void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value);
         void SetAccountRaw(Hash256 addrHash, Account account);
+
+        void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+        void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
+        void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath);
+        void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
     }
 
     /// <summary>

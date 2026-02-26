@@ -34,8 +34,8 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max reorg depth", DefaultValue = "256")]
     int MaxReorgDepth { get; set; }
 
-    [ConfigItem(Description = "Minimum compact size (power of 2, floor for hierarchical compaction)", DefaultValue = "2")]
-    int MinCompactSize { get; set; }
+    [ConfigItem(Description = "Compact interval", DefaultValue = "4")]
+    int MidCompactSize { get; set; }
 
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     int MinReorgDepth { get; set; }

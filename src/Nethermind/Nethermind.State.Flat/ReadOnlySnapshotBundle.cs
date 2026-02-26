@@ -16,7 +16,7 @@ using Nethermind.Trie;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// A read-only bundle of <see cref="Snapshot"/>s backed by a persistence reader.
+/// A bundle of <see cref="Snapshot"/> and a layer of write buffer backed by a <see cref="SnapshotContent"/>.
 /// </summary>
 public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,

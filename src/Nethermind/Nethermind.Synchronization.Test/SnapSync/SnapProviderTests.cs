@@ -21,7 +21,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-using Nethermind.State.Proofs;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Sync;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 using Nethermind.Trie;
@@ -29,8 +31,9 @@ using AccountRange = Nethermind.State.Snap.AccountRange;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
 
-[TestFixture]
-public class SnapProviderTests
+[TestFixture(true)]
+[TestFixture(false)]
+public class SnapProviderTests(bool useFlat)
 {
 
     private ContainerBuilder CreateContainerBuilder(TestSyncConfig? testSyncConfig = null)
@@ -39,6 +42,14 @@ public class SnapProviderTests
 
         ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new TestSynchronizerModule(testConfig));
+
+        if (useFlat)
+        {
+            builder = builder
+                .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new TestMemColumnsDb<FlatDbColumns>())
+                .AddSingleton<IPersistence, RocksDbPersistence>()
+                .AddSingleton<ISnapTrieFactory, FlatSnapTrieFactory>();
+        }
 
         return builder;
     }
@@ -266,7 +277,25 @@ public class SnapProviderTests
 
         snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs).Should().Be(AddRangeResult.OK);
 
-        container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count().Should().Be(3); // 3 child. Root branch node not saved due to state sync compatibility
+        if (useFlat)
+        {
+            IPersistence persistence = container.Resolve<IPersistence>();
+            using var reader = persistence.CreateReader();
+            int accountCount = 0;
+            using (var accountIterator = reader.CreateAccountIterator())
+            {
+                while (accountIterator.MoveNext())
+                {
+                    accountCount++;
+                }
+            }
+
+            Assert.That(accountCount, Is.EqualTo(3));
+        }
+        else
+        {
+            container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count().Should().Be(3); // 3 child. Root branch node not saved due to state sync compatibility
+        }
     }
 
     [TestCase("badreq-roothash.zip")]
@@ -293,7 +322,7 @@ public class SnapProviderTests
         StateTree stree = new StateTree(adapter, LimboLogs.Instance);
         var factory = new TestSnapTrieFactory(() => new PatriciaSnapStateTree(stree, adapter, nodeStorage));
         SnapProviderHelper.AddAccountRange(
-                factory,
+                new PatriciaSnapStateTree(stree),
                 0,
                 new ValueHash256(asReq.Root),
                 new ValueHash256(asReq.StartingHash),

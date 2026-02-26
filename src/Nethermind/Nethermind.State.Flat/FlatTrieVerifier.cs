@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
@@ -28,9 +27,8 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public class FlatTrieVerifier
 {
-    private const int StorageChannelCapacity = 4;
+    private const int StorageChannelCapacity = 16;
     private const int FlatKeyLength = 20;
-    private const int PartitionCount = 8;
 
     private readonly IFlatDbManager? _flatDbManager;
     private readonly IPersistence? _persistence;
@@ -124,12 +122,7 @@ public class FlatTrieVerifier
         finally
         {
             channel.Writer.Complete();
-
-            while (!Task.WaitAll(workers, TimeSpan.FromSeconds(30)))
-            {
-                if (_logger.IsInfo) _logger.Info($"Waiting for storage verification workers... {Stats}");
-            }
-
+            Task.WaitAll(workers);
             progressTracker.Finish();
         }
 
@@ -155,31 +148,7 @@ public class FlatTrieVerifier
     }
 
     /// <summary>
-    /// Get partition bounds for parallel verification.
-    /// Divides the 256-bit key space into 8 equal ranges based on the first byte.
-    /// </summary>
-    private static (ValueHash256 start, ValueHash256 end) GetPartitionBounds(int partition)
-    {
-        byte startByte = (byte)(partition * 32);
-        ValueHash256 start = default;
-        start.BytesAsSpan[0] = startByte;
-
-        ValueHash256 end;
-        if (partition < PartitionCount - 1)
-        {
-            end = default;
-            end.BytesAsSpan[0] = (byte)((partition + 1) * 32);
-        }
-        else
-        {
-            // Last partition ends at 0xFF...FF (inclusive via iterator semantics)
-            end = new ValueHash256(Bytes.FromHexString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
-        }
-        return (start, end);
-    }
-
-    /// <summary>
-    /// Hashed mode: Parallelized single-pass co-iteration across partitions.
+    /// Hashed mode: Single-pass co-iteration since flat and trie share the same sort order.
     /// </summary>
     private void VerifyHashedMode(
         IPersistence.IPersistenceReader reader,
@@ -189,31 +158,8 @@ public class FlatTrieVerifier
         VisitorProgressTracker progressTracker,
         CancellationToken cancellationToken)
     {
-        Task[] partitionTasks = new Task[PartitionCount];
-        for (int i = 0; i < PartitionCount; i++)
-        {
-            int partition = i;
-            partitionTasks[i] = Task.Run(() => VerifyHashedModePartition(partition, reader, trieStore, stateRoot, storageWriter, progressTracker, cancellationToken), cancellationToken);
-        }
-        Task.WaitAll(partitionTasks, cancellationToken);
-    }
-
-    /// <summary>
-    /// Verifies a single partition in hashed mode.
-    /// </summary>
-    private void VerifyHashedModePartition(
-        int partition,
-        IPersistence.IPersistenceReader reader,
-        IScopedTrieStore trieStore,
-        Hash256 stateRoot,
-        ChannelWriter<StorageVerificationJob> storageWriter,
-        VisitorProgressTracker progressTracker,
-        CancellationToken cancellationToken)
-    {
-        (ValueHash256 startKey, ValueHash256 endKey) = GetPartitionBounds(partition);
-
-        using IPersistence.IFlatIterator flatIter = reader.CreateAccountIterator(startKey, endKey);
-        TrieLeafIterator trieIter = new(trieStore, stateRoot, LogTrieNodeException, startKey, endKey);
+        using IPersistence.IFlatIterator flatIter = reader.CreateAccountIterator();
+        TrieLeafIterator trieIter = new(trieStore, stateRoot, LogTrieNodeException);
 
         bool hasFlat = flatIter.MoveNext();
         bool hasTrie = trieIter.MoveNext();
@@ -267,9 +213,8 @@ public class FlatTrieVerifier
 
     /// <summary>
     /// Preimage mode: Two-pass verification using PatriciaTree.Get() directly for RLP lookup.
-    /// Pass 1: Iterate flat sequentially (can't partition by hash since flat uses raw addresses), lookup each in trie
-    /// Pass 2: Iterate trie partitions in parallel, check against seen set - detects entries missing in flat
-    /// Note: Flat iteration is not parallelized because addresses don't partition by hash.
+    /// Pass 1: Iterate flat, lookup each in trie - detects mismatches and entries missing in trie
+    /// Pass 2: Iterate trie, check against seen set - detects entries missing in flat
     /// </summary>
     private void VerifyPreimageMode(
         IPersistence.IPersistenceReader reader,
@@ -279,16 +224,17 @@ public class FlatTrieVerifier
         VisitorProgressTracker progressTracker,
         CancellationToken cancellationToken)
     {
-        // PatriciaTree for direct RLP lookup (thread-safe for reads)
+        // PatriciaTree for direct RLP lookup
         PatriciaTree? tree = stateRoot != Keccak.EmptyTreeHash ? new(trieStore, _logManager) : null;
 
-        // Thread-safe set of verified trie paths to avoid double-counting in pass 2
-        ConcurrentDictionary<ulong, byte> verifiedTriePaths = new();
+        // Build a set of verified trie paths to avoid double-counting in pass 2
+        // Using first 8 bytes as ulong for reliable and efficient HashSet operations
+        HashSet<ulong> verifiedTriePaths = [];
 
         TreePath progressPath = TreePath.Empty;
 
-        // Pass 1: Flat -> Trie (sequential - can't partition raw addresses by hash)
-        using (IPersistence.IFlatIterator flatIter = reader.CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue))
+        // Pass 1: Flat -> Trie
+        using (IPersistence.IFlatIterator flatIter = reader.CreateAccountIterator())
         {
             while (flatIter.MoveNext())
             {
@@ -311,7 +257,7 @@ public class FlatTrieVerifier
                     continue;
                 }
 
-                verifiedTriePaths.TryAdd(hashKey, 0);
+                verifiedTriePaths.Add(hashKey);
                 TreePath triePath = TreePath.FromPath(trieHash.Bytes);
                 if (triePath.Truncate(VisitorProgressTracker.Level3Depth) != progressPath)
                 {
@@ -323,40 +269,15 @@ public class FlatTrieVerifier
             }
         }
 
-        // Pass 2: Trie -> Flat (parallelized across partitions - trie uses hashes which partition evenly)
-        Task[] pass2Tasks = new Task[PartitionCount];
-        for (int i = 0; i < PartitionCount; i++)
-        {
-            int partition = i;
-            pass2Tasks[i] = Task.Run(() =>
-                VerifyPreimageModePass2Partition(partition, trieStore, stateRoot, progressTracker, verifiedTriePaths, cancellationToken),
-                cancellationToken);
-        }
-        Task.WaitAll(pass2Tasks, cancellationToken);
-    }
-
-    /// <summary>
-    /// Pass 2 of preimage mode verification for a single partition.
-    /// </summary>
-    private void VerifyPreimageModePass2Partition(
-        int partition,
-        IScopedTrieStore trieStore,
-        Hash256 stateRoot,
-        VisitorProgressTracker progressTracker,
-        ConcurrentDictionary<ulong, byte> verifiedTriePaths,
-        CancellationToken cancellationToken)
-    {
-        (ValueHash256 startKey, ValueHash256 endKey) = GetPartitionBounds(partition);
-        TreePath progressPath = TreePath.Empty;
-
-        TrieLeafIterator trieIter = new(trieStore, stateRoot, LogTrieNodeException, startKey, endKey);
+        // Pass 2: Trie -> Flat (check for entries in trie not in flat)
+        TrieLeafIterator trieIter = new(trieStore, stateRoot, LogTrieNodeException);
         while (trieIter.MoveNext())
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             ulong triePathKey = BinaryPrimitives.ReadUInt64LittleEndian(trieIter.CurrentPath.Path.Bytes);
 
-            if (verifiedTriePaths.ContainsKey(triePathKey))
+            if (verifiedTriePaths.Contains(triePathKey))
                 continue;
 
             Interlocked.Increment(ref _accountCount);
@@ -464,7 +385,7 @@ public class FlatTrieVerifier
         IScopedTrieStore trieStore,
         CancellationToken cancellationToken)
     {
-        using IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
+        using IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey);
         IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
         TrieLeafIterator trieIter = new(storageTrieStore, job.StorageRoot, LogTrieNodeException);
 
@@ -521,7 +442,7 @@ public class FlatTrieVerifier
         HashSet<ulong> verifiedSlots = [];
 
         // Pass 1: Flat -> Trie
-        using (IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue))
+        using (IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey))
         {
             while (flatIter.MoveNext())
             {
@@ -658,28 +579,7 @@ public class FlatTrieVerifier
             if (!isInline)
             {
                 bool hashValid = currentNode.Keccak == expectedHash;
-                string branchChildren = "";
-                if (currentNode.IsBranch)
-                {
-                    // Plot its child information, is it exist, is it in DB or missing.
-                    branchChildren = $"| Branch children: {string.Join("", Enumerable.Range(0, 16).Select((idx) =>
-                    {
-                        TreePath childPath = currentPath.Append(idx);
-                        TrieNode? child = currentNode.GetChildWithChildPath(trieStore, ref childPath, idx);
-                        if (child is null) return ".";
-
-                        try
-                        {
-                            child.ResolveNode(trieStore, childPath);
-                            return "X";
-                        }
-                        catch (TrieNodeException)
-                        {
-                            return "E";
-                        }
-                    }))}";
-                }
-                if (_logger.IsInfo) _logger.Info($"  Path: {currentPath} | Type: {currentNode.NodeType} | Hash: {expectedHash!.ToShortString()} | HashValid: {hashValid} {branchChildren}");
+                if (_logger.IsInfo) _logger.Info($"  Path: {currentPath} | Type: {currentNode.NodeType} | Hash: {expectedHash!.ToShortString()} | HashValid: {hashValid}");
             }
             else
             {
@@ -710,7 +610,7 @@ public class FlatTrieVerifier
 
                 case NodeType.Extension:
                     byte[] key = currentNode.Key!;
-                    if (_logger.IsInfo) _logger.Info($"  -> Extension key: {TreePath.FromNibble(key ?? [])}");
+                    if (_logger.IsInfo) _logger.Info($"  -> Extension key: {key?.ToHexString() ?? "null"}");
 
                     // Check if path matches (only if we haven't passed target)
                     if (currentPath.Length < 64)
@@ -733,7 +633,7 @@ public class FlatTrieVerifier
                     break;
 
                 case NodeType.Leaf:
-                    if (_logger.IsInfo) _logger.Info($"  -> Found leaf with key:  {TreePath.FromNibble(currentNode.Key ?? [])}");
+                    if (_logger.IsInfo) _logger.Info($"  -> Found leaf with key: {currentNode.Key?.ToHexString() ?? "null"}");
                     if (_logger.IsInfo) _logger.Info($"  -> Full leaf path: {currentPath.Append(currentNode.Key ?? [])}");
                     return;
 
@@ -759,14 +659,13 @@ public class FlatTrieVerifier
         TreePath currentPath,
         in ValueHash256 flatKey)
     {
-        const int lookupLimit = 16; // Limit lookup, make it less verbose.
-        if (currentPath.Length >= lookupLimit)
+        if (currentPath.Length >= 64)
             return;
 
         if (_logger.IsInfo) _logger.Info($"  -> Scanning remaining path with zero hash...");
 
         TreePath fullPath = new TreePath(flatKey, 64);
-        while (currentPath.Length < lookupLimit)
+        while (currentPath.Length < 64)
         {
             int nibble = fullPath[currentPath.Length];
             currentPath = currentPath.Append(nibble);
@@ -875,6 +774,6 @@ public class FlatTrieVerifier
         public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
             inner.BeginCommit(root, writeFlags);
 
-
+        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => inner.IsPersisted(path, keccak);
     }
 }

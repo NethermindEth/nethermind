@@ -14,7 +14,7 @@ using Nethermind.Trie;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// A mutable bundle wrapping a <see cref="ReadOnlySnapshotBundle"/> with a write buffer backed by <see cref="SnapshotContent"/>.
+/// A bundle of <see cref="Snapshot"/> and a layer of write buffer backed by a <see cref="SnapshotContent"/>.
 /// </summary>
 public sealed class SnapshotBundle : IDisposable
 {
@@ -24,14 +24,10 @@ public sealed class SnapshotBundle : IDisposable
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<AddressAsKey, Account?> _changedAccounts = null!;
-    private ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> _changedSlots = null!;
-    private ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes = null!;
-    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes = null!;
+    private ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes = null!; // Bulkset can get nodes concurrently
+    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes = null!; // Bulkset can get nodes concurrently
+    private ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> _changedSlots = null!; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses = null!;
-
-    private bool _trieChanged = false;
-    private ConcurrentDictionary<TreePath, TrieNode> _readStateNodes = null!;
-    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _readStorageNodes = null!;
 
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
@@ -59,8 +55,6 @@ public sealed class SnapshotBundle : IDisposable
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
-        _readStateNodes = _transientResource.ReadStateNodes;
-        _readStorageNodes = _transientResource.ReadStorageNodes;
 
         ExpandCurrentPooledContent();
 
@@ -124,17 +118,20 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
-        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        if (selfDestructStateIdx == -1 || currentBundleSelfDestructIdx >= 0)
         {
-            if (_snapshots[i].TryGetStorage(address, index, out slotValue))
+            for (int i = _snapshots.Count - 1; i >= 0; i--)
             {
-                return slotValue?.ToEvmBytes();
-            }
+                if (_snapshots[i].TryGetStorage(address, index, out slotValue))
+                {
+                    return slotValue?.ToEvmBytes();
+                }
 
-            if (i <= currentBundleSelfDestructIdx)
-            {
-                // This is the snapshot with selfdestruct
-                return null;
+                if (i <= currentBundleSelfDestructIdx)
+                {
+                    // This is the snapshot with selfdestruct
+                    return null;
+                }
             }
         }
 
@@ -145,22 +142,18 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_trieChanged && _changedStateNodes.TryGetValue(path, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-        }
-        else if (_readStateNodes.TryGetValue(path, out node))
+        if (_changedStateNodes.TryGetValue(path, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
         else if (_transientResource.TryGetStateNode(path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            node = _readStateNodes.GetOrAdd(path, node);
+            node = _changedStateNodes.GetOrAdd(path, node);
         }
         else
         {
-            node = _readStateNodes.GetOrAdd(path,
+            node = _changedStateNodes.GetOrAdd(path,
                 DoFindStateNodeExternal(path, hash, out node)
                     ? node
                     : new TrieNode(NodeType.Unknown, hash));
@@ -213,23 +206,19 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-
-        if (_trieChanged && _changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out TrieNode? node))
+        if (_changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-        }
-        else if (_readStorageNodes.TryGetValue(((Hash256AsKey)address, path), out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            _transientResource.UpdateStorageNode((Hash256AsKey)address, path, node);
         }
         else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            node = _readStorageNodes.GetOrAdd(((Hash256AsKey)address, path), node);
+            node = _changedStorageNodes.GetOrAdd(((Hash256AsKey)address, path), node);
         }
         else
         {
-            node = _readStorageNodes.GetOrAdd(((Hash256AsKey)address, path),
+            node = _changedStorageNodes.GetOrAdd(((Hash256AsKey)address, path),
                 DoTryFindStorageNodeExternal((Hash256AsKey)address, path, hash, out node) && node is not null
                     ? node
                     : new TrieNode(NodeType.Unknown, hash));
@@ -302,7 +291,6 @@ public sealed class SnapshotBundle : IDisposable
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
         // Note: Hot path
-        _trieChanged = true;
         _changedStateNodes[path] = newNode;
 
         // Note to self:
@@ -318,7 +306,6 @@ public sealed class SnapshotBundle : IDisposable
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
         // Note: Hot path
-        _trieChanged = true;
         _changedStorageNodes[(addr, path)] = newNode;
         _transientResource.UpdateStorageNode(addr, path, newNode);
     }
@@ -417,10 +404,6 @@ public sealed class SnapshotBundle : IDisposable
             }
 
             _transientResource = _resourcePool.GetCachedResource(_usage);
-            _trieChanged = false;
-
-            _readStateNodes = _transientResource.ReadStateNodes;
-            _readStorageNodes = _transientResource.ReadStorageNodes;
 
             // Make and apply new snapshot content.
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
@@ -433,11 +416,27 @@ public sealed class SnapshotBundle : IDisposable
             snapshot.Dispose(); // Revert the lease before
 
             _transientResource.Reset();
-
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
 
             return (null, null);
         }
+    }
+
+    public void Reset()
+    {
+        if (_isDisposed) return;
+
+        // Dispose all snapshots in the list
+        _snapshots.Dispose();
+        _snapshots = new SnapshotPooledList(1);
+
+        // Reset the current pooled content (clears _changedAccounts, _changedSlots, etc.)
+        _currentPooledContent.Reset();
+
+        // Reset transient resource (clears trie node cache and bloom filter)
+        _transientResource.Reset();
+
+        ExpandCurrentPooledContent();
     }
 
     private void GuardDispose() => ObjectDisposedException.ThrowIf(_isDisposed, this);
@@ -453,8 +452,6 @@ public sealed class SnapshotBundle : IDisposable
         _changedSlots = null!;
         _changedAccounts = null!;
         _changedStorageNodes = null!;
-        _readStateNodes = null!;
-        _readStorageNodes = null!;
         _selfDestructedAccountAddresses = null!;
 
         _resourcePool.ReturnSnapshotContent(_usage, _currentPooledContent);

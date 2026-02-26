@@ -121,8 +121,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             ClearReadOnlyBundleCache();
         }
 
-        // Trigger persistence job.
-        await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
+        if (stateId.BlockNumber % _compactSize == 0)
+        {
+            // Trigger persistence job.
+            await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
+        }
     }
 
     private async Task RunPersistence(CancellationToken cancellationToken)
@@ -252,7 +255,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                     throw new InvalidOperationException($"Unable to gather {nameof(ReadOnlySnapshotBundle)} for block {baseBlock} in {Stopwatch.GetElapsedTime(sw)}");
                 }
 
-                int delayMs = Math.Min(1 << Math.Min(attempt, 30), 100);  // 1, 2, 4, 8, 16, 32, 64, 100ms max
+                int delayMs = Math.Min(1 << attempt, 100);  // 1, 2, 4, 8, 16, 32, 64, 100ms max
                 Thread.Sleep(delayMs);
             }
 

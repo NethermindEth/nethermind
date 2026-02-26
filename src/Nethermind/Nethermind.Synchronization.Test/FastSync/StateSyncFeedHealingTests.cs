@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -15,14 +16,15 @@ using Nethermind.State.Snap;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
 
-[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-[TestFixture]
+[TestFixtureSource(typeof(TreeSyncStoreTestFixtureSource))]
 [Parallelizable(ParallelScope.All)]
-public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
+public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSyncStore)
+    : StateSyncFeedTestsBase(registerTreeSyncStore)
 {
     [Test]
     public async Task HealTreeWithoutBoundaryProofs()
@@ -32,8 +34,8 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
 
         Hash256 rootHash = remote.StateTree.RootHash;
 
-        await using IContainer container = PrepareDownloader(remote, syncDispatcherAllocateTimeoutMs: 2000);
-        var local = container.Resolve<IStateSyncTestOperation>();
+        await using IContainer container = PrepareDownloader(remote);
+        LocalDbContext local = container.Resolve<LocalDbContext>();
         ISnapTrieFactory snapTrieFactory = container.Resolve<ISnapTrieFactory>();
 
         ProcessAccountRange(remote.StateTree, snapTrieFactory, 1, rootHash, TestItem.Tree.AccountsWithPaths);
@@ -128,7 +130,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         Hash256 finalRootHash = remote.StateTree.RootHash;
 
         await using IContainer container = PrepareDownloader(remote, syncDispatcherAllocateTimeoutMs: 1000);
-        var local = container.Resolve<IStateSyncTestOperation>();
+        LocalDbContext local = container.Resolve<LocalDbContext>();
         ISnapTrieFactory snapTrieFactory = container.Resolve<ISnapTrieFactory>();
 
         int startingHashIndex = 0;
@@ -170,6 +172,8 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
             startingHashIndex += 1000;
         }
 
+        local.RootHash = finalRootHash;
+
         SafeContext ctx = container.Resolve<SafeContext>();
         await ActivateAndWait(ctx, timeout: 20000);
 
@@ -194,6 +198,6 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
         byte[][] lastProof = accountProofCollector.BuildResult().Proof!;
 
-        _ = SnapProviderHelper.AddAccountRange(snapTrieFactory, blockNumber, rootHash, startingHash, limitHash, accounts, firstProof.Concat(lastProof).ToArray());
+        _ = SnapProviderHelper.AddAccountRange(snapTrieFactory.CreateStateTree(), blockNumber, rootHash, startingHash, limitHash, accounts, firstProof.Concat(lastProof).ToArray());
     }
 }

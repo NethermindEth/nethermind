@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -311,14 +310,14 @@ public class SnapshotCompactorTests
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
-        Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.Compact16));
+        Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.Compactor));
     }
 
     [Test]
     public void CompactSnapshotBundle_UsesMidCompactorUsageNonBoundary()
     {
         StateId from = new StateId(0, Keccak.Zero);
-        StateId to = new StateId(8, Keccak.Zero);
+        StateId to = new StateId(15, Keccak.Zero);
 
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
@@ -327,8 +326,10 @@ public class SnapshotCompactorTests
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
-        Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.Compact8));
+        Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.MidCompactor));
     }
+
+    #region GetSnapshotsToCompact Tests
 
     [Test]
     public void Debug_AssembleSnapshotsUntil_Works()
@@ -347,7 +348,7 @@ public class SnapshotCompactorTests
     [Test]
     public void GetSnapshotsToCompact_CompactSizeDisabled_ReturnsEmpty()
     {
-        FlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 0 };
+        FlatDbConfig config = new FlatDbConfig { CompactSize = 0 };
         SnapshotCompactor compactor = new SnapshotCompactor(config, _resourcePool, _snapshotRepository, LimboLogs.Instance);
 
         StateId from = new StateId(0, Keccak.Zero);
@@ -401,47 +402,25 @@ public class SnapshotCompactorTests
         Assert.That(snapshots.Count, Is.EqualTo(16));
     }
 
-    [TestCase(4, 4)]   // 4 & -4 = 4, compact size 4, blocks 0->4
-    [TestCase(8, 8)]   // 8 & -8 = 8, compact size 8, blocks 0->8
-    [TestCase(12, 4)]  // 12 & -12 = 4, compact size 4, blocks 8->12
-    public void GetSnapshotsToCompact_PowerOf2Compaction_ReturnsCorrectCount(long blockNumber, int expectedCount)
+    [Test]
+    public void GetSnapshotsToCompact_MidCompaction_ReturnsMultipleSnapshots()
     {
-        BuildSnapshotChain(0, blockNumber);
+        FlatDbConfig config = new FlatDbConfig { CompactSize = 16, MidCompactSize = 8 };
+        SnapshotCompactor compactor = new SnapshotCompactor(config, _resourcePool, _snapshotRepository, LimboLogs.Instance);
 
-        StateId targetTo = CreateStateId(blockNumber);
-        _snapshotRepository.TryLeaseState(targetTo, out Snapshot? targetSnapshot);
+        // Build chain of 7 snapshots (0->1, 1->2, ..., 6->7)
+        BuildSnapshotChain(0, 7);
 
-        using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(targetSnapshot!);
+        // Add the 8th snapshot (7->8) separately
+        StateId targetFrom = CreateStateId(7);
+        StateId targetTo = CreateStateId(8);
+        Snapshot targetSnapshot = _resourcePool.CreateSnapshot(targetFrom, targetTo, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        _snapshotRepository.TryAddSnapshot(targetSnapshot);
+        _snapshotRepository.AddStateId(targetTo);
 
-        Assert.That(snapshots.Count, Is.EqualTo(expectedCount));
-        targetSnapshot!.Dispose();
-    }
+        using SnapshotPooledList snapshots = compactor.GetSnapshotsToCompact(targetSnapshot);
 
-    [TestCase(2)]  // 2 & -2 = 2 < MinCompactSize(4)
-    [TestCase(6)]  // 6 & -6 = 2 < MinCompactSize(4)
-    [TestCase(10)] // 10 & -10 = 2 < MinCompactSize(4)
-    public void GetSnapshotsToCompact_BelowMinCompactSize_ReturnsEmpty(long blockNumber)
-    {
-        FlatDbConfig config = new FlatDbConfig { CompactSize = 16, MinCompactSize = 4 };
-        SnapshotRepository repo = new SnapshotRepository(LimboLogs.Instance);
-        SnapshotCompactor compactor = new SnapshotCompactor(config, _resourcePool, repo, LimboLogs.Instance);
-
-        for (long i = 0; i < blockNumber; i++)
-        {
-            StateId from = CreateStateId(i);
-            StateId to = CreateStateId(i + 1);
-            Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-            repo.TryAddSnapshot(snapshot);
-            repo.AddStateId(to);
-        }
-
-        StateId targetTo = CreateStateId(blockNumber);
-        repo.TryLeaseState(targetTo, out Snapshot? targetSnapshot);
-
-        using SnapshotPooledList snapshots = compactor.GetSnapshotsToCompact(targetSnapshot!);
-
-        Assert.That(snapshots.Count, Is.EqualTo(0));
-        targetSnapshot!.Dispose();
+        Assert.That(snapshots.Count, Is.EqualTo(8));
     }
 
     [Test]
@@ -482,6 +461,10 @@ public class SnapshotCompactorTests
         Assert.That(snapshots.Count, Is.EqualTo(0));
     }
 
+    #endregion
+
+    #region DoCompactSnapshot Tests
+
     [Test]
     public void DoCompactSnapshot_ValidChain_CreatesCompactedSnapshot()
     {
@@ -501,75 +484,6 @@ public class SnapshotCompactorTests
         Assert.That(_snapshotRepository.CompactedSnapshotCount, Is.EqualTo(1));
     }
 
-    [Test]
-    public void Constructor_NonPowerOf2CompactSize_Throws() =>
-        Assert.Throws<ArgumentException>(() =>
-            new SnapshotCompactor(new FlatDbConfig { CompactSize = 10 }, _resourcePool, _snapshotRepository, LimboLogs.Instance));
+    #endregion
 
-    [Test]
-    public void Constructor_NonPowerOf2MinCompactSize_Throws() =>
-        Assert.Throws<ArgumentException>(() =>
-            new SnapshotCompactor(new FlatDbConfig { CompactSize = 16, MinCompactSize = 3 }, _resourcePool, _snapshotRepository, LimboLogs.Instance));
-
-    [Test]
-    public void Constructor_MinCompactSizeGreaterThanCompactSize_Throws() =>
-        Assert.Throws<ArgumentException>(() =>
-            new SnapshotCompactor(new FlatDbConfig { CompactSize = 8, MinCompactSize = 16 }, _resourcePool, _snapshotRepository, LimboLogs.Instance));
-
-    [Test]
-    public void GetSnapshotsToCompact_MinCompactSize2_AllowsSize2Compaction()
-    {
-        FlatDbConfig config = new FlatDbConfig { CompactSize = 16, MinCompactSize = 2 };
-        SnapshotRepository repo = new SnapshotRepository(LimboLogs.Instance);
-        SnapshotCompactor compactor = new SnapshotCompactor(config, _resourcePool, repo, LimboLogs.Instance);
-
-        for (long i = 0; i < 2; i++)
-        {
-            StateId from = CreateStateId(i);
-            StateId to = CreateStateId(i + 1);
-            Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-            repo.TryAddSnapshot(snapshot);
-            repo.AddStateId(to);
-        }
-
-        StateId target = CreateStateId(2);
-        repo.TryLeaseState(target, out Snapshot? targetSnapshot);
-
-        using SnapshotPooledList snapshots = compactor.GetSnapshotsToCompact(targetSnapshot!);
-
-        Assert.That(snapshots.Count, Is.EqualTo(2));
-        targetSnapshot!.Dispose();
-    }
-
-    [TestCase(1)]
-    [TestCase(3)]
-    [TestCase(5)]
-    [TestCase(7)]
-    [TestCase(9)]
-    public void GetSnapshotsToCompact_OddBlock_ReturnsEmpty(long blockNumber)
-    {
-        BuildSnapshotChain(0, blockNumber);
-
-        StateId from = CreateStateId(blockNumber - 1);
-        StateId to = CreateStateId(blockNumber);
-        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-
-        using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(snapshot);
-
-        Assert.That(snapshots.Count, Is.EqualTo(0));
-    }
-
-    [TestCase(2, 2)]   // blockNumber & -blockNumber = 2
-    [TestCase(4, 4)]
-    [TestCase(6, 2)]
-    [TestCase(8, 8)]
-    [TestCase(10, 2)]
-    [TestCase(12, 4)]
-    [TestCase(14, 2)]
-    [TestCase(16, 16)]
-    public void GetSnapshotsToCompact_PowerOf2_CompactSizeMatchesBlockAlignment(long blockNumber, int expectedCompactSize)
-    {
-        int actualCompactSize = (int)Math.Min(blockNumber & -blockNumber, 16);
-        Assert.That(actualCompactSize, Is.EqualTo(expectedCompactSize));
-    }
 }

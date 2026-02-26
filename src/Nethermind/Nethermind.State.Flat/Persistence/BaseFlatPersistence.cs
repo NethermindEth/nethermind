@@ -43,6 +43,8 @@ public static class BaseFlatPersistence
     private const int StoragePostfixPortion = 16;
     private const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
 
+    private static readonly byte[] AccountIteratorUpperBound = Bytes.FromHexString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+
     private static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address)
     {
         address.Bytes[..AccountKeyLength].CopyTo(buffer);
@@ -86,8 +88,8 @@ public static class BaseFlatPersistence
 
             Span<byte> value = buffer[..resultSize];
 
-            // Bypass bounds check on the slice - the length is already validated by the if guard above.
-            // This writes the variable-length DB value into the end of the 32-byte struct.
+            // AI said: Use Unsafe to bypass the 'Slice' bounds check and property access
+            // This writes the variable-length DB value into the end of the 32-byte struct
             int len = value.Length;
             if (len == SlotValue.ByteCount)
             {
@@ -113,28 +115,16 @@ public static class BaseFlatPersistence
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
 
-        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey)
-        {
-            // Need to copy to arrays since spans from Value.Bytes might not survive the call
-            byte[] start = new byte[AccountKeyLength];
-            startKey.Bytes[..AccountKeyLength].CopyTo(start);
-
-            byte[] end = new byte[AccountKeyLength];
-            endKey.Bytes[..AccountKeyLength].CopyTo(end);
-
-            return new AccountIterator(state.GetViewBetween(start, end));
-        }
+        public IPersistence.IFlatIterator CreateAccountIterator() => new AccountIterator(state.GetViewBetween([], AccountIteratorUpperBound));
 
         [SkipLocalsInit]
-        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey)
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey)
         {
             // Storage key layout: <4-byte-addr><32-byte-slot><16-byte-addr>
             // We need to iterate all keys with the same 4-byte prefix and 16-byte suffix
-            Span<byte> firstKey = stackalloc byte[StorageKeyLength];
+            Span<byte> firstKey = stackalloc byte[StoragePrefixPortion];
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
-            EncodeStorageKeyHashedWithShortPrefix(firstKey, accountKey, startSlotKey);
-            EncodeStorageKeyHashedWithShortPrefix(lastKey[..StorageKeyLength], accountKey, endSlotKey);
-            lastKey[StorageKeyLength] = 0; // Exclusive upper bound
+            BasePersistence.CreateStorageRange(accountKey.Bytes, firstKey, lastKey);
 
             return new StorageIterator(
                 storage.GetViewBetween(firstKey, lastKey),
@@ -198,10 +188,11 @@ public static class BaseFlatPersistence
         public void Dispose() => view.Dispose();
     }
 
-    public readonly struct WriteBatch(
+    public struct WriteBatch(
+        ISortedKeyValueStore stateSnap,
         ISortedKeyValueStore storageSnap,
-        IWriteOnlyKeyValueStore state,
-        IWriteOnlyKeyValueStore storage,
+        IWriteBatch state,
+        IWriteBatch storage,
         WriteFlags flags
     ) : BasePersistence.IHashedFlatWriteBatch
     {
@@ -252,6 +243,46 @@ public static class BaseFlatPersistence
         {
             ReadOnlySpan<byte> key = addrHash.Bytes[..AccountKeyLength];
             state.PutSpan(key, account, flags);
+        }
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            // Account keys are the first 20 bytes of the address hash
+            Span<byte> firstKey = stackalloc byte[AccountKeyLength];
+            Span<byte> lastKey = stackalloc byte[AccountKeyLength + 1]; // +1 for exclusive upper bound
+            fromPath.Bytes[..AccountKeyLength].CopyTo(firstKey);
+            toPath.Bytes[..AccountKeyLength].CopyTo(lastKey);
+            lastKey[AccountKeyLength] = 0; // Exclusive upper bound
+
+            using ISortedView view = stateSnap.GetViewBetween(firstKey, lastKey);
+            while (view.MoveNext())
+            {
+                if (view.CurrentKey.Length != AccountKeyLength) continue;
+                state.Remove(view.CurrentKey);
+            }
+        }
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            // Storage key layout: <4-byte-addr><32-byte-slot><16-byte-addr>
+            // We need to iterate all keys in the slot range with the same address
+            Span<byte> firstKey = stackalloc byte[StorageKeyLength];
+            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
+            EncodeStorageKeyHashedWithShortPrefix(firstKey, addressHash, fromPath);
+            EncodeStorageKeyHashedWithShortPrefix(lastKey[..StorageKeyLength], addressHash, toPath);
+            lastKey[StorageKeyLength] = 0; // Exclusive upper bound
+
+            using ISortedView view = storageSnap.GetViewBetween(firstKey, lastKey);
+            while (view.MoveNext())
+            {
+                if (view.CurrentKey.Length != StorageKeyLength) continue;
+
+                // Verify the 16-byte address suffix matches
+                if (Bytes.AreEqual(view.CurrentKey[(StoragePrefixPortion + StorageSlotKeySize)..], addressHash.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]))
+                {
+                    storage.Remove(view.CurrentKey);
+                }
+            }
         }
     }
 }
