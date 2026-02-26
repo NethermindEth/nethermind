@@ -77,7 +77,7 @@ public class SnapServer : ISnapServer
         // TODO: use cache to reduce node retrieval from disk
         int pathLength = pathSet.Count;
         using RlpItemList.Builder builder = new(pathLength);
-        RlpItemList.Builder.Writer writer = builder.BeginContainer();
+        RlpItemList.Builder.Writer writer = builder.BeginRootContainer();
         StateTree tree = new(_store, _logManager);
         bool abort = false;
         int count = 0;
@@ -176,14 +176,14 @@ public class SnapServer : ISnapServer
         return response;
     }
 
-    public (IOwnedReadOnlyList<PathWithAccount>, IOwnedReadOnlyList<byte[]>) GetAccountRanges(
+    public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(
         Hash256 rootHash,
         in ValueHash256 startingHash,
         in ValueHash256? limitHash,
         long byteLimit,
         CancellationToken cancellationToken)
     {
-        if (IsRootMissing(rootHash)) return (ArrayPoolList<PathWithAccount>.Empty(), ArrayPoolList<byte[]>.Empty());
+        if (IsRootMissing(rootHash)) return (ArrayPoolList<PathWithAccount>.Empty(), EmptyByteArrayList.Instance);
         byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
         AccountCollector accounts = new AccountCollector();
@@ -198,10 +198,10 @@ public class SnapServer : ISnapServer
             cancellationToken);
 
         ArrayPoolList<PathWithAccount> nodes = accounts.Accounts;
-        return (nodes, proofs);
+        return (nodes, new ByteArrayListAdapter(proofs));
     }
 
-    public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IOwnedReadOnlyList<byte[]>?) GetStorageRanges(
+    public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IByteArrayList?) GetStorageRanges(
         Hash256 rootHash,
         IReadOnlyList<PathWithAccount> accounts,
         in ValueHash256? startingHash,
@@ -209,7 +209,7 @@ public class SnapServer : ISnapServer
         long byteLimit,
         CancellationToken cancellationToken)
     {
-        if (IsRootMissing(rootHash)) return (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), ArrayPoolList<byte[]>.Empty());
+        if (IsRootMissing(rootHash)) return (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), EmptyByteArrayList.Instance);
         byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
         ValueHash256 startingHash1 = startingHash ?? ValueKeccak.Zero;
@@ -259,20 +259,20 @@ public class SnapServer : ISnapServer
             if (pathWithStorageCollector.Slots.Count == 0)
             {
                 //return proof of absence
-                return (responseNodes, proofs);
+                return (responseNodes, new ByteArrayListAdapter(proofs));
             }
 
             responseNodes.Add(pathWithStorageCollector.Slots);
             if (stoppedEarly || startingHash1 != Keccak.Zero)
             {
-                return (responseNodes, proofs);
+                return (responseNodes, new ByteArrayListAdapter(proofs));
             }
 
             proofs.Dispose();
             responseSize += innerResponseSize;
         }
 
-        return (responseNodes, ArrayPoolList<byte[]>.Empty());
+        return (responseNodes, EmptyByteArrayList.Instance);
     }
 
     private (long bytesSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) GetNodesFromTrieVisitor(

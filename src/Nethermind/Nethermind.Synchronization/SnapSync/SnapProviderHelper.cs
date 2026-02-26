@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,
             IReadOnlyList<PathWithAccount> accounts,
-            IReadOnlyList<byte[]> proofs = null
+            IByteArrayList proofs = null
         )
         {
             using ISnapTree tree = factory.CreateStateTree();
@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.SnapSync
             IReadOnlyList<PathWithStorageSlot> slots,
             in ValueHash256? startingHash,
             in ValueHash256? limitHash,
-            IReadOnlyList<byte[]>? proofs = null
+            IByteArrayList? proofs = null
         )
         {
             using ISnapTree tree = factory.CreateStorageTree(account.Path);
@@ -99,7 +99,7 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,
             in ValueHash256 expectedRootHash,
-            IReadOnlyList<byte[]>? proofs)
+            IByteArrayList? proofs)
         {
             if (entries.Count == 0)
                 return (AddRangeResult.EmptyRange, true, false);
@@ -154,7 +154,7 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 endHash,
             in ValueHash256 limitHash,
             in ValueHash256 expectedRootHash,
-            IReadOnlyList<byte[]>? proofs = null
+            IByteArrayList? proofs = null
         )
         {
             if (proofs is null || proofs.Count == 0)
@@ -312,13 +312,13 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight);
         }
 
-        private static Dictionary<ValueHash256, TrieNode> CreateProofDict(IReadOnlyList<byte[]> proofs)
+        private static Dictionary<ValueHash256, TrieNode> CreateProofDict(IByteArrayList proofs)
         {
             Dictionary<ValueHash256, TrieNode> dict = new();
 
             for (int i = 0; i < proofs.Count; i++)
             {
-                byte[] proof = proofs[i];
+                byte[] proof = proofs[i].ToArray();
                 TrieNode node = new(NodeType.Unknown, proof, isDirty: true);
                 node.IsBoundaryProofNode = true;
 

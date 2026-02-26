@@ -36,10 +36,9 @@ namespace Nethermind.Synchronization.StateSync
             }
 
             ISyncPeer peer = peerInfo.SyncPeer;
-            Task<IOwnedReadOnlyList<byte[]>>? task = null;
+            Task<IByteArrayList>? task = null;
             HashList? hashList = null;
             GetTrieNodesRequest? getTrieNodesRequest = null;
-            Task<IByteArrayList>? trieNodesTask = null;
             // Use GetNodeData if possible, starting with the dedicated NodeData protocol
             if (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler))
             {
@@ -67,33 +66,27 @@ namespace Nethermind.Synchronization.StateSync
                 {
                     if (Logger.IsTrace) Logger.Trace($"Requested TrieNodes via SnapProtocol from peer {peer}");
                     getTrieNodesRequest = GetGroupedRequest(batch);
-                    trieNodesTask = snapHandler.GetTrieNodes(getTrieNodesRequest, cancellationToken);
+                    task = snapHandler.GetTrieNodes(getTrieNodesRequest, cancellationToken);
                 }
             }
 
-            if (task is null && trieNodesTask is null)
+            if (task is null)
             {
                 throw new InvalidOperationException("State sync dispatch was scheduled to a peer unable to serve state sync.");
             }
 
             try
             {
-                if (trieNodesTask is not null)
-                {
-                    batch.Responses = await trieNodesTask;
-                }
-                else
-                {
-                    IOwnedReadOnlyList<byte[]> result = await task!;
-                    batch.Responses = result as IByteArrayList ?? new ByteArrayListAdapter(result);
-                }
-
-                if (hashList is not null) HashList.Return(hashList);
-                getTrieNodesRequest?.Dispose();
+                batch.Responses = await task;
             }
             catch (Exception e)
             {
                 if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", e);
+            }
+            finally
+            {
+                if (hashList is not null) HashList.Return(hashList);
+                getTrieNodesRequest?.Dispose();
             }
         }
 

@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token);
         Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token);
-        Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token);
+        Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token);
         Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token);
         Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token);
     }

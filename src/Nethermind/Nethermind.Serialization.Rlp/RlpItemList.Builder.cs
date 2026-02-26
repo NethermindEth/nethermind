@@ -23,12 +23,7 @@ public sealed partial class RlpItemList
             _entries.Add(new Entry { IsLeaf = false, Length = 0, ValueOffset = 0 });
         }
 
-        public Writer BeginContainer()
-        {
-            int idx = _entries.Count;
-            _entries.Add(new Entry { IsLeaf = false, Length = 0, ValueOffset = 0 });
-            return new Writer(this, idx, 0);
-        }
+        public Writer BeginRootContainer() => new Writer(this, 0, -1);
 
         public RlpItemList ToRlpItemList()
         {
@@ -172,6 +167,7 @@ public sealed partial class RlpItemList
 
             public void Dispose()
             {
+                if (_parentEntryIndex < 0) return;
                 Builder b = _builder;
                 Span<Entry> entries = b._entries.AsSpan();
                 int seqLen = Rlp.LengthOfSequence(entries[_entryIndex].Length);

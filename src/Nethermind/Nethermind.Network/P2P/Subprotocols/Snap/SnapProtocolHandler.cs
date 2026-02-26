@@ -218,11 +218,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         {
             if (SyncServer is null) return new AccountRangeMessage
             {
-                Proofs = ArrayPoolList<byte[]>.Empty(),
+                Proofs = EmptyByteArrayList.Instance,
                 PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
             };
             AccountRange? accountRange = getAccountRangeMessage.AccountRange;
-            (IOwnedReadOnlyList<PathWithAccount>? ranges, IOwnedReadOnlyList<byte[]>? proofs) = SyncServer.GetAccountRanges(accountRange.RootHash, accountRange.StartingHash,
+            (IOwnedReadOnlyList<PathWithAccount>? ranges, IByteArrayList? proofs) = SyncServer.GetAccountRanges(accountRange.RootHash, accountRange.StartingHash,
                 accountRange.LimitHash, getAccountRangeMessage.ResponseBytes, cancellationToken);
             AccountRangeMessage? response = new() { Proofs = proofs, PathsWithAccounts = ranges };
             return response;
@@ -232,11 +232,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         {
             if (SyncServer is null) return new StorageRangeMessage()
             {
-                Proofs = ArrayPoolList<byte[]>.Empty(),
+                Proofs = EmptyByteArrayList.Instance,
                 Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
             };
             StorageRange? storageRange = getStorageRangeMessage.StorageRange;
-            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>? ranges, IOwnedReadOnlyList<byte[]> proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
+            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>? ranges, IByteArrayList? proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
                 storageRange.StartingHash, storageRange.LimitHash, getStorageRangeMessage.ResponseBytes, cancellationToken);
             StorageRangeMessage? response = new() { Proofs = proofs, Slots = ranges };
             return response;
@@ -244,9 +244,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private ByteCodesMessage FulfillByteCodesMessage(GetByteCodesMessage getByteCodesMessage, CancellationToken cancellationToken)
         {
-            if (SyncServer is null) return new ByteCodesMessage(ArrayPoolList<byte[]>.Empty());
+            if (SyncServer is null) return new ByteCodesMessage(EmptyByteArrayList.Instance);
             IOwnedReadOnlyList<byte[]>? byteCodes = SyncServer.GetByteCodes(getByteCodesMessage.Hashes, getByteCodesMessage.Bytes, cancellationToken);
-            return new ByteCodesMessage(byteCodes);
+            return new ByteCodesMessage(new ByteArrayListAdapter(byteCodes));
         }
 
         public async Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
@@ -273,7 +273,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return new SlotsAndProofs { PathsAndSlots = response.Slots, Proofs = response.Proofs };
         }
 
-        public async Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
+        public async Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
         {
             ByteCodesMessage response = await _nodeStats.RunLatencyRequestSizer(RequestType.SnapRanges, bytesLimit =>
                 SendRequest(new GetByteCodesMessage

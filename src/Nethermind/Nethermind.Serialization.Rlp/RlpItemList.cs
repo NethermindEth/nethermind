@@ -5,9 +5,10 @@ using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Collections;
 namespace Nethermind.Serialization.Rlp;
 
-public sealed partial class RlpItemList : IDisposable
+public sealed partial class RlpItemList : IDisposable, IRlpWrapper
 {
     private readonly RefCountingMemoryOwner<byte> _memoryOwner;
     private readonly Memory<byte> _rlpRegion;

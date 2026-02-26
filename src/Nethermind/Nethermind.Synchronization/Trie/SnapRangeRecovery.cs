@@ -167,14 +167,15 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         TreePath startingPath,
         in ValueHash256 slotPath,
         byte[] value,
-        IReadOnlyList<byte[]> proofs)
+        IByteArrayList proofs)
     {
         ArrayPoolList<(TreePath, byte[])> result = new(1);
 
         ITrieNodeResolver emptyResolver = new EmptyTrieNodeResolver();
         Dictionary<ValueHash256, byte[]> nodes = new Dictionary<ValueHash256, byte[]>();
-        foreach (var proof in proofs)
+        for (int i = 0; i < proofs.Count; i++)
         {
+            byte[] proof = proofs[i].ToArray();
             nodes[ValueKeccak.Compute(proof)] = proof;
         }
         nodes[ValueKeccak.Compute(value)] = value;

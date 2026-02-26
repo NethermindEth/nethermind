@@ -29,13 +29,13 @@ public interface ISnapServer
     RlpByteArrayList? GetTrieNodes(RlpItemList pathSet, Hash256 rootHash, CancellationToken cancellationToken);
     IOwnedReadOnlyList<byte[]> GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken);
 
-    (IOwnedReadOnlyList<PathWithAccount>, IOwnedReadOnlyList<byte[]>) GetAccountRanges(Hash256 rootHash,
+    (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(Hash256 rootHash,
         in ValueHash256 startingHash,
         in ValueHash256? limitHash,
         long byteLimit,
         CancellationToken cancellationToken);
 
-    (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IOwnedReadOnlyList<byte[]>?) GetStorageRanges(
+    (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IByteArrayList?) GetStorageRanges(
         Hash256 rootHash,
         IReadOnlyList<PathWithAccount> accounts,
         in ValueHash256? startingHash,
