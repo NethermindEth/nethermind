@@ -26,7 +26,7 @@ namespace Nethermind.State.SnapServer;
 
 public interface ISnapServer
 {
-    IOwnedReadOnlyList<byte[]>? GetTrieNodes(RlpItemList pathSet, Hash256 rootHash, CancellationToken cancellationToken);
+    RlpByteArrayList? GetTrieNodes(RlpItemList pathSet, Hash256 rootHash, CancellationToken cancellationToken);
     IOwnedReadOnlyList<byte[]> GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken);
 
     (IOwnedReadOnlyList<PathWithAccount>, IOwnedReadOnlyList<byte[]>) GetAccountRanges(Hash256 rootHash,

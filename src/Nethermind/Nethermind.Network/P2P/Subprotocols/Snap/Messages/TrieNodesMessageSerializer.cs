@@ -12,18 +12,36 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, TrieNodesMessage message)
         {
-            (int contentLength, int nodesLength) = GetLength(message);
-
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-
-            NettyRlpStream rlpStream = new(byteBuffer);
-
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.RequestId);
-            rlpStream.StartSequence(nodesLength);
-            for (int i = 0; i < message.Nodes.Count; i++)
+            if (message.Nodes is RlpByteArrayList rlpList)
             {
-                rlpStream.Encode(message.Nodes[i]);
+                int nodesLength = rlpList.RlpContentLength;
+                int nodesSeqLength = Rlp.LengthOfSequence(nodesLength);
+                int contentLength = nodesSeqLength + Rlp.LengthOf(message.RequestId);
+
+                byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
+
+                NettyRlpStream rlpStream = new(byteBuffer);
+                rlpStream.StartSequence(contentLength);
+                rlpStream.Encode(message.RequestId);
+                rlpStream.StartSequence(nodesLength);
+                rlpStream.Write(rlpList.RlpContentSpan);
+                return;
+            }
+
+            {
+                (int contentLength, int nodesLength) = GetLength(message);
+
+                byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
+
+                NettyRlpStream rlpStream = new(byteBuffer);
+
+                rlpStream.StartSequence(contentLength);
+                rlpStream.Encode(message.RequestId);
+                rlpStream.StartSequence(nodesLength);
+                for (int i = 0; i < message.Nodes.Count; i++)
+                {
+                    rlpStream.Encode(message.Nodes[i]);
+                }
             }
         }
 

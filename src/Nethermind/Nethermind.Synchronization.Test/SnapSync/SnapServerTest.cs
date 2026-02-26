@@ -205,7 +205,7 @@ public class SnapServerTest
                 Group = [[]]
             }
         ]);
-        using IOwnedReadOnlyList<byte[]> result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+        using RlpByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
         result.Count.Should().Be(1);
     }
@@ -222,7 +222,7 @@ public class SnapServerTest
                 Group = [TestItem.Tree.AccountsWithPaths[0].Path.Bytes.ToArray(), []]
             }
         ]);
-        using IOwnedReadOnlyList<byte[]> result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+        using RlpByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
         result.Count.Should().Be(1);
     }

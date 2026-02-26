@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
 
@@ -64,15 +65,13 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
         }
 
         using var encoded = PathGroup.EncodeToRlpItemList(groups);
-        IOwnedReadOnlyList<byte[]>? res = snapServer.GetTrieNodes(encoded, request.RootHash, token);
-        IByteArrayList result = res as IByteArrayList ?? new ByteArrayListAdapter(res!);
-        return Task.FromResult(result);
+        RlpByteArrayList? res = snapServer.GetTrieNodes(encoded, request.RootHash, token);
+        return Task.FromResult<IByteArrayList>(res!);
     }
 
     public Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
     {
-        IOwnedReadOnlyList<byte[]>? res = snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
-        IByteArrayList result = res as IByteArrayList ?? new ByteArrayListAdapter(res!);
-        return Task.FromResult(result);
+        RlpByteArrayList? res = snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
+        return Task.FromResult<IByteArrayList>(res!);
     }
 }

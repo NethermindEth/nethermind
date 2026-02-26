@@ -27,6 +27,7 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.State;
 using Nethermind.State.Snap;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
@@ -328,9 +329,8 @@ public abstract class StateSyncFeedTestsBase(
 
         public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
         {
-            IOwnedReadOnlyList<byte[]>? nodes = _snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
-            IByteArrayList result = nodes as IByteArrayList ?? new ByteArrayListAdapter(nodes!);
-            return Task.FromResult(result);
+            RlpByteArrayList? nodes = _snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
+            return Task.FromResult<IByteArrayList>(nodes!);
         }
     }
 }
