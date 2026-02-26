@@ -58,8 +58,11 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         using IPersistence.IPersistenceReader reader = CreateReader();
     }
 
-    public IPersistence.IPersistenceReader CreateReader()
+    public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
+        if ((flags & ReaderFlags.Sync) != 0)
+            return _inner.CreateReader(flags);
+
         RefCountingPersistenceReader? cachedReader = _cachedReader;
         if (cachedReader is not null && cachedReader.TryAcquire())
         {
@@ -100,6 +103,12 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 
     public void Flush() => _inner.Flush();
 
+    public void Clear()
+    {
+        ClearReaderCache();
+        _inner.Clear();
+    }
+
     private void ClearReaderCache()
     {
         using Lock.Scope _ = _readerCacheLock.EnterScope();
@@ -128,6 +137,10 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) => inner.SetStorageTrieNode(address, path, tnValue);
         public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value) => inner.SetStorageRaw(addrHash, slotHash, value);
         public void SetAccountRaw(Hash256 addrHash, Account account) => inner.SetAccountRaw(addrHash, account);
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteAccountRange(fromPath, toPath);
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteStorageRange(addressHash, fromPath, toPath);
+        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) => inner.DeleteStateTrieNodeRange(fromPath, toPath);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) => inner.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
 
         public void Dispose()
         {
