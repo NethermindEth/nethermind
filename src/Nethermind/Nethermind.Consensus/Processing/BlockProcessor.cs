@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -93,6 +94,7 @@ public partial class BlockProcessor(
         CancellationToken token)
     {
         BlockHeader header = block.Header;
+        long blockStart = Stopwatch.GetTimestamp();
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
@@ -103,11 +105,15 @@ public partial class BlockProcessor(
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
+        long t0 = Stopwatch.GetTimestamp();
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        long t1 = Stopwatch.GetTimestamp();
 
         _stateProvider.Commit(spec, commitRoots: false);
+        long t2 = Stopwatch.GetTimestamp();
 
         CalculateBlooms(receipts);
+        long t3 = Stopwatch.GetTimestamp();
 
         if (spec.IsEip4844Enabled)
         {
@@ -115,6 +121,8 @@ public partial class BlockProcessor(
         }
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        long t4 = Stopwatch.GetTimestamp();
+
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
@@ -128,6 +136,7 @@ public partial class BlockProcessor(
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec, commitRoots: true);
+        long t5 = Stopwatch.GetTimestamp();
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
@@ -140,8 +149,31 @@ public partial class BlockProcessor(
             _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
         }
+        long t6 = Stopwatch.GetTimestamp();
 
         header.Hash = header.CalculateHash();
+
+        double totalMs = Stopwatch.GetElapsedTime(blockStart).TotalMilliseconds;
+        double txsMs = Stopwatch.GetElapsedTime(t0, t1).TotalMilliseconds;
+        double postCommitMs = Stopwatch.GetElapsedTime(t1, t2).TotalMilliseconds;
+        double bloomsMs = Stopwatch.GetElapsedTime(t2, t3).TotalMilliseconds;
+        double rcptRootMs = Stopwatch.GetElapsedTime(t3, t4).TotalMilliseconds;
+        double commitMs = Stopwatch.GetElapsedTime(t4, t5).TotalMilliseconds;
+        double stateRootMs = Stopwatch.GetElapsedTime(t5, t6).TotalMilliseconds;
+
+        int gcGen0 = GC.CollectionCount(0);
+        int gcGen1 = GC.CollectionCount(1);
+        int gcGen2 = GC.CollectionCount(2);
+        ThreadPool.GetAvailableThreads(out int availWorker, out _);
+        ThreadPool.GetMaxThreads(out int maxWorker, out _);
+        int busyThreads = maxWorker - availWorker;
+
+        if (_logger.IsInfo) _logger.Info(
+            $"DIAG Block {header.Number} took {totalMs:F1}ms | " +
+            $"txs={txsMs:F1} postCommit={postCommitMs:F1} blooms={bloomsMs:F1} rcptRoot={rcptRootMs:F1} " +
+            $"rewards+commit={commitMs:F1} stateRoot={stateRootMs:F1} " +
+            $"GC={gcGen0}/{gcGen1}/{gcGen2} TP={busyThreads}busy/{maxWorker}max " +
+            $"txCount={block.Transactions.Length} gas={header.GasUsed}");
 
         return receipts;
     }
