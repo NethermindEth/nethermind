@@ -133,7 +133,9 @@ namespace Nethermind.Blockchain.Filters
 
             List<Hash256> result = new();
             while (blockHashes.TryDequeue(out Hash256? hash))
+            {
                 result.Add(hash);
+            }
             return result.ToArray();
         }
 
@@ -145,7 +147,9 @@ namespace Nethermind.Blockchain.Filters
 
             List<FilterLog> result = new();
             while (logs.TryDequeue(out FilterLog? log))
+            {
                 result.Add(log);
+            }
             return result.ToArray();
         }
 
@@ -159,7 +163,9 @@ namespace Nethermind.Blockchain.Filters
             while (pendingTransactions.TryDequeue(out Option<Hash256>? option))
             {
                 if (!option.IsRemoved)
+                {
                     result.Add(option.Value);
+                }
             }
             return result.ToArray();
         }
