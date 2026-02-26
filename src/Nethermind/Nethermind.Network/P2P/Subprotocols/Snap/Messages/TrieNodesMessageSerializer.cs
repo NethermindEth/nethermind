@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -12,19 +13,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, TrieNodesMessage message)
         {
-            if (message.Nodes is RlpByteArrayList rlpList)
+            if (message.Nodes is IRlpWrapper rlpList)
             {
-                int nodesLength = rlpList.RlpContentLength;
-                int nodesSeqLength = Rlp.LengthOfSequence(nodesLength);
-                int contentLength = nodesSeqLength + Rlp.LengthOf(message.RequestId);
+                ReadOnlySpan<byte> rlpSpan = rlpList.RlpSpan;
+                int contentLength = rlpSpan.Length + Rlp.LengthOf(message.RequestId);
 
                 byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
 
                 NettyRlpStream rlpStream = new(byteBuffer);
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(message.RequestId);
-                rlpStream.StartSequence(nodesLength);
-                rlpStream.Write(rlpList.RlpContentSpan);
+                rlpStream.Write(rlpSpan);
                 return;
             }
 
