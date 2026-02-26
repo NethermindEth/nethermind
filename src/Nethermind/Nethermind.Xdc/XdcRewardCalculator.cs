@@ -4,10 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
-using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -47,8 +43,6 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
     private readonly IWorldState? _stateProvider;
     private readonly IEthereumEcdsa? _ecdsa;
     private readonly ILogger _logger;
-    private readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-    private const string GethRpcUrl = "http://xdc-node:8545";
 
     public XdcRewardCalculator(ILogManager logManager, IBlockTree? blockTree = null, IWorldState? stateProvider = null, IEthereumEcdsa? ecdsa = null)
     {
@@ -181,9 +175,8 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
             if (i % MergeSignRange != 0) continue;
             qualifyingBlocks++;
             
-            // Use geth's block hash (workaround for XDC header hash mismatch)
-            Hash256? blkHash = GetGethBlockHash(i);
-            if (blkHash is null) continue;
+            // Use locally stored block hash
+            if (!blockNumToHash.TryGetValue(i, out Hash256? blkHash) || blkHash is null) continue;
             
             if (!blockHashSigners.TryGetValue(blkHash, out var addrs) || addrs.Count == 0)
             {
@@ -331,48 +324,6 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
         }
         
         return Address.Zero;
-    }
-
-    /// <summary>
-    /// Fetch block hash from geth RPC (workaround for XDC header hash mismatch).
-    /// </summary>
-    private Hash256? GetGethBlockHash(long blockNumber)
-    {
-        try
-        {
-            var json = $"{{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBlockByNumber\",\"params\":[\"0x{blockNumber:x}\",false],\"id\":1}}";
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            
-            // Use .Result instead of GetAwaiter().GetResult() for better compatibility
-            var responseTask = _httpClient.PostAsync(GethRpcUrl, content);
-            responseTask.Wait(TimeSpan.FromSeconds(3));
-            if (!responseTask.IsCompleted) return null;
-            
-            var response = responseTask.Result;
-            var bodyTask = response.Content.ReadAsStringAsync();
-            bodyTask.Wait(TimeSpan.FromSeconds(3));
-            if (!bodyTask.IsCompleted) return null;
-            
-            var responseBody = bodyTask.Result;
-            
-            // Simple string parsing instead of JsonDocument for compatibility
-            var hashIdx = responseBody.IndexOf("\"hash\":\"0x");
-            if (hashIdx >= 0)
-            {
-                var start = hashIdx + 8; // skip "hash":"
-                var end = responseBody.IndexOf("\"", start);
-                if (end > start)
-                {
-                    var hashStr = responseBody.Substring(start, end - start);
-                    return new Hash256(hashStr);
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // Console.WriteLine($"[XDC-REWARD] Error fetching geth hash for block {blockNumber}: {ex.Message}");
-        }
-        return null;
     }
 
     private static UInt256 RewardInflation(UInt256 chainReward, ulong blockNumber)
