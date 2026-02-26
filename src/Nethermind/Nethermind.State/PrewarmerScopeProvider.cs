@@ -50,6 +50,7 @@ public class PrewarmerScopeProvider(
         private readonly IPreBlockCachesInner preBlockCache;
         private readonly bool populatePreBlockCache;
         //private readonly SeqlockCache<AddressAsKey, Account>.ValueFactory _getFromBaseTree;
+        private readonly InFactory<AddressAsKey, Account> _getFromBaseTree;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
@@ -61,7 +62,7 @@ public class PrewarmerScopeProvider(
             preBlockCache = preBlockCachesWrapper.CreateNext();
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
-            //_getFromBaseTree = GetFromBaseTree;
+            _getFromBaseTree = GetFromBaseTree;
             _logManager = logManager;
         }
 
@@ -131,7 +132,7 @@ public class PrewarmerScopeProvider(
             if (populatePreBlockCache)
             {
                 long priorReads = Metrics.ThreadLocalStateTreeReads;
-                Account? account = preBlockCache.GetOrAdd(addressAsKey, GetFromBaseTree);
+                Account? account = preBlockCache.GetOrAdd(in addressAsKey, _getFromBaseTree);
 
                 if (Metrics.ThreadLocalStateTreeReads == priorReads)
                 {
@@ -163,7 +164,7 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        private Account? GetFromBaseTree(AddressAsKey address)
+        private Account? GetFromBaseTree(in AddressAsKey address)
         {
             return baseScope.Get(address);
         }
@@ -223,7 +224,7 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                if (preBlockCache.TryGetValue(storageCell, out byte[] value))
+                if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                     baseStorageTree.HintGet(in index, value);
@@ -240,7 +241,7 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(in UInt256 index, byte[]? value) => baseStorageTree.HintGet(in index, value);
 
-        private byte[] LoadFromTreeStorage(StorageCell storageCell)
+        private byte[] LoadFromTreeStorage(in StorageCell storageCell)
         {
             Db.Metrics.IncrementStorageTreeReads();
 

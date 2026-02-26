@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Trie;
 using System;
 using System.Collections.Concurrent;
-using System.Security.Principal;
 using static Nethermind.State.PreBlockCaches;
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
@@ -21,24 +19,21 @@ public class PreBlockCaches : IPreBlockCachesInner
 
     private readonly Func<CacheType>[] _clearCaches;
 
-    private readonly ConcurrentDictionary<StorageCell, byte[]> _storageCache = new(LockPartitions, InitialCapacity);
-    private readonly ConcurrentDictionary<AddressAsKey, Account> _stateCache = new(LockPartitions, InitialCapacity);
-    private readonly ConcurrentDictionary<NodeKey, byte[]?> _rlpCache = new(LockPartitions, InitialCapacity);
+    private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new();
+    private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
+    private readonly SeqlockCache<NodeKey, byte[]?> _rlpCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
 
     public PreBlockCaches()
     {
         _clearCaches =
         [
-            () => _storageCache.NoResizeClear() ? CacheType.Storage : CacheType.None,
-            () => _stateCache.NoResizeClear() ? CacheType.State : CacheType.None,
-            () => _precompileCache.NoResizeClear() ? CacheType.Precompile : CacheType.None
+            () => { _storageCache.Clear(); return CacheType.None; },
+            () => { _stateCache.Clear(); return CacheType.None; },
+            () => { _precompileCache.NoResizeClear(); return CacheType.None; }
         ];
     }
 
-    public ConcurrentDictionary<StorageCell, byte[]> StorageCache => _storageCache;
-    public ConcurrentDictionary<AddressAsKey, Account> StateCache => _stateCache;
-    public ConcurrentDictionary<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
 
     public CacheType ClearCaches()
@@ -52,14 +47,15 @@ public class PreBlockCaches : IPreBlockCachesInner
         return isDirty;
     }
 
-    public Account? GetOrAdd(AddressAsKey key, Func<AddressAsKey, Account> factory)
+    public Account? GetOrAdd(in AddressAsKey key, InFactory<AddressAsKey, Account> factory)
     {
-        return _stateCache.GetOrAdd(key, factory);
+        return _stateCache.GetOrAdd(in key, (in asKey) => factory(asKey) );
     }
 
-    public Account AddOrUpdate(AddressAsKey key, Account newValue, Func<AddressAsKey, Account, Account> updateFunc)
+    public Account AddOrUpdate(in AddressAsKey key, Account newValue, Func<AddressAsKey, Account, Account> updateFunc)
     {
-        return _stateCache.AddOrUpdate(key, newValue, updateFunc);
+        _stateCache.Set(in key, newValue);
+        return newValue;
     }
 
     public bool TryGetValue(AddressAsKey key, out Account? account)
@@ -69,22 +65,24 @@ public class PreBlockCaches : IPreBlockCachesInner
 
     public bool TryRemove(AddressAsKey key, out Account? account)
     {
-        return _stateCache.TryRemove(key, out account);
+        account = null;
+        return false;
     }
 
-    public byte[] GetOrAdd(StorageCell key, Func<StorageCell, byte[]> factory)
+    public byte[]? GetOrAdd(in StorageCell key, InFactory<StorageCell, byte[]?> factory)
     {
-        return _storageCache.GetOrAdd(key, factory);
+        return _storageCache.GetOrAdd(in key, (in cell) => factory(cell));
     }
 
-    public bool TryGetValue(StorageCell key, out byte[] account)
+    public bool TryGetValue(in StorageCell key, out byte[]? data)
     {
-        return _storageCache.TryGetValue(key, out account);
+        return _storageCache.TryGetValue(in key, out data);
     }
 
-    public byte[] AddOrUpdate(StorageCell key, byte[] newValue, Func<StorageCell, byte[], byte[]> updateFunc)
+    public byte[] AddOrUpdate(in StorageCell key, byte[] newValue, Func<StorageCell, byte[], byte[]> updateFunc)
     {
-        return _storageCache.AddOrUpdate(key, newValue, updateFunc);
+        _storageCache.Set(in key, newValue);
+        return newValue;
     }
 
     public void Seal() { }
@@ -122,21 +120,23 @@ public class PreBlockCachesWrapper : IPreBlockCachesWrapper
     public void Promote() { }
 }
 
+public delegate TValue? InFactory<TKey, out TValue>(in TKey key);
+
 public interface IPreBlockCachesInner
 {
     public CacheType ClearCaches();
 
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache { get; }
 
-    Account? GetOrAdd(AddressAsKey key, Func<AddressAsKey, Account> factory);
-    Account AddOrUpdate(AddressAsKey key, Account newValue, Func<AddressAsKey, Account, Account> updateFunc);
+    Account? GetOrAdd(in AddressAsKey key, InFactory<AddressAsKey, Account> factory);
+    Account? AddOrUpdate(in AddressAsKey key, Account newValue, Func<AddressAsKey, Account?, Account?> updateFunc);
     bool TryGetValue(AddressAsKey key, out Account? account);
     bool TryRemove(AddressAsKey key, out Account? account);
 
-    byte[] GetOrAdd(StorageCell key, Func<StorageCell, byte[]> factory);
-    bool TryGetValue(StorageCell key, out byte[] account);
+    byte[]? GetOrAdd(in StorageCell key, InFactory<StorageCell, byte[]> factory);
+    bool TryGetValue(in StorageCell key, out byte[] account);
 
-    byte[] AddOrUpdate(StorageCell key, byte[] newValue, Func<StorageCell, byte[], byte[]> updateFunc);
+    byte[] AddOrUpdate(in StorageCell key, byte[] newValue, Func<StorageCell, byte[], byte[]> updateFunc);
 
     public void Seal();
 }
