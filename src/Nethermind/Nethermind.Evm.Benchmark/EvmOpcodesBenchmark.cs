@@ -325,6 +325,20 @@ public unsafe class EvmOpcodesBenchmark
         {
             _stackDepth = SetupStackForOpcode(Opcode, runs: 1);
             _runsPerBatch = InnerCount;
+
+            // Pre-seed transient storage so internal collections are pre-sized,
+            // eliminating hash map resize events during measurement.
+            // TLOAD: keeps populated slots to measure real lookups.
+            // TSTORE: resets after sizing so writes go to empty slots (first-write cost).
+            if (Opcode is Instruction.TLOAD or Instruction.TSTORE)
+            {
+                PreSeedTransientStorageForIteration();
+                if (Opcode is Instruction.TSTORE)
+                {
+                    _stateProvider.ResetTransient();
+                }
+            }
+
             return;
         }
 
@@ -673,6 +687,26 @@ public unsafe class EvmOpcodesBenchmark
         byte[] bytes = new byte[KeccakWordSize];
         value.ToBigEndian(bytes);
         return bytes;
+    }
+
+    /// <summary>
+    /// Pre-populates transient storage with the keys that will be accessed in this iteration.
+    /// For TLOAD, entries remain so reads hit populated slots.
+    /// For TSTORE, the caller resets after this call so writes go to empty slots,
+    /// but the internal collections retain their capacity (no resize events during measurement).
+    /// </summary>
+    private void PreSeedTransientStorageForIteration()
+    {
+        Address address = _env.ExecutingAccount;
+        byte[] seedValue = ToStorageBytes(ValueA);
+        for (int i = 0; i < InnerCount; i++)
+        {
+            long sequence = ((long)_iterationId * InnerCount) + i;
+            int index = (int)(sequence % _dynamicStorageKeys.Length);
+            UInt256 key = _dynamicStorageKeys[index];
+            StorageCell cell = new(address, key);
+            _stateProvider.SetTransientState(in cell, seedValue);
+        }
     }
 
     private static bool RequiresPerRunLocationSetup(Instruction opcode)
