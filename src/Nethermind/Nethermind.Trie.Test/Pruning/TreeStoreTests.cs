@@ -946,6 +946,116 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void HasRoot_with_block_number_accepts_state_within_committed_boundary()
+        {
+            // Regression test: when LastPersistedBlockNumber is ahead of LatestCommittedBlockNumber
+            // (can happen in edge cases like node restart or fast-sync transitions), a block that is
+            // beyond the persisted boundary but within _maxDepth of LatestCommittedBlockNumber should
+            // still be accepted.
+            int pruningBoundary = 4;
+
+            TrieStore trieStore = CreateTrieStore(
+                pruningStrategy: No.Pruning,
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = pruningBoundary,
+                    TrackPastKeys = false
+                });
+
+            StateTree stateTree = new(trieStore, LimboLogs.Instance);
+
+            // Pre-set LatestCommittedBlockNumber high so that AnnounceReorgBoundaries on first
+            // commit sets LastPersistedBlockNumber = LatestCommittedBlockNumber - 1 = 99.
+            // This simulates a node restart where the persistence checkpoint is from a prior session.
+            trieStore.LatestCommittedBlockNumber = 100;
+
+            // Commit blocks 0..9 — roots stay in dirty cache (no pruning)
+            Hash256[] rootHashes = new Hash256[10];
+            for (int i = 0; i < 10; i++)
+            {
+                using (trieStore.BeginBlockCommit(i))
+                {
+                    stateTree.Set(TestItem.AddressA, new Account((UInt256)(i + 1)));
+                    stateTree.Commit();
+                }
+                rootHashes[i] = stateTree.RootHash;
+            }
+
+            // After first commit, AnnounceReorgBoundaries sets LastPersistedBlockNumber = 99.
+            // LatestCommittedBlockNumber = max(9, 100) = 100.
+            trieStore.LastPersistedBlockNumber.Should().Be(99);
+
+            // Now simulate the edge case: LatestCommittedBlockNumber is the actual latest
+            // committed block, while LastPersistedBlockNumber remains high from the checkpoint.
+            trieStore.LatestCommittedBlockNumber = 9;
+
+            // Block 8 is:
+            //   - Beyond persisted boundary: 8 < 99 - 4 = 95 → true
+            //   - Within committed boundary: 8 >= 9 - 4 = 5 → true (NOT beyond)
+            // The root is in dirty cache, so HasRoot(stateRoot) returns true.
+            // With the fix (both conditions required), block 8 should be accepted.
+            trieStore.HasRoot(rootHashes[8]).Should().BeTrue("root is in dirty cache");
+            trieStore.HasRoot(rootHashes[8], 8).Should().BeTrue(
+                "block is within committed boundary, state is accessible in dirty cache");
+
+            trieStore.Dispose();
+        }
+
+        [Test]
+        public void HasRoot_with_block_number_rejects_state_beyond_both_boundaries()
+        {
+            // Complementary test: when a block is beyond BOTH the persisted and committed
+            // boundaries, its state is truly unavailable and should be rejected.
+            int pruningBoundary = 4;
+            TestPruningStrategy testPruningStrategy = new TestPruningStrategy(shouldPrune: false);
+
+            TrieStore trieStore = CreateTrieStore(
+                pruningStrategy: testPruningStrategy,
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = pruningBoundary,
+                    TrackPastKeys = false
+                });
+
+            StateTree stateTree = new(trieStore, LimboLogs.Instance);
+
+            // Commit many blocks so both boundaries advance well past early blocks
+            int totalBlocks = 30;
+            Hash256[] rootHashes = new Hash256[totalBlocks];
+            for (int i = 0; i < totalBlocks; i++)
+            {
+                using (trieStore.BeginBlockCommit(i))
+                {
+                    stateTree.Set(TestItem.AddressA, new Account((UInt256)(i + 1)));
+                    stateTree.Commit();
+                }
+                rootHashes[i] = stateTree.RootHash;
+
+                // Persist periodically to advance LastPersistedBlockNumber
+                if (i % 5 == 4)
+                {
+                    testPruningStrategy.ShouldPruneEnabled = true;
+                    trieStore.SyncPruneQueue();
+                    testPruningStrategy.ShouldPruneEnabled = false;
+                }
+            }
+
+            long lastPersisted = trieStore.LastPersistedBlockNumber;
+            long latestCommitted = trieStore.LatestCommittedBlockNumber;
+
+            // Block 0 should be beyond both boundaries
+            long targetBlock = 0;
+            targetBlock.Should().BeLessThan(lastPersisted - pruningBoundary);
+            targetBlock.Should().BeLessThan(latestCommitted - pruningBoundary);
+
+            trieStore.HasRoot(rootHashes[targetBlock], targetBlock).Should().BeFalse();
+
+            trieStore.Dispose();
+        }
+
+        [Test]
         [Retry(3)]
         [NonParallelizable]
         public async Task Will_RemovePastKeys_OnSnapshot()

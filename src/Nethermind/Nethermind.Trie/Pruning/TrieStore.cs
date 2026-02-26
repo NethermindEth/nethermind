@@ -1428,9 +1428,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (!HasRoot(stateRoot)) return false;
 
-        // Reject blocks whose state may have been partially pruned (root exists but child nodes don't)
+        // Reject blocks whose state may have been partially pruned (root exists but child nodes don't).
+        // Both conditions must hold: block must be older than the persisted boundary AND older than
+        // the committed boundary. State within _maxDepth of LatestCommittedBlockNumber is still
+        // held in the dirty nodes cache.
         long lastPersisted = LastPersistedBlockNumber;
-        if (lastPersisted > 0 && blockNumber < lastPersisted - _maxDepth)
+        if (lastPersisted > 0
+            && blockNumber < lastPersisted - _maxDepth
+            && blockNumber < LatestCommittedBlockNumber - _maxDepth)
         {
             return false;
         }
