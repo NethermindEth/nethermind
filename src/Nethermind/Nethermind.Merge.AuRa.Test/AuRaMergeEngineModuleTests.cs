@@ -15,8 +15,10 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -36,11 +38,21 @@ namespace Nethermind.Merge.AuRa.Test;
 
 public class AuRaMergeEngineModuleTests : EngineModuleTests
 {
+    private static readonly Address AuraWithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003");
+    private static readonly Address AuraSystemAddress = new("0xfffffffffffffffffffffffffffffffffffffffe");
+
     protected override MergeTestBlockchain CreateBaseBlockchain(
         IMergeConfig? mergeConfig = null)
         => new MergeAuRaTestBlockchain(mergeConfig);
 
     protected override Hash256 ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
+    protected override int ExpectedPayloadBodiesV2BlockAccessListByteLength => 364;
+
+    protected override AccountChanges[] GetAdditionalPrecompileAccountChanges() =>
+    [
+        Build.An.AccountChanges.WithAddress(AuraWithdrawalContractAddress).TestObject,
+        Build.An.AccountChanges.WithAddress(AuraSystemAddress).TestObject
+    ];
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
     public override Task forkchoiceUpdatedV2_should_validate_withdrawals((IReleaseSpec Spec,
@@ -52,12 +64,34 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
     [TestCase(
-        "0xd6ac1db7fee77f895121329b5949ddfb5258c952868a3707bb1104d8f219df2e",
-        "0x912ef8152bf54f81762e26d2a4f0793fb2a0a55b7ce5a9ff7f6879df6d94a6b3",
-        "0x26b9598dd31cd520c6dcaf4f6fa13e279b4fa1f94d150357290df0e944f53115",
-        "0x0117c925cabe3c1d")]
+        "0x76d560a6eb4ea2dd6232cc7feb6f61393d9e955baffaf3a84b1c53d3dd0746b8",
+        "0x2277308bcf798426afd925e4f67303af26c83f5c1832644c4de93893d41bdbf5",
+        "0xae4bd586033cba409a0c6e58c4a0808ef798747cd55a781b972e6e00b9427af8",
+        "0xf0954948630d827c")]
     public override Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V4(latestValidHash, blockHash, stateRoot, payloadId);
+
+    [TestCase(
+        "0xec6f5611ce3652fefd669e8d7e6d63bd8cdefdcdfe9a0a44eb61355084831da4",
+        "0xf382f220de54b57ac9355d4eeb114f9e6bc4d25e307cdac0347b43d5534ac68e",
+        "0xb8a1a0780980ab4e20a46237a3c533af8cd0386cf4c74d05c8ec5e9bf5cbc482",
+        "0x2802e8a8c34cd1ea")]
+    public override Task Should_process_block_as_expected_V6(string latestValidHash, string blockHash, string stateRoot, string payloadId)
+        => base.Should_process_block_as_expected_V6(latestValidHash, blockHash, stateRoot, payloadId);
+
+    [TestCase(
+        "0x8d8fa83b6c3adb40b8f2e1f4798e9d900564b8548e209a65c8cd29fde02e7a32",
+        "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
+        "0x3e98244425fbc5413150a01fd823bece9ae66ef182f11597f0abdfd251d9aa16")]
+    public override Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
+        => base.NewPayloadV5_accepts_valid_BAL(blockHash, receiptsRoot, stateRoot);
+
+    [TestCase(
+        "0xcb284697c29b108d9820ab65ca8b44c6abc50f2598f9412dbfc88d84db5e6fc5",
+        "0x914892da85e1a085a90e8a02f9a9cf0777d73c5798047c7324859b1c5ad9b67f",
+        "0xf33cd1904c18109e882bfa965997ba802d408bd834a61920aba651fbaeb78dd3")]
+    public override Task NewPayloadV5_rejects_invalid_BAL(string blockHash, string stateRoot, string balHash)
+        => base.NewPayloadV5_rejects_invalid_BAL(blockHash, stateRoot, balHash);
 
     [TestCase(
         "0xca2fbb93848df6500fcc33f9036f43f33db9844719f0a5fc69079d8d90dbb28f",
@@ -153,7 +187,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             baseChainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
                 new AuRaChainSpecEngineParameters
                 {
-                    WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003"),
+                    WithdrawalContractAddress = AuraWithdrawalContractAddress,
                     StepDuration = { { 0, 3 } }
                 });
             baseChainSpec.Parameters = new ChainParameters();

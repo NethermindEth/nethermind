@@ -34,7 +34,7 @@ public partial class EngineModuleTests
         "0x14c38ed94cf91d5323eb3aaa7ff6c64c4c059a0a898658fcbc37f9723c25e6b3",
         "0x8a792f3d13211724decede460a451cdac669b5aaae37a01c2110d9f3114bc8a2",
         "0xfe420b1626a1f16d")]
-    public async Task Should_process_block_as_expected_V6(string latestValidHash, string blockHash,
+    public virtual async Task Should_process_block_as_expected_V6(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
         using MergeTestBlockchain chain =
@@ -117,7 +117,7 @@ public partial class EngineModuleTests
             [],
             [],
             withdrawals,
-            Build.A.BlockAccessList.WithPrecompileChanges(startingHead, timestamp).TestObject);
+            AddExpectedPrecompileChanges(Build.A.BlockAccessList, startingHead, timestamp).TestObject);
         GetPayloadV6Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: false);
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV6", expectedPayloadId);
@@ -187,7 +187,7 @@ public partial class EngineModuleTests
         "0x0981253ff1b66ee40650f7fa7efe53f772bc11bd4fef3a3574cf91495a1533dd",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
         "0x42a80ba6d5783c392ffcc6b3c15d7ef06be8ae71c2ff5f42377acdec67a5766c")]
-    public async Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
+    public virtual async Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Amsterdam.Instance);
@@ -263,7 +263,7 @@ public partial class EngineModuleTests
         UInt256 addressABalance2 = accountBalance - gasPrice * gasUsedBeforeFinal;
         UInt256 addressABalance3 = accountBalance - gasPrice * gasUsed;
 
-        BlockAccessList expectedBlockAccessList = Build.A.BlockAccessList
+        BlockAccessListBuilder expectedBlockAccessListBuilder = Build.A.BlockAccessList
             .WithAccountChanges(
                 Build.An.AccountChanges
                     .WithAddress(TestItem.AddressA)
@@ -287,8 +287,8 @@ public partial class EngineModuleTests
                 Build.An.AccountChanges
                     .WithAddress(newContractAddress2)
                     .WithStorageReads(1)
-                    .TestObject)
-            .WithPrecompileChanges(parentHash, timestamp)
+                    .TestObject);
+        BlockAccessList expectedBlockAccessList = AddExpectedPrecompileChanges(expectedBlockAccessListBuilder, parentHash, timestamp)
             .TestObject;
 
         Block block = new(
@@ -344,7 +344,7 @@ public partial class EngineModuleTests
         "0xb8e829825b96cad7e1aba01195eb752ca2c07ef403c402b1b507c695936e2c21",
         "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e",
         "0xf33cd1904c18109e882bfa965997ba802d408bd834a61920aba651fbaeb78dd3")]
-    public async Task NewPayloadV5_rejects_invalid_BAL(string blockHash, string stateRoot, string balHash)
+    public virtual async Task NewPayloadV5_rejects_invalid_BAL(string blockHash, string stateRoot, string balHash)
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Amsterdam.Instance);
@@ -404,7 +404,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task GetPayloadV6_builds_block_with_BAL()
+    public virtual async Task GetPayloadV6_builds_block_with_BAL()
     {
         ulong timestamp = 12;
         TestSpecProvider specProvider = new(Amsterdam.Instance);
@@ -443,7 +443,7 @@ public partial class EngineModuleTests
         Assert.That(res.ExecutionPayload.BlockAccessList, Is.Not.Null);
         BlockAccessList bal = Rlp.Decode<BlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList));
 
-        BlockAccessList expected = Build.A.BlockAccessList
+        BlockAccessListBuilder expectedBalBuilder = Build.A.BlockAccessList
             .WithAccountChanges([
                 Build.An.AccountChanges
                     .WithAddress(TestItem.AddressA)
@@ -458,14 +458,14 @@ public partial class EngineModuleTests
                     .WithAddress(Address.Zero)
                     .WithBalanceChanges([new(1, 0x5208)])
                     .TestObject,
-            ])
-            .WithPrecompileChanges(genesis.Header.Hash!, timestamp)
+            ]);
+        BlockAccessList expected = AddExpectedPrecompileChanges(expectedBalBuilder, genesis.Header.Hash!, timestamp)
             .TestObject;
         Assert.That(bal, Is.EqualTo(expected));
     }
 
     [Test]
-    public async Task GetPayloadBodiesHashV2_returns_correctly()
+    public virtual async Task GetPayloadBodiesHashV2_returns_correctly()
     {
         TestSpecProvider specProvider = new(Amsterdam.Instance);
         using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
@@ -487,13 +487,13 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Count, Is.EqualTo(3));
-            Assert.That(response.Data.First()!.BlockAccessList!.Count, Is.EqualTo(310));
+            Assert.That(response.Data.First()!.BlockAccessList!.Count, Is.EqualTo(ExpectedPayloadBodiesV2BlockAccessListByteLength));
             Assert.That(response.Data.ElementAt(2), Is.Null);
         }
     }
 
     [Test]
-    public async Task GetPayloadBodiesByRangeV2_returns_correctly()
+    public virtual async Task GetPayloadBodiesByRangeV2_returns_correctly()
     {
         TestSpecProvider specProvider = new(Amsterdam.Instance);
         using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
@@ -509,8 +509,24 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Count, Is.EqualTo(4)); // cutoff at head
-            Assert.That(response.Data.First()!.BlockAccessList!.Count, Is.EqualTo(310));
+            Assert.That(response.Data.First()!.BlockAccessList!.Count, Is.EqualTo(ExpectedPayloadBodiesV2BlockAccessListByteLength));
         }
+    }
+
+    protected virtual int ExpectedPayloadBodiesV2BlockAccessListByteLength => 310;
+
+    protected virtual AccountChanges[] GetAdditionalPrecompileAccountChanges() => [];
+
+    private BlockAccessListBuilder AddExpectedPrecompileChanges(BlockAccessListBuilder builder, Hash256 parentHash, ulong timestamp)
+    {
+        builder.WithPrecompileChanges(parentHash, timestamp);
+        AccountChanges[] additionalPrecompileAccountChanges = GetAdditionalPrecompileAccountChanges();
+        if (additionalPrecompileAccountChanges.Length > 0)
+        {
+            builder.WithAccountChanges(additionalPrecompileAccountChanges);
+        }
+
+        return builder;
     }
 
     private async Task<ExecutionPayloadV4> AddNewBlockV6(IEngineRpcModule rpcModule, MergeTestBlockchain chain, int transactionCount = 0)
