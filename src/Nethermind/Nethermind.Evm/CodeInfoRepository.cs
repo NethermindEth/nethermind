@@ -32,9 +32,9 @@ public class CodeInfoRepository : ICodeInfoRepository
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
-        if (vmSpec.IsPrecompile(codeSource)) // _localPrecompiles have to have all precompiles
+        if (TryGetPrecompileCodeInfo(codeSource, vmSpec, out CodeInfo precompileCodeInfo))
         {
-            return GetPrecompile(codeSource);
+            return precompileCodeInfo;
         }
 
         CodeInfo cachedCodeInfo = InternalGetCachedCode(_worldState, codeSource, vmSpec);
@@ -46,6 +46,28 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
 
         return cachedCodeInfo;
+    }
+
+    public CodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    {
+        if (TryGetPrecompileCodeInfo(codeSource, vmSpec, out CodeInfo precompileCodeInfo))
+        {
+            return precompileCodeInfo;
+        }
+
+        return InternalGetCachedCode(_worldState, in codeHash, vmSpec);
+    }
+
+    private bool TryGetPrecompileCodeInfo(Address codeSource, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? precompileCodeInfo)
+    {
+        if (vmSpec.IsPrecompile(codeSource)) // _localPrecompiles have to have all precompiles
+        {
+            precompileCodeInfo = _localPrecompiles[codeSource];
+            return true;
+        }
+
+        precompileCodeInfo = null;
+        return false;
     }
 
     internal static void Clear() => _codeCache.Clear();

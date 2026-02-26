@@ -186,8 +186,7 @@ internal static partial class EvmInstructions
             if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, length, vm.VmState))
                 goto OutOfGas;
 
-            CodeInfo codeInfo = vm.CodeInfoRepository
-                .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+            CodeInfo codeInfo = vm.GetExtCodeInfoCached(address, spec);
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
@@ -202,7 +201,7 @@ internal static partial class EvmInstructions
 
             // If EOF is enabled and the code is an EOF contract, use the 2-byte EOF magic value.
             // The TEofEnabled flag allows JIT to eliminate this block when not enabled.
-            if (TEofEnabled.IsActive && IsEofMagic(externalCode))
+            if (TEofEnabled.IsActive && codeInfo is EofCodeInfo)
             {
                 externalCode = [0xEF, 0x00];
             }
@@ -319,17 +318,9 @@ internal static partial class EvmInstructions
             }
         }
 
-        // No optimization applied: load the account's code from storage.
-        ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
-            .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
-            .CodeSpan;
-        // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
-        // The TEofEnabled flag allows JIT to eliminate this block when not enabled.
-        // Otherwise, push the actual code length (common case).
-        return new(programCounter, !(TEofEnabled.IsActive && IsEofMagic(accountCode))
-            ? stack.PushUInt32<TTracingInst>((uint)accountCode.Length)
-            : stack.PushUInt32<TTracingInst>(2));
-
+        // Use cached EXTCODESIZE lookup (handles EOF contracts internally).
+        uint codeSize = vm.GetExtCodeSizeCached(address, spec);
+        return new(programCounter, stack.PushUInt32<TTracingInst>(codeSize));
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return new(programCounter, EvmExceptionType.OutOfGas);
