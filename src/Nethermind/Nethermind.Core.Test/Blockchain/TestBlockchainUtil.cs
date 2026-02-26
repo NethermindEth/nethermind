@@ -103,14 +103,15 @@ public class TestBlockchainUtil(
             }
             iteration++;
         }
+        Task headTask = waitForHead
+            ? blockTree.WaitForNewBlock(cancellationToken)
+            : Task.CompletedTask;
+
         blockTree.SuggestBlock(block!).Should().Be(AddBlockResult.Added);
 
         tcs.TrySetResult();
 
-        if (waitForHead)
-        {
-            await WaitForHead(block, cancellationToken);
-        }
+        await headTask;
 
         await txNewHead; // Wait for tx new head event so that processed tx was removed from txpool
 
@@ -144,21 +145,6 @@ public class TestBlockchainUtil(
         if (mayMissTx) flags |= AddBlockFlags.MayMissTx;
 
         return await AddBlock(flags, cancellationToken, transactions);
-    }
-
-    private async Task WaitForHead(Block block, CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (blockTree.HeadHash == block.Hash)
-            {
-                return;
-            }
-
-            await Task.Delay(1, cancellationToken);
-        }
     }
 
     [Flags]
