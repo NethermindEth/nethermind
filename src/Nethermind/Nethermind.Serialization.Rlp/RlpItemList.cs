@@ -11,7 +11,7 @@ namespace Nethermind.Serialization.Rlp;
 
 public sealed class RlpItemList : IByteArrayList
 {
-    private readonly IMemoryOwner<byte> _memoryOwner;
+    private readonly RefCountingMemoryOwner<byte> _memoryOwner;
     private readonly Memory<byte> _rlpRegion;
     private int _count;
 
@@ -19,6 +19,15 @@ public sealed class RlpItemList : IByteArrayList
     private int _cachedPosition;
 
     public RlpItemList(IMemoryOwner<byte> memoryOwner, Memory<byte> rlpRegion)
+    {
+        _memoryOwner = new RefCountingMemoryOwner<byte>(memoryOwner);
+        _rlpRegion = rlpRegion;
+        _count = -1;
+        _cachedIndex = 0;
+        _cachedPosition = 0;
+    }
+
+    private RlpItemList(RefCountingMemoryOwner<byte> memoryOwner, Memory<byte> rlpRegion)
     {
         _memoryOwner = memoryOwner;
         _rlpRegion = rlpRegion;
@@ -47,6 +56,20 @@ public sealed class RlpItemList : IByteArrayList
             _cachedPosition = position;
             return span.Slice(position, prefixLength + contentLength);
         }
+    }
+
+    public RlpListReader CreateNestedReader(int index) => new(this[index]);
+
+    public RlpItemList ReadNestedItemList(int index)
+    {
+        ReadOnlySpan<byte> item = this[index];
+        if (item[0] < 0xc0) throw new RlpException("Item is not an RLP list");
+
+        (int prefixLength, int contentLength) = PeekPrefixAndContentLength(_rlpRegion.Span, _cachedPosition);
+        Memory<byte> nestedRegion = _rlpRegion.Slice(_cachedPosition + prefixLength, contentLength);
+
+        _memoryOwner.AcquireLease();
+        return new RlpItemList(_memoryOwner, nestedRegion);
     }
 
     public void Dispose() => _memoryOwner.Dispose();
