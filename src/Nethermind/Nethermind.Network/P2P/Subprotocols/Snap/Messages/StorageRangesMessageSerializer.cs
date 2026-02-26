@@ -157,6 +157,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 contentLength += Rlp.LengthOfSequence(proofsLength);
             }
 
+
             return (contentLength, allSlotsLength, accountSlotsLengths, proofsLength);
         }
     }
