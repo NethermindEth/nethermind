@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.Processing
             suggestedBlocks.ToArray();
 
         public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
-            IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token, Action? onTransactionsProcessed = null)
+            IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token, Action? onTransactionsExecuted = null)
         {
             return (suggestedBlock, []);
         }

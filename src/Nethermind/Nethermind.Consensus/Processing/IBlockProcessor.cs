@@ -19,13 +19,16 @@ namespace Nethermind.Consensus.Processing
     /// </summary>
     public interface IBlockProcessor
     {
+        /// <param name="onTransactionsExecuted">Invoked immediately after transaction execution completes,
+        /// before post-processing (blooms, receipts root, state root). Used to signal that background
+        /// work (e.g. prewarmer) can stop — cancel only, no waiting.</param>
         public (Block Block, TxReceipt[] Receipts) ProcessOne(
             Block suggestedBlock,
             ProcessingOptions options,
             IBlockTracer blockTracer,
             IReleaseSpec spec,
             CancellationToken token = default,
-            Action? onTransactionsProcessed = null);
+            Action? onTransactionsExecuted = null);
 
         public interface IBlockTransactionsExecutor
         {

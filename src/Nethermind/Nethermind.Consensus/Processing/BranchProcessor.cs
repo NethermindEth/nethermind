@@ -120,22 +120,7 @@ public class BranchProcessor(
                 Block processedBlock;
                 TxReceipt[] receipts;
 
-                if (preWarmTask is not null)
-                {
-                    // After ProcessTransactions, the prewarmer has nothing useful left to warm
-                    // but its threads still occupy the thread pool, starving critical-path parallel
-                    // work (blooms, receipts root, state root) and causing 400-600ms stalls.
-                    // Cancel AND wait so the thread pool is fully free before that work begins.
-                    Task localPreWarmTask = preWarmTask;
-                    CancellationTokenSource localCts = backgroundCancellation!;
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token, () =>
-                    {
-                        localCts.Cancel();
-                        try { localPreWarmTask.GetAwaiter().GetResult(); }
-                        catch (OperationCanceledException) { }
-                    });
-                }
-                else
+                if (preWarmTask is null)
                 {
                     // Even though we skip prewarming we still need to ensure the caches are cleared
                     CacheType result = preWarmer?.ClearCaches() ?? default;
@@ -143,8 +128,13 @@ public class BranchProcessor(
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
+
+                // Cancel prewarmer (no wait) after txs are done — frees thread pool threads
+                // for critical-path parallel work (blooms, receipts root, state root).
+                // Prewarmer threads wind down cooperatively as they check cancellation between txs.
+                (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token,
+                    preWarmTask is not null ? backgroundCancellation!.Cancel : null);
 
                 // Block is processed, we can cancel background tasks
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);

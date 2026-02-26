@@ -54,13 +54,13 @@ public partial class BlockProcessor(
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
-    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token, Action? onTransactionsProcessed = null)
+    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token, Action? onTransactionsExecuted = null)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token, onTransactionsProcessed);
+        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token, onTransactionsExecuted);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -92,7 +92,7 @@ public partial class BlockProcessor(
         ProcessingOptions options,
         IReleaseSpec spec,
         CancellationToken token,
-        Action? onTransactionsProcessed = null)
+        Action? onTransactionsExecuted = null)
     {
         long tsStart = Stopwatch.GetTimestamp();
         int gc0 = GC.CollectionCount(0), gc1 = GC.CollectionCount(1), gc2 = GC.CollectionCount(2);
@@ -114,11 +114,9 @@ public partial class BlockProcessor(
 
         long tsAfterTxs = Stopwatch.GetTimestamp();
 
-        // Signal that transactions are done so background work (e.g. prewarmer) can be cancelled,
-        // freeing thread pool threads for the critical-path parallel work below (blooms, receipts root, state root).
-        onTransactionsProcessed?.Invoke();
-
-        long tsAfterPrewarmerWait = Stopwatch.GetTimestamp();
+        // Signal that transactions are done — background work (e.g. prewarmer) can stop.
+        // Cancel only, no waiting — prewarmer threads wind down cooperatively.
+        onTransactionsExecuted?.Invoke();
 
         _stateProvider.Commit(spec, commitRoots: false);
 
@@ -193,8 +191,7 @@ public partial class BlockProcessor(
                 $"DIAG Block {block.Number} took {totalMs:F1}ms | " +
                 $"setup={Stopwatch.GetElapsedTime(tsStart, tsAfterSetup).TotalMilliseconds:F1} " +
                 $"txs={Stopwatch.GetElapsedTime(tsAfterSetup, tsAfterTxs).TotalMilliseconds:F1} " +
-                $"prewarmerWait={Stopwatch.GetElapsedTime(tsAfterTxs, tsAfterPrewarmerWait).TotalMilliseconds:F1} " +
-                $"postCommit={Stopwatch.GetElapsedTime(tsAfterPrewarmerWait, tsAfterPostTxCommit).TotalMilliseconds:F1} " +
+                $"postCommit={Stopwatch.GetElapsedTime(tsAfterTxs, tsAfterPostTxCommit).TotalMilliseconds:F1} " +
                 $"blooms={Stopwatch.GetElapsedTime(tsAfterPostTxCommit, tsAfterBlooms).TotalMilliseconds:F1} " +
                 $"rcptRoot={Stopwatch.GetElapsedTime(tsAfterBlooms, tsAfterReceiptsRoot).TotalMilliseconds:F1} " +
                 $"rewards+wdrl={Stopwatch.GetElapsedTime(tsAfterReceiptsRoot, tsAfterWithdrawals).TotalMilliseconds:F1} " +
