@@ -45,7 +45,7 @@ public unsafe class EvmOpcodesBenchmark
     private const int DynamicStorageKeyCount = InnerCount * 8;
     private const int DynamicCallTargetCount = InnerCount;
 
-    private delegate*<VirtualMachine<EthereumGasPolicy>, ref EvmStack, ref EthereumGasPolicy, ref int, EvmExceptionType>[] _opcodes = null!;
+    private delegate*<VirtualMachine<EthereumGasPolicy>, ref EvmStack, ref EthereumGasPolicy, int, OpcodeResult>[] _opcodes = null!;
     private BenchmarkVm _vm = null!;
     private byte[] _stackBuffer = null!;
     private int _stackOffset;
@@ -204,7 +204,7 @@ public unsafe class EvmOpcodesBenchmark
             _env,
             new StackAccessTracker(),
             Snapshot.Empty);
-        _vmState.InitializeStacks();
+        _vmState.InitializeStacks(_env.CodeInfo.CodeSpan, out _);
         InitializeKeccakMemoryLocations();
 
         _vm.SetVmState(_vmState);
@@ -244,8 +244,9 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithStackWalk()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
-        EvmExceptionType result = EvmExceptionType.None;
+        ref byte stackRef = ref GetAlignedStackRef();
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref stackRef, _env.CodeInfo.CodeSpan);
+        OpcodeResult result = new(0);
         int remaining = InnerCount;
         while (remaining > 0)
         {
@@ -256,20 +257,21 @@ public unsafe class EvmOpcodesBenchmark
             {
                 EthereumGasPolicy gas = _gas;
                 int pc = 0;
-                result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+                result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, pc);
                 DisposeNestedReturnFrame();
             }
 
             remaining -= runs;
         }
 
-        return result;
+        return result.Exception;
     }
 
     private EvmExceptionType ExecuteOpcodeWithPerRunRefresh()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
-        EvmExceptionType result = EvmExceptionType.None;
+        ref byte stackRef = ref GetAlignedStackRef();
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref stackRef, _env.CodeInfo.CodeSpan);
+        OpcodeResult result = new(0);
         for (int runIndex = 0; runIndex < InnerCount; runIndex++)
         {
             stack.Head = _stackDepth;
@@ -277,17 +279,18 @@ public unsafe class EvmOpcodesBenchmark
 
             EthereumGasPolicy gas = _gas;
             int pc = 0;
-            result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+            result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, pc);
             DisposeNestedReturnFrame();
         }
 
-        return result;
+        return result.Exception;
     }
 
     private EvmExceptionType ExecuteOpcodeWithIndependentBinaryInputs()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
-        EvmExceptionType result = EvmExceptionType.None;
+        ref byte stackRef = ref GetAlignedStackRef();
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref stackRef, _env.CodeInfo.CodeSpan);
+        OpcodeResult result = new(0);
         int remaining = InnerCount;
         while (remaining > 0)
         {
@@ -299,14 +302,14 @@ public unsafe class EvmOpcodesBenchmark
 
                 EthereumGasPolicy gas = _gas;
                 int pc = 0;
-                result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+                result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, pc);
                 DisposeNestedReturnFrame();
             }
 
             remaining -= runs;
         }
 
-        return result;
+        return result.Exception;
     }
 
     [IterationCleanup]
@@ -602,7 +605,8 @@ public unsafe class EvmOpcodesBenchmark
 
     private long ExecuteOpcodeOnceForGas()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        ref byte stackRef = ref GetAlignedStackRef();
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref stackRef, _env.CodeInfo.CodeSpan);
         if (RequiresPerRunLocationSetup(Opcode))
         {
             stack.Head = _stackDepth;
@@ -620,7 +624,7 @@ public unsafe class EvmOpcodesBenchmark
 
         EthereumGasPolicy gas = _gas;
         int pc = 0;
-        _ = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+        _ = _opcodes[(int)Opcode](_vm, ref stack, ref gas, pc);
         DisposeNestedReturnFrame();
 
         return _gas.Value - gas.Value;
@@ -855,6 +859,10 @@ public unsafe class EvmOpcodesBenchmark
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private Span<byte> GetAlignedStackSpan()
         => _stackBuffer.AsSpan(_stackOffset, _stackLength);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ref byte GetAlignedStackRef()
+        => ref MemoryMarshal.GetReference(GetAlignedStackSpan());
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WriteStackSlot(int slotIndex, in UInt256 value)
