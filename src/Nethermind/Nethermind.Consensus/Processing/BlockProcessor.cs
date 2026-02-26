@@ -118,6 +118,8 @@ public partial class BlockProcessor(
         // freeing thread pool threads for the critical-path parallel work below (blooms, receipts root, state root).
         onTransactionsProcessed?.Invoke();
 
+        long tsAfterPrewarmerWait = Stopwatch.GetTimestamp();
+
         _stateProvider.Commit(spec, commitRoots: false);
 
         long tsAfterPostTxCommit = Stopwatch.GetTimestamp();
@@ -186,7 +188,8 @@ public partial class BlockProcessor(
                 $"DIAG Block {block.Number} took {totalMs:F1}ms | " +
                 $"setup={Stopwatch.GetElapsedTime(tsStart, tsAfterSetup).TotalMilliseconds:F1} " +
                 $"txs={Stopwatch.GetElapsedTime(tsAfterSetup, tsAfterTxs).TotalMilliseconds:F1} " +
-                $"postCommit={Stopwatch.GetElapsedTime(tsAfterTxs, tsAfterPostTxCommit).TotalMilliseconds:F1} " +
+                $"prewarmerWait={Stopwatch.GetElapsedTime(tsAfterTxs, tsAfterPrewarmerWait).TotalMilliseconds:F1} " +
+                $"postCommit={Stopwatch.GetElapsedTime(tsAfterPrewarmerWait, tsAfterPostTxCommit).TotalMilliseconds:F1} " +
                 $"blooms={Stopwatch.GetElapsedTime(tsAfterPostTxCommit, tsAfterBlooms).TotalMilliseconds:F1} " +
                 $"rcptRoot={Stopwatch.GetElapsedTime(tsAfterBlooms, tsAfterReceiptsRoot).TotalMilliseconds:F1} " +
                 $"rewards+wdrl={Stopwatch.GetElapsedTime(tsAfterReceiptsRoot, tsAfterWithdrawals).TotalMilliseconds:F1} " +

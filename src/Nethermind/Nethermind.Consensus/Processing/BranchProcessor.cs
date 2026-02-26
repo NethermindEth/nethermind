@@ -122,9 +122,18 @@ public class BranchProcessor(
 
                 if (preWarmTask is not null)
                 {
-                    // Cancel prewarmer after transactions are processed so its threads are freed
-                    // for critical-path parallel work (blooms, receipts root, state root).
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token, backgroundCancellation!.Cancel);
+                    // After ProcessTransactions, the prewarmer has nothing useful left to warm
+                    // but its threads still occupy the thread pool, starving critical-path parallel
+                    // work (blooms, receipts root, state root) and causing 400-600ms stalls.
+                    // Cancel AND wait so the thread pool is fully free before that work begins.
+                    Task localPreWarmTask = preWarmTask;
+                    CancellationTokenSource localCts = backgroundCancellation!;
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token, () =>
+                    {
+                        localCts.Cancel();
+                        try { localPreWarmTask.GetAwaiter().GetResult(); }
+                        catch (OperationCanceledException) { }
+                    });
                 }
                 else
                 {
