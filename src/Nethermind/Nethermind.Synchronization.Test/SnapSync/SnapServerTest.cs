@@ -13,6 +13,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -198,12 +199,13 @@ public class SnapServerTest
         using var context = CreateContext();
         FillWithTestAccounts(context);
 
-        using IOwnedReadOnlyList<byte[]> result = context.Server.GetTrieNodes([
+        using RlpItemList pathSet = PathGroup.EncodeToRlpItemList([
             new PathGroup()
             {
                 Group = [[]]
             }
-        ], context.RootHash, default)!;
+        ]);
+        using IOwnedReadOnlyList<byte[]> result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
         result.Count.Should().Be(1);
     }
@@ -214,12 +216,13 @@ public class SnapServerTest
         using var context = CreateContext();
         FillWithTestAccounts(context);
 
-        using IOwnedReadOnlyList<byte[]> result = context.Server.GetTrieNodes([
+        using RlpItemList pathSet = PathGroup.EncodeToRlpItemList([
             new PathGroup()
             {
                 Group = [TestItem.Tree.AccountsWithPaths[0].Path.Bytes.ToArray(), []]
             }
-        ], context.RootHash, default)!;
+        ]);
+        using IOwnedReadOnlyList<byte[]> result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
         result.Count.Should().Be(1);
     }

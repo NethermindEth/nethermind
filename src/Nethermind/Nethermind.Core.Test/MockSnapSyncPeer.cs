@@ -56,15 +56,15 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
 
     public Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
     {
-        ArrayPoolList<PathGroup> groups = new(request.Paths.Count);
-
+        PathGroup[] groups = new PathGroup[request.Paths.Count];
         for (int i = 0; i < request.Paths.Count; i++)
         {
             AccountWithStorageStartingHash path = request.Paths[i];
-            groups.Add(new PathGroup { Group = [path.PathAndAccount.Path.Bytes.ToArray(), _emptyBytes] });
+            groups[i] = new PathGroup { Group = [path.PathAndAccount.Path.Bytes.ToArray(), _emptyBytes] };
         }
 
-        IOwnedReadOnlyList<byte[]>? res = snapServer.GetTrieNodes(groups, request.RootHash, token);
+        using var encoded = PathGroup.EncodeToRlpItemList(groups);
+        IOwnedReadOnlyList<byte[]>? res = snapServer.GetTrieNodes(encoded, request.RootHash, token);
         IByteArrayList result = res as IByteArrayList ?? new ByteArrayListAdapter(res!);
         return Task.FromResult(result);
     }

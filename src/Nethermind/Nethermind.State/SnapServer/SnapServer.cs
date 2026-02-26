@@ -69,7 +69,7 @@ public class SnapServer : ISnapServer
         return (!_store.HasRoot(stateRoot)) || _lastNStateRootTracker?.HasStateRoot(stateRoot) == false;
     }
 
-    public IOwnedReadOnlyList<byte[]>? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
+    public IOwnedReadOnlyList<byte[]>? GetTrieNodes(RlpItemList pathSet, Hash256 rootHash, CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return ArrayPoolList<byte[]>.Empty();
 
@@ -82,15 +82,16 @@ public class SnapServer : ISnapServer
 
         for (int i = 0; i < pathLength && !abort && !cancellationToken.IsCancellationRequested; i++)
         {
-            byte[][]? requestedPath = pathSet[i].Group;
-            switch (requestedPath.Length)
+            using RlpItemList group = pathSet.ReadNestedItemList(i);
+            switch (group.Count)
             {
                 case 0:
                     return null;
                 case 1:
                     try
                     {
-                        byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), rootHash);
+                        byte[] path0 = group.ReadContent(0).ToArray();
+                        byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(path0), rootHash);
                         response.Add(rlp);
                     }
                     catch (MissingTrieNodeException)
@@ -101,19 +102,21 @@ public class SnapServer : ISnapServer
                 default:
                     try
                     {
+                        byte[] accountPathBytes = group.ReadContent(0).ToArray();
                         Hash256 storagePath = new Hash256(
-                            requestedPath[0].Length == Hash256.Size
-                                ? requestedPath[0]
-                                : requestedPath[0].PadRight(Hash256.Size));
-                        Account? account = GetAccountByPath(tree, rootHash, requestedPath[0]);
+                            accountPathBytes.Length == Hash256.Size
+                                ? accountPathBytes
+                                : accountPathBytes.PadRight(Hash256.Size));
+                        Account? account = GetAccountByPath(tree, rootHash, accountPathBytes);
                         if (account is not null)
                         {
                             Hash256? storageRoot = account.StorageRoot;
                             StorageTree sTree = new(_store.GetTrieStore(storagePath), storageRoot, _logManager);
 
-                            for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
+                            for (int reqStorage = 1; reqStorage < group.Count; reqStorage++)
                             {
-                                byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
+                                byte[] sp = group.ReadContent(reqStorage).ToArray();
+                                byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(sp));
                                 response.Add(sRlp);
                             }
                         }

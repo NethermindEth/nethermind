@@ -2,24 +2,28 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Snap;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public class GetTrieNodesMessageSerializer : IZeroMessageSerializer<GetTrieNodesMessage>
     {
-        private static readonly PathGroup _defaultPathGroup = new() { Group = [] };
-
         public void Serialize(IByteBuffer byteBuffer, GetTrieNodesMessage message)
         {
-            (int contentLength, int allPathsLength, int[] pathsLengths) = CalculateLengths(message);
+            int pathsSeqLen = message.Paths?.RlpContentLength ?? 0;
+            int contentLength = Rlp.LengthOf(message.RequestId)
+                + Rlp.LengthOf(message.RootHash)
+                + (message.Paths is null || message.Paths.Count == 0
+                    ? 1
+                    : Rlp.LengthOfSequence(pathsSeqLen))
+                + Rlp.LengthOf(message.Bytes);
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
             NettyRlpStream stream = new(byteBuffer);
 
             stream.StartSequence(contentLength);
-
             stream.Encode(message.RequestId);
             stream.Encode(message.RootHash);
 
@@ -29,80 +33,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
             else
             {
-                stream.StartSequence(allPathsLength);
-
-                for (int i = 0; i < message.Paths.Count; i++)
-                {
-                    PathGroup group = message.Paths[i];
-
-                    stream.StartSequence(pathsLengths[i]);
-
-                    for (int j = 0; j < group.Group.Length; j++)
-                    {
-                        stream.Encode(group.Group[j]);
-                    }
-                }
+                stream.StartSequence(pathsSeqLen);
+                stream.Write(message.Paths.RlpContentSpan);
             }
 
             stream.Encode(message.Bytes);
         }
 
-        public GetTrieNodesMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
-
-        private static GetTrieNodesMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        public GetTrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            GetTrieNodesMessage message = new();
+            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            int startingPosition = ctx.Position;
+
             ctx.ReadSequenceLength();
+            long requestId = ctx.DecodeLong();
+            Hash256? rootHash = ctx.DecodeKeccak();
 
-            message.RequestId = ctx.DecodeLong();
-            message.RootHash = ctx.DecodeKeccak();
-            PathGroup defaultValue = _defaultPathGroup;
-            message.Paths = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
-                new PathGroup
-                {
-                    Group = c.DecodeArray(static (ref Rlp.ValueDecoderContext inner) => inner.DecodeByteArray(), defaultElement: [])
-                }, defaultElement: defaultValue);
+            RlpItemList paths = RlpItemList.DecodeList(ref ctx, memoryOwner);
 
-            message.Bytes = ctx.DecodeLong();
+            long bytes = ctx.DecodeLong();
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
 
-            return message;
-        }
-
-        private static (int contentLength, int allPathsLength, int[] pathsLengths) CalculateLengths(GetTrieNodesMessage message)
-        {
-            int contentLength = Rlp.LengthOf(message.RequestId);
-            contentLength += Rlp.LengthOf(message.RootHash);
-
-            int allPathsLength = 0;
-            int[] pathsLengths = new int[message.Paths.Count];
-
-            if (message.Paths is null || message.Paths.Count == 0)
-            {
-                allPathsLength = 1;
-            }
-            else
-            {
-                for (var i = 0; i < message.Paths.Count; i++)
-                {
-                    PathGroup pathGroup = message.Paths[i];
-                    int groupLength = 0;
-
-                    foreach (byte[] path in pathGroup.Group)
-                    {
-                        groupLength += Rlp.LengthOf(path);
-                    }
-
-                    pathsLengths[i] = groupLength;
-                    allPathsLength += Rlp.LengthOfSequence(groupLength);
-                }
-            }
-
-            contentLength += Rlp.LengthOfSequence(allPathsLength);
-
-            contentLength += Rlp.LengthOf(message.Bytes);
-
-            return (contentLength, allPathsLength, pathsLengths);
+            return new GetTrieNodesMessage { RequestId = requestId, RootHash = rootHash, Paths = paths, Bytes = bytes };
         }
     }
 }

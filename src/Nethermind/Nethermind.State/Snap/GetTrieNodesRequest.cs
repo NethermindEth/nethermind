@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Snap
 {
@@ -11,11 +11,8 @@ namespace Nethermind.State.Snap
     {
         public Hash256 RootHash { get; set; }
 
-        public IOwnedReadOnlyList<PathGroup> AccountAndStoragePaths { get; set; }
+        public RlpItemList AccountAndStoragePaths { get; set; }
 
-        public void Dispose()
-        {
-            AccountAndStoragePaths?.Dispose();
-        }
+        public void Dispose() => AccountAndStoragePaths?.Dispose();
     }
 }
