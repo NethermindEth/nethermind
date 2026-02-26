@@ -76,7 +76,7 @@ jobs:
   benchmark:
     needs: resolve-inputs
     if: needs.resolve-inputs.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: benchmark
     timeout-minutes: 30
     steps:
       - name: Check out base branch (master)
