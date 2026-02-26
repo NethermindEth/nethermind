@@ -20,6 +20,7 @@ public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
 
     /// <see href="https://eips.ethereum.org/EIPS/eip-7910" />
     public static string Name => "BN254_MUL";
+    public bool SupportsFastPath => true;
 
     /// <see href="https://eips.ethereum.org/EIPS/eip-1108" />
     public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 6_000L : 40_000L;

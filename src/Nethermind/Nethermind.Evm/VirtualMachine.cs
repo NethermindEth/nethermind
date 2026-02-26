@@ -1206,6 +1206,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         long baseGasCost = precompile.BaseGasCost(spec);
         long dataGasCost = precompile.DataGasCost(callData, spec);
 
+        // NOTE: This account-touch behavior is mirrored in FastPrecompileCall (EvmInstructions.Call.cs).
+        // If you change the touch semantics here, update the fast path to match.
         bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
 
         // Handle Parity touch bug (EIP-161) - outlined to cold path
