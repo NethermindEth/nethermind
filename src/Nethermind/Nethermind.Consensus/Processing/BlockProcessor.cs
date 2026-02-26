@@ -128,12 +128,18 @@ public partial class BlockProcessor(
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
+        long tsAfterWithdrawals = Stopwatch.GetTimestamp();
+
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
         // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
         _stateProvider.Commit(spec, commitRoots: false);
 
+        long tsAfterPreExecCommit = Stopwatch.GetTimestamp();
+
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+
+        long tsAfterExecRequests = Stopwatch.GetTimestamp();
 
         ReceiptsTracer.EndBlockTrace();
 
@@ -171,7 +177,10 @@ public partial class BlockProcessor(
                 $"setup={Stopwatch.GetElapsedTime(tsStart, tsAfterSetup).TotalMilliseconds:F1} " +
                 $"txs={Stopwatch.GetElapsedTime(tsAfterSetup, tsAfterTxs).TotalMilliseconds:F1} " +
                 $"postCommit={Stopwatch.GetElapsedTime(tsAfterTxs, tsAfterPostTxCommit).TotalMilliseconds:F1} " +
-                $"misc={Stopwatch.GetElapsedTime(tsAfterPostTxCommit, tsAfterMisc).TotalMilliseconds:F1} " +
+                $"blooms+rcpt+wdrl={Stopwatch.GetElapsedTime(tsAfterPostTxCommit, tsAfterWithdrawals).TotalMilliseconds:F1} " +
+                $"preExecCommit={Stopwatch.GetElapsedTime(tsAfterWithdrawals, tsAfterPreExecCommit).TotalMilliseconds:F1} " +
+                $"execRequests={Stopwatch.GetElapsedTime(tsAfterPreExecCommit, tsAfterExecRequests).TotalMilliseconds:F1} " +
+                $"endTrace={Stopwatch.GetElapsedTime(tsAfterExecRequests, tsAfterMisc).TotalMilliseconds:F1} " +
                 $"finalCommit={Stopwatch.GetElapsedTime(tsAfterMisc, tsAfterFinalCommit).TotalMilliseconds:F1} " +
                 $"stateRoot={Stopwatch.GetElapsedTime(tsAfterFinalCommit, tsAfterStateRoot).TotalMilliseconds:F1} " +
                 $"headerHash={Stopwatch.GetElapsedTime(tsAfterStateRoot, tsEnd).TotalMilliseconds:F1} " +
