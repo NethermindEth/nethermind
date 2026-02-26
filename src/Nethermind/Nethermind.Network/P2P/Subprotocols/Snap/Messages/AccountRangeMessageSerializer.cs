@@ -16,7 +16,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public void Serialize(IByteBuffer byteBuffer, AccountRangeMessage message)
         {
-            (int contentLength, int pwasLength, int proofsLength) = GetLength(message);
+            (int contentLength, int pwasLength) = GetLength(message);
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
 
@@ -44,21 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 }
             }
 
-            if (!stream.TryWriteRlpWrapper(message.Proofs))
-            {
-                if (message.Proofs is null || message.Proofs.Count == 0)
-                {
-                    stream.EncodeNullObject();
-                }
-                else
-                {
-                    stream.StartSequence(proofsLength);
-                    for (int i = 0; i < message.Proofs.Count; i++)
-                    {
-                        stream.Encode(message.Proofs[i]);
-                    }
-                }
-            }
+            stream.WriteByteArrayList(message.Proofs);
         }
 
         public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
@@ -89,16 +75,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return message;
         }
 
-        private (int contentLength, int pwasLength, int proofsLength) GetLength(AccountRangeMessage message)
+        private (int contentLength, int pwasLength) GetLength(AccountRangeMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
 
             int pwasLength = 0;
-            if (message.PathsWithAccounts is null || message.PathsWithAccounts.Count == 0)
-            {
-                pwasLength = 0;
-            }
-            else
+            if (message.PathsWithAccounts is not null && message.PathsWithAccounts.Count > 0)
             {
                 for (int i = 0; i < message.PathsWithAccounts.Count; i++)
                 {
@@ -111,28 +93,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
 
             contentLength += Rlp.LengthOfSequence(pwasLength);
+            contentLength += Rlp.LengthOfByteArrayList(message.Proofs);
 
-            int proofsLength = 0;
-            if (message.Proofs is IRlpWrapper rlpList)
-            {
-                contentLength += rlpList.RlpSpan.Length;
-            }
-            else if (message.Proofs is null || message.Proofs.Count == 0)
-            {
-                proofsLength = 0;
-                contentLength += Rlp.LengthOfSequence(proofsLength);
-            }
-            else
-            {
-                for (int i = 0; i < message.Proofs.Count; i++)
-                {
-                    proofsLength += Rlp.LengthOf(message.Proofs[i]);
-                }
-
-                contentLength += Rlp.LengthOfSequence(proofsLength);
-            }
-
-            return (contentLength, pwasLength, proofsLength);
+            return (contentLength, pwasLength);
         }
     }
 }

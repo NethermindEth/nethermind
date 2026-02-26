@@ -14,7 +14,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, StorageRangeMessage message)
         {
-            (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) = CalculateLengths(message);
+            (int contentLength, int allSlotsLength, int[] accountSlotsLengths) = CalculateLengths(message);
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
             NettyRlpStream stream = new(byteBuffer);
@@ -51,21 +51,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 }
             }
 
-            if (!stream.TryWriteRlpWrapper(message.Proofs))
-            {
-                if (message.Proofs is null || message.Proofs.Count == 0)
-                {
-                    stream.EncodeNullObject();
-                }
-                else
-                {
-                    stream.StartSequence(proofsLength);
-                    for (int i = 0; i < message.Proofs.Count; i++)
-                    {
-                        stream.Encode(message.Proofs[i]);
-                    }
-                }
-            }
+            stream.WriteByteArrayList(message.Proofs);
         }
 
         public StorageRangeMessage Deserialize(IByteBuffer byteBuffer)
@@ -106,7 +92,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return message;
         }
 
-        private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) CalculateLengths(StorageRangeMessage message)
+        private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths) CalculateLengths(StorageRangeMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
 
@@ -136,29 +122,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
 
             contentLength += Rlp.LengthOfSequence(allSlotsLength);
+            contentLength += Rlp.LengthOfByteArrayList(message.Proofs);
 
-            int proofsLength = 0;
-            if (message.Proofs is IRlpWrapper rlpList)
-            {
-                contentLength += rlpList.RlpSpan.Length;
-            }
-            else if (message.Proofs is null || message.Proofs.Count == 0)
-            {
-                proofsLength = 1;
-                contentLength++;
-            }
-            else
-            {
-                for (int i = 0; i < message.Proofs.Count; i++)
-                {
-                    proofsLength += Rlp.LengthOf(message.Proofs[i]);
-                }
-
-                contentLength += Rlp.LengthOfSequence(proofsLength);
-            }
-
-
-            return (contentLength, allSlotsLength, accountSlotsLengths, proofsLength);
+            return (contentLength, allSlotsLength, accountSlotsLengths);
         }
     }
 }

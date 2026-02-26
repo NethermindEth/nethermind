@@ -118,6 +118,27 @@ namespace Nethermind.Serialization.Rlp
             return true;
         }
 
+        public static void WriteByteArrayList(IByteBuffer byteBuffer, IByteArrayList list)
+        {
+            if (TryWriteByteArrayList(byteBuffer, list))
+                return;
+
+            int contentLength = 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                contentLength += Rlp.LengthOf(list[i]);
+            }
+
+            int length = Rlp.LengthOfSequence(contentLength);
+            byteBuffer.EnsureWritable(length);
+            NettyRlpStream rlpStream = new(byteBuffer);
+            rlpStream.StartSequence(contentLength);
+            for (int i = 0; i < list.Count; i++)
+            {
+                rlpStream.Encode(list[i]);
+            }
+        }
+
         public static RlpByteArrayList DecodeByteArrayList(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner memoryOwner = new(byteBuffer);

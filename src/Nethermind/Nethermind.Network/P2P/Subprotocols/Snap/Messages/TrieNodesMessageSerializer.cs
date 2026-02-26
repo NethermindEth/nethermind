@@ -12,29 +12,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, TrieNodesMessage message)
         {
+            int nodesLength = Rlp.LengthOfByteArrayList(message.Nodes);
+            int contentLength = Rlp.LengthOf(message.RequestId) + nodesLength;
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
             NettyRlpStream rlpStream = new(byteBuffer);
-            if (message.Nodes is IRlpWrapper rlpWrapper)
-            {
-                int contentLength = rlpWrapper.RlpSpan.Length + Rlp.LengthOf(message.RequestId);
-                byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-                rlpStream.StartSequence(contentLength);
-                rlpStream.Encode(message.RequestId);
-                rlpStream.Write(rlpWrapper.RlpSpan);
-                return;
-            }
-
-            {
-                (int contentLength, int nodesLength) = GetLength(message);
-                byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-
-                rlpStream.StartSequence(contentLength);
-                rlpStream.Encode(message.RequestId);
-                rlpStream.StartSequence(nodesLength);
-                for (int i = 0; i < message.Nodes.Count; i++)
-                {
-                    rlpStream.Encode(message.Nodes[i]);
-                }
-            }
+            rlpStream.StartSequence(contentLength);
+            rlpStream.Encode(message.RequestId);
+            rlpStream.WriteByteArrayList(message.Nodes);
         }
 
         public TrieNodesMessage Deserialize(IByteBuffer byteBuffer)
@@ -50,17 +34,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
 
             return new TrieNodesMessage(list) { RequestId = requestId };
-        }
-
-        public static (int contentLength, int nodesLength) GetLength(TrieNodesMessage message)
-        {
-            int nodesLength = 0;
-            for (int i = 0; i < message.Nodes.Count; i++)
-            {
-                nodesLength += Rlp.LengthOf(message.Nodes[i]);
-            }
-
-            return (Rlp.LengthOfSequence(nodesLength) + Rlp.LengthOf(message.RequestId), nodesLength);
         }
     }
 }
