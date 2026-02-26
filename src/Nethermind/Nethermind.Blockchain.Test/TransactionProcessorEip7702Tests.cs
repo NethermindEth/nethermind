@@ -498,6 +498,45 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(new[] { 1 }));
     }
 
+    [Test]
+    public void Execute_RegularTransactionToDelegatedAccount_DelegatedCodeIsExecuted()
+    {
+        PrivateKey signer = TestItem.PrivateKeyA;
+        PrivateKey sender = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SLOAD)
+            .PushData(1)
+            .Op(Instruction.ADD)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .Done;
+        DeployCode(codeSource, code);
+
+        byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. codeSource.Bytes];
+        DeployCode(signer.Address, delegationCode);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithTo(signer.Address)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10000000).TestObject;
+
+        _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(new[] { 1 }));
+    }
+
     public static IEnumerable<object[]> OpcodesWithEXTCODE()
     {
         //EXTCODESIZE should return 23

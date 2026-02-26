@@ -262,16 +262,22 @@ namespace Nethermind.Evm.TransactionProcessing
             // Checked before StackAccessTracker creation since fast path doesn't need it
             Unsafe.SkipInit(out StackAccessTracker accessTracker);
             bool disposeAccessTracker = false;
+            bool useTransferFastPath = false;
             if (executingAccount is not null &&
                 !tx.IsContractCreation &&
                 tx.AuthorizationList is null &&
-                !WorldState.IsContract(executingAccount) &&
                 !spec.IsPrecompile(executingAccount) &&
                 _codeInfoRepository is not IOverridableCodeInfoRepository)
             {
-                // Fast path: simple ETH transfer (not create, no auth list, no overrides, not precompile, no code)
+                CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(executingAccount, spec, out Address? delegationAddress);
+                useTransferFastPath = codeInfo.IsEmpty && delegationAddress is null;
+            }
+
+            if (useTransferFastPath)
+            {
+                // Fast path: simple ETH transfer (not create, no auth list, no overrides, not precompile, no code, no delegation)
                 // Uses simplified Refund and PayFees internally
-                statusCode = ExecuteTransferAndPay<TLogTracing>(tx, executingAccount, header, spec, tracer, opts, intrinsicGas, premiumPerGas, blobBaseFee, gasAvailable, out substate, out spentGas);
+                statusCode = ExecuteTransferAndPay<TLogTracing>(tx, executingAccount!, header, spec, tracer, opts, intrinsicGas, premiumPerGas, blobBaseFee, gasAvailable, out substate, out spentGas);
             }
             else
             {
