@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -906,40 +907,35 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (_logger.IsDebug) _logger.Debug($"Pruning nodes {DirtyMemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         long start = Stopwatch.GetTimestamp();
 
-        for (int index = 0; index < _dirtyNodes.Length; index++)
-        {
-            int closureIndex = index;
-            TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[closureIndex];
-            _dirtyNodesTasks[closureIndex] = CreatePruneDirtyNodeTask(prunePersisted, doNotRemoveNodes, forceRemovePersistedNodes, closureIndex, dirtyNode);
-        }
+        INodeStorage? nodeStorage = doNotRemoveNodes ? null : _nodeStorage;
 
-        Task.WaitAll(_dirtyNodesTasks);
+        // Use bounded parallelism instead of creating 256 ThreadPool items (one per shard).
+        // Flooding the ThreadPool with 256 items starves critical-path block processing work
+        // (blooms, receipts root, state root) causing 400-600ms stalls.
+        ParallelUnbalancedWork.For(
+            0,
+            _dirtyNodes.Length,
+            RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+            (prunePersisted, forceRemovePersistedNodes, dirtyNodes: _dirtyNodes, persistedHashes: _persistedHashes, nodeStorage),
+            static (index, state) =>
+            {
+                ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes =
+                    state.persistedHashes.Length > 0 ? state.persistedHashes[index] : null;
+
+                state.dirtyNodes[index]
+                    .PruneCache(
+                        prunePersisted: state.prunePersisted,
+                        forceRemovePersistedNodes: state.forceRemovePersistedNodes,
+                        persistedHashes: persistedHashes,
+                        nodeStorage: state.nodeStorage);
+                persistedHashes?.NoResizeClear();
+
+                return state;
+            });
 
         RecalculateTotalMemoryUsage();
 
         if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {DirtyMemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
-    }
-
-    private async Task CreatePruneDirtyNodeTask(bool prunePersisted, bool doNotRemoveNodes, bool forceRemovePersistedNodes, int closureIndex, TrieStoreDirtyNodesCache dirtyNode)
-    {
-        // Background task
-        await Task.Yield();
-        ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null;
-        if (_persistedHashes.Length > 0)
-        {
-            persistedHashes = _persistedHashes[closureIndex];
-        }
-
-        INodeStorage nodeStorage = _nodeStorage;
-        if (doNotRemoveNodes) nodeStorage = null;
-
-        dirtyNode
-            .PruneCache(
-                prunePersisted: prunePersisted,
-                forceRemovePersistedNodes: forceRemovePersistedNodes,
-                persistedHashes: persistedHashes,
-                nodeStorage: nodeStorage);
-        persistedHashes?.NoResizeClear();
     }
 
     /// <summary>
@@ -958,19 +954,21 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (_logger.IsDebug) _logger.Debug($"Pruning persisted nodes {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, Pruning {shardCountToPrune} shards starting from shard {_lastPrunedShardIdx % _shardedDirtyNodeCount}");
             long start = Stopwatch.GetTimestamp();
 
-            using ArrayPoolListRef<Task> pruneTask = new(shardCountToPrune);
+            int startShardIdx = _lastPrunedShardIdx;
 
-            for (int i = 0; i < shardCountToPrune; i++)
-            {
-                TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[_lastPrunedShardIdx % _shardedDirtyNodeCount];
-                pruneTask.Add(Task.Run(() =>
+            ParallelUnbalancedWork.For(
+                0,
+                shardCountToPrune,
+                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                (dirtyNodes: _dirtyNodes, shardedCount: _shardedDirtyNodeCount, startShardIdx),
+                static (i, state) =>
                 {
+                    TrieStoreDirtyNodesCache dirtyNode = state.dirtyNodes[(state.startShardIdx + i) % state.shardedCount];
                     dirtyNode.PruneCache(prunePersisted: true);
-                }));
-                _lastPrunedShardIdx++;
-            }
+                    return state;
+                });
 
-            Task.WaitAll(pruneTask.AsSpan());
+            _lastPrunedShardIdx += shardCountToPrune;
 
             RecalculateTotalMemoryUsage();
 
