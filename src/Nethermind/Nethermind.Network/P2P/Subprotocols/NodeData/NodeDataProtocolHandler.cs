@@ -101,8 +101,8 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
 
     private NodeDataMessage FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
     {
-        IOwnedReadOnlyList<byte[]?>? nodeData = _syncServer.GetNodeData(msg.Hashes, cancellationToken);
-        return new NodeDataMessage(new ByteArrayListAdapter(nodeData));
+        IByteArrayList nodeData = _syncServer.GetNodeData(msg.Hashes, cancellationToken);
+        return new NodeDataMessage(nodeData);
     }
 
     private void Handle(NodeDataMessage msg, int size)

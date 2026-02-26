@@ -227,6 +227,23 @@ public class SnapServerTest
         result.Count.Should().Be(1);
     }
 
+    [Test]
+    public void TestGetTrieNodes_RespectsHardResponseByteLimit()
+    {
+        using var context = CreateContext();
+        FillMultipleAccounts(context, 1000);
+
+        int requestCount = 5000;
+        PathGroup[] groups = new PathGroup[requestCount];
+        for (int i = 0; i < requestCount; i++)
+            groups[i] = new PathGroup { Group = [[]] };
+
+        using RlpItemList pathSet = PathGroup.EncodeToRlpItemList(groups);
+        using RlpByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+
+        result.Count.Should().BeLessThan(requestCount);
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public void TestNoState(bool withLastNStateTracker)
