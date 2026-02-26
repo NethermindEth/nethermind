@@ -164,6 +164,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Prepare the specification and opcode mapping based on the current block header.
         IReleaseSpec spec = BlockExecutionContext.Spec;
         PrepareOpcodes<TTracingInst>(spec);
+        ResetExtCodeCacheForBlock();
 
         // Trampoline via out to reduce stack size in the main loop.
         bool inCancelable = txTracer.IsCancelable;

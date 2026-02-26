@@ -28,13 +28,23 @@ public class CachedCodeInfoRepository(
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)
     {
-        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out var cachedCodeInfo))
+        if (TryGetCachedPrecompile(codeSource, vmSpec, out CodeInfo cachedCodeInfo))
         {
             delegationAddress = null;
             return cachedCodeInfo;
         }
 
         return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+    }
+
+    public CodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    {
+        if (TryGetCachedPrecompile(codeSource, vmSpec, out CodeInfo cachedCodeInfo))
+        {
+            return cachedCodeInfo;
+        }
+
+        return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, in codeHash, vmSpec);
     }
 
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
@@ -60,6 +70,18 @@ public class CachedCodeInfoRepository(
     public bool IsDelegated(Address address, IReleaseSpec spec)
     {
         return baseCodeInfoRepository.IsDelegated(address, spec);
+    }
+
+    private bool TryGetCachedPrecompile(Address codeSource, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? cachedCodeInfo)
+    {
+        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out CodeInfo precompileCodeInfo))
+        {
+            cachedCodeInfo = precompileCodeInfo;
+            return true;
+        }
+
+        cachedCodeInfo = null;
+        return false;
     }
 
     private static CodeInfo CreateCachedPrecompile(
