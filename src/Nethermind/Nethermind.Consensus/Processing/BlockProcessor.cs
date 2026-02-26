@@ -119,12 +119,17 @@ public partial class BlockProcessor(
 
         CalculateBlooms(receipts);
 
+        long tsAfterBlooms = Stopwatch.GetTimestamp();
+
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+
+        long tsAfterReceiptsRoot = Stopwatch.GetTimestamp();
+
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
@@ -177,7 +182,9 @@ public partial class BlockProcessor(
                 $"setup={Stopwatch.GetElapsedTime(tsStart, tsAfterSetup).TotalMilliseconds:F1} " +
                 $"txs={Stopwatch.GetElapsedTime(tsAfterSetup, tsAfterTxs).TotalMilliseconds:F1} " +
                 $"postCommit={Stopwatch.GetElapsedTime(tsAfterTxs, tsAfterPostTxCommit).TotalMilliseconds:F1} " +
-                $"blooms+rcpt+wdrl={Stopwatch.GetElapsedTime(tsAfterPostTxCommit, tsAfterWithdrawals).TotalMilliseconds:F1} " +
+                $"blooms={Stopwatch.GetElapsedTime(tsAfterPostTxCommit, tsAfterBlooms).TotalMilliseconds:F1} " +
+                $"rcptRoot={Stopwatch.GetElapsedTime(tsAfterBlooms, tsAfterReceiptsRoot).TotalMilliseconds:F1} " +
+                $"rewards+wdrl={Stopwatch.GetElapsedTime(tsAfterReceiptsRoot, tsAfterWithdrawals).TotalMilliseconds:F1} " +
                 $"preExecCommit={Stopwatch.GetElapsedTime(tsAfterWithdrawals, tsAfterPreExecCommit).TotalMilliseconds:F1} " +
                 $"execRequests={Stopwatch.GetElapsedTime(tsAfterPreExecCommit, tsAfterExecRequests).TotalMilliseconds:F1} " +
                 $"endTrace={Stopwatch.GetElapsedTime(tsAfterExecRequests, tsAfterMisc).TotalMilliseconds:F1} " +
