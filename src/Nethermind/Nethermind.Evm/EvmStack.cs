@@ -180,16 +180,16 @@ public ref partial struct EvmStack
             _tracer.ReportStackPush(value);
 
         ReadOnlySpan<byte> valueSpan = value.Span;
-        if (valueSpan.Length >= WordSize)
+        if (valueSpan.Length != WordSize)
         {
-            Debug.Assert(value.Length == WordSize, "Trying to push more than 32 bytes to the stack.");
-            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan));
+            ref byte bytes = ref PushBytesRef();
+            // Not full entry, clear first
+            Unsafe.As<byte, Word>(ref bytes) = default;
+            valueSpan.CopyTo(MemoryMarshal.CreateSpan(ref bytes, value.Length));
         }
         else
         {
-            ref byte bytes = ref PushBytesRef();
-            Unsafe.As<byte, Word>(ref bytes) = default; // Not full entry, clear first
-            valueSpan.CopyTo(MemoryMarshal.CreateSpan(ref bytes, value.Length));
+            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan));
         }
     }
 

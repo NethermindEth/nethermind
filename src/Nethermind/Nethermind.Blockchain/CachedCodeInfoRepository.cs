@@ -26,7 +26,7 @@ public class CachedCodeInfoRepository(
         ? precompileProvider.GetPrecompiles()
         : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
 
-    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
+    public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)
     {
         PrecompileInfo cachedCodeInfo;
@@ -69,15 +69,15 @@ public class CachedCodeInfoRepository(
         return baseCodeInfoRepository.IsDelegated(address, spec);
     }
 
-    private static CodeInfo CreateCachedPrecompile(
-        in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
+    private static PrecompileInfo CreateCachedPrecompile(
+        in KeyValuePair<AddressAsKey, PrecompileInfo> originalPrecompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache)
     {
         IPrecompile precompile = originalPrecompile.Value.Precompile!;
 
         return !precompile.SupportsCaching
             ? originalPrecompile.Value
-            : new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, cache));
+            : new PrecompileInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, cache));
     }
 
     private class CachedPrecompile(

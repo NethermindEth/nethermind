@@ -20,7 +20,7 @@ namespace Nethermind.Evm;
 public class CodeInfoRepository : ICodeInfoRepository
 {
     private static readonly CodeLruCache _codeCache = new();
-    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
+    private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
@@ -29,7 +29,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         _worldState = worldState;
     }
 
-    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
+    public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource)) // _localPrecompiles have to have all precompiles
@@ -37,7 +37,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return GetPrecompile(codeSource);
         }
 
-        CodeInfo cachedCodeInfo = InternalGetCachedCode(_worldState, codeSource, vmSpec);
+        ICodeInfo cachedCodeInfo = InternalGetCachedCode(_worldState, codeSource, vmSpec);
 
         if (!cachedCodeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(cachedCodeInfo.CodeSpan, out delegationAddress))
         {
@@ -58,9 +58,9 @@ public class CodeInfoRepository : ICodeInfoRepository
         return InternalGetCachedCode(worldState, in codeHash, vmSpec);
     }
 
-    private static CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    private static ICodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec vmSpec)
     {
-        CodeInfo? cachedCodeInfo = null;
+        ICodeInfo? cachedCodeInfo = null;
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
         {
             cachedCodeInfo = CodeInfo.Empty;
@@ -108,7 +108,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         if (_worldState.InsertCode(codeOwner, in codeHash, code, spec) &&
             _codeCache.Get(in codeHash) is null)
         {
-            CodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
+            ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
             _codeCache.Set(in codeHash, codeInfo);
         }
     }
@@ -145,7 +145,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return Keccak.OfAnEmptyString.ValueHash256;
         }
 
-        CodeInfo codeInfo = InternalGetCachedCode(_worldState, address, spec);
+        ICodeInfo codeInfo = InternalGetCachedCode(_worldState, address, spec);
         return codeInfo.IsEmpty
             ? Keccak.OfAnEmptyString.ValueHash256
             : codeHash;
@@ -186,45 +186,37 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         private const int CacheCount = 16;
         private const int CacheMax = CacheCount - 1;
-        private readonly ClockCache<ValueHash256, CodeInfo>[] _caches;
+        private readonly ClockCache<ValueHash256, ICodeInfo>[] _caches;
 
         public CodeLruCache()
         {
-            _caches = new ClockCache<ValueHash256, CodeInfo>[CacheCount];
+            _caches = new ClockCache<ValueHash256, ICodeInfo>[CacheCount];
             for (int i = 0; i < _caches.Length; i++)
             {
                 // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new ClockCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, comparer: ValueHash256.EqualityComparer);
+                _caches[i] = new ClockCache<ValueHash256, ICodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount);
             }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public ICodeInfo? Get(in ValueHash256 codeHash)
         {
-            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            ClockCache<ValueHash256, ICodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Get(codeHash);
         }
 
-        public bool Set(in ValueHash256 codeHash, CodeInfo codeInfo)
+        public bool Set(in ValueHash256 codeHash, ICodeInfo codeInfo)
         {
-            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            ClockCache<ValueHash256, ICodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Set(codeHash, codeInfo);
         }
 
         private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
 
-        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out CodeInfo? codeInfo)
+        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out ICodeInfo? codeInfo)
         {
             codeInfo = Get(in codeHash);
             return codeInfo is not null;
-        }
-
-        internal void Clear()
-        {
-            foreach (ClockCache<ValueHash256, CodeInfo> cache in _codeCache._caches)
-            {
-                cache.Clear();
-            }
         }
     }
 }

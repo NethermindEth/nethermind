@@ -32,7 +32,7 @@ namespace Nethermind.State
 
         protected PartialStorageProviderBase(ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         /// <summary>
@@ -126,7 +126,6 @@ namespace Nethermind.State
                 if (stack.Count == 0)
                 {
                     _intraBlockCache.Remove(change.StorageCell);
-                    stack.Return();
                 }
             }
 

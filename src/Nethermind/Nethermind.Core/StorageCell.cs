@@ -14,12 +14,12 @@ using Nethermind.Int256;
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Address}->{Index}")]
-    public readonly struct StorageCell : IEquatable<StorageCell>, IHash64
+    public readonly struct StorageCell : IEquatable<StorageCell>, IHash64, IHash64bit<StorageCell>
     {
         public readonly UInt256 Index;
         private readonly bool _isHash;
 
-        public Address Address => _address.Value;
+        public Address Address { get; }
         public bool IsHash => _isHash;
 
         public readonly ValueHash256 Hash => _isHash ? Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in Index)) : GetHash();
@@ -48,6 +48,8 @@ namespace Nethermind.Core
             _isHash == other._isHash &&
             Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in Index)) == Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other.Index)) &&
             Address.Equals(other.Address);
+
+        public readonly bool Equals(in StorageCell other) => Equals(other);
 
         public readonly override bool Equals(object? obj)
         {
@@ -85,7 +87,7 @@ namespace Nethermind.Core
 
         public readonly override string ToString()
         {
-            return $"{_address.Value}.{Index}";
+            return $"{Address}.{Index}";
         }
     }
 }

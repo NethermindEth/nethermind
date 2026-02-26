@@ -14,10 +14,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts;
 
-[Parallelizable(ParallelScope.All)]
 public class ReceiptsIteratorTests
 {
-    private readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
+    readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
 
     [Test]
     public void SmokeTestWithRecovery()

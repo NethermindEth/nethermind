@@ -647,7 +647,7 @@
         "dependencies": {
           "Nethermind.Core": "[1.37.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
-"System.Configuration.ConfigurationManager": "[10.0.3, )"
+          "System.Configuration.ConfigurationManager": "[10.0.3, )"
         }
       },
       "nethermind.consensus": {
@@ -784,7 +784,6 @@
         "dependencies": {
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.Crypto": "[1.37.0-unstable, )",
-          "Nethermind.Evm.SourceGenerators": "[1.37.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
           "Nethermind.Specs": "[1.37.0-unstable, )"
         }
@@ -801,12 +800,6 @@
           "Nethermind.MclBindings": "[1.0.5, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
           "Nethermind.Specs": "[1.37.0-unstable, )"
-        }
-      },
-      "nethermind.evm.sourcegenerators": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.CodeAnalysis.CSharp": "[5.0.0, )"
         }
       },
       "nethermind.externalsigner.plugin": {
@@ -1248,12 +1241,6 @@
         "requested": "[2.1.5.1551, )",
         "resolved": "2.1.5.1551",
         "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
-      },
-      "Collections.Pooled": {
-        "type": "CentralTransitive",
-        "requested": "[1.0.82, )",
-        "resolved": "1.0.82",
-        "contentHash": "o14V0k8bg+EPMwaVJcFbLNrkyDPaqNx6fWTTjJLgVWJLu939kVIAAWKaV5lCwZ7LM/tv59igi65rVWRyjILc0Q=="
       },
       "CommunityToolkit.HighPerformance": {
         "type": "CentralTransitive",

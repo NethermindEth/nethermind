@@ -19,8 +19,17 @@ namespace Nethermind.Core.Collections
     public sealed class JournalSet<T> : ICollection<T>, IJournal<int>
     {
         private readonly List<T> _items = [];
-        private readonly HashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
+        private readonly HashSet<T> _set;
 
+        public JournalSet()
+            : this(EqualityComparer<T>.Default)
+        {
+        }
+
+        public JournalSet(EqualityComparer<T> equalityComparer)
+        {
+            _set = new HashSet<T>(GenericEqualityComparer.GetOptimized(equalityComparer));
+        }
         public int TakeSnapshot() => Position;
 
         private int Position => Count - 1;
@@ -28,12 +37,12 @@ namespace Nethermind.Core.Collections
         [SkipLocalsInit]
         public void Restore(int snapshot)
         {
-            if (snapshot >= Count)
+            if (snapshot >= _set.Count)
             {
                 ThrowInvalidRestore(snapshot);
             }
 
-            // Remove items added after snapshot.
+            // we use dictionary to remove items added after snapshot
             foreach (T item in CollectionsMarshal.AsSpan(_items)[(snapshot + 1)..])
             {
                 _set.Remove(item);

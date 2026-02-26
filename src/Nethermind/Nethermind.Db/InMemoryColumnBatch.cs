@@ -24,7 +24,7 @@ namespace Nethermind.Db
 
         public void Clear()
         {
-            foreach (IWriteBatch batch in _underlyingBatch)
+            foreach (IWriteBatch batch in _writeBatches.Values)
             {
                 batch.Clear();
             }

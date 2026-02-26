@@ -20,7 +20,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Utils;
 using Nethermind.Db;
-using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -135,14 +134,7 @@ public abstract class StateSyncFeedTestsBase(
                 $"{GetType().Name}{remote.StateTree.RootHash}{TestChainLength}",
                 () => Build.A.BlockTree().WithStateRoot(remote.StateTree.RootHash).OfChainLength(TestChainLength)))
 
-            .Add<SafeContext>()
-
-            // State DB and INodeStorage are needed by SynchronizerModule components (e.g. PathNodeRecovery)
-            .AddKeyedSingleton<IDb>(DbNames.State, (_) => new TestMemDb())
-            .AddSingleton<INodeStorage>((ctx) => new NodeStorage(ctx.ResolveNamed<IDb>(DbNames.State)))
-
-            .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
-            .AddSingleton<IStateSyncTestOperation, LocalDbContext>();
+            .Add<SafeContext>();
 
         registerTreeSyncStore(containerBuilder);
 
@@ -429,22 +421,3 @@ public abstract class StateSyncFeedTestsBase(
         }
     }
 }
-
-public class RemoteDbContext
-{
-    public RemoteDbContext(ILogManager logManager)
-    {
-        CodeDb = new MemDb();
-        Db = new MemDb();
-        TrieStore = TestTrieStoreFactory.Build(Db, logManager);
-        StateTree = new StateTree(TrieStore, logManager);
-    }
-
-    public MemDb CodeDb { get; }
-    public MemDb Db { get; }
-    public IDb StateDb => Db;
-    public ITrieStore TrieStore { get; }
-    public StateTree StateTree { get; }
-}
-
-

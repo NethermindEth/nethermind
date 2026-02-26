@@ -2,9 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
@@ -25,8 +31,6 @@ public readonly record struct EthereumIntrinsicGas(long Standard, long FloorGas)
 {
     public long MinimalGas { get; } = Math.Max(Standard, FloorGas);
     public static explicit operator long(EthereumIntrinsicGas gas) => gas.MinimalGas;
-    public static implicit operator EthereumIntrinsicGas(IntrinsicGas<EthereumGasPolicy> gas) =>
-        new(gas.Standard.Value, gas.FloorGas.Value);
 }
 
 public static class IntrinsicGasCalculator

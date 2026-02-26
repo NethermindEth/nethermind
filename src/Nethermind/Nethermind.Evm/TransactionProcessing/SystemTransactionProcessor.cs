@@ -75,8 +75,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         }
     }
 
-    protected override IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
-        tx is SystemCall ? default : base.CalculateIntrinsicGas(tx, spec);
+    protected override IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) => tx is SystemCall ? default : base.CalculateIntrinsicGas(tx, spec);
 
     protected override bool RecoverSenderIfNeeded<TLogTracing>(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
     {

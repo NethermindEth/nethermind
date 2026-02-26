@@ -53,9 +53,7 @@ public class Bloom : IEquatable<Bloom>
         bytes.CopyTo(Bytes);
     }
 
-    [JsonIgnore]
     public Span<byte> Bytes => _bloomData.AsSpan();
-    [JsonIgnore]
     public ReadOnlySpan<byte> ReadOnlyBytes => _bloomData.AsReadOnlySpan();
     private Span<ulong> ULongs => _bloomData.AsULongs();
 

@@ -22,7 +22,8 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm;
 
-public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+public unsafe partial class VirtualMachine<TGasPolicy>
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     public static void WarmUpEvmInstructions(IWorldState state, ICodeInfoRepository codeInfoRepository)
     {

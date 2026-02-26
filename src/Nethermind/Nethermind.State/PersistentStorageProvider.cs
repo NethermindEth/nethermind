@@ -456,6 +456,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private sealed class PerContractState : IReturnable
     {
+        private static readonly Func<StorageCell, PerContractState, byte[]> _loadFromTreeStorageFunc = LoadFromTreeStorage;
         private IWorldStateScopeProvider.IStorageTree? _backend;
 
         private readonly DefaultableDictionary BlockChange = new();

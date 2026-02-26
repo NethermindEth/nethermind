@@ -1079,7 +1079,8 @@ namespace Nethermind.Serialization.Rlp
                     RlpHelpers.ThrowUnexpectedPrefix(prefix);
                 }
 
-                return new Address(Read(20));
+                byte[] buffer = Read(20).ToArray();
+                return new Address(buffer);
             }
 
             public void DecodeAddressStructRef(out AddressStructRef address)

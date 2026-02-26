@@ -1,13 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.IO;
 using Nethermind.Core;
-using Nethermind.Core.Eip2930;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -22,7 +16,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <summary>
     /// Creates a new gas instance from a long value.
     /// This is primarily used for warmup/testing scenarios.
-    /// The main execution flow should pass TGasPolicy directly through EvmState.
+    /// Main execution flow should pass TGasPolicy directly through EvmState.
     /// </summary>
     /// <param name="value">The initial gas value</param>
     /// <returns>A new gas instance</returns>
@@ -208,7 +202,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     /// <summary>
     /// Creates available gas from gas limit minus intrinsic gas, preserving any tracking data.
-    /// For simple implementations, this is a subtraction. For multidimensional gas tracking,
+    /// For simple implementations, this is a subtraction. For multi-dimensional gas tracking,
     /// this preserves the breakdown categories from intrinsic gas.
     /// </summary>
     /// <param name="gasLimit">The transaction gas limit.</param>
@@ -238,51 +232,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     /// <summary>
     /// Hook called after instruction execution when tracing is active.
-    /// Allows gas policies to capture the post-execution state.
+    /// Allows gas policies to capture post-execution state.
     /// </summary>
     /// <param name="gas">The current gas state after execution.</param>
     static abstract void OnAfterInstructionTrace(in TSelf gas);
-
-    protected static long CalculateTokensInCallData(Transaction transaction, IReleaseSpec spec)
-    {
-        ReadOnlySpan<byte> data = transaction.Data.Span;
-        int totalZeros = data.CountZeros();
-        return totalZeros + (data.Length - totalZeros) * spec.GetTxDataNonZeroMultiplier();
-    }
-
-    public static long AccessListCost(Transaction transaction, IReleaseSpec spec)
-    {
-        AccessList? accessList = transaction.AccessList;
-        if (accessList is not null)
-        {
-            if (!spec.UseTxAccessLists)
-            {
-                ThrowInvalidDataException(spec);
-            }
-
-            (int addressesCount, int storageKeysCount) = accessList.Count;
-            return addressesCount * GasCostOf.AccessAccountListEntry + storageKeysCount * GasCostOf.AccessStorageListEntry;
-        }
-
-        return 0;
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowInvalidDataException(IReleaseSpec spec) =>
-            throw new InvalidDataException($"Transaction with an access list received within the context of {spec.Name}. EIP-2930 is not enabled.");
-    }
-
-    protected static long CalculateFloorCost(long tokensInCallData, IReleaseSpec spec) =>
-        spec.IsEip7623Enabled
-            ? GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623
-            : 0L;
-}
-
-/// <summary>
-/// Generic intrinsic gas result with TGasPolicy-typed Standard and FloorGas.
-/// </summary>
-public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGasPolicy FloorGas)
-    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-{
-    public TGasPolicy MinimalGas { get; } = TGasPolicy.Max(Standard, FloorGas);
-    public static explicit operator TGasPolicy(IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
 }

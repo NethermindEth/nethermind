@@ -32,6 +32,7 @@ namespace Nethermind.Trie
 #endif
 
         private static readonly object _nullNode = new();
+        private static readonly TrieNodeDecoder _nodeDecoder = new();
         private static readonly AccountDecoder _accountDecoder = new();
 
         private const byte _dirtyMask = 0b001;
@@ -588,29 +589,6 @@ namespace Nethermind.Trie
                 rlpStream.SkipLength();
                 rlpStream.SkipItem();
                 return rlpStream.DecodeByteArraySpan().ToArray();
-            }
-        }
-
-        public byte[]? GetInlineNodeRlp(int i)
-        {
-            SpanSource rlp = _rlp;
-            if (rlp.IsNull)
-            {
-                return null;
-            }
-
-            ValueRlpStream rlpStream = new(rlp);
-            SeekChild(ref rlpStream, i);
-
-            int prefixValue = rlpStream.PeekByte();
-            if (prefixValue < 192)
-            {
-                return null;
-            }
-            else
-            {
-                int length = rlpStream.PeekNextRlpLength();
-                return rlpStream.Read(length).ToArray();
             }
         }
 

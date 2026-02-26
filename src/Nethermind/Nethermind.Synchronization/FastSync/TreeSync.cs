@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.FastSync
         private readonly IDb _codeDb;
         private readonly ITreeSyncStore _store;
         private readonly IBlockTree _blockTree;
-        private readonly IStateSyncPivot _stateSyncPivot;
+        private readonly StateSyncPivot _stateSyncPivot;
 
         // This is not exactly a lock for read and write, but a RWLock serves it well. It protects the five field
         // below which need to be cleared atomically during reset root, hence the write lock, while allowing
@@ -759,7 +759,6 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 else
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} is ok");
                     dependentItem.Counter--;
                 }
             }

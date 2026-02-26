@@ -199,7 +199,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
-            // commit - is for standard execute, we will commit the state after execution
+            // commit - is for standard execute, we will commit thee state after execution
             // !commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
             // we commit only after all block is constructed
             bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
@@ -614,7 +614,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
-            => TGasPolicy.CalculateIntrinsicGas(tx, spec);
+            => IntrinsicGasCalculator.Calculate<TGasPolicy>(tx, spec);
 
         protected virtual UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
         {
@@ -964,10 +964,10 @@ namespace Nethermind.Evm.TransactionProcessing
             if (TLogTracing.IsActive) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
             gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
+
         Complete:
             if ((opts & ExecutionOptions.SkipValidation) == 0)
                 header.GasUsed += gasConsumed.SpentGas;
-            }
 
             return statusCode;
 
@@ -990,8 +990,10 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-
-        protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts) => tx.GasLimit;
+        protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts)
+        {
+            return tx.GasLimit;
+        }
 
         protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {

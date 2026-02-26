@@ -366,30 +366,6 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         return length.CompareTo(otherTree.Length);
     }
 
-    /// <summary>
-    /// Returns the Path as lower bound (remaining nibbles are 0x0, which TreePath already guarantees).
-    /// </summary>
-    public readonly ValueHash256 ToLowerBoundPath() => Path;
-
-    /// <summary>
-    /// Returns the Path extended to 64 nibbles with 0xF (upper bound of subtree).
-    /// </summary>
-    public readonly ValueHash256 ToUpperBoundPath()
-    {
-        ValueHash256 result = Path;
-        Span<byte> bytes = result.BytesAsSpan;
-
-        int startByte = Length / 2;
-        if (Length % 2 == 1)
-        {
-            bytes[startByte] |= 0x0F;
-            startByte++;
-        }
-        bytes[startByte..].Fill(0xFF);
-
-        return result;
-    }
-
     private static ReadOnlySpan<byte> ZeroMasksData => new byte[]
     {
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

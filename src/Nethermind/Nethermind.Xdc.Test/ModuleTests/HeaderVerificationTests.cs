@@ -38,12 +38,6 @@ internal class HeaderVerificationTests
         extraConsensusDataDecoder = new();
     }
 
-    [TearDown]
-    public void TearDown()
-    {
-        xdcTestBlockchain?.Dispose();
-    }
-
     [Test]
     public void Block_With_Invalid_Qc_Fails()
     {

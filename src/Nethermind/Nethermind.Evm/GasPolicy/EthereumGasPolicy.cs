@@ -52,7 +52,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             return true;
 
         bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, chargeForWarm);
-        return notOutOfGas && (delegated is null || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated, chargeForWarm));
+        return notOutOfGas
+               && (delegated is null
+                   || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated, chargeForWarm));
     }
 
     public static bool ConsumeAccountAccessGas(ref EthereumGasPolicy gas,
@@ -218,13 +220,14 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         AuthorizationTuple[]? authList = tx.AuthorizationList;
         if (authList is not null)
         {
-            if (!spec.IsAuthorizationListEnabled) ThrowAuthorizationListNotEnabled(spec);
+            if (!spec.IsAuthorizationListEnabled)
+                ThrowAuthorizationListNotEnabled(spec);
             return authList.Length * GasCostOf.NewAccount;
         }
         return 0;
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowAuthorizationListNotEnabled(IReleaseSpec spec) =>
-            throw new InvalidDataException($"Transaction with an authorization list received within the context of {spec.Name}. EIP-7702 is not enabled.");
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowAuthorizationListNotEnabled(IReleaseSpec spec) =>
+        throw new InvalidDataException($"Transaction with an authorization list received within the context of {spec.Name}. EIP-7702 is not enabled.");
 }
