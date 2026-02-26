@@ -37,9 +37,7 @@ public class TestBlockchainUtil(
     }
     public async Task<Block> AddBlock(BlockHeader parentToBuildOn, AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
     {
-        Task waitforHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
-            ? Task.CompletedTask
-            : WaitAsync(blockTree.WaitForNewBlock(cancellationToken), "timeout waiting for new head");
+        bool waitForHead = !flags.HasFlag(AddBlockFlags.DoNotWaitForHead);
 
         Task txNewHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
             ? Task.CompletedTask
@@ -109,7 +107,10 @@ public class TestBlockchainUtil(
 
         tcs.TrySetResult();
 
-        await waitforHead;
+        if (waitForHead)
+        {
+            await WaitForHead(block, cancellationToken);
+        }
 
         await txNewHead; // Wait for tx new head event so that processed tx was removed from txpool
 
@@ -145,15 +146,18 @@ public class TestBlockchainUtil(
         return await AddBlock(flags, cancellationToken, transactions);
     }
 
-    private static async Task WaitAsync(Task task, string error)
+    private async Task WaitForHead(Block block, CancellationToken cancellationToken)
     {
-        try
+        while (true)
         {
-            await task;
-        }
-        catch (OperationCanceledException)
-        {
-            throw new InvalidOperationException(error);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (blockTree.HeadHash == block.Hash)
+            {
+                return;
+            }
+
+            await Task.Delay(1, cancellationToken);
         }
     }
 
