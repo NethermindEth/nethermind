@@ -173,8 +173,8 @@ namespace Nethermind.Core.Test
 
         public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
         {
-            IOwnedReadOnlyList<byte[]> data = _remoteSyncServer?.GetNodeData(hashes, token)!;
-            return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(data));
+            IByteArrayList data = _remoteSyncServer?.GetNodeData(hashes, token)!;
+            return Task.FromResult(data);
         }
 
         public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class

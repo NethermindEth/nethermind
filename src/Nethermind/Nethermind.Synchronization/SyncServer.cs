@@ -378,14 +378,14 @@ namespace Nethermind.Synchronization
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public IOwnedReadOnlyList<byte[]?> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
             ArrayPoolList<byte[]?> values = new ArrayPoolList<byte[]>(keys.Count);
             for (int i = 0; i < keys.Count; i++)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    return values;
+                    return new ByteArrayListAdapter(values);
                 }
 
                 values.Add(null);
@@ -407,7 +407,7 @@ namespace Nethermind.Synchronization
                 }
             }
 
-            return values;
+            return new ByteArrayListAdapter(values);
         }
 
         public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);

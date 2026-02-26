@@ -93,8 +93,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         protected Task<NodeDataMessage> FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
-            IOwnedReadOnlyList<byte[]> nodeData = SyncServer.GetNodeData(msg.Hashes, cancellationToken);
-            return Task.FromResult(new NodeDataMessage(new ByteArrayListAdapter(nodeData)));
+            IByteArrayList nodeData = SyncServer.GetNodeData(msg.Hashes, cancellationToken);
+            return Task.FromResult(new NodeDataMessage(nodeData));
         }
 
         protected virtual void Handle(NodeDataMessage msg, int size)
