@@ -62,10 +62,10 @@ public class OptimismBlockProcessor : BlockProcessor
         ReceiptsTracer = new OptimismBlockReceiptTracer(opSpecHelper, stateProvider);
     }
 
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
+    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token, Action? onTransactionsProcessed = null)
     {
         _contractRewriter?.RewriteContract(block.Header, _stateProvider);
-        TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, spec, token);
+        TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, spec, token, onTransactionsProcessed);
 
         if (_opSpecHelper.IsJovian(block.Header))
         {

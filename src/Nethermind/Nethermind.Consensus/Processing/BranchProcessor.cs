@@ -122,7 +122,9 @@ public class BranchProcessor(
 
                 if (preWarmTask is not null)
                 {
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                    // Cancel prewarmer after transactions are processed so its threads are freed
+                    // for critical-path parallel work (blooms, receipts root, state root).
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token, backgroundCancellation!.Cancel);
                 }
                 else
                 {

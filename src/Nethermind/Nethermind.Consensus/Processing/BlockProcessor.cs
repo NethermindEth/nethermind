@@ -53,13 +53,13 @@ public partial class BlockProcessor(
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
-    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
+    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token, Action? onTransactionsProcessed = null)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
+        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token, onTransactionsProcessed);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -90,7 +90,8 @@ public partial class BlockProcessor(
         IBlockTracer blockTracer,
         ProcessingOptions options,
         IReleaseSpec spec,
-        CancellationToken token)
+        CancellationToken token,
+        Action? onTransactionsProcessed = null)
     {
         BlockHeader header = block.Header;
 
@@ -104,6 +105,10 @@ public partial class BlockProcessor(
         _stateProvider.Commit(spec, commitRoots: false);
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+
+        // Signal that transactions are done so background work (e.g. prewarmer) can be cancelled,
+        // freeing thread pool threads for the critical-path parallel work below (blooms, receipts root, state root).
+        onTransactionsProcessed?.Invoke();
 
         _stateProvider.Commit(spec, commitRoots: false);
 

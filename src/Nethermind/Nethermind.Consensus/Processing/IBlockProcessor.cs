@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -23,7 +24,8 @@ namespace Nethermind.Consensus.Processing
             ProcessingOptions options,
             IBlockTracer blockTracer,
             IReleaseSpec spec,
-            CancellationToken token = default);
+            CancellationToken token = default,
+            Action? onTransactionsProcessed = null);
 
         public interface IBlockTransactionsExecutor
         {
