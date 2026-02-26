@@ -10,3 +10,11 @@ public interface IByteArrayList : IDisposable
     int Count { get; }
     ReadOnlySpan<byte> this[int index] { get; }
 }
+
+public sealed class EmptyByteArrayList : IByteArrayList
+{
+    public static readonly EmptyByteArrayList Instance = new();
+    public int Count => 0;
+    public ReadOnlySpan<byte> this[int index] => throw new IndexOutOfRangeException();
+    public void Dispose() { }
+}
