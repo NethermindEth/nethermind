@@ -12,12 +12,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, GetTrieNodesMessage message)
         {
-            int pathsSeqLen = message.Paths?.RlpContentLength ?? 0;
+            int pathsRlpLen = message.Paths?.RlpLength ?? 1;
             int contentLength = Rlp.LengthOf(message.RequestId)
                 + Rlp.LengthOf(message.RootHash)
                 + (message.Paths is null || message.Paths.Count == 0
                     ? 1
-                    : Rlp.LengthOfSequence(pathsSeqLen))
+                    : pathsRlpLen)
                 + Rlp.LengthOf(message.Bytes);
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
@@ -33,8 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
             else
             {
-                stream.StartSequence(pathsSeqLen);
-                stream.Write(message.Paths.RlpContentSpan);
+                stream.Write(message.Paths.RlpSpan);
             }
 
             stream.Encode(message.Bytes);
