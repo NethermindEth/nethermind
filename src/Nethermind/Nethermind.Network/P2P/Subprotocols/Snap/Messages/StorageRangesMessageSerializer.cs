@@ -3,6 +3,7 @@
 
 using System;
 using DotNetty.Buffers;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -12,6 +13,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public sealed class StorageRangesMessageSerializer : IZeroMessageSerializer<StorageRangeMessage>
     {
+        private readonly Func<RlpStream, PathWithStorageSlot> _decodeSlot;
+        private readonly Func<RlpStream, IOwnedReadOnlyList<PathWithStorageSlot>> _decodeSlotArray;
+
+        public StorageRangesMessageSerializer()
+        {
+            // Capture closures once
+            _decodeSlot = DecodeSlot;
+            _decodeSlotArray = s => s.DecodeArrayPoolList(_decodeSlot);
+        }
 
         public void Serialize(IByteBuffer byteBuffer, StorageRangeMessage message)
         {
@@ -52,7 +62,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 }
             }
 
-            if (message.Proofs is null || message.Proofs.Count == 0)
+            if (message.Proofs is RlpByteArrayList rlpList)
+            {
+                stream.StartSequence(rlpList.RlpContentLength);
+                stream.Write(rlpList.RlpContentSpan);
+            }
+            else if (message.Proofs is null || message.Proofs.Count == 0)
             {
                 stream.EncodeNullObject();
             }
@@ -66,25 +81,37 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
         }
 
-        public StorageRangeMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
-
-        private static StorageRangeMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        public StorageRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
+            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            Memory<byte> memory = memoryOwner.Memory; // Capture before reads advance ReaderIndex
             StorageRangeMessage message = new();
-            ctx.ReadSequenceLength();
+            NettyRlpStream stream = new(byteBuffer);
 
-            message.RequestId = ctx.DecodeLong();
-            message.Slots = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => (IOwnedReadOnlyList<PathWithStorageSlot>)c.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext inner) =>
-            {
-                inner.ReadSequenceLength();
-                Hash256 path = inner.DecodeKeccak();
-                byte[] value = inner.DecodeByteArray();
-                return new PathWithStorageSlot(in path.ValueHash256, value);
-            }));
-            message.Proofs = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
+            stream.ReadSequenceLength();
+
+            message.RequestId = stream.DecodeLong();
+            message.Slots = stream.DecodeArrayPoolList(_decodeSlotArray);
+
+            // Capture proofs as zero-copy RlpByteArrayList
+            int proofStart = stream.Position;
+            int proofInnerLength = stream.ReadSequenceLength();
+            int proofTotalLength = (stream.Position - proofStart) + proofInnerLength;
+            stream.Position = proofStart + proofTotalLength;
+            message.Proofs = new RlpByteArrayList(memoryOwner, memory.Slice(proofStart, proofTotalLength));
 
             return message;
+        }
+
+        private PathWithStorageSlot DecodeSlot(RlpStream stream)
+        {
+            stream.ReadSequenceLength();
+            Hash256 path = stream.DecodeKeccak();
+            byte[] value = stream.DecodeByteArray();
+
+            PathWithStorageSlot data = new(in path.ValueHash256, value);
+
+            return data;
         }
 
         private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) CalculateLengths(StorageRangeMessage message)
@@ -119,7 +146,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             contentLength += Rlp.LengthOfSequence(allSlotsLength);
 
             int proofsLength = 0;
-            if (message.Proofs is null || message.Proofs.Count == 0)
+            if (message.Proofs is RlpByteArrayList rlpList)
+            {
+                proofsLength = rlpList.RlpContentLength;
+                contentLength += Rlp.LengthOfSequence(proofsLength);
+            }
+            else if (message.Proofs is null || message.Proofs.Count == 0)
             {
                 proofsLength = 1;
                 contentLength++;
@@ -133,8 +165,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
                 contentLength += Rlp.LengthOfSequence(proofsLength);
             }
-
-
 
             return (contentLength, allSlotsLength, accountSlotsLengths, proofsLength);
         }

@@ -30,6 +30,7 @@ namespace Nethermind.Synchronization.FastSync
         public void Dispose()
         {
             Responses?.Dispose();
+            Responses = null;
         }
     }
 }

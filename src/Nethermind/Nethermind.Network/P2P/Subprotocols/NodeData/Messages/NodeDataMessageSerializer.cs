@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
@@ -14,22 +15,43 @@ public class NodeDataMessageSerializer : IZeroInnerMessageSerializer<NodeDataMes
 
     public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
     {
-        int length = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(length);
-        RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-
-        rlpStream.StartSequence(contentLength);
-        for (int i = 0; i < message.Data.Count; i++)
+        if (message.Data is RlpByteArrayList rlpList)
         {
-            rlpStream.Encode(message.Data[i]);
+            int contentLength = rlpList.RlpContentLength;
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
+            NettyRlpStream rlpStream = new(byteBuffer);
+            rlpStream.StartSequence(contentLength);
+            rlpStream.Write(rlpList.RlpContentSpan);
+            return;
+        }
+
+        {
+            int length = GetLength(message, out int contentLength);
+            byteBuffer.EnsureWritable(length);
+            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+
+            rlpStream.StartSequence(contentLength);
+            for (int i = 0; i < message.Data.Count; i++)
+            {
+                rlpStream.Encode(message.Data[i]);
+            }
         }
     }
 
-    public NodeDataMessage Deserialize(IByteBuffer byteBuffer) =>
-        byteBuffer.DeserializeRlp(Deserialize);
+    public NodeDataMessage Deserialize(IByteBuffer byteBuffer)
+    {
+        NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+        Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
 
-    private static NodeDataMessage Deserialize(ref Rlp.ValueDecoderContext ctx) =>
-        new(ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray(RlpLimit), limit: RlpLimit));
+        int prefixStart = ctx.Position;
+        int innerLength = ctx.ReadSequenceLength();
+        int totalLength = (ctx.Position - prefixStart) + innerLength;
+
+        RlpByteArrayList list = new(memoryOwner, memoryOwner.Memory.Slice(prefixStart, totalLength));
+        byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + totalLength);
+
+        return new NodeDataMessage(list);
+    }
 
     public int GetLength(NodeDataMessage message, out int contentLength)
     {

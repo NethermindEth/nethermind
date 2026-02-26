@@ -80,7 +80,7 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
             IReadOnlyList<PathWithAccount> accounts,
-            IReadOnlyList<byte[]> proofs = null,
+            IByteArrayList proofs = null,
             in ValueHash256? hashLimit = null!)
         {
             if (accounts.Count == 0)
@@ -154,7 +154,7 @@ namespace Nethermind.Synchronization.SnapSync
                 for (int i = 0; i < responses.Count; i++)
                 {
                     // only the last can have proofs
-                    IReadOnlyList<byte[]> proofs = null;
+                    IByteArrayList proofs = null;
                     if (i == responses.Count - 1)
                     {
                         proofs = response.Proofs;
@@ -185,7 +185,7 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddStorageRangeForAccount(StorageRange request, int accountIndex, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null)
+        public AddRangeResult AddStorageRangeForAccount(StorageRange request, int accountIndex, IReadOnlyList<PathWithStorageSlot> slots, IByteArrayList? proofs = null)
         {
             PathWithAccount pathWithAccount = request.Accounts[accountIndex];
 
@@ -292,7 +292,7 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash, requestedPath.StorageHashLimit);
         }
 
-        public void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IOwnedReadOnlyList<byte[]> codes)
+        public void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IByteArrayList codes)
         {
             HashSet<ValueHash256> set = requestedHashes.ToHashSet();
 
@@ -300,11 +300,12 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 for (int i = 0; i < codes.Count; i++)
                 {
-                    byte[] code = codes[i];
-                    ValueHash256 codeHash = ValueKeccak.Compute(code);
+                    ReadOnlySpan<byte> codeSpan = codes[i];
+                    ValueHash256 codeHash = ValueKeccak.Compute(codeSpan);
 
                     if (set.Remove(codeHash))
                     {
+                        byte[] code = codeSpan.ToArray();
                         Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
                         writeBatch[codeHash.Bytes] = code;
                     }

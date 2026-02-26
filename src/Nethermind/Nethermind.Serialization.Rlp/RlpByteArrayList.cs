@@ -7,7 +7,7 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp;
 
-public sealed class RlpByteArrayList : IByteArrayList
+public sealed class RlpByteArrayList : IByteArrayList, IRlpWrapper
 {
     private readonly RlpItemList _inner;
 
@@ -27,6 +27,7 @@ public sealed class RlpByteArrayList : IByteArrayList
 
     public int RlpContentLength => _inner.RlpContentLength;
     public ReadOnlySpan<byte> RlpContentSpan => _inner.RlpContentSpan;
+    public ReadOnlySpan<byte> RlpSpan => _inner.RlpSpan;
 
     public void Dispose() => _inner.Dispose();
 }

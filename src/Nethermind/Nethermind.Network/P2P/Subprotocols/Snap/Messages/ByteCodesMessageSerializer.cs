@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 
@@ -11,30 +12,55 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, ByteCodesMessage message)
         {
-            (int contentLength, int codesLength) = GetLength(message);
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.RequestId);
-            rlpStream.StartSequence(codesLength);
-            for (int i = 0; i < message.Codes.Count; i++)
+            if (message.Codes is RlpByteArrayList rlpList)
             {
-                rlpStream.Encode(message.Codes[i]);
+                int codesLength = rlpList.RlpContentLength;
+                int codesSeqLength = Rlp.LengthOfSequence(codesLength);
+                int contentLength = codesSeqLength + Rlp.LengthOf(message.RequestId);
+
+                byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
+
+                NettyRlpStream rlpStream = new(byteBuffer);
+                rlpStream.StartSequence(contentLength);
+                rlpStream.Encode(message.RequestId);
+                rlpStream.StartSequence(codesLength);
+                rlpStream.Write(rlpList.RlpContentSpan);
+                return;
+            }
+
+            {
+                (int contentLength, int codesLength) = GetLength(message);
+                byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
+                RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+
+                rlpStream.StartSequence(contentLength);
+                rlpStream.Encode(message.RequestId);
+                rlpStream.StartSequence(codesLength);
+                for (int i = 0; i < message.Codes.Count; i++)
+                {
+                    rlpStream.Encode(message.Codes[i]);
+                }
             }
         }
 
-        public ByteCodesMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
-
-        private static ByteCodesMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        public ByteCodesMessage Deserialize(IByteBuffer byteBuffer)
         {
+            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            int startPos = ctx.Position;
+
             ctx.ReadSequenceLength();
-
             long requestId = ctx.DecodeLong();
-            IOwnedReadOnlyList<byte[]> result = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
 
-            return new ByteCodesMessage(result) { RequestId = requestId };
+            int prefixStart = ctx.Position;
+            int innerLength = ctx.ReadSequenceLength();
+            int totalLength = (ctx.Position - prefixStart) + innerLength;
+
+            RlpByteArrayList list = new(memoryOwner, memoryOwner.Memory.Slice(prefixStart, totalLength));
+            ctx.Position = prefixStart + totalLength;
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+
+            return new ByteCodesMessage(list) { RequestId = requestId };
         }
 
         public static (int contentLength, int codesLength) GetLength(ByteCodesMessage message)

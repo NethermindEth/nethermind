@@ -18,7 +18,7 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
     private static readonly byte[] _emptyBytes = [0];
     public Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
     {
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) = snapServer.GetAccountRanges(
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = snapServer.GetAccountRanges(
             range.RootHash,
             range.StartingHash,
             range.LimitHash,
@@ -34,7 +34,7 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
 
     public Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token)
     {
-        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IOwnedReadOnlyList<byte[]>? proof) = snapServer.GetStorageRanges(
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proof) = snapServer.GetStorageRanges(
             range.RootHash,
             range.Accounts,
             range.StartingHash,
@@ -49,10 +49,10 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
         });
     }
 
-    public Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
+    public Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
     {
         IOwnedReadOnlyList<byte[]> codes = snapServer.GetByteCodes(codeHashes, int.MaxValue, token);
-        return Task.FromResult(codes);
+        return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(codes));
     }
 
     public Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)

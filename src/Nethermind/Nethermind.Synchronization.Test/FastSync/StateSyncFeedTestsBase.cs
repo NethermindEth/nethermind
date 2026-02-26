@@ -226,7 +226,7 @@ public abstract class StateSyncFeedTestsBase(
         private readonly ISnapServer _snapServer;
 
         private Hash256[]? _filter;
-        private readonly Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? _executorResultFunction;
+        private readonly Func<IReadOnlyList<Hash256>, Task<IByteArrayList>>? _executorResultFunction;
         private readonly long _maxRandomizedLatencyMs;
 
         // Per-test block tree to avoid race conditions during parallel test execution
@@ -235,7 +235,7 @@ public abstract class StateSyncFeedTestsBase(
         public SyncPeerMock(
             IDb stateDb,
             IDb codeDb,
-            Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? executorResultFunction = null,
+            Func<IReadOnlyList<Hash256>, Task<IByteArrayList>>? executorResultFunction = null,
             long? maxRandomizedLatencyMs = null,
             Node? node = null
         )
@@ -262,7 +262,7 @@ public abstract class StateSyncFeedTestsBase(
         public override string ClientId => "executorMock";
         public override PublicKey Id => Node.Id;
 
-        public override async Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+        public override async Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
         {
             if (_maxRandomizedLatencyMs != 0)
             {
@@ -286,7 +286,7 @@ public abstract class StateSyncFeedTestsBase(
                 i++;
             }
 
-            return responses;
+            return new ByteArrayListAdapter(responses);
         }
 
         public void SetFilter(Hash256[]? availableHashes)
@@ -315,9 +315,9 @@ public abstract class StateSyncFeedTestsBase(
             return Task.FromResult(_blockTree?.Head?.Header);
         }
 
-        public override Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
+        public override Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
         {
-            return Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
+            return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token)));
         }
 
         public override Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token) =>

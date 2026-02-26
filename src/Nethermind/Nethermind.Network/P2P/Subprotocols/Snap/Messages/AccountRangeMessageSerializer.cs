@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using DotNetty.Buffers;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -41,7 +44,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 }
             }
 
-            if (message.Proofs is null || message.Proofs.Count == 0)
+            if (message.Proofs is RlpByteArrayList rlpList)
+            {
+                stream.StartSequence(rlpList.RlpContentLength);
+                stream.Write(rlpList.RlpContentSpan);
+            }
+            else if (message.Proofs is null || message.Proofs.Count == 0)
             {
                 stream.EncodeNullObject();
             }
@@ -55,26 +63,33 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
         }
 
-        public AccountRangeMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
-
-        private AccountRangeMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
+            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            Memory<byte> memory = memoryOwner.Memory; // Capture before reads advance ReaderIndex
             AccountRangeMessage message = new();
-            ctx.ReadSequenceLength();
+            NettyRlpStream rlpStream = new(byteBuffer);
 
-            message.RequestId = ctx.DecodeLong();
-            message.PathsWithAccounts = ctx.DecodeArrayPoolList(DecodePathWithRlpData);
-            message.Proofs = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
+            rlpStream.ReadSequenceLength();
+
+            message.RequestId = rlpStream.DecodeLong();
+            message.PathsWithAccounts = rlpStream.DecodeArrayPoolList(DecodePathWithRlpData);
+
+            // Capture proofs as zero-copy RlpByteArrayList
+            int proofStart = rlpStream.Position;
+            int proofInnerLength = rlpStream.ReadSequenceLength();
+            int proofTotalLength = (rlpStream.Position - proofStart) + proofInnerLength;
+            rlpStream.Position = proofStart + proofTotalLength;
+            message.Proofs = new RlpByteArrayList(memoryOwner, memory.Slice(proofStart, proofTotalLength));
 
             return message;
         }
 
-        private PathWithAccount DecodePathWithRlpData(ref Rlp.ValueDecoderContext ctx)
+        private PathWithAccount DecodePathWithRlpData(RlpStream stream)
         {
-            ctx.ReadSequenceLength();
+            stream.ReadSequenceLength();
 
-            PathWithAccount data = new(ctx.DecodeKeccak(), _decoder.Decode(ref ctx));
+            PathWithAccount data = new(stream.DecodeKeccak(), _decoder.Decode(stream));
 
             return data;
         }
@@ -103,7 +118,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             contentLength += Rlp.LengthOfSequence(pwasLength);
 
             int proofsLength = 0;
-            if (message.Proofs is null || message.Proofs.Count == 0)
+            if (message.Proofs is RlpByteArrayList rlpList)
+            {
+                proofsLength = rlpList.RlpContentLength;
+            }
+            else if (message.Proofs is null || message.Proofs.Count == 0)
             {
                 proofsLength = 0;
             }
