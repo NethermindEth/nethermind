@@ -884,7 +884,7 @@ public unsafe class EvmOpcodesBenchmark
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
                 .WithLaunchCount(3)
-                .WithWarmupCount(5)
+                .WithWarmupCount(15)
                 .WithIterationCount(15));
             HideColumns(Column.Method);
             AddColumn(StatisticColumn.Min);
