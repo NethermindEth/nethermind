@@ -85,15 +85,15 @@ public class SnapServer : ISnapServer
 
         for (int i = 0; i < pathLength && !abort && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; i++)
         {
-            byte[][] group = pathSet[i].Group;
-            switch (group.Length)
+            byte[][]? requestedPath = pathSet[i].Group;
+            switch (requestedPath.Length)
             {
                 case 0:
                     return null;
                 case 1:
                     try
                     {
-                        byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(group[0]), rootHash);
+                        byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), rootHash);
                         writer.WriteValue(rlp);
                         responseSize += rlp?.Length ?? 0;
                         count++;
@@ -106,7 +106,7 @@ public class SnapServer : ISnapServer
                 default:
                     try
                     {
-                        byte[] accountPathBytes = group[0];
+                        byte[] accountPathBytes = requestedPath[0];
                         Hash256 storagePath = new Hash256(
                             accountPathBytes.Length == Hash256.Size
                                 ? accountPathBytes
@@ -117,9 +117,9 @@ public class SnapServer : ISnapServer
                             Hash256? storageRoot = account.StorageRoot;
                             StorageTree sTree = new(_store.GetTrieStore(storagePath), storageRoot, _logManager);
 
-                            for (int reqStorage = 1; reqStorage < group.Length && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
+                            for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
                             {
-                                byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(group[reqStorage]));
+                                byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
                                 writer.WriteValue(sRlp);
                                 responseSize += sRlp?.Length ?? 0;
                                 count++;
@@ -143,7 +143,10 @@ public class SnapServer : ISnapServer
     public IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
     {
         long currentByteCount = 0;
-        if (byteLimit > HardResponseByteLimit) byteLimit = HardResponseByteLimit;
+        if (byteLimit > HardResponseByteLimit)
+        {
+            byteLimit = HardResponseByteLimit;
+        }
 
         using RlpItemList.Builder builder = new(requestedHashes.Count);
         RlpItemList.Builder.Writer writer = builder.BeginRootContainer();

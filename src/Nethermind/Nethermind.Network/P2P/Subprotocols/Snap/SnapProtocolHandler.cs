@@ -210,8 +210,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private TrieNodesMessage FulfillTrieNodesMessage(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
         {
             if (SyncServer is null) return EmptyTrieNodesMessage;
-            IOwnedReadOnlyList<PathGroup> paths = getTrieNodesMessage.Paths;
-            RlpByteArrayList? trieNodes = SyncServer.GetTrieNodes(paths, getTrieNodesMessage.RootHash, cancellationToken);
+            RlpByteArrayList? trieNodes = SyncServer.GetTrieNodes(getTrieNodesMessage.Paths, getTrieNodesMessage.RootHash, cancellationToken);
             return new TrieNodesMessage(trieNodes);
         }
 
@@ -293,16 +292,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return await GetTrieNodes(request.RootHash, groups, token);
         }
 
-        public async Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token) =>
-            await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
+        public async Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+        {
+            return await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
+        }
 
-        private async Task<IByteArrayList> GetTrieNodes(Hash256 rootHash, IOwnedReadOnlyList<PathGroup> paths, CancellationToken token)
+        private async Task<IByteArrayList> GetTrieNodes(Hash256 rootHash, IOwnedReadOnlyList<PathGroup> groups, CancellationToken token)
         {
             TrieNodesMessage response = await _nodeStats.RunLatencyRequestSizer(RequestType.SnapRanges, bytesLimit =>
                 SendRequest(new GetTrieNodesMessage
                 {
                     RootHash = rootHash,
-                    Paths = paths,
+                    Paths = groups,
                     Bytes = bytesLimit
                 }, _getTrieNodesRequests, token));
 

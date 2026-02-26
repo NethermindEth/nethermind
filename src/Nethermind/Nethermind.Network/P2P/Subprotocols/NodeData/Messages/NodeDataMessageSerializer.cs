@@ -19,8 +19,8 @@ public class NodeDataMessageSerializer : IZeroInnerMessageSerializer<NodeDataMes
 
         int length = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(length);
-
         NettyRlpStream rlpStream = new(byteBuffer);
+
         rlpStream.StartSequence(contentLength);
         for (int i = 0; i < message.Data.Count; i++)
         {

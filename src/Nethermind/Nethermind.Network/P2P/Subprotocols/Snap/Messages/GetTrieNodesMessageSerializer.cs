@@ -39,6 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             NettyRlpStream stream = new(byteBuffer);
 
             stream.StartSequence(contentLength);
+
             stream.Encode(message.RequestId);
             stream.Encode(message.RootHash);
 
