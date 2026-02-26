@@ -142,41 +142,40 @@ public class SnapServer : ISnapServer
         return new RlpByteArrayList(builder.ToRlpItemList());
     }
 
-    public IOwnedReadOnlyList<byte[]> GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
+    public IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
     {
         long currentByteCount = 0;
-        ArrayPoolList<byte[]> response = new(requestedHashes.Count);
+        if (byteLimit > HardResponseByteLimit) byteLimit = HardResponseByteLimit;
 
-        if (byteLimit > HardResponseByteLimit)
-        {
-            byteLimit = HardResponseByteLimit;
-        }
+        using RlpItemList.Builder builder = new(requestedHashes.Count);
+        RlpItemList.Builder.Writer writer = builder.BeginRootContainer();
+        int count = 0;
 
         foreach (ValueHash256 codeHash in requestedHashes)
         {
             // break when the response size exceeds the byteLimit - it is a soft limit
             // so not a big issue if we so over slightly.
-            if (currentByteCount > byteLimit || cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
+            if (currentByteCount > byteLimit || cancellationToken.IsCancellationRequested) break;
 
             if (codeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
             {
-                response.Add([]);
+                writer.WriteValue([]);
                 currentByteCount += 1;
+                count++;
                 continue;
             }
 
             byte[]? code = _codeDb[codeHash.Bytes];
             if (code is not null)
             {
-                response.Add(code);
+                writer.WriteValue(code);
                 currentByteCount += code.Length;
+                count++;
             }
         }
 
-        return response;
+        writer.Dispose();
+        return count == 0 ? BuildEmptyRlpByteArrayList() : new RlpByteArrayList(builder.ToRlpItemList());
     }
 
     public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(

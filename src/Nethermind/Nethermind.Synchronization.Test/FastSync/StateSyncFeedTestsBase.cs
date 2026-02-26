@@ -317,7 +317,7 @@ public abstract class StateSyncFeedTestsBase(
 
         public override Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
         {
-            return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token)));
+            return Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
         }
 
         public override Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token) =>

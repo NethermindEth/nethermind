@@ -245,8 +245,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private ByteCodesMessage FulfillByteCodesMessage(GetByteCodesMessage getByteCodesMessage, CancellationToken cancellationToken)
         {
             if (SyncServer is null) return new ByteCodesMessage(EmptyByteArrayList.Instance);
-            IOwnedReadOnlyList<byte[]>? byteCodes = SyncServer.GetByteCodes(getByteCodesMessage.Hashes, getByteCodesMessage.Bytes, cancellationToken);
-            return new ByteCodesMessage(new ByteArrayListAdapter(byteCodes));
+            IByteArrayList byteCodes = SyncServer.GetByteCodes(getByteCodesMessage.Hashes, getByteCodesMessage.Bytes, cancellationToken);
+            return new ByteCodesMessage(byteCodes);
         }
 
         public async Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)

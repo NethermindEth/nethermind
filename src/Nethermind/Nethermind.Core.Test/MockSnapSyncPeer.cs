@@ -51,8 +51,8 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
 
     public Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
     {
-        IOwnedReadOnlyList<byte[]> codes = snapServer.GetByteCodes(codeHashes, int.MaxValue, token);
-        return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(codes));
+        IByteArrayList codes = snapServer.GetByteCodes(codeHashes, int.MaxValue, token);
+        return Task.FromResult(codes);
     }
 
     public Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
