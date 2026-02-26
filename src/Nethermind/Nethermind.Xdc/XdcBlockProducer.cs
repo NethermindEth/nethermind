@@ -32,7 +32,6 @@ internal class XdcBlockProducer : BlockProducerBase
     public XdcBlockProducer(
         IEpochSwitchManager epochSwitchManager,
         IMasternodesCalculator masternodesCalculator,
-        ISnapshotManager snapshotManager,
         IXdcConsensusContext xdcContext,
         ITxSource txSource,
         IBlockchainProcessor processor,

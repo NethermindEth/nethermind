@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Xdc.Spec;
+using System;
 
 namespace Nethermind.Xdc;
 

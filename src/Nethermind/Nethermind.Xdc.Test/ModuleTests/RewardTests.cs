@@ -51,7 +51,7 @@ public class RewardTests
             chain.SpecProvider,
             chain.BlockTree,
             masternodeVotingContract,
-            signingTxCache
+            signingTxCache,
             Substitute.For<ITransactionProcessor>()
         );
 
@@ -186,7 +186,7 @@ public class RewardTests
             chain.SpecProvider,
             chain.BlockTree,
             masternodeVotingContract,
-            signingTxCache
+            signingTxCache,
             Substitute.For<ITransactionProcessor>()
         );
 
