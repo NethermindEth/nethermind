@@ -10,6 +10,9 @@ namespace Nethermind.State.Snap
     {
         public byte[][] Group { get; set; }
 
+        public static RlpPathGroupList EncodeToRlpPathGroupList(IReadOnlyList<PathGroup> groups) =>
+            new(EncodeToRlpItemList(groups));
+
         public static RlpItemList EncodeToRlpItemList(IReadOnlyList<PathGroup> groups)
         {
             using RlpItemList.Builder builder = new();
