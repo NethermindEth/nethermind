@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,7 +40,7 @@ namespace Nethermind.Evm.Benchmark;
 [Config(typeof(EvmOpcodesBenchmarkConfig))]
 public unsafe class EvmOpcodesBenchmark
 {
-    private const int InnerCount = 4096;
+    private const int InnerCount = 8192;
     private const int KeccakWordSize = EvmStack.WordSize;
     private const int DynamicStorageKeyCount = InnerCount * 8;
     private const int DynamicCallTargetCount = InnerCount;
@@ -47,6 +48,8 @@ public unsafe class EvmOpcodesBenchmark
     private delegate*<VirtualMachine<EthereumGasPolicy>, ref EvmStack, ref EthereumGasPolicy, ref int, EvmExceptionType>[] _opcodes = null!;
     private BenchmarkVm _vm = null!;
     private byte[] _stackBuffer = null!;
+    private int _stackOffset;
+    private int _stackLength;
     private EthereumGasPolicy _gas;
     private ExecutionEnvironment _env = null!;
     private VmState<EthereumGasPolicy> _vmState = null!;
@@ -127,13 +130,13 @@ public unsafe class EvmOpcodesBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        _stackBuffer = CreateStackBuffer();
+        (_stackBuffer, _stackOffset, _stackLength) = CreateStackBuffer();
         _gas = EthereumGasPolicy.FromLong(long.MaxValue);
 
         // Pre-fill 20 stack slots with unique values for DUP/SWAP tests
         for (int i = 0; i < 20; i++)
         {
-            WriteStackSlot(_stackBuffer, i, new UInt256((ulong)(i + 1) * 0x0102030405060708UL));
+            WriteStackSlot(i, new UInt256((ulong)(i + 1) * 0x0102030405060708UL));
         }
 
         // Create VM with opcode table - mirrors VirtualMachine.Warmup pattern
@@ -209,6 +212,10 @@ public unsafe class EvmOpcodesBenchmark
 
         // Generate the opcode function pointer table (same as production)
         _opcodes = EvmInstructions.GenerateOpCodes<EthereumGasPolicy, OffFlag>(spec);
+
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
     }
 
     [GlobalCleanup]
@@ -237,7 +244,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithStackWalk()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, _stackBuffer);
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
         EvmExceptionType result = EvmExceptionType.None;
         int remaining = InnerCount;
         while (remaining > 0)
@@ -261,7 +268,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithPerRunRefresh()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, _stackBuffer);
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
         EvmExceptionType result = EvmExceptionType.None;
         for (int runIndex = 0; runIndex < InnerCount; runIndex++)
         {
@@ -279,7 +286,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithIndependentBinaryInputs()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, _stackBuffer);
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
         EvmExceptionType result = EvmExceptionType.None;
         int remaining = InnerCount;
         while (remaining > 0)
@@ -423,7 +430,7 @@ public unsafe class EvmOpcodesBenchmark
                 return SetupStackForBinaryRuns(runs, in ShiftAmount, in ValueA);
 
             case Instruction.JUMP:
-                WriteStackSlot(_stackBuffer, 0, in JumpDestination);
+                WriteStackSlot(0, in JumpDestination);
                 return 1;
 
             case Instruction.JUMPI:
@@ -477,12 +484,12 @@ public unsafe class EvmOpcodesBenchmark
         for (int i = 0; i < depth; i++)
         {
             UInt256 value = (i & 1) == 0 ? second : first;
-            WriteStackSlot(_stackBuffer, i, in value);
+            WriteStackSlot(i, in value);
         }
 
         int top = depth - 1;
-        WriteStackSlot(_stackBuffer, top - 1, in second);
-        WriteStackSlot(_stackBuffer, top, in first);
+        WriteStackSlot(top - 1, in second);
+        WriteStackSlot(top, in first);
         return depth;
     }
 
@@ -496,7 +503,7 @@ public unsafe class EvmOpcodesBenchmark
         int effectiveRuns = Math.Clamp(runs, 1, (EvmStack.MaxStackSize - 1) / 2);
         int depth = Math.Max(3, (effectiveRuns * 2) + 1);
         int top = depth - 1;
-        WriteStackSlot(_stackBuffer, top, in first);
+        WriteStackSlot(top, in first);
 
         // For each chained ternary op run:
         // a = previous result (or initial first), b = constant second, m = constant modulus.
@@ -505,11 +512,11 @@ public unsafe class EvmOpcodesBenchmark
             int slot = top - offset;
             if ((offset & 1) == 1)
             {
-                WriteStackSlot(_stackBuffer, slot, in second);
+                WriteStackSlot(slot, in second);
             }
             else
             {
-                WriteStackSlot(_stackBuffer, slot, in modulus);
+                WriteStackSlot(slot, in modulus);
             }
         }
 
@@ -518,16 +525,16 @@ public unsafe class EvmOpcodesBenchmark
 
     private int SetupExtCodeCopyStack(int runs)
     {
-        int availableSlots = _stackBuffer.Length / EvmStack.WordSize;
+        int availableSlots = _stackLength / EvmStack.WordSize;
         int effectiveRuns = Math.Clamp(runs, 1, availableSlots / 4);
         int depth = Math.Max(4, effectiveRuns * 4);
         for (int run = 0; run < effectiveRuns; run++)
         {
             int slot = run * 4;
-            WriteStackSlot(_stackBuffer, slot + 0, UInt256.Zero); // length
-            WriteStackSlot(_stackBuffer, slot + 1, UInt256.Zero); // sourceOffset
-            WriteStackSlot(_stackBuffer, slot + 2, UInt256.Zero); // memoryOffset
-            WriteStackSlot(_stackBuffer, slot + 3, in CallTarget); // address (popped first)
+            WriteStackSlot(slot + 0, UInt256.Zero); // length
+            WriteStackSlot(slot + 1, UInt256.Zero); // sourceOffset
+            WriteStackSlot(slot + 2, UInt256.Zero); // memoryOffset
+            WriteStackSlot(slot + 3, in CallTarget); // address (popped first)
         }
 
         return depth;
@@ -539,7 +546,7 @@ public unsafe class EvmOpcodesBenchmark
         for (int i = 0; i < inputCount; i++)
         {
             UInt256 value = new((ulong)(i + 1));
-            WriteStackSlot(_stackBuffer, i, in value);
+            WriteStackSlot(i, in value);
         }
 
         return inputCount;
@@ -555,33 +562,33 @@ public unsafe class EvmOpcodesBenchmark
         // Stack order from top to bottom:
         // CALL/CALLCODE: gas, addr, value, inOffset, inLength, outOffset, outLength
         // DELEGATECALL/STATICCALL: gas, addr, inOffset, inLength, outOffset, outLength
-        WriteStackSlot(_stackBuffer, 0, UInt256.Zero); // outLength
-        WriteStackSlot(_stackBuffer, 1, UInt256.Zero); // outOffset
-        WriteStackSlot(_stackBuffer, 2, UInt256.Zero); // inLength
-        WriteStackSlot(_stackBuffer, 3, UInt256.Zero); // inOffset
+        WriteStackSlot(0, UInt256.Zero); // outLength
+        WriteStackSlot(1, UInt256.Zero); // outOffset
+        WriteStackSlot(2, UInt256.Zero); // inLength
+        WriteStackSlot(3, UInt256.Zero); // inOffset
 
         if (hasValue)
         {
-            WriteStackSlot(_stackBuffer, 4, UInt256.Zero); // value
-            WriteStackSlot(_stackBuffer, 5, in target); // addr
-            WriteStackSlot(_stackBuffer, 6, in CallGasLimit); // gas
+            WriteStackSlot(4, UInt256.Zero); // value
+            WriteStackSlot(5, in target); // addr
+            WriteStackSlot(6, in CallGasLimit); // gas
         }
         else
         {
-            WriteStackSlot(_stackBuffer, 4, in target); // addr
-            WriteStackSlot(_stackBuffer, 5, in CallGasLimit); // gas
+            WriteStackSlot(4, in target); // addr
+            WriteStackSlot(5, in CallGasLimit); // gas
         }
     }
 
     private void SetupStack2(in UInt256 a, in UInt256 b)
     {
-        WriteStackSlot(_stackBuffer, 0, in b);
-        WriteStackSlot(_stackBuffer, 1, in a);
+        WriteStackSlot(0, in b);
+        WriteStackSlot(1, in a);
     }
 
     private long ExecuteOpcodeOnceForGas()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, _stackBuffer);
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
         if (RequiresPerRunLocationSetup(Opcode))
         {
             stack.Head = _stackDepth;
@@ -616,9 +623,9 @@ public unsafe class EvmOpcodesBenchmark
 
     private void SetupStack3(in UInt256 a, in UInt256 b, in UInt256 c)
     {
-        WriteStackSlot(_stackBuffer, 0, in c);
-        WriteStackSlot(_stackBuffer, 1, in b);
-        WriteStackSlot(_stackBuffer, 2, in a);
+        WriteStackSlot(0, in c);
+        WriteStackSlot(1, in b);
+        WriteStackSlot(2, in a);
     }
 
     private void InitializeDynamicStorageLocations(Address executingAddress)
@@ -698,8 +705,8 @@ public unsafe class EvmOpcodesBenchmark
         for (int run = 0; run < effectiveRuns; run++)
         {
             int head = depth - (run * 2);
-            WriteStackSlot(_stackBuffer, head - 1, in first);
-            WriteStackSlot(_stackBuffer, head - 2, in second);
+            WriteStackSlot(head - 1, in first);
+            WriteStackSlot(head - 2, in second);
         }
 
         return depth;
@@ -757,15 +764,15 @@ public unsafe class EvmOpcodesBenchmark
             case Instruction.KECCAK256:
                 int keccakIndex = (int)(sequence % _dynamicKeccakOffsets.Length);
                 UInt256 offset = _dynamicKeccakOffsets[keccakIndex];
-                WriteStackSlot(_stackBuffer, 0, in KeccakLength); // length
-                WriteStackSlot(_stackBuffer, 1, in offset); // offset (popped first)
+                WriteStackSlot(0, in KeccakLength); // length
+                WriteStackSlot(1, in offset); // offset (popped first)
                 break;
 
             case Instruction.SLOAD:
             case Instruction.TLOAD:
                 int loadStorageIndex = (int)(sequence % _dynamicStorageKeys.Length);
                 UInt256 loadKey = _dynamicStorageKeys[loadStorageIndex];
-                WriteStackSlot(_stackBuffer, 0, in loadKey);
+                WriteStackSlot(0, in loadKey);
                 break;
 
             case Instruction.SSTORE:
@@ -773,8 +780,8 @@ public unsafe class EvmOpcodesBenchmark
                 int storeStorageIndex = (int)(sequence % _dynamicStorageKeys.Length);
                 UInt256 storeKey = _dynamicStorageKeys[storeStorageIndex];
                 UInt256 value = ((runIndex + _iterationId) & 1) == 0 ? ValueA : ValueB;
-                WriteStackSlot(_stackBuffer, 0, in value); // value (popped second)
-                WriteStackSlot(_stackBuffer, 1, in storeKey); // key (popped first)
+                WriteStackSlot(0, in value); // value (popped second)
+                WriteStackSlot(1, in storeKey); // key (popped first)
                 break;
 
             case Instruction.CALL:
@@ -794,9 +801,9 @@ public unsafe class EvmOpcodesBenchmark
     }
 
     /// <summary>
-    /// Creates a pinned stack buffer for benchmarking.
+    /// Creates a pinned stack buffer and returns an aligned stack window matching VM execution.
     /// </summary>
-    public static byte[] CreateStackBuffer()
+    public static (byte[] Buffer, int Offset, int Size) CreateStackBuffer()
     {
         // EXTCODECOPY pops 4 values and pushes none; reserve enough slots for InnerCount runs.
         int slots = InnerCount * 4;
@@ -805,16 +812,34 @@ public unsafe class EvmOpcodesBenchmark
             slots = EvmStack.MaxStackSize;
         }
 
-        return GC.AllocateArray<byte>(slots * EvmStack.WordSize, pinned: true);
+        int stackSize = slots * EvmStack.WordSize;
+        byte[] buffer = GC.AllocateUninitializedArray<byte>(stackSize + EvmStack.WordSize, pinned: true);
+        int offset = GetAlignmentOffset(buffer, EvmStack.WordSize);
+        return (buffer, offset, stackSize);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Span<byte> GetAlignedStackSpan()
+        => _stackBuffer.AsSpan(_stackOffset, _stackLength);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void WriteStackSlot(int slotIndex, in UInt256 value)
+        => WriteStackSlot(GetAlignedStackSpan(), slotIndex, in value);
 
     /// <summary>
     /// Writes a UInt256 value to stack slot in big-endian format.
     /// </summary>
-    public static void WriteStackSlot(byte[] buffer, int slotIndex, in UInt256 value)
+    private static void WriteStackSlot(Span<byte> buffer, int slotIndex, in UInt256 value)
     {
-        Span<byte> slot = buffer.AsSpan(slotIndex * 32, 32);
+        Span<byte> slot = buffer.Slice(slotIndex * 32, 32);
         value.ToBigEndian(slot);
+    }
+
+    private unsafe static int GetAlignmentOffset(byte[] array, uint alignment)
+    {
+        nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
+        uint mask = alignment - 1;
+        return (int)((-(nint)address) & mask);
     }
 
     /// <summary>
