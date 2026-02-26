@@ -62,10 +62,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 }
             }
 
-            if (message.Proofs is RlpByteArrayList rlpList)
+            if (message.Proofs is IRlpWrapper rlpList)
             {
-                stream.StartSequence(rlpList.RlpContentLength);
-                stream.Write(rlpList.RlpContentSpan);
+                stream.Write(rlpList.RlpSpan);
             }
             else if (message.Proofs is null || message.Proofs.Count == 0)
             {
@@ -146,10 +145,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             contentLength += Rlp.LengthOfSequence(allSlotsLength);
 
             int proofsLength = 0;
-            if (message.Proofs is RlpByteArrayList rlpList)
+            if (message.Proofs is IRlpWrapper rlpList)
             {
-                proofsLength = rlpList.RlpContentLength;
-                contentLength += Rlp.LengthOfSequence(proofsLength);
+                contentLength += rlpList.RlpSpan.Length;
             }
             else if (message.Proofs is null || message.Proofs.Count == 0)
             {
