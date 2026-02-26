@@ -82,7 +82,7 @@ public class SnapServer : ISnapServer
 
         for (int i = 0; i < pathLength && !abort && !cancellationToken.IsCancellationRequested; i++)
         {
-            using RlpItemList group = pathSet.ReadNestedItemList(i);
+            using RlpItemList group = pathSet.CreateNestedItemList(i);
             switch (group.Count)
             {
                 case 0:
