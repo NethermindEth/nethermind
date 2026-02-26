@@ -1,7 +1,7 @@
 ---
 name: review
-description: Deep code review for an Ethereum execution client. Checks consensus correctness, security, robustness, performance, breaking changes, and observability. Use when asked to "review", "check this PR", "look for bugs", "audit", or "review my changes".
-allowed-tools: [Read, Grep, Glob]
+description: Deep code review for an Ethereum execution client. Checks consensus correctness, security, robustness, performance, DI patterns, breaking changes, and observability. Use when asked to "review", "check this PR", "look for bugs", "audit", or "review my changes".
+allowed-tools: Read, Grep, Glob
 ---
 
 # Code review
@@ -11,11 +11,65 @@ Nethermind is an Ethereum execution client built on .NET. Consensus correctness 
 **Only comment when you have HIGH CONFIDENCE (>80%) that a real issue exists.**
 Be concise: one sentence per comment when possible. If uncertain, stay silent.
 
+**Subagent warning:** Subagents do not inherit `.claude/rules/` or CLAUDE.md. If you launch subagents for this review, you **must** paste the relevant project rules (DI patterns, coding style, robustness, performance) into the subagent prompt. After receiving subagent output, cross-check their findings against the rules in your own context.
+
+---
+
+## Operational constraints
+
+- **One file at a time:** Review each changed `.cs` file independently. Read it, check it, report findings, then move to the next. Do not batch-read all files up front.
+- **Minimize file reads:** Read the file under review, then only read additional files when you need to verify a specific finding (e.g., confirming a DI module already registers a component). Do not speculatively read files "for context".
+- **Skip binary and compressed files:** Never read `.zst`, `.zip`, `.gz`, `.tar`, `.bin`, `.png`, `.jpg`, `.wasm`, `.dll`, `.exe`, `.dat` files or Git LFS pointers. List them in scope as "skipped (binary)".
+- **Stay in the diff:** ONLY review files that appear in the change set. Do NOT read or report findings from files outside the diff. Context reads (DI modules, interfaces) are allowed but findings must only come from changed files.
+- **Never fabricate:** If a category does not apply, write "N/A". An empty section is always correct when the code doesn't touch that area.
+
+---
+
+## Plan
+
+Follow these steps in order. At each checkpoint, list your findings for that category (or explicitly state "no findings") before proceeding to the next step. Do not skip steps.
+
+1. **Scope** — Read the diff. List every changed file grouped by project. Note which categories apply.
+2. **Checkpoint: scope** — Report file list and applicable categories.
+3. **Project rules check** — Read each file and check against `.claude/rules/` conventions (DI, style, robustness, performance, packages). See Step 2 below.
+4. **Checkpoint: rules** — List every rule violation with file:line, or state "no violations" per category.
+5. **Domain checks** — Apply consensus, security, breaking changes, test quality checks as applicable.
+6. **Checkpoint: domain** — List every domain finding, or state "no findings" per category.
+7. **Final report** — Compile all findings into the report template at the bottom.
+
 ---
 
 ## Skip these — CI already handles it
 
-Do not comment on formatting, build errors, test failures, CodeQL findings, dependency vulnerabilities, hive test results, or JSON-RPC output correctness. CI blocks the merge on all of these. Also skip: naming conventions, missing XML docs on `internal`/`private` members, minor grammar, refactoring suggestions that don't fix a real bug, logging improvements (unless security-related), build warnings with no behavioural impact.
+Do not comment on anything below. CI will block the merge if any of it fails.
+
+| Concern | Workflow |
+|---|---|
+| Code formatting, whitespace, EditorConfig | `code-formatting.yml` (`dotnet format`) |
+| Build errors | `build-solutions.yml` |
+| All unit & integration tests | `nethermind-tests.yml` |
+| CodeQL security analysis | `codeql.yml` |
+| Dependency vulnerabilities | `dependency-review.yml` |
+| Ethereum Foundation hive tests (consensus, RPC, Engine API) | `hive-tests.yml`, `hive-consensus-tests.yml` |
+| JSON-RPC output correctness | `rpc-comparison.yml` |
+
+Also skip: naming conventions, missing XML docs on `internal`/`private` members, minor grammar, refactoring suggestions that don't fix a real bug, logging improvements (unless security-related), build warnings that have no behavioural impact.
+
+---
+
+## Step 2: Project rules check
+
+For every changed file, explicitly check these conventions. Use Grep to search for the patterns listed.
+
+| Rule | Grep for | What it means |
+|------|----------|---------------|
+| **DI patterns** | `new ContainerBuilder`, `new WorldState(`, `new TransactionProcessor(`, `new BlockProcessor(`, `new TrieStore(` | If found, check `Nethermind.Init/Modules/` — if a module already registers that component, it's a violation. For tests/benchmarks, check if `TestBlockchain` should be used instead. |
+| **Coding style** | `var ` declarations, `== null`, `!= null` | Use explicit types (not `var`). Use `is null` / `is not null`. Exception: `var` for very long nested generic types. |
+| **Robustness** | `async void`, `.Result`, `.Wait()`, `catch { }`, `catch (Exception) { }` | `async void` swallows exceptions. `.Result`/`.Wait()` risk deadlock. Empty catch swallows diagnostics. |
+| **Performance** | `.Select(`, `.Where(`, `.Any(`, `.ToList()`, `new byte[` | LINQ in per-block/per-tx logic allocates on every call. `byte[]` in hot paths should be `Span<T>`. |
+| **Packages** | `Version=` in `<PackageReference>` | Versions belong in `Directory.Packages.props` only. |
+
+**Reminder: You must report findings for every rule category, even if the finding is "no violations". Do not skip any.**
 
 ---
 
@@ -43,7 +97,9 @@ Only flag when it genuinely affects correctness or usability:
 
 ---
 
-## Consensus & EVM correctness (CRITICAL)
+## Implementation
+
+### Consensus & EVM correctness (CRITICAL)
 
 Wrong EVM behaviour produces invalid blocks, causing chain desync and validators building on an invalid chain — leading to missed attestations and potential safety failures.
 
@@ -70,9 +126,7 @@ Wrong EVM behaviour produces invalid blocks, causing chain desync and validators
 - State root computation: `src/Nethermind/Nethermind.State/`
 - Receipt processing: `src/Nethermind/Nethermind.Blockchain/Receipts/`
 
----
-
-## Security
+### Security
 
 - Hardcoded JWT token, private key, credential, or secret in any form
 - Engine API endpoints (`engine_*`) reachable without JWT authentication
@@ -82,9 +136,7 @@ Wrong EVM behaviour produces invalid blocks, causing chain desync and validators
 - Missing validation on data received from untrusted sources (peers, RPC callers)
 - P2P message handlers that process externally-supplied sizes or counts without an upper bound — Ethereum's devp2p has no built-in rate limiting, so unbounded `GetBlockHeaders` ranges or oversized transaction batches are a DoS vector
 
----
-
-## C# / .NET robustness
+### C# / .NET robustness
 
 - `async void` — exceptions are silently swallowed; use `async Task`
 - `.Result` or `.Wait()` on a `Task` inside an `async` method — deadlock or thread-pool starvation risk; use `await` instead
@@ -95,9 +147,7 @@ Wrong EVM behaviour produces invalid blocks, causing chain desync and validators
 - `NullReferenceException` risk when processing untrusted external input without a null check or guard
 - Exception silently swallowed in an empty `catch` block — lost diagnostics
 
----
-
-## Performance
+### Performance
 
 Nethermind is the fastest Ethereum execution client. Guard regressions in hot paths.
 
@@ -108,16 +158,12 @@ Nethermind is the fastest Ethereum execution client. Guard regressions in hot pa
 - LINQ with closures or `ToList()` in per-block or per-transaction logic — allocates on every call
 - Large object allocations that could be pooled with `ObjectPool<T>` or `ArrayPool<T>`
 
----
-
-## Observability
+### Observability
 
 - A new code path that can fail silently with no log, metric, or counter — silent errors are the hardest to diagnose on a running node
 - A new sync stage, block processor step, or P2P handler with no metrics — throughput regressions will go undetected
 
----
-
-## Dependencies
+### Dependencies
 
 - A new NuGet package added to a core or network project that is large, has a restrictive licence, or duplicates existing functionality — new dependencies increase binary size and attack surface
 
@@ -166,61 +212,40 @@ New source files missing the required SPDX header (replace year with the current
 
 ---
 
-## Real-world examples
+## Final report template
 
-### `async void` swallows exceptions
+```markdown
+## Review report
 
-**File:** `Nethermind.Merge.Plugin/Synchronization/StartingSyncPivotUpdater.cs`
+**Scope:** <files reviewed>
 
-```csharp
-private async void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs syncMode)
-{
-    if ((syncMode.Current & SyncMode.UpdatingPivot) != 0 && ...)
-    {
-        if (await TrySetFreshPivot(_cancellation.Token))
-        ...
+### Rule violations (Step 2)
+- DI patterns: (findings or "clean")
+- Coding style: (findings or "clean")
+- Robustness: (findings or "clean")
+- Performance: (findings or "clean")
+- Packages: (findings or "clean")
+
+### Consensus (Step 3)
+- (findings, or "N/A — no consensus code changed")
+
+### Security (Step 3)
+- (findings, or "N/A — no security-sensitive code changed")
+
+### Breaking changes (Step 3)
+- (findings, or "N/A — no public API changed")
+
+### Test quality & observability (Step 3)
+- (findings or "clean")
+
+### Summary
+- Rule violations: N
+- Consensus critical: N
+- Security: N
+- Breaking changes: N
+- Test/observability: N
+- Total: N
 ```
-
-**Problem:** `async void` event handler — if `TrySetFreshPivot` throws, the exception is swallowed and the sync pivot silently stops updating.
-
-### `.Result` inside a lock — deadlock
-
-**File:** `Nethermind.Synchronization/FastBlocks/FastHeadersSyncFeed.cs`
-
-```csharp
-int requestSize =
-    _syncPeerPool.EstimateRequestLimit(..., cancellationToken).Result
-    ?? GethSyncLimits.MaxHeaderFetch;
-```
-
-**Problem:** `.Result` blocks the thread inside a lock. If the async continuation tries to reacquire the same lock, the node deadlocks and sync stalls permanently.
-
-### `.Wait()` in Dispose — shutdown hang
-
-**File:** `Nethermind.Trie/Pruning/TrieStore.cs`
-
-```csharp
-public void Dispose()
-{
-    _pruningTaskCancellationTokenSource.Cancel();
-    _pruningTask.Wait();
-```
-
-**Problem:** `.Wait()` in `Dispose()` can deadlock during shutdown, requiring a kill signal.
-
-### Wrong layer for state check (PR #10534)
-
-Reviewer flagged binding `IPruningConfig` into `BlockchainBridge`:
-
-> "Please don't bind IPruningConfig with BlockchainBridge. This will break flat as flat does not use this. Instead add the logic within TrieStore."
-
-**Problem:** Pruning boundary check added to the RPC facade instead of the trie layer. Flat-layout nodes get an unnecessary dependency, and other state-reading code paths remain unprotected.
-
-### Wrong constant for pruning boundary (PR #10534)
-
-> "use `PruningConfig.PruningBoundary` instead `Reorganization.MaxDepth`"
-
-**Problem:** Reorg depth and pruning boundary are independent values. Using the wrong one means nodes could reject valid state queries or serve partially pruned state, causing TrieExceptions.
 
 ---
 
