@@ -876,11 +876,16 @@ public unsafe class EvmOpcodesBenchmark
             // GcForce ensures a GC collection between iterations to reduce allocation noise.
             // Without an explicit job, BDN falls back to Job.Default (1 launch, auto-pilot)
             // because the runner's DashboardConfig.AddJob is commented out.
-            AddJob(Job.MediumRun
+            AddJob(Job.Default
                 .WithRuntime(CoreRuntime.Core10_0)
                 .WithGcForce(true)
                 .WithEnvironmentVariable("DOTNET_GCServer", "1")
-                .WithEnvironmentVariable("DOTNET_gcConcurrent", "0"));
+                .WithEnvironmentVariable("DOTNET_gcConcurrent", "0")
+                .WithInvocationCount(1)
+                .WithUnrollFactor(1)
+                .WithLaunchCount(2)
+                .WithWarmupCount(4)
+                .WithIterationCount(10));
             HideColumns(Column.Method);
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
