@@ -122,6 +122,11 @@ public partial class BlockProcessor(
 
         _stateProvider.Commit(spec, commitRoots: false);
 
+        // Capture ThreadPool state just before critical-path parallel work
+        long tpPending = ThreadPool.PendingWorkItemCount;
+        ThreadPool.GetAvailableThreads(out int tpAvailWorker, out int _);
+        ThreadPool.GetMaxThreads(out int tpMaxWorker, out int _);
+
         long tsAfterPostTxCommit = Stopwatch.GetTimestamp();
 
         CalculateBlooms(receipts);
@@ -199,7 +204,7 @@ public partial class BlockProcessor(
                 $"finalCommit={Stopwatch.GetElapsedTime(tsAfterMisc, tsAfterFinalCommit).TotalMilliseconds:F1} " +
                 $"stateRoot={Stopwatch.GetElapsedTime(tsAfterFinalCommit, tsAfterStateRoot).TotalMilliseconds:F1} " +
                 $"headerHash={Stopwatch.GetElapsedTime(tsAfterStateRoot, tsEnd).TotalMilliseconds:F1} " +
-                $"GC={dgc0}/{dgc1}/{dgc2} txCount={block.Transactions.Length} gas={block.GasUsed}");
+                $"GC={dgc0}/{dgc1}/{dgc2} TP={tpPending}pending/{tpMaxWorker - tpAvailWorker}busy/{tpMaxWorker}max txCount={block.Transactions.Length} gas={block.GasUsed}");
         }
 
         return receipts;
