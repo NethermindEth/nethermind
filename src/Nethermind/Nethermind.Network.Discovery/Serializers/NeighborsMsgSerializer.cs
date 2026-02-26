@@ -70,7 +70,7 @@ public class NeighborsMsgSerializer(
         rlp.ReadSequenceLength();
         Node[] nodes = DeserializeNodes(rlp);
 
-        long expirationTime = rlp.DecodeLong();
+        long expirationTime = rlp.DecodePositiveLong();
         NeighborsMsg msg = new(FarPublicKey, expirationTime, nodes);
         return msg;
     }

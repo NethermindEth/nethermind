@@ -54,12 +54,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             stream.ReadSequenceLength();
 
-            message.RequestId = stream.DecodeLong();
+            message.RequestId = stream.DecodePositiveLong();
             message.RootHash = stream.DecodeKeccak();
             PathGroup defaultValue = _defaultPathGroup;
             message.Paths = stream.DecodeArrayPoolList(DecodeGroup, defaultElement: defaultValue);
 
-            message.Bytes = stream.DecodeLong();
+            message.Bytes = stream.DecodePositiveLong();
 
             return message;
         }

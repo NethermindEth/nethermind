@@ -65,14 +65,14 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         IPEndPoint destination = GetAddress(destinationAddress, rlp.DecodeInt());
         rlp.DecodeInt(); // UDP port
 
-        long expireTime = rlp.DecodeLong();
+        long expireTime = rlp.DecodePositiveLong();
         PingMsg msg = new(FarPublicKey, expireTime, source, destination, Mdc.ToArray()) { Version = version };
 
         if (version == 4)
         {
             if (!rlp.HasBeenRead)
             {
-                long enrSequence = rlp.DecodeLong();
+                long enrSequence = rlp.DecodePositiveLong();
                 msg.EnrSequence = enrSequence;
             }
         }

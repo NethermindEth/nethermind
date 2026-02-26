@@ -30,10 +30,10 @@ public partial class EngineModuleTests
 {
 
     [TestCase(
-        "0x54dfc1d0ee589508c694f51cbea0816a2b665c8521294b549589389290751669",
-        "0x8597fff183c2055d2429240b5deb70af64121e1f2299a495305f718aed536f7c",
-        "0xa5d7c276147e583751c86570cca74327cb2e46aeca349d42d5e647f00ff372d6",
-        "0xf5ab30d4c8440c85",
+        "0xb54389c226c76c61de0a8ebea2fe74cb0119295d34b8c01d0897901867c41c63",
+        "0x14c38ed94cf91d5323eb3aaa7ff6c64c4c059a0a898658fcbc37f9723c25e6b3",
+        "0x8a792f3d13211724decede460a451cdac669b5aaae37a01c2110d9f3114bc8a2",
+        "0xfe420b1626a1f16d",
         null)]
     public virtual async Task Should_process_block_as_expected_V6(string latestValidHash, string blockHash,
         string stateRoot, string payloadId, string? auraWithdrawalContractAddress)
@@ -45,6 +45,7 @@ public partial class EngineModuleTests
         Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
+        const ulong slotNumber = 1;
         var fcuState = new
         {
             headBlockHash = startingHead.ToString(),
@@ -58,7 +59,8 @@ public partial class EngineModuleTests
             prevRandao = prevRandao.ToString(),
             suggestedFeeRecipient = feeRecipient.ToString(),
             withdrawals,
-            parentBeaconBLockRoot = Keccak.Zero
+            parentBeaconBLockRoot = Keccak.Zero,
+            slotNumber = slotNumber.ToHexString(true),
         };
         string?[] @params = new string?[]
         {
@@ -66,7 +68,7 @@ public partial class EngineModuleTests
         };
         string expectedPayloadId = payloadId;
 
-        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         using (Assert.EnterMultipleScope())
@@ -117,6 +119,7 @@ public partial class EngineModuleTests
                 ParentBeaconBlockRoot = Keccak.Zero,
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
                 StateRoot = new(stateRoot),
+                SlotNumber = slotNumber
             },
             [],
             [],
@@ -164,7 +167,7 @@ public partial class EngineModuleTests
         };
         @params = new[] { chain.JsonSerializer.Serialize(fcuState), null };
 
-        response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
+        response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         using (Assert.EnterMultipleScope())
@@ -189,9 +192,9 @@ public partial class EngineModuleTests
 
 
     [TestCase(
-        "0x1e11df85db9df143816b319b33ad72dc488d63baa6d3d477b72803b352897ef4",
+        "0x0981253ff1b66ee40650f7fa7efe53f772bc11bd4fef3a3574cf91495a1533dd",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
+        "0x42a80ba6d5783c392ffcc6b3c15d7ef06be8ae71c2ff5f42377acdec67a5766c")]
     public virtual async Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
         => await NewPayloadV5(
             blockHash,
@@ -200,10 +203,10 @@ public partial class EngineModuleTests
             null);
 
     [TestCase(
-        "0xfeff419072d4141abc1fed0fd15360e8a521a5544c0c6f4413cd84f0d07a5fb5",
-        "0xee19f9b94832e8855eee01f304f9479d15a4e690ef63145094a726006bc6d1b2",
-        "0xb1cce0e7c7315eb50afe128ad81a92b9c0cab67c6c1eb7170ad69811d53eb42c",
-        "0x6455e7ed6d666a3e421f97ffadaf1bbc18be8ca752bfa9cdb5ff4863ff3db38d",
+        "0x43b3722358b0a8b570fdfd846a5b836ad2fae3f7f58b3ac3519858472a997214",
+        "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e",
+        "0xf33cd1904c18109e882bfa965997ba802d408bd834a61920aba651fbaeb78dd3",
+        "0x4de7e37b17928203599e876a1f226dce8512f61f5672e67d4964bbc26ddc1ed4",
         null)]
     public virtual async Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? auraWithdrawalContractAddress)
     {
@@ -212,6 +215,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         const ulong timestamp = 1000000;
+        const ulong slotNumber = 1;
         Hash256 parentHash = new(chain.BlockTree.HeadHash);
 
         BlockAccessListBuilder invalidBalBuilder = Build.A.BlockAccessList
@@ -245,6 +249,7 @@ public partial class EngineModuleTests
                 ParentBeaconBlockRoot = Keccak.Zero,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 StateRoot = new(stateRoot),
+                SlotNumber = slotNumber
             },
             [],
             [],
@@ -272,7 +277,7 @@ public partial class EngineModuleTests
     }
 
     [TestCase(
-        "0x00c884d490708f36fd9b8f8b666a27b06d60ed3abc267d3416619e1b4a5eaa1a",
+        "0x2753a5a3fe321381e637a7c0d7673b61555a366bdf75359616b0035f9b405fab",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
         "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
     public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_incorrect_changes_early(string blockHash, string receiptsRoot, string stateRoot)
@@ -284,7 +289,7 @@ public partial class EngineModuleTests
             withIncorrectChange: true);
 
     [TestCase(
-        "0x969025cfc580665697a9fb224547ada9a792d9673f8f5f376caed043e5595c26",
+        "0x9f19c60fe32bb002e4b959abddd1ebfd396ddae2e65e9ff87b1c4a0715ade9ad",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
         "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
     public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_missing_changes_early(string blockHash, string receiptsRoot, string stateRoot)
@@ -296,7 +301,7 @@ public partial class EngineModuleTests
             withMissingChange: true);
 
     [TestCase(
-        "0xfd090a339659d2ca17dfdcf8550d5667c1e30f5aa49af1f074d4bda8110005ff",
+        "0x383a5a61b956150bc79762844dc40395c9f85e9caae8930a0de2b9e687902eae",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
         "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
     public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_surplus_changes_early(string blockHash, string receiptsRoot, string stateRoot)
@@ -308,7 +313,7 @@ public partial class EngineModuleTests
             withSurplusChange: true);
 
     [TestCase(
-        "0x4a599cb247bcf4b2565a4dbeb1f4c55ad849cbac5f810cdd79878898c86088e1",
+        "0x66478724575325c99be695cc33d2698b6c87bdc7fe4ee0a54813de367f2bf037",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
         "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
     public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_surplus_reads_early(string blockHash, string receiptsRoot, string stateRoot)
@@ -334,7 +339,8 @@ public partial class EngineModuleTests
             PrevRandao = genesis.Header.Random!,
             SuggestedFeeRecipient = Address.Zero,
             ParentBeaconBlockRoot = Keccak.Zero,
-            Withdrawals = []
+            Withdrawals = [],
+            SlotNumber = 1
         };
 
         Transaction tx = Build.A.Transaction
@@ -348,7 +354,7 @@ public partial class EngineModuleTests
 
         ForkchoiceStateV1 fcuState = new(genesis.Hash!, genesis.Hash!, genesis.Hash!);
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await chain.EngineRpcModule.engine_forkchoiceUpdatedV3(fcuState, payloadAttributes);
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(fcuState, payloadAttributes);
         Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
 
         await Task.Delay(1000);
@@ -395,7 +401,7 @@ public partial class EngineModuleTests
         List<Hash256> blockHashes = [];
         for (var i = 1; i < 5; i++)
         {
-            ExecutionPayloadV3 payload = await AddNewBlockV6(chain.EngineRpcModule, chain, 1);
+            ExecutionPayloadV4 payload = await AddNewBlockV6(chain.EngineRpcModule, chain, 1);
             blockHashes.Add(payload.BlockHash);
         }
 
@@ -433,7 +439,7 @@ public partial class EngineModuleTests
         }
     }
 
-    private async Task<ExecutionPayloadV3> AddNewBlockV6(IEngineRpcModule rpcModule, MergeTestBlockchain chain, int transactionCount = 0)
+    private async Task<ExecutionPayloadV4> AddNewBlockV6(IEngineRpcModule rpcModule, MergeTestBlockchain chain, int transactionCount = 0)
     {
         Transaction[] txs = BuildTransactions(chain, chain.BlockTree.Head!.Hash!, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _, 0);
         chain.AddTransactions(txs);
@@ -444,14 +450,15 @@ public partial class EngineModuleTests
             PrevRandao = TestItem.KeccakH,
             SuggestedFeeRecipient = TestItem.AddressF,
             Withdrawals = [],
-            ParentBeaconBlockRoot = TestItem.KeccakE
+            ParentBeaconBlockRoot = TestItem.KeccakE,
+            SlotNumber = chain.BlockTree.Head!.SlotNumber + 1
         };
         Hash256 currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
 
-        Task blockImprovementWait = chain.WaitForImprovedBlock();
+        Task blockImprovementWait = chain.WaitForImprovedBlock(currentHeadHash);
 
-        string payloadId = (await rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes)).Data.PayloadId!;
+        string payloadId = (await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes)).Data.PayloadId!;
 
         await blockImprovementWait;
 
@@ -466,7 +473,7 @@ public partial class EngineModuleTests
         await rpcModule.engine_newPayloadV5(payload.ExecutionPayload, payload.BlobsBundle.Blobs, TestItem.KeccakE, []);
 
         ForkchoiceStateV1 newForkchoiceState = new(payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash);
-        await rpcModule.engine_forkchoiceUpdatedV3(newForkchoiceState, null);
+        await rpcModule.engine_forkchoiceUpdatedV4(newForkchoiceState, null);
 
         return payload.ExecutionPayload;
     }
@@ -639,6 +646,7 @@ public partial class EngineModuleTests
                 ParentBeaconBlockRoot = Keccak.Zero,
                 ReceiptsRoot = new(receiptsRoot),
                 StateRoot = new(stateRoot),
+                SlotNumber = 1
             },
             [tx, tx2, tx3],
             [],

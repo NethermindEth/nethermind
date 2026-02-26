@@ -175,4 +175,8 @@ internal static class RlpHelpers
     [DoesNotReturn, StackTraceHidden]
     public static uint ThrowUnexpectedIntegerLength(int length)
         => throw new RlpException($"Unexpected length of long value: {length}");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static long ThrowNotPositiveLong()
+        => throw new RlpException("Long value is not a non-negative value");
 }

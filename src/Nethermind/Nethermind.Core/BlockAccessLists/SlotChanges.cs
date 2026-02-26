@@ -37,6 +37,8 @@ public class SlotChanges(UInt256 slot, SortedList<ushort, StorageChange> changes
     public static bool operator !=(SlotChanges left, SlotChanges right) =>
         !(left == right);
 
+    public override string ToString() => $"{Slot}:[{string.Join(", ", Changes.Values)}]";
+
     public bool PopStorageChange(ushort index, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         storageChange = null;

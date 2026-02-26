@@ -167,4 +167,14 @@ public static class BlockErrorMessages
 
     public static string ReceiptCountMismatch(int expectedCount, int actualCount) =>
         $"ReceiptCountMismatch: Expected {expectedCount} receipts to match transaction count, but got {actualCount}.";
+
+    public const string MissingSlotNumber = "MissingSlotNumber: Must be present in block body.";
+    public const string InvalidSlotNumber =
+        "InvalidSlotNumber: Slot number in header must exceed parent.";
+
+    public const string SlotNumberNotEnabled =
+        "SlotNumberNotEnabled: Block body cannot have block level access list.";
+
+    public static string SlotNumberMismatch(ulong? expected, ulong? actual) =>
+        $"SlotNumberMismatch: Slot number in header does not match calculated. Expected {expected}, got {actual}";
 }

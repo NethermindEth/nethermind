@@ -32,16 +32,16 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
         {
             txReceipt.StatusCode = firstItem[0];
-            txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
+            txReceipt.GasUsedTotal = rlpStream.DecodePositiveLong();
         }
         else if (firstItem.Length is >= 1 and <= 4)
         {
-            txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
+            txReceipt.GasUsedTotal = firstItem.ToPositiveLong();
         }
         else
         {
             txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-            txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
+            txReceipt.GasUsedTotal = rlpStream.DecodePositiveLong();
         }
 
         txReceipt.Bloom = rlpStream.DecodeBloom();
