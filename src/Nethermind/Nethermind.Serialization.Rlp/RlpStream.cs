@@ -165,6 +165,13 @@ namespace Nethermind.Serialization.Rlp
             _position += bytesToWrite.Length;
         }
 
+        public bool TryWriteRlpWrapper(IByteArrayList list)
+        {
+            if (list is not IRlpWrapper rlpWrapper) return false;
+            Write(rlpWrapper.RlpSpan);
+            return true;
+        }
+
         protected virtual string Description =>
             Data.AsSpan(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
 

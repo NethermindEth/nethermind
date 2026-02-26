@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -119,49 +120,45 @@ namespace Nethermind.Synchronization.StateSync
                 }
             }
 
-            int totalGroupCount = accountTreePaths.Count + itemsGroupedByAccount.Count;
-            PathGroup[] groups = new PathGroup[totalGroupCount];
+            using RlpItemList.Builder builder = new();
+            RlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
 
             int requestedNodeIndex = 0;
-            int accountPathIndex = 0;
-            for (; accountPathIndex < accountTreePaths.Count; accountPathIndex++)
+            for (int i = 0; i < accountTreePaths.Count; i++)
             {
-                (TreePath path, StateSyncItem syncItem) = accountTreePaths[accountPathIndex];
-                groups[accountPathIndex] = new PathGroup() { Group = new[] { Nibbles.EncodePath(path) } };
+                (TreePath path, StateSyncItem syncItem) = accountTreePaths[i];
+                using RlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
+                groupWriter.WriteValue(Nibbles.EncodePath(path));
 
                 // We validate the order of the response later and it has to be the same as RequestedNodes
                 batch.RequestedNodes[requestedNodeIndex] = syncItem;
-
                 requestedNodeIndex++;
             }
 
             foreach (var kvp in itemsGroupedByAccount)
             {
-                byte[][] group = new byte[kvp.Value.Count + 1][];
-                group[0] = kvp.Key?.Value.Bytes.ToArray();
+                using RlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
+                groupWriter.WriteValue(kvp.Key?.Value.Bytes.ToArray());
 
-                for (int groupIndex = 1; groupIndex < group.Length; groupIndex++)
+                for (int groupIndex = 0; groupIndex < kvp.Value.Count; groupIndex++)
                 {
-                    (TreePath path, StateSyncItem syncItem) = kvp.Value[groupIndex - 1];
-                    group[groupIndex] = Nibbles.EncodePath(path);
+                    (TreePath path, StateSyncItem syncItem) = kvp.Value[groupIndex];
+                    groupWriter.WriteValue(Nibbles.EncodePath(path));
 
                     // We validate the order of the response later and it has to be the same as RequestedNodes
                     batch.RequestedNodes[requestedNodeIndex] = syncItem;
-
                     requestedNodeIndex++;
                 }
-
-                groups[accountPathIndex] = new PathGroup() { Group = group };
-
-                accountPathIndex++;
             }
+
+            rootWriter.Dispose();
 
             if (batch.RequestedNodes.Count != requestedNodeIndex)
             {
                 Logger.Warn($"INCORRECT number of paths RequestedNodes.Length:{batch.RequestedNodes.Count} <> requestedNodeIndex:{requestedNodeIndex}");
             }
 
-            request.AccountAndStoragePaths = PathGroup.EncodeToRlpItemList(groups);
+            request.AccountAndStoragePaths = builder.ToRlpItemList();
             return request;
         }
 

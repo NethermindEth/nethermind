@@ -26,7 +26,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = 1,
                 PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
-                Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()),
+                Proofs = EmptyByteArrayList.Instance,
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -40,7 +40,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
-                Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty())
+                Proofs = EmptyByteArrayList.Instance
             };
 
             AccountRangeMessageSerializer serializer = new();

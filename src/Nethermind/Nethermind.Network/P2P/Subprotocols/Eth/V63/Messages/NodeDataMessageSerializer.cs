@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -16,25 +15,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
         {
-            if (message.Data is IRlpWrapper rlpList)
-            {
-                ReadOnlySpan<byte> rlpSpan = rlpList.RlpSpan;
-                byteBuffer.EnsureWritable(rlpSpan.Length);
-                NettyRlpStream rlpStream = new(byteBuffer);
-                rlpStream.Write(rlpSpan);
+            NettyRlpStream rlpStream = new(byteBuffer);
+            if (rlpStream.TryWriteRlpWrapper(message.Data))
                 return;
-            }
 
+            int length = GetLength(message, out int contentLength);
+            byteBuffer.EnsureWritable(length);
+
+            rlpStream.StartSequence(contentLength);
+            for (int i = 0; i < message.Data.Count; i++)
             {
-                int length = GetLength(message, out int contentLength);
-                byteBuffer.EnsureWritable(length);
-                RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-
-                rlpStream.StartSequence(contentLength);
-                for (int i = 0; i < message.Data.Count; i++)
-                {
-                    rlpStream.Encode(message.Data[i]);
-                }
+                rlpStream.Encode(message.Data[i]);
             }
         }
 
@@ -44,12 +35,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
             int startPos = ctx.Position;
 
-            int prefixStart = ctx.Position;
-            int innerLength = ctx.ReadSequenceLength();
-            int totalLength = (ctx.Position - prefixStart) + innerLength;
-
-            RlpByteArrayList list = new(memoryOwner, memoryOwner.Memory.Slice(prefixStart, totalLength));
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + totalLength);
+            RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
 
             return new NodeDataMessage(list);
         }
