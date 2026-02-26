@@ -5,11 +5,9 @@ using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Nethermind.Core.Collections;
-
 namespace Nethermind.Serialization.Rlp;
 
-public sealed partial class RlpItemList : IByteArrayList
+public sealed partial class RlpItemList : IDisposable
 {
     private readonly RefCountingMemoryOwner<byte> _memoryOwner;
     private readonly Memory<byte> _rlpRegion;
@@ -70,7 +68,7 @@ public sealed partial class RlpItemList : IByteArrayList
 
     public RefRlpListReader CreateNestedReader(int index) => new(this[index]);
 
-    public RlpItemList ReadNestedItemList(int index)
+    public RlpItemList CreateNestedItemList(int index)
     {
         ReadOnlySpan<byte> item = this[index];
         if (item[0] < 0xc0) throw new RlpException("Item is not an RLP list");
