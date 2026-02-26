@@ -53,13 +53,13 @@ public partial class BlockProcessor(
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
-    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
+    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token, Action? onTransactionsExecuted = null)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
+        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token, onTransactionsExecuted);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -91,7 +91,8 @@ public partial class BlockProcessor(
         IBlockTracer blockTracer,
         ProcessingOptions options,
         IReleaseSpec spec,
-        CancellationToken token)
+        CancellationToken token,
+        Action? onTransactionsExecuted = null)
     {
         BlockHeader header = block.Header;
 
@@ -106,6 +107,10 @@ public partial class BlockProcessor(
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
+        // Signal that transactions are done — caller can cancel prewarmer to free ThreadPool
+        // for blooms, receipts root, state root parallel work below
+        onTransactionsExecuted?.Invoke();
+
         _stateProvider.Commit(spec, commitRoots: false);
 
         CalculateBlooms(receipts);
@@ -116,6 +121,7 @@ public partial class BlockProcessor(
         }
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
