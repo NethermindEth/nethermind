@@ -310,14 +310,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         public static RlpItemList GetPathGroups(AccountsToRefreshRequest request)
         {
-            PathGroup[] groups = new PathGroup[request.Paths.Count];
+            using RlpItemList.Builder builder = new();
+            RlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
             for (int i = 0; i < request.Paths.Count; i++)
             {
                 AccountWithStorageStartingHash path = request.Paths[i];
-                groups[i] = new PathGroup { Group = [path.PathAndAccount.Path.Bytes.ToArray(), _emptyBytes] };
+                using RlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
+                groupWriter.WriteValue(path.PathAndAccount.Path.Bytes.ToArray());
+                groupWriter.WriteValue(_emptyBytes);
             }
+            rootWriter.Dispose();
 
-            return PathGroup.EncodeToRlpItemList(groups);
+            return builder.ToRlpItemList();
         }
 
         private async Task<TOut> SendRequest<TIn, TOut>(TIn msg, MessageDictionary<TIn, TOut> messageDictionary, CancellationToken token)

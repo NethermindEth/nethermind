@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using DotNetty.Buffers;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
@@ -16,42 +14,22 @@ public class NodeDataMessageSerializer : IZeroInnerMessageSerializer<NodeDataMes
 
     public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
     {
-        if (message.Data is IRlpWrapper rlpList)
-        {
-            ReadOnlySpan<byte> rlpSpan = rlpList.RlpSpan;
-            byteBuffer.EnsureWritable(rlpSpan.Length);
-            NettyRlpStream rlpStream = new(byteBuffer);
-            rlpStream.Write(rlpSpan);
+        if (NettyRlpStream.TryWriteByteArrayList(byteBuffer, message.Data))
             return;
-        }
 
+        int length = GetLength(message, out int contentLength);
+        byteBuffer.EnsureWritable(length);
+
+        NettyRlpStream rlpStream = new(byteBuffer);
+        rlpStream.StartSequence(contentLength);
+        for (int i = 0; i < message.Data.Count; i++)
         {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-
-            rlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.Data.Count; i++)
-            {
-                rlpStream.Encode(message.Data[i]);
-            }
+            rlpStream.Encode(message.Data[i]);
         }
     }
 
-    public NodeDataMessage Deserialize(IByteBuffer byteBuffer)
-    {
-        NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
-        Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
-
-        int prefixStart = ctx.Position;
-        int innerLength = ctx.ReadSequenceLength();
-        int totalLength = (ctx.Position - prefixStart) + innerLength;
-
-        RlpByteArrayList list = new(memoryOwner, memoryOwner.Memory.Slice(prefixStart, totalLength));
-        byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + totalLength);
-
-        return new NodeDataMessage(list);
-    }
+    public NodeDataMessage Deserialize(IByteBuffer byteBuffer) =>
+        new(NettyRlpStream.DecodeByteArrayList(byteBuffer));
 
     public int GetLength(NodeDataMessage message, out int contentLength)
     {
