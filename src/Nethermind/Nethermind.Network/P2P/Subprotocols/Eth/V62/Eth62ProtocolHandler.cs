@@ -309,7 +309,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
-        private void Handle(NewBlockMessage msg)
+        protected virtual void Handle(NewBlockMessage msg)
         {
             try
             {
