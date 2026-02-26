@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core.Collections;
 namespace Nethermind.Serialization.Rlp;
 
@@ -96,7 +97,12 @@ public sealed partial class RlpItemList : IDisposable, IRlpWrapper
         return list;
     }
 
-    public void Dispose() => _memoryOwner.Dispose();
+    private bool _wasDisposed = false;
+    public void Dispose()
+    {
+        if (Interlocked.CompareExchange(ref _wasDisposed, true, false)) return;
+        _memoryOwner.Dispose();
+    }
 
     private int ComputeCount()
     {
