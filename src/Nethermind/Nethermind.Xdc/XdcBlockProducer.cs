@@ -23,7 +23,7 @@ namespace Nethermind.Xdc;
 internal class XdcBlockProducer : BlockProducerBase
 {
     protected readonly IEpochSwitchManager epochSwitchManager;
-    protected readonly ISnapshotManager snapshotManager;
+    protected readonly IMasternodesCalculator masternodesCalculator;
     protected readonly IXdcConsensusContext xdcContext;
     protected readonly ISealer sealer;
     protected readonly ISpecProvider specProvider;
@@ -31,6 +31,7 @@ internal class XdcBlockProducer : BlockProducerBase
 
     public XdcBlockProducer(
         IEpochSwitchManager epochSwitchManager,
+        IMasternodesCalculator masternodesCalculator,
         ISnapshotManager snapshotManager,
         IXdcConsensusContext xdcContext,
         ITxSource txSource,
@@ -46,7 +47,7 @@ internal class XdcBlockProducer : BlockProducerBase
         IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
     {
         this.epochSwitchManager = epochSwitchManager;
-        this.snapshotManager = snapshotManager;
+        this.masternodesCalculator = masternodesCalculator;
         this.xdcContext = xdcContext;
         this.sealer = sealer;
         this.specProvider = specProvider;
@@ -90,7 +91,7 @@ internal class XdcBlockProducer : BlockProducerBase
 
         if (epochSwitchManager.IsEpochSwitchAtBlock(xdcBlockHeader))
         {
-            (Address[] masternodes, Address[] penalties) = snapshotManager.CalculateNextEpochMasternodes(xdcBlockHeader.Number, xdcBlockHeader.ParentHash, spec);
+            (Address[] masternodes, Address[] penalties) = masternodesCalculator.CalculateNextEpochMasternodes(xdcBlockHeader.Number, xdcBlockHeader.ParentHash, spec);
             xdcBlockHeader.Validators = new byte[masternodes.Length * Address.Size];
 
             for (int i = 0; i < masternodes.Length; i++)
