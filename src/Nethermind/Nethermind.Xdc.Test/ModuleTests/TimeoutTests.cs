@@ -34,8 +34,6 @@ public class TimeoutTests
     {
         using var blockchain = await XdcTestBlockchain.Create();
         // Create TCManager with a signer not in the Masternode list
-        var extraKey = blockchain.RandomKeys.First();
-
         blockchain.Signer.SetSigner(TestItem.PrivateKeyA);
 
         blockchain.TimeoutCertificateManager.OnCountdownTimer();
