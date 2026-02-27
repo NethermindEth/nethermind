@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -90,11 +92,70 @@ internal static partial class EvmInstructions
     /// Compares the input 256‐bit vector to zero and returns a predefined marker if the value is zero;
     /// otherwise, returns a zero vector.
     /// </summary>
-    public struct OpIsZero : IOpMath1Param
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionIsZero<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
     {
-        public static Word Operation(Word value) => value == default ? OpBitwiseEq.One : default;
-    }
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
+        ref byte bytesRef = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref bytesRef))
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
+
+        // Compute ISZERO result on top-of-stack word
+        Word value = ReadUnaligned<Word>(ref bytesRef);
+
+        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
+        ref byte codeRef = ref MemoryMarshal.GetReference(code);
+
+        int remainingCode = code.Length - programCounter;
+
+        if (!TTracingInst.IsActive && remainingCode >= 4)// need PUSH2 + 2 data bytes + JUMPI
+        {
+            // At this point programCounter points to the next opcode after ISZERO.
+            // Expect: PUSH2 <hi> <lo> JUMPI
+            Instruction opPush2 = (Instruction)Add(ref codeRef, programCounter);
+            Instruction opJumpi = (Instruction)Add(ref codeRef, programCounter + 3);
+
+
+            if (opPush2 == Instruction.PUSH2 && opJumpi == Instruction.JUMPI)
+            {
+                vm.OpCodeCount += 2;
+                stack.PopLimbo(); // remove ISZERO argument from stack
+
+                TGasPolicy.Consume(ref gas, GasCostOf.JumpI + GasCostOf.VeryLow);
+                if (value == default)
+                {
+                    // value was zero, ISZERO is true: perform the jump immediately.
+                    ushort destination = As<byte, ushort>(ref Add(ref codeRef, programCounter + 1));
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        destination = BinaryPrimitives.ReverseEndianness(destination);
+                    }
+
+                    if (!Jump(destination, ref programCounter, vm.VmState.Env))
+                    {
+                        return EvmExceptionType.InvalidJumpDestination;
+                    }
+                }
+                else
+                {
+                    // value was non-zero, ISZERO is false: skip PUSH2 + JUMPI sequence.
+                    programCounter += 4; // we are already after ISZERO; skip 1 (PUSH2) + 2 + 1 (JUMPI)
+                }
+
+                return EvmExceptionType.None;
+            }
+        }
+
+        // Fallback: behave like plain ISZERO, writing result to the same stack slot.
+        Word result = value == default ? OpBitwiseEq.One : default;
+        WriteUnaligned(ref bytesRef, result);
+        return EvmExceptionType.None;
+    }
     /// <summary>
     /// Implements the CLZ opcode.
     /// Counts leading 0's of 256‐bit vector
