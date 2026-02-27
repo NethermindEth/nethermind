@@ -28,15 +28,15 @@ For details, see the [Makefile](./Makefile).
 
 ### Input serialization
 
-The Zisk input data (input.bin) has a simple structure of `[ chain_id | block | witness ]` as follows:
+The Zisk input data (input.bin) has a simple structure of `chain_id | block | witness` as follows:
 
 ```
-[ chain_id (4) ]
-[ section_len (4) | block_rlp (section_len) ]
-[ section_len (4) | [ codes_count (4)   | [ count (4) | bytes (count) ] | ... ] ]
-[ section_len (4) | [ headers_count (4) | [ count (4) | bytes (count) ] | ... ] ]
-[ section_len (4) | [ keys_count (4)    | [ count (4) | bytes (count) ] | ... ] ]
-[ section_len (4) | [ state_count (4)   | [ count (4) | bytes (count) ] | ... ] ]
+chain_id: i32be
+block_rlp = len: i32be | bytes[len]
+codes     = len: i32be | n: i32be | repeat n: (item_len: i32be | bytes[item_len])
+headers   = len: i32be | n: i32be | repeat n: (item_len: i32be | bytes[item_len])
+keys      = len: i32be | n: i32be | repeat n: (item_len: i32be | bytes[item_len])
+state     = len: i32be | n: i32be | repeat n: (item_len: i32be | bytes[item_len])
 ```
 
 The witness data is deserialized as in `debug_executionWitness`:
