@@ -22,13 +22,13 @@ namespace Nethermind.Runner.Test.JsonRpc;
 /// <summary>
 /// Regression coverage for JSON-RPC response writer behavior.
 ///
-/// Before this change (pure master):
-/// Startup used CountingPipeWriter(ctx.Response.BodyWriter), which can accumulate
-/// the full response in PipeWriter internal buffers during serialization.
+/// Master vs this change:
+/// Master path (pure master behavior): CountingPipeWriter(ctx.Response.BodyWriter).
+/// This change path: CountingStreamPipeWriter(ctx.Response.Body).
 ///
-/// After this change:
-/// Startup uses CountingStreamPipeWriter(ctx.Response.Body), which flushes
-/// incrementally and keeps peak unflushed memory bounded.
+/// Comparison tests in this class execute both paths on the same payload and compare:
+/// - payload size parity (same serialized bytes count),
+/// - peak unflushed bytes (masterPeak vs changedPeak).
 /// </summary>
 [TestFixture]
 public class CountingWriterTests
@@ -45,11 +45,14 @@ public class CountingWriterTests
         (long masterPeak, long payloadSize) = await MeasurePeakAsyncUsingPipeWriter(response);
         (long changedPeak, long changedPayloadSize) = await MeasurePeakAsyncUsingStreamWriter(response);
 
+        Console.WriteLine(
+            $"Comparison ({sizeMb} MB): payload={payloadSize:N0}, masterPeak={masterPeak:N0}, thisChangePeak={changedPeak:N0}");
+
         payloadSize.Should().BeGreaterThan(totalBytes);
         changedPayloadSize.Should().Be(payloadSize);
-        masterPeak.Should().BeGreaterThan(totalBytes);
-        changedPeak.Should().BeLessThan(64 * 1024);
-        masterPeak.Should().BeGreaterThan(changedPeak * 10);
+        masterPeak.Should().BeGreaterThan(totalBytes, "master path buffers the full payload");
+        changedPeak.Should().BeLessThan(64 * 1024, "this change should keep buffer bounded");
+        masterPeak.Should().BeGreaterThan(changedPeak * 10, "master should be much worse than this change");
     }
 
     [Test]
@@ -61,10 +64,13 @@ public class CountingWriterTests
         (long masterPeak, long payloadSize) = await MeasureBatchPeakAsyncUsingPipeWriter(entryCount, entryDataSize);
         (long changedPeak, long changedPayloadSize) = await MeasureBatchPeakAsyncUsingStreamWriter(entryCount, entryDataSize);
 
+        Console.WriteLine(
+            $"Batch comparison: payload={payloadSize:N0}, masterPeak={masterPeak:N0}, thisChangePeak={changedPeak:N0}");
+
         changedPayloadSize.Should().Be(payloadSize);
-        masterPeak.Should().BeGreaterThan(payloadSize / 2);
-        changedPeak.Should().BeLessThan(64 * 1024);
-        masterPeak.Should().BeGreaterThan(changedPeak * 5);
+        masterPeak.Should().BeGreaterThan(payloadSize / 2, "master path buffers most of the batch");
+        changedPeak.Should().BeLessThan(64 * 1024, "this change should keep buffer bounded");
+        masterPeak.Should().BeGreaterThan(changedPeak * 5, "master should be much worse than this change");
     }
 
     [Test]
