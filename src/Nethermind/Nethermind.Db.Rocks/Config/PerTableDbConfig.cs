@@ -18,7 +18,7 @@ public class PerTableDbConfig : IRocksDbConfig
     private readonly string[] _prefixes;
     private readonly string[] _reversedPrefixes;
 
-    public PerTableDbConfig(IDbConfig dbConfig, string dbName, string? columnName = null)
+    public PerTableDbConfig(IDbConfig dbConfig, string dbName, string? columnName = null, bool validate = true)
     {
         _dbConfig = dbConfig;
         _tableName = dbName;
@@ -27,8 +27,11 @@ public class PerTableDbConfig : IRocksDbConfig
         _reversedPrefixes = _prefixes.Reverse().ToArray();
 
 #if DEBUG
-        EnsureConfigIsAvailable(nameof(RocksDbOptions));
-        EnsureConfigIsAvailable(nameof(AdditionalRocksDbOptions));
+        if (validate)
+        {
+            EnsureConfigIsAvailable(nameof(RocksDbOptions));
+            EnsureConfigIsAvailable(nameof(AdditionalRocksDbOptions));
+        }
 #endif
     }
 
