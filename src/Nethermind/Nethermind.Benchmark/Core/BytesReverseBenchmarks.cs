@@ -33,11 +33,14 @@ namespace Nethermind.Benchmarks.Core
         [GlobalSetup]
         public void Setup()
         {
-            unsafe
+            if (Avx2.IsSupported)
             {
-                fixed (byte* ptr_mask = _reverseMask)
+                unsafe
                 {
-                    _shuffleMask = Avx2.LoadVector256(ptr_mask);
+                    fixed (byte* ptr_mask = _reverseMask)
+                    {
+                        _shuffleMask = Avx2.LoadVector256(ptr_mask);
+                    }
                 }
             }
 
@@ -87,6 +90,11 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public void Avx2Version()
         {
+            if (!Avx2.IsSupported)
+            {
+                return;
+            }
+
             byte[] bytes = _a;
             unsafe
             {
