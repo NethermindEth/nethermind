@@ -73,7 +73,9 @@ public class BlockProcessingBenchmark
     /// </summary>
     private const int N_LARGE = 5000;
 
-    private const int N_SMALL = 500;
+    private const int N_SMALL = 200;
+
+    private const int N_MEDIUM = 500;
 
     /// <summary>
     /// 20 data points per benchmark (2 launches x 10 iterations, 2 warmup each).
@@ -89,7 +91,7 @@ public class BlockProcessingBenchmark
                 .WithUnrollFactor(1)
                 .WithLaunchCount(2)
                 .WithWarmupCount(2)
-                .WithIterationCount(9)
+                .WithIterationCount(5)
                 .WithGcForce(true));
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
@@ -263,11 +265,11 @@ public class BlockProcessingBenchmark
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    [Benchmark(OperationsPerInvoke = N_MEDIUM)]
     public Block[] Transfers_50()
     {
         Block[] result = null!;
-        for (int i = 0; i < N_SMALL; i++)
+        for (int i = 0; i < N_MEDIUM; i++)
             result = _branchProcessor.Process(_parentHeader, [_transfers50Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
@@ -293,11 +295,11 @@ public class BlockProcessingBenchmark
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    [Benchmark(OperationsPerInvoke = N_MEDIUM)]
     public Block[] AccessList_50()
     {
         Block[] result = null!;
-        for (int i = 0; i < N_SMALL; i++)
+        for (int i = 0; i < N_MEDIUM; i++)
             result = _branchProcessor.Process(_parentHeader, [_accessList50Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
