@@ -17,11 +17,44 @@ Be concise: one sentence per comment when possible. If uncertain, stay silent.
 
 ## Operational constraints
 
-- **One file at a time:** Review each changed `.cs` file independently. Read it, check it, report findings, then move to the next. Do not batch-read all files up front.
-- **Minimize file reads:** Read the file under review, then only read additional files when you need to verify a specific finding (e.g., confirming a DI module already registers a component). Do not speculatively read files "for context".
-- **Skip binary and compressed files:** Never read `.zst`, `.zip`, `.gz`, `.tar`, `.bin`, `.png`, `.jpg`, `.wasm`, `.dll`, `.exe`, `.dat` files or Git LFS pointers. List them in scope as "skipped (binary)".
-- **Stay in the diff:** ONLY review files that appear in the change set. Do NOT read or report findings from files outside the diff. Context reads (DI modules, interfaces) are allowed but findings must only come from changed files.
-- **Never fabricate:** If a category does not apply, write "N/A". An empty section is always correct when the code doesn't touch that area.
+### Phase 1 — Recon (batch aggressively)
+
+All recon calls are independent — emit them in a single parallel batch.
+
+**Step 1: Identify the diff base.** Run in ONE parallel batch:
+- `git merge-base HEAD origin/master` (or the PR's target branch)
+- `git log --oneline --merges <base>..HEAD` (detect merge commits)
+- `git diff <base> HEAD --name-only` (full file list — always cheap)
+
+**Never diff against `master` directly.** `git diff master` compares against the current master tip, which includes commits merged after the branch diverged. Always use the merge base.
+
+**Step 2: Filter the file list.** From the file list, remove:
+- Binary/compressed: `.zst`, `.zip`, `.gz`, `.tar`, `.bin`, `.png`, `.jpg`, `.wasm`, `.dll`, `.exe`, `.dat`, Git LFS pointers
+- Auto-generated: `Chains/*.json`, runner configs
+- If merge commits exist: run `git log --no-merges --format="" --name-only <base>..HEAD | sort -u` to get only files touched by the PR author's commits. Files only in the full list but not in the author-only list came in through merges — skip them unless the PR description says otherwise.
+
+List skipped files and reason in scope.
+
+**Step 3: Categorize** remaining files: production / test / benchmark / CI / docs.
+
+**Step 4: Fetch diffs.** Emit one `git diff <base> HEAD -- <file>` per file in ONE parallel batch — but only for files that survived filtering. If more than 20 production files remain, prioritize files in critical paths (EVM, Engine API, State, Trie, Specs, Blockchain) and fetch the rest only if token budget allows.
+
+### Phase 2 — Review (one file at a time)
+
+Review each changed `.cs` file independently. Read the diff, check it, report findings, move to the next.
+
+- **Minimize context reads:** Only read files outside the diff to verify a specific finding (e.g., confirming a DI module registration). Do not speculatively read files "for context".
+- **Stay in the diff:** Findings must only come from changed files.
+- **Batch verification reads:** If reviewing a file surfaces multiple findings that each need a different context file, read all context files in one parallel batch — don't round-trip one at a time.
+- **Never fabricate:** If a category does not apply, write "N/A".
+- **MANDATORY: Never invent exceptions to rules.** If a rule in `.claude/rules/` covers a pattern and the code matches that pattern, report it. Do not dismiss a violation by reasoning that the context "probably" justifies it — that is the author's call, not yours. If the rule is wrong, flag the violation and note the rule may need updating.If you believe the rule is wrong for this case, report the violation AND add a note that the rule may need an exception — but the violation still appears in the count.
+
+### Tool call discipline
+
+- **If the code execution tool is available:** prefer programmatic tool calling for Phase 1 recon. Write a single Python script that runs all git commands, filters the file list, categorizes files, and returns structured JSON. This keeps intermediate data out of your context window.
+- **Otherwise:** emit independent tool calls in one parallel batch. Never sequentially call tools that could have been parallel.
+- **Dependent calls are sequential.** If you need file A's content to decide whether to read file B, that's two turns. That's fine.
+- **Don't fetch what you won't read.** A diff fetched into context but never analyzed is pure waste.
 
 ---
 
@@ -29,7 +62,7 @@ Be concise: one sentence per comment when possible. If uncertain, stay silent.
 
 Follow these steps in order. At each checkpoint, list your findings for that category (or explicitly state "no findings") before proceeding to the next step. Do not skip steps.
 
-1. **Scope** — Read the diff. List every changed file grouped by project. Note which categories apply.
+1. **Scope** — Run Phase 1 recon (see Operational constraints). List every changed file grouped by project, noting which were skipped and why. Note which review categories apply.
 2. **Checkpoint: scope** — Report file list and applicable categories.
 3. **Project rules check** — Read each file and check against `.claude/rules/` conventions (DI, style, robustness, performance, packages). See Step 2 below.
 4. **Checkpoint: rules** — List every rule violation with file:line, or state "no violations" per category.
@@ -217,34 +250,25 @@ New source files missing the required SPDX header (replace year with the current
 ```markdown
 ## Review report
 
-**Scope:** <files reviewed>
+**Scope:** <files reviewed, grouped by category; list skipped files>
 
-### Rule violations (Step 2)
-- DI patterns: (findings or "clean")
-- Coding style: (findings or "clean")
-- Robustness: (findings or "clean")
-- Performance: (findings or "clean")
-- Packages: (findings or "clean")
-
-### Consensus (Step 3)
-- (findings, or "N/A — no consensus code changed")
-
-### Security (Step 3)
-- (findings, or "N/A — no security-sensitive code changed")
-
-### Breaking changes (Step 3)
-- (findings, or "N/A — no public API changed")
-
-### Test quality & observability (Step 3)
-- (findings or "clean")
+### Findings
+<numbered list of every finding, each with: category tag, file:line, problem, impact (if not obvious), fix>
+<if no findings in a category, omit it — don't write "clean" or "N/A">
 
 ### Summary
-- Rule violations: N
-- Consensus critical: N
-- Security: N
-- Breaking changes: N
-- Test/observability: N
+- Findings: N (list categories with counts, e.g. "DI: 1, Security: 1")
 - Total: N
+```
+
+If the review is genuinely clean — zero findings across all categories — write:
+
+```markdown
+### Findings
+None.
+
+### Summary
+- Total: 0
 ```
 
 ---
