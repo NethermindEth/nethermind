@@ -17,7 +17,7 @@ public class OptimismCompactReceiptStorageDecoder :
 {
     public OptimismTxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (rlpStream.IsNextItemNull())
+        if (rlpStream.IsNextItemEmptyList())
         {
             rlpStream.ReadByte();
             return null!;
@@ -78,7 +78,7 @@ public class OptimismCompactReceiptStorageDecoder :
     public OptimismTxReceipt Decode(ref ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
             return null!;
@@ -142,7 +142,7 @@ public class OptimismCompactReceiptStorageDecoder :
         // Note: This method runs at 2.5 million times/sec on my machine
         item = new TxReceiptStructRef();
 
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
             return;

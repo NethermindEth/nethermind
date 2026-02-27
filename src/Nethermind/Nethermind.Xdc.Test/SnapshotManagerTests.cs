@@ -31,9 +31,8 @@ internal class SnapshotManagerTests
 
         _snapshotDb = new MemDb();
 
-        IPenaltyHandler penaltyHandler = Substitute.For<IPenaltyHandler>();
         _blockTree = Substitute.For<IBlockTree>();
-        _snapshotManager = new SnapshotManager(_snapshotDb, _blockTree, penaltyHandler, Substitute.For<IMasternodeVotingContract>(), Substitute.For<ISpecProvider>());
+        _snapshotManager = new SnapshotManager(_snapshotDb, _blockTree, Substitute.For<IMasternodeVotingContract>(), Substitute.For<ISpecProvider>());
     }
 
     [Test]
@@ -164,7 +163,7 @@ internal class SnapshotManagerTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        SnapshotManager snapshotManager = new SnapshotManager(new MemDb(), blockTree, Substitute.For<IPenaltyHandler>(), Substitute.For<IMasternodeVotingContract>(), specProvider);
+        SnapshotManager snapshotManager = new SnapshotManager(new MemDb(), blockTree, Substitute.For<IMasternodeVotingContract>(), specProvider);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithGeneratedExtraConsensusData(1)
