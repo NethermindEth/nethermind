@@ -1167,7 +1167,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), StorageValue.FromSpanWithoutLeadingZero(storage));
                         }
                         else if (!account.IsTotallyEmpty)
                         {
@@ -1175,7 +1175,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), StorageValue.FromSpanWithoutLeadingZero(storage));
                         }
                     }
                 }

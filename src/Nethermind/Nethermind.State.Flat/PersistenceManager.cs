@@ -246,9 +246,9 @@ public class PersistenceManager(
                 batch.SetAccount(addr, account);
             }
 
-            foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in snapshot.Storages)
+            foreach (KeyValuePair<(AddressAsKey, UInt256), StorageValue?> kv in snapshot.Storages)
             {
-                ((Address addr, UInt256 slot), SlotValue? value) = kv;
+                ((Address addr, UInt256 slot), StorageValue? value) = kv;
 
                 batch.SetStorage(addr, slot, value);
             }

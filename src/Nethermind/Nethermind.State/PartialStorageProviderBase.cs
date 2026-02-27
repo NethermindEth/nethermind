@@ -36,7 +36,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        public StorageValue Get(in StorageCell storageCell)
         {
             return GetCurrentValue(in storageCell);
         }
@@ -46,19 +46,9 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, StorageValue newValue)
         {
-            PushUpdate(in storageCell, StorageValue.FromSpanWithoutLeadingZero(newValue));
-        }
-
-        /// <summary>
-        /// Set the provided value to storage at the specified storage cell
-        /// </summary>
-        /// <param name="storageCell">Storage location</param>
-        /// <param name="newValue">Value to store</param>
-        public void Set(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
-        {
-            PushUpdate(in storageCell, StorageValue.FromSpanWithoutLeadingZero(newValue));
+            PushUpdate(in storageCell, newValue);
         }
 
         /// <summary>
@@ -214,7 +204,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected abstract ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell);
+        protected abstract StorageValue GetCurrentValue(in StorageCell storageCell);
 
         /// <summary>
         /// Update the storage cell with provided value
@@ -255,7 +245,7 @@ namespace Nethermind.State
             {
                 if (cellByAddress.Key.Address == address)
                 {
-                    Set(cellByAddress.Key, StorageValue.Zero.ToEvmBytes());
+                    Set(cellByAddress.Key, StorageValue.Zero);
                 }
             }
         }

@@ -24,7 +24,7 @@ public sealed class SnapshotBundle : IDisposable
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<AddressAsKey, Account?> _changedAccounts = null!;
-    private ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> _changedSlots = null!;
+    private ConcurrentDictionary<(AddressAsKey, UInt256), StorageValue?> _changedSlots = null!;
     private ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes = null!;
     private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes = null!;
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses = null!;
@@ -112,7 +112,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_changedSlots.TryGetValue((address, index), out SlotValue? slotValue))
+        if (_changedSlots.TryGetValue((address, index), out StorageValue? slotValue))
         {
             return slotValue?.ToEvmBytes();
         }
@@ -336,7 +336,7 @@ public sealed class SnapshotBundle : IDisposable
         }
         else
         {
-            _changedSlots[(address, index)] = SlotValue.FromSpanWithoutLeadingZero(value);
+            _changedSlots[(address, index)] = StorageValue.FromSpanWithoutLeadingZero(value);
         }
     }
 
@@ -370,7 +370,7 @@ public sealed class SnapshotBundle : IDisposable
             }
 
             using ArrayPoolListRef<(AddressAsKey, UInt256)> slotKeysToRemove = new(16);
-            foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in _changedSlots)
+            foreach (KeyValuePair<(AddressAsKey, UInt256), StorageValue?> kv in _changedSlots)
             {
                 if (kv.Key.Item1.Value == address)
                 {

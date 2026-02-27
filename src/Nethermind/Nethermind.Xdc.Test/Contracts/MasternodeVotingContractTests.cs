@@ -58,7 +58,7 @@ internal class MasternodeVotingContractTests
             foreach (KeyValuePair<string, string> kvp in storage)
             {
                 StorageCell cell = new(codeSource, UInt256.Parse(kvp.Key));
-                stateProvider.Set(cell, Bytes.FromHexString(kvp.Value));
+                stateProvider.Set(cell, StorageValue.FromSpanWithoutLeadingZero(Bytes.FromHexString(kvp.Value)));
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);

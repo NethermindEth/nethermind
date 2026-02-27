@@ -73,7 +73,7 @@ namespace Nethermind.Evm.Test
             // Storage.CommitTrees() not being called. But now the WorldState.CommitTrees is called inside PrepareTx,
             // which also calls Storage.CommitTrees, clearing the cache.
             TestState.CreateAccount(Recipient, 1.Ether());
-            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            TestState.Set(new StorageCell(Recipient, 0), StorageValue.FromSpanWithoutLeadingZero(new[] { originalValue }));
             TestState.Commit(eip3529Enabled ? London.Instance : Berlin.Instance);
             _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
             long blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;

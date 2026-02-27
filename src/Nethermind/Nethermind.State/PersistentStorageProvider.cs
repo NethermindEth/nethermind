@@ -79,15 +79,15 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
-    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out StorageValue cached) ? cached.ToEvmBytes() : LoadFromTree(storageCell);
+    protected override StorageValue GetCurrentValue(in StorageCell storageCell) =>
+        TryGetCachedValue(storageCell, out StorageValue cached) ? cached : LoadFromTree(storageCell);
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+    public StorageValue GetOriginal(in StorageCell storageCell)
     {
         if (!_originalValues.TryGetValue(storageCell, out StorageValue value))
         {
@@ -100,12 +100,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             {
                 if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                 {
-                    return _changes[lastChangeIndexBeforeOriginalSnapshot].Value.ToEvmBytes();
+                    return _changes[lastChangeIndexBeforeOriginalSnapshot].Value;
                 }
             }
         }
 
-        return value.ToEvmBytes();
+        return value;
     }
 
     public Hash256 GetStorageRoot(Address address)
@@ -347,7 +347,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
-    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
+    private StorageValue LoadFromTree(in StorageCell storageCell)
     {
         return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
     }
@@ -537,7 +537,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
         }
 
-        public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
+        public StorageValue LoadFromTree(in StorageCell storageCell)
         {
             ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
@@ -552,7 +552,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
 
             if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
-            return valueChange.After.ToEvmBytes();
+            return valueChange.After;
         }
 
         private StorageValue LoadFromTreeStorage(StorageCell storageCell)

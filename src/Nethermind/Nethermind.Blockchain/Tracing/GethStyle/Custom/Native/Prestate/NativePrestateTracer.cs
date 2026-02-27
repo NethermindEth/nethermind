@@ -216,7 +216,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
 
         if (!account.Storage.ContainsKey(index))
         {
-            UInt256 storage = new(_worldState!.Get(new StorageCell(addr, index)), true);
+            UInt256 storage = new(_worldState!.Get(new StorageCell(addr, index)).AsReadOnlySpan, true);
             account.Storage.Add(index, storage);
         }
     }
@@ -261,7 +261,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                     if (prestateStorage.IsZero)
                         prestateAccount.Storage.Remove(index);
 
-                    UInt256 poststateStorage = new(_worldState!.Get(new StorageCell(addr, index)), true);
+                    UInt256 poststateStorage = new(_worldState!.Get(new StorageCell(addr, index)).AsReadOnlySpan, true);
                     if (!prestateStorage.Equals(poststateStorage))
                     {
                         modified = true;

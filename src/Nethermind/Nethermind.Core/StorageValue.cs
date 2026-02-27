@@ -21,8 +21,17 @@ public readonly struct StorageValue : IEquatable<StorageValue>
 
     public readonly Vector256<byte> _bytes;
 
-    public Span<byte> AsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
-    public ReadOnlySpan<byte> AsReadOnlySpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
+    public Span<byte> AsSpan
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
+    }
+
+    public ReadOnlySpan<byte> AsReadOnlySpan
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
+    }
 
     public const int ByteCount = 32;
 
@@ -68,6 +77,8 @@ public readonly struct StorageValue : IEquatable<StorageValue>
                 return Unsafe.ReadUnaligned<StorageValue>(ref MemoryMarshal.GetReference(buffer));
         }
     }
+
+    public static StorageValue? FromBytes(byte[]? data) => data is null ? null : new StorageValue(data);
 
     /// <summary>
     /// Returns the value as byte[] without leading zeros, matching the EVM storage convention.

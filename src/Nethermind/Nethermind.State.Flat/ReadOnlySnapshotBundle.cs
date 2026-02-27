@@ -88,7 +88,7 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorage(address, index, out SlotValue? slotValue))
+            if (snapshots[i].TryGetStorage(address, index, out StorageValue? slotValue))
             {
                 byte[]? res = slotValue?.ToEvmBytes();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
@@ -101,11 +101,11 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        SlotValue outSlotValue = new();
+        StorageValue outStorageValue = new();
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        persistenceReader.TryGetSlot(address, index, ref outSlotValue);
-        byte[]? value = outSlotValue.ToEvmBytes();
+        persistenceReader.TryGetSlot(address, index, ref outStorageValue);
+        byte[]? value = outStorageValue.ToEvmBytes();
 
         if (recordDetailedMetrics)
         {
