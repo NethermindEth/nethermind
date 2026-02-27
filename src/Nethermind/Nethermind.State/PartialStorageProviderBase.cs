@@ -7,7 +7,6 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 
@@ -49,7 +48,7 @@ namespace Nethermind.State
         /// <param name="newValue">Value to store</param>
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
-            PushUpdate(in storageCell, newValue);
+            PushUpdate(in storageCell, StorageValue.FromSpanWithoutLeadingZero(newValue));
         }
 
         /// <summary>
@@ -183,20 +182,20 @@ namespace Nethermind.State
         /// Attempt to get the current value at the storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
-        /// <param name="bytes">Resulting value</param>
+        /// <param name="value">Resulting value</param>
         /// <returns>True if value has been set</returns>
-        protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
+        protected bool TryGetCachedValue(in StorageCell storageCell, out StorageValue value)
         {
             if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
                 int lastChangeIndex = stack.Peek();
                 {
-                    bytes = _changes[lastChangeIndex].Value;
+                    value = _changes[lastChangeIndex].Value;
                     return true;
                 }
             }
 
-            bytes = null;
+            value = default;
             return false;
         }
 
@@ -212,7 +211,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, byte[] value)
+        private void PushUpdate(in StorageCell cell, StorageValue value)
         {
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changes.Count);
@@ -246,7 +245,7 @@ namespace Nethermind.State
             {
                 if (cellByAddress.Key.Address == address)
                 {
-                    Set(cellByAddress.Key, StorageTree.ZeroBytes);
+                    Set(cellByAddress.Key, StorageValue.Zero.ToEvmBytes());
                 }
             }
         }
@@ -254,10 +253,10 @@ namespace Nethermind.State
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected readonly struct Change(in StorageCell storageCell, byte[] value, ChangeType changeType)
+        protected readonly struct Change(in StorageCell storageCell, StorageValue value, ChangeType changeType)
         {
             public readonly StorageCell StorageCell = storageCell;
-            public readonly byte[] Value = value;
+            public readonly StorageValue Value = value;
             public readonly ChangeType ChangeType = changeType;
 
             public bool IsNull => ChangeType == ChangeType.Null;

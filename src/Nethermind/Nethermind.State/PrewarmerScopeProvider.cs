@@ -184,12 +184,12 @@ public class PrewarmerScopeProvider(
             this.address = address;
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
-            _loadFromTreeStorage = LoadFromTreeStorage;
+            _loadFromTreeStorage = LoadFromTreeStorageBytes;
         }
 
         public Hash256 RootHash => baseStorageTree.RootHash;
 
-        public byte[] Get(in UInt256 index)
+        public StorageValue Get(in UInt256 index)
         {
             StorageCell storageCell = new StorageCell(address, in index); // TODO: Make the dictionary use UInt256 directly
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
@@ -209,7 +209,7 @@ public class PrewarmerScopeProvider(
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
                 }
-                return value;
+                return StorageValue.FromSpanWithoutLeadingZero(value);
             }
             else
             {
@@ -218,19 +218,20 @@ public class PrewarmerScopeProvider(
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                     baseStorageTree.HintGet(in index, value);
                     Db.Metrics.IncrementStorageTreeCache();
+                    return StorageValue.FromSpanWithoutLeadingZero(value);
                 }
                 else
                 {
-                    value = LoadFromTreeStorage(in storageCell);
+                    StorageValue sv = LoadFromTreeStorage(in storageCell);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
+                    return sv;
                 }
-                return value;
             }
         }
 
         public void HintGet(in UInt256 index, byte[]? value) => baseStorageTree.HintGet(in index, value);
 
-        private byte[] LoadFromTreeStorage(in StorageCell storageCell)
+        private StorageValue LoadFromTreeStorage(in StorageCell storageCell)
         {
             Db.Metrics.IncrementStorageTreeReads();
 
@@ -239,7 +240,12 @@ public class PrewarmerScopeProvider(
                 : baseStorageTree.Get(storageCell.Hash);
         }
 
-        public byte[] Get(in ValueHash256 hash) =>
+        private byte[] LoadFromTreeStorageBytes(in StorageCell storageCell)
+        {
+            return LoadFromTreeStorage(in storageCell).ToEvmBytes();
+        }
+
+        public StorageValue Get(in ValueHash256 hash) =>
             // Not a critical path. so we just forward for simplicity
             baseStorageTree.Get(in hash);
     }
