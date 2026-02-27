@@ -69,7 +69,7 @@ public class GenesisBuilder(
                 foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
                 {
                     stateProvider.Set(new StorageCell(address, storage.Key),
-                        storage.Value.WithoutLeadingZeros().ToArray());
+                        StorageValue.FromSpanWithoutLeadingZero(storage.Value));
                 }
             }
 

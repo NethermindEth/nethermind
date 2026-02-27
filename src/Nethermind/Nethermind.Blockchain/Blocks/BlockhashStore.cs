@@ -16,8 +16,6 @@ namespace Nethermind.Blockchain.Blocks;
 
 public class BlockhashStore(IWorldState worldState) : IBlockhashStore
 {
-    private static readonly byte[] EmptyBytes = [0];
-
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
@@ -28,7 +26,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
         Hash256 parentBlockHash = blockHeader.ParentHash;
         UInt256 parentBlockIndex = new UInt256((ulong)((blockHeader.Number - 1) % spec.Eip2935RingBufferSize));
         StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
-        worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes);
+        worldState.Set(blockHashStoreCell, new StorageValue(parentBlockHash!.Bytes));
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber, IReleaseSpec spec)
@@ -41,7 +39,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
         UInt256 blockIndex = new UInt256((ulong)(requiredBlockNumber % spec.Eip2935RingBufferSize));
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-        ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
-        return data.SequenceEqual(EmptyBytes) ? null : Hash256.FromBytesWithPadding(data);
+        StorageValue data = worldState.Get(blockHashStoreCell);
+        return data.IsZero ? null : Hash256.FromBytesWithPadding(data.AsReadOnlySpan);
     }
 }

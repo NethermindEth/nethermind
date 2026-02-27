@@ -653,7 +653,7 @@ public unsafe class EvmOpcodesBenchmark
             // Seed a larger storage keyspace so SLOAD/SSTORE do not benchmark an empty trie
             // or repeatedly hit the same small hot subset across benchmark iterations.
             UInt256 initialValue = (i & 1) == 0 ? ValueA : ValueB;
-            _stateProvider.Set(new StorageCell(executingAddress, key), ToStorageBytes(initialValue));
+            _stateProvider.Set(new StorageCell(executingAddress, key), new StorageValue(ToStorageBytes(initialValue)));
         }
     }
 
@@ -705,7 +705,7 @@ public unsafe class EvmOpcodesBenchmark
             int index = (int)(sequence % _dynamicStorageKeys.Length);
             UInt256 key = _dynamicStorageKeys[index];
             StorageCell cell = new(address, key);
-            _stateProvider.SetTransientState(in cell, seedValue);
+            _stateProvider.SetTransientState(in cell, new StorageValue(seedValue));
         }
     }
 

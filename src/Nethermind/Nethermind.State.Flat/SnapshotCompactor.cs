@@ -130,7 +130,7 @@ public class SnapshotCompactor : ISnapshotCompactor
 
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage);
         ConcurrentDictionary<AddressAsKey, Account?> accounts = snapshot.Content.Accounts;
-        ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> storages = snapshot.Content.Storages;
+        ConcurrentDictionary<(AddressAsKey, UInt256), StorageValue?> storages = snapshot.Content.Storages;
         ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
         ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = snapshot.Content.StorageNodes;
         ConcurrentDictionary<TreePath, TrieNode> stateNodes = snapshot.Content.StateNodes;
@@ -174,7 +174,7 @@ public class SnapshotCompactor : ISnapshotCompactor
                 if (addressToClear.Count > 0)
                 {
                     // Clear
-                    foreach (((AddressAsKey Address, UInt256) key, SlotValue? _) in storages)
+                    foreach (((AddressAsKey Address, UInt256) key, StorageValue? _) in storages)
                     {
                         if (addressToClear.Contains(key.Address))
                         {

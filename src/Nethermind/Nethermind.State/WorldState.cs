@@ -118,37 +118,27 @@ namespace Nethermind.State
             return _stateProvider.IsContract(address);
         }
 
-        public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+        public StorageValue GetOriginal(in StorageCell storageCell)
         {
             DebugGuardInScope();
             return _persistentStorageProvider.GetOriginal(storageCell);
         }
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        public StorageValue Get(in StorageCell storageCell)
         {
             DebugGuardInScope();
             return _persistentStorageProvider.Get(storageCell);
         }
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, StorageValue newValue)
         {
             DebugGuardInScope();
             _persistentStorageProvider.Set(storageCell, newValue);
         }
-        public void Set(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
-        {
-            DebugGuardInScope();
-            _persistentStorageProvider.Set(storageCell, newValue);
-        }
-        public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
+        public StorageValue GetTransientState(in StorageCell storageCell)
         {
             DebugGuardInScope();
             return _transientStorageProvider.Get(storageCell);
         }
-        public void SetTransientState(in StorageCell storageCell, byte[] newValue)
-        {
-            DebugGuardInScope();
-            _transientStorageProvider.Set(storageCell, newValue);
-        }
-        public void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
+        public void SetTransientState(in StorageCell storageCell, StorageValue newValue)
         {
             DebugGuardInScope();
             _transientStorageProvider.Set(storageCell, newValue);

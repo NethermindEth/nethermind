@@ -82,9 +82,9 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
+        byte[] cell = _stateProvider.Get(new StorageCell(signer.Address, 0)).ToEvmBytes();
 
-        Assert.That(new Address(cell.ToArray()), Is.EqualTo(sender.Address));
+        Assert.That(new Address(cell), Is.EqualTo(sender.Address));
     }
 
     public static IEnumerable<object[]> DelegatedAndNotDelegatedCodeCases()
@@ -163,9 +163,9 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> cellValue = _stateProvider.Get(new StorageCell(signer.Address, 0));
+        byte[] cellValue = _stateProvider.Get(new StorageCell(signer.Address, 0)).ToEvmBytes();
 
-        Assert.That(cellValue.ToArray(), Is.EqualTo(sender.Address.Bytes));
+        Assert.That(cellValue, Is.EqualTo(sender.Address.Bytes));
     }
 
     public static IEnumerable<object[]> DifferentAuthorityTupleValues()
@@ -446,7 +446,7 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(new[] { expectedStoredValue }));
+        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToEvmBytes(), Is.EquivalentTo(new[] { expectedStoredValue }));
     }
 
     [TestCase]
@@ -495,7 +495,7 @@ internal class TransactionProcessorEip7702Tests
         _transactionProcessor.Execute(tx1, blkCtx, NullTxTracer.Instance);
         _transactionProcessor.Execute(tx2, blkCtx, NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(new[] { 1 }));
+        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToEvmBytes(), Is.EquivalentTo(new[] { 1 }));
     }
 
     public static IEnumerable<object[]> OpcodesWithEXTCODE()
@@ -645,8 +645,8 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(10000000).TestObject;
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> actual = _stateProvider.Get(new StorageCell(codeSource, 0));
-        Assert.That(actual.ToArray(), Is.EquivalentTo(expected));
+        byte[] actual = _stateProvider.Get(new StorageCell(codeSource, 0)).ToEvmBytes();
+        Assert.That(actual, Is.EquivalentTo(expected));
     }
     public static IEnumerable<object[]> AccountAccessGasCases()
     {

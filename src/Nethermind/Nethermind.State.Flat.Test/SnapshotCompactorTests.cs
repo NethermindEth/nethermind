@@ -54,7 +54,7 @@ public class SnapshotCompactorTests
         }
     }
 
-    private static void AssertSlotValueEqual(SlotValue? expected, SlotValue? actual)
+    private static void AssertStorageValueEqual(StorageValue? expected, StorageValue? actual)
     {
         Assert.That(actual, Is.Not.Null);
         Assert.That(actual!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(expected!.Value.AsReadOnlySpan.ToArray()));
@@ -103,8 +103,8 @@ public class SnapshotCompactorTests
         TreePath storageNodePath2 = TreePath.FromHexString("5678");
         Hash256 storageNodeHash1 = Keccak.Zero;
         Hash256 storageNodeHash2 = Keccak.Zero;
-        SlotValue slotValue1 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
-        SlotValue slotValue2 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
+        StorageValue slotValue1 = new StorageValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
+        StorageValue slotValue2 = new StorageValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
 
         // Add accounts
         snapshot.Content.Accounts[address1] = new Account(1, 100);
@@ -135,8 +135,8 @@ public class SnapshotCompactorTests
         AssertAccountSame(new Account(2, 200), compacted.Content.Accounts[address2]);
 
         Assert.That(compacted.StoragesCount, Is.EqualTo(2));
-        AssertSlotValueEqual(slotValue1, compacted.Content.Storages[(address1, storageIndex1)]);
-        AssertSlotValueEqual(slotValue2, compacted.Content.Storages[(address2, storageIndex2)]);
+        AssertStorageValueEqual(slotValue1, compacted.Content.Storages[(address1, storageIndex1)]);
+        AssertStorageValueEqual(slotValue2, compacted.Content.Storages[(address2, storageIndex2)]);
 
         Assert.That(compacted.StateNodesCount, Is.EqualTo(2));
         Assert.That(compacted.Content.StateNodes[statePath1].Keccak, Is.EqualTo(storageNodeHash1));
@@ -156,8 +156,8 @@ public class SnapshotCompactorTests
         TreePath statePath2 = TreePath.FromHexString("ef01");
         TreePath storageNodePath1 = TreePath.FromHexString("1234");
         TreePath storageNodePath2 = TreePath.FromHexString("5678");
-        SlotValue slotValue1 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
-        SlotValue slotValue2 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
+        StorageValue slotValue1 = new StorageValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
+        StorageValue slotValue2 = new StorageValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
 
         // First snapshot
         StateId from0 = new StateId(0, Keccak.Zero);
@@ -199,8 +199,8 @@ public class SnapshotCompactorTests
         UInt256 storageIndex = new UInt256(1);
         TreePath statePath = TreePath.FromHexString("abcd");
         TreePath storageNodePath = TreePath.FromHexString("1234");
-        SlotValue slotValue1 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
-        SlotValue slotValue2 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
+        StorageValue slotValue1 = new StorageValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
+        StorageValue slotValue2 = new StorageValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
 
         // First snapshot with initial values
         StateId from0 = new StateId(0, Keccak.Zero);
@@ -232,7 +232,7 @@ public class SnapshotCompactorTests
         AssertAccountSame(new Account(2, 200), compacted.Content.Accounts[address]);
 
         Assert.That(compacted.StoragesCount, Is.EqualTo(1));
-        AssertSlotValueEqual(slotValue2, compacted.Content.Storages[(address, storageIndex)]);
+        AssertStorageValueEqual(slotValue2, compacted.Content.Storages[(address, storageIndex)]);
 
         Assert.That(compacted.StateNodesCount, Is.EqualTo(1));
         Assert.That(compacted.StateNodesCount, Is.EqualTo(1));
@@ -246,7 +246,7 @@ public class SnapshotCompactorTests
         UInt256 storageIndex = new UInt256(1);
         TreePath storagePath = TreePath.FromHexString("1234");
         Hash256 storageHash = Keccak.Zero;
-        SlotValue slotValue = new SlotValue(new byte[32]);
+        StorageValue slotValue = new StorageValue(new byte[32]);
 
         StateId from0 = new StateId(0, Keccak.Zero);
         StateId to0 = new StateId(1, Keccak.Zero);

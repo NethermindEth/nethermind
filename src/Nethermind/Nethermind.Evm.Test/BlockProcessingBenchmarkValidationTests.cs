@@ -99,7 +99,7 @@ public class BlockProcessingBenchmarkValidationTests
             UInt256 senderBalanceSlot = StorageBenchmarkContracts.ComputeMappingSlot(_sender, UInt256.Zero);
             byte[] senderBalance = new byte[32];
             ((UInt256)1_000_000).ToBigEndian(senderBalance);
-            _worldState.Set(new StorageCell(Erc20Address, senderBalanceSlot), senderBalance);
+            _worldState.Set(new StorageCell(Erc20Address, senderBalanceSlot), new StorageValue(senderBalance));
 
             // ── Swap contract ──
             _worldState.CreateAccount(SwapAddress, UInt256.Zero);
@@ -179,11 +179,11 @@ public class BlockProcessingBenchmarkValidationTests
             UInt256 senderSlot = StorageBenchmarkContracts.ComputeMappingSlot(_sender, UInt256.Zero);
             UInt256 recipientSlot = StorageBenchmarkContracts.ComputeMappingSlot(recipient, UInt256.Zero);
 
-            ReadOnlySpan<byte> senderBal = _worldState.Get(new StorageCell(Erc20Address, senderSlot));
-            ReadOnlySpan<byte> recipientBal = _worldState.Get(new StorageCell(Erc20Address, recipientSlot));
+            StorageValue senderBal = _worldState.Get(new StorageCell(Erc20Address, senderSlot));
+            StorageValue recipientBal = _worldState.Get(new StorageCell(Erc20Address, recipientSlot));
 
-            UInt256 senderValue = senderBal.IsEmpty ? UInt256.Zero : new UInt256(senderBal, isBigEndian: true);
-            UInt256 recipientValue = recipientBal.IsEmpty ? UInt256.Zero : new UInt256(recipientBal, isBigEndian: true);
+            UInt256 senderValue = senderBal.IsZero ? UInt256.Zero : new UInt256(senderBal.AsReadOnlySpan, isBigEndian: true);
+            UInt256 recipientValue = recipientBal.IsZero ? UInt256.Zero : new UInt256(recipientBal.AsReadOnlySpan, isBigEndian: true);
 
             Assert.That(senderValue, Is.EqualTo((UInt256)999_999), "Sender balance should decrease by 1");
             Assert.That(recipientValue, Is.EqualTo((UInt256)1), "Recipient balance should be 1");
@@ -263,15 +263,15 @@ public class BlockProcessingBenchmarkValidationTests
 
     private UInt256 ReadStorageUInt256(Address address, UInt256 slot)
     {
-        ReadOnlySpan<byte> value = _worldState.Get(new StorageCell(address, slot));
-        return value.IsEmpty ? UInt256.Zero : new UInt256(value, isBigEndian: true);
+        StorageValue value = _worldState.Get(new StorageCell(address, slot));
+        return value.IsZero ? UInt256.Zero : new UInt256(value.AsReadOnlySpan, isBigEndian: true);
     }
 
     private void SeedSlot(Address address, UInt256 slot, UInt256 value)
     {
         byte[] bytes = new byte[32];
         value.ToBigEndian(bytes);
-        _worldState.Set(new StorageCell(address, slot), bytes);
+        _worldState.Set(new StorageCell(address, slot), new StorageValue(bytes));
     }
 
     private Block BuildBlock(params Transaction[] transactions)

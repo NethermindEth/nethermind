@@ -63,7 +63,7 @@ public class PreimageRecordingPersistenceTests
         Address addressB = TestItem.AddressB;
         Account account = TestItem.GenerateIndexedAccount(0);
         UInt256 slot = 42;
-        SlotValue? value = SlotValue.FromSpanWithoutLeadingZero([0x01, 0x02, 0x03]);
+        StorageValue? value = StorageValue.FromSpanWithoutLeadingZero([0x01, 0x02, 0x03]);
 
         using (IPersistence.IWriteBatch batch = _sut.CreateWriteBatch(from, to, WriteFlags.None))
         {
@@ -74,7 +74,7 @@ public class PreimageRecordingPersistenceTests
 
         // Verify inner batch calls
         innerBatch.Received(1).SetAccount(addressA, account);
-        innerBatch.Received(1).SetStorage(addressA, slot, Arg.Is<SlotValue?>(v => v != null));
+        innerBatch.Received(1).SetStorage(addressA, slot, Arg.Is<StorageValue?>(v => v != null));
         innerBatch.Received(1).SelfDestruct(addressB);
 
         // Verify address preimages
@@ -103,7 +103,7 @@ public class PreimageRecordingPersistenceTests
         Hash256 addrHash = TestItem.KeccakA;
         Hash256 slotHash = TestItem.KeccakB;
         Account account = TestItem.GenerateIndexedAccount(0);
-        SlotValue? value = SlotValue.FromSpanWithoutLeadingZero([0xff]);
+        StorageValue? value = StorageValue.FromSpanWithoutLeadingZero([0xff]);
 
         using (IPersistence.IWriteBatch batch = _sut.CreateWriteBatch(from, to, WriteFlags.None))
         {
@@ -118,7 +118,7 @@ public class PreimageRecordingPersistenceTests
         innerBatch.Received(1).SetStorageTrieNode(addrHash, path, node);
 
         // Without preimage, raw operations stay raw
-        innerBatch.Received(1).SetStorageRaw(addrHash, slotHash, Arg.Is<SlotValue?>(v => v != null));
+        innerBatch.Received(1).SetStorageRaw(addrHash, slotHash, Arg.Is<StorageValue?>(v => v != null));
         innerBatch.Received(1).SetAccountRaw(addrHash, account);
 
         // No preimages should be recorded for trie/raw operations
@@ -131,7 +131,7 @@ public class PreimageRecordingPersistenceTests
         Address address = TestItem.AddressA;
         UInt256 slot = 42;
         Account account = TestItem.GenerateIndexedAccount(0);
-        SlotValue? value = SlotValue.FromSpanWithoutLeadingZero([0xff]);
+        StorageValue? value = StorageValue.FromSpanWithoutLeadingZero([0xff]);
 
         // Pre-populate preimage database with address and slot preimages
         ValueHash256 addrHash = address.ToAccountPath;
@@ -153,11 +153,11 @@ public class PreimageRecordingPersistenceTests
         }
 
         // With preimage available, raw operations are translated to non-raw
-        innerBatch.Received(1).SetStorage(address, slot, Arg.Is<SlotValue?>(v => v != null));
+        innerBatch.Received(1).SetStorage(address, slot, Arg.Is<StorageValue?>(v => v != null));
         innerBatch.Received(1).SetAccount(address, account);
 
         // Raw operations should NOT be called
-        innerBatch.DidNotReceive().SetStorageRaw(Arg.Any<Hash256>(), Arg.Any<Hash256>(), Arg.Any<SlotValue?>());
+        innerBatch.DidNotReceive().SetStorageRaw(Arg.Any<Hash256>(), Arg.Any<Hash256>(), Arg.Any<StorageValue?>());
         innerBatch.DidNotReceive().SetAccountRaw(Arg.Any<Hash256>(), Arg.Any<Account>());
     }
 
@@ -166,7 +166,7 @@ public class PreimageRecordingPersistenceTests
     {
         Address address = TestItem.AddressA;
         UInt256 slot = 42;
-        SlotValue? value = SlotValue.FromSpanWithoutLeadingZero([0xff]);
+        StorageValue? value = StorageValue.FromSpanWithoutLeadingZero([0xff]);
 
         // Pre-populate only address preimage (missing slot preimage)
         ValueHash256 addrHash = address.ToAccountPath;
@@ -187,8 +187,8 @@ public class PreimageRecordingPersistenceTests
         }
 
         // Without slot preimage, storage stays raw
-        innerBatch.Received(1).SetStorageRaw(new Hash256(addrHash), new Hash256(slotHash), Arg.Is<SlotValue?>(v => v != null));
-        innerBatch.DidNotReceive().SetStorage(Arg.Any<Address>(), Arg.Any<UInt256>(), Arg.Any<SlotValue?>());
+        innerBatch.Received(1).SetStorageRaw(new Hash256(addrHash), new Hash256(slotHash), Arg.Is<StorageValue?>(v => v != null));
+        innerBatch.DidNotReceive().SetStorage(Arg.Any<Address>(), Arg.Any<UInt256>(), Arg.Any<StorageValue?>());
     }
 
     [Test]

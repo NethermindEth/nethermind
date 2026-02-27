@@ -168,7 +168,7 @@ public class HealingTreeTests
             mainWorldState.CreateAccount(storageAddress, 100, 100);
             for (int i = 1; i < 100; i++)
             {
-                mainWorldState.Set(new StorageCell(storageAddress, (UInt256)i), i.ToBigEndianByteArray());
+                mainWorldState.Set(new StorageCell(storageAddress, (UInt256)i), StorageValue.FromSpanWithoutLeadingZero(i.ToBigEndianByteArray()));
             }
 
             mainWorldState.Commit(Cancun.Instance);
@@ -222,7 +222,7 @@ public class HealingTreeTests
             mainWorldState.GetNonce(storageAddress).Should().Be((UInt256)100);
             for (int i = 1; i < 100; i++)
             {
-                mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToArray().Should().BeEquivalentTo(i.ToBigEndianByteArray().WithoutLeadingZeros().ToArray());
+                mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToEvmBytes().Should().BeEquivalentTo(i.ToBigEndianByteArray().WithoutLeadingZeros().ToArray());
             }
         }
     }

@@ -814,7 +814,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         {
             for (int i = 0; i < 10000; i++)
             {
-                stateProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());
+                stateProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), StorageValue.FromSpanWithoutLeadingZero(i.ToBigEndianByteArray()));
             }
 
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);

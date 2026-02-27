@@ -68,7 +68,7 @@ public static class StorageBenchmarkContracts
             .Op(Instruction.DUP2)               // [to, amount, to]
             .PushData(0)
             .Op(Instruction.MSTORE)             // mem[0..31] = to
-            // mem[32..63] still = 0 from above
+                                                // mem[32..63] still = 0 from above
             .PushData(64)
             .PushData(0)
             .Op(Instruction.KECCAK256)          // [recipientSlot, amount, to]

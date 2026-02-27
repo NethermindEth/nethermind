@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -49,16 +50,16 @@ internal static partial class EvmInstructions
         StorageCell storageCell = new(vm.VmState.Env.ExecutingAccount, in result);
 
         // Retrieve the value from transient storage.
-        ReadOnlySpan<byte> value = vm.WorldState.GetTransientState(in storageCell);
+        StorageValue value = vm.WorldState.GetTransientState(in storageCell);
 
         // Push the retrieved value onto the stack.
-        stack.PushBytes<TTracingInst>(value);
+        stack.PushStorageValue<TTracingInst>(in value);
 
         // If storage tracing is enabled, record the operation.
         if (vm.TxTracer.IsTracingStorage)
         {
             if (TGasPolicy.GetRemainingGas(in gas) < 0) goto OutOfGas;
-            vm.TxTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
+            vm.TxTracer.LoadOperationTransientStorage(storageCell.Address, result, value.AsReadOnlySpan);
         }
 
         return EvmExceptionType.None;
@@ -102,18 +103,19 @@ internal static partial class EvmInstructions
         // Construct a transient storage cell for the executing account at the specified key.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        // Pop the 32-byte value from the stack.
+        // Pop the 32-byte value from the stack and reinterpret as StorageValue.
         Span<byte> bytes = stack.PopWord256();
+        StorageValue newValue = Unsafe.As<byte, StorageValue>(ref MemoryMarshal.GetReference(bytes));
 
-        // Store either the actual value (if non-zero) or a predefined zero constant.
-        vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? (ReadOnlySpan<byte>)bytes : BytesZero32);
+        // Store the value to transient storage.
+        vm.WorldState.SetTransientState(in storageCell, newValue);
 
         // If storage tracing is enabled, retrieve the current stored value and log the operation.
         if (vm.TxTracer.IsTracingStorage)
         {
             if (TGasPolicy.GetRemainingGas(in gas) < 0) goto OutOfGas;
-            ReadOnlySpan<byte> currentValue = vm.WorldState.GetTransientState(in storageCell);
-            vm.TxTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
+            StorageValue currentValue = vm.WorldState.GetTransientState(in storageCell);
+            vm.TxTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue.AsReadOnlySpan);
         }
 
         return EvmExceptionType.None;
@@ -356,11 +358,11 @@ internal static partial class EvmInstructions
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
+        Span<byte> bytes = stack.PopWord256();
 
-        // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
-        bool newIsZero = bytes.IsZero();
-        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+        // Reinterpret the 32-byte stack word directly as StorageValue (zero-copy).
+        StorageValue newStorageValue = Unsafe.As<byte, StorageValue>(ref MemoryMarshal.GetReference(bytes));
+        bool newIsZero = newStorageValue.IsZero;
 
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
@@ -370,11 +372,11 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
-        ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
-        bool currentIsZero = currentValue.IsZero();
+        StorageValue currentValue = vm.WorldState.Get(in storageCell);
+        bool currentIsZero = currentValue.IsZero;
 
         // Determine whether the new value is identical to the current stored value.
-        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
+        bool newSameAsCurrent = newStorageValue == currentValue;
 
         // Retrieve the refund value associated with clearing storage.
         long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
@@ -399,18 +401,18 @@ internal static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
-            vm.WorldState.Set(in storageCell, newIsZero ? BytesZero.AsSpan() : bytes);
+            vm.WorldState.Set(in storageCell, newStorageValue);
         }
 
         // Report storage changes for tracing if enabled.
         if (TTracingInst.IsActive)
         {
-            TraceSstore(vm, newIsZero, in storageCell, bytes);
+            TraceSstore(vm, in newStorageValue, in storageCell);
         }
 
         if (vm.TxTracer.IsTracingStorage)
         {
-            vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
+            vm.TxTracer.SetOperationStorage(storageCell.Address, result, newStorageValue.AsReadOnlySpan, currentValue.AsReadOnlySpan);
         }
 
         return EvmExceptionType.None;
@@ -464,11 +466,11 @@ internal static partial class EvmInstructions
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
+        Span<byte> bytes = stack.PopWord256();
 
-        // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
-        bool newIsZero = bytes.IsZero();
-        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+        // Reinterpret the 32-byte stack word directly as StorageValue (zero-copy).
+        StorageValue newStorageValue = Unsafe.As<byte, StorageValue>(ref MemoryMarshal.GetReference(bytes));
+        bool newIsZero = newStorageValue.IsZero;
 
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
@@ -478,11 +480,11 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
-        ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
-        bool currentIsZero = currentValue.IsZero();
+        StorageValue currentValue = vm.WorldState.Get(in storageCell);
+        bool currentIsZero = currentValue.IsZero;
 
         // Determine whether the new value is identical to the current stored value.
-        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
+        bool newSameAsCurrent = newStorageValue == currentValue;
 
         // Retrieve the refund value associated with clearing storage.
         long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
@@ -495,9 +497,9 @@ internal static partial class EvmInstructions
         else
         {
             // Retrieve the original storage value to determine if this is a reversal.
-            ReadOnlySpan<byte> originalValue = vm.WorldState.GetOriginal(in storageCell);
-            bool originalIsZero = originalValue.IsZero();
-            bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
+            StorageValue originalValue = vm.WorldState.GetOriginal(in storageCell);
+            bool originalIsZero = originalValue.IsZero;
+            bool currentSameAsOriginal = originalValue == currentValue;
 
             if (currentSameAsOriginal)
             {
@@ -544,7 +546,7 @@ internal static partial class EvmInstructions
                 }
 
                 // If the new value reverts to the original, grant a reversal refund.
-                bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
+                bool newSameAsOriginal = newStorageValue == originalValue;
                 if (newSameAsOriginal)
                 {
                     long refundFromReversal = originalIsZero
@@ -561,18 +563,18 @@ internal static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
-            vm.WorldState.Set(in storageCell, newIsZero ? BytesZero.AsSpan() : bytes);
+            vm.WorldState.Set(in storageCell, newStorageValue);
         }
 
         // Report storage changes for tracing if enabled.
         if (TTracingInst.IsActive)
         {
-            TraceSstore(vm, newIsZero, in storageCell, bytes);
+            TraceSstore(vm, in newStorageValue, in storageCell);
         }
 
         if (vm.TxTracer.IsTracingStorage)
         {
-            vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
+            vm.TxTracer.SetOperationStorage(storageCell.Address, result, newStorageValue.AsReadOnlySpan, currentValue.AsReadOnlySpan);
         }
 
         return EvmExceptionType.None;
@@ -586,13 +588,12 @@ internal static partial class EvmInstructions
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void TraceSstore<TGasPolicy>(VirtualMachine<TGasPolicy> vm, bool newIsZero, in StorageCell storageCell, ReadOnlySpan<byte> bytes)
+    private static void TraceSstore<TGasPolicy>(VirtualMachine<TGasPolicy> vm, in StorageValue newValue, in StorageCell storageCell)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
         byte[] storageBytes = new byte[32]; // Allocated on the heap to avoid stack allocation.
         storageCell.Index.ToBigEndian(storageBytes);
-        vm.TxTracer.ReportStorageChange(storageBytes, valueToStore);
+        vm.TxTracer.ReportStorageChange(storageBytes, newValue.AsReadOnlySpan);
     }
 
     /// <summary>
@@ -632,13 +633,13 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Retrieve the persistent storage value and push it onto the stack.
-        ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
-        stack.PushBytes<TTracingInst>(value);
+        StorageValue value = vm.WorldState.Get(in storageCell);
+        stack.PushStorageValue<TTracingInst>(in value);
 
         // Log the storage load operation if tracing is enabled.
         if (vm.TxTracer.IsTracingStorage)
         {
-            vm.TxTracer.LoadOperationStorage(executingAccount, result, value);
+            vm.TxTracer.LoadOperationStorage(executingAccount, result, value.AsReadOnlySpan);
         }
 
         return EvmExceptionType.None;

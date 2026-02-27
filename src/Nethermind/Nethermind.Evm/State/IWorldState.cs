@@ -34,28 +34,21 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell);
+    StorageValue GetOriginal(in StorageCell storageCell);
 
     /// <summary>
     /// Get the persistent storage value at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at cell</returns>
-    ReadOnlySpan<byte> Get(in StorageCell storageCell);
+    StorageValue Get(in StorageCell storageCell);
 
     /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void Set(in StorageCell storageCell, byte[] newValue);
-
-    /// <summary>
-    /// Set the provided value to persistent storage at the specified storage cell
-    /// </summary>
-    /// <param name="storageCell">Storage location</param>
-    /// <param name="newValue">Value to store</param>
-    void Set(in StorageCell storageCell, ReadOnlySpan<byte> newValue);
+    void Set(in StorageCell storageCell, StorageValue newValue);
 
 
     /// <summary>
@@ -63,21 +56,14 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at cell</returns>
-    ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell);
+    StorageValue GetTransientState(in StorageCell storageCell);
 
     /// <summary>
     /// Set the provided value to transient storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void SetTransientState(in StorageCell storageCell, byte[] newValue);
-
-    /// <summary>
-    /// Set the provided value to transient storage at the specified storage cell
-    /// </summary>
-    /// <param name="storageCell">Storage location</param>
-    /// <param name="newValue">Value to store</param>
-    void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue);
+    void SetTransientState(in StorageCell storageCell, StorageValue newValue);
 
 
     /// <summary>

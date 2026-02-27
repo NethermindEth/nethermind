@@ -14,7 +14,7 @@ public class NoopPersistenceReader : IPersistence.IPersistenceReader
 
     public Account? GetAccount(Address address) => null;
 
-    public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
+    public bool TryGetSlot(Address address, in UInt256 slot, ref StorageValue outValue) => false;
 
     public StateId CurrentState => new StateId(0, Keccak.EmptyTreeHash);
 
@@ -24,7 +24,7 @@ public class NoopPersistenceReader : IPersistence.IPersistenceReader
 
     public byte[]? GetAccountRaw(Hash256? addrHash) => null;
 
-    public bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value) => false;
+    public bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref StorageValue value) => false;
 
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => new EmptyIterator();
 

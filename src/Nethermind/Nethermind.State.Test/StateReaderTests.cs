@@ -81,7 +81,7 @@ namespace Nethermind.Store.Test
 
             void UpdateStorageValue(byte[] newValue)
             {
-                provider.Set(storageCell, newValue);
+                provider.Set(storageCell, StorageValue.FromSpanWithoutLeadingZero(newValue));
             }
 
             void AddOneToBalance()
@@ -142,7 +142,7 @@ namespace Nethermind.Store.Test
             }
 
             provider.CreateAccount(_address1, 1);
-            provider.Set(storageCell, new byte[] { 1 });
+            provider.Set(storageCell, StorageValue.FromSpanWithoutLeadingZero(new byte[] { 1 }));
             CommitEverything();
             Hash256 stateRoot0 = provider.StateRoot;
 
@@ -194,7 +194,7 @@ namespace Nethermind.Store.Test
 
                 /* at this stage we have an account with empty storage at the address that we want to test */
 
-                state.Set(storageCell, initialValue);
+                state.Set(storageCell, StorageValue.FromSpanWithoutLeadingZero(initialValue));
                 state.Commit(MuirGlacier.Instance);
                 state.CommitTree(2);
                 baseBlock = Build.A.BlockHeader.WithNumber(2).WithStateRoot(state.StateRoot).TestObject;
@@ -217,7 +217,7 @@ namespace Nethermind.Store.Test
 
             using (var _ = processorStateProvider.BeginScope(baseBlock))
             {
-                processorStateProvider.Set(storageCell, newValue);
+                processorStateProvider.Set(storageCell, StorageValue.FromSpanWithoutLeadingZero(newValue));
                 processorStateProvider.Commit(MuirGlacier.Instance);
                 processorStateProvider.CommitTree(baseBlock.Number + 1);
                 baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(state.StateRoot).TestObject;

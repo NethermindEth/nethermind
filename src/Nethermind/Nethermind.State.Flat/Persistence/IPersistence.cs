@@ -23,14 +23,14 @@ public interface IPersistence
 
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
         // zero and missing to conform to a potential verkle need.
-        bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
+        bool TryGetSlot(Address address, in UInt256 slot, ref StorageValue outValue);
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
 
         // Raw operations are used in importer
         byte[]? GetAccountRaw(Hash256 addrHash);
-        bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value);
+        bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref StorageValue value);
 
         IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         IFlatIterator CreateAccountIterator() => CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
@@ -43,11 +43,11 @@ public interface IPersistence
     {
         void SelfDestruct(Address addr);
         void SetAccount(Address addr, Account? account);
-        void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
+        void SetStorage(Address addr, in UInt256 slot, in StorageValue? value);
         void SetStateTrieNode(in TreePath path, TrieNode tnValue);
         void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue);
 
-        void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value);
+        void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in StorageValue? value);
         void SetAccountRaw(Hash256 addrHash, Account account);
     }
 
