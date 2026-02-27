@@ -37,4 +37,26 @@ jobs:
         run: dotnet restore src/Nethermind/${{ matrix.solution }}.slnx --locked-mode
 
       - name: Build ${{ matrix.solution }}.slnx
+        id: build
         run: dotnet build src/Nethermind/${{ matrix.solution }}.slnx -c ${{ matrix.config }} --no-restore
+
+      - name: Report to CI Dashboard
+        if: always() && github.ref == 'refs/heads/master' && github.event_name == 'push'
+        uses: ./.github/actions/report-dashboard
+        with:
+          api-url: ${{ secrets.DASHBOARD_API_URL }}
+          api-key: ${{ secrets.DASHBOARD_API_KEY }}
+          endpoint: build
+          payload: >-
+            {
+              "run_id": ${{ github.run_id }},
+              "run_attempt": ${{ github.run_attempt }},
+              "branch": "${{ github.ref_name }}",
+              "commit_sha": "${{ github.sha }}",
+              "trigger_event": "${{ github.event_name }}",
+              "status": "${{ steps.build.outcome }}",
+              "github_run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "timestamp": "${{ github.event.repository.pushed_at }}",
+              "solution": "${{ matrix.solution }}",
+              "configuration": "${{ matrix.config }}"
+            }

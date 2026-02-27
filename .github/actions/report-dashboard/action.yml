@@ -1,0 +1,50 @@
+name: Report to CI Dashboard
+description: Sends CI workflow results to the dashboard backend
+
+inputs:
+  api-url:
+    description: Dashboard API base URL
+    required: true
+  api-key:
+    description: Dashboard API key (Bearer token)
+    required: true
+  endpoint:
+    description: 'Webhook endpoint path (e.g. sync, hive, build, unit-tests, rpc)'
+    required: true
+  payload:
+    description: JSON payload to send
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Send to CI Dashboard
+      shell: bash
+      env:
+        DASHBOARD_API_URL: ${{ inputs.api-url }}
+        DASHBOARD_API_KEY: ${{ inputs.api-key }}
+        ENDPOINT: ${{ inputs.endpoint }}
+        PAYLOAD: ${{ inputs.payload }}
+      run: |
+        if [ -z "$DASHBOARD_API_URL" ] || [ -z "$DASHBOARD_API_KEY" ]; then
+          echo "::warning::Dashboard API URL or key not configured, skipping report"
+          exit 0
+        fi
+
+        response=$(curl -s -w "\n%{http_code}" -X POST \
+          "${DASHBOARD_API_URL}/api/webhooks/${ENDPOINT}" \
+          -H "Authorization: Bearer ${DASHBOARD_API_KEY}" \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD" \
+          --max-time 30 \
+          --retry 3 \
+          --retry-delay 5)
+
+        http_code=$(echo "$response" | tail -n1)
+        body=$(echo "$response" | sed '$d')
+
+        if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+          echo "Dashboard report sent successfully (HTTP $http_code)"
+        else
+          echo "::warning::Dashboard report failed (HTTP $http_code): $body"
+        fi
