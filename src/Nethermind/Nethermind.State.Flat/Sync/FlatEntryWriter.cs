@@ -75,10 +75,8 @@ internal static class FlatEntryWriter
             try
             {
                 path.AppendMut(node.Key);
-                byte[] toWrite = ((ReadOnlySpan<byte>)node.Value.Span).IsEmpty
-                    ? State.StorageTree.ZeroBytes
-                    : ((ReadOnlySpan<byte>)node.Value.Span).AsRlpValueContext().DecodeByteArray();
-                writeBatch.SetStorageRaw(address, path.Path.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
+                Rlp.ValueDecoderContext ctx = ((ReadOnlySpan<byte>)node.Value.Span).AsRlpValueContext();
+                writeBatch.SetStorageRaw(address, path.Path.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
             }
             finally
             {
@@ -92,10 +90,8 @@ internal static class FlatEntryWriter
             BranchInlineChildLeafEnumerator enumerator = new(ref path, node);
             while (enumerator.MoveNext())
             {
-                byte[] toWrite = enumerator.CurrentValue.IsEmpty
-                    ? State.StorageTree.ZeroBytes
-                    : enumerator.CurrentValue.AsRlpValueContext().DecodeByteArray();
-                writeBatch.SetStorageRaw(address, enumerator.CurrentPath.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
+                Rlp.ValueDecoderContext ctx = enumerator.CurrentValue.AsRlpValueContext();
+                writeBatch.SetStorageRaw(address, enumerator.CurrentPath.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
             }
         }
         else if (node.IsExtension)
@@ -143,6 +139,7 @@ internal static class FlatEntryWriter
         public ValueHash256 CurrentPath => _currentFullPath;
         public ReadOnlySpan<byte> CurrentValue => _currentValue;
 
+        /// TODO: Only used in test. Delete
         /// <summary>
         /// Creates a TrieNode from the current inline leaf RLP.
         /// Use this when you need the full TrieNode object (e.g., for deletion range computation).
