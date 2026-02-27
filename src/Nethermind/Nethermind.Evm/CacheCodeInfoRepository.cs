@@ -72,6 +72,8 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         }
     }
 
+    internal static void Clear() => _codeCache.Clear();
+
     private sealed class CodeLruCache
     {
         private const int CacheCount = 16;
@@ -106,6 +108,14 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         {
             codeInfo = Get(in codeHash);
             return codeInfo is not null;
+        }
+
+        internal void Clear()
+        {
+            foreach (ClockCache<ValueHash256, CodeInfo> cache in _codeCache._caches)
+            {
+                cache.Clear();
+            }
         }
     }
 }
