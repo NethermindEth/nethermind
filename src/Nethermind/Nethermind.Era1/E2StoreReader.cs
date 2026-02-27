@@ -98,7 +98,7 @@ public class E2StoreReader : IDisposable
     {
         EnsureIndexAvailable();
 
-        if (blockNumber > _startBlock + _blockCount || blockNumber < _startBlock)
+        if (blockNumber >= _startBlock + _blockCount || blockNumber < _startBlock)
             throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside the bounds of this index.");
 
         // <offset> * 8 + <count>
