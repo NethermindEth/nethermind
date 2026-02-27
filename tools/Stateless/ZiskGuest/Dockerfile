@@ -15,6 +15,6 @@ ENV PATH="/root/.zisk/bin:${PATH}"
 
 WORKDIR /n
 
-COPY bin/nethermind .
+COPY bin/ .
 
 CMD ["tail", "-f", "/dev/null"]

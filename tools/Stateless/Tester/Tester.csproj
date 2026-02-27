@@ -2,10 +2,8 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>disable</ImplicitUsings>
-    <RootNamespace>Nethermind.Stateless.ZiskGuest</RootNamespace>
-    <EnableZkvm>true</EnableZkvm>
+    <RootNamespace>Nethermind.Stateless.Tester</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 
 MAKEFILE_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
-ARTIFACTS_DIR := $(abspath $(MAKEFILE_DIR)/../../artifacts/bin/ZiskGuest/release)
+ARTIFACTS_DIR := $(abspath $(MAKEFILE_DIR)/../artifacts/bin)
+TESTER_DIR := $(MAKEFILE_DIR)/Tester
+ZISK_DIR := $(MAKEFILE_DIR)/ZiskGuest
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
@@ -64,46 +66,71 @@ BFLAT_REFS := \
   -r $(BIN_DIR)/BouncyCastle.Cryptography.dll \
   -r $(BIN_DIR)/NonBlocking.dll \
   -r $(BIN_DIR)/FastEnum.Core.dll
-BFLAT_SRC := \
-  $(SRC_DIR)/Program.cs \
-  $(SRC_DIR)/Zisk.Memory.cs \
-  $(SRC_DIR)/Zisk.Precompiles.cs
 
 DOCKER_RUN := docker run --platform linux/amd64 --rm \
+  -e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
   -e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
-  -w $(SRC_DIR) \
-  --mount type=bind,source="$(ARTIFACTS_DIR)",target=$(BIN_DIR) \
-  --mount type=bind,source="$(MAKEFILE_DIR)",target=$(SRC_DIR) \
-  bflat-riscv64-local
+  -w $(SRC_DIR)
 
 build-docker-bflat:
 	docker build --platform linux/amd64 -f $(MAKEFILE_DIR)/Dockerfile.bflat -t bflat-riscv64-local $(MAKEFILE_DIR)
 
-build-dotnet:
-	dotnet build -c release -p:EnableZkvm=true $(MAKEFILE_DIR)/ZiskGuest.csproj
+build-dotnet-tester:
+	dotnet build -c release -p:EnableZkvm=true $(TESTER_DIR)/Tester.csproj
 
-build-zisk: clean build-dotnet build-docker-bflat
-	$(DOCKER_RUN) $(BFLAT_BUILD) --libc zisk $(BFLAT_REFS) $(BFLAT_SRC) \
-		--extlib https://github.com/NethermindEth/bflat-libziskos:pre-develop-0.16.0
-	mkdir -p $(MAKEFILE_DIR)/bin && \
-		mv -f $(MAKEFILE_DIR)/Program.patched $(MAKEFILE_DIR)/bin/nethermind && \
-		rm -f $(MAKEFILE_DIR)/Program $(MAKEFILE_DIR)/Program.o
+build-dotnet-zisk:
+	dotnet build -c release -p:EnableZkvm=true $(ZISK_DIR)/ZiskGuest.csproj
 
-build-zisk-sim: clean build-dotnet build-docker-bflat
-	$(DOCKER_RUN) $(BFLAT_BUILD) --libc zisk_sim $(BFLAT_REFS) $(BFLAT_SRC)
-	mkdir -p $(MAKEFILE_DIR)/bin && \
-		mv -f $(MAKEFILE_DIR)/Program $(MAKEFILE_DIR)/bin/nethermind && \
-		rm -f $(MAKEFILE_DIR)/Program.o
+build-tester: build-dotnet-tester build-docker-bflat
+	$(DOCKER_RUN) \
+		--mount type=bind,source="$(ARTIFACTS_DIR)/Tester/release",target=$(BIN_DIR) \
+		--mount type=bind,source="$(TESTER_DIR)",target=$(SRC_DIR) \
+		bflat-riscv64-local \
+		$(BFLAT_BUILD) --libc zisk_sim -d ZKVM $(BFLAT_REFS) \
+		$(SRC_DIR)/Program.cs
+	mkdir -p $(TESTER_DIR)/bin && \
+		mv -f $(TESTER_DIR)/Program $(TESTER_DIR)/bin/nethermind
+
+build-zisk: build-dotnet-zisk build-docker-bflat
+	$(DOCKER_RUN) \
+		--mount type=bind,source="$(ARTIFACTS_DIR)/ZiskGuest/release",target=$(BIN_DIR) \
+		--mount type=bind,source="$(ZISK_DIR)",target=$(SRC_DIR) \
+		bflat-riscv64-local \
+		$(BFLAT_BUILD) --libc zisk $(BFLAT_REFS) \
+		--extlib https://github.com/NethermindEth/bflat-libziskos:pre-develop-0.16.0 \
+		$(SRC_DIR)/Program.cs \
+		$(SRC_DIR)/Zisk.Memory.cs \
+		$(SRC_DIR)/Zisk.Precompiles.cs
+	mkdir -p $(ZISK_DIR)/bin && \
+		mv -f $(ZISK_DIR)/Program.patched $(ZISK_DIR)/bin/nethermind
+
+run-tester: build-tester
+	docker build --platform linux/amd64 -t zkvm-tester $(TESTER_DIR)
+	docker run --rm -it zkvm-tester
+
+run-zisk: build-zisk
+	[ -f "$(ZISK_DIR)/bin/input.bin" ] || \
+		dotnet run -c release --project $(TESTER_DIR)/Tester.csproj -- $(ZISK_DIR)/bin
+	docker build --platform linux/amd64 -t zisk $(ZISK_DIR)
+	docker run --rm -it -e RUST_BACKTRACE=full zisk ziskemu -e /n/nethermind -i /n/input.bin
 
 clean:
 	rm -rf \
-		$(MAKEFILE_DIR)/bin/** \
-		$(MAKEFILE_DIR)/Program \
-		$(MAKEFILE_DIR)/Program.patched \
-		$(MAKEFILE_DIR)/Program.o
+    $(TESTER_DIR)/bin/** \
+		$(TESTER_DIR)/Program \
+		$(TESTER_DIR)/Program.o \
+		$(ZISK_DIR)/bin/** \
+		$(ZISK_DIR)/Program \
+		$(ZISK_DIR)/Program.patched \
+		$(ZISK_DIR)/Program.o
+	dotnet clean -c release $(MAKEFILE_DIR)/Stateless.slnx
 
-run-zisk: build-zisk
-	docker build --platform linux/amd64 -f $(MAKEFILE_DIR)/Dockerfile.zisk -t zisk $(MAKEFILE_DIR)
-	docker run --rm -it -e RUST_BACKTRACE=full zisk ziskemu -e /n/nethermind
-
-.PHONY: build-docker-bflat build-dotnet build-zisk build-zisk-sim clean run-zisk
+.PHONY: \
+	build-docker-bflat \
+	build-dotnet-tester \
+	build-dotnet-zisk \
+	build-tester \
+	build-zisk \
+	run-tester \
+	run-zisk \
+	clean
