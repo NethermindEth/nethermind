@@ -131,7 +131,7 @@ public class ReceiptsMessageSerializerTests
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
         IByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out int _) + 1);
-        buffer.WriteByte(Rlp.OfEmptySequence[0]);
+        buffer.WriteByte(Rlp.OfEmptyList[0]);
         buffer.ReadByte();
 
         serializer.Serialize(buffer, message);
