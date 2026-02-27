@@ -66,10 +66,14 @@ namespace Nethermind.Evm.Benchmark;
 public class BlockProcessingBenchmark
 {
     /// <summary>
-    /// Repetitions per BDN invocation. With the fastest method (EmptyBlock ~21 us),
-    /// 5000 reps ≈ 105 ms per iteration — above BDN's 100 ms minimum.
+    /// Repetitions per BDN invocation. Used for low per-op benchmarks
+    /// (EmptyBlock ~21 us, SingleTransfer ~46 us, ContractDeploy_10 ~400 us)
+    /// where higher rep counts amortize OS scheduling noise and prewarmer
+    /// thread contention, keeping iteration time above BDN's 100 ms minimum.
     /// </summary>
-    private const int N = 5000;
+    private const int N_LARGE = 5000;
+
+    private const int N_SMALL = 500;
 
     /// <summary>
     /// 20 data points per benchmark (2 launches x 10 iterations, 2 warmup each).
@@ -239,91 +243,91 @@ public class BlockProcessingBenchmark
 
     // ── Benchmarks ────────────────────────────────────────────────────────
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_LARGE)]
     public Block[] EmptyBlock()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_LARGE; i++)
             result = _branchProcessor.Process(_parentHeader, [_emptyBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_LARGE)]
     public Block[] SingleTransfer()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_LARGE; i++)
             result = _branchProcessor.Process(_parentHeader, [_singleTransferBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] Transfers_50()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_transfers50Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(Baseline = true, OperationsPerInvoke = N)]
+    [Benchmark(Baseline = true, OperationsPerInvoke = N_SMALL)]
     public Block[] Transfers_200()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_transfers200Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] Eip1559_200()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_eip1559_200Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] AccessList_50()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_accessList50Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_LARGE)]
     public Block[] ContractDeploy_10()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_LARGE; i++)
             result = _branchProcessor.Process(_parentHeader, [_contractDeploy10Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] ContractCall_200()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_contractCall200Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] MixedBlock()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_mixedBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
