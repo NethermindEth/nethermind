@@ -25,7 +25,7 @@ internal sealed class SignTransactionFilter(ISigner signer, IBlockTree blockTree
 
     private AcceptTxResult ValidateSignTransaction(Transaction tx, long headerNumber, IXdcReleaseSpec xdcSpec)
     {
-        if (tx.Data.Length < 68)
+        if (tx.Data.Length < XdcConstants.SignTransactionDataLength)
         {
             return AcceptTxResult.Invalid;
         }

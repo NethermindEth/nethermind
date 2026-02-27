@@ -4,14 +4,12 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Evm.TransactionProcessing;
@@ -28,7 +26,6 @@ namespace Nethermind.Xdc
     /// </summary>
     public class XdcRewardCalculator : IRewardCalculator
     {
-        private LruCache<Hash256, Transaction[]> _signingTxsCache = new(9000, "XDC Signing Txs Cache");
         // XDC rule: signing transactions are sampled/merged every N blocks (N=15 on XDC).
         // Only block numbers that are multiples of MergeSignRange are considered when tallying signers.
         private readonly EthereumEcdsa _ethereumEcdsa;
@@ -36,6 +33,7 @@ namespace Nethermind.Xdc
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IMasternodeVotingContract _masternodeVotingContract;
+        private readonly ISigningTxCache _signingTxCache;
         private readonly ITransactionProcessor _transactionProcessor;
 
         public XdcRewardCalculator(
@@ -43,6 +41,7 @@ namespace Nethermind.Xdc
             ISpecProvider specProvider,
             IBlockTree blockTree,
             IMasternodeVotingContract masternodeVotingContract,
+            ISigningTxCache signingTxCache,
             ITransactionProcessor transactionProcessor)
         {
             _ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId);
@@ -50,6 +49,7 @@ namespace Nethermind.Xdc
             _specProvider = specProvider;
             _blockTree = blockTree;
             _masternodeVotingContract = masternodeVotingContract;
+            _signingTxCache = signingTxCache;
             _transactionProcessor = transactionProcessor;
         }
         /// <summary>
@@ -133,13 +133,7 @@ namespace Nethermind.Xdc
                 }
 
                 blockNumberToHash[i] = h.Hash;
-                if (!_signingTxsCache.TryGet(h.Hash, out Transaction[] signingTxs))
-                {
-                    Block? block = _blockTree.FindBlock(h.Hash, h.Number);
-                    if (block == null) throw new InvalidOperationException($"Block {h.ToString(BlockHeader.Format.Short)} not found");
-                    Transaction[] txs = block.Transactions;
-                    signingTxs = CacheSigningTxs(h.Hash!, txs, spec);
-                }
+                Transaction[] signingTxs = _signingTxCache.GetSigningTransactions(h.Hash, i, spec);
 
                 foreach (Transaction tx in signingTxs)
                 {
@@ -169,40 +163,11 @@ namespace Nethermind.Xdc
             return (signers, signingCount);
         }
 
-        private Transaction[] CacheSigningTxs(Hash256 hash, Transaction[] txs, IXdcReleaseSpec spec)
-        {
-            Transaction[] signingTxs = txs.Where(t => IsSigningTransaction(t, spec)).ToArray();
-            _signingTxsCache.Set(hash, signingTxs);
-            return signingTxs;
-        }
-
-        // Signing transaction ABI (Solidity):
-        // function sign(uint256 _blockNumber, bytes32 _blockHash)
-        // Calldata = 4-byte selector + 32-byte big-endian uint + 32-byte bytes32 = 68 bytes total.
-        private bool IsSigningTransaction(Transaction tx, IXdcReleaseSpec spec)
-        {
-            if (tx.To is null || tx.To != spec.BlockSignerContract) return false;
-            if (tx.Data.Length != 68) return false;
-
-            return ExtractSelectorFromSigningTxData(tx.Data) == "0xe341eaa4";
-        }
-
-        private String ExtractSelectorFromSigningTxData(ReadOnlyMemory<byte> data)
-        {
-            ReadOnlySpan<byte> span = data.Span;
-            if (span.Length != 68)
-                throw new ArgumentException("Signing tx calldata must be exactly 68 bytes (4 + 32 + 32).", nameof(data));
-
-            // 0..3: selector
-            ReadOnlySpan<byte> selBytes = span.Slice(0, 4);
-            return "0x" + Convert.ToHexString(selBytes).ToLowerInvariant();
-        }
-
         private Hash256 ExtractBlockHashFromSigningTxData(ReadOnlyMemory<byte> data)
         {
             ReadOnlySpan<byte> span = data.Span;
-            if (span.Length != 68)
-                throw new ArgumentException("Signing tx calldata must be exactly 68 bytes (4 + 32 + 32).", nameof(data));
+            if (span.Length != XdcConstants.SignTransactionDataLength)
+                throw new ArgumentException($"Signing tx calldata must be exactly {XdcConstants.SignTransactionDataLength} bytes.", nameof(data));
 
             // 36..67: bytes32 blockHash
             ReadOnlySpan<byte> hashBytes = span.Slice(36, 32);
