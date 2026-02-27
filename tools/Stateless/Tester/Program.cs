@@ -7,7 +7,9 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.Stateless.Execution;
 
 namespace Nethermind.Stateless.Tester;
@@ -20,9 +22,9 @@ class Program
 #endif
         )
     {
-        (Block block, Witness witness, int chainId) = GetSample();
+        (Block block, Witness witness, ISpecProvider specProvider) = GetSample();
 #if ZKVM
-        block = StatelessExecutor.Execute(block, witness, chainId)
+        block = StatelessExecutor.Execute(block, witness, specProvider)
             ?? throw new InvalidOperationException("Stateless execution failed");
 
         Console.WriteLine(block.Hash);
@@ -31,7 +33,7 @@ class Program
         // where the input data for the Zisk guest should be written
         if (args.Length == 1)
         {
-            byte[] data = InputSerializer.Serialize(block, witness, chainId);
+            byte[] data = InputSerializer.Serialize(block, witness, (uint)specProvider.ChainId);
 
             File.WriteAllBytes(Path.Join(args[0], "input.bin"), data);
         }
@@ -40,7 +42,7 @@ class Program
 #endif
     }
 
-    static (Block, Witness, int) GetSample()
+    static (Block, Witness, ISpecProvider) GetSample()
     {
         BlockHeader header = new(
             parentHash: new("0xd1630c4211b6a4e15e7eb4c0360b0689f56d87bce3240b484186cfae7dbb563e"),
@@ -245,6 +247,6 @@ class Program
             State = state,
         };
 
-        return (block, witness, BlockchainIds.Hoodi);
+        return (block, witness, HoodiSpecProvider.Instance);
     }
 }

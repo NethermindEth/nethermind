@@ -31,7 +31,7 @@ For details, see the [Makefile](./Makefile).
 The Zisk input data (input.bin) has a simple structure of `chain_id | block | witness` as follows:
 
 ```
-chain_id: i32be
+chain_id: u32be
 block_rlp = len: i32be | bytes[len]
 codes     = len: i32be | n: i32be | repeat n: (item_len: i32be | bytes[item_len])
 headers   = len: i32be | n: i32be | repeat n: (item_len: i32be | bytes[item_len])

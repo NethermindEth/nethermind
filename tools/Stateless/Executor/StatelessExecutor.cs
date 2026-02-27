@@ -7,6 +7,7 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Specs;
 
@@ -16,12 +17,19 @@ public class StatelessExecutor
 {
     public static Block Execute(ReadOnlySpan<byte> data)
     {
-        (Block block, Witness witness, int chainId) = InputSerializer.Deserialize(data);
+        (Block block, Witness witness, uint chainId) = InputSerializer.Deserialize(data);
 
-        return Execute(block, witness, chainId);
+        ISpecProvider specProvider = GetSpecProvider(chainId);
+        //IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        //EthereumEcdsa ecdsa = new(chainId);
+
+        //foreach (Transaction tx in block.Transactions)
+        //    tx.SenderAddress ??= ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+
+        return Execute(block, witness, specProvider);
     }
 
-    public static Block Execute(Block suggestedBlock, Witness witness, int chainId)
+    public static Block Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
     {
         BlockHeader? baseBlock = null;
 
@@ -34,8 +42,6 @@ public class StatelessExecutor
         if (baseBlock is null)
             throw new InvalidOperationException("Base block cannot be found");
 
-        ISpecProvider specProvider = GetSpecProvider(chainId);
-
         StatelessBlockProcessingEnv blockProcessingEnv = new(
             witness, specProvider, Always.Valid, NullLogManager.Instance);
 
@@ -44,8 +50,8 @@ public class StatelessExecutor
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
         // TODO: Remove once the sender recovery is implemented
-        suggestedBlock.Transactions[0].SenderAddress = new("0xaa2fbe31e6d774d2e70b1375f3bc791ae487fd50");
-        suggestedBlock.Transactions[1].SenderAddress = new("0xa4a59a31360b4ab10d28755f53697b60c796ee03");
+        suggestedBlock.Transactions[0].SenderAddress ??= new("0xaa2fbe31e6d774d2e70b1375f3bc791ae487fd50");
+        suggestedBlock.Transactions[1].SenderAddress ??= new("0xa4a59a31360b4ab10d28755f53697b60c796ee03");
 
         (Block processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(
             suggestedBlock,
@@ -59,7 +65,7 @@ public class StatelessExecutor
         return processedBlock;
     }
 
-    private static ISpecProvider GetSpecProvider(int chainId) => chainId switch
+    private static ISpecProvider GetSpecProvider(uint chainId) => chainId switch
     {
         BlockchainIds.Hoodi => HoodiSpecProvider.Instance,
         BlockchainIds.Mainnet => MainnetSpecProvider.Instance,

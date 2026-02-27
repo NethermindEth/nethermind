@@ -14,7 +14,7 @@ public static class InputSerializer
 {
     private static readonly BlockDecoder _blockDecoder = new();
 
-    public static byte[] Serialize(Block block, Witness witness, int chainId)
+    public static byte[] Serialize(Block block, Witness witness, uint chainId)
     {
         ArgumentNullException.ThrowIfNull(block);
 
@@ -23,7 +23,7 @@ public static class InputSerializer
         var headersLen = GetSerializedLength(witness.Headers);
         var keysLen = GetSerializedLength(witness.Keys);
         var stateLen = GetSerializedLength(witness.State);
-        var outputLen = sizeof(int) +   // chain id
+        var outputLen = sizeof(uint) +   // chain id
             sizeof(int) + blockLen +    // length | block
             sizeof(int) + codesLen +    // length | codes 
             sizeof(int) + headersLen +  // length | headers
@@ -33,8 +33,8 @@ public static class InputSerializer
         byte[] output = GC.AllocateUninitializedArray<byte>(outputLen);
         var offset = 0;
 
-        WriteInt32(chainId, output.AsSpan(), ref offset);
-        WriteInt32(blockLen, output.AsSpan(), ref offset);
+        WriteUInt32(chainId, output, ref offset);
+        WriteInt32(blockLen, output, ref offset);
 
         RlpStream rlpStream = new(output) { Position = offset };
         _blockDecoder.Encode(rlpStream, block, RlpBehaviors.None);
@@ -52,12 +52,12 @@ public static class InputSerializer
         return output;
     }
 
-    public static (Block, Witness, int) Deserialize(ReadOnlySpan<byte> input)
+    public static (Block, Witness, uint) Deserialize(ReadOnlySpan<byte> input)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(input.Length, sizeof(int));
 
         var offset = 0;
-        var chainId = ReadInt32(input, ref offset);
+        var chainId = ReadUInt32(input, ref offset);
         var blockLength = ReadInt32(input, ref offset);
 
         Rlp.ValueDecoderContext blockContext = new(input.Slice(offset, blockLength));
@@ -97,6 +97,22 @@ public static class InputSerializer
     {
         BinaryPrimitives.WriteInt32BigEndian(destination[offset..], value);
         offset += sizeof(int);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint ReadUInt32(ReadOnlySpan<byte> source, ref int offset)
+    {
+        var value = BinaryPrimitives.ReadUInt32BigEndian(source[offset..]);
+        offset += sizeof(uint);
+
+        return value;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteUInt32(uint value, Span<byte> destination, ref int offset)
+    {
+        BinaryPrimitives.WriteUInt32BigEndian(destination[offset..], value);
+        offset += sizeof(uint);
     }
 
     private static byte[][] ReadJaggedArray(ReadOnlySpan<byte> source, ref int offset)
