@@ -258,10 +258,10 @@ public class VotesManagerTests
         var blockInfo = new BlockRoundInfo(headers[2].Hash!, 5, headers[2].Number);
 
         var ancestorQc = new QuorumCertificate(new BlockRoundInfo(headers[0].Hash!, 3, headers[0].Number), null, 0);
-        yield return new TestCaseData(Substitute.For<ISyncPeerPool>(), blockTree, ancestorQc, blockInfo, true);
+        yield return new TestCaseData(blockTree, ancestorQc, blockInfo, true);
 
         var nonRelatedQc = new QuorumCertificate(new BlockRoundInfo(nonRelatedHeader.Hash, 3, nonRelatedHeader.Number), null, 0);
-        yield return new TestCaseData(Substitute.For<ISyncPeerPool>(), blockTree, nonRelatedQc, blockInfo, false);
+        yield return new TestCaseData(blockTree, nonRelatedQc, blockInfo, false);
     }
 
     [TestCaseSource(nameof(ExtendingFromAncestorCases))]
