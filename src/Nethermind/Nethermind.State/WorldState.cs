@@ -133,12 +133,22 @@ namespace Nethermind.State
             DebugGuardInScope();
             _persistentStorageProvider.Set(storageCell, newValue);
         }
+        public void Set(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
+        {
+            DebugGuardInScope();
+            _persistentStorageProvider.Set(storageCell, newValue);
+        }
         public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
         {
             DebugGuardInScope();
             return _transientStorageProvider.Get(storageCell);
         }
         public void SetTransientState(in StorageCell storageCell, byte[] newValue)
+        {
+            DebugGuardInScope();
+            _transientStorageProvider.Set(storageCell, newValue);
+        }
+        public void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
         {
             DebugGuardInScope();
             _transientStorageProvider.Set(storageCell, newValue);
