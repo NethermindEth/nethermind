@@ -118,7 +118,7 @@ public partial class BlockProcessor(
         // Compute receipts root on thread pool, overlapped with post-tx state changes and final commit.
         // CalculateBlooms has already populated per-receipt Bloom fields that the trie encoding needs.
         IReceiptsRootCalculator calc = _receiptsRootCalculator;
-        var suggestedReceiptsRoot = block.ReceiptsRoot;
+        Core.Crypto.Hash256? suggestedReceiptsRoot = block.ReceiptsRoot;
         Task<Core.Crypto.Hash256> receiptsRootTask = Task.Run(() => calc.GetReceiptsRoot(receipts, spec, suggestedReceiptsRoot));
 
         ApplyMinerRewards(block, blockTracer, spec);

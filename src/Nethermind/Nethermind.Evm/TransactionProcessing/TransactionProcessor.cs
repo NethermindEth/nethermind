@@ -219,8 +219,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // Fast path for plain ETH transfers to EOAs: skip all VM setup and execution.
             // Eligible when: message call, no calldata, no auth list, recipient is an EOA
-            // (no code, no delegation), and not tracing instructions or actions.
-            if (!restore && tx.IsMessageCall && tx.Data.Length == 0
+            // (no code, no delegation), not tracing instructions or actions, and validation
+            // is enabled (Trace/SkipValidation paths skip header.GasUsed accounting).
+            if (!restore && !opts.HasFlag(ExecutionOptions.SkipValidation)
+                && tx.IsMessageCall && tx.Data.Length == 0
                 && !tx.HasAuthorizationList
                 && !tracer.IsTracingInstructions && !tracer.IsTracingActions)
             {
@@ -249,7 +251,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
-            tx.SpentGas = spentGas.SpentGas;
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+                tx.SpentGas = spentGas.SpentGas;
 
             // Finalize
             if (restore)
