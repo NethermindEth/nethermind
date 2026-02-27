@@ -47,6 +47,8 @@ public class CodeInfoRepository : ICodeInfoRepository
         return cachedCodeInfo;
     }
 
+    internal static void Clear() => _codeCache.Clear();
+
     private CodeInfo InternalGetCachedCode(Address codeSource, IReleaseSpec vmSpec)
     {
         ref readonly ValueHash256 codeHash = ref _worldState.GetCodeHash(codeSource);
@@ -184,6 +186,14 @@ public class CodeInfoRepository : ICodeInfoRepository
         {
             codeInfo = Get(in codeHash);
             return codeInfo is not null;
+        }
+
+        internal void Clear()
+        {
+            foreach (ClockCache<ValueHash256, CodeInfo> cache in _codeCache._caches)
+            {
+                cache.Clear();
+            }
         }
     }
 }

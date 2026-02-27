@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
 
-        public BlockHeader? Genesis { get; private set; }
+        public BlockHeader? Genesis { get; protected set; }
         public Block? Head { get; private set; }
 
         public BlockHeader? BestSuggestedHeader { get; private set; }
