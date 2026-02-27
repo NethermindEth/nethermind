@@ -106,7 +106,7 @@ internal static partial class EvmInstructions
         Span<byte> bytes = stack.PopWord256();
 
         // Store either the actual value (if non-zero) or a predefined zero constant.
-        vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
+        vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? (ReadOnlySpan<byte>)bytes : BytesZero32);
 
         // If storage tracing is enabled, retrieve the current stored value and log the operation.
         if (vm.TxTracer.IsTracingStorage)
@@ -399,7 +399,7 @@ internal static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
-            vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            vm.WorldState.Set(in storageCell, newIsZero ? BytesZero.AsSpan() : bytes);
         }
 
         // Report storage changes for tracing if enabled.
@@ -561,7 +561,7 @@ internal static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
-            vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            vm.WorldState.Set(in storageCell, newIsZero ? BytesZero.AsSpan() : bytes);
         }
 
         // Report storage changes for tracing if enabled.

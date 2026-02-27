@@ -52,6 +52,16 @@ namespace Nethermind.State
         }
 
         /// <summary>
+        /// Set the provided value to storage at the specified storage cell
+        /// </summary>
+        /// <param name="storageCell">Storage location</param>
+        /// <param name="newValue">Value to store</param>
+        public void Set(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
+        {
+            PushUpdate(in storageCell, StorageValue.FromSpanWithoutLeadingZero(newValue));
+        }
+
+        /// <summary>
         /// Creates a restartable snapshot.
         /// </summary>
         /// <param name="newTransactionStart"> Indicates new transaction will start here.</param>
