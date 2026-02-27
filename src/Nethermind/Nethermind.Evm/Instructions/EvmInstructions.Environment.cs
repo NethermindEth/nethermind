@@ -678,7 +678,7 @@ internal static partial class EvmInstructions
         else
         {
             ref readonly ValueHash256 codeHash = ref state.GetCodeHash(address);
-            if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
+            if (codeHash == ValueKeccak.OfAnEmptyString)
             {
                 stack.Push32Bytes<TTracingInst>(in codeHash);
                 return EvmExceptionType.None;

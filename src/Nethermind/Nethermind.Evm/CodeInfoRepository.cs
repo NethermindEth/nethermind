@@ -47,15 +47,10 @@ public class CodeInfoRepository : ICodeInfoRepository
         return cachedCodeInfo;
     }
 
-    public CodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec)
-    {
-        if (TryGetPrecompileCodeInfo(codeSource, vmSpec, out CodeInfo precompileCodeInfo))
-        {
-            return precompileCodeInfo;
-        }
-
-        return InternalGetCachedCode(_worldState, in codeHash, vmSpec);
-    }
+    public CodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec) =>
+        TryGetPrecompileCodeInfo(codeSource, vmSpec, out CodeInfo precompileCodeInfo)
+            ? precompileCodeInfo
+            : InternalGetCachedCode(_worldState, in codeHash, vmSpec);
 
     private bool TryGetPrecompileCodeInfo(Address codeSource, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? precompileCodeInfo)
     {

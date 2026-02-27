@@ -36,15 +36,10 @@ public class CachedCodeInfoRepository(
         return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
-    public CodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec)
-    {
-        if (TryGetCachedPrecompile(codeSource, vmSpec, out CodeInfo cachedCodeInfo))
-        {
-            return cachedCodeInfo;
-        }
-
-        return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, in codeHash, vmSpec);
-    }
+    public CodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec) =>
+        TryGetCachedPrecompile(codeSource, vmSpec, out CodeInfo cachedCodeInfo)
+            ? cachedCodeInfo
+            : baseCodeInfoRepository.GetCachedCodeInfo(codeSource, in codeHash, vmSpec);
 
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
     {

@@ -1020,33 +1020,40 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(tracer.ReturnValue, Is.EquivalentTo(new byte[] { Convert.ToByte(!isDelegated) }));
     }
 
-    [Test]
-    public void Execute_EXTCODESIZE_WhenCodeChangesWithinBlock_ReturnsUpdatedSize()
+    [TestCase(Instruction.EXTCODESIZE)]
+    [TestCase(Instruction.EXTCODECOPY)]
+    public void Execute_ExtCode_WhenCodeChangesWithinBlock_ReturnsUpdatedValue(Instruction instruction)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         Address inspectedAddress = TestItem.AddressB;
         Address codeSource = TestItem.AddressC;
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
 
-        byte[] initialInspectedCode = Prepare.EvmCode
-            .Op(Instruction.STOP)
-            .Done;
-        byte[] updatedInspectedCode = Prepare.EvmCode
-            .Op(Instruction.ADD)
-            .Op(Instruction.STOP)
-            .Done;
+        byte[] initialInspectedCode = Prepare.EvmCode.Op(Instruction.ADD).Done;
+        byte[] updatedInspectedCode = Prepare.EvmCode.Op(Instruction.MUL).Done;
         DeployCode(inspectedAddress, initialInspectedCode);
 
-        byte[] extcodesizeReaderCode = Prepare.EvmCode
-            .PushData(inspectedAddress)
-            .Op(Instruction.EXTCODESIZE)
-            .Op(Instruction.PUSH0)
-            .Op(Instruction.MSTORE8)
-            .PushData(1)
-            .Op(Instruction.PUSH0)
-            .Op(Instruction.RETURN)
-            .Done;
-        DeployCode(codeSource, extcodesizeReaderCode);
+        byte[] readerCode = instruction == Instruction.EXTCODESIZE
+            ? Prepare.EvmCode
+                .PushData(inspectedAddress)
+                .Op(Instruction.EXTCODESIZE)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE8)
+                .PushData(1)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.RETURN)
+                .Done
+            : Prepare.EvmCode
+                .PushData(1)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.PUSH0)
+                .PushData(inspectedAddress)
+                .Op(Instruction.EXTCODECOPY)
+                .PushData(1)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.RETURN)
+                .Done;
+        DeployCode(codeSource, readerCode);
         _stateProvider.Commit(Prague.Instance, true);
 
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -1055,59 +1062,22 @@ internal class TransactionProcessorEip7702Tests
             .TestObject;
         BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
 
+        // EXTCODESIZE returns the code length; EXTCODECOPY returns the first byte of code
+        byte expectedInitial = instruction == Instruction.EXTCODESIZE
+            ? (byte)initialInspectedCode.Length
+            : (byte)Instruction.ADD;
+        byte expectedUpdated = instruction == Instruction.EXTCODESIZE
+            ? (byte)updatedInspectedCode.Length
+            : (byte)Instruction.MUL;
+
         CallOutputTracer firstTracer = ExecuteCallWithOutput(sender, codeSource, blkCtx, 0);
-        Assert.That(firstTracer.ReturnValue?.ToArray(), Is.EquivalentTo(new byte[] { (byte)initialInspectedCode.Length }));
+        Assert.That(firstTracer.ReturnValue?.ToArray(), Is.EquivalentTo(new byte[] { expectedInitial }));
 
         DeployCode(inspectedAddress, updatedInspectedCode);
         _stateProvider.Commit(Prague.Instance, true);
 
         CallOutputTracer secondTracer = ExecuteCallWithOutput(sender, codeSource, blkCtx, 1);
-        Assert.That(secondTracer.ReturnValue?.ToArray(), Is.EquivalentTo(new byte[] { (byte)updatedInspectedCode.Length }));
-    }
-
-    [Test]
-    public void Execute_EXTCODECOPY_WhenCodeChangesWithinBlock_ReturnsUpdatedBytes()
-    {
-        PrivateKey sender = TestItem.PrivateKeyA;
-        Address inspectedAddress = TestItem.AddressB;
-        Address codeSource = TestItem.AddressC;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
-
-        byte[] initialInspectedCode = Prepare.EvmCode
-            .Op(Instruction.ADD)
-            .Done;
-        byte[] updatedInspectedCode = Prepare.EvmCode
-            .Op(Instruction.MUL)
-            .Done;
-        DeployCode(inspectedAddress, initialInspectedCode);
-
-        byte[] extcodecopyReaderCode = Prepare.EvmCode
-            .PushData(1)
-            .Op(Instruction.PUSH0)
-            .Op(Instruction.PUSH0)
-            .PushData(inspectedAddress)
-            .Op(Instruction.EXTCODECOPY)
-            .PushData(1)
-            .Op(Instruction.PUSH0)
-            .Op(Instruction.RETURN)
-            .Done;
-        DeployCode(codeSource, extcodecopyReaderCode);
-        _stateProvider.Commit(Prague.Instance, true);
-
-        Block block = Build.A.Block.WithNumber(long.MaxValue)
-            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
-            .WithGasLimit(10_000_000)
-            .TestObject;
-        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
-
-        CallOutputTracer firstTracer = ExecuteCallWithOutput(sender, codeSource, blkCtx, 0);
-        Assert.That(firstTracer.ReturnValue?.ToArray(), Is.EquivalentTo(new byte[] { (byte)Instruction.ADD }));
-
-        DeployCode(inspectedAddress, updatedInspectedCode);
-        _stateProvider.Commit(Prague.Instance, true);
-
-        CallOutputTracer secondTracer = ExecuteCallWithOutput(sender, codeSource, blkCtx, 1);
-        Assert.That(secondTracer.ReturnValue?.ToArray(), Is.EquivalentTo(new byte[] { (byte)Instruction.MUL }));
+        Assert.That(secondTracer.ReturnValue?.ToArray(), Is.EquivalentTo(new byte[] { expectedUpdated }));
     }
 
     [Test]
