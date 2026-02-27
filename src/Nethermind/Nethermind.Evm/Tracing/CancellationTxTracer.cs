@@ -334,6 +334,24 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
+    public void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingOpLevelStorage)
+        {
+            innerTracer.SetOperationTransientStorage(address, storageIndex, newValue, currentValue);
+        }
+    }
+
+    public void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingOpLevelStorage)
+        {
+            innerTracer.LoadOperationTransientStorage(address, storageIndex, value);
+        }
+    }
+
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
         token.ThrowIfCancellationRequested();
