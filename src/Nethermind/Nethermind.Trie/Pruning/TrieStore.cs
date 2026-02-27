@@ -909,29 +909,24 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         INodeStorage? nodeStorage = doNotRemoveNodes ? null : _nodeStorage;
 
-        // ParallelUnbalancedWork uses work-stealing (atomic counter) so fast-finishing shards
-        // don't leave threads idle — better than Parallel.For's range partitioning for the 256
-        // shards which have highly variable node counts. Also bounds thread count to avoid
-        // starving critical-path block processing work (blooms, receipts root, state root).
-        ParallelUnbalancedWork.For(
+        // Benchmark: using Parallel.For instead of ParallelUnbalancedWork.For to compare
+        // range partitioning vs work-stealing for pruning 256 shards with variable node counts.
+        Parallel.For(
             0,
             _dirtyNodes.Length,
             RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-            (prunePersisted, forceRemovePersistedNodes, dirtyNodes: _dirtyNodes, persistedHashes: _persistedHashes, nodeStorage),
-            static (index, state) =>
+            (index) =>
             {
                 ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes =
-                    state.persistedHashes.Length > 0 ? state.persistedHashes[index] : null;
+                    _persistedHashes.Length > 0 ? _persistedHashes[index] : null;
 
-                state.dirtyNodes[index]
+                _dirtyNodes[index]
                     .PruneCache(
-                        prunePersisted: state.prunePersisted,
-                        forceRemovePersistedNodes: state.forceRemovePersistedNodes,
+                        prunePersisted: prunePersisted,
+                        forceRemovePersistedNodes: forceRemovePersistedNodes,
                         persistedHashes: persistedHashes,
-                        nodeStorage: state.nodeStorage);
+                        nodeStorage: nodeStorage);
                 persistedHashes?.NoResizeClear();
-
-                return state;
             });
 
         RecalculateTotalMemoryUsage();
@@ -957,16 +952,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             int startShardIdx = _lastPrunedShardIdx;
 
-            ParallelUnbalancedWork.For(
+            Parallel.For(
                 0,
                 shardCountToPrune,
                 RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-                (dirtyNodes: _dirtyNodes, shardedCount: _shardedDirtyNodeCount, startShardIdx),
-                static (i, state) =>
+                (i) =>
                 {
-                    TrieStoreDirtyNodesCache dirtyNode = state.dirtyNodes[(state.startShardIdx + i) % state.shardedCount];
+                    TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[(startShardIdx + i) % _shardedDirtyNodeCount];
                     dirtyNode.PruneCache(prunePersisted: true);
-                    return state;
                 });
 
             _lastPrunedShardIdx += shardCountToPrune;
