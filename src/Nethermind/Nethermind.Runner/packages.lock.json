@@ -663,7 +663,7 @@
         "dependencies": {
           "Nethermind.Core": "[1.37.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
-"System.Configuration.ConfigurationManager": "[10.0.3, )"
+          "System.Configuration.ConfigurationManager": "[10.0.3, )"
         }
       },
       "nethermind.consensus": {
@@ -731,7 +731,7 @@
         "type": "Project",
         "dependencies": {
           "BouncyCastle.Cryptography": "[2.6.2, )",
-          "Ckzg.Bindings": "[2.1.5.1551, )",
+          "Ckzg.Bindings": "[2.1.6.1589, )",
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.Crypto.Bls": "[1.0.5, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
@@ -1251,9 +1251,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Collections.Pooled": {
         "type": "CentralTransitive",
@@ -1654,9 +1654,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1752,9 +1752,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1850,9 +1850,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1948,9 +1948,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -2046,9 +2046,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",

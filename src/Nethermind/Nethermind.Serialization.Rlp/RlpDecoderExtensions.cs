@@ -56,13 +56,13 @@ namespace Nethermind.Serialization.Rlp
         {
             if (items is null)
             {
-                return Rlp.OfEmptySequence;
+                return Rlp.OfEmptyList;
             }
 
             Rlp[] rlpSequence = new Rlp[items.Length];
             for (int i = 0; i < items.Length; i++)
             {
-                rlpSequence[i] = items[i] is null ? Rlp.OfEmptySequence : decoder.Encode(items[i], behaviors);
+                rlpSequence[i] = items[i] is null ? Rlp.OfEmptyList : decoder.Encode(items[i], behaviors);
             }
 
             return Rlp.Encode(rlpSequence);
@@ -74,7 +74,7 @@ namespace Nethermind.Serialization.Rlp
             if (item is null)
             {
                 rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(1));
-                rlpStream.WriteByte(Rlp.NullObjectByte);
+                rlpStream.WriteByte(Rlp.EmptyListByte);
                 return rlpStream;
             }
 
@@ -89,7 +89,7 @@ namespace Nethermind.Serialization.Rlp
             if (items is null)
             {
                 rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(1));
-                rlpStream.WriteByte(Rlp.NullObjectByte);
+                rlpStream.WriteByte(Rlp.EmptyListByte);
                 return rlpStream;
             }
 
@@ -118,7 +118,7 @@ namespace Nethermind.Serialization.Rlp
             if (items is null)
             {
                 rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(1));
-                rlpStream.WriteByte(Rlp.NullObjectByte);
+                rlpStream.WriteByte(Rlp.EmptyListByte);
                 return rlpStream;
             }
 
@@ -213,14 +213,14 @@ namespace Nethermind.Serialization.Rlp
         {
             if (items is null)
             {
-                return Rlp.OfEmptySequence;
+                return Rlp.OfEmptyList;
             }
 
             Rlp[] rlpSequence = new Rlp[items.Count];
             int i = 0;
             foreach (T? item in items)
             {
-                rlpSequence[i++] = item is null ? Rlp.OfEmptySequence : decoder.Encode(item, behaviors);
+                rlpSequence[i++] = item is null ? Rlp.OfEmptyList : decoder.Encode(item, behaviors);
             }
 
             return Rlp.Encode(rlpSequence);
@@ -230,7 +230,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (items is null)
             {
-                stream.Encode(Rlp.OfEmptySequence);
+                stream.Encode(Rlp.OfEmptyList);
             }
 
             stream.StartSequence(decoder.GetContentLength(items, behaviors));
@@ -239,7 +239,7 @@ namespace Nethermind.Serialization.Rlp
                 T t = items[index];
                 if (t is null)
                 {
-                    stream.Encode(Rlp.OfEmptySequence);
+                    stream.Encode(Rlp.OfEmptyList);
                 }
                 else
                 {
@@ -253,7 +253,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (items is null)
             {
-                return Rlp.OfEmptySequence.Length;
+                return Rlp.OfEmptyList.Length;
             }
 
             int contentLength = 0;
@@ -269,7 +269,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (items is null)
             {
-                return Rlp.OfEmptySequence.Length;
+                return Rlp.OfEmptyList.Length;
             }
 
             return Rlp.LengthOfSequence(decoder.GetContentLength(items, behaviors));
