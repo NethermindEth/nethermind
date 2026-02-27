@@ -32,7 +32,7 @@ public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
         }
 
         bool isForcedInclusion = itemsCount >= 6 && rlpStream.DecodeBool();
-        int[]? signature = itemsCount >= 7 ? Array.ConvertAll(rlpStream.DecodeByteArray(), Convert.ToInt32) : null;
+        byte[]? signature = itemsCount >= 7 ? rlpStream.DecodeByteArray() : null;
 
         return new(blockId, l2BlockHash, l1BlockHeight, l1BlockHash, buildPayloadArgsId, isForcedInclusion, signature);
     }
@@ -87,7 +87,7 @@ public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
                 throw new RlpException($"{nameof(item.Signature)} should be exactly {SignatureLength}");
             }
 
-            stream.Encode(Array.ConvertAll(item.Signature, Convert.ToByte));
+            stream.Encode(item.Signature);
         }
     }
 

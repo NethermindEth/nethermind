@@ -843,6 +843,11 @@ public partial class BlockDownloaderTests
             })
             .AddSingleton<Context>();
 
+        if (PseudoNethermindModule.TestUseFlat && configProvider.GetConfig<ISyncConfig>().FastSync)
+        {
+            Assert.Ignore("Flat does not work when fast sync is on");
+        }
+
         configurer?.Invoke(b);
         return b
             .Build();
