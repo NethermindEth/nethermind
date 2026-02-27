@@ -16,8 +16,9 @@ namespace Ethereum.Blockchain.Block.Test
         [Test]
         public void All_categories_are_tested()
         {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string[] directories =
-                Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
+                Directory.GetDirectories(baseDir)
                 .Select(Path.GetFileName)
                 .Where(d => d.StartsWith("bc"))
                 .ToArray();
@@ -29,7 +30,7 @@ namespace Ethereum.Blockchain.Block.Test
                 string expectedTypeName = ExpectedTypeName(directory);
                 if (types.All(t => !string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase)))
                 {
-                    if (new DirectoryInfo(directory).GetFiles().Any(f => f.Name.Contains(".resources.")))
+                    if (new DirectoryInfo(Path.Combine(baseDir, directory)).GetFiles().Any(f => f.Name.Contains(".resources.")))
                     {
                         continue;
                     }
