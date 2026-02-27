@@ -408,6 +408,10 @@ internal static partial class EvmInstructions
 
             // Mirror the non-fast path touch behavior for zero-value precompile calls
             // (see RunPrecompile in VirtualMachine.cs — keep in sync).
+            // This touch happens *after* success, whereas the slow path touches *before* execution.
+            // This reordering is safe only because RIPEMD-160 is excluded from the fast path —
+            // RIPEMD-160 requires the EIP-161 Parity touch bug workaround, which depends on the
+            // touch occurring before execution to match consensus for historical sync.
             if (precompileResult == EvmExceptionType.None && transferValue.IsZero)
             {
                 state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);

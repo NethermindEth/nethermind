@@ -860,5 +860,6 @@ namespace Nethermind.Evm.Test
     internal class FastPathTracerWithOutput : TestAllTracerWithOutput
     {
         public override bool IsTracingActions => false;
+        public override bool IsTracingInstructions => false;
     }
 }

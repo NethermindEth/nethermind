@@ -83,4 +83,10 @@ public class SupportsCachingTests
     {
         Assert.That(Ripemd160Precompile.Instance.SupportsFastPath, Is.False);
     }
+
+    [Test]
+    public void Secp256r1Precompile_SupportsFastPath_ReturnsFalse()
+    {
+        Assert.That(((IPrecompile)Secp256r1Precompile.Instance).SupportsFastPath, Is.False);
+    }
 }
