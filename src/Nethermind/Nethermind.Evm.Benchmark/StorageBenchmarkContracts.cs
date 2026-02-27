@@ -6,7 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm.Test;
+namespace Nethermind.Evm.Benchmark;
 
 /// <summary>
 /// Shared bytecode and storage helpers for <c>BlockProcessingBenchmark</c> and its

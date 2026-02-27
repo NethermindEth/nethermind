@@ -478,19 +478,23 @@ public abstract class BlockchainTestBase
 
             foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key));
-                if (!value.IsZero())
+                StorageValue value = stateProvider.AccountExists(accountAddress)
+                    ? stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key))
+                    : StorageValue.Zero;
+                if (!value.IsZero)
                 {
-                    differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
+                    differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.AsReadOnlySpan.ToHexString(true)}");
                 }
             }
 
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, storageItem.Key));
-                if (!Bytes.AreEqual(storageItem.Value, value))
+                StorageValue value = stateProvider.AccountExists(accountAddress)
+                    ? stateProvider.Get(new StorageCell(accountAddress, storageItem.Key))
+                    : StorageValue.Zero;
+                if (!Bytes.AreEqual(storageItem.Value, value.AsReadOnlySpan))
                 {
-                    differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
+                    differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.AsReadOnlySpan.ToHexString(true)}");
                 }
             }
 

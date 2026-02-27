@@ -79,46 +79,16 @@ jobs:
     runs-on: benchmark
     timeout-minutes: 30
     steps:
-      - name: Check out base branch (master)
+      - name: Check out PR branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.base.sha || 'master' }}
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
           cache: true
           cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
-
-      - name: Build base branch
-        run: |
-          dotnet restore ${{ env.BENCHMARK_PROJECT }}
-          dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
-
-      - name: Run benchmark on base branch
-        id: run-base
-        continue-on-error: true
-        shell: bash
-        env:
-          FILTER: ${{ needs.resolve-inputs.outputs.filter }}
-        run: |
-          if [[ -z "${FILTER}" ]]; then
-            FILTER_ARG="*BlockProcessingBenchmark*"
-          else
-            FILTER_ARG="*${FILTER}*"
-          fi
-
-          dotnet run -c Release --no-build \
-            --project ${{ env.BENCHMARK_PROJECT }} \
-            -- --filter "${FILTER_ARG}" \
-               --exporters json \
-               --artifacts "${RUNNER_TEMP}/bdn-base"
-
-      - name: Check out PR branch
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
-          clean: false
 
       - name: Build PR branch
         run: |
@@ -143,6 +113,44 @@ jobs:
             -- --filter "${FILTER_ARG}" \
                --exporters json \
                --artifacts "${RUNNER_TEMP}/bdn-pr"
+
+      - name: Save PR benchmark files
+        run: cp -r src/Nethermind/Nethermind.Evm.Benchmark "${RUNNER_TEMP}/pr-bench-src"
+
+      - name: Check out base branch (master)
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha || 'master' }}
+          clean: false
+
+      - name: Overlay PR benchmark files onto base
+        run: |
+          rm -rf src/Nethermind/Nethermind.Evm.Benchmark
+          cp -r "${RUNNER_TEMP}/pr-bench-src" src/Nethermind/Nethermind.Evm.Benchmark
+
+      - name: Build base branch
+        run: |
+          dotnet restore ${{ env.BENCHMARK_PROJECT }}
+          dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
+
+      - name: Run benchmark on base branch
+        id: run-base
+        continue-on-error: true
+        shell: bash
+        env:
+          FILTER: ${{ needs.resolve-inputs.outputs.filter }}
+        run: |
+          if [[ -z "${FILTER}" ]]; then
+            FILTER_ARG="*BlockProcessingBenchmark*"
+          else
+            FILTER_ARG="*${FILTER}*"
+          fi
+
+          dotnet run -c Release --no-build \
+            --project ${{ env.BENCHMARK_PROJECT }} \
+            -- --filter "${FILTER_ARG}" \
+               --exporters json \
+               --artifacts "${RUNNER_TEMP}/bdn-base"
 
       - name: Compare results and build comment
         id: compare
