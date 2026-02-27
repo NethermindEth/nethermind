@@ -43,6 +43,33 @@ on:
         required: false
         type: boolean
         default: true
+      run_count:
+        description: Number of times to run the benchmark (for reproducibility testing)
+        required: false
+        type: number
+        default: 1
+      docker_images:
+        description: >-
+          Force-test specific Docker images (comma-separated full image references including repo).
+          Skips docker build; runs each image as a separate benchmark.
+          Example: nethermindeth/nethermind:master-21f1dca,nethermind/nethermind:latest
+        required: false
+        default: ""
+      enable_retrospective:
+        description: Enable retrospective multi-image benchmark (scans Docker Hub for recent master-* images)
+        required: false
+        type: boolean
+        default: false
+      retrospective_last:
+        description: Number of recent master-* Docker images to consider (retrospective mode)
+        required: false
+        type: number
+        default: 100
+      retrospective_step:
+        description: Pick every Nth image from the pool (retrospective mode)
+        required: false
+        type: number
+        default: 10
   pull_request:
     types: [labeled]
   push:
@@ -61,9 +88,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
+      mode: ${{ steps.resolve.outputs.mode }}
       branch: ${{ steps.resolve.outputs.branch }}
       clean_branch: ${{ steps.resolve.outputs.clean_branch }}
       should_trigger_publish_docker: ${{ steps.resolve.outputs.should_trigger_publish_docker }}
+      should_wait_for_publish_docker: ${{ steps.resolve.outputs.should_wait_for_publish_docker }}
       rebuild_docker: ${{ steps.resolve.outputs.rebuild_docker }}
       config_file: ${{ steps.resolve.outputs.config_file }}
       image_label: ${{ steps.resolve.outputs.image_label }}
@@ -74,6 +103,13 @@ jobs:
       additional_extra_flags: ${{ steps.resolve.outputs.additional_extra_flags }}
       cleanup_grace_seconds: ${{ steps.resolve.outputs.cleanup_grace_seconds }}
       scenario_name: ${{ steps.resolve.outputs.scenario_name }}
+      run_count: ${{ steps.resolve.outputs.run_count }}
+      run_indices: ${{ steps.resolve.outputs.run_indices }}
+      docker_images: ${{ steps.resolve.outputs.docker_images }}
+      retrospective_last: ${{ steps.resolve.outputs.retrospective_last }}
+      retrospective_step: ${{ steps.resolve.outputs.retrospective_step }}
+      state_layout: ${{ steps.resolve.outputs.state_layout }}
+      payload_sets: ${{ steps.resolve.outputs.payload_sets }}
     steps:
       - name: Resolve branch and configuration
         id: resolve
@@ -92,10 +128,16 @@ jobs:
           DISPATCH_DELAY_SECONDS: ${{ inputs.delay_seconds }}
           DISPATCH_ADDITIONAL_EXTRA_FLAGS: ${{ inputs.additional_extra_flags }}
           DISPATCH_REBUILD_DOCKER: ${{ inputs.rebuild_docker }}
+          DISPATCH_RUN_COUNT: ${{ inputs.run_count }}
+          DISPATCH_DOCKER_IMAGES: ${{ inputs.docker_images }}
+          DISPATCH_ENABLE_RETROSPECTIVE: ${{ inputs.enable_retrospective }}
+          DISPATCH_RETROSPECTIVE_LAST: ${{ inputs.retrospective_last }}
+          DISPATCH_RETROSPECTIVE_STEP: ${{ inputs.retrospective_step }}
         run: |
           set -euo pipefail
 
           should_run="true"
+          mode="single"
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             branch="${PUSH_BRANCH}"
             state_layout="${DISPATCH_STATE_LAYOUT}"
@@ -107,6 +149,17 @@ jobs:
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
+            run_count="${DISPATCH_RUN_COUNT:-1}"
+            payload_sets="[\"${payload_set}\"]"
+
+            # Determine mode: multi-image if docker_images or retrospective is enabled
+            docker_images="${DISPATCH_DOCKER_IMAGES:-}"
+            enable_retrospective="${DISPATCH_ENABLE_RETROSPECTIVE:-false}"
+            retrospective_last="${DISPATCH_RETROSPECTIVE_LAST:-100}"
+            retrospective_step="${DISPATCH_RETROSPECTIVE_STEP:-10}"
+            if [[ -n "${docker_images}" || "${enable_retrospective}" == "true" ]]; then
+              mode="multi"
+            fi
           elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
             if [[ "${PR_LABEL}" != "reproducible-benchmark" ]]; then
               should_run="false"
@@ -117,6 +170,7 @@ jobs:
             branch="${PR_HEAD_BRANCH}"
             state_layout="halfpath"
             payload_set="superblocks"
+            payload_sets='["superblocks","realblocks"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
@@ -124,10 +178,12 @@ jobs:
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
+            run_count="1"
           else
             branch="${PUSH_BRANCH}"
             state_layout="halfpath"
             payload_set="superblocks"
+            payload_sets='["superblocks","realblocks"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
@@ -135,6 +191,7 @@ jobs:
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
+            run_count="1"
           fi
 
           branch="${branch#refs/heads/}"
@@ -158,11 +215,29 @@ jobs:
             exit 1
           fi
 
+          if ! [[ "${run_count}" =~ ^[0-9]+$ ]] || [[ "${run_count}" -lt 1 ]]; then
+            echo "run_count must be a positive integer, got '${run_count}'."
+            exit 1
+          fi
+
+          # Build JSON array of run indices: [1] or [1,2,3] etc.
+          run_indices="["
+          for (( i=1; i<=run_count; i++ )); do
+            if [[ "${i}" -gt 1 ]]; then run_indices+=","; fi
+            run_indices+="${i}"
+          done
+          run_indices+="]"
+
           clean_branch="$(echo "${branch}" | sed 's/[^a-zA-Z0-9._-]/-/g')"
 
           should_trigger_publish_docker="true"
-          if [[ "${branch}" == "master" || "${branch}" == "paprika" || "${branch}" == release/* ]]; then
+          should_wait_for_publish_docker="false"
+          if [[ "${branch}" == "master" || "${branch}" == "paprika" || "${branch}" == "performance" || "${branch}" == release/* ]]; then
             should_trigger_publish_docker="false"
+            # On push, publish-docker.yml runs in parallel — wait for it instead of triggering
+            if [[ "${EVENT_NAME}" == "push" ]]; then
+              should_wait_for_publish_docker="true"
+            fi
           elif [[ "${EVENT_NAME}" == "workflow_dispatch" && "${rebuild_docker}" != "true" ]]; then
             should_trigger_publish_docker="false"
           fi
@@ -184,6 +259,7 @@ jobs:
             echo "branch=${branch}"
             echo "clean_branch=${clean_branch}"
             echo "should_trigger_publish_docker=${should_trigger_publish_docker}"
+            echo "should_wait_for_publish_docker=${should_wait_for_publish_docker}"
             echo "rebuild_docker=${rebuild_docker}"
             echo "config_file=${config_file}"
             echo "image_label=nethermindeth/nethermind:${clean_branch}"
@@ -192,7 +268,15 @@ jobs:
             echo "expb_data_dir=${expb_data_dir}"
             echo "delay_seconds=${delay_seconds}"
             echo "cleanup_grace_seconds=${cleanup_grace_seconds}"
+            echo "mode=${mode}"
             echo "scenario_name=${scenario_name}"
+            echo "run_count=${run_count}"
+            echo "run_indices=${run_indices}"
+            echo "docker_images=${docker_images:-}"
+            echo "retrospective_last=${retrospective_last:-100}"
+            echo "retrospective_step=${retrospective_step:-10}"
+            echo "state_layout=${state_layout}"
+            echo "payload_sets=${payload_sets}"
             echo "additional_extra_flags<<EOF"
             printf '%s\n' "${additional_extra_flags}"
             echo "EOF"
@@ -200,14 +284,14 @@ jobs:
 
   prepare-docker:
     needs: [resolve]
-    if: needs.resolve.outputs.should_run == 'true'
+    if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
     runs-on: ubuntu-latest
     steps:
       - name: Docker image source
-        if: needs.resolve.outputs.should_trigger_publish_docker != 'true'
+        if: needs.resolve.outputs.should_trigger_publish_docker != 'true' && needs.resolve.outputs.should_wait_for_publish_docker != 'true'
         run: |
-          echo "Skipping publish-docker.yml for auto-built branch '${{ needs.resolve.outputs.branch }}'."
-          echo "Using image '${{ needs.resolve.outputs.image_label }}'."
+          echo "Skipping publish-docker.yml for branch '${{ needs.resolve.outputs.branch }}'."
+          echo "Using existing image '${{ needs.resolve.outputs.image_label }}'."
 
       - name: Checkout repository
         if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
@@ -243,20 +327,132 @@ jobs:
           chmod +x scripts/wait-for-workflow.sh
           ./scripts/wait-for-workflow.sh
 
+      - name: Wait for parallel publish-docker.yml
+        if: needs.resolve.outputs.should_wait_for_publish_docker == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.sha }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Waiting for parallel publish-docker.yml triggered by the same push (SHA: ${HEAD_SHA})..."
+
+          max_discovery_seconds=300  # 5 min to discover the run
+          poll_interval=15
+          max_completion_seconds=7200  # 2 hours to complete
+
+          # Phase 1: discover the parallel publish-docker run for this commit
+          elapsed=0
+          run_id=""
+          while [[ -z "${run_id}" ]]; do
+            response=$(curl -sf \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              "https://api.github.com/repos/${OWNER}/${REPO}/actions/workflows/publish-docker.yml/runs?head_sha=${HEAD_SHA}&per_page=5" \
+              || echo '{"workflow_runs":[]}')
+
+            run_id=$(echo "${response}" | jq -r '[.workflow_runs[] | select(.name | test("Publish Docker"))] | .[0].id // empty')
+
+            if [[ -n "${run_id}" ]]; then
+              echo "Found publish-docker run: ${run_id}"
+              break
+            fi
+
+            elapsed=$(( elapsed + poll_interval ))
+            if [[ "${elapsed}" -ge "${max_discovery_seconds}" ]]; then
+              echo "No publish-docker.yml run found for SHA ${HEAD_SHA} within ${max_discovery_seconds}s."
+              echo "This push may not include src/Nethermind changes. Proceeding with existing image."
+              exit 0
+            fi
+
+            echo "No run found yet, retrying in ${poll_interval}s... (${elapsed}/${max_discovery_seconds}s)"
+            sleep "${poll_interval}"
+          done
+
+          # Phase 2: wait for the run to complete
+          elapsed=0
+          while true; do
+            run_data=$(curl -sf \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              "https://api.github.com/repos/${OWNER}/${REPO}/actions/runs/${run_id}" \
+              || echo '{}')
+
+            status=$(echo "${run_data}" | jq -r '.status // "unknown"')
+            conclusion=$(echo "${run_data}" | jq -r '.conclusion // empty')
+
+            if [[ "${status}" == "completed" ]]; then
+              if [[ "${conclusion}" == "success" ]]; then
+                echo "Parallel publish-docker.yml completed successfully."
+                echo "Run: https://github.com/${OWNER}/${REPO}/actions/runs/${run_id}"
+                exit 0
+              else
+                echo "Parallel publish-docker.yml finished with conclusion: ${conclusion}"
+                echo "Run: https://github.com/${OWNER}/${REPO}/actions/runs/${run_id}"
+                echo "Benchmark will proceed but may use a stale Docker image."
+                exit 1
+              fi
+            fi
+
+            elapsed=$(( elapsed + poll_interval ))
+            if [[ "${elapsed}" -ge "${max_completion_seconds}" ]]; then
+              echo "Timeout waiting for publish-docker.yml run ${run_id} to complete (${max_completion_seconds}s)."
+              exit 1
+            fi
+
+            echo "Run ${run_id} status: ${status} — waiting ${poll_interval}s... (${elapsed}/${max_completion_seconds}s)"
+            sleep "${poll_interval}"
+          done
+
   benchmark:
+    name: benchmark (${{ matrix.payload_set }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
     needs: [resolve, prepare-docker]
-    if: needs.resolve.outputs.should_run == 'true'
+    if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
+    strategy:
+      matrix:
+        run: ${{ fromJson(needs.resolve.outputs.run_indices) }}
+        payload_set: ${{ fromJson(needs.resolve.outputs.payload_sets) }}
+      max-parallel: 1
+      fail-fast: false
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 720
     env:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
-      CONFIG_FILE: ${{ needs.resolve.outputs.config_file }}
       NETHERMIND_IMAGE: ${{ needs.resolve.outputs.image_label }}
       CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
     steps:
+      - name: Resolve benchmark config for payload set
+        id: resolve-config
+        shell: bash
+        env:
+          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
+          PAYLOAD_SET: ${{ matrix.payload_set }}
+          CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
+          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+        run: |
+          set -euo pipefail
+          if [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "superblocks" ]]; then
+            config_file="github-action-compressed-mainnet-flat.yaml"
+          elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "realblocks" ]]; then
+            config_file="github-action-mainnet-flat.yaml"
+          elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "superblocks" ]]; then
+            config_file="github-action-compressed-mainnet.yaml"
+          else
+            config_file="github-action-mainnet.yaml"
+          fi
+          scenario_name="nethermind-${STATE_LAYOUT}-${PAYLOAD_SET}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+          echo "CONFIG_FILE=${config_file}" >> "${GITHUB_ENV}"
+          echo "SCENARIO_NAME=${scenario_name}" >> "${GITHUB_ENV}"
+          echo "config_file=${config_file}" >> "${GITHUB_OUTPUT}"
+          echo "scenario_name=${scenario_name}" >> "${GITHUB_OUTPUT}"
+
       - name: Print resolved inputs
         run: |
           echo "Event: ${{ github.event_name }}"
+          echo "Payload set: ${{ matrix.payload_set }}"
           echo "Nethermind branch: ${{ needs.resolve.outputs.branch }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
@@ -264,17 +460,17 @@ jobs:
           echo "Rebuild docker requested: ${{ needs.resolve.outputs.rebuild_docker }}"
           echo "Publish docker workflow triggered: ${{ needs.resolve.outputs.should_trigger_publish_docker }}"
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
-          echo "Scenario name: ${{ needs.resolve.outputs.scenario_name }}"
+          echo "Scenario name: ${SCENARIO_NAME}"
 
       - name: Restore cached master metrics
         id: restore-master-metrics
         if: github.event_name == 'pull_request'
         uses: actions/cache/restore@v4
         with:
-          path: ${{ runner.temp }}/expb-master-metrics-cache
-          key: expb-master-metrics-v1-${{ github.event.pull_request.base.sha }}
+          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
+          key: expb-master-metrics-v2-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v1-
+            expb-master-metrics-v2-${{ matrix.payload_set }}-
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -295,7 +491,7 @@ jobs:
           RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config.yaml
           DOCKER_TAG: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
-          SCENARIO_NAME: ${{ needs.resolve.outputs.scenario_name }}
+          SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
         run: |
           set -euo pipefail
@@ -584,177 +780,28 @@ jobs:
             echo "max=${max}"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Build PR comparison comment
-        id: pr-comment
-        if: always() && github.event_name == 'pull_request'
-        shell: bash
-        env:
-          CURRENT_METRICS_FILE: ${{ steps.analyze.outputs.metrics_file }}
-          MASTER_METRICS_FILE: ${{ runner.temp }}/expb-master-metrics-cache/master-metrics.env
-          SCENARIO_NAME: ${{ needs.resolve.outputs.scenario_name }}
-          EXCEPTION_FOUND: ${{ steps.analyze.outputs.exception_found }}
-          INVALID_BLOCK_FOUND: ${{ steps.analyze.outputs.invalid_block_found }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-
-          marker="<!-- expb-reproducible-benchmark-report -->"
-          comment_file="${RUNNER_TEMP}/expb-pr-comment.md"
-          : > "${comment_file}"
-
-          load_metric() {
-            local file="$1"
-            local key="$2"
-            grep -E "^${key}=" "${file}" | head -n 1 | cut -d'=' -f2- || true
-          }
-
-          load_metric_with_fallback() {
-            local file="$1"
-            local primary_key="$2"
-            local fallback_key="$3"
-            local value=""
-
-            value="$(load_metric "${file}" "${primary_key}")"
-            if [[ -z "${value}" ]]; then
-              value="$(load_metric "${file}" "${fallback_key}")"
-            fi
-            printf '%s' "${value}"
-          }
-
-          percentage_delta() {
-            local current="$1"
-            local baseline="$2"
-            awk -v c="${current}" -v b="${baseline}" 'BEGIN { if (b == 0) { print "n/a"; } else { printf "%+.2f%%", ((c - b) / b) * 100; } }'
-          }
-
-          append_line() {
-            printf '%s\n' "$1" >> "${comment_file}"
-          }
-
-          append_blank() {
-            printf '\n' >> "${comment_file}"
-          }
-
-          if [[ ! -f "${CURRENT_METRICS_FILE}" ]]; then
-            append_line "${marker}"
-            append_line "### EXPB Benchmark Comparison"
-            append_blank
-            append_line "Run: [View workflow run](${RUN_URL})"
-            append_blank
-            append_line "No current run metrics file was produced, so comparison against master could not be generated."
-          elif [[ ! -f "${MASTER_METRICS_FILE}" ]]; then
-            append_line "${marker}"
-            append_line "### EXPB Benchmark Comparison"
-            append_blank
-            append_line "Run: [View workflow run](${RUN_URL})"
-            append_blank
-            append_line "No cached master baseline metrics were found yet. A baseline will be created from the next successful \`master\` push run."
-            append_blank
-            append_line "Current scenario: \`${SCENARIO_NAME}\`"
-          else
-            current_avg="$(load_metric "${CURRENT_METRICS_FILE}" "AVG")"
-            current_median="$(load_metric_with_fallback "${CURRENT_METRICS_FILE}" "MEDIAN" "MEAN")"
-            current_p90="$(load_metric "${CURRENT_METRICS_FILE}" "P90")"
-            current_p95="$(load_metric "${CURRENT_METRICS_FILE}" "P95")"
-            current_p99="$(load_metric "${CURRENT_METRICS_FILE}" "P99")"
-            current_min="$(load_metric "${CURRENT_METRICS_FILE}" "MIN")"
-            current_max="$(load_metric "${CURRENT_METRICS_FILE}" "MAX")"
-
-            master_avg="$(load_metric "${MASTER_METRICS_FILE}" "AVG")"
-            master_median="$(load_metric_with_fallback "${MASTER_METRICS_FILE}" "MEDIAN" "MEAN")"
-            master_p90="$(load_metric "${MASTER_METRICS_FILE}" "P90")"
-            master_p95="$(load_metric "${MASTER_METRICS_FILE}" "P95")"
-            master_p99="$(load_metric "${MASTER_METRICS_FILE}" "P99")"
-            master_min="$(load_metric "${MASTER_METRICS_FILE}" "MIN")"
-            master_max="$(load_metric "${MASTER_METRICS_FILE}" "MAX")"
-
-            append_line "${marker}"
-            append_line "### EXPB Benchmark Comparison"
-            append_blank
-            append_line "Run: [View workflow run](${RUN_URL})"
-            append_blank
-            append_line "Scenario: \`${SCENARIO_NAME}\`"
-            append_blank
-            append_line "| Metric | PR | Master (cached) | Delta PR vs Master |"
-            append_line "|---|---:|---:|---:|"
-            append_line "| AVG (ms) | ${current_avg} | ${master_avg} | $(percentage_delta "${current_avg}" "${master_avg}") |"
-            append_line "| MEDIAN (ms) | ${current_median} | ${master_median} | $(percentage_delta "${current_median}" "${master_median}") |"
-            append_line "| P90 (ms) | ${current_p90} | ${master_p90} | $(percentage_delta "${current_p90}" "${master_p90}") |"
-            append_line "| P95 (ms) | ${current_p95} | ${master_p95} | $(percentage_delta "${current_p95}" "${master_p95}") |"
-            append_line "| P99 (ms) | ${current_p99} | ${master_p99} | $(percentage_delta "${current_p99}" "${master_p99}") |"
-            append_line "| MIN (ms) | ${current_min} | ${master_min} | $(percentage_delta "${current_min}" "${master_min}") |"
-            append_line "| MAX (ms) | ${current_max} | ${master_max} | $(percentage_delta "${current_max}" "${master_max}") |"
-          fi
-
-          if [[ "${EXCEPTION_FOUND}" == "true" ]]; then
-            append_blank
-            append_line ":warning: This run contained \`Exception\` lines and the workflow is expected to fail."
-          fi
-
-          if [[ "${INVALID_BLOCK_FOUND}" == "true" ]]; then
-            append_blank
-            append_line ":warning: This run contained \`Invalid block\` log lines and the workflow is expected to fail."
-          fi
-
-          {
-            echo "body<<EOF"
-            cat "${comment_file}"
-            echo "EOF"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Publish PR comparison comment
-        if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        env:
-          COMMENT_BODY: ${{ steps.pr-comment.outputs.body }}
+      - name: Upload metrics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          script: |
-            const marker = '<!-- expb-reproducible-benchmark-report -->';
-            const body = process.env.COMMENT_BODY;
-            const { owner, repo } = context.repo;
-            const issue_number = context.payload.pull_request.number;
-
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number,
-              per_page: 100,
-            });
-
-            const existing = comments.find((comment) =>
-              comment.body && comment.body.includes(marker),
-            );
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body,
-              });
-            }
+          name: expb-single-metrics-${{ matrix.payload_set }}-run${{ matrix.run }}
+          path: ${{ steps.analyze.outputs.metrics_file }}
+          retention-days: 30
 
       - name: Prepare master metrics cache
         if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "${RUNNER_TEMP}/expb-master-metrics-cache"
-          cp "${{ steps.analyze.outputs.metrics_file }}" "${RUNNER_TEMP}/expb-master-metrics-cache/master-metrics.env"
+          mkdir -p "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}"
+          cp "${{ steps.analyze.outputs.metrics_file }}" "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}/master-metrics.env"
 
       - name: Save master metrics cache
         if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
         uses: actions/cache/save@v4
         with:
-          path: ${{ runner.temp }}/expb-master-metrics-cache
-          key: expb-master-metrics-v1-${{ github.run_id }}
+          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
+          key: expb-master-metrics-v2-${{ matrix.payload_set }}-${{ github.run_id }}
 
       - name: Enforce run quality gates
         if: always()
@@ -797,3 +844,860 @@ jobs:
           if [[ -n "${rendered_config_file}" && "${rendered_config_file}" != "${RUNNER_TEMP}/rendered-expb-config.yaml" ]]; then
             rm -f "${rendered_config_file}" || true
           fi
+
+  # ---------------------------------------------------------------------------
+  # PR comment: aggregates metrics from all payload_set matrix entries
+  # ---------------------------------------------------------------------------
+
+  report:
+    needs: [resolve, benchmark]
+    if: always() && github.event_name == 'pull_request' && needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all metrics artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/all-metrics
+          pattern: expb-single-metrics-*
+
+      - name: Restore master metrics (superblocks)
+        id: restore-master-superblocks
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-superblocks
+          key: expb-master-metrics-v2-superblocks-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v2-superblocks-
+
+      - name: Restore master metrics (realblocks)
+        id: restore-master-realblocks
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-realblocks
+          key: expb-master-metrics-v2-realblocks-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v2-realblocks-
+
+      - name: Build PR comparison comment
+        id: pr-comment
+        shell: bash
+        env:
+          METRICS_DIR: ${{ runner.temp }}/all-metrics
+          MASTER_SUPERBLOCKS: /tmp/expb-master-metrics-cache-superblocks/master-metrics.env
+          MASTER_REALBLOCKS: /tmp/expb-master-metrics-cache-realblocks/master-metrics.env
+          PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
+          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
+          CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
+          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          marker="<!-- expb-reproducible-benchmark-report -->"
+          comment_file="${RUNNER_TEMP}/expb-pr-comment.md"
+          : > "${comment_file}"
+
+          load_metric() {
+            local file="$1"
+            local key="$2"
+            if [[ -f "${file}" ]]; then
+              grep -E "^${key}=" "${file}" | head -n 1 | cut -d'=' -f2- || true
+            fi
+          }
+
+          load_metric_with_fallback() {
+            local file="$1"
+            local primary_key="$2"
+            local fallback_key="$3"
+            local value=""
+            value="$(load_metric "${file}" "${primary_key}")"
+            if [[ -z "${value}" ]]; then
+              value="$(load_metric "${file}" "${fallback_key}")"
+            fi
+            printf '%s' "${value}"
+          }
+
+          percentage_delta() {
+            local current="$1"
+            local baseline="$2"
+            if [[ -z "${current}" || -z "${baseline}" ]]; then
+              echo "n/a"
+              return
+            fi
+            awk -v c="${current}" -v b="${baseline}" 'BEGIN { if (b == 0) { print "n/a"; } else { printf "%+.2f%%", ((c - b) / b) * 100; } }'
+          }
+
+          append_line() {
+            printf '%s\n' "$1" >> "${comment_file}"
+          }
+
+          append_blank() {
+            printf '\n' >> "${comment_file}"
+          }
+
+          build_table() {
+            local payload_set="$1"
+            local current_metrics="$2"
+            local master_metrics="$3"
+            local scenario_name="nethermind-${STATE_LAYOUT}-${payload_set}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+
+            append_blank
+            append_line "#### ${payload_set}"
+            append_blank
+
+            if [[ ! -f "${current_metrics}" ]]; then
+              append_line "No metrics were produced for \`${scenario_name}\`."
+              return
+            fi
+
+            if [[ ! -f "${master_metrics}" ]]; then
+              append_line "No cached master baseline for \`${payload_set}\`. A baseline will be created from the next successful \`master\` push run."
+              append_blank
+              append_line "| Metric | PR |"
+              append_line "|---|---:|"
+              append_line "| AVG (ms) | $(load_metric "${current_metrics}" "AVG") |"
+              append_line "| MEDIAN (ms) | $(load_metric_with_fallback "${current_metrics}" "MEDIAN" "MEAN") |"
+              append_line "| P90 (ms) | $(load_metric "${current_metrics}" "P90") |"
+              append_line "| P95 (ms) | $(load_metric "${current_metrics}" "P95") |"
+              append_line "| P99 (ms) | $(load_metric "${current_metrics}" "P99") |"
+              append_line "| MIN (ms) | $(load_metric "${current_metrics}" "MIN") |"
+              append_line "| MAX (ms) | $(load_metric "${current_metrics}" "MAX") |"
+              return
+            fi
+
+            current_avg="$(load_metric "${current_metrics}" "AVG")"
+            current_median="$(load_metric_with_fallback "${current_metrics}" "MEDIAN" "MEAN")"
+            current_p90="$(load_metric "${current_metrics}" "P90")"
+            current_p95="$(load_metric "${current_metrics}" "P95")"
+            current_p99="$(load_metric "${current_metrics}" "P99")"
+            current_min="$(load_metric "${current_metrics}" "MIN")"
+            current_max="$(load_metric "${current_metrics}" "MAX")"
+
+            master_avg="$(load_metric "${master_metrics}" "AVG")"
+            master_median="$(load_metric_with_fallback "${master_metrics}" "MEDIAN" "MEAN")"
+            master_p90="$(load_metric "${master_metrics}" "P90")"
+            master_p95="$(load_metric "${master_metrics}" "P95")"
+            master_p99="$(load_metric "${master_metrics}" "P99")"
+            master_min="$(load_metric "${master_metrics}" "MIN")"
+            master_max="$(load_metric "${master_metrics}" "MAX")"
+
+            append_line "Scenario: \`${scenario_name}\`"
+            append_blank
+            append_line "| Metric | PR | Master (cached) | Delta PR vs Master |"
+            append_line "|---|---:|---:|---:|"
+            append_line "| AVG (ms) | ${current_avg} | ${master_avg} | $(percentage_delta "${current_avg}" "${master_avg}") |"
+            append_line "| MEDIAN (ms) | ${current_median} | ${master_median} | $(percentage_delta "${current_median}" "${master_median}") |"
+            append_line "| P90 (ms) | ${current_p90} | ${master_p90} | $(percentage_delta "${current_p90}" "${master_p90}") |"
+            append_line "| P95 (ms) | ${current_p95} | ${master_p95} | $(percentage_delta "${current_p95}" "${master_p95}") |"
+            append_line "| P99 (ms) | ${current_p99} | ${master_p99} | $(percentage_delta "${current_p99}" "${master_p99}") |"
+            append_line "| MIN (ms) | ${current_min} | ${master_min} | $(percentage_delta "${current_min}" "${master_min}") |"
+            append_line "| MAX (ms) | ${current_max} | ${master_max} | $(percentage_delta "${current_max}" "${master_max}") |"
+          }
+
+          append_line "${marker}"
+          append_line "### EXPB Benchmark Comparison"
+          append_blank
+          append_line "Run: [View workflow run](${RUN_URL})"
+
+          # Iterate over each payload_set from the matrix
+          mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
+
+          for ps in "${payload_sets[@]}"; do
+            # Find the PR metrics artifact (run 1 by default)
+            current_metrics="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
+
+            # Master metrics from cache
+            if [[ "${ps}" == "superblocks" ]]; then
+              master_metrics="${MASTER_SUPERBLOCKS}"
+            else
+              master_metrics="${MASTER_REALBLOCKS}"
+            fi
+
+            build_table "${ps}" "${current_metrics}" "${master_metrics}"
+          done
+
+          {
+            echo "body<<EOF"
+            cat "${comment_file}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Publish PR comparison comment
+        uses: actions/github-script@v7
+        env:
+          COMMENT_BODY: ${{ steps.pr-comment.outputs.body }}
+        with:
+          script: |
+            const marker = '<!-- expb-reproducible-benchmark-report -->';
+            const body = process.env.COMMENT_BODY;
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) =>
+              comment.body && comment.body.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
+
+  # ---------------------------------------------------------------------------
+  # Multi-image path: retrospective or explicit docker_images
+  # ---------------------------------------------------------------------------
+
+  resolve-images:
+    needs: [resolve]
+    if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'multi'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+      ordered_tags: ${{ steps.resolve.outputs.ordered_tags }}
+    steps:
+      - name: Resolve Docker images
+        id: resolve
+        shell: bash
+        env:
+          DOCKER_IMAGES: ${{ needs.resolve.outputs.docker_images }}
+          LAST: ${{ needs.resolve.outputs.retrospective_last }}
+          STEP: ${{ needs.resolve.outputs.retrospective_step }}
+          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
+        run: |
+          set -euo pipefail
+
+          all_tags=()
+          all_images=()
+          all_dates=()
+
+          if [[ -n "${DOCKER_IMAGES}" ]]; then
+            # Explicit docker images mode: parse comma-separated full image references
+            echo "Parsing explicit docker images: ${DOCKER_IMAGES}"
+            IFS=',' read -ra raw_images <<< "${DOCKER_IMAGES}"
+            for raw in "${raw_images[@]}"; do
+              image="$(echo "${raw}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+              if [[ -n "${image}" ]]; then
+                all_images+=("${image}")
+                all_tags+=("${image##*:}")
+                all_dates+=("n/a")
+              fi
+            done
+            echo "Parsed ${#all_images[@]} explicit docker images."
+          else
+            # Retrospective mode: scan Docker Hub for master-* images
+            if ! [[ "${LAST}" =~ ^[0-9]+$ ]] || [[ "${LAST}" -lt 1 ]]; then
+              echo "retrospective_last must be a positive integer, got '${LAST}'."
+              exit 1
+            fi
+            if ! [[ "${STEP}" =~ ^[0-9]+$ ]] || [[ "${STEP}" -lt 1 ]]; then
+              echo "retrospective_step must be a positive integer, got '${STEP}'."
+              exit 1
+            fi
+
+            echo "Fetching last ${LAST} master-* Docker images from Docker Hub (step=${STEP})..."
+
+            page=1
+            page_size=100
+            remaining="${LAST}"
+
+            while [[ "${remaining}" -gt 0 ]]; do
+              fetch_size="${page_size}"
+              if [[ "${remaining}" -lt "${page_size}" ]]; then
+                fetch_size="${remaining}"
+              fi
+
+              url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${fetch_size}&page=${page}&name=master-"
+              response=$(curl -sf "${url}" || echo '{"results":[]}')
+
+              mapfile -t page_tags < <(echo "${response}" | jq -r '.results[] | select(.name | test("^master-[0-9a-f]{7}$")) | .name')
+              mapfile -t page_dates < <(echo "${response}" | jq -r '.results[] | select(.name | test("^master-[0-9a-f]{7}$")) | .last_updated[:10]')
+
+              if [[ "${#page_tags[@]}" -eq 0 ]]; then
+                echo "No more tags found at page ${page}."
+                break
+              fi
+
+              for i in "${!page_tags[@]}"; do
+                all_tags+=("${page_tags[$i]}")
+                all_images+=("nethermindeth/nethermind:${page_tags[$i]}")
+                all_dates+=("${page_dates[$i]}")
+              done
+
+              remaining=$(( remaining - page_size ))
+              page=$(( page + 1 ))
+            done
+
+            echo "Found ${#all_tags[@]} master-* images on Docker Hub."
+
+            if [[ "${#all_tags[@]}" -eq 0 ]]; then
+              echo "No master-<sha7> Docker images found."
+              exit 1
+            fi
+
+            # Apply step: pick every Nth image (newest first)
+            selected_tags=()
+            selected_images=()
+            selected_dates=()
+            for (( i=0; i<${#all_tags[@]}; i+=STEP )); do
+              selected_tags+=("${all_tags[$i]}")
+              selected_images+=("${all_images[$i]}")
+              selected_dates+=("${all_dates[$i]}")
+            done
+
+            all_tags=("${selected_tags[@]}")
+            all_images=("${selected_images[@]}")
+            all_dates=("${selected_dates[@]}")
+            echo "Selected ${#all_tags[@]} images after applying step=${STEP}."
+          fi
+
+          if [[ "${#all_tags[@]}" -eq 0 ]]; then
+            echo "No images to benchmark."
+            exit 1
+          fi
+
+          # GitHub Actions matrix has a limit of 256 entries
+          if [[ "${#all_tags[@]}" -gt 256 ]]; then
+            echo "Warning: truncating to 256 matrix entries (GitHub Actions limit)."
+            all_tags=("${all_tags[@]:0:256}")
+            all_images=("${all_images[@]:0:256}")
+            all_dates=("${all_dates[@]:0:256}")
+          fi
+
+          for i in "${!all_tags[@]}"; do
+            echo "  ${all_tags[$i]}  ${all_dates[$i]}"
+          done
+
+          # Build matrix JSON (with run dimension) and ordered list
+          run_count="${RUN_COUNT:-1}"
+          matrix_json='{"include":['
+          ordered_json='['
+          first_matrix=true
+          first_ordered=true
+          for i in "${!all_tags[@]}"; do
+            tag="${all_tags[$i]}"
+            image="${all_images[$i]}"
+            date="${all_dates[$i]}"
+            if [[ "${first_ordered}" != "true" ]]; then ordered_json+=','; fi
+            first_ordered=false
+            ordered_json+="{\"tag\":\"${tag}\",\"date\":\"${date}\",\"image\":\"${image}\"}"
+            for (( r=1; r<=run_count; r++ )); do
+              if [[ "${first_matrix}" != "true" ]]; then matrix_json+=','; fi
+              first_matrix=false
+              matrix_json+="{\"tag\":\"${tag}\",\"date\":\"${date}\",\"image\":\"${image}\",\"run\":${r}}"
+            done
+          done
+          matrix_json+=']}'
+          ordered_json+=']'
+
+          {
+            echo "matrix=${matrix_json}"
+            echo "ordered_tags=${ordered_json}"
+          } >> "${GITHUB_OUTPUT}"
+
+  benchmark-multi:
+    name: benchmark (${{ matrix.tag }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
+    needs: [resolve, resolve-images]
+    if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'multi'
+    strategy:
+      matrix: ${{ fromJson(needs.resolve-images.outputs.matrix) }}
+      max-parallel: 1
+      fail-fast: false
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 720
+    env:
+      EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
+      CONFIG_FILE: ${{ needs.resolve.outputs.config_file }}
+      NETHERMIND_IMAGE: ${{ matrix.image }}
+      CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
+    steps:
+      - name: Print resolved inputs
+        run: |
+          echo "Multi-image benchmark run"
+          echo "Docker image: ${NETHERMIND_IMAGE}"
+          echo "Image tag: ${{ matrix.tag }}"
+          echo "Run: ${{ matrix.run }} of ${{ needs.resolve.outputs.run_count }}"
+          echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
+          echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
+          echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
+
+      - name: Ensure EXPB config file exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f "${EXPB_DATA_DIR}/${CONFIG_FILE}" ]]; then
+            echo "Config file '${EXPB_DATA_DIR}/${CONFIG_FILE}' does not exist."
+            echo "Available github-action config files in '${EXPB_DATA_DIR}':"
+            ls -1 "${EXPB_DATA_DIR}"/github-action*mainnet*.yaml || true
+            exit 1
+          fi
+
+      - name: Render benchmark config
+        id: render-config
+        shell: bash
+        env:
+          SOURCE_CONFIG_FILE: ${{ env.EXPB_DATA_DIR }}/${{ env.CONFIG_FILE }}
+          RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config-${{ matrix.tag }}-run${{ matrix.run }}.yaml
+          DOCKER_TAG: ${{ matrix.tag }}
+          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
+          ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+        run: |
+          set -euo pipefail
+          flags_file="$(mktemp)"
+          printf '%s' "${ADDITIONAL_EXTRA_FLAGS}" \
+            | tr '\r' '\n' \
+            | tr ',' '\n' \
+            | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+            | sed '/^$/d' \
+            | awk '
+                function emit_pending() {
+                  if (pending != "") {
+                    print pending
+                    pending = ""
+                  }
+                }
+                {
+                  line = $0
+                  if (match(line, /^--[^[:space:]=]+[[:space:]]+/)) {
+                    key = substr(line, 1, RLENGTH)
+                    sub(/[[:space:]]+$/, "", key)
+                    value = substr(line, RLENGTH + 1)
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                    emit_pending()
+                    print key "=" value
+                    next
+                  }
+                  if (line ~ /^--/) {
+                    emit_pending()
+                    pending = line
+                    next
+                  }
+                  if (pending != "") {
+                    print pending "=" line
+                    pending = ""
+                  } else {
+                    print line
+                  }
+                }
+                END {
+                  emit_pending()
+                }
+              ' \
+            > "${flags_file}"
+
+          sed \
+            -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
+            -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
+            -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
+            "${SOURCE_CONFIG_FILE}" \
+            | awk -v flags_file="${flags_file}" '
+                BEGIN {
+                  while ((getline flag < flags_file) > 0) {
+                    flags[++flags_count] = flag
+                  }
+                  close(flags_file)
+                }
+                {
+                  print
+                  if (flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:[[:space:]]*$/) {
+                    match($0, /^[[:space:]]*/)
+                    indent = substr($0, RSTART, RLENGTH)
+                    for (i = 1; i <= flags_count; i++) {
+                      print indent "  - " flags[i]
+                    }
+                  }
+                }
+              ' > "${RENDERED_CONFIG_FILE}"
+
+          echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install or upgrade expb
+        shell: bash
+        env:
+          EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
+          EXPB_BRANCH: ${{ needs.resolve.outputs.expb_branch }}
+        run: |
+          set -euo pipefail
+          if ! command -v uv >/dev/null 2>&1; then
+            echo "uv is required on runner but was not found in PATH."
+            exit 1
+          fi
+          if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+            expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
+          elif [[ -n "${EXPB_BRANCH}" ]]; then
+            expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
+          else
+            expb_source="git+https://github.com/${EXPB_REPO}"
+          fi
+          echo "Installing expb from ${expb_source}"
+          uv tool install --force --from "${expb_source}" expb
+          echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+
+      - name: Run expb scenarios
+        id: run-expb
+        continue-on-error: true
+        shell: bash
+        working-directory: ${{ env.EXPB_DATA_DIR }}
+        env:
+          RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
+        run: |
+          set -euo pipefail
+          expb_pid=""
+          : > "${RAW_RUN_LOG}"
+
+          on_terminate() {
+            echo "Termination signal received. Waiting up to ${CLEANUP_GRACE_SECONDS}s for expb cleanup."
+            if [[ -n "${expb_pid}" ]] && kill -0 "${expb_pid}" 2>/dev/null; then
+              kill -TERM "${expb_pid}" 2>/dev/null || true
+              remaining="${CLEANUP_GRACE_SECONDS}"
+              while [[ "${remaining}" -gt 0 ]]; do
+                if ! kill -0 "${expb_pid}" 2>/dev/null; then
+                  echo "expb exited during cleanup grace period."
+                  break
+                fi
+                sleep 1
+                remaining=$((remaining - 1))
+              done
+              if kill -0 "${expb_pid}" 2>/dev/null; then
+                echo "Cleanup grace period elapsed. Forcing expb shutdown."
+                kill -KILL "${expb_pid}" 2>/dev/null || true
+              fi
+            fi
+            if [[ -f "${RAW_RUN_LOG}" ]]; then
+              cat "${RAW_RUN_LOG}"
+            fi
+            exit 143
+          }
+
+          trap on_terminate TERM INT
+
+          expb execute-scenarios \
+            --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
+            --per-payload-metrics \
+            --per-payload-metrics-logs \
+            --print-logs \
+            > "${RAW_RUN_LOG}" 2>&1 &
+          expb_pid=$!
+
+          set +e
+          wait "${expb_pid}"
+          expb_exit_code=$?
+          set -e
+
+          cat "${RAW_RUN_LOG}"
+          exit "${expb_exit_code}"
+
+      - name: Analyze benchmark output
+        id: analyze
+        if: always()
+        shell: bash
+        env:
+          RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
+          TAG: ${{ matrix.tag }}
+          RUN: ${{ matrix.run }}
+        run: |
+          set -euo pipefail
+
+          key="${TAG}-run${RUN}"
+          clean_log="${RUNNER_TEMP}/expb-run-${key}.clean.log"
+          exception_lines="${RUNNER_TEMP}/expb-exceptions-${key}.log"
+          invalid_block_lines="${RUNNER_TEMP}/expb-invalid-blocks-${key}.log"
+          processing_ms="${RUNNER_TEMP}/expb-processing-ms-${key}.txt"
+          processing_ms_sorted="${RUNNER_TEMP}/expb-processing-ms-sorted-${key}.txt"
+          metrics_dir="${RUNNER_TEMP}/expb-metrics-${key}"
+
+          mkdir -p "${metrics_dir}"
+
+          if [[ ! -f "${RAW_RUN_LOG}" ]]; then
+            echo "Run output log '${RAW_RUN_LOG}' was not produced."
+            {
+              echo "TAG=${TAG}"
+              echo "RUN=${RUN}"
+              echo "ERROR=no_log"
+            } > "${metrics_dir}/metrics.env"
+            exit 1
+          fi
+
+          sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${RAW_RUN_LOG}" > "${clean_log}"
+
+          grep -in "Exception" "${clean_log}" > "${exception_lines}" || true
+          exception_found="false"
+          if [[ -s "${exception_lines}" ]]; then
+            exception_found="true"
+            echo "Found Exception lines in benchmark output:"
+            head -n 40 "${exception_lines}"
+          fi
+
+          grep -Ein "invalid[[:space:]_-]*block" "${clean_log}" > "${invalid_block_lines}" || true
+          invalid_block_found="false"
+          if [[ -s "${invalid_block_lines}" ]]; then
+            invalid_block_found="true"
+            echo "Found invalid block lines in benchmark output:"
+            head -n 40 "${invalid_block_lines}"
+          fi
+
+          awk -F'|' '
+            /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+              value = $4
+              gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+              if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
+                print value
+              }
+            }
+          ' "${clean_log}" > "${processing_ms}"
+
+          count=$(wc -l < "${processing_ms}")
+          count="${count//[[:space:]]/}"
+
+          if [[ "${count}" -eq 0 ]]; then
+            echo "Could not extract per-payload processing_ms rows from benchmark output."
+            {
+              echo "TAG=${TAG}"
+              echo "RUN=${RUN}"
+              echo "EXCEPTION_FOUND=${exception_found}"
+              echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
+              echo "ERROR=no_metrics"
+            } > "${metrics_dir}/metrics.env"
+            exit 1
+          fi
+
+          sort -n "${processing_ms}" > "${processing_ms_sorted}"
+
+          min=$(head -n 1 "${processing_ms_sorted}")
+          max=$(tail -n 1 "${processing_ms_sorted}")
+          avg=$(awk '{sum += $1} END {printf "%.2f", sum / NR}' "${processing_ms_sorted}")
+          if (( count % 2 == 1 )); then
+            median_index=$(( (count + 1) / 2 ))
+            median=$(sed -n "${median_index}p" "${processing_ms_sorted}")
+          else
+            lower_index=$(( count / 2 ))
+            upper_index=$(( lower_index + 1 ))
+            lower_value=$(sed -n "${lower_index}p" "${processing_ms_sorted}")
+            upper_value=$(sed -n "${upper_index}p" "${processing_ms_sorted}")
+            median=$(awk -v a="${lower_value}" -v b="${upper_value}" 'BEGIN {printf "%.2f", (a + b) / 2}')
+          fi
+
+          p90_index=$(( (90 * count + 99) / 100 ))
+          p95_index=$(( (95 * count + 99) / 100 ))
+          p99_index=$(( (99 * count + 99) / 100 ))
+
+          p90=$(sed -n "${p90_index}p" "${processing_ms_sorted}")
+          p95=$(sed -n "${p95_index}p" "${processing_ms_sorted}")
+          p99=$(sed -n "${p99_index}p" "${processing_ms_sorted}")
+
+          {
+            echo "TAG=${TAG}"
+            echo "RUN=${RUN}"
+            echo "EXCEPTION_FOUND=${exception_found}"
+            echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
+            echo "COUNT=${count}"
+            echo "AVG=${avg}"
+            echo "MEDIAN=${median}"
+            echo "P90=${p90}"
+            echo "P95=${p95}"
+            echo "P99=${p99}"
+            echo "MIN=${min}"
+            echo "MAX=${max}"
+          } > "${metrics_dir}/metrics.env"
+
+          echo "Metrics for ${TAG} run ${RUN}:"
+          cat "${metrics_dir}/metrics.env"
+
+      - name: Upload metrics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: expb-metrics-${{ matrix.tag }}-run${{ matrix.run }}
+          path: ${{ runner.temp }}/expb-metrics-${{ matrix.tag }}-run${{ matrix.run }}/metrics.env
+          retention-days: 30
+
+      - name: Enforce run quality gates
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
+            echo "expb execute-scenarios did not finish successfully for ${{ matrix.tag }} run ${{ matrix.run }}."
+            echo "Continuing multi-image run (fail-fast is disabled)."
+          fi
+          if [[ "${{ steps.analyze.outputs.exception_found }}" == "true" ]]; then
+            echo "Exceptions were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+          fi
+          if [[ "${{ steps.analyze.outputs.invalid_block_found }}" == "true" ]]; then
+            echo "Invalid block lines were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+          fi
+
+      - name: Cleanup rendered config
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "${{ runner.temp }}/rendered-expb-config-${{ matrix.tag }}-run${{ matrix.run }}.yaml" || true
+          rendered_config_file="${{ steps.render-config.outputs.rendered_config_file }}"
+          if [[ -n "${rendered_config_file}" ]]; then
+            rm -f "${rendered_config_file}" || true
+          fi
+
+  summary:
+    needs: [resolve, resolve-images, benchmark-multi]
+    if: always() && needs.resolve.outputs.mode == 'multi'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all metrics artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/all-metrics
+          pattern: expb-metrics-*
+
+      - name: Build comparison table
+        shell: bash
+        env:
+          METRICS_DIR: ${{ runner.temp }}/all-metrics
+          ORDERED_TAGS: ${{ needs.resolve-images.outputs.ordered_tags }}
+          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
+        run: |
+          set -euo pipefail
+
+          summary_file="${RUNNER_TEMP}/multi-image-summary.md"
+          run_count="${RUN_COUNT:-1}"
+
+          # Parse ordered tags JSON (unique tags, not expanded by run)
+          mapfile -t tags < <(echo "${ORDERED_TAGS}" | jq -r '.[].tag')
+          mapfile -t dates < <(echo "${ORDERED_TAGS}" | jq -r '.[].date')
+
+          load_metric() {
+            local file="$1"
+            local key="$2"
+            if [[ -f "${file}" ]]; then
+              grep -E "^${key}=" "${file}" | head -n 1 | cut -d'=' -f2- || true
+            fi
+          }
+
+          percentage_delta() {
+            local current="$1"
+            local baseline="$2"
+            if [[ -z "${current}" || -z "${baseline}" ]]; then
+              echo "n/a"
+              return
+            fi
+            awk -v c="${current}" -v b="${baseline}" 'BEGIN {
+              if (b == 0) { print "n/a"; }
+              else { printf "%+.2f%%", ((c - b) / b) * 100; }
+            }'
+          }
+
+          # Build header — add Run column if run_count > 1
+          if [[ "${run_count}" -gt 1 ]]; then
+            header="| # | Image Tag | Run | Date | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs First |"
+            separator="|---|-----------|-----|------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
+          else
+            header="| # | Image Tag | Date | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs First |"
+            separator="|---|-----------|------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
+          fi
+
+          total_runs=$(( ${#tags[@]} * run_count ))
+          {
+            echo "## EXPB Multi-Image Benchmark Results"
+            echo ""
+            echo "Benchmarked ${#tags[@]} Docker images${run_count:+, ${run_count} run(s) each}."
+            echo ""
+            echo "${header}"
+            echo "${separator}"
+          } > "${summary_file}"
+
+          baseline_avg=""
+          row_idx=0
+
+          for i in "${!tags[@]}"; do
+            tag="${tags[$i]}"
+            date="${dates[$i]}"
+
+            for (( r=1; r<=run_count; r++ )); do
+              row_idx=$(( row_idx + 1 ))
+              metrics_file="${METRICS_DIR}/expb-metrics-${tag}-run${r}/metrics.env"
+
+              # Build the tag+run prefix columns
+              if [[ "${run_count}" -gt 1 ]]; then
+                prefix="| ${row_idx} | \`${tag}\` | ${r} | ${date}"
+              else
+                prefix="| ${row_idx} | \`${tag}\` | ${date}"
+              fi
+
+              if [[ ! -f "${metrics_file}" ]]; then
+                echo "${prefix} | - | - | - | - | - | - | - | no data |" >> "${summary_file}"
+                continue
+              fi
+
+              error=$(load_metric "${metrics_file}" "ERROR")
+              if [[ -n "${error}" ]]; then
+                exception=$(load_metric "${metrics_file}" "EXCEPTION_FOUND")
+                invalid=$(load_metric "${metrics_file}" "INVALID_BLOCK_FOUND")
+                status="${error}"
+                if [[ "${exception}" == "true" ]]; then
+                  status="${status} :warning: exceptions"
+                fi
+                if [[ "${invalid}" == "true" ]]; then
+                  status="${status} :warning: invalid blocks"
+                fi
+                echo "${prefix} | - | - | - | - | - | - | - | ${status} |" >> "${summary_file}"
+                continue
+              fi
+
+              avg=$(load_metric "${metrics_file}" "AVG")
+              median=$(load_metric "${metrics_file}" "MEDIAN")
+              p90=$(load_metric "${metrics_file}" "P90")
+              p95=$(load_metric "${metrics_file}" "P95")
+              p99=$(load_metric "${metrics_file}" "P99")
+              min_val=$(load_metric "${metrics_file}" "MIN")
+              max_val=$(load_metric "${metrics_file}" "MAX")
+              exception=$(load_metric "${metrics_file}" "EXCEPTION_FOUND")
+              invalid=$(load_metric "${metrics_file}" "INVALID_BLOCK_FOUND")
+
+              if [[ -z "${baseline_avg}" && -n "${avg}" ]]; then
+                baseline_avg="${avg}"
+              fi
+
+              delta=$(percentage_delta "${avg}" "${baseline_avg}")
+
+              warnings=""
+              if [[ "${exception}" == "true" ]]; then
+                warnings=" :warning:"
+              fi
+              if [[ "${invalid}" == "true" ]]; then
+                warnings="${warnings} :no_entry:"
+              fi
+
+              echo "${prefix} | ${avg} | ${median} | ${p90} | ${p95} | ${p99} | ${min_val} | ${max_val} | ${delta}${warnings} |" >> "${summary_file}"
+            done
+          done
+
+          {
+            echo ""
+            echo "**Legend:** :warning: = exceptions detected, :no_entry: = invalid blocks detected"
+            echo ""
+            echo "**Delta vs First** shows the percentage change in AVG processing time compared to the first image in the list."
+          } >> "${summary_file}"
+
+          echo "--- Multi-Image Summary ---"
+          cat "${summary_file}"
+
+          cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
