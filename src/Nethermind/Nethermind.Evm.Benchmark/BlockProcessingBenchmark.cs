@@ -28,6 +28,7 @@ using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Test;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -59,6 +60,8 @@ namespace Nethermind.Evm.Benchmark;
 /// - EmptyBlock, SingleTransfer, Transfers_50, Transfers_200
 /// - Eip1559_200, AccessList_50, ContractDeploy_10
 /// - ContractCall_200, MixedBlock (100 legacy + 60 EIP-1559 + 30 AL + 10 calls)
+/// - ERC20_Transfer_200 (storage-heavy: 2 SLOAD + 2 SSTORE + 2 KECCAK per tx)
+/// - Swap_200 (storage-heavy: 8 SLOAD + 6 SSTORE + 1 KECCAK per tx)
 /// </summary>
 [Config(typeof(BlockProcessingConfig))]
 [MemoryDiagnoser]
@@ -103,6 +106,9 @@ public class BlockProcessingBenchmark
 
     private static readonly IReleaseSpec Spec = Osaka.Instance;
 
+    private static readonly Address Erc20Address = Address.FromNumber(0x1000);
+    private static readonly Address SwapAddress = Address.FromNumber(0x2000);
+
     private static readonly byte[] ContractCode = Prepare.EvmCode
         .PushData(0x01)
         .Op(Instruction.STOP)
@@ -143,6 +149,8 @@ public class BlockProcessingBenchmark
     private Block _contractDeploy10Block = null!;
     private Block _contractCall200Block = null!;
     private Block _mixedBlock = null!;
+    private Block _erc20Transfer200Block = null!;
+    private Block _swap200Block = null!;
 
     private BlockHeader _header = null!;
 
@@ -185,6 +193,9 @@ public class BlockProcessingBenchmark
         BuildContractCalls(10, nonce).CopyTo(mixedTxs, 190);
         _mixedBlock = BuildBlock(mixedTxs);
 
+        _erc20Transfer200Block = BuildBlock(BuildErc20Transfers(200, 0));
+        _swap200Block = BuildBlock(BuildSwapCalls(200, 0));
+
         // Build DI container using standard modules instead of hand-wiring.
         // TestNethermindModule wires PseudoNethermindModule + TestEnvironmentModule
         // with TestSpecProvider(Osaka.Instance) and in-memory databases.
@@ -222,6 +233,29 @@ public class BlockProcessingBenchmark
             stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, StopCode, Spec);
             stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, UInt256.Zero);
             stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, StopCode, Spec);
+
+            // ── ERC20 contract: deploy code and pre-seed sender balance ──
+            stateProvider.CreateAccount(Erc20Address, UInt256.Zero);
+            stateProvider.InsertCode(Erc20Address, StorageBenchmarkContracts.BuildErc20RuntimeCode(), Spec);
+
+            UInt256 senderBalanceSlot = StorageBenchmarkContracts.ComputeMappingSlot(_sender, UInt256.Zero);
+            byte[] senderBalance = new byte[32];
+            ((UInt256)1_000_000).ToBigEndian(senderBalance);
+            stateProvider.Set(new StorageCell(Erc20Address, senderBalanceSlot), senderBalance);
+
+            // ── Swap contract: deploy code and pre-seed pool state ──
+            stateProvider.CreateAccount(SwapAddress, UInt256.Zero);
+            stateProvider.InsertCode(SwapAddress, StorageBenchmarkContracts.BuildSwapRuntimeCode(), Spec);
+
+            // Pre-seed slots 0-7 with non-zero values so SSTOREs are non-zero→non-zero (2,900 gas, not 20,000)
+            SeedSwapSlot(stateProvider, 0, 1_000_000_000);    // reserve0
+            SeedSwapSlot(stateProvider, 1, 1_000_000_000);    // reserve1
+            SeedSwapSlot(stateProvider, 2, 500_000);           // totalLiquidity
+            SeedSwapSlot(stateProvider, 3, 30);                // feeNumerator (initial accumulator)
+            SeedSwapSlot(stateProvider, 4, 1);                 // lastTimestamp
+            SeedSwapSlot(stateProvider, 5, 1);                 // priceCumulative0
+            SeedSwapSlot(stateProvider, 6, 1);                 // priceCumulative1
+            SeedSwapSlot(stateProvider, 7, 1_000_000_000);    // kLast
 
             stateProvider.Commit(Spec);
             stateProvider.CommitTree(0);
@@ -335,6 +369,26 @@ public class BlockProcessingBenchmark
         return result;
     }
 
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] ERC20_Transfer_200()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_erc20Transfer200Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Swap_200()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_swap200Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
     // ── Block builder ─────────────────────────────────────────────────────
 
     private Block BuildBlock(params Transaction[] transactions)
@@ -431,5 +485,55 @@ public class BlockProcessingBenchmark
                 .TestObject;
         }
         return txs;
+    }
+
+    private Transaction[] BuildErc20Transfers(int count, int startNonce)
+    {
+        Transaction[] txs = new Transaction[count];
+        for (int i = 0; i < count; i++)
+        {
+            // Calldata: [to (32 bytes), amount (32 bytes)]
+            byte[] calldata = new byte[64];
+            Address.FromNumber((UInt256)(100 + i)).Bytes.CopyTo(calldata.AsSpan(12));
+            ((UInt256)1).ToBigEndian(calldata.AsSpan(32));
+
+            txs[i] = Build.A.Transaction
+                .WithNonce((UInt256)(startNonce + i))
+                .WithTo(Erc20Address)
+                .WithData(calldata)
+                .WithGasLimit(100_000)
+                .WithGasPrice(2.GWei())
+                .SignedAndResolved(_senderKey)
+                .TestObject;
+        }
+        return txs;
+    }
+
+    private Transaction[] BuildSwapCalls(int count, int startNonce)
+    {
+        Transaction[] txs = new Transaction[count];
+        for (int i = 0; i < count; i++)
+        {
+            // Calldata: [amountIn (32 bytes)]
+            byte[] calldata = new byte[32];
+            ((UInt256)(i + 1)).ToBigEndian(calldata);
+
+            txs[i] = Build.A.Transaction
+                .WithNonce((UInt256)(startNonce + i))
+                .WithTo(SwapAddress)
+                .WithData(calldata)
+                .WithGasLimit(200_000)
+                .WithGasPrice(2.GWei())
+                .SignedAndResolved(_senderKey)
+                .TestObject;
+        }
+        return txs;
+    }
+
+    private static void SeedSwapSlot(IWorldState stateProvider, UInt256 slot, UInt256 value)
+    {
+        byte[] bytes = new byte[32];
+        value.ToBigEndian(bytes);
+        stateProvider.Set(new StorageCell(SwapAddress, slot), bytes);
     }
 }
