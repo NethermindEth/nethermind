@@ -3,9 +3,9 @@
 
 using System.Runtime.CompilerServices;
 
-namespace Nethermind.Stateless.ZiskGuest;
+namespace Nethermind.Stateless.ZiskGuest.Zisk;
 
-public static unsafe partial class Zisk
+public static unsafe partial class IO
 {
     private const ulong INPUT_ADDR = 0x90000000UL;
     private const ulong OUTPUT_ADDR = 0xa0010000UL;

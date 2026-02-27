@@ -99,10 +99,12 @@ build-zisk: build-dotnet-zisk build-docker-bflat
 		$(BFLAT_BUILD) --libc zisk $(BFLAT_REFS) \
 		--extlib https://github.com/NethermindEth/bflat-libziskos:pre-develop-0.16.0 \
 		$(SRC_DIR)/Program.cs \
-		$(SRC_DIR)/Zisk.Memory.cs \
-		$(SRC_DIR)/Zisk.Precompiles.cs
+		$(SRC_DIR)/Zisk/Crypto.cs \
+		$(SRC_DIR)/Zisk/IO.cs \
+		$(SRC_DIR)/Zisk/Precompiles.cs
 	mkdir -p $(ZISK_DIR)/bin && \
-		mv -f $(ZISK_DIR)/Program.patched $(ZISK_DIR)/bin/nethermind
+		mv -f $(ZISK_DIR)/Program.patched $(ZISK_DIR)/bin/nethermind && \
+		rm -f $(ZISK_DIR)/Program
 
 run-tester: build-tester
 	docker build --platform linux/amd64 -t zkvm-tester $(TESTER_DIR)

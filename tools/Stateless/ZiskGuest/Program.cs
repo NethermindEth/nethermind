@@ -12,7 +12,7 @@ class Program
 {
     static int Main()
     {
-        byte[] input = Zisk.ReadInput();
+        byte[] input = Zisk.IO.ReadInput();
 
         Block block = StatelessExecutor.Execute(input);
 
@@ -20,7 +20,7 @@ class Program
         var size = sizeof(uint);
 
         for (int i = 0, count = hash.Length / size; i < count; i++)
-            Zisk.SetOutput(i, BinaryPrimitives.ReadUInt32BigEndian(hash[(i * size)..]));
+            Zisk.IO.SetOutput(i, BinaryPrimitives.ReadUInt32BigEndian(hash[(i * size)..]));
 
         return 0;
     }
