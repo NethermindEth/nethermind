@@ -246,7 +246,7 @@ class Program
         };
 
         BlockHeader? baseBlock = null;
-        foreach (BlockHeader header in witness.DecodedHeaders)
+        foreach (BlockHeader header in witness.DecodeHeaders())
         {
             if (header.Hash == suggestedBlock.Header.ParentHash)
             {
