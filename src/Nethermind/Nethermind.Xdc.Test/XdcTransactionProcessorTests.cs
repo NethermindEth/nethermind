@@ -66,11 +66,15 @@ internal class XdcTransactionProcessorTests
         _worldStateCloser.Dispose();
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void PayFees_IsTipTrc21FeeEnabled_ShouldPayFeesToTheCorrectAddress(bool tipTrc21FeeEnabled)
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void PayFees_IsTipTrc21FeeEnabled_ShouldPayFeesToTheCorrectAddress(
+        bool tipTrc21FeeEnabled,
+        bool isEip1559Enabled)
     {
         _spec.IsTipTrc21FeeEnabled.Returns(tipTrc21FeeEnabled);
+        _spec.IsEip1559Enabled.Returns(isEip1559Enabled);
 
         long spentGas = 21000;
         UInt256 premiumPerGas = 9;
@@ -81,14 +85,14 @@ internal class XdcTransactionProcessorTests
         _stateProvider!.CreateAccount(beneficiaryAddress, AccountBalance);
         _stateProvider.CreateAccount(ownerAddress, UInt256.Zero);
 
-        _masternodeVotingContract.GetCandidateOwnerDuringProcessing(Arg.Any<XdcTransactionProcessor>(), Arg.Any<XdcBlockHeader>(), beneficiaryAddress)
+        _masternodeVotingContract.GetCandidateOwner(Arg.Any<XdcTransactionProcessor>(), Arg.Any<XdcBlockHeader>(), beneficiaryAddress)
             .Returns(ownerAddress);
 
         Transaction tx = Build.A.Transaction
-            .WithGasPrice(10)
             .WithMaxFeePerGas(10)
             .WithMaxPriorityFeePerGas(9)
             .WithGasLimit(21000)
+            .WithType(isEip1559Enabled ? TxType.EIP1559 : TxType.Legacy)
             .TestObject;
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
@@ -98,6 +102,8 @@ internal class XdcTransactionProcessorTests
         header.Beneficiary = beneficiaryAddress;
 
         TransactionSubstate substate = default;
+
+        _transactionProcessor!.SetBlockExecutionContext(header);
 
         FeesTracer tracer = new();
         UInt256 initialBeneficiaryBalance = _stateProvider.GetBalance(beneficiaryAddress);
@@ -112,7 +118,8 @@ internal class XdcTransactionProcessorTests
 
         if (tipTrc21FeeEnabled)
         {
-            UInt256 expectedFees = tx.GasPrice * (ulong)spentGas;
+            UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(_spec.IsEip1559Enabled, header.BaseFeePerGas);
+            UInt256 expectedFees = effectiveGasPrice * (ulong)spentGas;
             Assert.That(ownerReceivedFees, Is.EqualTo(expectedFees));
             Assert.That(beneficiaryReceivedFees, Is.EqualTo(UInt256.Zero));
         }

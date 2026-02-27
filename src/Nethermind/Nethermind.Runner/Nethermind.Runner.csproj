@@ -89,9 +89,6 @@
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
     <None Remove="keystore\**" />
-    <Content Remove="configs\xdc-archive.json" />
-    <Content Remove="configs\xdc-mine.json" />
-    <Content Remove="configs\xdc-test.json" />
     <Content Remove="runtimeconfig.template.json" />
     <None Include="runtimeconfig.template.json" />
     <Content Remove="wwwroot\**" />

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Specs;
@@ -14,10 +13,11 @@ internal class XdcRewardCalculatorSource(
     IEpochSwitchManager epochSwitchManager,
     ISpecProvider specProvider,
     IBlockTree blockTree,
-    IMasternodeVotingContract masternodeVotingContract) : IRewardCalculatorSource
+    IMasternodeVotingContract masternodeVotingContract,
+    ISigningTxCache signingTxCache) : IRewardCalculatorSource
 {
     public IRewardCalculator Get(ITransactionProcessor processor)
     {
-        return new XdcRewardCalculator(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, processor);
+        return new XdcRewardCalculator(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, signingTxCache, processor);
     }
 }

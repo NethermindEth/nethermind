@@ -20,7 +20,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
@@ -30,12 +29,13 @@ using Nethermind.TxPool;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.TxPool;
 
 namespace Nethermind.Xdc;
 
 public class XdcModule : Module
 {
-    private const string SnapshotDbName = "Snapshots";
+    private const string SnapshotDbName = "XdcSnapshots";
 
     protected override void Load(ContainerBuilder builder)
     {
@@ -73,7 +73,11 @@ public class XdcModule : Module
             // sealer
             .AddSingleton<ISealer, XdcSealer>()
 
+            // signing transactions cache
+            .AddSingleton<ISigningTxCache, SigningTxCache>()
+
             // penalty handler
+            .AddSingleton<IPenaltyHandler, PenaltyHandler>()
 
             // reward handler
             .AddDecorator<IRewardCalculatorSource, XdcRewardCalculatorSource>()
@@ -87,13 +91,14 @@ public class XdcModule : Module
             .AddSingleton<IUnclesValidator, MustBeEmptyUnclesValidator>()
 
             // managers
+            .AddSingleton<IMasternodesCalculator, MasternodesCalculator>()
             .AddSingleton<IVotesManager, VotesManager>()
             .AddSingleton<IQuorumCertificateManager, QuorumCertificateManager>()
             .AddSingleton<ITimeoutCertificateManager, TimeoutCertificateManager>()
             .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(SnapshotDbName)
-            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
+            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
             .AddSingleton<ISignTransactionManager, ISigner, ITxPool, ILogManager>(CreateSignTransactionManager)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
@@ -104,18 +109,15 @@ public class XdcModule : Module
             .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
             .AddSingleton<XdcStateSyncSnapshotManager>()
             .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
+            .AddSingleton<ISyncDownloader<StateSyncBatch>, XdcStateSyncDownloader>()
 
-            .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
-
-            // block processing
-            .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
 
             //Network
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
             .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
             .AddSingleton(new BlockDecoder(new XdcHeaderDecoder()))
             .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
-            .AddMessageSerializer<SyncInfoMsg, SyncinfoMsgSerializer>()
+            .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
             .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
@@ -124,21 +126,12 @@ public class XdcModule : Module
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
             .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
-            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
-
-
-            //Sync
-            .AddSingleton<CreateSnapshotOnStateSyncFinished>()
-                .OnActivate<ISyncFeed<StateSyncBatch>>((_, ctx) =>
-                {
-                    ctx.Resolve<CreateSnapshotOnStateSyncFinished>();
-                })
-            ;
+            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
     }
 
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
+    private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
     {
-        return new SnapshotManager(db, blockTree, penaltyHandler, votingContract, specProvider);
+        return new SnapshotManager(db, blockTree, votingContract, specProvider);
     }
     private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager)
     {

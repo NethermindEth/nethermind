@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -22,6 +21,8 @@ internal static class XdcConstants
 
     public const int InMemoryRound2Epochs = 65536;   // One epoch ~ 0.5h, 65536 epochs ~ 3.7y, ~10MB memory
 
+    public const int BlockSignersCacheLimit = 9000;
+
     public const long DefaultTargetGasLimit = 84000000; // XDC default gas limit per block
 
     public const byte ConsensusVersion = 0x02;
@@ -30,7 +31,6 @@ internal static class XdcConstants
 
     // --- Compile-time constants ---
     public const int InMemorySnapshots = 128;       // Number of recent vote snapshots to keep in memory
-    public const int BlockSignersCacheLimit = 9000;
     public const int M2ByteLength = 4;
 
     public const int PeriodicJobPeriod = 60;
@@ -39,7 +39,7 @@ internal static class XdcConstants
 
     public static readonly Hash256 UncleHash = Keccak.OfAnEmptySequenceRlp; // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW
     public static readonly UInt256 DifficultyDefault = UInt256.One;
-
+    public const int MinimumMinerBlockPerEpoch = 1;
 
     public static readonly byte[] SetSecret = Bytes.FromHexString("34d38600");
     public static readonly byte[] SetOpening = Bytes.FromHexString("e11f5ba2");
@@ -48,4 +48,7 @@ internal static class XdcConstants
     public static readonly byte[] ProposeMethod = Bytes.FromHexString("0x01267951");
     public static readonly byte[] ResignMethod = Bytes.FromHexString("0xae6e43f5");
     public static readonly byte[] SignMethod = Bytes.FromHexString("0xe341eaa4");
+
+    // 4-byte selector + 32-byte block number + 32-byte block hash
+    public const int SignTransactionDataLength = 68;
 }

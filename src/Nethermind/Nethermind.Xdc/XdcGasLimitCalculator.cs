@@ -6,9 +6,6 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc;
 

@@ -14,7 +14,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
-using System.Linq;
 
 namespace Nethermind.Xdc;
 
@@ -63,12 +62,14 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         }
 
         Address coinbase = header.GasBeneficiary!;
-        Address owner = _masternodeVotingContract.GetCandidateOwnerDuringProcessing(this, header, coinbase);
+        Address owner = _masternodeVotingContract.GetCandidateOwner(this, header, coinbase);
 
         if (owner is null || owner == Address.Zero)
             return;
 
-        UInt256 fee = tx.GasPrice * (ulong)spentGas;
+        UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
+        UInt256 fee = effectiveGasPrice * (ulong)spentGas;
+
         WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
 
         if (tracer.IsTracingFees)

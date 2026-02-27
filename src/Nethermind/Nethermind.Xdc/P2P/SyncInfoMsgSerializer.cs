@@ -3,17 +3,13 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Stats.SyncLimits;
 using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc.P2P;
 
-internal class SyncinfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
+internal class SyncInfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
 {
     private static readonly SyncInfoDecoder _syncInfoDecoder = new SyncInfoDecoder();
 

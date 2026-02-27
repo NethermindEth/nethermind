@@ -18,7 +18,7 @@ internal class ProposedBlockTests
     [Test]
     public async Task TestShouldSendVoteMsgAndCommitGreatGrandparentBlockAsync()
     {
-        var blockChain = await XdcTestBlockchain.Create(2, true);
+        using var blockChain = await XdcTestBlockchain.Create(2, true);
 
         await blockChain.AddBlockWithoutCommitQc();
 
@@ -65,7 +65,7 @@ internal class ProposedBlockTests
     [Test]
     public async Task TestShouldNotCommitIfRoundsNotContinousFor3Rounds()
     {
-        var blockChain = await XdcTestBlockchain.Create(2, true);
+        using var blockChain = await XdcTestBlockchain.Create(2, true);
 
         await blockChain.AddBlock();
 
@@ -92,7 +92,7 @@ internal class ProposedBlockTests
     [Test]
     public async Task TestProposedBlockMessageHandlerSuccessfullyGenerateVote()
     {
-        var blockChain = await XdcTestBlockchain.Create(2, true);
+        using var blockChain = await XdcTestBlockchain.Create(2, true);
 
         await blockChain.AddBlockWithoutCommitQc();
 
@@ -128,7 +128,7 @@ internal class ProposedBlockTests
         //Starting here will trigger the final vote to be cast
         blockChain.StartHotStuffModule();
 
-        var waitTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(5_000));
+        var waitTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(10_000));
         if (waitTask != newRoundWaitHandle.Task)
         {
             Assert.Fail("Timed out waiting for the round to start. The vote threshold was not reached?");
@@ -142,7 +142,7 @@ internal class ProposedBlockTests
     [TestCase(30)]
     public async Task CanBuildAFinalizedChain(int count)
     {
-        var blockChain = await XdcTestBlockchain.Create(0, true);
+        using var blockChain = await XdcTestBlockchain.Create(0, true);
         blockChain.ChangeReleaseSpec((s) =>
         {
             s.EpochLength = 90;
@@ -167,7 +167,7 @@ internal class ProposedBlockTests
     [Test]
     public async Task TestProposedBlockMessageHandlerNotGenerateVoteIfSignerNotInMNlist()
     {
-        var blockChain = await XdcTestBlockchain.Create(2, true);
+        using var blockChain = await XdcTestBlockchain.Create(2, true);
 
         await blockChain.AddBlockWithoutCommitQc();
 
@@ -198,7 +198,7 @@ internal class ProposedBlockTests
 
         var roundCountBeforeStart = blockChain.XdcContext.CurrentRound;
 
-        //Should not cause any new vote to be cast 
+        //Should not cause any new vote to be cast
         blockChain.StartHotStuffModule();
 
         await Task.Delay(100);

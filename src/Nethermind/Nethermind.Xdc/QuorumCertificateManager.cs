@@ -142,13 +142,13 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
     public bool VerifyCertificate(QuorumCertificate qc, [NotNullWhen(false)] out string error)
     {
-        XdcBlockHeader certicateTarget = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
-        if (certicateTarget is null)
+        XdcBlockHeader certificateTarget = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
+        if (certificateTarget is null)
         {
             error = $"Certificate target block not found hash={qc.ProposedBlockInfo.Hash}";
             return false;
         }
-        return VerifyCertificate(qc, certicateTarget, out error);
+        return VerifyCertificate(qc, certificateTarget, out error);
     }
 
     public bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader certificateTarget, [NotNullWhen(false)] out string error)

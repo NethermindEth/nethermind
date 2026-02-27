@@ -9,7 +9,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Immutable;
 
 namespace Nethermind.Xdc;
 

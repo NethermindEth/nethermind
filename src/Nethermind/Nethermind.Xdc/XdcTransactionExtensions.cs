@@ -4,8 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Xdc.Spec;
 using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc;
 
@@ -24,6 +22,16 @@ internal static partial class XdcExtensions
     public static bool IsLendingTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXLendingAddressBinary && spec.IsTIPXDCXMiner;
     public static bool IsLendingFinalizedTradeTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXLendingFinalizedTradeAddressBinary && spec.IsTIPXDCXMiner;
     public static bool IsTradingStateTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.TradingStateAddressBinary && spec.IsTIPXDCXMiner;
+
+    public static bool IsSigningTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
+    {
+        var targetIsSignContract = currentTx.To is not null && (currentTx.To == spec.BlockSignerContract);
+        if (!targetIsSignContract) return false;
+
+        if (currentTx.Data.Length != XdcConstants.SignTransactionDataLength) return false;
+
+        return currentTx.Data.Span.Slice(0, 4).SequenceEqual(XdcConstants.SignMethod);
+    }
 
     public static bool IsSkipNonceTransaction(this Transaction currentTx, IXdcReleaseSpec spec) =>
         currentTx.To is not null

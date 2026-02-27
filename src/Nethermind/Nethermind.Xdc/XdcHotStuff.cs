@@ -27,7 +27,7 @@ namespace Nethermind.Xdc
         private readonly ISpecProvider _specProvider;
         private readonly IBlockProducer _blockBuilder;
         private readonly IEpochSwitchManager _epochSwitchManager;
-        private readonly ISnapshotManager _snapshotManager;
+        private readonly IMasternodesCalculator _masternodesCalculator;
         private readonly IQuorumCertificateManager _quorumCertificateManager;
         private readonly IVotesManager _votesManager;
         private readonly ISigner _signer;
@@ -56,7 +56,7 @@ namespace Nethermind.Xdc
             ISpecProvider specProvider,
             IBlockProducer blockBuilder,
             IEpochSwitchManager epochSwitchManager,
-            ISnapshotManager snapshotManager,
+            IMasternodesCalculator masternodesCalculator,
             IQuorumCertificateManager quorumCertificateManager,
             IVotesManager votesManager,
             ISigner signer,
@@ -70,7 +70,7 @@ namespace Nethermind.Xdc
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
             _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
-            _snapshotManager = snapshotManager;
+            _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
             _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
             _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
@@ -379,7 +379,8 @@ namespace Nethermind.Xdc
             if (e.Block.Header is not XdcBlockHeader xdcHead)
                 throw new InvalidOperationException($"Expected an XDC header, but got {e.Block.Header.GetType().FullName}");
 
-            _logger.Info($"New head block #{xdcHead.Number}, round={xdcHead.ExtraConsensusData?.BlockRound}, our round={_xdcContext.CurrentRound}");
+            if (_logger.IsDebug)
+                _logger.Debug($"New head block #{xdcHead.Number}, round={xdcHead.ExtraConsensusData?.BlockRound}, our round={_xdcContext.CurrentRound}");
 
             if (xdcHead.ExtraConsensusData is null)
                 throw new InvalidOperationException("New head block missing ExtraConsensusData");
@@ -433,7 +434,7 @@ namespace Nethermind.Xdc
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
                 //TODO calculate master nodes based on the current round
-                (currentMasternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash, spec);
+                (currentMasternodes, _) = _masternodesCalculator.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash, spec);
             }
             else
             {

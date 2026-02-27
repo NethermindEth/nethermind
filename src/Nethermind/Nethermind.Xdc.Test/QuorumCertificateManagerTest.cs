@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
@@ -116,7 +117,7 @@ public class QuorumCertificateManagerTest
             Substitute.For<ILogManager>());
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 1, 0)).TestObject;
 
-        Assert.That(() => quorumCertificateManager.CommitCertificate(qc), Throws.TypeOf<InvalidBlockException>());
+        Assert.That(() => quorumCertificateManager.CommitCertificate(qc), Throws.TypeOf<IncomingMessageBlockNotFoundException>());
     }
 
     [Test]
