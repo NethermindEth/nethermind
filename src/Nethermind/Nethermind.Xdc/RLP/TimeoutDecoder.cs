@@ -4,7 +4,6 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
-using System;
 
 namespace Nethermind.Xdc.RLP;
 
@@ -12,8 +11,11 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
 {
     protected override Timeout DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
+        {
+            decoderContext.ReadByte();
             return null;
+        }
         int sequenceLength = decoderContext.ReadSequenceLength();
         int endPosition = decoderContext.Position + sequenceLength;
 
@@ -37,8 +39,11 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
 
     protected override Timeout DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (rlpStream.IsNextItemNull())
+        if (rlpStream.IsNextItemEmptyList())
+        {
+            rlpStream.ReadByte();
             return null;
+        }
         int sequenceLength = rlpStream.ReadSequenceLength();
         int endPosition = rlpStream.Position + sequenceLength;
 
@@ -61,7 +66,7 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
     public Rlp Encode(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptySequence;
+            return Rlp.OfEmptyList;
 
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);
