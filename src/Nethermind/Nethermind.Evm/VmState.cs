@@ -215,8 +215,10 @@ public class VmState<TGasPolicy> : IDisposable
     public Address From => ExecutionType switch
     {
         ExecutionType.STATICCALL or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE
-            or ExecutionType.CREATE2 or ExecutionType.TRANSACTION => Env.Caller,
-        ExecutionType.DELEGATECALL => Env.ExecutingAccount,
+            or ExecutionType.CREATE2 or ExecutionType.TRANSACTION
+            or ExecutionType.EOFCALL or ExecutionType.EOFSTATICCALL
+            or ExecutionType.EOFCREATE or ExecutionType.TXCREATE => Env.Caller,
+        ExecutionType.DELEGATECALL or ExecutionType.EOFDELEGATECALL => Env.ExecutingAccount,
         _ => throw new ArgumentOutOfRangeException(),
     };
 
