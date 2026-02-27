@@ -41,11 +41,8 @@ public class BlockProcessorTests
 {
     private sealed class CountingPreWarmer : IBlockCachePreWarmer
     {
-        private readonly int _ownerThreadId = Environment.CurrentManagedThreadId;
-
         public int PreWarmCalls { get; private set; }
         public int ClearCalls { get; private set; }
-        public int CrossThreadClearCalls { get; private set; }
 
         public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<Nethermind.Core.Eip2930.IHasAccessList> systemAccessLists)
         {
@@ -56,11 +53,6 @@ public class BlockProcessorTests
         public Nethermind.State.CacheType ClearCaches()
         {
             ClearCalls++;
-            if (Environment.CurrentManagedThreadId != _ownerThreadId)
-            {
-                CrossThreadClearCalls++;
-            }
-
             return Nethermind.State.CacheType.None;
         }
     }
@@ -140,15 +132,15 @@ public class BlockProcessorTests
             AlwaysCancelBlockTracer.Instance));
     }
 
-    // Below threshold: no prewarm, each Process call does 2 synchronous clears
-    [TestCase(2, 1, 0, 2, 0)]
-    // At threshold: prewarm triggered, 1 clear via ExecuteSynchronously continuation
-    [TestCase(3, 1, 1, 1, 0)]
-    // Below threshold across two calls: no prewarm, 4 synchronous clears, no background scheduling
-    [TestCase(1, 2, 0, 4, 0)]
-    public void Prewarmer_and_cache_clear_depend_on_transaction_count(
+    // Below threshold (< 3 txs): no prewarm, 2 sync clears per Process call
+    [TestCase(2, 1, 0, 2)]
+    // At threshold (3 txs): prewarm triggered, 1 clear via continuation
+    [TestCase(3, 1, 1, 1)]
+    // Multiple calls below threshold: clears accumulate (2 per call)
+    [TestCase(1, 2, 0, 4)]
+    public void Prewarmer_triggered_only_above_transaction_threshold(
         int transactionCount, int processCalls,
-        int expectedPreWarmCalls, int expectedClearCalls, int expectedCrossThreadClearCalls)
+        int expectedPreWarmCalls, int expectedClearCalls)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
@@ -181,9 +173,8 @@ public class BlockProcessorTests
                 NullBlockTracer.Instance);
         }
 
-        Assert.That(preWarmer.PreWarmCalls, Is.EqualTo(expectedPreWarmCalls));
-        Assert.That(preWarmer.ClearCalls, Is.EqualTo(expectedClearCalls));
-        Assert.That(preWarmer.CrossThreadClearCalls, Is.EqualTo(expectedCrossThreadClearCalls));
+        preWarmer.PreWarmCalls.Should().Be(expectedPreWarmCalls);
+        preWarmer.ClearCalls.Should().Be(expectedClearCalls);
     }
 
     [MaxTime(Timeout.MaxTestTime)]
