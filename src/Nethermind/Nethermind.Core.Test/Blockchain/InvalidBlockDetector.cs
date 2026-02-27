@@ -24,12 +24,18 @@ public class InvalidBlockDetector
 
     internal class BlockProcessorInterceptor(IBlockProcessor baseBlockProcessor, InvalidBlockDetector invalidBlockDetector) : IBlockProcessor
     {
+        public event Action? TransactionsExecuted
+        {
+            add => baseBlockProcessor.TransactionsExecuted += value;
+            remove => baseBlockProcessor.TransactionsExecuted -= value;
+        }
+
         public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
-            IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default, Action? onTransactionsExecuted = null)
+            IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
         {
             try
             {
-                return baseBlockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token, onTransactionsExecuted);
+                return baseBlockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
             }
             catch (InvalidBlockException)
             {

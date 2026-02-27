@@ -19,13 +19,20 @@ namespace Nethermind.Consensus.Processing
     /// </summary>
     public interface IBlockProcessor
     {
+        /// <summary>
+        /// Raised after all transactions in a block have been executed,
+        /// before blooms, receipts root, and state root are computed.
+        /// Subscribers can use this to cancel background work (e.g. prewarmer)
+        /// so the thread pool is free for the parallel post-tx computations.
+        /// </summary>
+        event Action? TransactionsExecuted;
+
         public (Block Block, TxReceipt[] Receipts) ProcessOne(
             Block suggestedBlock,
             ProcessingOptions options,
             IBlockTracer blockTracer,
             IReleaseSpec spec,
-            CancellationToken token = default,
-            Action? onTransactionsExecuted = null);
+            CancellationToken token = default);
 
         public interface IBlockTransactionsExecutor
         {

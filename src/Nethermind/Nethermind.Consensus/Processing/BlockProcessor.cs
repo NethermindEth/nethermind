@@ -53,13 +53,15 @@ public partial class BlockProcessor(
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
-    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token, Action? onTransactionsExecuted = null)
+    public event Action? TransactionsExecuted;
+
+    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token, onTransactionsExecuted);
+        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -90,8 +92,7 @@ public partial class BlockProcessor(
         IBlockTracer blockTracer,
         ProcessingOptions options,
         IReleaseSpec spec,
-        CancellationToken token,
-        Action? onTransactionsExecuted = null)
+        CancellationToken token)
     {
         BlockHeader header = block.Header;
 
@@ -106,9 +107,9 @@ public partial class BlockProcessor(
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
-        // Signal that transactions are done — caller can cancel prewarmer to free ThreadPool
-        // for blooms, receipts root, state root parallel work below
-        onTransactionsExecuted?.Invoke();
+        // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
+        // to free the thread pool for blooms, receipts root, state root parallel work below
+        TransactionsExecuted?.Invoke();
 
         _stateProvider.Commit(spec, commitRoots: false);
 

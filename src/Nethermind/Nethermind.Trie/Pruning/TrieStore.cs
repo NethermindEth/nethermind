@@ -909,9 +909,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         INodeStorage? nodeStorage = doNotRemoveNodes ? null : _nodeStorage;
 
-        // Use bounded parallelism instead of creating 256 ThreadPool items (one per shard).
-        // Flooding the ThreadPool with 256 items starves critical-path block processing work
-        // (blooms, receipts root, state root) causing 400-600ms stalls.
+        // ParallelUnbalancedWork uses work-stealing (atomic counter) so fast-finishing shards
+        // don't leave threads idle — better than Parallel.For's range partitioning for the 256
+        // shards which have highly variable node counts. Also bounds thread count to avoid
+        // starving critical-path block processing work (blooms, receipts root, state root).
         ParallelUnbalancedWork.For(
             0,
             _dirtyNodes.Length,
