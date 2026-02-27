@@ -144,14 +144,14 @@ public class VoteDecoderTests
 
         Rlp encoded = decoder.Encode(null!);
 
-        Assert.That(encoded, Is.EqualTo(Rlp.OfEmptySequence));
+        Assert.That(encoded, Is.EqualTo(Rlp.OfEmptyList));
     }
 
     [Test]
     public void Decode_Null_ReturnsNull()
     {
         var decoder = new VoteDecoder();
-        var stream = new RlpStream(Rlp.OfEmptySequence.Bytes);
+        var stream = new RlpStream(Rlp.OfEmptyList.Bytes);
 
         Vote decoded = decoder.Decode(stream);
 
@@ -162,7 +162,7 @@ public class VoteDecoderTests
     public void Decode_EmptyByteArray_ValueDecoderContext_ReturnsNull()
     {
         var decoder = new VoteDecoder();
-        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(Rlp.OfEmptySequence.Bytes);
+        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(Rlp.OfEmptyList.Bytes);
 
         Vote decoded = decoder.Decode(ref decoderContext);
 
