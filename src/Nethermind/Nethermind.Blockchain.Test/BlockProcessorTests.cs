@@ -12,6 +12,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -23,6 +24,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
+using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -147,6 +149,179 @@ public class BlockProcessorTests
     }
 
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void TransactionsExecuted_event_fires_during_ProcessOne()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        BlockProcessor processor = new(HoodiSpecProvider.Instance,
+            TestBlockValidator.AlwaysValid,
+            NoBlockRewards.Instance,
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            stateProvider,
+            NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor));
+
+        bool eventFired = false;
+        processor.TransactionsExecuted += () => eventFired = true;
+
+        using IDisposable scope = stateProvider.BeginScope(null);
+        BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
+        Block block = Build.A.Block.WithHeader(header).TestObject;
+        IReleaseSpec spec = HoodiSpecProvider.Instance.GetSpec(block.Header);
+
+        processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+
+        eventFired.Should().BeTrue("TransactionsExecuted should fire after ProcessTransactions completes");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        BlockProcessor processor = new(HoodiSpecProvider.Instance,
+            TestBlockValidator.AlwaysValid,
+            NoBlockRewards.Instance,
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            stateProvider,
+            NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor));
+
+        // Manual prewarmer implementation that captures the CancellationToken.
+        // NSubstitute can't proxy ReadOnlySpan<T> (ref struct) parameters.
+        TokenCapturingPreWarmer preWarmer = new();
+
+        BranchProcessor branchProcessor = new(
+            processor,
+            HoodiSpecProvider.Instance,
+            stateProvider,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            preWarmer);
+
+        // Build a block with >= 3 txs so prewarming activates
+        BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
+        Block block = Build.A.Block.WithHeader(header).WithTransactions(3, MuirGlacier.Instance).TestObject;
+
+        branchProcessor.Process(
+            null,
+            new List<Block> { block },
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance);
+
+        preWarmer.CapturedToken.IsCancellationRequested.Should().BeTrue(
+            "prewarmer CancellationToken should be cancelled via TransactionsExecuted event after tx processing");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BranchProcessor_unsubscribes_from_TransactionsExecuted_after_processing()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        BlockProcessor processor = new(HoodiSpecProvider.Instance,
+            TestBlockValidator.AlwaysValid,
+            NoBlockRewards.Instance,
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            stateProvider,
+            NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor));
+
+        BranchProcessor branchProcessor = new(
+            processor,
+            HoodiSpecProvider.Instance,
+            stateProvider,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance);
+
+        BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
+        Block block = Build.A.Block.WithHeader(header).TestObject;
+
+        branchProcessor.Process(
+            null,
+            new List<Block> { block },
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance);
+
+        // After Process returns, the event handler should be unsubscribed.
+        // Verify by checking that firing the event doesn't cause issues
+        // (if still subscribed, it would try to cancel a disposed CTS).
+        int externalHandlerCallCount = 0;
+        processor.TransactionsExecuted += () => externalHandlerCallCount++;
+
+        // Process another block to trigger the event — only our handler should fire
+        using IDisposable scope = stateProvider.BeginScope(null);
+        Block block2 = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
+        IReleaseSpec spec = HoodiSpecProvider.Instance.GetSpec(block2.Header);
+        processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+
+        externalHandlerCallCount.Should().Be(1, "only the externally subscribed handler should fire, BranchProcessor should have unsubscribed");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BranchProcessor_no_prewarmer_still_processes_successfully()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        BlockProcessor processor = new(HoodiSpecProvider.Instance,
+            TestBlockValidator.AlwaysValid,
+            NoBlockRewards.Instance,
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            stateProvider,
+            NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor));
+
+        // No prewarmer — TransactionsExecuted event still fires but cancel is a no-op
+        BranchProcessor branchProcessor = new(
+            processor,
+            HoodiSpecProvider.Instance,
+            stateProvider,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            preWarmer: null);
+
+        BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
+        Block block = Build.A.Block.WithHeader(header).WithTransactions(3, MuirGlacier.Instance).TestObject;
+
+        Block[] processedBlocks = branchProcessor.Process(
+            null,
+            new List<Block> { block },
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance);
+
+        processedBlocks.Should().HaveCount(1, "block should process successfully without a prewarmer");
+    }
+
+    [Test]
+    public void NullBlockProcessor_TransactionsExecuted_subscribe_unsubscribe_is_safe()
+    {
+        IBlockProcessor processor = NullBlockProcessor.Instance;
+
+        // Should not throw
+        Action handler = () => { };
+        processor.TransactionsExecuted += handler;
+        processor.TransactionsExecuted -= handler;
+    }
+
     [Test]
     public void BlockProductionTransactionPicker_validates_block_length_using_proper_tx_form()
     {
@@ -170,5 +345,23 @@ public class BlockProcessorTests
         txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider);
 
         Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm));
+    }
+
+    /// <summary>
+    /// Manual IBlockCachePreWarmer that captures the CancellationToken for test verification.
+    /// NSubstitute cannot proxy ReadOnlySpan&lt;T&gt; (ref struct) parameters.
+    /// </summary>
+    private class TokenCapturingPreWarmer : IBlockCachePreWarmer
+    {
+        public CancellationToken CapturedToken { get; private set; }
+
+        public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec,
+            CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
+        {
+            CapturedToken = cancellationToken;
+            return Task.CompletedTask;
+        }
+
+        public CacheType ClearCaches() => default;
     }
 }
