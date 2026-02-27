@@ -14,7 +14,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
-using System.Linq;
 
 namespace Nethermind.Xdc;
 
@@ -71,7 +70,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
         UInt256 fee = effectiveGasPrice * (ulong)spentGas;
 
-         WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
+        WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
 
         if (tracer.IsTracingFees)
             tracer.ReportFees(fee, UInt256.Zero);

@@ -163,7 +163,7 @@ internal class PenaltyTests
         chain.ChangeReleaseSpec(spec =>
         {
             spec.EpochLength = EpochLength;
-            spec.TipUpgradePenalty = activatePenaltyUpgrade ? 0 : long.MaxValue;
+            spec.IsTipUpgradePenaltyEnabled = activatePenaltyUpgrade;
             spec.RangeReturnSigner = 150;
             spec.LimitPenaltyEpoch = 2;
         });
@@ -200,6 +200,7 @@ internal class PenaltyTests
 
         var blockHeaders = new XdcBlockHeader[chainSize];
         var hashToHeader = new Dictionary<Hash256, XdcBlockHeader>();
+        var hashToBlock = new Dictionary<Hash256, Block>();
         var blocks = new Block[chainSize];
 
         for (int i = 0; i < chainSize; i++)
@@ -218,17 +219,20 @@ internal class PenaltyTests
             Hash256 hash = blockHeaders[i].Hash ?? blockHeaders[i].CalculateHash().ToHash256();
             hashToHeader[hash] = blockHeaders[i];
             blocks[i] = new Block(blockHeaders[i]);
+            hashToBlock[hash] = blocks[i];
         }
 
         blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>())
-            .Returns(ci => blockHeaders[(int)(long)ci.Args()[1]]);
+            .Returns(ci => hashToHeader[ci.ArgAt<Hash256>(0)]);
+        blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<long>())
+            .Returns(ci => hashToBlock.TryGetValue(ci.ArgAt<Hash256>(0), out Block? block) ? block : null);
         blockTree.Head.Returns(blocks.Last());
 
         IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
         xdcSpec.EpochLength.Returns(EpochLength);
         xdcSpec.SwitchBlock.Returns(0);
         xdcSpec.MergeSignRange.Returns(MergeSignRange);
-        xdcSpec.TipUpgradePenalty.Returns(0);
+        xdcSpec.IsTipUpgradePenaltyEnabled.Returns(true);
         xdcSpec.LimitPenaltyEpoch.Returns(limitPenaltyEpoch);
         xdcSpec.MinimumSigningTx.Returns(2);
         xdcSpec.MinimumMinerBlockPerEpoch.Returns(1);

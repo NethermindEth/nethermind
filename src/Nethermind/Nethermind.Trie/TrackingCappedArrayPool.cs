@@ -9,21 +9,19 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Trie;
 
 /// <summary>
 /// Track every rented CappedArray<byte> and return them all at once
 /// </summary>
-public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte> arrayPool = null, bool canBeParallel = true) : ICappedArrayPool, IDisposable
+public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>? arrayPool = null, bool canBeParallel = true) : ICappedArrayPool, IDisposable
 {
     private readonly ConcurrentQueue<byte[]>? _rentedQueue = canBeParallel ? new() : null;
     private readonly List<byte[]>? _rentedList = canBeParallel ? null : new(initialCapacity);
-    private readonly ArrayPool<byte>? _arrayPool = arrayPool;
 
-    public TrackingCappedArrayPool() : this(0)
-    {
-    }
+    public TrackingCappedArrayPool() : this(0) { }
 
     public CappedArray<byte> Rent(int size)
     {
@@ -32,8 +30,7 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
             return CappedArray<byte>.Empty;
         }
 
-        // Devirtualize shared array pool by referring directly to it
-        byte[] array = _arrayPool?.Rent(size) ?? ArrayPool<byte>.Shared.Rent(size);
+        byte[] array = arrayPool?.Rent(size) ?? SafeArrayPool<byte>.Shared.Rent(size);
         CappedArray<byte> rented = new(array, size);
         array.AsSpan().Clear();
         if (_rentedQueue is not null)
@@ -42,30 +39,30 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
         }
         else
         {
-            _rentedList.Add(array);
+            _rentedList!.Add(array);
         }
+
         return rented;
     }
 
-    public void Return(in CappedArray<byte> buffer)
-    {
-    }
+    public void Return(in CappedArray<byte> buffer) { }
 
     public void Dispose()
     {
-        if (_arrayPool is not null)
+        ArrayPool<byte> pool = arrayPool;
+        if (pool is not null)
         {
-            DisposeCustomArrayPool();
+            DisposeCustomArrayPool(pool);
             return;
         }
 
         ConcurrentQueue<byte[]>? rentedQueue = _rentedQueue;
         if (rentedQueue is not null)
         {
-            while (rentedQueue.TryDequeue(out byte[]? rentedBuffer))
+            while (rentedQueue.TryDequeue(out byte[] rentedBuffer))
             {
-                // Devirtualize shared array pool by referring directly to it
-                ArrayPool<byte>.Shared.Return(rentedBuffer);
+                // Devirtualize the shared array pool by referring directly to it
+                SafeArrayPool<byte>.Shared.Return(rentedBuffer);
             }
         }
         else
@@ -73,19 +70,17 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
             Span<byte[]> items = CollectionsMarshal.AsSpan(_rentedList);
             foreach (byte[] rentedBuffer in items)
             {
-                // Devirtualize shared array pool by referring directly to it
-                ArrayPool<byte>.Shared.Return(rentedBuffer);
+                SafeArrayPool<byte>.Shared.Return(rentedBuffer);
             }
         }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void DisposeCustomArrayPool()
+    private void DisposeCustomArrayPool(ArrayPool<byte> arrayPool)
     {
-        ArrayPool<byte> arrayPool = _arrayPool;
         if (_rentedQueue is not null)
         {
-            while (_rentedQueue.TryDequeue(out byte[]? rentedBuffer))
+            while (_rentedQueue.TryDequeue(out byte[] rentedBuffer))
             {
                 arrayPool.Return(rentedBuffer);
             }

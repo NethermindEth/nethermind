@@ -37,7 +37,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         if (results is null) return [];
 
         var header = (XdcBlockHeader)tree.FindHeader(results.Hash, results.BlockNumber);
-        if (header is null || header.PenaltiesAddress is null) return [];
+        if (header?.PenaltiesAddress is null) return [];
 
         return [.. header.PenaltiesAddress];
     }
@@ -66,16 +66,14 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
             listBlockHash.Add(currentHash);
         }
 
-        var header = tree.FindHeader(parentHash, parentNumber) as XdcBlockHeader;
+        var header = (XdcBlockHeader)tree.FindHeader(parentHash, number - 1);
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header!);
         Address[] preMasternodes = epochSwitchManager.GetEpochSwitchInfo(parentHash)!.Masternodes;
         var penalties = new HashSet<Address>();
 
-        int minMinerBlockPerEpoch = XdcConstants.MinimumMinerBlockPerEpoch;
-        if (currentSpec.TipUpgradePenalty <= number)
-        {
-            minMinerBlockPerEpoch = currentSpec.MinimumMinerBlockPerEpoch;
-        }
+        int minMinerBlockPerEpoch = currentSpec.IsTipUpgradePenaltyEnabled
+            ? currentSpec.MinimumMinerBlockPerEpoch
+            : XdcConstants.MinimumMinerBlockPerEpoch;
 
         foreach (var (miner, total) in minerStatistics)
         {
@@ -83,19 +81,16 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                 penalties.Add(miner);
         }
         penalties.UnionWith(
-            preMasternodes.Where(address => !minerStatistics.ContainsKey(address))
+            preMasternodes.Except(minerStatistics.Keys)
         );
 
-        bool isTipUpgradePenalty = currentSpec.TipUpgradePenalty <= number;
-        if (!isTipUpgradePenalty)
+        if (!currentSpec.IsTipUpgradePenaltyEnabled)
         {
             long comebackHeight = (currentSpec.LimitPenaltyEpochV2 + 1) * currentSpec.EpochLength + currentSpec.SwitchBlock;
-            var penComebacks = new HashSet<Address>();
-
             if (number > comebackHeight)
             {
                 Address[] prevPenalties = GetPreviousPenalties(parentHash, currentSpec, (ulong)currentSpec.LimitPenaltyEpochV2);
-                penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
+                var penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
 
                 var blockHashes = new HashSet<Hash256>();
                 var startRange = Math.Min((int)currentSpec.RangeReturnSigner, listBlockHash.Count) - 1;

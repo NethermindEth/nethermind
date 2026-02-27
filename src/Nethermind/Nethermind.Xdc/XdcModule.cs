@@ -30,12 +30,13 @@ using Nethermind.Xdc.Spec;
 using Nethermind.TxPool;
 
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Xdc.TxPool;
 
 namespace Nethermind.Xdc;
 
 public class XdcModule : Module
 {
-    private const string SnapshotDbName = "Snapshots";
+    private const string SnapshotDbName = "XdcSnapshots";
 
     protected override void Load(ContainerBuilder builder)
     {
@@ -111,11 +112,6 @@ public class XdcModule : Module
             .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
             .AddSingleton<ISyncDownloader<StateSyncBatch>, XdcStateSyncDownloader>()
 
-
-            .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
-
-            // block processing
-            .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
 
             //Network
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()

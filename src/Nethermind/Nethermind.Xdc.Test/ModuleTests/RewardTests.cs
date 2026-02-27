@@ -31,7 +31,7 @@ public class RewardTests
     [Test]
     public async Task TestHookRewardV2()
     {
-        var chain = await XdcTestBlockchain.Create();
+        using var chain = await XdcTestBlockchain.Create();
         var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
         var signingTxCache = new SigningTxCache(chain.BlockTree, chain.SpecProvider);
         chain.ChangeReleaseSpec(spec =>
@@ -51,7 +51,8 @@ public class RewardTests
             chain.SpecProvider,
             chain.BlockTree,
             masternodeVotingContract,
-            signingTxCache
+            signingTxCache,
+            Substitute.For<ITransactionProcessor>()
         );
 
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -185,6 +186,7 @@ public class RewardTests
             chain.SpecProvider,
             chain.BlockTree,
             masternodeVotingContract,
+            signingTxCache,
             Substitute.For<ITransactionProcessor>()
             signingTxCache
         );
@@ -359,7 +361,7 @@ public class RewardTests
             .Returns(ci => ci.ArgAt<Address>(2));
 
         var signingTxCache = new SigningTxCache(tree, specProvider);
-        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, signingTxCache);
+        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, signingTxCache, Substitute.For<ITransactionProcessor>());
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
         Assert.That(rewards, Has.Length.EqualTo(3));
@@ -390,7 +392,8 @@ public class RewardTests
             specProvider,
             blockTree,
             masternodeVotingContract,
-            signingTxCache
+            signingTxCache,
+            Substitute.For<ITransactionProcessor>()
             );
 
         var totalReward = UInt256.Parse("171000000000000000000");

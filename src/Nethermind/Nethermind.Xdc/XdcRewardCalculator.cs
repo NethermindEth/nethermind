@@ -26,13 +26,14 @@ namespace Nethermind.Xdc
     /// </summary>
     public class XdcRewardCalculator : IRewardCalculator
     {
+        // XDC rule: signing transactions are sampled/merged every N blocks (N=15 on XDC).
+        // Only block numbers that are multiples of MergeSignRange are considered when tallying signers.
         private readonly EthereumEcdsa _ethereumEcdsa;
         private readonly IEpochSwitchManager _epochSwitchManager;
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IMasternodeVotingContract _masternodeVotingContract;
         private readonly ISigningTxCache _signingTxCache;
-
         private readonly ITransactionProcessor _transactionProcessor;
 
         public XdcRewardCalculator(
@@ -165,8 +166,8 @@ namespace Nethermind.Xdc
         private Hash256 ExtractBlockHashFromSigningTxData(ReadOnlyMemory<byte> data)
         {
             ReadOnlySpan<byte> span = data.Span;
-            if (span.Length != 68)
-                throw new ArgumentException("Signing tx calldata must be exactly 68 bytes (4 + 32 + 32).", nameof(data));
+            if (span.Length != XdcConstants.SignTransactionDataLength)
+                throw new ArgumentException($"Signing tx calldata must be exactly {XdcConstants.SignTransactionDataLength} bytes.", nameof(data));
 
             // 36..67: bytes32 blockHash
             ReadOnlySpan<byte> hashBytes = span.Slice(36, 32);

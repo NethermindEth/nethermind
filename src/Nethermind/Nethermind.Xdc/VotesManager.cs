@@ -70,7 +70,6 @@ internal class VotesManager(
         _highestVotedRound = (long)blockInfo.Round;
 
         HandleVote(vote);
-        //TODO Broadcast vote to peers
         return Task.CompletedTask;
     }
 

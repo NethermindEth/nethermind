@@ -8,16 +8,15 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Types;
 using System;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.P2P;
 
@@ -145,5 +144,23 @@ internal class XdcProtocolHandler(
             return false;
         _notifiedTimeouts.Set(timeout.Hash);
         return true;
+    }
+
+    protected override void Handle(NewBlockMessage msg)
+    {
+        // XDC-only: run AddNewBlock on thread pool to avoid DotNetty event loop self-deadlock in TrieStoreScopeProvider.Commit (Task.WaitAll + ExecutorTaskScheduler).
+        msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                SyncServer.AddNewBlock(msg.Block, this);
+            }
+            catch (Exception e)
+            {
+                if (Logger.IsDebug) Logger.Debug($"Handling {msg} from {Node:c} failed: " + e.Message);
+                throw;
+            }
+        });
     }
 }

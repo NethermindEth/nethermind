@@ -5,13 +5,10 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
-using Nethermind.Xdc;
 using Nethermind.Xdc.Spec;
-using System;
 
 namespace Nethermind.Xdc.TxPool;
 
@@ -28,7 +25,7 @@ internal sealed class SignTransactionFilter(ISigner signer, IBlockTree blockTree
 
     private AcceptTxResult ValidateSignTransaction(Transaction tx, long headerNumber, IXdcReleaseSpec xdcSpec)
     {
-        if (tx.Data.Length < 68)
+        if (tx.Data.Length < XdcConstants.SignTransactionDataLength)
         {
             return AcceptTxResult.Invalid;
         }

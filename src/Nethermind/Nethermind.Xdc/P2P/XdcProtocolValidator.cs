@@ -5,8 +5,6 @@ using Nethermind.Blockchain;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.EventArg;
 using Nethermind.Stats;
 
 namespace Nethermind.Xdc.P2P;
@@ -23,14 +21,5 @@ internal class XdcProtocolValidator : ProtocolValidator
     {
     }
 
-    protected override bool ValidateEthProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)
-    {
-        SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs)eventArgs;
-        if (!ValidateNetworkId(session, syncPeerArgs.NetworkId))
-            return false;
-
-        if (!ValidateGenesisHash(session, syncPeerArgs))
-            return false;
-        return true;
-    }
+    protected override bool MustValidateForkId { get; set; } = false;
 }

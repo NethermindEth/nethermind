@@ -39,6 +39,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Core.Test.Modules;
 
 namespace Nethermind.Xdc.Test.Helpers;
 
@@ -231,8 +232,6 @@ public class XdcTestBlockchain : TestBlockchain
                 return txPool;
             })
 
-            .AddSingleton<IProcessExitSource>(new ProcessExitSource(TestContext.CurrentContext.CancellationToken))
-
             .AddSingleton<TestBlockchainUtil.Config, Configuration>((cfg) => new TestBlockchainUtil.Config(cfg.SlotTime))
 
             .AddSingleton((ctx) => new PoWTestBlockchainUtil(
@@ -286,21 +285,6 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.BlockSignerContract = new Address("0x00000000000000000000000000000000b000089");
         xdcSpec.RandomizeSMCBinary = new Address("0x00000000000000000000000000000000b000090");
         xdcSpec.FoundationWallet = new Address("0x0000000000000000000000000000000000000068");
-
-        xdcSpec.BlackListedAddresses =
-            [
-            new Address("0x00000000000000000000000000000000b1Ac701"),
-            new Address("0x00000000000000000000000000000000b1Ac702"),
-            new Address("0x00000000000000000000000000000000b1Ac703"),
-            new Address("0x00000000000000000000000000000000b1Ac704"),
-            new Address("0x00000000000000000000000000000000b1Ac705"),
-            new Address("0x00000000000000000000000000000000b1Ac706"),
-            new Address("0x00000000000000000000000000000000b1Ac707"),
-            ];
-        xdcSpec.MergeSignRange = 15;
-
-        xdcSpec.BlockSignerContract = new Address("0x00000000000000000000000000000000b000089");
-        xdcSpec.RandomizeSMCBinary = new Address("0x00000000000000000000000000000000b000090");
 
         V2ConfigParams[] v2ConfigParams = [
             new V2ConfigParams {
