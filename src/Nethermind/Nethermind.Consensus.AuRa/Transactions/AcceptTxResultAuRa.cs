@@ -10,6 +10,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
         /// <summary>
         /// Permission denied for this tx type.
         /// </summary>
-        public static readonly AcceptTxResult PermissionDenied = new(100, nameof(PermissionDenied));
+        public static readonly AcceptTxResult PermissionDenied = new(TxResultCode.PermissionDenied, nameof(PermissionDenied));
     }
 }
