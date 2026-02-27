@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
@@ -16,6 +18,9 @@ namespace Nethermind.Db
 {
     public static class Metrics
     {
+        [DetailedMetricOnFlag]
+        public static bool DetailedMetricsEnabled { get; set; }
+
         [CounterMetric]
         [Description("Number of State Trie cache hits.")]
         public static long StateTreeCache => _stateTreeCacheHits.GetTotalValue();
@@ -88,6 +93,16 @@ namespace Nethermind.Db
         [Description("Indicator if StateDb is being pruned.")]
         public static int StateDbPruning { get; set; }
 
+#if ZKVM
+        public static Dictionary<string, long> DbReads { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbWrites { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbSize { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbMemtableSize { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbBlockCacheSize { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbIndexFilterSize { get; } = new Dictionary<string, long>();
+        public static Dictionary<(string, string), double> DbStats { get; } = new Dictionary<(string, string), double>();
+        public static Dictionary<(string, int, string), double> DbCompactionStats { get; } = new Dictionary<(string, int, string), double>();
+#else
         [GaugeMetric]
         [Description("Database reads per database")]
         [KeyIsLabel("db")]
@@ -125,5 +140,15 @@ namespace Nethermind.Db
         [Description("Metrics extracted from RocksDB Compaction Stats")]
         [KeyIsLabel("db", "level", "metric")]
         public static NonBlocking.ConcurrentDictionary<(string, int, string), double> DbCompactionStats { get; } = new();
+#endif
+        [DetailedMetric]
+        [Description("Prewarmer get operation times")]
+        [ExponentialPowerHistogramMetric(Start = 10, Factor = 1.5, Count = 30, LabelNames = ["part", "is_prewarmer"])]
+        public static IMetricObserver PrewarmerGetTime { get; set; } = NoopMetricObserver.Instance;
+    }
+
+    public readonly struct PrewarmerGetTimeLabel(string part, bool isPrewarmer) : IMetricLabels
+    {
+        public string[] Labels { get; } = [part, isPrewarmer ? "true" : "false"];
     }
 }

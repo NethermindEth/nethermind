@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using static Nethermind.Serialization.Rlp.Rlp;
 
 #pragma warning disable 618
@@ -17,6 +18,7 @@ namespace Nethermind.Serialization.Rlp
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(CompactReceiptStorageDecoder))]
         public CompactReceiptStorageDecoder()
         {
         }

@@ -88,7 +88,7 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
         Description = "Sets the L1 origin signature for the given block ID.",
         IsSharable = true,
         IsImplemented = true)]
-    ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, int[] signature);
+    ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, byte[] signature);
 
     /// <summary>
     /// Clears txpool state (hash cache, account cache, pending transactions) after a chain reorg.
@@ -103,4 +103,16 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<bool> taikoDebug_clearTxPoolForReorg();
+
+    [JsonRpcMethod(
+        Description = "Returns the L1 origin of the last block for the given batch.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<L1Origin?>> taikoAuth_lastL1OriginByBatchID(UInt256 batchId);
+
+    [JsonRpcMethod(
+        Description = "Returns the ID of the last block for the given batch.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<UInt256?>> taikoAuth_lastBlockIDByBatchID(UInt256 batchId);
 }

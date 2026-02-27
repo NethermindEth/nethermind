@@ -5,13 +5,15 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
     public sealed class ChainLevelDecoder : RlpValueDecoder<ChainLevelInfo>
     {
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ChainLevelDecoder))]
+        public ChainLevelDecoder() { }
+
         protected override ChainLevelInfo? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.Length == 0)

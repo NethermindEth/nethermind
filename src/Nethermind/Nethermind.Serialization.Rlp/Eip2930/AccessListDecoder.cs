@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp.Eip2930
 {
@@ -12,6 +13,9 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         private const int IndexLength = 32;
 
         public static readonly AccessListDecoder Instance = new();
+
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccessListDecoder))]
+        public AccessListDecoder() { }
 
         /// <summary>
         /// We pay a high code quality tax for the performance optimization on RLP.

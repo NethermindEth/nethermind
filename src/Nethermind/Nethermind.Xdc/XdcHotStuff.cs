@@ -27,13 +27,14 @@ namespace Nethermind.Xdc
         private readonly ISpecProvider _specProvider;
         private readonly IBlockProducer _blockBuilder;
         private readonly IEpochSwitchManager _epochSwitchManager;
-        private readonly ISnapshotManager _snapshotManager;
+        private readonly IMasternodesCalculator _masternodesCalculator;
         private readonly IQuorumCertificateManager _quorumCertificateManager;
         private readonly IVotesManager _votesManager;
         private readonly ISigner _signer;
         private readonly ITimeoutTimer _timeoutTimer;
         private readonly IProcessExitSource _processExit;
         private readonly ILogger _logger;
+        private readonly ISignTransactionManager _signTransactionManager;
 
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _runTask;
@@ -46,18 +47,20 @@ namespace Nethermind.Xdc
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
 
+
         public XdcHotStuff(
             IBlockTree blockTree,
             IXdcConsensusContext xdcContext,
             ISpecProvider specProvider,
             IBlockProducer blockBuilder,
             IEpochSwitchManager epochSwitchManager,
-            ISnapshotManager snapshotManager,
+            IMasternodesCalculator masternodesCalculator,
             IQuorumCertificateManager quorumCertificateManager,
             IVotesManager votesManager,
             ISigner signer,
             ITimeoutTimer timeoutTimer,
             IProcessExitSource processExit,
+            ISignTransactionManager signTransactionManager,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -65,10 +68,11 @@ namespace Nethermind.Xdc
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
             _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
-            _snapshotManager = snapshotManager;
+            _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
             _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
             _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _signTransactionManager = signTransactionManager ?? throw new ArgumentNullException(nameof(signTransactionManager));
             _timeoutTimer = timeoutTimer;
             _processExit = processExit;
             _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -241,12 +245,20 @@ namespace Nethermind.Xdc
             {
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
+
+            }
+
+            if (IsMasternode(epochInfo, _signer.Address)
+                && ((roundParent.Number % spec.MergeSignRange == 0)))
+            {
+                await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
             }
 
             if (spec.SwitchBlock < roundParent.Number)
             {
                 await CommitCertificateAndVote(roundParent, epochInfo);
             }
+
         }
 
         private XdcBlockHeader GetParentForRound()
@@ -320,7 +332,7 @@ namespace Nethermind.Xdc
             _highestVotedRound = votingRound;
 
             // Check if we are in the masternode set
-            if (!Array.Exists(epochInfo.Masternodes, (a) => a == _signer.Address))
+            if (!IsMasternode(epochInfo, _signer.Address))
             {
                 _logger.Info($"Round {votingRound}: Skipped voting (not in masternode set)");
                 return;
@@ -409,7 +421,7 @@ namespace Nethermind.Xdc
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
                 //TODO calculate master nodes based on the current round
-                (currentMasternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash, spec);
+                (currentMasternodes, _) = _masternodesCalculator.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash, spec);
             }
             else
             {
@@ -476,5 +488,8 @@ namespace Nethermind.Xdc
             _cancellationTokenSource?.Dispose();
             _logger.Info("XdcHotStuff consensus runner stopped");
         }
+
+        private static bool IsMasternode(EpochSwitchInfo epochInfo, Address node) =>
+            epochInfo.Masternodes.AsSpan().IndexOf(node) != -1;
     }
 }

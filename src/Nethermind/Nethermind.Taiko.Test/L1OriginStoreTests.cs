@@ -164,7 +164,7 @@ public class L1OriginStoreTests
     public void Can_store_and_retrieve_signature()
     {
         UInt256 blockId = 123;
-        int[] signature = Enumerable.Range(0, 65).ToArray();
+        byte[] signature = Enumerable.Range(0, 65).Select(i => (byte)i).ToArray();
         L1Origin origin = new(blockId, Hash256.Zero, 456, Hash256.Zero, null) { Signature = signature };
 
         _store.WriteL1Origin(blockId, origin);
@@ -196,11 +196,29 @@ public class L1OriginStoreTests
     [TestCase(L1OriginDecoder.SignatureLength * 2)]
     public void Fails_for_invalid_length_signature(int signatureLength)
     {
-        int[] signature = Enumerable.Range(0, signatureLength).ToArray();
+        byte[] signature = Enumerable.Range(0, signatureLength).Select(i => (byte)i).ToArray();
         L1Origin origin = new(1, Hash256.Zero, 456, Hash256.Zero, null) { Signature = signature };
 
         Action act = () => _decoder.Encode(origin);
         act.Should().Throw<RlpException>().WithMessage($"*Signature*{L1OriginDecoder.SignatureLength}*");
+    }
+
+    [Test]
+    public void Encode_produces_RLP_with_correct_sequence_length(
+        [Values(false, true)] bool withBuildPayload,
+        [Values(false, true)] bool withForcedInclusion,
+        [Values(false, true)] bool withSignature)
+    {
+        int[]? buildPayloadArgsId = withBuildPayload ? Enumerable.Range(0, 8).ToArray() : null;
+        byte[]? signature = withSignature ? Enumerable.Range(0, 65).Select(i => (byte)i).ToArray() : null;
+        L1Origin origin = new(123, Hash256.Zero, 456, Hash256.Zero, buildPayloadArgsId, withForcedInclusion, signature);
+
+        Rlp encoded = _decoder.Encode(origin);
+        RlpStream stream = new(encoded.Bytes);
+        (int prefixLength, int contentLength) = stream.ReadPrefixAndContentLength();
+
+        contentLength.Should().Be(encoded.Bytes.Length - prefixLength,
+            "StartSequence must receive content length, not total length");
     }
 }
 

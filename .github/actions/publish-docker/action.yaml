@@ -1,0 +1,106 @@
+name: Publish Docker Image
+description: "Build and push Docker image to Docker Hub with multi-platform support"
+inputs:
+  image-name:
+    description: "Image name (without registry prefix)"
+    required: true
+    default: "nethermind"
+  tag:
+    description: "Image tag (if empty, will use branch name)"
+    required: false
+    default: ""
+  dockerfile:
+    description: "Path to Dockerfile"
+    required: true
+    default: "Dockerfile"
+  build-config:
+    description: "Build configuration (release or debug)"
+    required: true
+    default: "release"
+  docker-hub-username:
+    description: "Docker Hub username"
+    required: true
+  docker-hub-password:
+    description: "Docker Hub password or token"
+    required: true
+  platforms:
+    description: "Comma-separated list of platforms (e.g., linux/amd64,linux/arm64)"
+    required: false
+    default: "linux/amd64,linux/arm64"
+  add-master-tag:
+    description: "Whether to add master tag with commit SHA when on master branch"
+    required: false
+    default: "true"
+
+outputs:
+  image-label:
+    description: "The generated image label in format registry/image-name:tag"
+    value: ${{ steps.build-image.outputs.image-label }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ inputs.docker-hub-username }}
+        password: ${{ inputs.docker-hub-password }}
+
+    - name: Build and push image to Docker Hub
+      id: build-image
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        TAG: ${{ inputs.tag }}
+        DOCKERFILE: ${{ inputs.dockerfile }}
+        BUILD_CONFIG: ${{ inputs.build-config }}
+        PLATFORMS: ${{ inputs.platforms }}
+        ADD_MASTER_TAG: ${{ inputs.add-master-tag }}
+        GITHUB_REF: ${{ github.ref }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_SHA: ${{ github.sha }}
+      run: |
+        # Extract branch name from ref
+        branch=$(echo "$GITHUB_REF" | sed -e "s/refs\/heads\///g")
+
+        # Set image name with registry prefix
+        full_image_name="nethermindeth/${IMAGE_NAME}"
+
+        # Determine tag (use input tag or branch name)
+        if [ -z "$TAG" ]; then
+          tag=$(echo "$branch" | sed 's/\//-/g') # replace '/' with '-'
+        else
+          tag=$(echo "$TAG" | sed 's/\//-/g') # replace '/' with '-'
+        fi
+
+        # Set the image label output
+        image_label="${full_image_name}:${tag}"
+        echo "image-label=${image_label}" >> $GITHUB_OUTPUT
+
+        echo "Building image: ${image_label}"
+
+        # Build Docker buildx command
+        build_cmd="docker buildx build . --platform=${PLATFORMS} -f ${DOCKERFILE} -t ${image_label}"
+
+        # Add master tag if on master branch and enabled
+        if [ "$branch" = "master" ] && [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$ADD_MASTER_TAG" = "true" ]; then
+          master_tag="${full_image_name}:master-${GITHUB_SHA:0:7}"
+          build_cmd="${build_cmd} -t ${master_tag}"
+          echo "Also tagging as: $master_tag"
+        fi
+
+        # Add build arguments
+        build_cmd="${build_cmd} --build-arg BUILD_CONFIG=${BUILD_CONFIG}"
+        build_cmd="${build_cmd} --build-arg CI=${CI}"
+        build_cmd="${build_cmd} --build-arg COMMIT_HASH=${GITHUB_SHA}"
+        build_cmd="${build_cmd} --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)"
+        build_cmd="${build_cmd} --push"
+
+        echo "Executing: $build_cmd"
+        eval "$build_cmd"

@@ -521,20 +521,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
-    {
-        byte[]? rlp = _nodeStorage.Get(address, path, keccak, ReadFlags.None);
-
-        if (rlp is null)
-        {
-            return false;
-        }
-
-        Metrics.LoadedFromDbNodesCount++;
-
-        return true;
-    }
-
     public IReadOnlyTrieStore AsReadOnly() => new ReadOnlyTrieStore(this);
 
     public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) => DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, hash));
@@ -599,21 +585,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             await Task.Delay(pruneDelayMs);
         }
 
-        if (!_pruningLock.TryEnter())
+        using (_pruningLock.EnterScope())
         {
-            // Do not want to queue on lock behind already ongoing pruning.
-            return;
-        }
-
-        // Skip triggering GC while pruning so they don't fight each other causing pruning to take longer
-        GCScheduler.Instance.SkipNextGC();
-        try
-        {
+            // Skip triggering GC while pruning so they don't fight each other causing pruning to take longer
+            GCScheduler.Instance.SkipNextGC();
             SyncPruneNonLocked();
-        }
-        finally
-        {
-            _pruningLock.Exit();
         }
 
         TryExitCommitBufferMode();
@@ -1238,11 +1214,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                && lastCommit < LatestCommittedBlockNumber - _maxDepth;
     }
 
-    private bool IsStillNeeded(long lastCommit)
-    {
-        return !IsNoLongerNeeded(lastCommit);
-    }
-
     private void AnnounceReorgBoundaries()
     {
         if (LatestCommittedBlockNumber < 1)
@@ -1300,14 +1271,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (_logger.IsDebug) _logger.Debug($"On shutdown persisting {candidateSets.Count} commit sets. Finalized block is {finalizedBlockNumber}.");
 
-        INodeStorage.IWriteBatch writeBatch = _nodeStorage.StartWriteBatch();
         for (int index = 0; index < candidateSets.Count; index++)
         {
             BlockCommitSet blockCommitSet = candidateSets[index];
             if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
             ParallelPersistBlockCommitSet(blockCommitSet, _persistedNodeRecorderNoop);
         }
-        writeBatch.Dispose();
         _nodeStorage.Flush(onlyWal: false);
 
         if (candidateSets.Count == 0)
@@ -1450,6 +1419,20 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (node.NodeType == NodeType.Unknown)
         {
             return TryLoadRlp(null, TreePath.Empty, node.Keccak!) is not null;
+        }
+
+        return true;
+    }
+
+    public bool HasRoot(Hash256 stateRoot, long blockNumber)
+    {
+        if (!HasRoot(stateRoot)) return false;
+
+        // Reject blocks whose state may have been partially pruned (root exists but child nodes don't)
+        long lastPersisted = LastPersistedBlockNumber;
+        if (lastPersisted > 0 && blockNumber < lastPersisted - _maxDepth)
+        {
+            return false;
         }
 
         return true;
@@ -1782,8 +1765,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(address, in path, hash, flags);
 
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(address, in path, hash, flags);
-
-        public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => baseTrieStore.IsPersisted(address, in path, in keccak);
 
         public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
     }

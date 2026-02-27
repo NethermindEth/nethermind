@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -1049,8 +1048,6 @@ public class TrieNodeTests
 
         public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
         public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(this);
-
-        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => false;
 
         private class Committer(InMemoryScopedTrieStore trieStore) : ICommitter
         {

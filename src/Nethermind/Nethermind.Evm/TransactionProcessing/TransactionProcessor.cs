@@ -165,7 +165,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
+            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                 return _systemTransactionProcessor.Execute(tx, tracer, opts);
@@ -183,7 +183,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
-            // commit - is for standard execute, we will commit thee state after execution
+            // commit - is for standard execute, we will commit the state after execution
             // !commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
             // we commit only after all block is constructed
             bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
@@ -243,7 +243,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 else
                 {
                     if (!senderReservedGasPayment.IsZero)
+                    {
                         WorldState.AddToBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
+                    }
+
                     DecrementNonce(tx);
 
                     WorldState.Commit(spec, commitRoots: false);
@@ -492,7 +495,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
-            => IntrinsicGasCalculator.Calculate<TGasPolicy>(tx, spec);
+            => TGasPolicy.CalculateIntrinsicGas(tx, spec);
 
         protected virtual UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
         {
@@ -614,7 +617,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
-            ICodeInfo? codeInfo;
+            CodeInfo? codeInfo;
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data : default;
             if (tx.IsContractCreation)
             {
@@ -709,7 +712,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
             using (VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
             {
-                substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
+                substate = !TTracingInst.IsActive
+                    ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer) // no GVM trick for ZK
+                    : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
+
                 Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
                 gasAvailable = state.Gas;
 
@@ -759,25 +765,23 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable,
-                VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
+            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
             gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
-
         Complete:
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+            {
                 header.GasUsed += gasConsumed.SpentGas;
+            }
 
             return statusCode;
         }
 
-        protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts)
-        {
-            return tx.GasLimit;
-        }
+
+        protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts) => tx.GasLimit;
 
         protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {

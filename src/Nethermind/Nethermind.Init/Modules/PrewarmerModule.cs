@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -9,10 +10,8 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Modules;
 
@@ -43,6 +42,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+
+                // This class create the block processing env with worldstate that populate the cache
                 .Add<PrewarmerEnvFactory>()
 
                 // These are the actual decorated component that provide cached result
@@ -63,8 +64,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
                     return new CachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository,
                         blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
-                })
-                .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
+                });
         }
     }
 }

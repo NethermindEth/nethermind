@@ -21,6 +21,7 @@
     <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
     <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
     <Project Path="Nethermind.Grpc/Nethermind.Grpc.csproj" />
+    <Project Path="Nethermind.History/Nethermind.History.csproj" />
     <Project Path="Nethermind.Init\Nethermind.Init.csproj" />
     <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
     <Project Path="Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
@@ -42,6 +43,7 @@
     <Project Path="Nethermind.Specs.Test/Nethermind.Specs.Test.csproj" />
     <Project Path="Nethermind.Specs/Nethermind.Specs.csproj" />
     <Project Path="Nethermind.State/Nethermind.State.csproj" />
+    <Project Path="Nethermind.State.Flat/Nethermind.State.Flat.csproj" />
     <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
     <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
     <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />

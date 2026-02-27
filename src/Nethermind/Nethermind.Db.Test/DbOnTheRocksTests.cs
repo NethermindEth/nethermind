@@ -13,7 +13,6 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db.Rocks;

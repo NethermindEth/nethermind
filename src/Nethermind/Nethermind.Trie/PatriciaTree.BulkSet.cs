@@ -166,7 +166,7 @@ public partial class PatriciaTree
         int nonNullChildCount = 0;
         if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
         {
-            var jobs = new (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[TrieNode.BranchesCount];
+            using ArrayPoolList<(int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)> jobs = new(TrieNode.BranchesCount, TrieNode.BranchesCount);
 
             Context closureCtx = ctx;
             BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.originalEntriesArray : ctx.originalSortBufferArray;

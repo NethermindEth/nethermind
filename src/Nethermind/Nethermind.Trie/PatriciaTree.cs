@@ -6,9 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -26,7 +24,6 @@ namespace Nethermind.Trie
     public partial class PatriciaTree
     {
         private const int MaxKeyStackAlloc = 64;
-        private readonly static byte[][] _singleByteKeys = [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15]];
 
         private readonly ILogger _logger;
 
@@ -114,7 +111,7 @@ namespace Nethermind.Trie
             ILogManager? logManager,
             ICappedArrayPool? bufferPool = null)
         {
-            _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _allowCommits = allowCommits;
             RootHash = rootHash;
@@ -322,7 +319,7 @@ namespace Nethermind.Trie
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
-        private void SetRootHash(Hash256? value, bool resetObjects)
+        public void SetRootHash(Hash256? value, bool resetObjects)
         {
             _rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
             if (_rootHash == Keccak.EmptyTreeHash)
@@ -365,6 +362,37 @@ namespace Nethermind.Trie
             catch (TrieException e)
             {
                 EnhanceException(rawKey, rootHash ?? RootHash, e);
+                throw;
+            }
+            finally
+            {
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
+            }
+        }
+
+        [SkipLocalsInit]
+        [DebuggerStepThrough]
+        public void WarmUpPath(ReadOnlySpan<byte> rawKey)
+        {
+            byte[]? array = null;
+            try
+            {
+                int nibblesCount = 2 * rawKey.Length;
+                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                        ? stackalloc byte[MaxKeyStackAlloc]
+                        : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
+                    [..nibblesCount]; // Slice to exact size;
+
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+
+                TreePath emptyPath = TreePath.Empty;
+                TrieNode root = RootRef;
+
+                DoWarmUpPath(nibbles, ref emptyPath, root);
+            }
+            catch (TrieException e)
+            {
+                EnhanceException(rawKey, RootHash, e);
                 throw;
             }
             finally
@@ -898,6 +926,64 @@ namespace Nethermind.Trie
             }
         }
 
+        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node)
+        {
+            int originalPathLength = path.Length;
+
+            try
+            {
+                while (true)
+                {
+                    if (node is null)
+                    {
+                        // If node read, then missing node. If value read.... what is it suppose to be then?
+                        return;
+                    }
+
+                    // Call FindCachedOrUnknown on some path.
+                    if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
+                    node.ResolveNode(TrieStore, path);
+
+                    if (node.IsLeaf || node.IsExtension)
+                    {
+                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                        if (commonPrefixLength == node.Key!.Length)
+                        {
+                            if (node.IsLeaf)
+                            {
+                                // Done
+                                return;
+                            }
+
+                            // Continue traversal to the child of the extension
+                            path.AppendMut(node.Key);
+                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0, keepChildRef: true);
+                            remainingKey = remainingKey[node!.Key.Length..];
+                            node = extensionChild;
+
+                            continue;
+                        }
+
+                        // No node match
+                        return;
+                    }
+
+                    int nextNib = remainingKey[0];
+
+                    path.AppendMut(nextNib);
+                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nextNib, keepChildRef: true);
+
+                    // Continue loop with child as current node
+                    node = child;
+                    remainingKey = remainingKey[1..];
+                }
+            }
+            finally
+            {
+                path.TruncateMut(originalPathLength);
+            }
+        }
+
         /// <summary>
         /// Run tree visitor
         /// </summary>
@@ -1004,25 +1090,5 @@ namespace Nethermind.Trie
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowReadOnlyTrieException() => throw new TrieException("Commits are not allowed on this trie.");
-
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowInvalidDataException(TrieNode originalNode)
-        {
-            throw new InvalidDataException(
-                $"Extension {originalNode.Keccak} has no child.");
-        }
-
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowMissingChildException(TrieNode node)
-        {
-            throw new TrieException(
-                $"Found an {nameof(NodeType.Extension)} {node.Keccak} that is missing a child.");
-        }
-
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowMissingPrefixException()
-        {
-            throw new InvalidDataException("An attempt to visit a node without a prefix path.");
-        }
     }
 }

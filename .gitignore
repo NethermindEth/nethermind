@@ -358,6 +358,10 @@ paket-files/
 #tools/**
 #!tools/packages.config
 
+# JitAsm uops.info database (110MB, download separately)
+tools/JitAsm/instructions.xml
+tools/JitAsm/instructions.db
+
 # Tabs Studio
 *.tss
 
@@ -439,6 +443,12 @@ FodyWeavers.xsd
 .claude/
 .gemini/
 
+# Worktrees
+.worktrees/
+
 ## Nethermind
 keystore/
 /.githooks
+
+# Worktrees
+.worktrees/

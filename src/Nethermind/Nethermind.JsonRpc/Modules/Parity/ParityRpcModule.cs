@@ -100,8 +100,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public ResultWrapper<ParityNetPeers> parity_netPeers()
         {
             ParityNetPeers parityNetPeers = new();
-            parityNetPeers.Active = _peerManager.ActivePeers.Count;
-            parityNetPeers.Connected = _peerManager.ConnectedPeers.Count;
+            parityNetPeers.Active = _peerManager.ActivePeersCount;
+            parityNetPeers.Connected = _peerManager.ConnectedPeersCount;
             parityNetPeers.Max = _peerManager.MaxActivePeers;
             parityNetPeers.Peers = _peerManager.ActivePeers.Select(static p => new PeerInfo(p)).ToArray();
             return ResultWrapper<ParityNetPeers>.Success(parityNetPeers);

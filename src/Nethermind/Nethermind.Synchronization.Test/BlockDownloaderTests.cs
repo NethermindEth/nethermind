@@ -21,7 +21,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;
@@ -843,6 +842,11 @@ public partial class BlockDownloaderTests
                 },
             })
             .AddSingleton<Context>();
+
+        if (PseudoNethermindModule.TestUseFlat && configProvider.GetConfig<ISyncConfig>().FastSync)
+        {
+            Assert.Ignore("Flat does not work when fast sync is on");
+        }
 
         configurer?.Invoke(b);
         return b
