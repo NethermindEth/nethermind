@@ -2,23 +2,23 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.TxPool;
 
-internal sealed class SignTransactionFilter(ISigner signer, IBlockTree blockTree, ISpecProvider specProvider) : IIncomingTxFilter
+internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IBlockTree blockTree, ISpecProvider specProvider) : IIncomingTxFilter
 {
     private (long, IXdcReleaseSpec) GetSpecAndHeader()
     {
         XdcBlockHeader header = (XdcBlockHeader)blockTree.Head.Header;
-        var currentHeaderNumber = header.Number + 1;
-        var xdcSpec = specProvider.GetXdcSpec(currentHeaderNumber);
+        long currentHeaderNumber = header.Number + 1;
+        IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(currentHeaderNumber);
 
         return (currentHeaderNumber, xdcSpec);
     }
@@ -42,21 +42,47 @@ internal sealed class SignTransactionFilter(ISigner signer, IBlockTree blockTree
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        var (headerNumber, spec) = GetSpecAndHeader();
-
-        if (tx.IsSpecialTransaction((IXdcReleaseSpec)specProvider.GetFinalSpec()))
+        if (!tx.IsSpecialTransaction((IXdcReleaseSpec)specProvider.GetFinalSpec()))
         {
-            if (tx.IsSignTransaction(spec) && !ValidateSignTransaction(tx, headerNumber, spec))
-            {
-                return AcceptTxResult.Invalid;
-            }
+            return AcceptTxResult.Accepted;
+        }
 
-            if (tx.SenderAddress != signer.Address)
-            {
-                return AcceptTxResult.Invalid;
-            }
+        (long headerNumber, IXdcReleaseSpec spec) = GetSpecAndHeader();
+
+        if (tx.IsSignTransaction(spec) && ValidateSignTransaction(tx, headerNumber, spec) != AcceptTxResult.Accepted)
+        {
+            return AcceptTxResult.Invalid;
+        }
+
+        Snapshot? snapshot = snapshotManager.GetSnapshotByBlockNumber(headerNumber, spec);
+        if (snapshot is null)
+        {
+            return AcceptTxResult.Invalid;
+        }
+
+        if (!IsEpochCandidate(snapshot, tx.SenderAddress))
+        {
+            return AcceptTxResult.Invalid;
         }
 
         return AcceptTxResult.Accepted;
+    }
+
+    private static bool IsEpochCandidate(Snapshot snapshot, Address? senderAddress)
+    {
+        if (senderAddress is null)
+        {
+            return false;
+        }
+
+        foreach (Address candidate in snapshot.NextEpochCandidates)
+        {
+            if (candidate == senderAddress)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
