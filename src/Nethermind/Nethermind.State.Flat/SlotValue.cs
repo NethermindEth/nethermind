@@ -5,12 +5,14 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.State.Flat;
 
 /// <summary>
 /// Make storing slot value smaller than a byte[].
+/// Same memory layout as <see cref="StorageValue"/> — implicit conversions are zero-cost.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 32, Size = 32)]
 public readonly struct SlotValue
@@ -63,4 +65,10 @@ public readonly struct SlotValue
     /// Currently, the worldstate that the evm use expect the bytes to be without leading zeros
     /// </summary>
     public byte[] ToEvmBytes() => AsReadOnlySpan.WithoutLeadingZeros().ToArray();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static implicit operator StorageValue(SlotValue sv) => Unsafe.As<SlotValue, StorageValue>(ref sv);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static implicit operator SlotValue(StorageValue sv) => Unsafe.As<StorageValue, SlotValue>(ref sv);
 }

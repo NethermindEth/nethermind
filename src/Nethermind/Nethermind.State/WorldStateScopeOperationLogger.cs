@@ -69,20 +69,20 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     {
         public Hash256 RootHash => storageTree.RootHash;
 
-        public byte[] Get(in UInt256 index)
+        public StorageValue Get(in UInt256 index)
         {
-            byte[]? bytes = storageTree.Get(in index);
-            logger.Trace($"{scopeId}: S:{address} Get slot {index}, got {bytes?.ToHexString()}");
-            return bytes;
+            StorageValue result = storageTree.Get(in index);
+            logger.Trace($"{scopeId}: S:{address} Get slot {index}, got {result.ToEvmBytes().ToHexString()}");
+            return result;
         }
 
         public void HintGet(in UInt256 index, byte[]? value) => storageTree.HintGet(in index, value);
 
-        public byte[] Get(in ValueHash256 hash)
+        public StorageValue Get(in ValueHash256 hash)
         {
-            byte[]? bytes = storageTree.Get(in hash);
-            logger.Trace($"{scopeId}: S:{address} Get slot via hash {hash}, got {bytes?.ToHexString()}");
-            return bytes;
+            StorageValue result = storageTree.Get(in hash);
+            logger.Trace($"{scopeId}: S:{address} Get slot via hash {hash}, got {result.ToEvmBytes().ToHexString()}");
+            return result;
         }
     }
 
@@ -138,10 +138,10 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             logger.Trace($"{scopeId}: {address}, Storage write batch disposed");
         }
 
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, StorageValue value)
         {
             writeBatch.Set(in index, value);
-            logger.Trace($"{scopeId}: {address}, Set {index} to {value?.ToHexString()}");
+            logger.Trace($"{scopeId}: {address}, Set {index} to {value.ToEvmBytes().ToHexString()}");
         }
 
         public void Clear()

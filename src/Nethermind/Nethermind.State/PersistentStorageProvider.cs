@@ -39,7 +39,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// <summary>
     /// EIP-1283
     /// </summary>
-    private readonly Dictionary<StorageCell, byte[]> _originalValues = new();
+    private readonly Dictionary<StorageCell, StorageValue> _originalValues = new();
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
 
@@ -80,16 +80,16 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
     protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+        TryGetCachedValue(storageCell, out StorageValue cached) ? cached.ToEvmBytes() : LoadFromTree(storageCell);
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
-        if (!_originalValues.TryGetValue(storageCell, out var value))
+        if (!_originalValues.TryGetValue(storageCell, out StorageValue value))
         {
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
@@ -100,12 +100,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             {
                 if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                 {
-                    return _changes[lastChangeIndexBeforeOriginalSnapshot].Value;
+                    return _changes[lastChangeIndexBeforeOriginalSnapshot].Value.ToEvmBytes();
                 }
             }
         }
 
-        return value;
+        return value.ToEvmBytes();
     }
 
     public Hash256 GetStorageRoot(Address address)
@@ -179,11 +179,11 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
+                    _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToEvmBytes().ToHexString(true)}");
                 }
 
-                if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
-                    initialValue.AsSpan().SequenceEqual(change.Value))
+                if (_originalValues.TryGetValue(change.StorageCell, out StorageValue initialValue) &&
+                    initialValue == change.Value)
                 {
                     // no need to update the tree if the value is the same
                 }
@@ -352,7 +352,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
     }
 
-    private void PushToRegistryOnly(in StorageCell cell, byte[] value)
+    private void PushToRegistryOnly(in StorageCell cell, StorageValue value)
     {
         StackList<int> stack = SetupRegistry(cell);
         _originalValues[cell] = value;
@@ -364,12 +364,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         foreach ((StorageCell address, StorageChangeTrace change) in trace)
         {
-            byte[] before = change.Before;
-            byte[] after = change.After;
-
-            if (!Bytes.AreEqual(before, after))
+            if (change.Before != change.After)
             {
-                tracer.ReportStorageChange(address, before, after);
+                tracer.ReportStorageChange(address, change.Before.ToEvmBytes(), change.After.ToEvmBytes());
             }
         }
     }
@@ -526,7 +523,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             Pool.Return(this);
         }
 
-        public void SaveChange(StorageCell storageCell, byte[] value)
+        public void SaveChange(StorageCell storageCell, StorageValue value)
         {
             _wasWritten = true;
             ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
@@ -545,7 +542,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
-                byte[] value = LoadFromTreeStorage(storageCell);
+                StorageValue value = LoadFromTreeStorage(storageCell);
 
                 valueChange = new(value, value);
             }
@@ -555,10 +552,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
 
             if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
-            return valueChange.After;
+            return valueChange.After.ToEvmBytes();
         }
 
-        private byte[] LoadFromTreeStorage(StorageCell storageCell)
+        private StorageValue LoadFromTreeStorage(StorageCell storageCell)
         {
             Db.Metrics.IncrementStorageTreeReads();
 
@@ -567,9 +564,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 ? _backend.Get(storageCell.Index)
                 : _backend.Get(storageCell.Hash);
         }
-
-        private static byte[] LoadFromTreeStorage(StorageCell storageCell, PerContractState @this)
-            => @this.LoadFromTreeStorage(storageCell);
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {
@@ -588,8 +582,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             foreach (var kvp in BlockChange)
             {
-                byte[] after = kvp.Value.After;
-                if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
+                StorageValue after = kvp.Value.After;
+                if (kvp.Value.Before != after || kvp.Value.IsInitialValue)
                 {
                     BlockChange[kvp.Key] = new(after, after);
                     storageWriteBatch.Set(kvp.Key, after);
@@ -653,24 +647,24 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private readonly struct StorageChangeTrace
     {
-        public static readonly StorageChangeTrace _zeroBytes = new(StorageTree.ZeroBytes, StorageTree.ZeroBytes);
+        public static readonly StorageChangeTrace _zeroBytes = new(StorageValue.Zero, StorageValue.Zero);
         public static ref readonly StorageChangeTrace ZeroBytes => ref _zeroBytes;
 
-        public StorageChangeTrace(byte[]? before, byte[]? after)
+        public StorageChangeTrace(StorageValue before, StorageValue after)
         {
-            After = after ?? StorageTree.ZeroBytes;
-            Before = before ?? StorageTree.ZeroBytes;
+            After = after;
+            Before = before;
         }
 
-        public StorageChangeTrace(byte[]? after)
+        public StorageChangeTrace(StorageValue after)
         {
-            After = after ?? StorageTree.ZeroBytes;
-            Before = StorageTree.ZeroBytes;
+            After = after;
+            Before = StorageValue.Zero;
             IsInitialValue = true;
         }
 
-        public readonly byte[] Before;
-        public readonly byte[] After;
+        public readonly StorageValue Before;
+        public readonly StorageValue After;
         public readonly bool IsInitialValue;
     }
 }

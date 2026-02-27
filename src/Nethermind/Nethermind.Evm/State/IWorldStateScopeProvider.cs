@@ -79,7 +79,7 @@ public interface IWorldStateScopeProvider
     {
         Hash256 RootHash { get; }
 
-        byte[] Get(in UInt256 index);
+        StorageValue Get(in UInt256 index);
 
         void HintGet(in UInt256 index, byte[]? value);
 
@@ -88,7 +88,7 @@ public interface IWorldStateScopeProvider
         /// </summary>
         /// <param name="hash"></param>
         /// <returns></returns>
-        byte[] Get(in ValueHash256 hash);
+        StorageValue Get(in ValueHash256 hash);
     }
 
     public interface IWorldStateWriteBatch : IDisposable
@@ -115,7 +115,7 @@ public interface IWorldStateScopeProvider
 
     public interface IStorageWriteBatch : IDisposable
     {
-        void Set(in UInt256 index, byte[] value);
+        void Set(in UInt256 index, StorageValue value);
 
         /// <summary>
         /// Self-destruct. Maybe costly. Must be called first.

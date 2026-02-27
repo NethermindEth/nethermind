@@ -34,7 +34,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    byte[] GetOriginal(in StorageCell storageCell);
+    ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell);
 
     /// <summary>
     /// Get the persistent storage value at the specified storage cell

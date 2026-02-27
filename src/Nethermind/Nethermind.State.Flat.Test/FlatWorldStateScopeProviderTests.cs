@@ -182,7 +182,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Verify slot shadowed by Layer 2 snapshot (newerSlotValue)
         IWorldStateScopeProvider.IStorageTree storageTree = ctx.Scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(newerSlotValue));
+        Assert.That(storageTree.Get(slotIndex).ToEvmBytes(), Is.EqualTo(newerSlotValue));
     }
 
     [Test]
@@ -209,7 +209,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(ctx.Scope.Get(testAddress), Is.EqualTo(persistedAccount));
 
         IWorldStateScopeProvider.IStorageTree storageTree = ctx.Scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(persistedSlotValue));
+        Assert.That(storageTree.Get(slotIndex).ToEvmBytes(), Is.EqualTo(persistedSlotValue));
     }
 
     [Test]
@@ -234,7 +234,7 @@ public class FlatWorldStateScopeProviderTests
         {
             writeBatch.Set(testAddress, testAccount);
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slotIndex, writtenSlotValue);
+            storageBatch.Set(slotIndex, StorageValue.FromSpanWithoutLeadingZero(writtenSlotValue));
             storageBatch.Dispose();
         }
 
@@ -244,7 +244,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(resultAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
 
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(writtenSlotValue));
+        Assert.That(storageTree.Get(slotIndex).ToEvmBytes(), Is.EqualTo(writtenSlotValue));
     }
 
     [Test]
@@ -263,7 +263,7 @@ public class FlatWorldStateScopeProviderTests
         {
             writeBatch.Set(testAddress, testAccount);
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slotIndex, slotValue);
+            storageBatch.Set(slotIndex, StorageValue.FromSpanWithoutLeadingZero(slotValue));
             storageBatch.Dispose();
         }
 
@@ -311,7 +311,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Slot should be blocked by selfdestruct
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(StorageTree.ZeroBytes));
+        Assert.That(storageTree.Get(slotIndex).ToEvmBytes(), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
     [Test]
@@ -338,10 +338,10 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
 
         // slot1 should return zero (blocked by selfdestruct)
-        Assert.That(storageTree.Get(slot1), Is.EqualTo(StorageTree.ZeroBytes));
+        Assert.That(storageTree.Get(slot1).ToEvmBytes(), Is.EqualTo(StorageTree.ZeroBytes));
 
         // slot2 should return the value (written after selfdestruct)
-        Assert.That(storageTree.Get(slot2), Is.EqualTo(slot2AfterValue));
+        Assert.That(storageTree.Get(slot2).ToEvmBytes(), Is.EqualTo(slot2AfterValue));
     }
 
     #endregion
@@ -365,7 +365,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slotIndex, slotValue);
+            storageBatch.Set(slotIndex, StorageValue.FromSpanWithoutLeadingZero(slotValue));
             storageBatch.Dispose();
         }
 
@@ -407,9 +407,9 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 3);
-            storageBatch.Set(slot1, value1);
-            storageBatch.Set(slot2, value2);
-            storageBatch.Set(slot3, value3);
+            storageBatch.Set(slot1, StorageValue.FromSpanWithoutLeadingZero(value1));
+            storageBatch.Set(slot2, StorageValue.FromSpanWithoutLeadingZero(value2));
+            storageBatch.Set(slot3, StorageValue.FromSpanWithoutLeadingZero(value3));
             storageBatch.Dispose();
         }
 
@@ -449,7 +449,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slot1, value1);
+            storageBatch.Set(slot1, StorageValue.FromSpanWithoutLeadingZero(value1));
             storageBatch.Dispose();
         }
         scope.Commit(1);
@@ -458,7 +458,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slot2, value2);
+            storageBatch.Set(slot2, StorageValue.FromSpanWithoutLeadingZero(value2));
             storageBatch.Dispose();
         }
         scope.Commit(2);
@@ -496,7 +496,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slot1, value1);
+            storageBatch.Set(slot1, StorageValue.FromSpanWithoutLeadingZero(value1));
             storageBatch.Dispose();
         }
         scope.Commit(1);
@@ -514,7 +514,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slot2, value2);
+            storageBatch.Set(slot2, StorageValue.FromSpanWithoutLeadingZero(value2));
             storageBatch.Dispose();
         }
         scope.Commit(3);
@@ -574,7 +574,7 @@ public class FlatWorldStateScopeProviderTests
             writeBatch.Set(addr1, acc1);
             writeBatch.Set(addr2, acc2);
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr1, 1);
-            storageBatch.Set(slot1, val1);
+            storageBatch.Set(slot1, StorageValue.FromSpanWithoutLeadingZero(val1));
             storageBatch.Dispose();
         }
 
@@ -650,7 +650,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Verify both are blocked
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
-        Assert.That(storageTree.Get(slot), Is.EqualTo(StorageTree.ZeroBytes));
+        Assert.That(storageTree.Get(slot).ToEvmBytes(), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
     [Test]
@@ -695,7 +695,7 @@ public class FlatWorldStateScopeProviderTests
         // Before the fix: would fail because DoTryFindStorageNodeExternal exited early
         // After the fix: properly falls through and finds storage in ReadOnlySnapshots
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr1);
-        Assert.That(storageTree.Get(slot1), Is.EqualTo(value1));
+        Assert.That(storageTree.Get(slot1).ToEvmBytes(), Is.EqualTo(value1));
     }
 
     [Test]
@@ -725,7 +725,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotBefore, valueBefore);
+            storageBatch.Set(slotBefore, StorageValue.FromSpanWithoutLeadingZero(valueBefore));
             storageBatch.Dispose();
         }
         scope.Commit(1);
@@ -735,7 +735,7 @@ public class FlatWorldStateScopeProviderTests
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
             storageBatch.Clear();
-            storageBatch.Set(slotAtSelfDestruct, valueAtSelfDestruct);
+            storageBatch.Set(slotAtSelfDestruct, StorageValue.FromSpanWithoutLeadingZero(valueAtSelfDestruct));
             storageBatch.Dispose();
         }
         scope.Commit(2);
@@ -744,7 +744,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotAfter, valueAfter);
+            storageBatch.Set(slotAfter, StorageValue.FromSpanWithoutLeadingZero(valueAfter));
             storageBatch.Dispose();
         }
         scope.Commit(3);
@@ -754,9 +754,9 @@ public class FlatWorldStateScopeProviderTests
         // - slotAtSelfDestruct should be found (set in same commit as self-destruct)
         // - slotAfter should be found (added after self-destruct)
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
-        Assert.That(storageTree.Get(slotBefore), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
-        Assert.That(storageTree.Get(slotAtSelfDestruct), Is.EqualTo(valueAtSelfDestruct), "Slot at self-destruct should be found");
-        Assert.That(storageTree.Get(slotAfter), Is.EqualTo(valueAfter), "Slot after self-destruct should be found");
+        Assert.That(storageTree.Get(slotBefore).ToEvmBytes(), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
+        Assert.That(storageTree.Get(slotAtSelfDestruct).ToEvmBytes(), Is.EqualTo(valueAtSelfDestruct), "Slot at self-destruct should be found");
+        Assert.That(storageTree.Get(slotAfter).ToEvmBytes(), Is.EqualTo(valueAfter), "Slot after self-destruct should be found");
     }
 
     [Test]
@@ -792,7 +792,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotAfter1, valueAfter1);
+            storageBatch.Set(slotAfter1, StorageValue.FromSpanWithoutLeadingZero(valueAfter1));
             storageBatch.Dispose();
         }
         scope.Commit(1);
@@ -801,7 +801,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotAfter2, valueAfter2);
+            storageBatch.Set(slotAfter2, StorageValue.FromSpanWithoutLeadingZero(valueAfter2));
             storageBatch.Dispose();
         }
         scope.Commit(2);
@@ -809,11 +809,11 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
 
         // Slots written after self-destruct in local snapshots should be visible
-        Assert.That(storageTree.Get(slotAfter1), Is.EqualTo(valueAfter1), "Slot in local snapshot after read-only self-destruct should be visible");
-        Assert.That(storageTree.Get(slotAfter2), Is.EqualTo(valueAfter2), "Slot in local snapshot after read-only self-destruct should be visible");
+        Assert.That(storageTree.Get(slotAfter1).ToEvmBytes(), Is.EqualTo(valueAfter1), "Slot in local snapshot after read-only self-destruct should be visible");
+        Assert.That(storageTree.Get(slotAfter2).ToEvmBytes(), Is.EqualTo(valueAfter2), "Slot in local snapshot after read-only self-destruct should be visible");
 
         // Slot from before self-destruct (in read-only snapshot) should be blocked
-        Assert.That(storageTree.Get(slotBefore), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
+        Assert.That(storageTree.Get(slotBefore).ToEvmBytes(), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
     }
 
     #endregion
