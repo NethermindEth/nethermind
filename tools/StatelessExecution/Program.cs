@@ -11,6 +11,7 @@ using Nethermind.Specs;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -223,12 +224,12 @@ class Program
 
     private static Block suggestedBlock = new Block(suggestedBlockHeader, suggestedTransactions, [], suggestedWithdrawals);
 
-    private static byte[][] ToByteArrays(string[] data)
+    private static ArrayPoolList<byte[]> ToArrayPoolLists(string[] data)
     {
-        byte[][] result = new byte[data.Length][];
+        ArrayPoolList<byte[]> result = new(data.Length);
         for (int i = 0; i < data.Length; i++)
         {
-            result[i] = Bytes.FromHexString(data[i]);
+            result.Add(Bytes.FromHexString(data[i]));
         }
 
         return result;
@@ -236,12 +237,12 @@ class Program
 
     static int Main()
     {
-        Witness witness = new Witness()
+        using Witness witness = new Witness()
         {
-            Codes = ToByteArrays(codes),
-            Headers = ToByteArrays(headers),
-            Keys = ToByteArrays(keys),
-            State = ToByteArrays(state)
+            Codes = ToArrayPoolLists(codes),
+            Headers = ToArrayPoolLists(headers),
+            Keys = ToArrayPoolLists(keys),
+            State = ToArrayPoolLists(state)
         };
 
         BlockHeader? baseBlock = null;
