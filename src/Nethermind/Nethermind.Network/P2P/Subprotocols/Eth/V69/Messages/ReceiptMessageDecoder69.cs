@@ -24,7 +24,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
     protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (ctx.IsNextItemNull())
+        if (ctx.IsNextItemEmptyList())
         {
             ctx.ReadByte();
             return null;

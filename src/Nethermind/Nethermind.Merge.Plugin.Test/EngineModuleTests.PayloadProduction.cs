@@ -19,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Specs.Test;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
@@ -789,8 +790,8 @@ public partial class EngineModuleTests
     {
         get
         {
-            ReleaseSpecDecorator osakaWithSmallerBlobCap = new(Osaka.Instance) { MaxBlobsPerTx = 1 };
-            ReleaseSpecDecorator osakaWithNoTxGasCap = new(Osaka.Instance) { IsEip7825Enabled = false };
+            OverridableReleaseSpec osakaWithSmallerBlobCap = new(Osaka.Instance) { MaxBlobsPerTx = 1 };
+            OverridableReleaseSpec osakaWithNoTxGasCap = new(Osaka.Instance) { IsEip7825Enabled = false };
 
             foreach (bool isForked in new[] { false, true })
             {

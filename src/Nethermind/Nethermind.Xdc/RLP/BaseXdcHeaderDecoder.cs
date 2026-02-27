@@ -33,8 +33,9 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
 
     public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
         {
+            decoderContext.ReadByte();
             return null;
         }
 
@@ -83,7 +84,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
 
     public BlockHeader? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (rlpStream.IsNextItemNull())
+        if (rlpStream.IsNextItemEmptyList())
         {
             rlpStream.ReadByte();
             return null;
@@ -169,7 +170,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
     {
         if (item is null)
         {
-            return Rlp.OfEmptySequence;
+            return Rlp.OfEmptyList;
         }
 
         if (item is not TH header)

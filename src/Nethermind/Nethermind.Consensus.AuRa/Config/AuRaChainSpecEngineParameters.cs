@@ -84,6 +84,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {
         spec.MaximumUncleCount = (int)(startBlock >= (MaximumUncleCountTransition ?? long.MaxValue) ? MaximumUncleCount ?? 2 : 2);
+        spec.Eip158IgnoredAccount = Address.SystemUser;
     }
 
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
