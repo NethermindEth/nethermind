@@ -112,7 +112,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
 
         internal void Clear()
         {
-            foreach (ClockCache<ValueHash256, CodeInfo> cache in _codeCache._caches)
+            foreach (ClockCache<ValueHash256, CodeInfo> cache in _caches)
             {
                 cache.Clear();
             }
