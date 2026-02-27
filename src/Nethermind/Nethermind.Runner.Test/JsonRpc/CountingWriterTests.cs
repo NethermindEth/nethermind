@@ -3,15 +3,23 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.IO.Pipelines;
+using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
+using NSubstitute;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
+using Nethermind.Runner.JsonRpc;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -19,311 +27,226 @@ using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.JsonRpc;
 
-/// <summary>
-/// Regression coverage for JSON-RPC response writer behavior.
-///
-/// Master vs this change:
-/// Master path (pure master behavior): CountingPipeWriter(ctx.Response.BodyWriter).
-/// This change path: CountingStreamPipeWriter(ctx.Response.Body).
-///
-/// Comparison tests in this class execute both paths on the same payload and compare:
-/// - payload size parity (same serialized bytes count),
-/// - peak unflushed bytes (masterPeak vs changedPeak).
-/// </summary>
 [TestFixture]
 public class CountingWriterTests
 {
-    private static readonly EthereumJsonSerializer Serializer = new();
-
-    [TestCase(1)]
-    [TestCase(5)]
-    public async Task PeakBuffer_MasterPathBuffersFullPayload_ThisChangeRemainsBounded(int sizeMb)
+    [Test]
+    public async Task NonBufferedResponse_WritesViaHttpResponseBodyStream()
     {
-        int totalBytes = sizeMb * 1024 * 1024;
-        JsonRpcSuccessResponse response = new() { Id = 1, Result = new string('Z', totalBytes) };
+        Startup startup = CreateStartup();
+        JsonRpcUrl url = new("http", "localhost", 8545, RpcEndpoint.Http, false, ["eth"]);
+        TrackingResponseBodyFeature responseBodyFeature = new();
 
-        (long masterPeak, long payloadSize) = await MeasurePeakAsyncUsingPipeWriter(response);
-        (long changedPeak, long changedPayloadSize) = await MeasurePeakAsyncUsingStreamWriter(response);
+        DefaultHttpContext context = CreateContext(responseBodyFeature, BuildSingleRequest("eth_testMethod"));
 
-        Console.WriteLine(
-            $"Comparison ({sizeMb} MB): payload={payloadSize:N0}, masterPeak={masterPeak:N0}, thisChangePeak={changedPeak:N0}");
+        await InvokeProcessJsonRpcRequestCoreAsync(startup, context, url);
 
-        payloadSize.Should().BeGreaterThan(totalBytes);
-        changedPayloadSize.Should().Be(payloadSize);
-        masterPeak.Should().BeGreaterThan(totalBytes, "master path buffers the full payload");
-        changedPeak.Should().BeLessThan(64 * 1024, "this change should keep buffer bounded");
-        masterPeak.Should().BeGreaterThan(changedPeak * 10, "master should be much worse than this change");
+        context.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        responseBodyFeature.StreamWriteCalls.Should().BeGreaterThan(0,
+            "non-buffered responses should be streamed directly to HttpResponse.Body");
+        responseBodyFeature.WriterAdvancedBytes.Should().Be(0,
+            "non-buffered responses should not serialize through HttpResponse.BodyWriter");
     }
 
     [Test]
-    public async Task PeakBuffer_Batch_MasterPathBuffersMost_ThisChangeRemainsBounded()
+    public async Task NonBufferedResponse_ReturnsValidJsonRpcPayload()
     {
-        const int entryCount = 100;
-        const int entryDataSize = 5_000;
+        Startup startup = CreateStartup();
+        JsonRpcUrl url = new("http", "localhost", 8545, RpcEndpoint.Http, false, ["eth"]);
+        TrackingResponseBodyFeature responseBodyFeature = new();
 
-        (long masterPeak, long payloadSize) = await MeasureBatchPeakAsyncUsingPipeWriter(entryCount, entryDataSize);
-        (long changedPeak, long changedPayloadSize) = await MeasureBatchPeakAsyncUsingStreamWriter(entryCount, entryDataSize);
+        DefaultHttpContext context = CreateContext(responseBodyFeature, BuildSingleRequest("eth_testMethod"));
 
-        Console.WriteLine(
-            $"Batch comparison: payload={payloadSize:N0}, masterPeak={masterPeak:N0}, thisChangePeak={changedPeak:N0}");
+        await InvokeProcessJsonRpcRequestCoreAsync(startup, context, url);
 
-        changedPayloadSize.Should().Be(payloadSize);
-        masterPeak.Should().BeGreaterThan(payloadSize / 2, "master path buffers most of the batch");
-        changedPeak.Should().BeLessThan(64 * 1024, "this change should keep buffer bounded");
-        masterPeak.Should().BeGreaterThan(changedPeak * 5, "master should be much worse than this change");
+        string json = Encoding.UTF8.GetString(responseBodyFeature.GetStreamBytes());
+        using JsonDocument doc = JsonDocument.Parse(json);
+        JsonElement root = doc.RootElement;
+
+        root.GetProperty("jsonrpc").GetString().Should().Be("2.0");
+        root.GetProperty("id").GetInt64().Should().Be(1);
+        root.GetProperty("result").GetString().Should().NotBeNullOrEmpty();
+        responseBodyFeature.StreamLength.Should().BeGreaterThan(1_000_000);
     }
 
-    [Test]
-    public async Task ThisChange_ConsumerReceivesDataDuringSerialization()
+    private static string BuildSingleRequest(string method)
+        => $"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"{method}\",\"params\":[]}}";
+
+    private static DefaultHttpContext CreateContext(TrackingResponseBodyFeature responseBodyFeature, string requestJson)
     {
-        int totalBytes = 2 * 1024 * 1024;
-        JsonRpcSuccessResponse response = new() { Id = 1, Result = new string('W', totalBytes) };
+        DefaultHttpContext context = new();
+        context.Features.Set<IHttpResponseBodyFeature>(responseBodyFeature);
 
-        MidpointTrackingStream stream = new();
-        CountingStreamPipeWriter writer = new(stream);
+        byte[] requestBytes = Encoding.UTF8.GetBytes(requestJson);
+        context.Request.Method = "POST";
+        context.Request.ContentType = "application/json";
+        context.Request.ContentLength = requestBytes.Length;
+        context.Request.Body = new MemoryStream(requestBytes);
+        context.Connection.LocalIpAddress = IPAddress.Loopback;
+        context.Connection.RemoteIpAddress = IPAddress.Loopback;
 
-        await Serializer.SerializeAsync(writer, response);
-        long bytesReceivedDuringSerialization = stream.Position;
-        await writer.CompleteAsync();
-        long bytesReceivedAfterComplete = stream.Position;
-
-        bytesReceivedDuringSerialization.Should().BeGreaterThan(totalBytes / 2);
-        bytesReceivedAfterComplete.Should().BeGreaterThan(totalBytes);
+        return context;
     }
 
-    [TestCase(16)]
-    [TestCase(1_048_576)]
-    public async Task SerializationParity_SuccessResponse(int payloadSize)
+    private static Startup CreateStartup()
     {
-        JsonRpcSuccessResponse response = new() { Id = 1, Result = new string('A', payloadSize) };
-        await AssertResponseParityAsync(response);
-    }
-
-    [Test]
-    public async Task SerializationParity_ErrorResponse()
-    {
-        JsonRpcErrorResponse response = new()
+        JsonRpcConfig jsonRpcConfig = new()
         {
-            Id = 42,
-            Error = new Error { Code = -32600, Message = "Invalid request" }
+            BufferResponses = false,
+            MaxBatchResponseBodySize = int.MaxValue,
+            Timeout = 30_000
         };
 
-        await AssertResponseParityAsync(response);
-    }
-
-    [Test]
-    public async Task SerializationParity_LargeStructuredArray()
-    {
-        List<Dictionary<string, string>> largeResult = new(1_000);
-        for (int i = 0; i < 1_000; i++)
-        {
-            largeResult.Add(new Dictionary<string, string>
+        IJsonRpcService processorService = Substitute.For<IJsonRpcService>();
+        processorService.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+            .Returns(call =>
             {
-                ["address"] = "0x" + i.ToString("x40"),
-                ["data"] = "0x" + new string('a', 256),
-                ["blockNumber"] = "0x" + i.ToString("x"),
-                ["transactionHash"] = "0x" + new string((char)('0' + (i % 10)), 64),
+                JsonRpcRequest request = call.Arg<JsonRpcRequest>();
+                return new JsonRpcSuccessResponse
+                {
+                    Id = request.Id,
+                    Result = new string('x', 1_200_000)
+                };
             });
-        }
-
-        JsonRpcSuccessResponse response = new() { Id = 1, Result = largeResult };
-        await AssertResponseParityAsync(response);
-    }
-
-    [TestCase(1)]
-    [TestCase(50)]
-    public async Task SerializationParity_BatchResponse(int batchSize)
-    {
-        byte[] openBracket = "["u8.ToArray();
-        byte[] comma = ","u8.ToArray();
-        byte[] closeBracket = "]"u8.ToArray();
-
-        Pipe pipe = new();
-        CountingPipeWriter pipeWriter = new(pipe.Writer);
-        pipeWriter.Write(openBracket);
-        for (int i = 0; i < batchSize; i++)
-        {
-            if (i > 0)
+        processorService.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>(), Arg.Any<object?>(), Arg.Any<string?>())
+            .Returns(call => new JsonRpcErrorResponse
             {
-                pipeWriter.Write(comma);
-            }
-
-            JsonRpcSuccessResponse entry = new() { Id = i, Result = $"result_{i}" };
-            await Serializer.SerializeAsync(pipeWriter, entry);
-        }
-
-        pipeWriter.Write(closeBracket);
-        await pipeWriter.CompleteAsync();
-        ReadResult pipeRead = await pipe.Reader.ReadAsync();
-        byte[] pipeBytes = pipeRead.Buffer.ToArray();
-        pipe.Reader.AdvanceTo(pipeRead.Buffer.End);
-        await pipe.Reader.CompleteAsync();
-
-        MemoryStream stream = new();
-        CountingStreamPipeWriter streamWriter = new(stream);
-        streamWriter.Write(openBracket);
-        for (int i = 0; i < batchSize; i++)
-        {
-            if (i > 0)
+                Id = call.ArgAt<object?>(2),
+                Error = new Error
+                {
+                    Code = call.ArgAt<int>(0),
+                    Message = call.ArgAt<string>(1)
+                }
+            });
+        processorService.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>())
+            .Returns(call => new JsonRpcErrorResponse
             {
-                streamWriter.Write(comma);
-            }
+                Error = new Error
+                {
+                    Code = call.ArgAt<int>(0),
+                    Message = call.ArgAt<string>(1)
+                }
+            });
 
-            JsonRpcSuccessResponse entry = new() { Id = i, Result = $"result_{i}" };
-            await Serializer.SerializeAsync(streamWriter, entry);
-        }
+        JsonRpcProcessor jsonRpcProcessor = new(
+            processorService,
+            jsonRpcConfig,
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
 
-        streamWriter.Write(closeBracket);
-        await streamWriter.CompleteAsync();
+        JsonRpcService startupJsonRpcService = new(
+            Substitute.For<IRpcModuleProvider>(),
+            LimboLogs.Instance,
+            jsonRpcConfig);
 
-        byte[] streamBytes = stream.ToArray();
-        streamBytes.Should().Equal(pipeBytes);
-        streamWriter.WrittenCount.Should().Be(pipeWriter.WrittenCount);
+        Startup startup = new();
+        SetPrivateField(startup, "_jsonRpcProcessor", jsonRpcProcessor);
+        SetPrivateField(startup, "_jsonRpcService", startupJsonRpcService);
+        SetPrivateField(startup, "_jsonRpcLocalStats", new NullJsonRpcLocalStats());
+        SetPrivateField(startup, "_jsonSerializer", new EthereumJsonSerializer());
+        SetPrivateField(startup, "_jsonRpcConfig", jsonRpcConfig);
+        SetPrivateField(startup, "_logger", LimboLogs.Instance.GetClassLogger());
 
-        string json = Encoding.UTF8.GetString(streamBytes);
-        JsonDocument doc = JsonDocument.Parse(json);
-        doc.RootElement.GetArrayLength().Should().Be(batchSize);
+        return startup;
     }
 
-    private static async Task AssertResponseParityAsync<T>(T response)
+    private static async Task InvokeProcessJsonRpcRequestCoreAsync(Startup startup, HttpContext context, JsonRpcUrl jsonRpcUrl)
     {
-        (byte[] masterBytes, long masterCount) = await SerializeViaPipeWriterAsync(response);
-        (byte[] changedBytes, long changedCount) = await SerializeViaStreamWriterAsync(response);
+        MethodInfo method = typeof(Startup).GetMethod("ProcessJsonRpcRequestCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("Cannot find ProcessJsonRpcRequestCoreAsync via reflection.");
 
-        changedBytes.Should().Equal(masterBytes);
-        changedCount.Should().Be(masterCount);
+        Task processTask = (Task)(method.Invoke(startup, [context, jsonRpcUrl])
+            ?? throw new InvalidOperationException("ProcessJsonRpcRequestCoreAsync invocation returned null task."));
+
+        await processTask;
     }
 
-    private static async Task<(long Peak, long PayloadSize)> MeasurePeakAsyncUsingPipeWriter<T>(T response)
+    private static void SetPrivateField<T>(Startup startup, string fieldName, T value)
     {
-        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: long.MaxValue));
-        PeakTrackingWriter writer = new(new CountingPipeWriter(pipe.Writer));
+        FieldInfo field = typeof(Startup).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException($"Cannot find field {fieldName} on Startup.");
 
-        await Serializer.SerializeAsync(writer, response);
-        long peak = writer.PeakUnflushedBytes;
-        await writer.CompleteAsync();
-
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        long payloadSize = readResult.Buffer.Length;
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
-        await pipe.Reader.CompleteAsync();
-
-        return (peak, payloadSize);
+        field.SetValue(startup, value);
     }
 
-    private static async Task<(long Peak, long PayloadSize)> MeasurePeakAsyncUsingStreamWriter<T>(T response)
+    private sealed class TrackingResponseBodyFeature : IHttpResponseBodyFeature
     {
-        MemoryStream stream = new();
-        PeakTrackingWriter writer = new(new CountingStreamPipeWriter(stream));
+        private readonly TrackingStream _stream = new();
+        private readonly TrackingPipeWriter _writer;
 
-        await Serializer.SerializeAsync(writer, response);
-        long peak = writer.PeakUnflushedBytes;
-        await writer.CompleteAsync();
-
-        return (peak, stream.Length);
-    }
-
-    private static async Task<(long Peak, long PayloadSize)> MeasureBatchPeakAsyncUsingPipeWriter(int entryCount, int entryDataSize)
-    {
-        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: long.MaxValue));
-        PeakTrackingWriter writer = new(new CountingPipeWriter(pipe.Writer));
-
-        await WriteBatchResponseAsync(writer, entryCount, entryDataSize);
-        long peak = writer.PeakUnflushedBytes;
-        await writer.CompleteAsync();
-
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        long payloadSize = readResult.Buffer.Length;
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
-        await pipe.Reader.CompleteAsync();
-
-        return (peak, payloadSize);
-    }
-
-    private static async Task<(long Peak, long PayloadSize)> MeasureBatchPeakAsyncUsingStreamWriter(int entryCount, int entryDataSize)
-    {
-        MemoryStream stream = new();
-        PeakTrackingWriter writer = new(new CountingStreamPipeWriter(stream));
-
-        await WriteBatchResponseAsync(writer, entryCount, entryDataSize);
-        long peak = writer.PeakUnflushedBytes;
-        await writer.CompleteAsync();
-
-        return (peak, stream.Length);
-    }
-
-    private static async Task<(byte[] Bytes, long WrittenCount)> SerializeViaPipeWriterAsync<T>(T value)
-    {
-        Pipe pipe = new();
-        CountingPipeWriter writer = new(pipe.Writer);
-
-        await Serializer.SerializeAsync(writer, value);
-        await writer.CompleteAsync();
-
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        byte[] bytes = readResult.Buffer.ToArray();
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
-        await pipe.Reader.CompleteAsync();
-
-        return (bytes, writer.WrittenCount);
-    }
-
-    private static async Task<(byte[] Bytes, long WrittenCount)> SerializeViaStreamWriterAsync<T>(T value)
-    {
-        MemoryStream stream = new();
-        CountingStreamPipeWriter writer = new(stream);
-
-        await Serializer.SerializeAsync(writer, value);
-        await writer.CompleteAsync();
-
-        return (stream.ToArray(), writer.WrittenCount);
-    }
-
-    private static async Task WriteBatchResponseAsync(PipeWriter writer, int entryCount, int entryDataSize)
-    {
-        writer.Write("["u8);
-        for (int i = 0; i < entryCount; i++)
+        public TrackingResponseBodyFeature()
         {
-            if (i > 0)
-            {
-                writer.Write(","u8);
-            }
-
-            string data = new('x', entryDataSize);
-            JsonRpcSuccessResponse entry = new() { Id = i, Result = data };
-            await Serializer.SerializeAsync(writer, entry);
+            Pipe pipe = new(new PipeOptions(pauseWriterThreshold: long.MaxValue));
+            _writer = new TrackingPipeWriter(pipe.Writer);
         }
 
-        writer.Write("]"u8);
+        public Stream Stream => _stream;
+        public PipeWriter Writer => _writer;
+
+        public int StreamWriteCalls => _stream.WriteCalls;
+        public long StreamLength => _stream.Length;
+        public long WriterAdvancedBytes => _writer.AdvancedBytes;
+
+        public void DisableBuffering()
+        {
+        }
+
+        public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task SendFileAsync(string path, long offset, long? count, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task CompleteAsync() => Task.CompletedTask;
+
+        public byte[] GetStreamBytes() => _stream.ToArray();
     }
 
-    /// <summary>
-    /// Wraps a PipeWriter and tracks peak unflushed bytes observed after each Advance call.
-    /// </summary>
-    private sealed class PeakTrackingWriter(PipeWriter inner) : PipeWriter
+    private sealed class TrackingStream : MemoryStream
     {
-        public long PeakUnflushedBytes { get; private set; }
+        public int WriteCalls { get; private set; }
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            WriteCalls++;
+            base.Write(buffer);
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            WriteCalls++;
+            base.Write(buffer, offset, count);
+        }
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            WriteCalls++;
+            return base.WriteAsync(buffer, cancellationToken);
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            WriteCalls++;
+            return base.WriteAsync(buffer, offset, count, cancellationToken);
+        }
+    }
+
+    private sealed class TrackingPipeWriter(PipeWriter inner) : PipeWriter
+    {
+        public long AdvancedBytes { get; private set; }
 
         public override void Advance(int bytes)
         {
             inner.Advance(bytes);
-            long unflushed = inner.UnflushedBytes;
-            if (unflushed > PeakUnflushedBytes)
-            {
-                PeakUnflushedBytes = unflushed;
-            }
+            AdvancedBytes += bytes;
         }
 
         public override Memory<byte> GetMemory(int sizeHint = 0) => inner.GetMemory(sizeHint);
         public override Span<byte> GetSpan(int sizeHint = 0) => inner.GetSpan(sizeHint);
-        public override ValueTask CompleteAsync(Exception? exception = null) => inner.CompleteAsync(exception);
         public override void CancelPendingFlush() => inner.CancelPendingFlush();
         public override void Complete(Exception? exception = null) => inner.Complete(exception);
+        public override ValueTask CompleteAsync(Exception? exception = null) => inner.CompleteAsync(exception);
         public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default) => inner.FlushAsync(cancellationToken);
         public override bool CanGetUnflushedBytes => inner.CanGetUnflushedBytes;
         public override long UnflushedBytes => inner.UnflushedBytes;
     }
-
-    private sealed class MidpointTrackingStream : MemoryStream { }
 }
-
