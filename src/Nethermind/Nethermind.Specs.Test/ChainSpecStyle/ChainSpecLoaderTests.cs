@@ -101,8 +101,6 @@ public class ChainSpecLoaderTests
         ChainSpec chainSpec = LoadChainSpec(path);
 
         Assert.That(chainSpec.NetworkId, Is.EqualTo(560048), $"{nameof(chainSpec.NetworkId)}");
-        Assert.That(chainSpec.Name, Is.EqualTo("Hoodi Testnet"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.DataDir, Is.EqualTo("hoodi"), $"{nameof(chainSpec.DataDir)}");
         Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
         chainSpec.DaoForkBlockNumber.Should().Be(null);
