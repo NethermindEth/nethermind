@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
@@ -1011,5 +1012,76 @@ public class TraceRpcModuleTests
             JToken.Parse(resultOverrideBefore).Should().BeEquivalentTo(resultOverrideAfter);
             JToken.Parse(resultNoOverride).Should().NotBeEquivalentTo(resultOverrideAfter);
         }
+    }
+
+    [Test]
+    public async Task Trace_call_caps_gas_to_gas_cap()
+    {
+        Context context = new();
+        await context.Build();
+        IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        long gasCap = 50_000;
+        config.GasCap = gasCap;
+
+        Transaction transaction = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        ResultWrapper<ParityTxTraceFromReplay> result = context.TraceRpcModule.trace_call(
+            TransactionForRpc.FromTransaction(transaction), ["trace"], BlockParameter.Latest);
+
+        result.Data.Action!.Gas.Should().BeLessThan(gasCap);
+    }
+
+    [Test]
+    public async Task Trace_callMany_caps_gas_to_gas_cap()
+    {
+        Context context = new();
+        await context.Build();
+        IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        long gasCap = 50_000;
+        config.GasCap = gasCap;
+
+        Transaction transaction = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        TransactionForRpcWithTraceTypes call = new()
+        {
+            Transaction = TransactionForRpc.FromTransaction(transaction),
+            TraceTypes = ["trace"]
+        };
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> result = context.TraceRpcModule.trace_callMany(
+            [call], BlockParameter.Latest);
+
+        result.Data.First().Action!.Gas.Should().BeLessThan(gasCap);
+    }
+
+    [Test]
+    public async Task Trace_rawTransaction_caps_gas_to_gas_cap()
+    {
+        Context context = new();
+        await context.Build();
+        IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        long gasCap = 50_000;
+        config.GasCap = gasCap;
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(100_000)
+            .WithMaxFeePerGas(0)
+            .WithMaxPriorityFeePerGas(0)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        ResultWrapper<ParityTxTraceFromReplay> result = context.TraceRpcModule.trace_rawTransaction(
+            TxDecoder.Instance.Encode(tx).Bytes, ["trace"]);
+
+        result.Data.Action!.Gas.Should().BeLessThan(gasCap);
     }
 }
