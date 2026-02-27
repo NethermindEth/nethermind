@@ -29,7 +29,6 @@ jobs:
        startsWith(github.event.label.name, 'block-processing-benchmark') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
       filter: ${{ steps.resolve.outputs.filter }}
