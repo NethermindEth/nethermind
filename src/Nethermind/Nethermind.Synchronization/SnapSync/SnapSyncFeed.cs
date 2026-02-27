@@ -137,62 +137,64 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 return SyncResponseHandlingResult.OK;
             }
-            else
+
+            int allLastSuccess = 0;
+            int allLastFailures = 0;
+            int peerLastFailures = 0;
+            bool peerIsOnlyFailure = true;
+
+            lock (_syncLock)
             {
-                int allLastSuccess = 0;
-                int allLastFailures = 0;
-                int peerLastFailures = 0;
-
-                lock (_syncLock)
+                foreach (var item in _resultLog)
                 {
-                    foreach (var item in _resultLog)
+                    if (item.result == AddRangeResult.OK)
                     {
-                        if (item.result == AddRangeResult.OK)
-                        {
-                            allLastSuccess++;
+                        allLastSuccess++;
+                    }
+                    else
+                    {
+                        allLastFailures++;
 
-                            if (item.peer == peer)
-                            {
-                                break;
-                            }
+                        if (item.peer != peer)
+                        {
+                            peerIsOnlyFailure = false;
                         }
                         else
                         {
-                            allLastFailures++;
-
-                            if (item.peer == peer)
-                            {
-                                peerLastFailures++;
-
-                                if (peerLastFailures > AllowedInvalidResponses)
-                                {
-                                    if (allLastFailures == peerLastFailures)
-                                    {
-                                        _logger.Trace($"SNAP - peer to be punished:{peer}");
-                                        return SyncResponseHandlingResult.LesserQuality;
-                                    }
-
-                                    if (allLastSuccess == 0 && allLastFailures > peerLastFailures)
-                                    {
-                                        _snapProvider.UpdatePivot();
-
-                                        _resultLog.Clear();
-
-                                        break;
-                                    }
-                                }
-                            }
+                            peerLastFailures++;
                         }
                     }
                 }
-
-                if (result == AddRangeResult.ExpiredRootHash)
-                {
-                    return SyncResponseHandlingResult.NoProgress;
-                }
-
-                return SyncResponseHandlingResult.OK;
             }
+
+            if (peerLastFailures > AllowedInvalidResponses)
+            {
+                if (peerIsOnlyFailure)
+                {
+                    _logger.Trace($"SNAP - updating pivot and retrying with peer: {peer}");
+                    _snapProvider.UpdatePivot();
+                    _resultLog.Clear();
+                    return SyncResponseHandlingResult.OK;
+                }
+                else
+                {
+                    _logger.Trace($"SNAP - peer to be punished: {peer}");
+                    return SyncResponseHandlingResult.LesserQuality;
+                }
+            }
+
+            if (allLastSuccess == 0 && allLastFailures > peerLastFailures)
+            {
+                _snapProvider.UpdatePivot();
+                _resultLog.Clear();
+            }
+
+            if (result == AddRangeResult.ExpiredRootHash)
+            {
+                return SyncResponseHandlingResult.NoProgress;
+            }
+
+            return SyncResponseHandlingResult.OK;
         }
 
         public void Dispose()
