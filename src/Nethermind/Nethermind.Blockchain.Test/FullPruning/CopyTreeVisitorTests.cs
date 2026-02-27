@@ -55,7 +55,10 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
         clonedDb.Values.Should().BeEquivalentTo(values);
 
         clonedDb.KeyWasWrittenWithFlags(keys[0], WriteFlags.LowPriority);
-        trieDb.KeyWasReadWithFlags(keys[0], ReadFlags.SkipDuplicateRead | ReadFlags.HintReadAhead);
+        ReadFlags expectedReadFlags = scheme == INodeStorage.KeyScheme.HalfPath
+            ? ReadFlags.SkipDuplicateRead | ReadFlags.HintReadAhead
+            : ReadFlags.SkipDuplicateRead | ReadFlags.HintCacheMiss;
+        trieDb.KeyWasReadWithFlags(keys[0], expectedReadFlags);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -84,7 +87,7 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
         dbProvider.CodeDb.Returns(new MemDb());
 
         // Use TestWorldStateFactory.CreateForTest() with the custom DbProvider
-        (IWorldState worldState, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, logManager);
+        (_, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, logManager, scheme);
 
         BlockHeader? baseBlock = Build.A.BlockHeader.WithStateRoot(trie.RootHash).TestObject;
         if (scheme == INodeStorage.KeyScheme.Hash)

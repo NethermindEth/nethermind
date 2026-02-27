@@ -30,7 +30,7 @@ public static class TestWorldStateFactory
         return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
     }
 
-    public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)
+    public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null, INodeStorage.KeyScheme scheme = INodeStorage.KeyScheme.HalfPath)
     {
         if (dbProvider is null) dbProvider = TestMemDbProvider.Init();
         if (logManager is null) logManager = LimboLogs.Instance;
@@ -38,7 +38,7 @@ public static class TestWorldStateFactory
         PruningConfig pruningConfig = new PruningConfig();
         TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
         TrieStore trieStore = new TrieStore(
-            new NodeStorage(dbProvider.StateDb),
+            new NodeStorage(dbProvider.StateDb, scheme),
             No.Pruning,
             Persist.EveryBlock,
             finalizedStateProvider,
