@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
@@ -92,7 +93,11 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
             if (item.Signature is null)
                 stream.EncodeNullObject();
             else
-                stream.Encode(item.Signature.BytesWithRecovery);
+            {
+                Span<byte> sigBuffer = stackalloc byte[Signature.Size];
+                item.Signature.WriteBytesWithRecoveryTo(sigBuffer);
+                stream.Encode(sigBuffer);
+            }
         }
 
         stream.Encode(item.GapNumber);
