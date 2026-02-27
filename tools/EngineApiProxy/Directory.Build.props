@@ -1,0 +1,17 @@
+<Project>
+
+  <Import Project="../Directory.Build.props" />
+
+  <PropertyGroup>
+    <!-- EngineApiProxy-specific properties -->
+    <AssemblyName>EngineApiProxy</AssemblyName>
+    <RootNamespace>Nethermind.EngineApiProxy</RootNamespace>
+    <OutputType>Exe</OutputType>
+    
+    <!-- Optimization for standalone tool -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishSingleFile>false</PublishSingleFile>
+  </PropertyGroup>
+
+</Project>
+
