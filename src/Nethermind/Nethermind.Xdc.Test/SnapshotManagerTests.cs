@@ -170,7 +170,7 @@ internal class SnapshotManagerTests
             .WithNumber(gapNumber).TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
 
-        blockTree.BlockAddedToMain += Raise.EventWith(new BlockEventArgs(new Block(header)));
+        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(new Block(header)));
         snapshotManager.GetSnapshotByGapNumber(header.Number)!.HeaderHash.Should().Be(header.Hash!);
     }
 }
