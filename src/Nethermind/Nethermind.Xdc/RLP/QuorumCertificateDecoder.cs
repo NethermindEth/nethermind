@@ -76,7 +76,7 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
     public Rlp Encode(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptySequence;
+            return Rlp.OfEmptyList;
 
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);
