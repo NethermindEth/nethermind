@@ -12,15 +12,14 @@ class Program
 {
     static int Main()
     {
-        byte[] input = Zisk.IO.ReadInput();
-
+        ReadOnlySpan<byte> input = Zisk.IO.ReadInput();
         Block block = StatelessExecutor.Execute(input);
 
         Span<byte> hash = block.Hash!.Bytes;
         var size = sizeof(uint);
 
-        for (int i = 0, count = hash.Length / size; i < count; i++)
-            Zisk.IO.SetOutput(i, BinaryPrimitives.ReadUInt32BigEndian(hash[(i * size)..]));
+        for (int i = 0, j = 0; i < hash.Length; i += size)
+            Zisk.IO.SetOutput(j++, BinaryPrimitives.ReadUInt32BigEndian(hash.Slice(i, size)));
 
         return 0;
     }
