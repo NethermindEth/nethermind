@@ -64,6 +64,13 @@ public class XdcModule : Module
             .As<IGenesisBuilder>()
             .InstancePerLifetimeScope();
 
+        // Register XDC-specific block transactions executor with gasBailout support.
+        // This overrides the default BlockValidationTransactionsExecutor to skip
+        // "insufficient sender balance" errors caused by accumulated state root divergence.
+        builder.RegisterType<XdcBlockTransactionsExecutor>()
+            .As<IBlockProcessor.IBlockTransactionsExecutor>()
+            .InstancePerLifetimeScope();
+
         // Register XDC block processor that preserves XdcBlockHeader during processing
         // IHeaderStore is auto-resolved by Autofac from BlockTreeModule registration
         builder.RegisterType<XdcBlockProcessor>()
