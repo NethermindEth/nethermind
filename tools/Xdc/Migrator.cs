@@ -48,8 +48,7 @@ public static class Migrator
     {
         var manager = new SnapshotManager(
             target.SnapshotDb,
-            Substitute.For<IBlockTree>(), Substitute.For<IPenaltyHandler>(),
-            Substitute.For<IMasternodeVotingContract>(), Substitute.For<ISpecProvider>()
+            Substitute.For<IBlockTree>(), Substitute.For<IMasternodeVotingContract>(), Substitute.For<ISpecProvider>()
         );
 
         Snapshot? snapshot = source.Reader.GetLatestSnapshot(source.Pivot.Number);
