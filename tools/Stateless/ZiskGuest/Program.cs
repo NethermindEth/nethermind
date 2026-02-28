@@ -10,7 +10,7 @@ namespace Nethermind.Stateless.ZiskGuest;
 
 class Program
 {
-    static int Main()
+    static void Main()
     {
         ReadOnlySpan<byte> input = Zisk.IO.ReadInput();
         Block block = StatelessExecutor.Execute(input);
@@ -18,9 +18,8 @@ class Program
         Span<byte> hash = block.Hash!.Bytes;
         var size = sizeof(uint);
 
+        // TODO: Output chain id and state root too
         for (int i = 0, j = 0; i < hash.Length; i += size)
             Zisk.IO.SetOutput(j++, BinaryPrimitives.ReadUInt32BigEndian(hash.Slice(i, size)));
-
-        return 0;
     }
 }
