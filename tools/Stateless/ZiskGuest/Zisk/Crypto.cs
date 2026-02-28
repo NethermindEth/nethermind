@@ -11,6 +11,15 @@ namespace Nethermind.Stateless.ZiskGuest.Zisk;
 public static unsafe class Crypto
 {
     [DllImport("__Internal")]
+    public static extern void blake2b_compress_c(
+        uint rounds,
+        ulong* state,
+        ulong* message,
+        ulong* offset,
+        byte final_block
+    );
+
+    [DllImport("__Internal")]
     public static extern byte bls12_381_fp_to_g1_c(byte* ret, byte* fp);
 
     [DllImport("__Internal")]
@@ -59,14 +68,16 @@ public static unsafe class Crypto
         byte* sig,
         byte recid,
         byte* msg,
-        byte* output);
+        byte* output
+    );
 
     [DllImport("__Internal")]
     public static extern byte secp256k1_ecdsa_verify_and_address_recover_c(
         byte* sig,
         byte* msg,
         byte* pk,
-        byte* output);
+        byte* output
+    );
 
     [DllImport("__Internal")]
     public static extern bool secp256r1_ecdsa_verify_c(byte* msg, byte* sig, byte* pk);
