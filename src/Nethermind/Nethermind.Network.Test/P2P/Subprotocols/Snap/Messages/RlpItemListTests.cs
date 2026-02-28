@@ -320,6 +320,35 @@ public class RlpItemListTests
         FluentActions.Invoking(() => view.CreateNestedReader(0)).Should().Throw<NotSupportedException>();
     }
 
+    [Test]
+    public void BuilderView_WriteOnNestedChild_ProducesCorrectRlp()
+    {
+        // Build: root → outer container → [inner0([0x01],[0x02]), inner1([0x03])]
+        byte[][][] nested = [[[0x01], [0x02]], [[0x03]]];
+        using RlpItemList.Builder builder = new();
+        using (RlpItemList.Builder.Writer root = builder.BeginRootContainer())
+        {
+            using RlpItemList.Builder.Writer outerContainer = root.BeginContainer();
+            for (int i = 0; i < nested.Length; i++)
+            {
+                using RlpItemList.Builder.Writer inner = outerContainer.BeginContainer();
+                for (int j = 0; j < nested[i].Length; j++)
+                    inner.WriteValue(nested[i][j]);
+            }
+        }
+
+        using IRlpItemList view = builder.ToRlpItemList();
+        using IRlpItemList outer = view.GetNestedItemList(0);
+        using IRlpItemList inner0 = outer.GetNestedItemList(0);
+
+        // inner0 contains [0x01, 0x02] → RLP: c2 01 02
+        byte[] expectedBytes = [0xc2, 0x01, 0x02];
+        inner0.RlpLength.Should().Be(expectedBytes.Length);
+        RlpStream actual = new(inner0.RlpLength);
+        inner0.Write(actual);
+        actual.Data.ToArray().Should().BeEquivalentTo(expectedBytes);
+    }
+
     private static RlpItemList CreateList(byte[][] items)
     {
         int contentLength = 0;

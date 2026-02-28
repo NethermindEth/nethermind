@@ -20,7 +20,7 @@ public sealed partial class RlpItemList
             _entries = new ArrayPoolList<Entry>(entryCapacity);
             _valueBuffer = new ArrayPoolList<byte>(valueCapacity);
             // Entry[0] is a virtual root that tracks total RLP size; it is not written to the output.
-            _entries.Add(new Entry { Length = 0, ValueOffset = 0, EntriesLength = 0, ValueBufferLength = 0 });
+            _entries.Add(new Entry { Length = 0, ValueOffset = 0, EntriesLength = 0 });
         }
 
         public Writer BeginRootContainer() => new Writer(this, 0, -1);
@@ -46,7 +46,6 @@ public sealed partial class RlpItemList
             public int Length;           // Leaf: raw byte count. Container: RLP content length of children.
             public int ValueOffset;      // Leaf: offset into _valueBuffer. Container: starting _valueBuffer offset for subtree.
             public int EntriesLength;    // Leaf: -1. Container: total entry count in subtree (excl. self), >= 0.
-            public int ValueBufferLength;// Leaf: same as Length. Container: total _valueBuffer bytes for subtree.
             public bool IsLeaf => EntriesLength < 0;
         }
 
@@ -69,7 +68,7 @@ public sealed partial class RlpItemList
                 int offset = b._valueBuffer!.Count;
                 b._valueBuffer.AddRange(value);
 
-                b._entries!.Add(new Entry { Length = value.Length, ValueOffset = offset, EntriesLength = -1, ValueBufferLength = value.Length });
+                b._entries!.Add(new Entry { Length = value.Length, ValueOffset = offset, EntriesLength = -1 });
 
                 b._entries.AsSpan()[_entryIndex].Length += Rlp.LengthOf(value);
             }
@@ -78,7 +77,7 @@ public sealed partial class RlpItemList
             {
                 Builder b = _builder;
                 int idx = b._entries!.Count;
-                b._entries.Add(new Entry { Length = 0, ValueOffset = b._valueBuffer!.Count, EntriesLength = 0, ValueBufferLength = 0 });
+                b._entries.Add(new Entry { Length = 0, ValueOffset = b._valueBuffer!.Count, EntriesLength = 0 });
                 return new Writer(b, idx, _entryIndex);
             }
 
@@ -88,7 +87,6 @@ public sealed partial class RlpItemList
                 Span<Entry> entries = b._entries!.AsSpan();
                 ref Entry self = ref entries[_entryIndex];
                 self.EntriesLength = b._entries.Count - _entryIndex - 1;
-                self.ValueBufferLength = b._valueBuffer!.Count - self.ValueOffset;
                 if (_parentEntryIndex < 0) { b._rootWriterDisposed = true; return; }
                 int seqLen = Rlp.LengthOfSequence(self.Length);
                 entries[_parentEntryIndex].Length += seqLen;
