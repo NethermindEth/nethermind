@@ -318,7 +318,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             {
                 AccountWithStorageStartingHash path = request.Paths[i];
                 using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
-                groupWriter.WriteValue(path.PathAndAccount.Path.Bytes.ToArray());
+                groupWriter.WriteValue(path.PathAndAccount.Path.Bytes);
                 groupWriter.WriteValue(_emptyBytes);
             }
             rootWriter.Dispose();
