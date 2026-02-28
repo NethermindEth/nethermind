@@ -4,14 +4,13 @@
 using System;
 using System.Threading;
 using Nethermind.Core.Collections;
-using Entry = Nethermind.Serialization.Rlp.RlpItemList.Builder.Entry;
 
 namespace Nethermind.Serialization.Rlp;
 
-internal sealed class BuilderRlpItemList : IRlpItemList
+public sealed partial class DeferredRlpItemList : IRlpItemList
 {
-    private readonly BuilderRlpItemList? _root;
-    private ArrayPoolList<Entry>? _entries;
+    private readonly DeferredRlpItemList? _root;
+    private ArrayPoolList<Builder.Entry>? _entries;
     private ArrayPoolList<byte>? _valueBuffer;
     private int _entryStart;
     private int _entryEnd;
@@ -20,12 +19,12 @@ internal sealed class BuilderRlpItemList : IRlpItemList
     private int _cachedIndex;
     private int _cachedEntryPos;
 
-    private BuilderRlpItemList? _pooledChild;
-    private BuilderRlpItemList? _parent;
+    private DeferredRlpItemList? _pooledChild;
+    private DeferredRlpItemList? _parent;
     private bool _wasDisposed;
 
     // Root constructor — owns the arrays.
-    internal BuilderRlpItemList(ArrayPoolList<Entry> entries, ArrayPoolList<byte> valueBuffer, int entryStart)
+    internal DeferredRlpItemList(ArrayPoolList<Builder.Entry> entries, ArrayPoolList<byte> valueBuffer, int entryStart)
     {
         _root = null;
         _entries = entries;
@@ -38,7 +37,7 @@ internal sealed class BuilderRlpItemList : IRlpItemList
     }
 
     // Child constructor — borrows from root.
-    private BuilderRlpItemList(BuilderRlpItemList root, int entryStart, int entryEnd, BuilderRlpItemList parent)
+    private DeferredRlpItemList(DeferredRlpItemList root, int entryStart, int entryEnd, DeferredRlpItemList parent)
     {
         _root = root;
         _entries = null;
@@ -51,7 +50,7 @@ internal sealed class BuilderRlpItemList : IRlpItemList
         _parent = parent;
     }
 
-    private Span<Entry> Entries => (_root?._entries ?? _entries)!.AsSpan();
+    private Span<Builder.Entry> Entries => (_root?._entries ?? _entries)!.AsSpan();
     private Span<byte> ValueBuffer => (_root?._valueBuffer ?? _valueBuffer)!.AsSpan();
 
     public int Count
@@ -67,12 +66,12 @@ internal sealed class BuilderRlpItemList : IRlpItemList
 
     public void Write(RlpStream stream)
     {
-        Span<Entry> entries = Entries;
+        Span<Builder.Entry> entries = Entries;
         Span<byte> values = ValueBuffer;
         stream.StartSequence(entries[_entryStart].Length);
         for (int i = _entryStart + 1; i < _entryEnd; i++)
         {
-            ref Entry entry = ref entries[i];
+            ref Builder.Entry entry = ref entries[i];
             if (entry.IsLeaf)
                 stream.Encode(values.Slice(entry.ValueOffset, entry.Length));
             else
@@ -82,23 +81,23 @@ internal sealed class BuilderRlpItemList : IRlpItemList
 
     public ReadOnlySpan<byte> ReadContent(int index)
     {
-        Span<Entry> entries = Entries;
+        Span<Builder.Entry> entries = Entries;
         int pos = GetDirectChildEntryIndex(entries, index);
-        ref Entry entry = ref entries[pos];
+        ref Builder.Entry entry = ref entries[pos];
         if (!entry.IsLeaf) throw new RlpException("Item is not a byte string");
         return ValueBuffer.Slice(entry.ValueOffset, entry.Length);
     }
 
     public IRlpItemList GetNestedItemList(int index)
     {
-        Span<Entry> entries = Entries;
+        Span<Builder.Entry> entries = Entries;
         int pos = GetDirectChildEntryIndex(entries, index);
-        ref Entry entry = ref entries[pos];
+        ref Builder.Entry entry = ref entries[pos];
         if (entry.IsLeaf) throw new RlpException("Item is not an RLP list");
 
         int childEnd = pos + 1 + entry.EntriesLength;
 
-        BuilderRlpItemList? child = _pooledChild;
+        DeferredRlpItemList? child = _pooledChild;
         if (child is not null)
         {
             _pooledChild = null;
@@ -106,11 +105,11 @@ internal sealed class BuilderRlpItemList : IRlpItemList
             return child;
         }
 
-        return new BuilderRlpItemList(_root ?? this, pos, childEnd, parent: this);
+        return new DeferredRlpItemList(_root ?? this, pos, childEnd, parent: this);
     }
 
     public RefRlpListReader CreateNestedReader(int index) =>
-        throw new NotSupportedException("CreateNestedReader is not supported on BuilderRlpItemList");
+        throw new NotSupportedException("CreateNestedReader is not supported on DeferredRlpItemList");
 
     public void Dispose()
     {
@@ -145,19 +144,19 @@ internal sealed class BuilderRlpItemList : IRlpItemList
 
     private int ComputeCount()
     {
-        Span<Entry> entries = Entries;
+        Span<Builder.Entry> entries = Entries;
         int count = 0;
         int pos = _entryStart + 1;
         while (pos < _entryEnd)
         {
-            ref Entry entry = ref entries[pos];
+            ref Builder.Entry entry = ref entries[pos];
             pos += 1 + (entry.IsLeaf ? 0 : entry.EntriesLength);
             count++;
         }
         return count;
     }
 
-    private int GetDirectChildEntryIndex(Span<Entry> entries, int index)
+    private int GetDirectChildEntryIndex(Span<Builder.Entry> entries, int index)
     {
         int scanFrom;
         int pos;
@@ -174,7 +173,7 @@ internal sealed class BuilderRlpItemList : IRlpItemList
 
         for (int i = scanFrom; i < index; i++)
         {
-            ref Entry entry = ref entries[pos];
+            ref Builder.Entry entry = ref entries[pos];
             pos += 1 + (entry.IsLeaf ? 0 : entry.EntriesLength);
         }
 
