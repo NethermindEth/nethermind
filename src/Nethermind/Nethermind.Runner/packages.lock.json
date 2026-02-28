@@ -722,7 +722,7 @@
           "Microsoft.IdentityModel.JsonWebTokens": "[8.15.0, )",
           "Nethermind.Crypto.SecP256k1": "[1.5.0, )",
           "Nethermind.Logging": "[1.37.0-unstable, )",
-          "Nethermind.Numerics.Int256": "[1.4.0, )",
+          "Nethermind.Numerics.Int256": "[1.5.0, )",
           "NonBlocking": "[2.1.2, )",
           "TestableIO.System.IO.Abstractions.Wrappers": "[22.1.0, )"
         }
@@ -731,7 +731,7 @@
         "type": "Project",
         "dependencies": {
           "BouncyCastle.Cryptography": "[2.6.2, )",
-          "Ckzg.Bindings": "[2.1.5.1551, )",
+          "Ckzg.Bindings": "[2.1.6.1589, )",
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.Crypto.Bls": "[1.0.5, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
@@ -885,7 +885,8 @@
           "Nethermind.Network.Discovery": "[1.37.0-unstable, )",
           "Nethermind.Network.Dns": "[1.37.0-unstable, )",
           "Nethermind.Network.Enr": "[1.37.0-unstable, )",
-          "Nethermind.Specs": "[1.37.0-unstable, )"
+          "Nethermind.Specs": "[1.37.0-unstable, )",
+          "Nethermind.State.Flat": "[1.37.0-unstable, )"
         }
       },
       "nethermind.init.snapshot": {
@@ -1117,6 +1118,19 @@
           "Nethermind.Trie": "[1.37.0-unstable, )"
         }
       },
+      "nethermind.state.flat": {
+        "type": "Project",
+        "dependencies": {
+          "Collections.Pooled": "[1.0.82, )",
+          "Nethermind.Core": "[1.37.0-unstable, )",
+          "Nethermind.Db": "[1.37.0-unstable, )",
+          "Nethermind.Evm": "[1.37.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
+          "Nethermind.State": "[1.37.0-unstable, )",
+          "Nethermind.Trie": "[1.37.0-unstable, )",
+          "System.IO.Hashing": "[10.0.2, )"
+        }
+      },
       "nethermind.synchronization": {
         "type": "Project",
         "dependencies": {
@@ -1237,9 +1251,15 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
+      },
+      "Collections.Pooled": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.82, )",
+        "resolved": "1.0.82",
+        "contentHash": "o14V0k8bg+EPMwaVJcFbLNrkyDPaqNx6fWTTjJLgVWJLu939kVIAAWKaV5lCwZ7LM/tv59igi65rVWRyjILc0Q=="
       },
       "CommunityToolkit.HighPerformance": {
         "type": "CentralTransitive",
@@ -1484,9 +1504,9 @@
       },
       "Nethermind.Numerics.Int256": {
         "type": "CentralTransitive",
-        "requested": "[1.4.0, )",
-        "resolved": "1.4.0",
-        "contentHash": "w8HRMsdpX9fG9kcELJeJPEKIZgOUTCe47ebtejCvfBYQVlabA9blqba6QWIt5oG8cRSgnVlQ24DsdGsLzqFM+Q=="
+        "requested": "[1.5.0, )",
+        "resolved": "1.5.0",
+        "contentHash": "MWNOdamJdcWMmytUNNGn0xmwa+GGY97j8TRtqp4UiqOWjn4Ygxs9m+7t2OoTh1Wd+DtouGsjzPuUdS8tyI3Ygw=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
@@ -1575,6 +1595,12 @@
           "System.Security.Cryptography.ProtectedData": "10.0.3"
         }
       },
+      "System.IO.Hashing": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.2, )",
+        "resolved": "10.0.2",
+        "contentHash": "AKJknIFi9O3+rGExxTry188JPvUoZAPcCtS2qdqyFhIzsxQ1Ap94BeGDG0VzVEHakhmRxmJtVih6TsHoghIt/g=="
+      },
       "System.Security.Cryptography.ProtectedData": {
         "type": "CentralTransitive",
         "requested": "[10.0.3, )",
@@ -1628,9 +1654,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1726,9 +1752,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1824,9 +1850,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1922,9 +1948,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -2020,9 +2046,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",

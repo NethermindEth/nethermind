@@ -60,7 +60,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (items is null)
             {
-                WriteByte(Rlp.NullObjectByte);
+                WriteByte(Rlp.EmptyListByte);
                 return;
             }
             IRlpStreamDecoder<T> decoder = Rlp.GetStreamDecoder<T>();
@@ -880,9 +880,9 @@ namespace Nethermind.Serialization.Rlp
 
         public virtual Span<byte> Peek(int offset, int length) => Data.AsSpan(_position + offset, length);
 
-        public bool IsNextItemEmptyArray() => PeekByte() == Rlp.EmptyArrayByte;
+        public bool IsNextItemEmptyByteArray() => PeekByte() is Rlp.EmptyByteArrayByte;
 
-        public bool IsNextItemNull() => PeekByte() == Rlp.NullObjectByte;
+        public bool IsNextItemEmptyList() => PeekByte() is Rlp.EmptyListByte;
 
         public bool DecodeBool()
         {
@@ -937,7 +937,7 @@ namespace Nethermind.Serialization.Rlp
             T[] result = new T[count];
             for (int i = 0; i < result.Length; i++)
             {
-                if (PeekByte() == Rlp.OfEmptySequence[0])
+                if (PeekByte() == Rlp.OfEmptyList[0])
                 {
                     result[i] = defaultElement;
                     Position++;
@@ -964,7 +964,7 @@ namespace Nethermind.Serialization.Rlp
             var result = new ArrayPoolList<T>(count, count);
             for (int i = 0; i < result.Count; i++)
             {
-                if (PeekByte() == Rlp.OfEmptySequence[0])
+                if (PeekByte() == Rlp.OfEmptyList[0])
                 {
                     result[i] = defaultElement;
                     Position++;
@@ -1070,7 +1070,7 @@ namespace Nethermind.Serialization.Rlp
             switch (prefix)
             {
                 case 0:
-                    return (long)RlpHelpers.ThrowNonCanonicalInteger(Position);
+                    return RlpHelpers.ThrowNonCanonicalInteger(Position);
                 case < 128:
                     return prefix;
                 case 128:

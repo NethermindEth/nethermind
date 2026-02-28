@@ -14,8 +14,12 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
 
     protected override Vote DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
+        {
+            decoderContext.ReadByte();
             return null;
+        }
+
         int sequenceLength = decoderContext.ReadSequenceLength();
         int endPosition = decoderContext.Position + sequenceLength;
 
@@ -23,9 +27,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         Signature signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
-            if (decoderContext.PeekNextRlpLength() != Signature.Size)
-                throw new RlpException($"Invalid signature length in '{nameof(Vote)}'");
-            signature = new(decoderContext.DecodeByteArray());
+            signature = decoderContext.DecodeSignature();
         }
         ulong gapNumber = decoderContext.DecodeULong();
 
@@ -38,8 +40,11 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
 
     protected override Vote DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (rlpStream.IsNextItemNull())
+        if (rlpStream.IsNextItemEmptyList())
+        {
+            rlpStream.ReadByte();
             return null;
+        }
         int sequenceLength = rlpStream.ReadSequenceLength();
         int endPosition = rlpStream.Position + sequenceLength;
 
@@ -47,9 +52,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         Signature signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
-            if (rlpStream.PeekNextRlpLength() != Signature.Size)
-                throw new RlpException($"Invalid signature length in {nameof(Vote)}");
-            signature = new(rlpStream.DecodeByteArray());
+            signature = rlpStream.DecodeSignature();
         }
         ulong gapNumber = rlpStream.DecodeULong();
 
@@ -77,7 +80,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
     public Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptySequence;
+            return Rlp.OfEmptyList;
 
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);
@@ -85,7 +88,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public override int GetLength(Vote item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }

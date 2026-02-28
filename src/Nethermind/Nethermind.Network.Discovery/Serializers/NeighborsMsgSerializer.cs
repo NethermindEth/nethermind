@@ -53,7 +53,7 @@ public class NeighborsMsgSerializer(
         }
         else
         {
-            stream.Encode(Rlp.OfEmptySequence);
+            stream.Encode(Rlp.OfEmptyList);
         }
 
         stream.Encode(msg.ExpirationTime);
@@ -107,7 +107,7 @@ public class NeighborsMsgSerializer(
         }
         else
         {
-            contentLength += Rlp.OfEmptySequence.Bytes.Length;
+            contentLength += Rlp.OfEmptyList.Bytes.Length;
         }
 
         contentLength += Rlp.LengthOf(msg.ExpirationTime);

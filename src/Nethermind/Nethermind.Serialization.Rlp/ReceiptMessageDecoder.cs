@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -14,6 +15,7 @@ namespace Nethermind.Serialization.Rlp
     {
         private readonly bool _skipStateAndStatus;
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
         public ReceiptMessageDecoder(bool skipStateAndStatus = false)
         {
             _skipStateAndStatus = skipStateAndStatus;
@@ -30,7 +32,7 @@ namespace Nethermind.Serialization.Rlp
 
         protected override TxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (ctx.IsNextItemNull())
+            if (ctx.IsNextItemEmptyList())
             {
                 ctx.ReadByte();
                 return null;
@@ -138,7 +140,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence.Bytes;
+                return Rlp.OfEmptyList.Bytes;
             }
 
             int length = GetLength(item, rlpBehaviors);

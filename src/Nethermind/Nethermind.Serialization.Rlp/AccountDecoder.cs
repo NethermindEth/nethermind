@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -14,8 +15,10 @@ namespace Nethermind.Serialization.Rlp
         public static AccountDecoder Instance => new();
         public static AccountDecoder Slim => new(slimFormat: true);
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
         public AccountDecoder() { }
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
         public AccountDecoder(bool slimFormat = false)
         {
             _slimFormat = slimFormat;
@@ -89,7 +92,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence;
+                return Rlp.OfEmptyList;
             }
 
             int contentLength = GetContentLength(item);
@@ -188,7 +191,7 @@ namespace Nethermind.Serialization.Rlp
         private Hash256 DecodeStorageRoot(RlpStream rlpStream)
         {
             Hash256 storageRoot;
-            if (_slimFormat && rlpStream.IsNextItemEmptyArray())
+            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
             {
                 rlpStream.ReadByte();
                 storageRoot = Keccak.EmptyTreeHash;
@@ -204,7 +207,7 @@ namespace Nethermind.Serialization.Rlp
         private Hash256 DecodeStorageRoot(Rlp.ValueDecoderContext context)
         {
             Hash256 storageRoot;
-            if (_slimFormat && context.IsNextItemEmptyArray())
+            if (_slimFormat && context.IsNextItemEmptyByteArray())
             {
                 context.ReadByte();
                 storageRoot = Keccak.EmptyTreeHash;
@@ -221,7 +224,7 @@ namespace Nethermind.Serialization.Rlp
         private Hash256 DecodeCodeHash(RlpStream rlpStream)
         {
             Hash256 codeHash;
-            if (_slimFormat && rlpStream.IsNextItemEmptyArray())
+            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
             {
                 rlpStream.ReadByte();
                 codeHash = Keccak.OfAnEmptyString;
@@ -257,7 +260,7 @@ namespace Nethermind.Serialization.Rlp
         private Hash256 DecodeStorageRoot(ref Rlp.ValueDecoderContext rlpStream)
         {
             Hash256 storageRoot;
-            if (_slimFormat && rlpStream.IsNextItemEmptyArray())
+            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
             {
                 rlpStream.ReadByte();
                 storageRoot = Keccak.EmptyTreeHash;
@@ -273,7 +276,7 @@ namespace Nethermind.Serialization.Rlp
         private Hash256 DecodeCodeHash(ref Rlp.ValueDecoderContext rlpStream)
         {
             Hash256 codeHash;
-            if (_slimFormat && rlpStream.IsNextItemEmptyArray())
+            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
             {
                 rlpStream.ReadByte();
                 codeHash = Keccak.OfAnEmptyString;
@@ -289,7 +292,7 @@ namespace Nethermind.Serialization.Rlp
         private ValueHash256 DecodeStorageRootStruct(ref Rlp.ValueDecoderContext rlpStream)
         {
             ValueHash256 storageRoot;
-            if (_slimFormat && rlpStream.IsNextItemEmptyArray())
+            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
             {
                 rlpStream.ReadByte();
                 storageRoot = Keccak.EmptyTreeHash.ValueHash256;
@@ -305,7 +308,7 @@ namespace Nethermind.Serialization.Rlp
         private ValueHash256 DecodeCodeHashStruct(ref Rlp.ValueDecoderContext rlpStream)
         {
             ValueHash256 codeHash;
-            if (_slimFormat && rlpStream.IsNextItemEmptyArray())
+            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
             {
                 rlpStream.ReadByte();
                 codeHash = Keccak.OfAnEmptyString.ValueHash256;
