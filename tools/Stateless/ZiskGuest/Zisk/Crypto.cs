@@ -41,6 +41,9 @@ public static unsafe class Crypto
     public static extern byte bn254_pairing_check_c(byte* pairs, nuint num_pairs);
 
     [DllImport("__Internal")]
+    public static extern void keccak256_c(byte* input, nuint input_len, byte* output);
+
+    [DllImport("__Internal")]
     public static extern nuint modexp_bytes_c(
         byte* base_ptr,
         nuint base_len,
