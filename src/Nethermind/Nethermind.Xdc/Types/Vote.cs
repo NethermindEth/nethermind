@@ -7,7 +7,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Xdc.Types;
 
-public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature signature = null) : IXdcPoolItem
+public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature signature = null, bool isMyVote = false) : IXdcPoolItem
 {
     private static readonly VoteDecoder _decoder = new();
     private Hash256 _hash;
@@ -17,6 +17,7 @@ public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature s
     public Signature? Signature { get; set; } = signature;
     public Address? Signer { get; set; }
     public Hash256 Hash => _hash ??= Keccak.Compute(_decoder.Encode(this, RlpBehaviors.None).Bytes);
+    public bool IsMyVote { get; } = isMyVote;
 
     public override bool Equals(object? obj) =>
         obj is Vote other && Hash == other.Hash;

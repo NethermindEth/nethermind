@@ -131,8 +131,12 @@ internal class XdcProtocolHandler(
 
     private bool ShouldNotifyVote(Vote vote)
     {
+        if (vote.IsMyVote)
+            return true;
+
         if (_notifiedVotes.Contains(vote.Hash))
             return false;
+
         _notifiedVotes.Set(vote.Hash);
         return true;
     }
