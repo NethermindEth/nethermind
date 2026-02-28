@@ -205,7 +205,7 @@ public class SnapServerTest
                 Group = [[]]
             }
         ]);
-        using RlpByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
         result.Count.Should().Be(1);
     }
@@ -222,7 +222,7 @@ public class SnapServerTest
                 Group = [TestItem.Tree.AccountsWithPaths[0].Path.Bytes.ToArray(), []]
             }
         ]);
-        using RlpByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
         result.Count.Should().Be(1);
     }
@@ -239,7 +239,7 @@ public class SnapServerTest
             groups[i] = new PathGroup { Group = [[]] };
 
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(groups);
-        using RlpByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
         result.Count.Should().BeLessThan(requestCount);
     }

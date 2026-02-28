@@ -65,13 +65,13 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
         }
 
         using RlpPathGroupList encoded = PathGroup.EncodeToRlpPathGroupList(groups);
-        RlpByteArrayList? res = snapServer.GetTrieNodes(encoded, request.RootHash, token);
+        IByteArrayList? res = snapServer.GetTrieNodes(encoded, request.RootHash, token);
         return Task.FromResult<IByteArrayList>(res!);
     }
 
     public Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
     {
-        RlpByteArrayList? res = snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
+        IByteArrayList? res = snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
         return Task.FromResult<IByteArrayList>(res!);
     }
 }
