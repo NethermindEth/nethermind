@@ -11,6 +11,8 @@ using Autofac;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Diagnosers;
+using BenchmarkDotNet.Diagnostics.dotTrace;
 using BenchmarkDotNet.Exporters.Json;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
@@ -70,6 +72,7 @@ public enum StateBackend { Trie, FlatState }
 /// - ERC20_Transfer_200 (storage-heavy: 2 SLOAD + 2 SSTORE + 2 KECCAK per tx)
 /// - Swap_200 (storage-heavy: 8 SLOAD + 6 SSTORE + 1 KECCAK per tx)
 /// </summary>
+[DotTraceDiagnoser]
 [Config(typeof(BlockProcessingConfig))]
 [MemoryDiagnoser]
 [JsonExporterAttribute.FullCompressed]
@@ -110,6 +113,28 @@ public class BlockProcessingBenchmark
             AddColumn(StatisticColumn.Median);
             AddColumn(StatisticColumn.P90);
             AddColumn(StatisticColumn.P95);
+        }
+    }
+
+    /// <summary>
+    /// Lightweight config for profiling sessions — fewer iterations to reduce total
+    /// run time while still capturing a meaningful dotTrace snapshot.
+    /// Use via: <c>--filter '*ERC20*' --job ProfilingConfig</c>
+    /// </summary>
+    private class ProfilingConfig : ManualConfig
+    {
+        public ProfilingConfig()
+        {
+            AddJob(Job.Default
+                .WithToolchain(InProcessNoEmitToolchain.Instance)
+                .WithInvocationCount(1)
+                .WithUnrollFactor(1)
+                .WithLaunchCount(1)
+                .WithWarmupCount(1)
+                .WithIterationCount(3)
+                .WithGcForce(true));
+            AddDiagnoser(new DotTraceDiagnoser());
+            AddDiagnoser(MemoryDiagnoser.Default);
         }
     }
 
