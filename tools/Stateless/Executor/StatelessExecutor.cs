@@ -20,10 +20,10 @@ public class StatelessExecutor
         (Block suggestedBlock, Witness witness, uint chainId) = InputSerializer.Deserialize(data);
 
         ISpecProvider specProvider = GetSpecProvider(chainId);
-        //IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        //IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
         //EthereumEcdsa ecdsa = new(chainId);
 
-        //foreach (Transaction tx in block.Transactions)
+        //foreach (Transaction tx in suggestedBlock.Transactions)
         //    tx.SenderAddress ??= ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
         return TryExecute(suggestedBlock, witness, specProvider, out processedBlock);

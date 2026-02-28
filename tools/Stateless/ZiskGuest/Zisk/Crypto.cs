@@ -57,7 +57,7 @@ public static unsafe class Crypto
     [DllImport("__Internal")]
     public static extern byte secp256k1_ecdsa_address_recover_c(
         byte* sig,
-        byte* recid,
+        byte recid,
         byte* msg,
         byte* output);
 
