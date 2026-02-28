@@ -5,11 +5,11 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Snap;
 
-public sealed class RlpPathGroupList(RlpItemList inner) : DecodeOnDemandRlpItemList<PathGroup>(inner)
+public sealed class RlpPathGroupList(IRlpItemList inner) : DecodeOnDemandRlpItemList<PathGroup>(inner)
 {
     protected override PathGroup DecodeItem(int index)
     {
-        using RlpItemList group = Inner.CreateNestedItemList(index);
+        using IRlpItemList group = Inner.CreateNestedItemList(index);
         byte[][] paths = new byte[group.Count][];
         for (int j = 0; j < group.Count; j++)
             paths[j] = group.ReadContent(j).ToArray();

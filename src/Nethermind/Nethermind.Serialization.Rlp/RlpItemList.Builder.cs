@@ -25,7 +25,7 @@ public sealed partial class RlpItemList
 
         public Writer BeginRootContainer() => new Writer(this, 0, -1);
 
-        public RlpItemList ToRlpItemList()
+        public IRlpItemList ToRlpItemList()
         {
             Span<Entry> entries = _entries.AsSpan();
             int contentLength = entries[0].Length;

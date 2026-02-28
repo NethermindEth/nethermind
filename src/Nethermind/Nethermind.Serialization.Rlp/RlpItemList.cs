@@ -9,7 +9,7 @@ using System.Threading;
 using Nethermind.Core.Collections;
 namespace Nethermind.Serialization.Rlp;
 
-public sealed partial class RlpItemList : IDisposable, IRlpWrapper
+public sealed partial class RlpItemList : IRlpItemList
 {
     private readonly RefCountingMemoryOwner<byte> _memoryOwner;
     private readonly Memory<byte> _rlpRegion;
@@ -75,7 +75,7 @@ public sealed partial class RlpItemList : IDisposable, IRlpWrapper
 
     public RefRlpListReader CreateNestedReader(int index) => new(this[index]);
 
-    public RlpItemList CreateNestedItemList(int index)
+    public IRlpItemList CreateNestedItemList(int index)
     {
         ReadOnlySpan<byte> item = this[index];
         if (item[0] < 0xc0) throw new RlpException("Item is not an RLP list");
@@ -87,7 +87,7 @@ public sealed partial class RlpItemList : IDisposable, IRlpWrapper
         return new RlpItemList(_memoryOwner, nestedRegion);
     }
 
-    public static RlpItemList DecodeList(ref Rlp.ValueDecoderContext ctx, IMemoryOwner<byte> memoryOwner)
+    public static IRlpItemList DecodeList(ref Rlp.ValueDecoderContext ctx, IMemoryOwner<byte> memoryOwner)
     {
         int prefixStart = ctx.Position;
         int innerLength = ctx.ReadSequenceLength();

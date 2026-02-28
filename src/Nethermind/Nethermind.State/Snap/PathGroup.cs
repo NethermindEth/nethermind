@@ -13,7 +13,7 @@ namespace Nethermind.State.Snap
         public static RlpPathGroupList EncodeToRlpPathGroupList(IReadOnlyList<PathGroup> groups) =>
             new(EncodeToRlpItemList(groups));
 
-        public static RlpItemList EncodeToRlpItemList(IReadOnlyList<PathGroup> groups)
+        public static IRlpItemList EncodeToRlpItemList(IReadOnlyList<PathGroup> groups)
         {
             using RlpItemList.Builder builder = new();
             RlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
