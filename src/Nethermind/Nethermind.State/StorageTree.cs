@@ -215,10 +215,13 @@ namespace Nethermind.State
             {
                 Set(rawKey, []);
             }
+            else if (rlpEncode)
+            {
+                Set(rawKey, Rlp.Encode(value));
+            }
             else
             {
-                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
-                Set(rawKey, rlpEncoded);
+                Set(rawKey, value);
             }
         }
 
@@ -254,7 +257,7 @@ namespace Nethermind.State
             else
             {
                 byte[] rlpEncoded = RlpEncodeStorageValue(value);
-                Set(rawKey, new Rlp(rlpEncoded));
+                Set(rawKey, rlpEncoded);
             }
         }
 
