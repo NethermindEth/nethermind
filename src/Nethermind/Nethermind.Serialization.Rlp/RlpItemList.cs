@@ -78,8 +78,6 @@ public sealed class RlpItemList : IRlpItemList
         return contentLength == 0 ? ReadOnlySpan<byte>.Empty : rawRlp.Slice(prefixLength, contentLength);
     }
 
-    public RefRlpListReader CreateNestedReader(int index) => new(this[index]);
-
     public IRlpItemList GetNestedItemList(int index)
     {
         ReadOnlySpan<byte> item = this[index];

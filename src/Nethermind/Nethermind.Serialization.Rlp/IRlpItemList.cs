@@ -10,5 +10,4 @@ public interface IRlpItemList : IDisposable, IRlpWrapper
     int Count { get; }
     ReadOnlySpan<byte> ReadContent(int index);
     IRlpItemList GetNestedItemList(int index);
-    RefRlpListReader CreateNestedReader(int index);
 }
