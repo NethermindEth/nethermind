@@ -12,8 +12,8 @@ namespace Nethermind.Serialization.Rlp
     {
         private readonly bool _slimFormat;
 
-        public static AccountDecoder Instance => new();
-        public static AccountDecoder Slim => new(slimFormat: true);
+        public static AccountDecoder Instance { get; } = new();
+        public static AccountDecoder Slim { get; } = new(slimFormat: true);
 
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
         public AccountDecoder() { }
