@@ -12,13 +12,12 @@ namespace Nethermind.Stateless.Execution;
 
 public static class InputSerializer
 {
-    private static readonly BlockDecoder _blockDecoder = new();
-
     public static byte[] Serialize(Block block, Witness witness, uint chainId)
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        var blockLen = _blockDecoder.GetLength(block, RlpBehaviors.None);
+        IRlpStreamDecoder<Block> blockDecoder = Rlp.GetStreamDecoder<Block>()!; // cannot be null
+        var blockLen = blockDecoder.GetLength(block, RlpBehaviors.None);
         var codesLen = GetSerializedLength(witness.Codes);
         var headersLen = GetSerializedLength(witness.Headers);
         var keysLen = GetSerializedLength(witness.Keys);
@@ -37,7 +36,7 @@ public static class InputSerializer
         WriteInt32(blockLen, output, ref offset);
 
         RlpStream rlpStream = new(output) { Position = offset };
-        _blockDecoder.Encode(rlpStream, block, RlpBehaviors.None);
+        blockDecoder.Encode(rlpStream, block, RlpBehaviors.None);
         offset += blockLen;
 
         Debug.Assert(rlpStream.Position == offset, "Unexpected block RLP length");
@@ -60,8 +59,9 @@ public static class InputSerializer
         var chainId = ReadUInt32(input, ref offset);
         var blockLength = ReadInt32(input, ref offset);
 
+        IRlpValueDecoder<Block> blockDecoder = Rlp.GetValueDecoder<Block>()!; // cannot be null
         Rlp.ValueDecoderContext blockContext = new(input.Slice(offset, blockLength));
-        Block block = _blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
+        Block block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
         blockContext.Check(blockLength);
         offset += blockLength;
 
