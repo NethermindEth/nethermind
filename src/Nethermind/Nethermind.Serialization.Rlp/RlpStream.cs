@@ -168,7 +168,7 @@ namespace Nethermind.Serialization.Rlp
         public bool TryWriteRlpWrapper(IByteArrayList list)
         {
             if (list is not IRlpWrapper rlpWrapper) return false;
-            Write(rlpWrapper.RlpSpan);
+            rlpWrapper.Write(this);
             return true;
         }
 

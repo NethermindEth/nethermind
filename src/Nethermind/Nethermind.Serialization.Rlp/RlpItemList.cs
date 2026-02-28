@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Nethermind.Core.Collections;
 namespace Nethermind.Serialization.Rlp;
 
 public sealed partial class RlpItemList : IRlpItemList
@@ -65,6 +64,8 @@ public sealed partial class RlpItemList : IRlpItemList
     public ReadOnlySpan<byte> RlpContentSpan => _rlpRegion.Span.Slice(_prefixLength);
     public int RlpLength => _rlpRegion.Length;
     public ReadOnlySpan<byte> RlpSpan => _rlpRegion.Span;
+
+    public void Write(RlpStream stream) => stream.Write(_rlpRegion.Span);
 
     public ReadOnlySpan<byte> ReadContent(int index)
     {

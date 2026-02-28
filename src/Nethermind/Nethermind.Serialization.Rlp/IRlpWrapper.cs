@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-
-namespace Nethermind.Core.Collections;
+namespace Nethermind.Serialization.Rlp;
 
 public interface IRlpWrapper
 {
-    ReadOnlySpan<byte> RlpSpan { get; }
+    int RlpLength { get; }
+    void Write(RlpStream stream);
 }

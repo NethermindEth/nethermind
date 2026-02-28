@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
             else if (message.Paths is IRlpWrapper rlpWrapper)
             {
-                pathsRlpLen = rlpWrapper.RlpSpan.Length;
+                pathsRlpLen = rlpWrapper.RlpLength;
             }
             else
             {
@@ -49,7 +49,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
             else if (message.Paths is IRlpWrapper wrapper)
             {
-                stream.Write(wrapper.RlpSpan);
+                wrapper.Write(stream);
             }
             else
             {
