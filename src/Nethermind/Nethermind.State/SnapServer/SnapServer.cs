@@ -69,7 +69,7 @@ public class SnapServer : ISnapServer
         return (!_store.HasRoot(stateRoot)) || _lastNStateRootTracker?.HasStateRoot(stateRoot) == false;
     }
 
-    public RlpByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
+    public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return BuildEmptyRlpByteArrayList();
 
