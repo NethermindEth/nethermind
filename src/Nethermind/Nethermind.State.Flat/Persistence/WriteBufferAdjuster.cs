@@ -11,13 +11,27 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
     private const long MinWriteBufferSize = 16L * 1024 * 1024;   // 16 MB floor
     private const long MaxWriteBufferSize = 256L * 1024 * 1024;  // 256 MB cap
 
+    private bool _syncBufferSet;
+
     private readonly Dictionary<FlatDbColumns, long> _lastWriteBufferSize = new();
     private readonly Dictionary<FlatDbColumns, CountingWriteBatch> _activeCounters = new();
 
     public IWriteBatch Wrap(IColumnsWriteBatch<FlatDbColumns> batch, FlatDbColumns column, WriteFlags flags)
     {
         if (flags.HasFlag(WriteFlags.DisableWAL))
+        {
+            if (!_syncBufferSet)
+            {
+                db.GetColumnDb(FlatDbColumns.Account).SetWriteBuffer(32L * 1024 * 1024);
+                db.GetColumnDb(FlatDbColumns.Storage).SetWriteBuffer(64L * 1024 * 1024);
+                db.GetColumnDb(FlatDbColumns.StateNodes).SetWriteBuffer(64L * 1024 * 1024);
+                db.GetColumnDb(FlatDbColumns.StorageNodes).SetWriteBuffer(64L * 1024 * 1024);
+                _syncBufferSet = true;
+            }
             return batch.GetColumnBatch(column);
+        }
+
+        _syncBufferSet = false;
 
         if (!_activeCounters.TryGetValue(column, out CountingWriteBatch? counter))
         {
@@ -40,6 +54,7 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
 
     private void AdjustWriteBuffer(FlatDbColumns column, long bytesWritten)
     {
+        if (_syncBufferSet) return;
         if (bytesWritten == 0) return;
         long target = Math.Clamp((long)(bytesWritten * 1.5), MinWriteBufferSize, MaxWriteBufferSize);
         if (_lastWriteBufferSize.TryGetValue(column, out long lastSize)
