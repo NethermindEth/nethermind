@@ -19,7 +19,7 @@ public sealed partial class DeferredRlpItemList
         {
             _entries = new ArrayPoolList<Entry>(entryCapacity);
             _valueBuffer = new ArrayPoolList<byte>(valueCapacity);
-            // Entry[0] is a virtual root that tracks total RLP size; it is not written to the output.
+            // Entry[0] is the root container that tracks total RLP content length of the list.
             _entries.Add(new Entry { Length = 0, ValueOffset = 0, EntriesLength = 0 });
         }
 
