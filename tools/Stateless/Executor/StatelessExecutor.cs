@@ -15,9 +15,9 @@ namespace Nethermind.Stateless.Execution;
 
 public class StatelessExecutor
 {
-    public static Block Execute(ReadOnlySpan<byte> data)
+    public static bool TryExecute(ReadOnlySpan<byte> data, out Block? processedBlock)
     {
-        (Block block, Witness witness, uint chainId) = InputSerializer.Deserialize(data);
+        (Block suggestedBlock, Witness witness, uint chainId) = InputSerializer.Deserialize(data);
 
         ISpecProvider specProvider = GetSpecProvider(chainId);
         //IReleaseSpec spec = specProvider.GetSpec(block.Header);
@@ -26,11 +26,13 @@ public class StatelessExecutor
         //foreach (Transaction tx in block.Transactions)
         //    tx.SenderAddress ??= ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
-        return Execute(block, witness, specProvider);
+        return TryExecute(suggestedBlock, witness, specProvider, out processedBlock);
     }
 
-    public static Block Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
+    public static bool TryExecute(
+        Block suggestedBlock, Witness witness, ISpecProvider specProvider, out Block? processedBlock)
     {
+        processedBlock = null;
         BlockHeader? baseBlock = null;
 
         foreach (BlockHeader header in witness.DecodedHeaders)
@@ -40,7 +42,7 @@ public class StatelessExecutor
         }
 
         if (baseBlock is null)
-            Environment.FailFast("Base block cannot be found");
+            return false;
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
             witness, specProvider, Always.Valid, NullLogManager.Instance);
@@ -53,16 +55,16 @@ public class StatelessExecutor
         suggestedBlock.Transactions[0].SenderAddress ??= new("0xaa2fbe31e6d774d2e70b1375f3bc791ae487fd50");
         suggestedBlock.Transactions[1].SenderAddress ??= new("0xa4a59a31360b4ab10d28755f53697b60c796ee03");
 
-        (Block processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(
+        (processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(
             suggestedBlock,
             ProcessingOptions.ReadOnlyChain,
             NullBlockTracer.Instance,
             specProvider.GetSpec(suggestedBlock.Header));
 
         if (processedBlock.Hash != suggestedBlock.Hash)
-            Environment.FailFast("Block hash mismatch");
+            return false;
 
-        return processedBlock;
+        return true;
     }
 
     private static ISpecProvider GetSpecProvider(uint chainId) => chainId switch

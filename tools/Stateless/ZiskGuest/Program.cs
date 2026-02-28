@@ -13,13 +13,14 @@ class Program
     static void Main()
     {
         ReadOnlySpan<byte> input = Zisk.IO.ReadInput();
-        Block block = StatelessExecutor.Execute(input);
 
-        Span<byte> hash = block.Hash!.Bytes;
-        var size = sizeof(uint);
+        if (!StatelessExecutor.TryExecute(input, out Block? block))
+            Environment.FailFast("Execution failed");
+
+        Span<byte> hash = block!.Hash!.Bytes;
 
         // TODO: Output chain id and state root too
-        for (int i = 0, j = 0; i < hash.Length; i += size)
-            Zisk.IO.SetOutput(j++, BinaryPrimitives.ReadUInt32BigEndian(hash.Slice(i, size)));
+        for (int i = 0, j = 0; i < hash.Length; i += sizeof(uint))
+            Zisk.IO.SetOutput(j++, BinaryPrimitives.ReadUInt32BigEndian(hash.Slice(i, sizeof(uint))));
     }
 }
