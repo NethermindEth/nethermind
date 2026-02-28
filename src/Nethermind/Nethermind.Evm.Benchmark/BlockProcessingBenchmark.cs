@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Autofac;
@@ -33,8 +34,15 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.SnapServer;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Evm.Benchmark;
+
+public enum StateBackend { Trie, FlatState }
 
 /// <summary>
 /// Block-level processing benchmark measuring <see cref="BranchProcessor.Process"/>
@@ -67,6 +75,8 @@ namespace Nethermind.Evm.Benchmark;
 [JsonExporterAttribute.FullCompressed]
 public class BlockProcessingBenchmark
 {
+    [Params(StateBackend.Trie, StateBackend.FlatState)]
+    public StateBackend Backend { get; set; }
     /// <summary>
     /// Repetitions per BDN invocation. Used for low per-op benchmarks
     /// (EmptyBlock ~21 us, SingleTransfer ~46 us, ContractDeploy_10 ~400 us)
@@ -206,7 +216,30 @@ public class BlockProcessingBenchmark
         // Single world state — BranchProcessor.Process() manages scope internally,
         // matching the live client's block processing path.
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager wsm;
+        BenchmarkFlatDbManager? flatDbManagerRef = null;
+        if (Backend == StateBackend.FlatState)
+        {
+            FlatDbConfig flatDbConfig = new() { TrieCacheMemoryBudget = 0 };
+            ResourcePool resourcePool = new(flatDbConfig);
+            TrieNodeCache trieNodeCache = new(flatDbConfig, LimboLogs.Instance);
+            BenchmarkFlatDbManager flatDbManager = new(resourcePool, trieNodeCache);
+            flatDbManagerRef = flatDbManager;
+            FlatScopeProvider flatScopeProvider = new(
+                dbProvider.CodeDb,
+                flatDbManager,
+                flatDbConfig,
+                new NoopTrieWarmer(),
+                ResourcePool.Usage.MainBlockProcessing,
+                LimboLogs.Instance,
+                isReadOnly: false);
+            wsm = new BenchmarkFlatWorldStateManager(flatScopeProvider, flatDbManager, dbProvider.CodeDb);
+        }
+        else
+        {
+            wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
+        }
+
         IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
 
         IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();
@@ -283,6 +316,9 @@ public class BlockProcessingBenchmark
                 .WithGasLimit(30_000_000)
                 .TestObject;
         }
+
+        // Freeze the flat db manager so benchmark iterations don't accumulate snapshots
+        flatDbManagerRef?.Freeze();
 
         _branchProcessor = _processingScope.Resolve<IBranchProcessor>();
     }
@@ -552,5 +588,117 @@ public class BlockProcessingBenchmark
         byte[] bytes = new byte[32];
         value.ToBigEndian(bytes);
         stateProvider.Set(new StorageCell(SwapAddress, slot), bytes);
+    }
+
+    // ── FlatState helper types ───────────────────────────────────────────
+
+    private sealed class BenchmarkFlatDbManager(ResourcePool resourcePool, TrieNodeCache trieNodeCache) : IFlatDbManager
+    {
+        private readonly Lock _lock = new();
+        private readonly List<Nethermind.State.Flat.Snapshot> _snapshots = new();
+        private bool _frozen;
+
+        /// <summary>
+        /// After initial state setup, freeze so benchmark iterations don't accumulate snapshots.
+        /// </summary>
+        public void Freeze() => _frozen = true;
+
+        public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
+        {
+            add { }
+            remove { }
+        }
+
+        public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
+        {
+            lock (_lock)
+            {
+                SnapshotPooledList pooled = new(_snapshots.Count);
+                for (int i = 0; i < _snapshots.Count; i++)
+                {
+                    _snapshots[i].AcquireLease();
+                    pooled.Add(_snapshots[i]);
+                }
+
+                NoopPersistenceReader persistenceReader = new();
+                ReadOnlySnapshotBundle roBundle = new(pooled, persistenceReader, recordDetailedMetrics: false);
+                return new SnapshotBundle(roBundle, trieNodeCache, resourcePool, usage);
+            }
+        }
+
+        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+        {
+            lock (_lock)
+            {
+                SnapshotPooledList pooled = new(_snapshots.Count);
+                for (int i = 0; i < _snapshots.Count; i++)
+                {
+                    _snapshots[i].AcquireLease();
+                    pooled.Add(_snapshots[i]);
+                }
+
+                NoopPersistenceReader persistenceReader = new();
+                return new ReadOnlySnapshotBundle(pooled, persistenceReader, recordDetailedMetrics: false);
+            }
+        }
+
+        public bool HasStateForBlock(in StateId stateId) => true;
+
+        public void AddSnapshot(Nethermind.State.Flat.Snapshot snapshot, TransientResource transientResource)
+        {
+            if (_frozen)
+            {
+                snapshot.Dispose();
+                transientResource.Dispose();
+                return;
+            }
+
+            lock (_lock)
+            {
+                _snapshots.Add(snapshot);
+            }
+
+            transientResource.Dispose();
+        }
+
+        public void FlushCache(CancellationToken cancellationToken) { }
+    }
+
+    private sealed class BenchmarkFlatWorldStateManager(
+        FlatScopeProvider flatScopeProvider,
+        BenchmarkFlatDbManager flatDbManager,
+        IDb codeDb) : IWorldStateManager
+    {
+        public IWorldStateScopeProvider GlobalWorldState => flatScopeProvider;
+
+        public IStateReader GlobalStateReader => new FlatStateReader(codeDb, flatDbManager, LimboLogs.Instance);
+
+        public ISnapServer? SnapServer => null;
+
+        public IReadOnlyKeyValueStore? HashServer => null;
+
+        public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
+        {
+            add { }
+            remove { }
+        }
+
+        public IWorldStateScopeProvider CreateResettableWorldState()
+        {
+            return new FlatScopeProvider(
+                codeDb,
+                flatDbManager,
+                new FlatDbConfig { TrieCacheMemoryBudget = 0 },
+                new NoopTrieWarmer(),
+                ResourcePool.Usage.ReadOnlyProcessingEnv,
+                LimboLogs.Instance,
+                isReadOnly: true);
+        }
+
+        public IOverridableWorldScope CreateOverridableWorldScope() => throw new NotSupportedException();
+
+        public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) => true;
+
+        public void FlushCache(CancellationToken cancellationToken) { }
     }
 }

@@ -180,10 +180,12 @@ jobs:
               results = {}
               for bm in data["Benchmarks"]:
                   method = bm["Method"]
+                  params = bm.get("Parameters", "")
+                  key = f"{method}({params})" if params else method
                   stats = bm["Statistics"]
                   mem = bm.get("Memory", {})
                   pcts = stats.get("Percentiles", {})
-                  results[method] = {
+                  results[key] = {
                       "mean": stats["Mean"],
                       "median": stats["Median"],
                       "min": stats["Min"],

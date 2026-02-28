@@ -39,7 +39,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// <summary>
     /// EIP-1283
     /// </summary>
-    private readonly Dictionary<StorageCell, StorageValue> _originalValues = new(256);
+    private readonly Dictionary<StorageCell, StorageValue> _originalValues = new(8_192);
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
 
@@ -626,7 +626,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             public static void Return(PerContractState item)
             {
-                const int MaxItemSize = 512;
+                const int MaxItemSize = 16_384;
                 const int MaxPooledCount = 2048;
 
                 if (item.BlockChange.Capacity > MaxItemSize)
