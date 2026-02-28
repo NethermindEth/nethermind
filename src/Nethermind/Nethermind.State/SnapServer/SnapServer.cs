@@ -150,7 +150,6 @@ public class SnapServer : ISnapServer
 
         using DeferredRlpItemList.Builder builder = new(requestedHashes.Count);
         DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
-        int count = 0;
 
         foreach (ValueHash256 codeHash in requestedHashes)
         {
@@ -162,7 +161,6 @@ public class SnapServer : ISnapServer
             {
                 writer.WriteValue([]);
                 currentByteCount += 1;
-                count++;
                 continue;
             }
 
@@ -171,12 +169,11 @@ public class SnapServer : ISnapServer
             {
                 writer.WriteValue(code);
                 currentByteCount += code.Length;
-                count++;
             }
         }
 
         writer.Dispose();
-        return count == 0 ? BuildEmptyRlpByteArrayList() : new RlpByteArrayList(builder.ToRlpItemList());
+        return new RlpByteArrayList(builder.ToRlpItemList());
     }
 
     public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(
