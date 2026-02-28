@@ -8,12 +8,12 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp;
 
-public abstract class DecodeOnDemandRlpItemList<T>(RlpItemList inner) : IOwnedReadOnlyList<T>, IRlpWrapper
+public abstract class DecodeOnDemandRlpItemList<T>(IRlpItemList inner) : IOwnedReadOnlyList<T>, IRlpWrapper
 {
     private int _cachedIndex = -1;
     private T? _cachedItem;
 
-    protected RlpItemList Inner => inner;
+    protected IRlpItemList Inner => inner;
 
     public int Count => inner.Count;
 
