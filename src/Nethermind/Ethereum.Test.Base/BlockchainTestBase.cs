@@ -483,7 +483,7 @@ public abstract class BlockchainTestBase
                     : StorageValue.Zero;
                 if (!value.IsZero)
                 {
-                    differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.AsReadOnlySpan.ToHexString(true)}");
+                    differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToEvmBytes().ToHexString(true)}");
                 }
             }
 
@@ -492,9 +492,10 @@ public abstract class BlockchainTestBase
                 StorageValue value = stateProvider.AccountExists(accountAddress)
                     ? stateProvider.Get(new StorageCell(accountAddress, storageItem.Key))
                     : StorageValue.Zero;
-                if (!Bytes.AreEqual(storageItem.Value, value.AsReadOnlySpan))
+                StorageValue expected = StorageValue.FromSpanWithoutLeadingZero(storageItem.Value);
+                if (expected != value)
                 {
-                    differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.AsReadOnlySpan.ToHexString(true)}");
+                    differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToEvmBytes().ToHexString(true)}");
                 }
             }
 
