@@ -50,4 +50,7 @@ public static unsafe class Precompiles
         nuint modulus_len,
         byte* result_ptr
     );
+
+    [DllImport("__Internal")]
+    public static extern bool verify_kzg_proof_c(byte* z, byte* y, byte* commitment, byte* proof);
 }
