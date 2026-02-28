@@ -104,8 +104,7 @@ namespace Nethermind.State
                 return new BulkSetEntry(in key, []);
             }
 
-            Rlp rlpEncoded = Rlp.Encode(value.ToEvmBytes());
-            return new BulkSetEntry(in key, rlpEncoded.Bytes);
+            return new BulkSetEntry(in key, RlpEncodeStorageValue(value));
         }
 
         [SkipLocalsInit]
@@ -254,9 +253,23 @@ namespace Nethermind.State
             }
             else
             {
-                Rlp rlpEncoded = Rlp.Encode(value.ToEvmBytes());
-                Set(rawKey, rlpEncoded);
+                byte[] rlpEncoded = RlpEncodeStorageValue(value);
+                Set(rawKey, new Rlp(rlpEncoded));
             }
+        }
+
+        /// <summary>
+        /// RLP-encodes a StorageValue directly into a single byte[] allocation,
+        /// avoiding the intermediate byte[] from ToEvmBytes() and the Rlp wrapper.
+        /// </summary>
+        [SkipLocalsInit]
+        private static byte[] RlpEncodeStorageValue(StorageValue value)
+        {
+            ReadOnlySpan<byte> trimmed = value.AsReadOnlySpan.WithoutLeadingZeros();
+            int rlpLength = Rlp.LengthOf(trimmed);
+            byte[] result = GC.AllocateUninitializedArray<byte>(rlpLength);
+            Rlp.Encode(result.AsSpan(), 0, trimmed);
+            return result;
         }
     }
 }

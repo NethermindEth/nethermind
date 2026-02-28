@@ -39,7 +39,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// <summary>
     /// EIP-1283
     /// </summary>
-    private readonly Dictionary<StorageCell, StorageValue> _originalValues = new();
+    private readonly Dictionary<StorageCell, StorageValue> _originalValues = new(256);
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
 
