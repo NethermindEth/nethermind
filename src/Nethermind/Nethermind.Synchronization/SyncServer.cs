@@ -389,13 +389,28 @@ namespace Nethermind.Synchronization
             {
                 if (cancellationToken.IsCancellationRequested) break;
 
-                byte[]? value = null;
-                if ((includedTypes & NodeDataType.State) == NodeDataType.State)
-                    value = _stateDb?[keys[i].Bytes];
-                if (value is null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
-                    value = _codeDb[keys[i].Bytes];
+                bool found = false;
+                if ((includedTypes & NodeDataType.State) == NodeDataType.State && _stateDb is not null)
+                {
+                    Span<byte> value = _stateDb.GetSpan(keys[i].Bytes);
+                    if (!value.IsNullOrEmpty())
+                    {
+                        writer.WriteValue(value);
+                        _stateDb.DangerousReleaseMemory(value);
+                        found = true;
+                    }
+                }
 
-                writer.WriteValue(value ?? []);
+                if (!found && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
+                {
+                    Span<byte> value = _codeDb.GetSpan(keys[i].Bytes);
+                    writer.WriteValue(value);
+                    _codeDb.DangerousReleaseMemory(value);
+                    found = true;
+                }
+
+                if (!found)
+                    writer.WriteValue([]);
                 count++;
             }
 
