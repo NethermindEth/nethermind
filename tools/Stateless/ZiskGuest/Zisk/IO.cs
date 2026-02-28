@@ -40,20 +40,20 @@ public static unsafe class IO
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Write(char c) => *(byte*)UART_ADDR = unchecked((byte)c);
+    public static void Write(char value) => *(byte*)UART_ADDR = unchecked((byte)value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Write(string s)
+    public static void Write(string value)
     {
         byte* uart = (byte*)UART_ADDR;
 
-        for (int i = 0; i < s.Length; i++)
-            *uart = unchecked((byte)s[i]);
+        for (int i = 0; i < value.Length; i++)
+            *uart = unchecked((byte)value[i]);
     }
 
-    public static void WriteLine(string s)
+    public static void WriteLine(string value)
     {
-        Write(s);
+        Write(value);
         Write('\n');
     }
 }
