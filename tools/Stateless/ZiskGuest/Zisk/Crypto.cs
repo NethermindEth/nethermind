@@ -72,5 +72,8 @@ public static unsafe class Crypto
     public static extern bool secp256r1_ecdsa_verify_c(byte* msg, byte* sig, byte* pk);
 
     [DllImport("__Internal")]
+    public static extern void sha256_c(byte* input, nuint input_len, byte* output);
+
+    [DllImport("__Internal")]
     public static extern bool verify_kzg_proof_c(byte* z, byte* y, byte* commitment, byte* proof);
 }
