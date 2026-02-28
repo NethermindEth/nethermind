@@ -24,6 +24,9 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
     public static Address Address { get; } = Address.FromNumber(1);
 
     public static string Name => "ECREC";
+    // Excluded from fast path: the 3000-gas base cost makes frame allocation overhead
+    // negligible relative to the crypto work, so the fast path provides no meaningful benefit.
+    public bool SupportsFastPath => false;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
