@@ -14,29 +14,31 @@ public static unsafe class IO
 
     public static ReadOnlySpan<byte> ReadInput()
     {
-        ulong size = *(ulong*)(INPUT_ADDR + 8);
+        ulong size = *(ulong*)(INPUT_ADDR + sizeof(ulong));
 
         if (size > int.MaxValue)
             Environment.FailFast("Input size exceeds the maximum supported length");
 
-        return new ReadOnlySpan<byte>((void*)(INPUT_ADDR + 16), (int)size);
+        return new ReadOnlySpan<byte>(
+            (void*)(INPUT_ADDR + sizeof(ulong) + sizeof(ulong)),
+            (int)size);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SetOutput(int id, uint value)
     {
         if ((uint)id >= 64U)
-            return;
+            Environment.FailFast("Output id must be between 0 and 63");
 
-        uint* baseAddr = (uint*)OUTPUT_ADDR;
-        uint outputIndex = (uint)id + 1U;
+        uint* output = (uint*)OUTPUT_ADDR;
+        uint index = (uint)id + 1U;
 
-        baseAddr[outputIndex] = value;
+        output[index] = value;
 
-        uint currentCount = baseAddr[0];
+        uint count = output[0];
 
-        if (currentCount < outputIndex)
-            baseAddr[0] = outputIndex;
+        if (count < index)
+            output[0] = index;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
