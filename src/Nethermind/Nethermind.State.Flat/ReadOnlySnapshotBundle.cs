@@ -81,7 +81,7 @@ public sealed class ReadOnlySnapshotBundle(
         return -1;
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
+    public StorageValue? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
     {
         GuardDispose();
 
@@ -90,9 +90,8 @@ public sealed class ReadOnlySnapshotBundle(
         {
             if (snapshots[i].TryGetStorage(address, index, out StorageValue? slotValue))
             {
-                byte[]? res = slotValue?.ToEvmBytes();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
-                return res;
+                return slotValue;
             }
 
             if (i <= selfDestructStateIdx)
@@ -104,12 +103,11 @@ public sealed class ReadOnlySnapshotBundle(
         StorageValue outStorageValue = new();
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        persistenceReader.TryGetSlot(address, index, ref outStorageValue);
-        byte[]? value = outStorageValue.ToEvmBytes();
+        bool found = persistenceReader.TryGetSlot(address, index, ref outStorageValue);
 
         if (recordDetailedMetrics)
         {
-            if (value is null || value.IsZero())
+            if (!found || outStorageValue.IsZero)
             {
                 Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceNullLabel);
             }
@@ -119,7 +117,7 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        return value;
+        return (!found || outStorageValue.IsZero) ? null : outStorageValue;
     }
 
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
