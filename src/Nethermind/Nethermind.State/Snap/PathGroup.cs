@@ -15,12 +15,12 @@ namespace Nethermind.State.Snap
 
         public static IRlpItemList EncodeToRlpItemList(IReadOnlyList<PathGroup> groups)
         {
-            using RlpItemList.Builder builder = new();
-            RlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
+            using DeferredRlpItemList.Builder builder = new();
+            DeferredRlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
             for (int i = 0; i < groups.Count; i++)
             {
                 byte[][] paths = groups[i].Group;
-                using RlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
+                using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
                 for (int j = 0; j < paths.Length; j++)
                     groupWriter.WriteValue(paths[j]);
             }

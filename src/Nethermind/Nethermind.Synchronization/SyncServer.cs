@@ -381,8 +381,8 @@ namespace Nethermind.Synchronization
 
         public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
-            using RlpItemList.Builder builder = new(keys.Count);
-            RlpItemList.Builder.Writer writer = builder.BeginRootContainer();
+            using DeferredRlpItemList.Builder builder = new(keys.Count);
+            DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
             int count = 0;
 
             for (int i = 0; i < keys.Count; i++)

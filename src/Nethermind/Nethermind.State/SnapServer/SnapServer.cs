@@ -76,8 +76,8 @@ public class SnapServer : ISnapServer
         if (_logger.IsDebug) _logger.Debug($"Get trie nodes {pathSet.Count}");
         // TODO: use cache to reduce node retrieval from disk
         int pathLength = pathSet.Count;
-        using RlpItemList.Builder builder = new(pathLength);
-        RlpItemList.Builder.Writer writer = builder.BeginRootContainer();
+        using DeferredRlpItemList.Builder builder = new(pathLength);
+        DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
         StateTree tree = new(_store, _logManager);
         bool abort = false;
         int count = 0;
@@ -148,8 +148,8 @@ public class SnapServer : ISnapServer
             byteLimit = HardResponseByteLimit;
         }
 
-        using RlpItemList.Builder builder = new(requestedHashes.Count);
-        RlpItemList.Builder.Writer writer = builder.BeginRootContainer();
+        using DeferredRlpItemList.Builder builder = new(requestedHashes.Count);
+        DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
         int count = 0;
 
         foreach (ValueHash256 codeHash in requestedHashes)
@@ -299,7 +299,7 @@ public class SnapServer : ISnapServer
 
     private static RlpByteArrayList BuildEmptyRlpByteArrayList()
     {
-        using RlpItemList.Builder b = new(0, 0);
+        using DeferredRlpItemList.Builder b = new(0, 0);
         return new RlpByteArrayList(b.ToRlpItemList());
     }
 

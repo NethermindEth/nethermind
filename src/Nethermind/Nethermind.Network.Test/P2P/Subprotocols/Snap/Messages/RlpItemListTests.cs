@@ -189,10 +189,10 @@ public class RlpItemListTests
     [TestCaseSource(nameof(TestCases))]
     public void BuilderView_FlatList_CountAndReadContent(byte[][] items)
     {
-        using RlpItemList.Builder builder = new();
-        using (RlpItemList.Builder.Writer root = builder.BeginRootContainer())
+        using DeferredRlpItemList.Builder builder = new();
+        using (DeferredRlpItemList.Builder.Writer root = builder.BeginRootContainer())
         {
-            using RlpItemList.Builder.Writer container = root.BeginContainer();
+            using DeferredRlpItemList.Builder.Writer container = root.BeginContainer();
             for (int i = 0; i < items.Length; i++)
                 container.WriteValue(items[i]);
         }
@@ -208,13 +208,13 @@ public class RlpItemListTests
     public void BuilderView_NestedList_GetNestedItemListAndReadContent()
     {
         byte[][][] nested = [[[0x01], [0x02]], [[0x03]]];
-        using RlpItemList.Builder builder = new();
-        using (RlpItemList.Builder.Writer root = builder.BeginRootContainer())
+        using DeferredRlpItemList.Builder builder = new();
+        using (DeferredRlpItemList.Builder.Writer root = builder.BeginRootContainer())
         {
-            using RlpItemList.Builder.Writer outerContainer = root.BeginContainer();
+            using DeferredRlpItemList.Builder.Writer outerContainer = root.BeginContainer();
             for (int i = 0; i < nested.Length; i++)
             {
-                using RlpItemList.Builder.Writer inner = outerContainer.BeginContainer();
+                using DeferredRlpItemList.Builder.Writer inner = outerContainer.BeginContainer();
                 for (int j = 0; j < nested[i].Length; j++)
                     inner.WriteValue(nested[i][j]);
             }
@@ -243,10 +243,10 @@ public class RlpItemListTests
     {
         // Build via Builder and get both old-style RLP bytes and new view's Write output.
         // They should produce identical RLP.
-        using RlpItemList.Builder builder1 = new();
-        using (RlpItemList.Builder.Writer root = builder1.BeginRootContainer())
+        using DeferredRlpItemList.Builder builder1 = new();
+        using (DeferredRlpItemList.Builder.Writer root = builder1.BeginRootContainer())
         {
-            using RlpItemList.Builder.Writer container = root.BeginContainer();
+            using DeferredRlpItemList.Builder.Writer container = root.BeginContainer();
             for (int i = 0; i < items.Length; i++)
                 container.WriteValue(items[i]);
         }
@@ -275,13 +275,13 @@ public class RlpItemListTests
     public void BuilderView_PooledChild_ReusedChildReadsCorrectData()
     {
         byte[][][] nested = [[[0x11], [0x22]], [[0x33], [0x44]]];
-        using RlpItemList.Builder builder = new();
-        using (RlpItemList.Builder.Writer root = builder.BeginRootContainer())
+        using DeferredRlpItemList.Builder builder = new();
+        using (DeferredRlpItemList.Builder.Writer root = builder.BeginRootContainer())
         {
-            using RlpItemList.Builder.Writer outerContainer = root.BeginContainer();
+            using DeferredRlpItemList.Builder.Writer outerContainer = root.BeginContainer();
             for (int i = 0; i < nested.Length; i++)
             {
-                using RlpItemList.Builder.Writer inner = outerContainer.BeginContainer();
+                using DeferredRlpItemList.Builder.Writer inner = outerContainer.BeginContainer();
                 for (int j = 0; j < nested[i].Length; j++)
                     inner.WriteValue(nested[i][j]);
             }
@@ -309,10 +309,10 @@ public class RlpItemListTests
     [Test]
     public void BuilderView_CreateNestedReader_ThrowsNotSupported()
     {
-        using RlpItemList.Builder builder = new();
-        using (RlpItemList.Builder.Writer root = builder.BeginRootContainer())
+        using DeferredRlpItemList.Builder builder = new();
+        using (DeferredRlpItemList.Builder.Writer root = builder.BeginRootContainer())
         {
-            using RlpItemList.Builder.Writer container = root.BeginContainer();
+            using DeferredRlpItemList.Builder.Writer container = root.BeginContainer();
             container.WriteValue([0x01]);
         }
 
@@ -325,13 +325,13 @@ public class RlpItemListTests
     {
         // Build: root → outer container → [inner0([0x01],[0x02]), inner1([0x03])]
         byte[][][] nested = [[[0x01], [0x02]], [[0x03]]];
-        using RlpItemList.Builder builder = new();
-        using (RlpItemList.Builder.Writer root = builder.BeginRootContainer())
+        using DeferredRlpItemList.Builder builder = new();
+        using (DeferredRlpItemList.Builder.Writer root = builder.BeginRootContainer())
         {
-            using RlpItemList.Builder.Writer outerContainer = root.BeginContainer();
+            using DeferredRlpItemList.Builder.Writer outerContainer = root.BeginContainer();
             for (int i = 0; i < nested.Length; i++)
             {
-                using RlpItemList.Builder.Writer inner = outerContainer.BeginContainer();
+                using DeferredRlpItemList.Builder.Writer inner = outerContainer.BeginContainer();
                 for (int j = 0; j < nested[i].Length; j++)
                     inner.WriteValue(nested[i][j]);
             }

@@ -120,14 +120,14 @@ namespace Nethermind.Synchronization.StateSync
                 }
             }
 
-            using RlpItemList.Builder builder = new();
-            RlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
+            using DeferredRlpItemList.Builder builder = new();
+            DeferredRlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
 
             int requestedNodeIndex = 0;
             for (int i = 0; i < accountTreePaths.Count; i++)
             {
                 (TreePath path, StateSyncItem syncItem) = accountTreePaths[i];
-                using RlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
+                using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
                 groupWriter.WriteValue(Nibbles.EncodePath(path));
 
                 // We validate the order of the response later and it has to be the same as RequestedNodes
@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.StateSync
 
             foreach (var kvp in itemsGroupedByAccount)
             {
-                using RlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
+                using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
                 groupWriter.WriteValue(kvp.Key?.Value.Bytes.ToArray());
 
                 for (int groupIndex = 0; groupIndex < kvp.Value.Count; groupIndex++)

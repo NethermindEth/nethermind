@@ -312,12 +312,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         public static RlpPathGroupList GetPathGroups(AccountsToRefreshRequest request)
         {
-            using RlpItemList.Builder builder = new();
-            RlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
+            using DeferredRlpItemList.Builder builder = new();
+            DeferredRlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
             for (int i = 0; i < request.Paths.Count; i++)
             {
                 AccountWithStorageStartingHash path = request.Paths[i];
-                using RlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
+                using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
                 groupWriter.WriteValue(path.PathAndAccount.Path.Bytes.ToArray());
                 groupWriter.WriteValue(_emptyBytes);
             }

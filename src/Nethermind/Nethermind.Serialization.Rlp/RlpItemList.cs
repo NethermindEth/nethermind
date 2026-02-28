@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 namespace Nethermind.Serialization.Rlp;
 
-public sealed partial class RlpItemList : IRlpItemList
+public sealed class RlpItemList : IRlpItemList
 {
     private readonly RefCountingMemoryOwner<byte> _memoryOwner;
     private Memory<byte> _rlpRegion;

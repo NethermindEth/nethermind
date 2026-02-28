@@ -6,9 +6,9 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp;
 
-public sealed partial class RlpItemList
+public sealed partial class DeferredRlpItemList
 {
-    // Builds an RlpItemList from arbitrary nested structures in a single pass.
+    // Builds a DeferredRlpItemList from arbitrary nested structures in a single pass.
     public sealed class Builder : IDisposable
     {
         private ArrayPoolList<Entry>? _entries;
@@ -29,7 +29,7 @@ public sealed partial class RlpItemList
         {
             if (!_rootWriterDisposed) throw new InvalidOperationException("Root writer must be disposed before calling ToRlpItemList().");
             // Transfer ownership — Builder.Dispose() becomes no-op after this.
-            BuilderRlpItemList view = new(_entries!, _valueBuffer!, entryStart: 0);
+            DeferredRlpItemList view = new(_entries!, _valueBuffer!, entryStart: 0);
             _entries = null;
             _valueBuffer = null;
             return view;
