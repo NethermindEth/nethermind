@@ -240,7 +240,7 @@ public class BlockProcessingBenchmark
             UInt256 senderBalanceSlot = StorageBenchmarkContracts.ComputeMappingSlot(_sender, UInt256.Zero);
             byte[] senderBalance = new byte[32];
             ((UInt256)1_000_000).ToBigEndian(senderBalance);
-            stateProvider.Set(new StorageCell(Erc20Address, senderBalanceSlot), new StorageValue(senderBalance));
+            stateProvider.Set(new StorageCell(Erc20Address, senderBalanceSlot), senderBalance);
 
             // ── Swap contract: deploy code and pre-seed pool state ──
             stateProvider.CreateAccount(SwapAddress, UInt256.Zero);
@@ -533,6 +533,6 @@ public class BlockProcessingBenchmark
     {
         byte[] bytes = new byte[32];
         value.ToBigEndian(bytes);
-        stateProvider.Set(new StorageCell(SwapAddress, slot), new StorageValue(bytes));
+        stateProvider.Set(new StorageCell(SwapAddress, slot), bytes);
     }
 }

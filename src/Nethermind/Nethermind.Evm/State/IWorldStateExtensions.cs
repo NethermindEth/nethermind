@@ -22,4 +22,10 @@ public static class WorldStateExtensions
     {
         worldState.Commit(releaseSpec, NullStateTracer.Instance, isGenesis, commitRoots);
     }
+
+    internal static void Set(this IWorldState worldState, in StorageCell storageCell, byte[] value)
+        => worldState.Set(in storageCell, new StorageValue(value));
+
+    internal static void SetTransientState(this IWorldState worldState, in StorageCell storageCell, byte[] value)
+        => worldState.SetTransientState(in storageCell, new StorageValue(value));
 }
