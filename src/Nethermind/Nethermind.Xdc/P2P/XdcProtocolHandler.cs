@@ -139,8 +139,12 @@ internal class XdcProtocolHandler(
 
     private bool ShouldNotifyTimeout(Timeout timeout)
     {
+        if (timeout.IsMyVote)
+            return true;
+
         if (_notifiedTimeouts.Contains(timeout.Hash))
             return false;
+
         _notifiedTimeouts.Set(timeout.Hash);
         return true;
     }
