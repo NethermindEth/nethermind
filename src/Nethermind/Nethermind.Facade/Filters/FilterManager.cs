@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Filters;
 using Nethermind.Logging;
@@ -97,7 +98,6 @@ namespace Nethermind.Blockchain.Filters
                     {
                         option.MarkRemoved();
                         if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId}: transaction {e.Transaction.Hash} marked as removed.");
-                        break;
                     }
                 }
             }
@@ -131,7 +131,7 @@ namespace Nethermind.Blockchain.Filters
                 return [];
             }
 
-            List<Hash256> result = new();
+            using ArrayPoolListRef<Hash256> result = new(0);
             while (blockHashes.TryDequeue(out Hash256? hash))
             {
                 result.Add(hash);
@@ -145,7 +145,7 @@ namespace Nethermind.Blockchain.Filters
             if (!_logs.TryGetValue(filterId, out ConcurrentQueue<FilterLog> logs))
                 return [];
 
-            List<FilterLog> result = new();
+            using ArrayPoolListRef<FilterLog> result = new(0);
             while (logs.TryDequeue(out FilterLog? log))
             {
                 result.Add(log);
@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain.Filters
             if (!_pendingTransactions.TryGetValue(filterId, out ConcurrentQueue<Option<Hash256>>? pendingTransactions))
                 return [];
 
-            List<Hash256> result = new();
+            using ArrayPoolListRef<Hash256> result = new(0);
             while (pendingTransactions.TryDequeue(out Option<Hash256>? option))
             {
                 if (!option.IsRemoved)
