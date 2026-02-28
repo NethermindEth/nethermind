@@ -186,6 +186,140 @@ public class RlpItemListTests
         parent.Dispose();
     }
 
+    [TestCaseSource(nameof(TestCases))]
+    public void BuilderView_FlatList_CountAndReadContent(byte[][] items)
+    {
+        using RlpItemList.Builder builder = new();
+        using (RlpItemList.Builder.Writer root = builder.BeginRootContainer())
+        {
+            using RlpItemList.Builder.Writer container = root.BeginContainer();
+            for (int i = 0; i < items.Length; i++)
+                container.WriteValue(items[i]);
+        }
+
+        using IRlpItemList view = builder.ToRlpItemList();
+        using IRlpItemList inner = view.GetNestedItemList(0);
+        inner.Count.Should().Be(items.Length);
+        for (int i = 0; i < items.Length; i++)
+            inner.ReadContent(i).ToArray().Should().BeEquivalentTo(items[i], $"item {i}");
+    }
+
+    [Test]
+    public void BuilderView_NestedList_GetNestedItemListAndReadContent()
+    {
+        byte[][][] nested = [[[0x01], [0x02]], [[0x03]]];
+        using RlpItemList.Builder builder = new();
+        using (RlpItemList.Builder.Writer root = builder.BeginRootContainer())
+        {
+            using RlpItemList.Builder.Writer outerContainer = root.BeginContainer();
+            for (int i = 0; i < nested.Length; i++)
+            {
+                using RlpItemList.Builder.Writer inner = outerContainer.BeginContainer();
+                for (int j = 0; j < nested[i].Length; j++)
+                    inner.WriteValue(nested[i][j]);
+            }
+        }
+
+        using IRlpItemList view = builder.ToRlpItemList();
+        using IRlpItemList outer = view.GetNestedItemList(0);
+        outer.Count.Should().Be(2);
+
+        using (IRlpItemList child0 = outer.GetNestedItemList(0))
+        {
+            child0.Count.Should().Be(2);
+            child0.ReadContent(0).ToArray().Should().BeEquivalentTo(new byte[] { 0x01 });
+            child0.ReadContent(1).ToArray().Should().BeEquivalentTo(new byte[] { 0x02 });
+        }
+
+        using (IRlpItemList child1 = outer.GetNestedItemList(1))
+        {
+            child1.Count.Should().Be(1);
+            child1.ReadContent(0).ToArray().Should().BeEquivalentTo(new byte[] { 0x03 });
+        }
+    }
+
+    [TestCaseSource(nameof(TestCases))]
+    public void BuilderView_WriteRlpLength_MatchesRlpItemList(byte[][] items)
+    {
+        // Build via Builder and get both old-style RLP bytes and new view's Write output.
+        // They should produce identical RLP.
+        using RlpItemList.Builder builder1 = new();
+        using (RlpItemList.Builder.Writer root = builder1.BeginRootContainer())
+        {
+            using RlpItemList.Builder.Writer container = root.BeginContainer();
+            for (int i = 0; i < items.Length; i++)
+                container.WriteValue(items[i]);
+        }
+
+        // Build a reference RLP encoding manually.
+        int contentLength = 0;
+        for (int i = 0; i < items.Length; i++)
+            contentLength += Rlp.LengthOf(items[i]);
+        int innerSeqLen = Rlp.LengthOfSequence(contentLength);
+        int outerSeqLen = Rlp.LengthOfSequence(innerSeqLen);
+        RlpStream expected = new(outerSeqLen);
+        expected.StartSequence(innerSeqLen);
+        expected.StartSequence(contentLength);
+        for (int i = 0; i < items.Length; i++)
+            expected.Encode(items[i]);
+
+        using IRlpItemList view = builder1.ToRlpItemList();
+        view.RlpLength.Should().Be(outerSeqLen);
+
+        RlpStream actual = new(view.RlpLength);
+        view.Write(actual);
+        actual.Data.ToArray().Should().BeEquivalentTo(expected.Data.ToArray());
+    }
+
+    [Test]
+    public void BuilderView_PooledChild_ReusedChildReadsCorrectData()
+    {
+        byte[][][] nested = [[[0x11], [0x22]], [[0x33], [0x44]]];
+        using RlpItemList.Builder builder = new();
+        using (RlpItemList.Builder.Writer root = builder.BeginRootContainer())
+        {
+            using RlpItemList.Builder.Writer outerContainer = root.BeginContainer();
+            for (int i = 0; i < nested.Length; i++)
+            {
+                using RlpItemList.Builder.Writer inner = outerContainer.BeginContainer();
+                for (int j = 0; j < nested[i].Length; j++)
+                    inner.WriteValue(nested[i][j]);
+            }
+        }
+
+        using IRlpItemList view = builder.ToRlpItemList();
+        using IRlpItemList outer = view.GetNestedItemList(0);
+
+        using (IRlpItemList child0 = outer.GetNestedItemList(0))
+        {
+            child0.Count.Should().Be(2);
+            child0.ReadContent(0).ToArray().Should().BeEquivalentTo(new byte[] { 0x11 });
+            child0.ReadContent(1).ToArray().Should().BeEquivalentTo(new byte[] { 0x22 });
+        }
+
+        // After disposing child0, the next GetNestedItemList should reuse the pooled child.
+        using (IRlpItemList child1 = outer.GetNestedItemList(1))
+        {
+            child1.Count.Should().Be(2);
+            child1.ReadContent(0).ToArray().Should().BeEquivalentTo(new byte[] { 0x33 });
+            child1.ReadContent(1).ToArray().Should().BeEquivalentTo(new byte[] { 0x44 });
+        }
+    }
+
+    [Test]
+    public void BuilderView_CreateNestedReader_ThrowsNotSupported()
+    {
+        using RlpItemList.Builder builder = new();
+        using (RlpItemList.Builder.Writer root = builder.BeginRootContainer())
+        {
+            using RlpItemList.Builder.Writer container = root.BeginContainer();
+            container.WriteValue([0x01]);
+        }
+
+        using IRlpItemList view = builder.ToRlpItemList();
+        FluentActions.Invoking(() => view.CreateNestedReader(0)).Should().Throw<NotSupportedException>();
+    }
+
     private static RlpItemList CreateList(byte[][] items)
     {
         int contentLength = 0;
