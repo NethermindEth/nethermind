@@ -108,9 +108,6 @@ public sealed partial class DeferredRlpItemList : IRlpItemList
         return new DeferredRlpItemList(_root ?? this, pos, childEnd, parent: this);
     }
 
-    public RefRlpListReader CreateNestedReader(int index) =>
-        throw new NotSupportedException("CreateNestedReader is not supported on DeferredRlpItemList");
-
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _wasDisposed, true, false)) return;

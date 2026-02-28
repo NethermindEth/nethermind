@@ -307,20 +307,6 @@ public class RlpItemListTests
     }
 
     [Test]
-    public void BuilderView_CreateNestedReader_ThrowsNotSupported()
-    {
-        using DeferredRlpItemList.Builder builder = new();
-        using (DeferredRlpItemList.Builder.Writer root = builder.BeginRootContainer())
-        {
-            using DeferredRlpItemList.Builder.Writer container = root.BeginContainer();
-            container.WriteValue([0x01]);
-        }
-
-        using IRlpItemList view = builder.ToRlpItemList();
-        FluentActions.Invoking(() => view.CreateNestedReader(0)).Should().Throw<NotSupportedException>();
-    }
-
-    [Test]
     public void BuilderView_WriteOnNestedChild_ProducesCorrectRlp()
     {
         // Build: root → outer container → [inner0([0x01],[0x02]), inner1([0x03])]
