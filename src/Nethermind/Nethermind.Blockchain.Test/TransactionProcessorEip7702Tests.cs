@@ -21,6 +21,8 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core.Test;
 using Nethermind.Int256;
+using Nethermind.Evm.CodeAnalysis;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Evm.Test;
 
@@ -491,7 +493,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTransactions(tx1, tx2)
             .WithGasLimit(10000000).TestObject;
 
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.Execute(tx1, blkCtx, NullTxTracer.Instance);
         _transactionProcessor.Execute(tx2, blkCtx, NullTxTracer.Instance);
 
@@ -944,7 +946,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.Execute(tx, blkCtx, NullTxTracer.Instance);
         _stateProvider.CommitTree(block.Number);
 
@@ -1016,6 +1018,191 @@ internal class TransactionProcessorEip7702Tests
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
         Assert.That(tracer.ReturnValue, Is.EquivalentTo(new byte[] { Convert.ToByte(!isDelegated) }));
+    }
+
+    [TestCase(Instruction.EXTCODESIZE)]
+    [TestCase(Instruction.EXTCODECOPY)]
+    public void Execute_ExtCode_WhenCodeChangesWithinBlock_ReturnsUpdatedValue(Instruction instruction)
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        Address inspectedAddress = TestItem.AddressB;
+        Address codeSource = TestItem.AddressC;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+
+        byte[] initialInspectedCode = Prepare.EvmCode.Op(Instruction.ADD).Done;
+        byte[] updatedInspectedCode = Prepare.EvmCode.Op(Instruction.MUL).Done;
+        DeployCode(inspectedAddress, initialInspectedCode);
+
+        byte[] readerCode = instruction == Instruction.EXTCODESIZE
+            ? Prepare.EvmCode
+                .PushData(inspectedAddress)
+                .Op(Instruction.EXTCODESIZE)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE8)
+                .PushData(1)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.RETURN)
+                .Done
+            : Prepare.EvmCode
+                .PushData(1)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.PUSH0)
+                .PushData(inspectedAddress)
+                .Op(Instruction.EXTCODECOPY)
+                .PushData(1)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.RETURN)
+                .Done;
+        DeployCode(codeSource, readerCode);
+        _stateProvider.Commit(Prague.Instance, true);
+
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithGasLimit(10_000_000)
+            .TestObject;
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
+
+        // EXTCODESIZE returns the code length; EXTCODECOPY returns the first byte of code
+        byte expectedInitial = instruction == Instruction.EXTCODESIZE
+            ? (byte)initialInspectedCode.Length
+            : (byte)Instruction.ADD;
+        byte expectedUpdated = instruction == Instruction.EXTCODESIZE
+            ? (byte)updatedInspectedCode.Length
+            : (byte)Instruction.MUL;
+
+        CallOutputTracer firstTracer = ExecuteCallWithOutput(sender, codeSource, blkCtx, 0);
+        Assert.That(firstTracer.ReturnValue?.ToArray(), Is.EquivalentTo(new byte[] { expectedInitial }));
+
+        DeployCode(inspectedAddress, updatedInspectedCode);
+        _stateProvider.Commit(Prague.Instance, true);
+
+        CallOutputTracer secondTracer = ExecuteCallWithOutput(sender, codeSource, blkCtx, 1);
+        Assert.That(secondTracer.ReturnValue?.ToArray(), Is.EquivalentTo(new byte[] { expectedUpdated }));
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Execute_EXTCODESIZE_WhenCacheIsFull_ExistingKeyIsRefreshed()
+    {
+        int previousMaxEntries = VirtualMachine.MaxExtCodeCacheEntries;
+        VirtualMachine.SetMaxExtCodeCacheEntries(1);
+        try
+        {
+            PrivateKey sender = TestItem.PrivateKeyA;
+            Address inspectedAddress = TestItem.AddressB;
+            Address codeSource = TestItem.AddressC;
+            _stateProvider.CreateAccount(sender.Address, 1.Ether());
+
+            byte[] initialInspectedCode = Prepare.EvmCode
+                .Op(Instruction.STOP)
+                .Done;
+            byte[] updatedInspectedCode = Prepare.EvmCode
+                .Op(Instruction.ADD)
+                .Op(Instruction.STOP)
+                .Done;
+            DeployCode(inspectedAddress, initialInspectedCode);
+
+            byte[] extcodesizeReaderCode = Prepare.EvmCode
+                .PushData(inspectedAddress)
+                .Op(Instruction.EXTCODESIZE)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE8)
+                .PushData(1)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.RETURN)
+                .Done;
+            DeployCode(codeSource, extcodesizeReaderCode);
+            _stateProvider.Commit(Prague.Instance, true);
+
+            TrackingCodeInfoRepository trackingRepository = new(new EthereumCodeInfoRepository(_stateProvider), inspectedAddress);
+            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+            ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
+                BlobBaseFeeCalculator.Instance,
+                _specProvider,
+                _stateProvider,
+                virtualMachine,
+                trackingRepository,
+                LimboLogs.Instance);
+
+            Block block = Build.A.Block.WithNumber(long.MaxValue)
+                .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+                .WithGasLimit(10_000_000)
+                .TestObject;
+            BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
+
+            _ = ExecuteCallWithOutput(transactionProcessor, sender, codeSource, blkCtx, 0);
+
+            DeployCode(inspectedAddress, updatedInspectedCode);
+            _stateProvider.Commit(Prague.Instance, true);
+
+            int before = trackingRepository.TrackedHashLookupCount;
+            _ = ExecuteCallWithOutput(transactionProcessor, sender, codeSource, blkCtx, 1);
+            int afterFirst = trackingRepository.TrackedHashLookupCount;
+            _ = ExecuteCallWithOutput(transactionProcessor, sender, codeSource, blkCtx, 2);
+            int afterSecond = trackingRepository.TrackedHashLookupCount;
+
+            Assert.That(afterFirst - before, Is.EqualTo(1));
+            Assert.That(afterSecond - afterFirst, Is.EqualTo(0));
+        }
+        finally
+        {
+            VirtualMachine.SetMaxExtCodeCacheEntries(previousMaxEntries);
+        }
+    }
+
+    private CallOutputTracer ExecuteCallWithOutput(PrivateKey sender, Address to, BlockExecutionContext blockExecutionContext, ulong nonce)
+    {
+        return ExecuteCallWithOutput(_transactionProcessor, sender, to, blockExecutionContext, nonce);
+    }
+
+    private CallOutputTracer ExecuteCallWithOutput(
+        ITransactionProcessor transactionProcessor,
+        PrivateKey sender,
+        Address to,
+        BlockExecutionContext blockExecutionContext,
+        ulong nonce)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithNonce(nonce)
+            .WithTo(to)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+
+        CallOutputTracer tracer = new();
+        _ = transactionProcessor.Execute(tx, blockExecutionContext, tracer);
+        return tracer;
+    }
+
+    private sealed class TrackingCodeInfoRepository(ICodeInfoRepository inner, Address trackedAddress) : ICodeInfoRepository
+    {
+        public int TrackedHashLookupCount { get; private set; }
+
+        public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
+            => inner.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+
+        public CodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+        {
+            if (codeSource == trackedAddress)
+            {
+                TrackedHashLookupCount++;
+            }
+
+            return inner.GetCachedCodeInfo(codeSource, in codeHash, vmSpec);
+        }
+
+        public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
+            => inner.GetExecutableCodeHash(address, spec);
+
+        public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+            => inner.InsertCode(code, codeOwner, spec);
+
+        public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
+            => inner.SetDelegation(codeSource, authority, spec);
+
+        public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress)
+            => inner.TryGetDelegation(address, spec, out delegatedAddress);
     }
 
     private void DeployCode(Address codeSource, byte[] code)
