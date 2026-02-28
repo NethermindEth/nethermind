@@ -17,9 +17,9 @@ namespace Nethermind.State
     /// </summary>
     internal abstract class PartialStorageProviderBase
     {
-        protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = new();
+        protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = new(8_192);
         protected readonly ILogger _logger;
-        protected readonly List<Change> _changes = new(512);
+        protected readonly List<Change> _changes = new(8_192);
         private readonly List<Change> _keptInCache = new();
 
         // stack of snapshot indexes on changes for start of each transaction

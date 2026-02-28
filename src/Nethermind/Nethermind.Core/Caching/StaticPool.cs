@@ -20,7 +20,7 @@ public static class StaticPool<T> where T : class, IResettable, new()
     /// Hard cap for the total number of items that can be stored in the shared pool.
     /// Prevents unbounded growth under bursty workloads while still allowing reuse.
     /// </summary>
-    private const int MaxPooledCount = 4096;
+    private const int MaxPooledCount = 16_384;
 
     /// <summary>
     /// Global pool shared between threads.
