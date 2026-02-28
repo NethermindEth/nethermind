@@ -247,7 +247,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     public ITreeSyncVerificationContext CreateVerificationContext(byte[] rootNodeData) =>
         new FlatVerificationContext(persistence, rootNodeData, logManager);
 
-    private class FlatVerificationContext : ITreeSyncVerificationContext, IDisposable
+    private class FlatVerificationContext : ITreeSyncVerificationContext
     {
         private readonly StateTree _stateTree;
         private readonly IPersistence.IPersistenceReader _reader;

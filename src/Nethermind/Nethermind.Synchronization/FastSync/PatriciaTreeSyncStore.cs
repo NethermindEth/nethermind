@@ -42,5 +42,7 @@ public class PatriciaTreeSyncStore(INodeStorage nodeStorage, ILogManager logMana
 
         public Account? GetAccount(Hash256 addressHash) =>
             _stateTree.Get(addressHash);
+
+        public void Dispose() { }
     }
 }

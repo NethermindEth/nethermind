@@ -46,7 +46,7 @@ public interface ITreeSyncStore
 /// Context for verifying storage roots during sync.
 /// Allows querying accounts from in-flight (not yet persisted) trie data.
 /// </summary>
-public interface ITreeSyncVerificationContext
+public interface ITreeSyncVerificationContext : IDisposable
 {
     /// <summary>
     /// Get an account by its address hash for verification purposes.
