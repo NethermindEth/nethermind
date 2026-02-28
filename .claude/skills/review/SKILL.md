@@ -68,7 +68,13 @@ Follow these steps in order. At each checkpoint, list your findings for that cat
 4. **Checkpoint: rules** — List every rule violation with file:line, or state "no violations" per category.
 5. **Domain checks** — Apply consensus, security, breaking changes, test quality checks as applicable.
 6. **Checkpoint: domain** — List every domain finding, or state "no findings" per category.
-7. **Final report** — Compile all findings into the report template at the bottom.
+7. **Verification pass** — Treat each finding from steps 4 and 6 as a hypothesis. For each one:
+   1. Identify what specific evidence would **falsify** it.
+   2. Check for that evidence.
+   3. State **KEEP** or **DROP** (verdict first, then rationale).
+   4. If DROP, state what falsified it.
+   Only findings that survive this step appear in the final report.
+8. **Final report** — Compile surviving findings into the report template at the bottom.
 
 ---
 
@@ -275,5 +281,6 @@ None.
 
 ## When to stay silent
 
-If you are not at least 80% confident that something is a real problem, do not comment.
-One high-confidence comment is worth more than five uncertain ones.
+**Rule violations (step 3) are always reported** — the confidence threshold does not apply. If a grep pattern from Step 2 matched, report it. You may add a note that the rule may need an exception for this case, but the finding must appear in the report. It is the author's decision to dismiss it, not yours.
+
+For domain findings (step 5), if you are not at least 80% confident that something is a real problem, do not comment. One high-confidence comment is worth more than five uncertain ones.
