@@ -11,12 +11,15 @@ namespace Nethermind.Serialization.Rlp;
 public sealed partial class RlpItemList : IRlpItemList
 {
     private readonly RefCountingMemoryOwner<byte> _memoryOwner;
-    private readonly Memory<byte> _rlpRegion;
-    private readonly int _prefixLength;
+    private Memory<byte> _rlpRegion;
+    private int _prefixLength;
     private int _count;
 
     private int _cachedIndex;
     private int _cachedPosition;
+
+    private RlpItemList? _pooledChild;
+    private RlpItemList? _parent;
 
     public RlpItemList(IMemoryOwner<byte> memoryOwner, Memory<byte> rlpRegion)
     {
@@ -28,7 +31,7 @@ public sealed partial class RlpItemList : IRlpItemList
         _cachedPosition = _prefixLength;
     }
 
-    private RlpItemList(RefCountingMemoryOwner<byte> memoryOwner, Memory<byte> rlpRegion)
+    private RlpItemList(RefCountingMemoryOwner<byte> memoryOwner, Memory<byte> rlpRegion, RlpItemList? parent = null)
     {
         _memoryOwner = memoryOwner;
         _rlpRegion = rlpRegion;
@@ -36,6 +39,7 @@ public sealed partial class RlpItemList : IRlpItemList
         _count = -1;
         _cachedIndex = 0;
         _cachedPosition = _prefixLength;
+        _parent = parent;
     }
 
     public int Count
@@ -84,8 +88,16 @@ public sealed partial class RlpItemList : IRlpItemList
         (int prefixLength, int contentLength) = PeekPrefixAndContentLength(_rlpRegion.Span, _cachedPosition);
         Memory<byte> nestedRegion = _rlpRegion.Slice(_cachedPosition, prefixLength + contentLength);
 
+        RlpItemList? child = _pooledChild;
+        if (child is not null)
+        {
+            _pooledChild = null;
+            child.Reset(nestedRegion);
+            return child;
+        }
+
         _memoryOwner.AcquireLease();
-        return new RlpItemList(_memoryOwner, nestedRegion);
+        return new RlpItemList(_memoryOwner, nestedRegion, parent: this);
     }
 
     public static IRlpItemList DecodeList(ref Rlp.ValueDecoderContext ctx, IMemoryOwner<byte> memoryOwner)
@@ -102,7 +114,35 @@ public sealed partial class RlpItemList : IRlpItemList
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _wasDisposed, true, false)) return;
+
+        if (_parent is not null)
+        {
+            if (!_parent._wasDisposed && _parent._pooledChild is null)
+            {
+                _parent._pooledChild = this;
+                return;
+            }
+            // Parent already disposed or already has a pooled child, fall through to release lease
+        }
+
+        _pooledChild?.DisposePooledLease();
         _memoryOwner.Dispose();
+    }
+
+    private void DisposePooledLease()
+    {
+        _pooledChild?.DisposePooledLease();
+        _memoryOwner.Dispose();
+    }
+
+    private void Reset(Memory<byte> rlpRegion)
+    {
+        _rlpRegion = rlpRegion;
+        _prefixLength = PeekPrefixAndContentLength(rlpRegion.Span, 0).prefixLength;
+        _count = -1;
+        _cachedIndex = 0;
+        _cachedPosition = _prefixLength;
+        _wasDisposed = false;
     }
 
     private int ComputeCount()
