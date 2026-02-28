@@ -9,7 +9,7 @@ public sealed class RlpPathGroupList(IRlpItemList inner) : DecodeOnDemandRlpItem
 {
     protected override PathGroup DecodeItem(int index)
     {
-        using IRlpItemList group = Inner.CreateNestedItemList(index);
+        using IRlpItemList group = Inner.GetNestedItemList(index);
         byte[][] paths = new byte[group.Count][];
         for (int j = 0; j < group.Count; j++)
             paths[j] = group.ReadContent(j).ToArray();

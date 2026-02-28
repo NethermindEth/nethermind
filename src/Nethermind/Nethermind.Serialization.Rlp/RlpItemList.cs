@@ -76,7 +76,7 @@ public sealed partial class RlpItemList : IRlpItemList
 
     public RefRlpListReader CreateNestedReader(int index) => new(this[index]);
 
-    public IRlpItemList CreateNestedItemList(int index)
+    public IRlpItemList GetNestedItemList(int index)
     {
         ReadOnlySpan<byte> item = this[index];
         if (item[0] < 0xc0) throw new RlpException("Item is not an RLP list");
