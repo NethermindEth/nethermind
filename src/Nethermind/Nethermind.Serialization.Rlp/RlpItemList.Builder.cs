@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp;
@@ -12,125 +11,46 @@ public sealed partial class RlpItemList
     // Builds an RlpItemList from arbitrary nested structures in a single pass.
     public sealed class Builder : IDisposable
     {
-        private readonly ArrayPoolList<Entry> _entries;
-        private readonly ArrayPoolList<byte> _valueBuffer;
+        private ArrayPoolList<Entry>? _entries;
+        private ArrayPoolList<byte>? _valueBuffer;
 
         public Builder(int entryCapacity = 16, int valueCapacity = 256)
         {
             _entries = new ArrayPoolList<Entry>(entryCapacity);
             _valueBuffer = new ArrayPoolList<byte>(valueCapacity);
             // Entry[0] is a virtual root that tracks total RLP size; it is not written to the output.
-            _entries.Add(new Entry { IsLeaf = false, Length = 0, ValueOffset = 0 });
+            _entries.Add(new Entry { Length = 0, ValueOffset = 0, EntriesLength = 0, ValueBufferLength = 0 });
         }
 
         public Writer BeginRootContainer() => new Writer(this, 0, -1);
 
         public IRlpItemList ToRlpItemList()
         {
-            Span<Entry> entries = _entries.AsSpan();
-            int contentLength = entries[0].Length;
-            int outerLength = Rlp.LengthOfSequence(contentLength);
-            IMemoryOwner<byte> owner = MemoryPool<byte>.Shared.Rent(outerLength);
-            Span<byte> buf = owner.Memory.Span;
-            Span<byte> values = _valueBuffer.AsSpan();
-            int pos = EncodeSequencePrefix(buf, 0, contentLength);
+            // Root Writer.Dispose() early-returns (parentIndex=-1), so fill root metadata here.
+            Span<Entry> entries = _entries!.AsSpan();
+            entries[0].EntriesLength = _entries.Count - 1;
+            entries[0].ValueBufferLength = _valueBuffer!.Count;
 
-            for (int i = 1; i < entries.Length; i++)
-            {
-                ref Entry entry = ref entries[i];
-                if (entry.IsLeaf)
-                    pos = EncodeBytes(buf, pos, values.Slice(entry.ValueOffset, entry.Length));
-                else
-                    pos = EncodeSequencePrefix(buf, pos, entry.Length);
-            }
-
-            Memory<byte> region = owner.Memory.Slice(0, pos);
-            return new RlpItemList(owner, region);
+            // Transfer ownership — Builder.Dispose() becomes no-op after this.
+            BuilderRlpItemList view = new(_entries, _valueBuffer, entryStart: 0);
+            _entries = null;
+            _valueBuffer = null;
+            return view;
         }
 
         public void Dispose()
         {
-            _entries.Dispose();
-            _valueBuffer.Dispose();
+            _entries?.Dispose();
+            _valueBuffer?.Dispose();
         }
 
-        private static int EncodeSequencePrefix(Span<byte> buf, int pos, int contentLength)
+        internal struct Entry
         {
-            if (contentLength < 56)
-            {
-                buf[pos++] = (byte)(192 + contentLength);
-            }
-            else
-            {
-                int lengthOfLength = Rlp.LengthOfLength(contentLength);
-                buf[pos++] = (byte)(247 + lengthOfLength);
-                pos = WriteLength(buf, pos, contentLength);
-            }
-
-            return pos;
-        }
-
-        private static int EncodeBytes(Span<byte> buf, int pos, ReadOnlySpan<byte> input)
-        {
-            if (input.IsEmpty)
-            {
-                buf[pos++] = 128;
-            }
-            else if (input.Length == 1 && input[0] < 128)
-            {
-                buf[pos++] = input[0];
-            }
-            else if (input.Length < 56)
-            {
-                buf[pos++] = (byte)(128 + input.Length);
-                input.CopyTo(buf.Slice(pos));
-                pos += input.Length;
-            }
-            else
-            {
-                int lengthOfLength = Rlp.LengthOfLength(input.Length);
-                buf[pos++] = (byte)(183 + lengthOfLength);
-                pos = WriteLength(buf, pos, input.Length);
-                input.CopyTo(buf.Slice(pos));
-                pos += input.Length;
-            }
-
-            return pos;
-        }
-
-        private static int WriteLength(Span<byte> buf, int pos, int value)
-        {
-            if (value < 1 << 8)
-            {
-                buf[pos++] = (byte)value;
-            }
-            else if (value < 1 << 16)
-            {
-                buf[pos++] = (byte)(value >> 8);
-                buf[pos++] = (byte)value;
-            }
-            else if (value < 1 << 24)
-            {
-                buf[pos++] = (byte)(value >> 16);
-                buf[pos++] = (byte)(value >> 8);
-                buf[pos++] = (byte)value;
-            }
-            else
-            {
-                buf[pos++] = (byte)(value >> 24);
-                buf[pos++] = (byte)(value >> 16);
-                buf[pos++] = (byte)(value >> 8);
-                buf[pos++] = (byte)value;
-            }
-
-            return pos;
-        }
-
-        private struct Entry
-        {
-            public int Length;
-            public int ValueOffset;
-            public bool IsLeaf;
+            public int Length;           // Leaf: raw byte count. Container: RLP content length of children.
+            public int ValueOffset;      // Leaf: offset into _valueBuffer. Container: starting _valueBuffer offset for subtree.
+            public int EntriesLength;    // Leaf: -1. Container: total entry count in subtree (excl. self), >= 0.
+            public int ValueBufferLength;// Leaf: same as Length. Container: total _valueBuffer bytes for subtree.
+            public bool IsLeaf => EntriesLength < 0;
         }
 
         public ref struct Writer
@@ -149,10 +69,10 @@ public sealed partial class RlpItemList
             public void WriteValue(ReadOnlySpan<byte> value)
             {
                 Builder b = _builder;
-                int offset = b._valueBuffer.Count;
+                int offset = b._valueBuffer!.Count;
                 b._valueBuffer.AddRange(value);
 
-                b._entries.Add(new Entry { IsLeaf = true, Length = value.Length, ValueOffset = offset });
+                b._entries!.Add(new Entry { Length = value.Length, ValueOffset = offset, EntriesLength = -1, ValueBufferLength = value.Length });
 
                 b._entries.AsSpan()[_entryIndex].Length += Rlp.LengthOf(value);
             }
@@ -160,8 +80,8 @@ public sealed partial class RlpItemList
             public Writer BeginContainer()
             {
                 Builder b = _builder;
-                int idx = b._entries.Count;
-                b._entries.Add(new Entry { IsLeaf = false, Length = 0, ValueOffset = 0 });
+                int idx = b._entries!.Count;
+                b._entries.Add(new Entry { Length = 0, ValueOffset = b._valueBuffer!.Count, EntriesLength = 0, ValueBufferLength = 0 });
                 return new Writer(b, idx, _entryIndex);
             }
 
@@ -169,8 +89,11 @@ public sealed partial class RlpItemList
             {
                 if (_parentEntryIndex < 0) return;
                 Builder b = _builder;
-                Span<Entry> entries = b._entries.AsSpan();
-                int seqLen = Rlp.LengthOfSequence(entries[_entryIndex].Length);
+                Span<Entry> entries = b._entries!.AsSpan();
+                ref Entry self = ref entries[_entryIndex];
+                self.EntriesLength = b._entries.Count - _entryIndex - 1;
+                self.ValueBufferLength = b._valueBuffer!.Count - self.ValueOffset;
+                int seqLen = Rlp.LengthOfSequence(self.Length);
                 entries[_parentEntryIndex].Length += seqLen;
             }
         }
