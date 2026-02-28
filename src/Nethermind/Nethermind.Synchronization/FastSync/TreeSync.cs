@@ -743,7 +743,7 @@ namespace Nethermind.Synchronization.FastSync
         {
             DependentItem dependentItem = new DependentItem(item, value, _stateSyncPivot.UpdatedStorages.Count);
 
-            ITreeSyncVerificationContext verificationContext = _store.CreateVerificationContext(value);
+            using ITreeSyncVerificationContext verificationContext = _store.CreateVerificationContext(value);
 
             if (_logger.IsDebug) _logger.Debug($"Checking {_stateSyncPivot.UpdatedStorages.Count} updated storages");
 
