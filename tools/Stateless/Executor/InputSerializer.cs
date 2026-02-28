@@ -86,7 +86,7 @@ public static class InputSerializer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ReadInt32(ReadOnlySpan<byte> source, ref int offset)
     {
-        var value = BinaryPrimitives.ReadInt32BigEndian(source.Slice(offset, sizeof(int)));
+        var value = BinaryPrimitives.ReadInt32LittleEndian(source.Slice(offset, sizeof(int)));
         offset += sizeof(int);
 
         return value;
@@ -95,14 +95,14 @@ public static class InputSerializer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteInt32(int value, Span<byte> destination, ref int offset)
     {
-        BinaryPrimitives.WriteInt32BigEndian(destination.Slice(offset, sizeof(int)), value);
+        BinaryPrimitives.WriteInt32LittleEndian(destination.Slice(offset, sizeof(int)), value);
         offset += sizeof(int);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint ReadUInt32(ReadOnlySpan<byte> source, ref int offset)
     {
-        var value = BinaryPrimitives.ReadUInt32BigEndian(source.Slice(offset, sizeof(uint)));
+        var value = BinaryPrimitives.ReadUInt32LittleEndian(source.Slice(offset, sizeof(uint)));
         offset += sizeof(uint);
 
         return value;
@@ -111,7 +111,7 @@ public static class InputSerializer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteUInt32(uint value, Span<byte> destination, ref int offset)
     {
-        BinaryPrimitives.WriteUInt32BigEndian(destination.Slice(offset, sizeof(uint)), value);
+        BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(offset, sizeof(uint)), value);
         offset += sizeof(uint);
     }
 
