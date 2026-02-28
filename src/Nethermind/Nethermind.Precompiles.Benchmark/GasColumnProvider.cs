@@ -14,11 +14,14 @@ namespace Nethermind.Precompiles.Benchmark;
 
 public class GasColumnProvider : IColumnProvider
 {
+    /// <summary>Specifies which bound of the MGas/s confidence interval a column represents.</summary>
+    private enum ThroughputBound { Lower, Upper }
+
     private static readonly IColumn[] Columns = [
         new GasColumn(),
         new GasThroughputColumn(),
-        new GasConfidenceIntervalColumn(true),  // Lower bound
-        new GasConfidenceIntervalColumn(false)  // Upper bound
+        new GasConfidenceIntervalColumn(ThroughputBound.Lower),
+        new GasConfidenceIntervalColumn(ThroughputBound.Upper)
     ];
 
     public IEnumerable<IColumn> GetColumns(Summary summary) => Columns;
@@ -97,11 +100,11 @@ public class GasColumnProvider : IColumnProvider
         }
     }
 
-    private class GasConfidenceIntervalColumn(bool isLower) : BaseGasColumn
+    private class GasConfidenceIntervalColumn(ThroughputBound bound) : BaseGasColumn
     {
-        public override string Id => isLower ? "GasCI-Lower" : "GasCI-Upper";
-        public override string ColumnName => isLower ? "Throughput CI-Lower" : "Throughput CI-Upper";
-        public override string Legend => $"{(isLower ? "Lower" : "Upper")} bound of gas throughput 99% confidence interval";
+        public override string Id => bound == ThroughputBound.Lower ? "GasCI-Lower" : "GasCI-Upper";
+        public override string ColumnName => bound == ThroughputBound.Lower ? "Throughput CI-Lower" : "Throughput CI-Upper";
+        public override string Legend => $"{bound} bound of gas throughput 99% confidence interval";
 
         public override string GetValue(Summary summary, BenchmarkCase benchmarkCase)
         {
@@ -113,8 +116,11 @@ public class GasColumnProvider : IColumnProvider
             }
 
             ConfidenceInterval ci = stats.GetConfidenceInterval(ConfidenceLevel.L99);
-            double bound = isLower ? ci.Lower : ci.Upper;
-            double mgasThroughput = CalculateMGasThroughput(gas.Value, bound);
+            
+            // BDN's CI is in nanoseconds; throughput = gas/time is inversely proportional,
+            // so the lower throughput bound uses the upper time bound and vice versa.
+            double timeBound = bound == ThroughputBound.Lower ? ci.Upper : ci.Lower;
+            double mgasThroughput = CalculateMGasThroughput(gas.Value, timeBound);
             return mgasThroughput.ToString("F2") + " MGas/s";
         }
     }
