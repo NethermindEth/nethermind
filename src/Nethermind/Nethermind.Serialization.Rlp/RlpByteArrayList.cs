@@ -25,7 +25,9 @@ public sealed class RlpByteArrayList : IByteArrayList, IRlpWrapper
 
     public ReadOnlySpan<byte> this[int index] => _inner.ReadContent(index);
 
-    public ReadOnlySpan<byte> RlpSpan => _inner.RlpSpan;
+    public int RlpLength => _inner.RlpLength;
+
+    public void Write(RlpStream stream) => _inner.Write(stream);
 
     public static RlpByteArrayList DecodeList(ref Rlp.ValueDecoderContext ctx, IMemoryOwner<byte> memoryOwner) =>
         new(RlpItemList.DecodeList(ref ctx, memoryOwner));

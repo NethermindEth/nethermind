@@ -1638,7 +1638,7 @@ namespace Nethermind.Serialization.Rlp
         public static int LengthOfByteArrayList(IByteArrayList? list)
         {
             if (list is IRlpWrapper rlpWrapper)
-                return rlpWrapper.RlpSpan.Length;
+                return rlpWrapper.RlpLength;
 
             if (list is null || list.Count == 0)
                 return LengthOfNull;

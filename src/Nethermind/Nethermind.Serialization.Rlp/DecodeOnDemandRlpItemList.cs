@@ -35,7 +35,9 @@ public abstract class DecodeOnDemandRlpItemList<T>(IRlpItemList inner) : IOwnedR
 
     public ReadOnlySpan<T> AsSpan() => throw new NotSupportedException();
 
-    public ReadOnlySpan<byte> RlpSpan => inner.RlpSpan;
+    public int RlpLength => inner.RlpLength;
+
+    public void Write(RlpStream stream) => inner.Write(stream);
 
     public void Dispose() => inner.Dispose();
 

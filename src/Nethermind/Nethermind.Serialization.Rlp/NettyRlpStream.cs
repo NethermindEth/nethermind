@@ -112,9 +112,8 @@ namespace Nethermind.Serialization.Rlp
         public static bool TryWriteByteArrayList(IByteBuffer byteBuffer, IByteArrayList list)
         {
             if (list is not IRlpWrapper rlpWrapper) return false;
-            ReadOnlySpan<byte> rlpSpan = rlpWrapper.RlpSpan;
-            byteBuffer.EnsureWritable(rlpSpan.Length);
-            new NettyRlpStream(byteBuffer).Write(rlpSpan);
+            byteBuffer.EnsureWritable(rlpWrapper.RlpLength);
+            rlpWrapper.Write(new NettyRlpStream(byteBuffer));
             return true;
         }
 
