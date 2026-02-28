@@ -13,6 +13,7 @@ public sealed partial class RlpItemList
     {
         private ArrayPoolList<Entry>? _entries;
         private ArrayPoolList<byte>? _valueBuffer;
+        private bool _rootWriterDisposed;
 
         public Builder(int entryCapacity = 16, int valueCapacity = 256)
         {
@@ -26,13 +27,9 @@ public sealed partial class RlpItemList
 
         public IRlpItemList ToRlpItemList()
         {
-            // Root Writer.Dispose() early-returns (parentIndex=-1), so fill root metadata here.
-            Span<Entry> entries = _entries!.AsSpan();
-            entries[0].EntriesLength = _entries.Count - 1;
-            entries[0].ValueBufferLength = _valueBuffer!.Count;
-
+            if (!_rootWriterDisposed) throw new InvalidOperationException("Root writer must be disposed before calling ToRlpItemList().");
             // Transfer ownership — Builder.Dispose() becomes no-op after this.
-            BuilderRlpItemList view = new(_entries, _valueBuffer, entryStart: 0);
+            BuilderRlpItemList view = new(_entries!, _valueBuffer!, entryStart: 0);
             _entries = null;
             _valueBuffer = null;
             return view;
@@ -87,12 +84,12 @@ public sealed partial class RlpItemList
 
             public void Dispose()
             {
-                if (_parentEntryIndex < 0) return;
                 Builder b = _builder;
                 Span<Entry> entries = b._entries!.AsSpan();
                 ref Entry self = ref entries[_entryIndex];
                 self.EntriesLength = b._entries.Count - _entryIndex - 1;
                 self.ValueBufferLength = b._valueBuffer!.Count - self.ValueOffset;
+                if (_parentEntryIndex < 0) { b._rootWriterDisposed = true; return; }
                 int seqLen = Rlp.LengthOfSequence(self.Length);
                 entries[_parentEntryIndex].Length += seqLen;
             }
