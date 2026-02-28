@@ -80,7 +80,6 @@ public class SnapServer : ISnapServer
         DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
         StateTree tree = new(_store, _logManager);
         bool abort = false;
-        int count = 0;
         long responseSize = 0;
 
         for (int i = 0; i < pathLength && !abort && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; i++)
@@ -96,7 +95,6 @@ public class SnapServer : ISnapServer
                         byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), rootHash);
                         writer.WriteValue(rlp);
                         responseSize += rlp?.Length ?? 0;
-                        count++;
                     }
                     catch (MissingTrieNodeException)
                     {
@@ -122,8 +120,7 @@ public class SnapServer : ISnapServer
                                 byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
                                 writer.WriteValue(sRlp);
                                 responseSize += sRlp?.Length ?? 0;
-                                count++;
-                            }
+                                    }
                         }
                     }
                     catch (MissingTrieNodeException)
@@ -136,7 +133,6 @@ public class SnapServer : ISnapServer
 
         writer.Dispose();
 
-        if (count == 0) return BuildEmptyRlpByteArrayList();
         return new RlpByteArrayList(builder.ToRlpItemList());
     }
 
