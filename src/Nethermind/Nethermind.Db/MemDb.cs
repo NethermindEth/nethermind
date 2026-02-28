@@ -21,7 +21,7 @@ namespace Nethermind.Db
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
 
-#if ZKVM
+#if ZK_EVM
         private readonly Dictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
         private readonly Dictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
 #else
