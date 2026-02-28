@@ -116,7 +116,7 @@ public class GasColumnProvider : IColumnProvider
             }
 
             ConfidenceInterval ci = stats.GetConfidenceInterval(ConfidenceLevel.L99);
-            
+
             // BDN's CI is in nanoseconds; throughput = gas/time is inversely proportional,
             // so the lower throughput bound uses the upper time bound and vice versa.
             double timeBound = bound == ThroughputBound.Lower ? ci.Upper : ci.Lower;
