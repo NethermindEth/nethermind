@@ -242,6 +242,18 @@ public class BlockProcessingBenchmark
             ((UInt256)1_000_000).ToBigEndian(senderBalance);
             stateProvider.Set(new StorageCell(Erc20Address, senderBalanceSlot), senderBalance);
 
+            // Pre-seed first half of recipient balances so the benchmark measures a realistic mix:
+            // - 100 recipients with existing balance (non-zero→non-zero SSTORE, 2,900 gas)
+            // - 100 recipients with zero balance (zero→non-zero SSTORE, 20,000 gas)
+            byte[] recipientInitialBalance = new byte[32];
+            ((UInt256)100).ToBigEndian(recipientInitialBalance);
+            for (int i = 0; i < 100; i++)
+            {
+                Address recipient = Address.FromNumber((UInt256)(100 + i));
+                UInt256 recipientSlot = StorageBenchmarkContracts.ComputeMappingSlot(recipient, UInt256.Zero);
+                stateProvider.Set(new StorageCell(Erc20Address, recipientSlot), recipientInitialBalance);
+            }
+
             // ── Swap contract: deploy code and pre-seed pool state ──
             stateProvider.CreateAccount(SwapAddress, UInt256.Zero);
             stateProvider.InsertCode(SwapAddress, StorageBenchmarkContracts.BuildSwapRuntimeCode(), Spec);
@@ -255,6 +267,12 @@ public class BlockProcessingBenchmark
             SeedSwapSlot(stateProvider, 5, 1);                 // priceCumulative0
             SeedSwapSlot(stateProvider, 6, 1);                 // priceCumulative1
             SeedSwapSlot(stateProvider, 7, 1_000_000_000);    // kLast
+
+            // Pre-seed sender balance in mapping slot 8 so first SSTORE is non-zero→non-zero
+            UInt256 senderSwapSlot = StorageBenchmarkContracts.ComputeMappingSlot(_sender, (UInt256)8);
+            byte[] senderSwapBalance = new byte[32];
+            ((UInt256)1_000).ToBigEndian(senderSwapBalance);
+            stateProvider.Set(new StorageCell(SwapAddress, senderSwapSlot), senderSwapBalance);
 
             stateProvider.Commit(Spec);
             stateProvider.CommitTree(0);

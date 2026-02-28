@@ -64,24 +64,21 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     public Hash256 RootHash => _tree.RootHash;
     public StorageValue Get(in UInt256 index)
     {
-        byte[]? value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx);
-        if (value is null || value.Length == 0)
-        {
-            value = StorageTree.ZeroBytes;
-        }
+        StorageValue value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx)
+                             ?? StorageValue.Zero;
 
         if (_config.VerifyWithTrie)
         {
-            byte[] treeValue = _tree.Get(index);
-            if (!Bytes.AreEqual(treeValue, value))
+            StorageValue treeValue = _tree.GetStorageValue(index);
+            if (treeValue != value)
             {
-                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
+                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue.ToEvmBytes().ToHexString()} vs Flat: {value.ToEvmBytes().ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
             }
         }
 
-        HintGet(index, value);
+        HintGet(index, null);
 
-        return StorageValue.FromSpanWithoutLeadingZero(value);
+        return value;
     }
 
     // Note: VERY hot code.
@@ -118,7 +115,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public StorageValue Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
 
-    private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
+    private void Set(UInt256 slot, StorageValue value) => _bundle.SetChangedSlot(_address, slot, value);
 
     public void SelfDestruct()
     {
@@ -150,7 +147,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         public void Set(in UInt256 index, StorageValue value)
         {
             storageTreeBulkWriteBatch.Set(in index, value);
-            storageTree.Set(index, value.ToEvmBytes());
+            storageTree.Set(index, value);
         }
 
         public void Clear()

@@ -108,13 +108,13 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.DetermineSelfDestructSnapshotIdx(address);
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
+    public StorageValue? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
     {
         GuardDispose();
 
         if (_changedSlots.TryGetValue((address, index), out StorageValue? slotValue))
         {
-            return slotValue?.ToEvmBytes();
+            return slotValue;
         }
 
         // Self-destructed at the point of the latest change
@@ -128,7 +128,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             if (_snapshots[i].TryGetStorage(address, index, out slotValue))
             {
-                return slotValue?.ToEvmBytes();
+                return slotValue;
             }
 
             if (i <= currentBundleSelfDestructIdx)
@@ -325,19 +325,12 @@ public sealed class SnapshotBundle : IDisposable
 
     public void SetAccount(AddressAsKey addr, Account? account) => _changedAccounts[addr] = account;
 
-    public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
+    public void SetChangedSlot(AddressAsKey address, in UInt256 index, StorageValue value)
     {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
         // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
         // lower down.
-        if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
-        {
-            _changedSlots[(address, index)] = null;
-        }
-        else
-        {
-            _changedSlots[(address, index)] = StorageValue.FromSpanWithoutLeadingZero(value);
-        }
+        _changedSlots[(address, index)] = value.IsZero ? null : value;
     }
 
     // Also called SelfDestruct
