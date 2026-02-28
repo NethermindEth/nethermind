@@ -10,4 +10,6 @@ public class QuorumCertificate(BlockRoundInfo proposedBlockInfo, Signature[]? si
     public BlockRoundInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
     public Signature[] Signatures { get; set; } = signatures;
     public ulong GapNumber { get; set; } = gapNumber;
+
+    public override string ToString() => $"{ProposedBlockInfo}, Gap: {GapNumber}";
 }

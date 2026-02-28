@@ -12,4 +12,6 @@ public class BlockRoundInfo(Hash256 hash256, ulong round, long number)
     public ulong Round { get; set; } = round;
     public long BlockNumber { get; set; } = number;
     public Hash256 SigHash() => Keccak.Compute(Rlp.Encode(this).Bytes);
+
+    public override string ToString() => $"{Hash} ({BlockNumber}), R:{Round}";
 }
