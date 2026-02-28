@@ -40,7 +40,7 @@ public class StatelessExecutor
         }
 
         if (baseBlock is null)
-            throw new InvalidOperationException("Base block cannot be found");
+            Environment.FailFast("Base block cannot be found");
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
             witness, specProvider, Always.Valid, NullLogManager.Instance);
@@ -60,7 +60,7 @@ public class StatelessExecutor
             specProvider.GetSpec(suggestedBlock.Header));
 
         if (processedBlock.Hash != suggestedBlock.Hash)
-            throw new InvalidOperationException("Block hash mismatch");
+            Environment.FailFast("Block hash mismatch");
 
         return processedBlock;
     }
