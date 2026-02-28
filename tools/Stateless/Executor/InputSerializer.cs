@@ -23,12 +23,12 @@ public static class InputSerializer
         var headersLen = GetSerializedLength(witness.Headers);
         var keysLen = GetSerializedLength(witness.Keys);
         var stateLen = GetSerializedLength(witness.State);
-        var outputLen = sizeof(uint) +   // chain id
-            sizeof(int) + blockLen +    // length | block
-            sizeof(int) + codesLen +    // length | codes 
-            sizeof(int) + headersLen +  // length | headers
-            sizeof(int) + keysLen +     // length | keys
-            sizeof(int) + stateLen;     // length | state
+        var outputLen = sizeof(uint) + // chain id
+            sizeof(int) + blockLen +   // length | block
+            sizeof(int) + codesLen +   // length | codes 
+            sizeof(int) + headersLen + // length | headers
+            sizeof(int) + keysLen +    // length | keys
+            sizeof(int) + stateLen;    // length | state
 
         byte[] output = GC.AllocateUninitializedArray<byte>(outputLen);
         var offset = 0;
@@ -86,7 +86,7 @@ public static class InputSerializer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ReadInt32(ReadOnlySpan<byte> source, ref int offset)
     {
-        var value = BinaryPrimitives.ReadInt32BigEndian(source[offset..]);
+        var value = BinaryPrimitives.ReadInt32BigEndian(source.Slice(offset, sizeof(int)));
         offset += sizeof(int);
 
         return value;
@@ -95,14 +95,14 @@ public static class InputSerializer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteInt32(int value, Span<byte> destination, ref int offset)
     {
-        BinaryPrimitives.WriteInt32BigEndian(destination[offset..], value);
+        BinaryPrimitives.WriteInt32BigEndian(destination.Slice(offset, sizeof(int)), value);
         offset += sizeof(int);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint ReadUInt32(ReadOnlySpan<byte> source, ref int offset)
     {
-        var value = BinaryPrimitives.ReadUInt32BigEndian(source[offset..]);
+        var value = BinaryPrimitives.ReadUInt32BigEndian(source.Slice(offset, sizeof(uint)));
         offset += sizeof(uint);
 
         return value;
@@ -111,7 +111,7 @@ public static class InputSerializer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteUInt32(uint value, Span<byte> destination, ref int offset)
     {
-        BinaryPrimitives.WriteUInt32BigEndian(destination[offset..], value);
+        BinaryPrimitives.WriteUInt32BigEndian(destination.Slice(offset, sizeof(uint)), value);
         offset += sizeof(uint);
     }
 
