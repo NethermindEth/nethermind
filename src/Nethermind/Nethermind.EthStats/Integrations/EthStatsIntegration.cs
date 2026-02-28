@@ -6,6 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Timers;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -46,6 +47,7 @@ namespace Nethermind.EthStats.Integrations
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly bool _isMining;
         private readonly TimeSpan _sendStatsInterval;
+        private readonly INewPayloadEventSource? _newPayloadEventSource;
 
         private IWebsocketClient? _websocketClient;
         private bool _connected;
@@ -73,7 +75,8 @@ namespace Nethermind.EthStats.Integrations
             IEthSyncingInfo ethSyncingInfo,
             bool isMining,
             TimeSpan sendStatsInterval,
-            ILogManager logManager)
+            ILogManager logManager,
+            INewPayloadEventSource? newPayloadEventSource = null)
         {
             _name = name;
             _node = node;
@@ -97,6 +100,7 @@ namespace Nethermind.EthStats.Integrations
                 ? sendStatsInterval
                 : throw new ArgumentOutOfRangeException(nameof(sendStatsInterval));
             _logger = logManager.GetClassLogger();
+            _newPayloadEventSource = newPayloadEventSource;
         }
 
         public async Task InitAsync()
@@ -104,6 +108,10 @@ namespace Nethermind.EthStats.Integrations
             _timer = new Timer { Interval = _sendStatsInterval.TotalMilliseconds };
             _timer.Elapsed += TimerOnElapsed;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
+            if (_newPayloadEventSource is not null)
+            {
+                _newPayloadEventSource.NewPayloadProcessed += OnNewPayloadProcessed;
+            }
             _websocketClient = await _ethStatsClient.InitAsync();
             if (_logger.IsInfo) _logger.Info("Initial connection, sending 'hello' message...");
             await SendHelloAsync();
@@ -171,10 +179,25 @@ namespace Nethermind.EthStats.Integrations
             SendBlockAsync(block);
         }
 
+        private void OnNewPayloadProcessed(object? sender, NewPayloadProcessedEventArgs e)
+        {
+            if (!_connected)
+            {
+                return;
+            }
+
+            if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'block_new_payload' message...");
+            SendNewPayloadAsync(e.Hash, e.Number, e.ProcessingTime);
+        }
+
         public void Dispose()
         {
             _connected = false;
             _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
+            if (_newPayloadEventSource is not null)
+            {
+                _newPayloadEventSource.NewPayloadProcessed -= OnNewPayloadProcessed;
+            }
             Timer? timer = _timer;
             if (timer is not null)
             {
@@ -213,6 +236,13 @@ namespace Nethermind.EthStats.Integrations
         // ReSharper disable once UnusedMethodReturnValue.Local
         private Task SendPendingAsync(int pending)
             => _sender.SendAsync(_websocketClient!, new PendingMessage(new PendingStats(pending)));
+
+        // ReSharper disable once UnusedMethodReturnValue.Local
+        private Task SendNewPayloadAsync(Hash256 hash, long number, TimeSpan processingTime)
+            => _sender.SendAsync(
+                _websocketClient!,
+                new NewPayloadMessage(new NewPayloadBlock(number, hash.ToString(), (long)processingTime.TotalNanoseconds)),
+                "block_new_payload");
 
         // ReSharper disable once UnusedMethodReturnValue.Local
         private async Task SendStatsAsync()
