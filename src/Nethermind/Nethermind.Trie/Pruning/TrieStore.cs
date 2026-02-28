@@ -1069,6 +1069,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             if (_lastCommitSet.BlockNumber != blockNumber - 1 && blockNumber != 0 && _lastCommitSet.BlockNumber != 0)
             {
+                if (_lastCommitSet.BlockNumber == blockNumber)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Duplicate block-number commit. Last block commit: {_lastCommitSet.BlockNumber}. New block commit: {blockNumber}.");
+                    return;
+                }
+
                 if (_logger.IsInfo) _logger.Info($"Non consecutive block commit. This is likely a reorg. Last block commit: {_lastCommitSet.BlockNumber}. New block commit: {blockNumber}.");
             }
         }

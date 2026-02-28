@@ -21,6 +21,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
@@ -343,6 +344,11 @@ public class BaseMergePluginModule : Module
                         ctx.Resolve<ILogManager>());
                 })
                 .AddSingleton<IHttpClient, DefaultHttpClient>()
+                .AddSingleton<IGasLimitCalculator, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
+                    new TargetAdjustedGasLimitCalculator(specProvider, blocksConfig))
+
+            // Testing rpc
+            .RegisterSingletonJsonRpcModule<ITestingRpcModule, TestingRpcModule>()
             ;
     }
 
