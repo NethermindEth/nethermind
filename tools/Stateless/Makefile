@@ -100,8 +100,7 @@ build-zisk: build-dotnet-zisk build-docker-bflat
 		--extlib https://github.com/NethermindEth/bflat-libziskos:pre-develop-0.16.0 \
 		$(SRC_DIR)/Program.cs \
 		$(SRC_DIR)/Zisk/Crypto.cs \
-		$(SRC_DIR)/Zisk/IO.cs \
-		$(SRC_DIR)/Zisk/Precompiles.cs
+		$(SRC_DIR)/Zisk/IO.cs
 	mkdir -p $(ZISK_DIR)/bin && \
 		mv -f $(ZISK_DIR)/Program.patched $(ZISK_DIR)/bin/nethermind && \
 		rm -f $(ZISK_DIR)/Program
