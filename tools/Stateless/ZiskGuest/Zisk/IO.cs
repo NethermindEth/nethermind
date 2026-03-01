@@ -8,19 +8,18 @@ namespace Nethermind.Stateless.ZiskGuest.Zisk;
 
 public static unsafe class IO
 {
-    private const ulong INPUT_ADDR = 0x90000000UL;
-    private const ulong OUTPUT_ADDR = 0xa0010000UL;
-    private const ulong UART_ADDR = 0xa0000200UL;
+    private static readonly byte* Input = (byte*)0x9000_0000UL; // INPUT_ADDR
+    private static readonly uint* Output = (uint*)0xa001_0000UL; // OUTPUT_ADDR
+    private static readonly byte* Uart = (byte*)0xa000_0200UL; // UART_ADDR
 
     public static ReadOnlySpan<byte> ReadInput()
     {
-        byte* input = (byte*)INPUT_ADDR;
-        ulong size = *(ulong*)(input + sizeof(ulong));
+        ulong size = *(ulong*)(Input + sizeof(ulong));
 
         if (size > int.MaxValue)
             Environment.FailFast("Input size exceeds the maximum supported length");
 
-        return new ReadOnlySpan<byte>(input + 2 * sizeof(ulong), (int)size);
+        return new ReadOnlySpan<byte>(Input + 2 * sizeof(ulong), (int)size);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -29,27 +28,24 @@ public static unsafe class IO
         if ((uint)id >= 64U)
             Environment.FailFast("Output id must be between 0 and 63");
 
-        uint* output = (uint*)OUTPUT_ADDR;
         uint index = (uint)id + 1U;
 
-        output[index] = value;
+        Output[index] = value;
 
-        uint count = output[0];
+        uint count = Output[0];
 
         if (count < index)
-            output[0] = index;
+            Output[0] = index;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Write(char value) => *(byte*)UART_ADDR = unchecked((byte)value);
+    public static void Write(char value) => *Uart = unchecked((byte)value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Write(string value)
     {
-        byte* uart = (byte*)UART_ADDR;
-
         for (int i = 0; i < value.Length; i++)
-            *uart = unchecked((byte)value[i]);
+            *Uart = unchecked((byte)value[i]);
     }
 
     public static void WriteLine(string value)
