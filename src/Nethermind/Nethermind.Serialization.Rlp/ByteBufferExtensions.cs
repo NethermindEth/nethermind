@@ -54,6 +54,9 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        public static Rlp.ValueDecoderContext AsRlpContext(this IByteBuffer buffer) =>
+            new(buffer.AsSpan());
+
         public static void MarkIndex(this IByteBuffer buffer)
         {
             buffer.MarkReaderIndex();

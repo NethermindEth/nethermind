@@ -41,18 +41,19 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMe
     public EnrResponseMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey? farPublicKey, _, IByteBuffer? data) = PrepareForDeserialization(msgBytes);
-        NettyRlpStream rlpStream = new(data);
-        rlpStream.ReadSequenceLength();
-        Hash256? requestKeccak = rlpStream.DecodeKeccak(); // skip (not sure if needed to verify)
+        Rlp.ValueDecoderContext ctx = data.AsRlpContext();
+        ctx.ReadSequenceLength();
+        Hash256? requestKeccak = ctx.DecodeKeccak(); // skip (not sure if needed to verify)
 
-        int positionForHex = rlpStream.Position;
-        NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(rlpStream);
+        int positionForHex = ctx.Position;
+        NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(ref ctx);
         if (!_nodeRecordSigner.Verify(nodeRecord))
         {
             string resHex = data.ReadBytes(positionForHex).ReadAllHex();
             throw new NetworkingException($"Invalid ENR signature: {resHex}", NetworkExceptionType.Discovery);
         }
 
+        data.SetReaderIndex(data.ReaderIndex + ctx.Position);
         EnrResponseMsg msg = new(farPublicKey, nodeRecord, requestKeccak!);
         return msg;
     }

@@ -27,8 +27,9 @@ public class NodeDataMessageSerializer : IZeroInnerMessageSerializer<NodeDataMes
 
     public NodeDataMessage Deserialize(IByteBuffer byteBuffer)
     {
-        RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-        ArrayPoolList<byte[]>? result = rlpStream.DecodeArrayPoolList(static stream => stream.DecodeByteArray(RlpLimit), limit: RlpLimit);
+        Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+        ArrayPoolList<byte[]>? result = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray(RlpLimit), limit: RlpLimit);
+        byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
         return new NodeDataMessage(result);
     }
 

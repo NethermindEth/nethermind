@@ -12,25 +12,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     {
         protected Hash256[] DeserializeHashes(IByteBuffer byteBuffer)
         {
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
-            return DeserializeHashes(nettyRlpStream);
+            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+            Hash256[] hashes = DeserializeHashes(ref ctx);
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+            return hashes;
         }
 
-        protected static Hash256[] DeserializeHashes(RlpStream rlpStream, RlpLimit? limit = null)
+        protected static Hash256[] DeserializeHashes(ref Rlp.ValueDecoderContext ctx, RlpLimit? limit = null)
         {
-            Hash256[] hashes = rlpStream.DecodeArray(static itemContext => itemContext.DecodeKeccak(), limit: limit);
+            Hash256[] hashes = ctx.DecodeArray(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: limit);
             return hashes;
         }
 
         protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null)
         {
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
-            return DeserializeHashesArrayPool(nettyRlpStream, limit);
+            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+            ArrayPoolList<Hash256> result = DeserializeHashesArrayPool(ref ctx, limit);
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+            return result;
         }
 
-        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(RlpStream rlpStream, RlpLimit? limit = null)
+        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref Rlp.ValueDecoderContext ctx, RlpLimit? limit = null)
         {
-            return rlpStream.DecodeArrayPoolList(static itemContext => itemContext.DecodeKeccak(), limit: limit);
+            return ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: limit);
         }
 
         public void Serialize(IByteBuffer byteBuffer, T message)

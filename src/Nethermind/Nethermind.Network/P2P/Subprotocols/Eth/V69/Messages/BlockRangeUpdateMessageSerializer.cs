@@ -25,16 +25,17 @@ public class BlockRangeUpdateMessageSerializer :
 
     public BlockRangeUpdateMessage Deserialize(IByteBuffer byteBuffer)
     {
-        RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-        rlpStream.ReadSequenceLength();
+        Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+        ctx.ReadSequenceLength();
 
         BlockRangeUpdateMessage statusMessage = new()
         {
-            EarliestBlock = rlpStream.DecodeLong(),
-            LatestBlock = rlpStream.DecodeLong(),
-            LatestBlockHash = rlpStream.DecodeKeccak() ?? Hash256.Zero
+            EarliestBlock = ctx.DecodeLong(),
+            LatestBlock = ctx.DecodeLong(),
+            LatestBlockHash = ctx.DecodeKeccak() ?? Hash256.Zero
         };
 
+        byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
         return statusMessage;
     }
 

@@ -38,7 +38,9 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, IRl
         CreateL1OriginKey(blockId, keyBytes);
 
         byte[]? data = db.Get(keyBytes);
-        return data is null ? null : decoder.Decode(new RlpStream(data));
+        if (data is null) return null;
+        Rlp.ValueDecoderContext ctx = data.AsRlpValueContext();
+        return ((IRlpValueDecoder<L1Origin>)decoder).Decode(ref ctx);
     }
 
     public void WriteL1Origin(UInt256 blockId, L1Origin l1Origin)

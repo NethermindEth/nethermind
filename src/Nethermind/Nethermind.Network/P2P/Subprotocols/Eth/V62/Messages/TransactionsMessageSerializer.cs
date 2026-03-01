@@ -29,8 +29,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public TransactionsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            IOwnedReadOnlyList<Transaction> txs = DeserializeTxs(rlpStream);
+            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+            IOwnedReadOnlyList<Transaction> txs = DeserializeTxs(ref ctx);
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
             return new TransactionsMessage(txs);
         }
 
@@ -45,9 +46,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(RlpStream rlpStream)
+        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref Rlp.ValueDecoderContext ctx)
         {
-            return Rlp.DecodeArrayPool<Transaction>(rlpStream, RlpBehaviors.InMempoolForm, limit: RlpLimit);
+            return Rlp.DecodeArrayPool<Transaction>(ref ctx, RlpBehaviors.InMempoolForm, limit: RlpLimit);
         }
     }
 }

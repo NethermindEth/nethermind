@@ -223,6 +223,33 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
+        public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+        {
+            IRlpValueDecoder<T>? rlpDecoder = GetValueDecoder<T>();
+            return rlpDecoder is not null
+                ? DecodeArrayPool(ref decoderContext, rlpDecoder, rlpBehaviors, limit)
+                : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+        }
+
+        public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, IRlpValueDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+        {
+            int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
+            decoderContext.GuardLimit(length, limit);
+            ArrayPoolList<T> result = new(length);
+            for (int i = 0; i < length; i++)
+            {
+                result.Add(rlpDecoder.Decode(ref decoderContext, rlpBehaviors));
+            }
+
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                decoderContext.Check(checkPosition);
+            }
+
+            return result;
+        }
+
         public static T Decode<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             IRlpValueDecoder<T>? rlpDecoder = GetValueDecoder<T>();

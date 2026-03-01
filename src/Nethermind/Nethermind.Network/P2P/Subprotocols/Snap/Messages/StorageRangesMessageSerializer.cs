@@ -12,15 +12,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public sealed class StorageRangesMessageSerializer : IZeroMessageSerializer<StorageRangeMessage>
     {
-        private readonly Func<RlpStream, PathWithStorageSlot> _decodeSlot;
-        private readonly Func<RlpStream, IOwnedReadOnlyList<PathWithStorageSlot>> _decodeSlotArray;
-
-        public StorageRangesMessageSerializer()
-        {
-            // Capture closures once
-            _decodeSlot = DecodeSlot;
-            _decodeSlotArray = s => s.DecodeArrayPoolList(_decodeSlot);
-        }
 
         public void Serialize(IByteBuffer byteBuffer, StorageRangeMessage message)
         {
@@ -78,26 +69,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public StorageRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
             StorageRangeMessage message = new();
-            NettyRlpStream stream = new(byteBuffer);
+            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
 
-            stream.ReadSequenceLength();
+            ctx.ReadSequenceLength();
 
-            message.RequestId = stream.DecodeLong();
-            message.Slots = stream.DecodeArrayPoolList(_decodeSlotArray);
-            message.Proofs = stream.DecodeArrayPoolList(static s => s.DecodeByteArray());
+            message.RequestId = ctx.DecodeLong();
+            message.Slots = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => (IOwnedReadOnlyList<PathWithStorageSlot>)c.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext inner) =>
+            {
+                inner.ReadSequenceLength();
+                Hash256 path = inner.DecodeKeccak();
+                byte[] value = inner.DecodeByteArray();
+                return new PathWithStorageSlot(in path.ValueHash256, value);
+            }));
+            message.Proofs = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
 
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
             return message;
-        }
-
-        private PathWithStorageSlot DecodeSlot(RlpStream stream)
-        {
-            stream.ReadSequenceLength();
-            Hash256 path = stream.DecodeKeccak();
-            byte[] value = stream.DecodeByteArray();
-
-            PathWithStorageSlot data = new(in path.ValueHash256, value);
-
-            return data;
         }
 
         private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) CalculateLengths(StorageRangeMessage message)
