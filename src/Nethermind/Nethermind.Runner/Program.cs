@@ -8,7 +8,6 @@ using System.CommandLine.Help;
 using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
 using System.IO;
-using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Runtime;
@@ -38,6 +37,7 @@ using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
 using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
+using Testably.Abstractions;
 #if !DEBUG
 using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
 #endif
@@ -117,7 +117,7 @@ async Task<int> ConfigureAsync(string[] args)
 
     PluginLoader pluginLoader = new(
         parseResult.GetValue(BasicOptions.PluginsDirectory) ?? "plugins",
-        new FileSystem(),
+        new RealFileSystem(),
         silent ? NullLogger.Instance : logger,
         NethermindPlugins.EmbeddedPlugins
     );

@@ -67,6 +67,7 @@ using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
 
 namespace Nethermind.Runner.Test;
@@ -77,7 +78,7 @@ public class EthereumRunnerTests
     static EthereumRunnerTests()
     {
         // Trigger plugins loading early to ensure TypeDiscovery caches plugin's types
-        PluginLoader pluginLoader = new("plugins", new FileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
+        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
         pluginLoader.Load();
 
         AssemblyLoadContext.Default.Resolving += static (_, _) => null;
@@ -191,7 +192,7 @@ public class EthereumRunnerTests
 
         PluginLoader pluginLoader = new(
             "plugins",
-            new FileSystem(),
+            new RealFileSystem(),
             NullLogger.Instance,
             NethermindPlugins.EmbeddedPlugins
         );
@@ -358,7 +359,7 @@ public class EthereumRunnerTests
 
             PluginLoader pluginLoader = new(
                 "plugins",
-                new FileSystem(),
+                new RealFileSystem(),
                 NullLogger.Instance,
                 NethermindPlugins.EmbeddedPlugins
             );

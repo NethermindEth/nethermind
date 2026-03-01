@@ -605,8 +605,16 @@
       },
       "Testably.Abstractions.FileSystem.Interface": {
         "type": "Transitive",
-        "resolved": "10.0.0",
-        "contentHash": "tZOXFLGjkh8TxgMgKeEcM2HAlz9DwndGl6TFLo6ISHcszFX3FkuPMrtVbmqVjhooWNXrgJ/a9cH9ym5MZL1LAg=="
+        "resolved": "10.1.0",
+        "contentHash": "0R+m7DvS2QuDcFOfDGtyGErRrgXOl4/z2tbNLX2RfvlYJjlVcKG+wMIBfZO8vxGtTNwNxffTG4ibFRwd0jkM7w=="
+      },
+      "Testably.Abstractions.Interface": {
+        "type": "Transitive",
+        "resolved": "10.1.0",
+        "contentHash": "syfu5XadpGDjhDWTh1vh/6HUFgamCaU1KhRwsHk6HyMeJLz5Jncm99H87NiEO73JihQ7yE3APlEbAXjlMyKBSg==",
+        "dependencies": {
+          "Testably.Abstractions.FileSystem.Interface": "10.1.0"
+        }
       },
       "Tmds.LibC": {
         "type": "Transitive",
@@ -725,7 +733,7 @@
           "Nethermind.Logging": "[1.37.0-unstable, )",
           "Nethermind.Numerics.Int256": "[1.5.0, )",
           "NonBlocking": "[2.1.2, )",
-          "TestableIO.System.IO.Abstractions.Wrappers": "[22.1.0, )"
+          "Testably.Abstractions": "[10.1.0, )"
         }
       },
       "nethermind.crypto": {
@@ -1608,13 +1616,13 @@
         "resolved": "10.0.3",
         "contentHash": "JCKbH/CN5l0CSoJBILEvJmNQVp5vV+FY3q2ue4K9p4eDT4mFEv0bjTQCV+MD6Qk1b/qk9fWmZZKhG1TklbXw1Q=="
       },
-      "TestableIO.System.IO.Abstractions.Wrappers": {
+      "Testably.Abstractions": {
         "type": "CentralTransitive",
-        "requested": "[22.1.0, )",
-        "resolved": "22.1.0",
-        "contentHash": "IsW3jQqIiTN4GwdWFx+dzgRL5XR75UDTFVGuuIackPf2d7eH0KKyrx4wuIoASa1XnS9zhgLP39FKwJq6nbbx1w==",
+        "requested": "[10.1.0, )",
+        "resolved": "10.1.0",
+        "contentHash": "8hjpc/vjNNJpHYrcuZTfKkcojS+pwyQtviTFdVBedqGOMlCrG+X2CjY2lW+ZavDYlw3TCi7zrMVqW674PkAqVQ==",
         "dependencies": {
-          "Testably.Abstractions.FileSystem.Interface": "10.0.0"
+          "Testably.Abstractions.Interface": "10.1.0"
         }
       },
       "Websocket.Client": {

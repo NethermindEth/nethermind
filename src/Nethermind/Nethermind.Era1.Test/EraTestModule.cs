@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -11,6 +10,8 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
+using System.IO.Abstractions;
+using Testably.Abstractions;
 
 namespace Nethermind.Era1.Test;
 
@@ -66,11 +67,10 @@ public class EraTestModule(bool useRealValidator = false) : Module
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
-
         builder
             .AddModule(TestNethermindModule.CreateWithRealChainSpec())
             .AddModule(new EraModule())
-            .AddSingleton<IFileSystem>(new FileSystem()) // Run on real filesystem.
+            .AddSingleton<IFileSystem>(new RealFileSystem()) // Run on real filesystem.
             .AddSingleton<IEraConfig>(new EraConfig()
             {
                 MaxEra1Size = 16,

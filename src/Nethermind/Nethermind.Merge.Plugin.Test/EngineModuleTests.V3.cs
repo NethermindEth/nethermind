@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text;
@@ -41,6 +40,7 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -283,7 +283,7 @@ public partial class EngineModuleTests
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         JsonRpcConfig jsonRpcConfig = new() { EnabledModules = new[] { ModuleType.Engine } };
-        RpcModuleProvider moduleProvider = new(new FileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
+        RpcModuleProvider moduleProvider = new(new RealFileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(rpcModule), true));
 
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
