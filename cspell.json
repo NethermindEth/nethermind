@@ -742,6 +742,7 @@
     "statetest",
     "staticcall",
     "stddev",
+    "stdev",
     "stelem",
     "stfld",
     "stoppables",
