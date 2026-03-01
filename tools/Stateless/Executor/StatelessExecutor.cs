@@ -13,7 +13,7 @@ using Nethermind.Specs;
 
 namespace Nethermind.Stateless.Execution;
 
-public class StatelessExecutor
+public static class StatelessExecutor
 {
     public static bool TryExecute(ReadOnlySpan<byte> data, out Block? processedBlock)
     {
