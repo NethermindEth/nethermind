@@ -3,11 +3,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.State
@@ -17,10 +22,15 @@ namespace Nethermind.State
     /// </summary>
     internal abstract class PartialStorageProviderBase
     {
-        protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = new(8_192);
+        private readonly Dictionary<InternalStorageKey, int> _intraBlockCache = new(16);
+        private StackList<int>?[] _stackPool = new StackList<int>[512];
+        private int _stackCount;
         protected readonly ILogger _logger;
-        protected readonly List<Change> _changes = new(8_192);
-        private readonly List<Change> _keptInCache = new();
+        protected ChangeKey[] _changeKeys = new ChangeKey[1_024];
+        protected StorageValue[] _changeValues = new StorageValue[1_024];
+        protected int _changeCount;
+        private readonly List<ChangeKey> _keptKeyCache = new();
+        private readonly List<StorageValue> _keptValueCache = new();
 
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
@@ -36,6 +46,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
+        [SkipLocalsInit]
         public StorageValue Get(in StorageCell storageCell)
         {
             return GetCurrentValue(in storageCell);
@@ -46,6 +57,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
+        [SkipLocalsInit]
         public void Set(in StorageCell storageCell, StorageValue newValue)
         {
             PushUpdate(in storageCell, newValue);
@@ -58,7 +70,7 @@ namespace Nethermind.State
         /// <returns>Snapshot index</returns>
         public int TakeSnapshot(bool newTransactionStart)
         {
-            int position = _changes.Count - 1;
+            int position = _changeCount - 1;
             if (_logger.IsTrace) _logger.Trace($"Storage snapshot {position}");
             if (newTransactionStart && position != Resettable.EmptyPosition)
             {
@@ -73,11 +85,12 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="snapshot">Snapshot index</param>
         /// <exception cref="InvalidOperationException">Throws exception if snapshot is invalid</exception>
+        [SkipLocalsInit]
         public void Restore(int snapshot)
         {
             if (_logger.IsTrace) _logger.Trace($"Restoring storage snapshot {snapshot}");
 
-            int currentPosition = _changes.Count - 1;
+            int currentPosition = _changeCount - 1;
             if (snapshot > currentPosition)
             {
                 throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
@@ -88,51 +101,62 @@ namespace Nethermind.State
                 return;
             }
 
+            Span<ChangeKey> keys = _changeKeys.AsSpan(0, _changeCount);
+            ReadOnlySpan<StorageValue> values = _changeValues.AsSpan(0, _changeCount);
             for (int i = 0; i < currentPosition - snapshot; i++)
             {
-                Change change = _changes[currentPosition - i];
-                StackList<int> stack = _intraBlockCache[change!.StorageCell];
+                int pos = currentPosition - i;
+                ref readonly ChangeKey changeKey = ref keys[pos];
+                InternalStorageKey ikey = new(in changeKey.StorageCell);
+                int stackIdx = _intraBlockCache[ikey];
+                StackList<int> stack = _stackPool[stackIdx]!;
                 if (stack.Count == 1)
                 {
-                    if (_changes[stack.Peek()]!.ChangeType == ChangeType.JustCache)
+                    if (keys[stack.Peek()].ChangeType == ChangeType.JustCache)
                     {
                         int actualPosition = stack.Pop();
-                        if (actualPosition != currentPosition - i)
+                        if (actualPosition != pos)
                         {
                             throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
                         }
 
-                        _keptInCache.Add(change);
-                        _changes[actualPosition] = default;
+                        _keptKeyCache.Add(changeKey);
+                        _keptValueCache.Add(values[pos]);
+                        keys[actualPosition] = default;
                         continue;
                     }
                 }
 
                 int forAssertion = stack.Pop();
-                if (forAssertion != currentPosition - i)
+                if (forAssertion != pos)
                 {
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
                 }
 
-                _changes[currentPosition - i] = default;
+                keys[pos] = default;
 
                 if (stack.Count == 0)
                 {
-                    _intraBlockCache.Remove(change.StorageCell);
+                    _intraBlockCache.Remove(ikey);
                     stack.Return();
+                    _stackPool[stackIdx] = null;
                 }
             }
 
-            CollectionsMarshal.SetCount(_changes, snapshot + 1);
-            currentPosition = _changes.Count - 1;
-            foreach (Change kept in _keptInCache)
+            _changeCount = snapshot + 1;
+            ReadOnlySpan<ChangeKey> keptKeys = CollectionsMarshal.AsSpan(_keptKeyCache);
+            for (int i = 0; i < keptKeys.Length; i++)
             {
-                currentPosition++;
-                _changes.Add(kept);
-                _intraBlockCache[kept.StorageCell].Push(currentPosition);
+                EnsureChangeCapacity();
+                _changeKeys[_changeCount] = keptKeys[i];
+                _changeValues[_changeCount] = _keptValueCache[i];
+                InternalStorageKey ikeyKept = new(in keptKeys[i].StorageCell);
+                _stackPool[_intraBlockCache[ikeyKept]]!.Push(_changeCount);
+                _changeCount++;
             }
 
-            _keptInCache.Clear();
+            _keptKeyCache.Clear();
+            _keptValueCache.Clear();
 
             while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
             {
@@ -147,7 +171,7 @@ namespace Nethermind.State
         /// <param name="stateTracer">State tracer</param>
         public void Commit(IStorageTracer tracer)
         {
-            if (_changes.Count == 0)
+            if (_changeCount == 0)
             {
                 if (_logger.IsTrace) _logger.Trace("No storage changes to commit");
             }
@@ -173,8 +197,13 @@ namespace Nethermind.State
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
-            _changes.Clear();
-            _intraBlockCache.ResetAndClear();
+            _changeCount = 0;
+            _intraBlockCache.Clear();
+            for (int i = 0; i < _stackCount; i++)
+            {
+                _stackPool[i]?.Return();
+            }
+            _stackCount = 0;
             _transactionChangesSnapshots.Clear();
         }
 
@@ -184,18 +213,20 @@ namespace Nethermind.State
         /// <param name="storageCell">Storage location</param>
         /// <param name="value">Resulting value</param>
         /// <returns>True if value has been set</returns>
+        [SkipLocalsInit]
         protected bool TryGetCachedValue(in StorageCell storageCell, out StorageValue value)
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            InternalStorageKey ikey = new(in storageCell);
+            if (_intraBlockCache.TryGetValue(ikey, out int stackIdx))
             {
-                int lastChangeIndex = stack.Peek();
+                int lastChangeIndex = _stackPool[stackIdx]!.Peek();
                 {
-                    value = _changes[lastChangeIndex].Value;
+                    value = _changeValues[lastChangeIndex];
                     return true;
                 }
             }
 
-            value = default;
+            Unsafe.SkipInit(out value);
             return false;
         }
 
@@ -211,26 +242,93 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
+        [SkipLocalsInit]
         private void PushUpdate(in StorageCell cell, StorageValue value)
         {
             StackList<int> stack = SetupRegistry(cell);
-            stack.Push(_changes.Count);
-            _changes.Add(new Change(in cell, value, ChangeType.Update));
+            stack.Push(_changeCount);
+            EnsureChangeCapacity();
+            _changeKeys[_changeCount] = new ChangeKey(in cell, ChangeType.Update);
+            _changeValues[_changeCount] = value;
+            _changeCount++;
         }
 
         /// <summary>
         /// Initialize the StackList at the storage cell position if needed
         /// </summary>
-        /// <param name="cell"></param>
         protected StackList<int> SetupRegistry(in StorageCell cell)
         {
-            ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
+            InternalStorageKey ikey = new(in cell);
+            ref int stackIdx = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, ikey, out bool exists);
             if (!exists)
             {
-                value = StackList<int>.Rent();
+                stackIdx = AllocateStack();
             }
 
-            return value;
+            return _stackPool[stackIdx]!;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private int AllocateStack()
+        {
+            int idx = _stackCount;
+            if (idx >= _stackPool.Length)
+            {
+                Array.Resize(ref _stackPool, _stackPool.Length * 2);
+            }
+            _stackPool[idx] = StackList<int>.Rent();
+            _stackCount = idx + 1;
+            return idx;
+        }
+
+        /// <summary>
+        /// Try to get the StackList for a storage cell
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        protected bool TryGetStack(in StorageCell cell, out StackList<int> stack)
+        {
+            InternalStorageKey ikey = new(in cell);
+            if (_intraBlockCache.TryGetValue(ikey, out int idx))
+            {
+                stack = _stackPool[idx]!;
+                return true;
+            }
+            stack = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Get the StackList for a storage cell (must exist)
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        protected StackList<int> GetStack(in StorageCell cell)
+        {
+            InternalStorageKey ikey = new(in cell);
+            return _stackPool[_intraBlockCache[ikey]]!;
+        }
+
+        /// <summary>
+        /// Get the StackList for an internal storage key (must exist)
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        protected StackList<int> GetStack(in InternalStorageKey ikey)
+        {
+            return _stackPool[_intraBlockCache[ikey]]!;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        protected void EnsureChangeCapacity()
+        {
+            if (_changeCount >= _changeKeys.Length)
+                GrowChangeArrays();
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void GrowChangeArrays()
+        {
+            int newCap = _changeKeys.Length * 2;
+            Array.Resize(ref _changeKeys, newCap);
+            Array.Resize(ref _changeValues, newCap);
         }
 
         /// <summary>
@@ -241,22 +339,21 @@ namespace Nethermind.State
         {
             // We are setting cached values to zero so we do not use previously set values
             // when the contract is revived with CREATE2 inside the same block
-            foreach (KeyValuePair<StorageCell, StackList<int>> cellByAddress in _intraBlockCache)
+            foreach (KeyValuePair<InternalStorageKey, int> entry in _intraBlockCache)
             {
-                if (cellByAddress.Key.Address == address)
+                if (entry.Key.AddressEquals(address))
                 {
-                    Set(cellByAddress.Key, StorageValue.Zero);
+                    Set(new StorageCell(address, entry.Key.Index), StorageValue.Zero);
                 }
             }
         }
 
         /// <summary>
-        /// Used for tracking each change to storage
+        /// Used for tracking each change to storage (key portion only; values stored separately)
         /// </summary>
-        protected readonly struct Change(in StorageCell storageCell, StorageValue value, ChangeType changeType)
+        protected readonly struct ChangeKey(in StorageCell storageCell, ChangeType changeType)
         {
             public readonly StorageCell StorageCell = storageCell;
-            public readonly StorageValue Value = value;
             public readonly ChangeType ChangeType = changeType;
 
             public bool IsNull => ChangeType == ChangeType.Null;
@@ -270,6 +367,56 @@ namespace Nethermind.State
             Null = 0,
             JustCache,
             Update,
+        }
+
+        /// <summary>
+        /// Reference-free key for _intraBlockCache. Inlines the 20-byte address to avoid
+        /// references, so Dictionary.Clear() skips entry zeroing entirely.
+        /// </summary>
+        [StructLayout(LayoutKind.Sequential)]
+        protected readonly struct InternalStorageKey : IEquatable<InternalStorageKey>
+        {
+            private readonly Vector128<byte> _addrLo; // 16 bytes
+            private readonly uint _addrHi;            // 4 bytes
+            private readonly UInt256 _index;           // 32 bytes
+            // Total: 52 bytes, NO references
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public InternalStorageKey(in StorageCell cell)
+            {
+                ref byte addrBytes = ref MemoryMarshal.GetArrayDataReference(cell.Address.Bytes);
+                _addrLo = Unsafe.As<byte, Vector128<byte>>(ref addrBytes);
+                _addrHi = Unsafe.As<byte, uint>(ref Unsafe.Add(ref addrBytes, 16));
+                _index = cell.Index;
+            }
+
+            public UInt256 Index => _index;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public bool AddressEquals(Address address)
+            {
+                ref byte ab = ref MemoryMarshal.GetArrayDataReference(address.Bytes);
+                return _addrLo == Unsafe.As<byte, Vector128<byte>>(ref ab)
+                    && _addrHi == Unsafe.As<byte, uint>(ref Unsafe.Add(ref ab, 16));
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public bool Equals(InternalStorageKey other)
+                => Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _index)) ==
+                   Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other._index))
+                && _addrLo == other._addrLo
+                && _addrHi == other._addrHi;
+
+            public override bool Equals(object? obj) => obj is InternalStorageKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                int hash = MemoryMarshal.AsBytes(
+                    MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _index), 1)).FastHash();
+                ReadOnlySpan<byte> addrSpan = MemoryMarshal.CreateReadOnlySpan(
+                    ref Unsafe.As<Vector128<byte>, byte>(ref Unsafe.AsRef(in _addrLo)), 20);
+                return hash ^ addrSpan.FastHash();
+            }
         }
     }
 }
