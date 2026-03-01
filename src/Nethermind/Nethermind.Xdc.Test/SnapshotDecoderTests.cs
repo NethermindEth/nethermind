@@ -47,10 +47,8 @@ public class SnapshotDecoderTests
         RlpStream stream = new(encoder.GetLength(original, RlpBehaviors.None));
         encoder.Encode(stream, original);
 
-        stream.Reset();
-
         SnapshotDecoder decoder = new();
-        Snapshot decoded = decoder.Decode(stream);
+        Snapshot decoded = decoder.Decode(stream.Data.AsSpan());
         decoded.Should().BeEquivalentTo(original);
     }
 }

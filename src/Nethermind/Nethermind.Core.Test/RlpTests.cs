@@ -75,7 +75,7 @@ namespace Nethermind.Core.Test
             {
                 Assert.That(Rlp.LengthOf(item), Is.EqualTo(1));
                 var data = Rlp.Encode(item);
-                var rlp = new RlpStream(data.Bytes);
+                Rlp.ValueDecoderContext rlp = new(data.Bytes);
                 Assert.That(rlp.DecodeByte(), Is.EqualTo(item));
 
                 item += 1;
@@ -85,7 +85,7 @@ namespace Nethermind.Core.Test
             {
                 Assert.That(Rlp.LengthOf(item), Is.EqualTo(2));
                 var data = Rlp.Encode(item);
-                var rlp = new RlpStream(data.Bytes);
+                Rlp.ValueDecoderContext rlp = new(data.Bytes);
                 Assert.That(rlp.DecodeByte(), Is.EqualTo(item));
 
                 item += 1;
@@ -95,7 +95,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Long_encode_decode([ValueSource(nameof(LongValues))] long value, [Values] bool useBuffer)
         {
-            RlpStream context = useBuffer
+            Rlp.ValueDecoderContext context = useBuffer
                 ? new(Rlp.Encode(value, stackalloc byte[9]).ToArray())
                 : new(Rlp.Encode(value).Bytes);
 
@@ -107,7 +107,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void ULong_encode_decode([ValueSource(nameof(ULongValues))] ulong value, [Values] bool useBuffer)
         {
-            RlpStream context = useBuffer
+            Rlp.ValueDecoderContext context = useBuffer
                 ? new(Rlp.Encode(value, stackalloc byte[9]).ToArray())
                 : new(Rlp.Encode(value).Bytes);
 
@@ -231,7 +231,6 @@ namespace Nethermind.Core.Test
         public void Strange_bool(byte[] rlp, bool expectedBool)
         {
             rlp.AsRlpValueContext().DecodeBool().Should().Be(expectedBool);
-            rlp.AsRlpStream().DecodeBool().Should().Be(expectedBool);
         }
 
         [TestCase(new byte[] { 129, 127 })]
@@ -241,7 +240,6 @@ namespace Nethermind.Core.Test
         public void Strange_bool_exceptional_cases(byte[] rlp)
         {
             Assert.Throws<RlpException>(() => rlp.AsRlpValueContext().DecodeBool());
-            Assert.Throws<RlpException>(() => rlp.AsRlpStream().DecodeBool());
         }
 
         [Test]
@@ -327,11 +325,11 @@ namespace Nethermind.Core.Test
             RlpLimit rlpLimit = new(limit);
             if (limit < 100)
             {
-                Assert.Throws<RlpLimitException>(() => stream.DecodeByteArray(rlpLimit));
+                Assert.Throws<RlpLimitException>(() => { Rlp.ValueDecoderContext ctx = new(stream.Data.ToArray()); ctx.DecodeByteArray(rlpLimit); });
             }
             else
             {
-                Assert.DoesNotThrow(() => stream.DecodeByteArray(rlpLimit));
+                Assert.DoesNotThrow(() => { Rlp.ValueDecoderContext ctx = new(stream.Data.ToArray()); ctx.DecodeByteArray(rlpLimit); });
             }
         }
 
@@ -339,8 +337,9 @@ namespace Nethermind.Core.Test
         public void Not_enough_bytes_throws()
         {
             RlpStream stream = Prepare100BytesStream();
-            stream.Data[1] = 101; // tamper with length, it is more than available bytes
-            Assert.Throws<RlpLimitException>(() => stream.DecodeByteArray());
+            byte[] data = stream.Data.ToArray()!;
+            data[1] = 101; // tamper with length, it is more than available bytes
+            Assert.Throws<RlpLimitException>(() => { Rlp.ValueDecoderContext ctx = new(data); ctx.DecodeByteArray(); });
         }
 
         private static HashSet<long> LongValues()

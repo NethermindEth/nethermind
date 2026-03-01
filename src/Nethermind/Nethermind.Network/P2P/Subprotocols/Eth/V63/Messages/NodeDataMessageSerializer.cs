@@ -27,8 +27,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public NodeDataMessage Deserialize(IByteBuffer byteBuffer)
         {
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            ArrayPoolList<byte[]> result = rlpStream.DecodeArrayPoolList(static stream => stream.DecodeByteArray(), limit: RlpLimit);
+            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+            ArrayPoolList<byte[]> result = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray(), limit: RlpLimit);
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
             return new NodeDataMessage(result);
         }
 

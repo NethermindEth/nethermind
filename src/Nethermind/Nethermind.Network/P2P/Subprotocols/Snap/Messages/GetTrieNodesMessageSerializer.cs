@@ -50,25 +50,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public GetTrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
             GetTrieNodesMessage message = new();
-            NettyRlpStream stream = new(byteBuffer);
+            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
 
-            stream.ReadSequenceLength();
+            ctx.ReadSequenceLength();
 
-            message.RequestId = stream.DecodeLong();
-            message.RootHash = stream.DecodeKeccak();
+            message.RequestId = ctx.DecodeLong();
+            message.RootHash = ctx.DecodeKeccak();
             PathGroup defaultValue = _defaultPathGroup;
-            message.Paths = stream.DecodeArrayPoolList(DecodeGroup, defaultElement: defaultValue);
+            message.Paths = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
+                new PathGroup
+                {
+                    Group = c.DecodeArray(static (ref Rlp.ValueDecoderContext inner) => inner.DecodeByteArray(), defaultElement: [])
+                }, defaultElement: defaultValue);
 
-            message.Bytes = stream.DecodeLong();
+            message.Bytes = ctx.DecodeLong();
 
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
             return message;
         }
-
-        private PathGroup DecodeGroup(RlpStream stream) =>
-            new()
-            {
-                Group = stream.DecodeArray(s => stream.DecodeByteArray(), defaultElement: [])
-            };
 
         private static (int contentLength, int allPathsLength, int[] pathsLengths) CalculateLengths(GetTrieNodesMessage message)
         {

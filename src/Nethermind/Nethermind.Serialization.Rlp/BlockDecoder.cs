@@ -16,26 +16,6 @@ namespace Nethermind.Serialization.Rlp
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockDecoder))]
         public BlockDecoder() : this(new HeaderDecoder()) { }
 
-        protected override Block? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (rlpStream.Length == 0)
-            {
-                throw new RlpException($"Received a 0 length stream when decoding a {nameof(Block)}");
-            }
-
-            if (rlpStream.IsNextItemEmptyList())
-            {
-                rlpStream.ReadByte();
-                return null;
-            }
-
-            Span<byte> contentSpan = rlpStream.PeekNextItem();
-            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(contentSpan);
-            Block? decoded = Decode(ref ctx, rlpBehaviors);
-            rlpStream.Position += contentSpan.Length;
-            return decoded;
-        }
-
         private (int Total, int Txs, int Uncles, int? Withdrawals) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
         {
             int headerLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);

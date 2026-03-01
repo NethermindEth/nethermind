@@ -20,16 +20,6 @@ internal sealed class SubnetSnapshotDecoder : BaseSnapshotDecoder<SubnetSnapshot
         return subnetSnapshot;
     }
 
-    protected override SubnetSnapshot DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        SubnetSnapshot subnetSnapshot = DecodeBase<SubnetSnapshot>(rlpStream, (number, hash, candidates) => new SubnetSnapshot(number, hash, candidates), rlpBehaviors);
-        if (subnetSnapshot is null)
-            return null;
-
-        subnetSnapshot.NextEpochPenalties = rlpStream.DecodeArray<Address>(s => s.DecodeAddress()) ?? [];
-        return subnetSnapshot;
-    }
-
     protected override void EncodeContent(RlpStream stream, SubnetSnapshot item, RlpBehaviors rlpBehaviors)
     {
         base.EncodeContent(stream, item, rlpBehaviors);

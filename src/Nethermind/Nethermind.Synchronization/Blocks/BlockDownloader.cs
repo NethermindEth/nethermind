@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.Blocks
         private static readonly IPeerAllocationStrategy EstimatedAllocationStrategy =
             BlocksSyncPeerAllocationStrategyFactory.AllocationStrategy;
 
-        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>() ?? throw new InvalidOperationException();
+        private static readonly IRlpStreamEncoder<TxReceipt> _receiptDecoder = Rlp.GetStreamEncoder<TxReceipt>() ?? throw new InvalidOperationException();
 
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;

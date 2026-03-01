@@ -15,8 +15,6 @@ namespace Nethermind.Serialization.Rlp
 
         protected override Hash256? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccak();
 
-        protected override Hash256? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => rlpStream.DecodeKeccak();
-
         public override int GetLength(Hash256 item, RlpBehaviors rlpBehaviors) => Rlp.LengthOf(item);
 
         public override void Encode(RlpStream stream, Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

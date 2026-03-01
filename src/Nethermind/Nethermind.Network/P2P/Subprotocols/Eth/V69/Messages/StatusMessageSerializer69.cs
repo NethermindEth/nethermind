@@ -45,20 +45,21 @@ public class StatusMessageSerializer69 :
 
     public StatusMessage69 Deserialize(IByteBuffer byteBuffer)
     {
-        RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-        rlpStream.ReadSequenceLength();
+        Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+        ctx.ReadSequenceLength();
 
         StatusMessage69 statusMessage = new()
         {
-            ProtocolVersion = rlpStream.DecodeByte(),
-            NetworkId = rlpStream.DecodeUInt256(),
-            GenesisHash = rlpStream.DecodeKeccak() ?? Hash256.Zero,
-            ForkId = DecodeForkId(rlpStream),
-            EarliestBlock = rlpStream.DecodeLong(),
-            LatestBlock = rlpStream.DecodeLong(),
-            LatestBlockHash = rlpStream.DecodeKeccak() ?? Hash256.Zero
+            ProtocolVersion = ctx.DecodeByte(),
+            NetworkId = ctx.DecodeUInt256(),
+            GenesisHash = ctx.DecodeKeccak() ?? Hash256.Zero,
+            ForkId = DecodeForkId(ref ctx),
+            EarliestBlock = ctx.DecodeLong(),
+            LatestBlock = ctx.DecodeLong(),
+            LatestBlockHash = ctx.DecodeKeccak() ?? Hash256.Zero
         };
 
+        byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
         return statusMessage;
     }
 
@@ -70,11 +71,11 @@ public class StatusMessageSerializer69 :
         rlpStream.Encode(forkId.Next);
     }
 
-    private static ForkId DecodeForkId(RlpStream rlpStream)
+    private static ForkId DecodeForkId(ref Rlp.ValueDecoderContext ctx)
     {
-        rlpStream.ReadSequenceLength();
-        uint forkHash = (uint)rlpStream.DecodeUInt256(ForkHashLength - 1);
-        ulong next = rlpStream.DecodeUlong();
+        ctx.ReadSequenceLength();
+        uint forkHash = (uint)ctx.DecodeUInt256(ForkHashLength - 1);
+        ulong next = ctx.DecodeULong();
         return new(forkHash, next);
     }
 

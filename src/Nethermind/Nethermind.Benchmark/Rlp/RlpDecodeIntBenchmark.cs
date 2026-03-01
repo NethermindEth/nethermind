@@ -53,13 +53,15 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark]
         public int Improved()
         {
-            return new RlpStream(_value).DecodeInt();
+            Serialization.Rlp.Rlp.ValueDecoderContext ctx = new(_value);
+            return ctx.DecodeInt();
         }
 
         [Benchmark]
         public int Current()
         {
-            return new RlpStream(_value).DecodeInt();
+            Serialization.Rlp.Rlp.ValueDecoderContext ctx = new(_value);
+            return ctx.DecodeInt();
         }
     }
 }

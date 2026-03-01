@@ -543,7 +543,7 @@ public class HistoryPruner : IHistoryPruner
         }
         else
         {
-            UpdateDeletePointer(val.AsRlpStream().DecodeLong());
+            UpdateDeletePointer(val.AsRlpValueContext().DecodeLong());
             _lastSavedDeletePointer = _deletePointer;
             _hasLoadedDeletePointer = true;
         }

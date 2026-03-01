@@ -41,13 +41,6 @@ public class BaseAccessListTxDecoder<T>(TxType txType, Func<T>? transactionFacto
             : Rlp.LengthOfSequence(1 + txPayloadLength);
     }
 
-    protected override void DecodePayload(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        transaction.ChainId = rlpStream.DecodeULong();
-        base.DecodePayload(transaction, rlpStream, rlpBehaviors);
-        transaction.AccessList = AccessListDecoder.Instance.Decode(rlpStream, rlpBehaviors);
-    }
-
     protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

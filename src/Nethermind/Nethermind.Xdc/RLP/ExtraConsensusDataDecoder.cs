@@ -28,24 +28,6 @@ internal sealed class ExtraConsensusDataDecoder : RlpValueDecoder<ExtraFieldsV2>
         return new ExtraFieldsV2(round, quorumCert);
     }
 
-    protected override ExtraFieldsV2 DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemEmptyList())
-        {
-            rlpStream.ReadByte();
-            return null;
-        }
-
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        int endPosition = rlpStream.Position + sequenceLength;
-
-        ulong round = rlpStream.DecodeULong();
-        QuorumCertificate? quorumCert = _quorumCertificateDecoder.Decode(rlpStream, rlpBehaviors);
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-            rlpStream.Check(endPosition);
-        return new ExtraFieldsV2(round, quorumCert);
-    }
-
     public Rlp Encode(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

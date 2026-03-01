@@ -55,27 +55,27 @@ namespace Nethermind.Network.P2P.Messages
 
         public HelloMessage Deserialize(IByteBuffer msgBytes)
         {
-            NettyRlpStream rlpStream = new(msgBytes);
-            rlpStream.ReadSequenceLength();
+            Rlp.ValueDecoderContext ctx = msgBytes.AsRlpContext();
+            ctx.ReadSequenceLength();
 
             HelloMessage helloMessage = new();
-            helloMessage.P2PVersion = rlpStream.DecodeByte();
-            helloMessage.ClientId = rlpStream.DecodeString();
-            helloMessage.Capabilities = rlpStream.DecodeArrayPoolList(static ctx =>
+            helloMessage.P2PVersion = ctx.DecodeByte();
+            helloMessage.ClientId = ctx.DecodeString();
+            helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
             {
-                ctx.ReadSequenceLength();
-                ReadOnlySpan<byte> protocolSpan = ctx.DecodeByteArraySpan();
+                c.ReadSequenceLength();
+                ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan();
                 if (!Contract.P2P.ProtocolParser.TryGetProtocolCode(protocolSpan, out string? protocolCode))
                 {
                     protocolCode = Encoding.UTF8.GetString(protocolSpan);
                 }
-                int version = ctx.DecodeByte();
+                int version = c.DecodeByte();
                 return new Capability(protocolCode, version);
             });
 
-            helloMessage.ListenPort = rlpStream.DecodeInt();
+            helloMessage.ListenPort = ctx.DecodeInt();
 
-            ReadOnlySpan<byte> publicKeyBytes = rlpStream.DecodeByteArraySpan(RlpLimit.L64);
+            ReadOnlySpan<byte> publicKeyBytes = ctx.DecodeByteArraySpan(RlpLimit.L64);
             if (publicKeyBytes.Length != PublicKey.LengthInBytes &&
                 publicKeyBytes.Length != PublicKey.PrefixedLengthInBytes)
             {
@@ -89,6 +89,7 @@ namespace Nethermind.Network.P2P.Messages
                 helloMessage.NodeId = new PublicKey(publicKeyBytes);
             }
 
+            msgBytes.SetReaderIndex(msgBytes.ReaderIndex + ctx.Position);
             return helloMessage;
         }
     }

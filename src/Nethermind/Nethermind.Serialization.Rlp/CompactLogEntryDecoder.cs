@@ -14,32 +14,6 @@ namespace Nethermind.Serialization.Rlp
     {
         public static CompactLogEntryDecoder Instance { get; } = new();
 
-        public static LogEntry? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (rlpStream.IsNextItemEmptyList())
-            {
-                rlpStream.ReadByte();
-                return null;
-            }
-
-            rlpStream.ReadSequenceLength();
-            Address? address = rlpStream.DecodeAddress();
-            long sequenceLength = rlpStream.ReadSequenceLength();
-            long untilPosition = rlpStream.Position + sequenceLength;
-            using ArrayPoolListRef<Hash256> topics = new((int)(sequenceLength * 2 / Rlp.LengthOfKeccakRlp));
-            while (rlpStream.Position < untilPosition)
-            {
-                topics.Add(rlpStream.DecodeZeroPrefixKeccak());
-            }
-
-            int zeroPrefix = rlpStream.DecodeInt();
-            ReadOnlySpan<byte> rlpData = rlpStream.DecodeByteArraySpan();
-            byte[] data = new byte[zeroPrefix + rlpData.Length];
-            rlpData.CopyTo(data.AsSpan(zeroPrefix));
-
-            return new LogEntry(address, data, topics.ToArray());
-        }
-
         public static LogEntry? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())

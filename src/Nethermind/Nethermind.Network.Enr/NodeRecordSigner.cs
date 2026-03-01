@@ -39,55 +39,68 @@ public class NodeRecordSigner : INodeRecordSigner
     /// <returns>A deserialized <see cref="NodeRecord"/></returns>
     public NodeRecord Deserialize(RlpStream rlpStream)
     {
-        int startPosition = rlpStream.Position;
-        int recordRlpLength = rlpStream.ReadSequenceLength();
+        Rlp.ValueDecoderContext ctx = new(rlpStream.Data.AsSpan().Slice(rlpStream.Position));
+        NodeRecord result = Deserialize(ref ctx);
+        rlpStream.Position += ctx.Position;
+        return result;
+    }
+
+    /// <summary>
+    /// Deserializes a <see cref="NodeRecord"/> from a <see cref="Rlp.ValueDecoderContext"/>.
+    /// </summary>
+    /// <param name="ctx">A value decoder context to read the serialized data from.</param>
+    /// <returns>A deserialized <see cref="NodeRecord"/></returns>
+    public NodeRecord Deserialize(ref Rlp.ValueDecoderContext ctx)
+    {
+        int startPosition = ctx.Position;
+        int recordRlpLength = ctx.ReadSequenceLength();
         if (recordRlpLength > 300)
             throw new NetworkingException("RLP received for ENR is bigger than 300 bytes", NetworkExceptionType.Discovery);
         NodeRecord nodeRecord = new();
 
-        ReadOnlySpan<byte> sigBytes = rlpStream.DecodeByteArraySpan(RlpLimit.L65);
+        ReadOnlySpan<byte> sigBytes = ctx.DecodeByteArraySpan(RlpLimit.L65);
         Signature signature = new(sigBytes, 0);
 
         bool canVerify = true;
-        long enrSequence = rlpStream.DecodeLong();
-        while (rlpStream.Position < startPosition + recordRlpLength)
+        long enrSequence = ctx.DecodeLong();
+        while (ctx.Position < startPosition + recordRlpLength)
         {
-            ReadOnlySpan<byte> key = rlpStream.DecodeByteArraySpan();
+            ReadOnlySpan<byte> key = ctx.DecodeByteArraySpan();
             switch (key.Length)
             {
                 case 2 when key.SequenceEqual(EnrContentKey.IdU8):
-                    rlpStream.SkipItem();
+                    ctx.SkipItem();
                     nodeRecord.SetEntry(IdEntry.Instance);
                     break;
                 case 2 when key.SequenceEqual(EnrContentKey.IpU8):
-                    ReadOnlySpan<byte> ipBytes = rlpStream.DecodeByteArraySpan();
+                    ReadOnlySpan<byte> ipBytes = ctx.DecodeByteArraySpan();
                     IPAddress address = new(ipBytes);
                     nodeRecord.SetEntry(new IpEntry(address));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.EthU8):
-                    _ = rlpStream.ReadSequenceLength();
-                    _ = rlpStream.ReadSequenceLength();
-                    byte[] forkHash = rlpStream.DecodeByteArray();
-                    long nextBlock = rlpStream.DecodeLong();
+                    _ = ctx.ReadSequenceLength();
+                    _ = ctx.ReadSequenceLength();
+                    byte[] forkHash = ctx.DecodeByteArray();
+                    long nextBlock = ctx.DecodeLong();
                     nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.TcpU8):
-                    int tcpPort = rlpStream.DecodeInt();
+                    int tcpPort = ctx.DecodeInt();
                     nodeRecord.SetEntry(new TcpEntry(tcpPort));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.UdpU8):
-                    int udpPort = rlpStream.DecodeInt();
+                    int udpPort = ctx.DecodeInt();
                     nodeRecord.SetEntry(new UdpEntry(udpPort));
                     break;
                 case 9 when key.SequenceEqual(EnrContentKey.Secp256K1U8):
-                    ReadOnlySpan<byte> keyBytes = rlpStream.DecodeByteArraySpan();
+                    ReadOnlySpan<byte> keyBytes = ctx.DecodeByteArraySpan();
                     CompressedPublicKey reportedKey = new(keyBytes);
                     nodeRecord.SetEntry(new Secp256K1Entry(reportedKey));
                     break;
                 default:
                     // snap
                     canVerify = false;
-                    rlpStream.SkipItem();
+                    ctx.SkipItem();
                     nodeRecord.Snap = true;
                     break;
             }
@@ -95,16 +108,16 @@ public class NodeRecordSigner : INodeRecordSigner
 
         if (!canVerify)
         {
-            rlpStream.Position = startPosition;
-            rlpStream.ReadSequenceLength();
-            rlpStream.SkipItem(); // signature
-            int noSigContentLength = rlpStream.Length - rlpStream.Position;
+            ctx.Position = startPosition;
+            ctx.ReadSequenceLength();
+            ctx.SkipItem(); // signature
+            int noSigContentLength = ctx.Length - ctx.Position;
             int noSigSequenceLength = Rlp.LengthOfSequence(noSigContentLength);
             byte[] originalContent = new byte[noSigSequenceLength];
             RlpStream originalContentStream = new(originalContent);
             originalContentStream.StartSequence(noSigContentLength);
-            originalContentStream.Write(rlpStream.Read(noSigContentLength));
-            rlpStream.Position = startPosition;
+            originalContentStream.Write(ctx.Read(noSigContentLength));
+            ctx.Position = startPosition;
             nodeRecord.OriginalContentRlp = originalContentStream.Data.ToArray()!;
         }
 

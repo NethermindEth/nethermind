@@ -19,48 +19,6 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
     public TxType Type => txType;
 
-    public virtual Transaction? Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        T transaction = _createTransaction();
-        transaction.Type = txType;
-
-        int transactionLength = rlpStream.ReadSequenceLength();
-        int lastCheck = rlpStream.Position + transactionLength;
-
-        DecodePayload(transaction, rlpStream, rlpBehaviors);
-
-        if (rlpStream.Position < lastCheck)
-        {
-            transaction.Signature = DecodeSignature(transaction, rlpStream, rlpBehaviors);
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
-        {
-            rlpStream.Check(lastCheck);
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
-        {
-            CalculateHash(transaction, transactionSequence);
-        }
-
-        return transaction;
-    }
-
-    protected void CalculateHash(Transaction transaction, ReadOnlySpan<byte> transactionSequence)
-    {
-        if (transactionSequence.Length <= MaxDelayedHashTxnSize)
-        {
-            // Delay hash generation, as may be filtered as having too low gas etc
-            transaction.SetPreHashNoLock(transactionSequence);
-        }
-        else
-        {
-            // Just calculate the Hash as txn too large
-            transaction.Hash = Keccak.Compute(transactionSequence);
-        }
-    }
-
     public virtual void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         transaction ??= _createTransaction();
@@ -128,21 +86,6 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         return txPayloadLength;
     }
 
-    protected virtual void DecodePayload(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        transaction.Nonce = rlpStream.DecodeUInt256();
-        DecodeGasPrice(transaction, rlpStream);
-        transaction.GasLimit = rlpStream.DecodeLong();
-        transaction.To = rlpStream.DecodeAddress();
-        transaction.Value = rlpStream.DecodeUInt256();
-        transaction.Data = rlpStream.DecodeByteArray(_dataRlpLimit);
-    }
-
-    protected virtual void DecodeGasPrice(Transaction transaction, RlpStream rlpStream)
-    {
-        transaction.GasPrice = rlpStream.DecodeUInt256();
-    }
-
     protected virtual void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         transaction.Nonce = decoderContext.DecodeUInt256();
@@ -156,14 +99,6 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
     protected virtual void DecodeGasPrice(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
     {
         transaction.GasPrice = decoderContext.DecodeUInt256();
-    }
-
-    protected Signature? DecodeSignature(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ulong v = rlpStream.DecodeULong();
-        ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan(RlpLimit.L32);
-        ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan(RlpLimit.L32);
-        return DecodeSignature(v, rBytes, sBytes, transaction.Signature, rlpBehaviors);
     }
 
     protected Signature? DecodeSignature(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

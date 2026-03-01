@@ -47,10 +47,8 @@ public class SubnetSnapshotDecoderTests
         RlpStream stream = new(encoder.GetLength(original, RlpBehaviors.None));
         encoder.Encode(stream, original);
 
-        stream.Reset();
-
         SubnetSnapshotDecoder decoder = new();
-        SubnetSnapshot decoded = decoder.Decode(stream);
+        SubnetSnapshot decoded = decoder.Decode(stream.Data.AsSpan());
         decoded.Should().BeEquivalentTo(original);
     }
 }

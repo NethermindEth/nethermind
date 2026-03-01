@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -57,7 +58,8 @@ public class VoteDecoderTests
 
         if (useRlpStream)
         {
-            decoded = decoder.Decode(stream);
+            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+            decoded = decoder.Decode(ref decoderContext);
         }
         else
         {
@@ -82,8 +84,8 @@ public class VoteDecoderTests
         decoder.Encode(stream, vote);
         stream.Position = 0;
 
-        Vote decodedStream = decoder.Decode(stream);
-        stream.Position = 0;
+        Rlp.ValueDecoderContext streamCtx = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+        Vote decodedStream = decoder.Decode(ref streamCtx);
 
         Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
         Vote decodedContext = decoder.Decode(ref decoderContext);
@@ -128,8 +130,7 @@ public class VoteDecoderTests
         Assert.That(sealingEncoded.Bytes.Length, Is.LessThan(normalEncoded.Bytes.Length),
             "ForSealing encoding should be shorter as it omits the signature.");
 
-        var stream = new RlpStream(sealingEncoded.Bytes);
-        Vote decoded = decoder.Decode(stream, RlpBehaviors.ForSealing);
+        Vote decoded = decoder.Decode((ReadOnlySpan<byte>)sealingEncoded.Bytes, RlpBehaviors.ForSealing);
 
         Assert.That(decoded.Signature, Is.Null,
             "ForSealing decoding should not contain Signature field.");
@@ -151,9 +152,7 @@ public class VoteDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         var decoder = new VoteDecoder();
-        var stream = new RlpStream(Rlp.OfEmptyList.Bytes);
-
-        Vote decoded = decoder.Decode(stream);
+        Vote decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes);
 
         Assert.That(decoded, Is.Null);
     }

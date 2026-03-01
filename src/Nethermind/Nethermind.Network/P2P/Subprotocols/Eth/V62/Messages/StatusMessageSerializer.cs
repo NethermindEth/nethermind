@@ -62,24 +62,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public StatusMessage Deserialize(IByteBuffer byteBuffer)
         {
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            return Deserialize(rlpStream);
+            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+            StatusMessage message = Deserialize(ref ctx);
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+            return message;
         }
 
-        private static StatusMessage Deserialize(RlpStream rlpStream)
+        private static StatusMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             StatusMessage statusMessage = new();
-            rlpStream.ReadSequenceLength();
-            statusMessage.ProtocolVersion = rlpStream.DecodeByte();
-            statusMessage.NetworkId = rlpStream.DecodeUInt256();
-            statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();
-            statusMessage.BestHash = rlpStream.DecodeKeccak();
-            statusMessage.GenesisHash = rlpStream.DecodeKeccak();
-            if (rlpStream.Position < rlpStream.Length)
+            ctx.ReadSequenceLength();
+            statusMessage.ProtocolVersion = ctx.DecodeByte();
+            statusMessage.NetworkId = ctx.DecodeUInt256();
+            statusMessage.TotalDifficulty = ctx.DecodeUInt256();
+            statusMessage.BestHash = ctx.DecodeKeccak();
+            statusMessage.GenesisHash = ctx.DecodeKeccak();
+            if (ctx.Position < ctx.Length)
             {
-                rlpStream.ReadSequenceLength();
-                uint forkHash = (uint)rlpStream.DecodeUInt256(ForkHashLength - 1);
-                ulong next = rlpStream.DecodeUlong();
+                ctx.ReadSequenceLength();
+                uint forkHash = (uint)ctx.DecodeUInt256(ForkHashLength - 1);
+                ulong next = ctx.DecodeULong();
                 ForkId forkId = new(forkHash, next);
                 statusMessage.ForkId = forkId;
             }

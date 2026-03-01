@@ -75,7 +75,8 @@ namespace Nethermind.Core.Test.Encoding
 
             Hash256 expectedHash = Keccak.Compute(rlp.Bytes);
 
-            Transaction decodedTx = _txDecoder.Decode(new RlpStream(rlp.Bytes))!;
+            Rlp.ValueDecoderContext decoderCtx = new(rlp.Bytes);
+            Transaction decodedTx = _txDecoder.Decode(ref decoderCtx)!;
 
             decodedTx.SetPreHash(rlp.Bytes);
 
@@ -92,8 +93,8 @@ namespace Nethermind.Core.Test.Encoding
         {
             RlpStream rlpStream = new(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
             _txDecoder.Encode(rlpStream, testCase.Tx);
-            rlpStream.Position = 0;
-            Transaction? decoded = _txDecoder.Decode(rlpStream);
+            Rlp.ValueDecoderContext ctx = new(rlpStream.Data);
+            Transaction? decoded = _txDecoder.Decode(ref ctx);
             decoded!.SenderAddress =
                 new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
@@ -154,15 +155,16 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip_yolo_v3((string IncomingRlpHex, Hash256 Hash) testCase)
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
-            RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
+            byte[] incomingTxRlpBytes = Bytes.FromHexString(testCase.IncomingRlpHex);
+            Rlp.ValueDecoderContext ctx = new(incomingTxRlpBytes);
 
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
+            Transaction decoded = _txDecoder.Decode(ref ctx)!;
             decoded.CalculateHash().Should().Be(testCase.Hash);
 
-            RlpStream ourRlpOutput = new(incomingTxRlp.Length * 2);
+            RlpStream ourRlpOutput = new(incomingTxRlpBytes.Length * 2);
             _txDecoder.Encode(ourRlpOutput, decoded);
 
-            string ourRlpHex = ourRlpOutput.Data.AsSpan(0, incomingTxRlp.Length).ToHexString();
+            string ourRlpHex = ourRlpOutput.Data.AsSpan(0, incomingTxRlpBytes.Length).ToHexString();
             ourRlpHex.Should().BeEquivalentTo(testCase.IncomingRlpHex);
         }
 
@@ -171,8 +173,9 @@ namespace Nethermind.Core.Test.Encoding
             (string IncomingRlpHex, Hash256 Hash) testCase)
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
-            RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
+            byte[] incomingTxRlpBytes = Bytes.FromHexString(testCase.IncomingRlpHex);
+            Rlp.ValueDecoderContext ctx = new(incomingTxRlpBytes);
+            Transaction decoded = _txDecoder.Decode(ref ctx)!;
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
 
             decoded.CalculateHash().Should().Be(decoded.Hash!);
@@ -183,8 +186,9 @@ namespace Nethermind.Core.Test.Encoding
         public void Hash_calculation_do_not_change_after_roundtrip((string IncomingRlpHex, Hash256 Hash) testCase)
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
-            RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
+            byte[] incomingTxRlpBytes = Bytes.FromHexString(testCase.IncomingRlpHex);
+            Rlp.ValueDecoderContext ctx = new(incomingTxRlpBytes);
+            Transaction decoded = _txDecoder.Decode(ref ctx)!;
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
             decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
@@ -193,8 +197,9 @@ namespace Nethermind.Core.Test.Encoding
         public void Hash_calculation_do_not_change_after_roundtrip2((string IncomingRlpHex, Hash256 Hash) testCase)
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
-            RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
+            byte[] incomingTxRlpBytes = Bytes.FromHexString(testCase.IncomingRlpHex);
+            Rlp.ValueDecoderContext ctx = new(incomingTxRlpBytes);
+            Transaction decoded = _txDecoder.Decode(ref ctx)!;
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
             decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
@@ -217,11 +222,11 @@ namespace Nethermind.Core.Test.Encoding
             (string IncomingRlpHex, Hash256 Hash) testCase, bool wrapping)
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
-            RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
             Span<byte> spanIncomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsSpan();
             Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
             Transaction decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None)!;
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None)!;
+            Rlp.ValueDecoderContext ctx2 = new(spanIncomingTxRlp);
+            Transaction decoded = _txDecoder.Decode(ref ctx2, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None)!;
             Rlp encoded = _txDecoder.Encode(decoded);
             Rlp encodedWithDecodedByValueDecoderContext = _txDecoder.Encode(decodedByValueDecoderContext);
             decoded.Hash.Should().Be(testCase.Hash);

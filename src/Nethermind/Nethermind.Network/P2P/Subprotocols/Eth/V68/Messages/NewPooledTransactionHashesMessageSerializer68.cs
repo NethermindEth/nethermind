@@ -4,6 +4,7 @@
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -18,11 +19,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
         public NewPooledTransactionHashesMessage68 Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            rlpStream.ReadSequenceLength();
-            ArrayPoolList<byte> types = rlpStream.DecodeByteArrayPoolList(TypesRlpLimit);
-            ArrayPoolList<int> sizes = rlpStream.DecodeArrayPoolList(static item => item.DecodeInt(), limit: SizesRlpLimit);
-            ArrayPoolList<Hash256> hashes = rlpStream.DecodeArrayPoolList(static item => item.DecodeKeccak(), limit: HashesRlpLimit);
+            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+            ctx.ReadSequenceLength();
+            ArrayPoolList<byte> types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
+            ArrayPoolList<int> sizes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeInt(), limit: SizesRlpLimit);
+            ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
             return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
         }
 
