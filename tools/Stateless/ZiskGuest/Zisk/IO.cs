@@ -14,14 +14,13 @@ public static unsafe class IO
 
     public static ReadOnlySpan<byte> ReadInput()
     {
-        ulong size = *(ulong*)(INPUT_ADDR + sizeof(ulong));
+        byte* input = (byte*)INPUT_ADDR;
+        ulong size = *(ulong*)(input + sizeof(ulong));
 
         if (size > int.MaxValue)
             Environment.FailFast("Input size exceeds the maximum supported length");
 
-        return new ReadOnlySpan<byte>(
-            (void*)(INPUT_ADDR + sizeof(ulong) + sizeof(ulong)),
-            (int)size);
+        return new ReadOnlySpan<byte>(input + 2 * sizeof(ulong), (int)size);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
