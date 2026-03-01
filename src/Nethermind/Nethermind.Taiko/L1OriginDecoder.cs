@@ -8,31 +8,40 @@ using System;
 
 namespace Nethermind.Taiko;
 
-public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
+public sealed class L1OriginDecoder : RlpValueDecoder<L1Origin>
 {
     const int BuildPayloadArgsIdLength = 8;
     internal const int SignatureLength = 65;
 
     protected override L1Origin DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        (int _, int contentLength) = rlpStream.ReadPrefixAndContentLength();
-        int itemsCount = rlpStream.PeekNumberOfItemsRemaining(maxSearch: contentLength);
+        Span<byte> span = rlpStream.PeekNextItem();
+        Rlp.ValueDecoderContext ctx = new(span);
+        L1Origin result = DecodeInternal(ref ctx, rlpBehaviors);
+        rlpStream.SkipItem();
+        return result;
+    }
 
-        UInt256 blockId = rlpStream.DecodeUInt256();
-        Hash256? l2BlockHash = rlpStream.DecodeKeccak();
-        long? l1BlockHeight = rlpStream.DecodeLong();
-        Hash256 l1BlockHash = rlpStream.DecodeKeccak() ?? throw new RlpException("L1BlockHash is null");
+    protected override L1Origin DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        (int _, int contentLength) = decoderContext.ReadPrefixAndContentLength();
+        int itemsCount = decoderContext.PeekNumberOfItemsRemaining(maxSearch: contentLength);
+
+        UInt256 blockId = decoderContext.DecodeUInt256();
+        Hash256? l2BlockHash = decoderContext.DecodeKeccak();
+        long? l1BlockHeight = decoderContext.DecodeLong();
+        Hash256 l1BlockHash = decoderContext.DecodeKeccak() ?? throw new RlpException("L1BlockHash is null");
 
         int[]? buildPayloadArgsId = null;
 
         if (itemsCount >= 5)
         {
-            byte[] buildPayloadBytes = rlpStream.DecodeByteArray();
+            byte[] buildPayloadBytes = decoderContext.DecodeByteArray();
             buildPayloadArgsId = buildPayloadBytes.Length > 0 ? Array.ConvertAll(buildPayloadBytes, Convert.ToInt32) : null;
         }
 
-        bool isForcedInclusion = itemsCount >= 6 && rlpStream.DecodeBool();
-        byte[]? signature = itemsCount >= 7 ? rlpStream.DecodeByteArray() : null;
+        bool isForcedInclusion = itemsCount >= 6 && decoderContext.DecodeBool();
+        byte[]? signature = itemsCount >= 7 ? decoderContext.DecodeByteArray() : null;
 
         return new(blockId, l2BlockHash, l1BlockHeight, l1BlockHash, buildPayloadArgsId, isForcedInclusion, signature);
     }

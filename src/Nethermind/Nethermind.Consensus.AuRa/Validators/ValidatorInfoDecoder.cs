@@ -6,33 +6,42 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    internal sealed class ValidatorInfoDecoder : RlpStreamDecoder<ValidatorInfo>, IRlpObjectDecoder<ValidatorInfo>
+    internal sealed class ValidatorInfoDecoder : RlpValueDecoder<ValidatorInfo>, IRlpObjectDecoder<ValidatorInfo>
     {
         protected override ValidatorInfo? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (rlpStream.IsNextItemEmptyList())
+            System.Span<byte> span = rlpStream.PeekNextItem();
+            Rlp.ValueDecoderContext ctx = new(span);
+            ValidatorInfo? result = DecodeInternal(ref ctx, rlpBehaviors);
+            rlpStream.SkipItem();
+            return result;
+        }
+
+        protected override ValidatorInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (decoderContext.IsNextItemEmptyList())
             {
-                rlpStream.ReadByte();
+                decoderContext.ReadByte();
                 return null;
             }
 
-            var length = rlpStream.ReadSequenceLength();
-            int check = rlpStream.Position + length;
-            var finalizingBlockNumber = rlpStream.DecodeLong();
-            var previousFinalizingBlockNumber = rlpStream.DecodeLong();
+            int length = decoderContext.ReadSequenceLength();
+            int check = decoderContext.Position + length;
+            long finalizingBlockNumber = decoderContext.DecodeLong();
+            long previousFinalizingBlockNumber = decoderContext.DecodeLong();
 
-            int addressesSequenceLength = rlpStream.ReadSequenceLength();
-            int addressesCheck = rlpStream.Position + addressesSequenceLength;
-            var count = addressesSequenceLength / Rlp.LengthOfAddressRlp;
-            rlpStream.GuardLimit(count);
+            int addressesSequenceLength = decoderContext.ReadSequenceLength();
+            int addressesCheck = decoderContext.Position + addressesSequenceLength;
+            int count = addressesSequenceLength / Rlp.LengthOfAddressRlp;
+            decoderContext.GuardLimit(count);
             Address[] addresses = new Address[count];
             int i = 0;
-            while (rlpStream.Position < addressesCheck)
+            while (decoderContext.Position < addressesCheck)
             {
-                addresses[i++] = rlpStream.DecodeAddress();
+                addresses[i++] = decoderContext.DecodeAddress();
             }
-            rlpStream.Check(addressesCheck);
-            rlpStream.Check(check);
+            decoderContext.Check(addressesCheck);
+            decoderContext.Check(check);
 
             return new ValidatorInfo(finalizingBlockNumber, previousFinalizingBlockNumber, addresses);
         }
@@ -57,7 +66,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 return;
             }
 
-            var (contentLength, validatorLength) = GetContentLength(item, rlpBehaviors);
+            (int contentLength, int validatorLength) = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
             stream.Encode(item.FinalizingBlockNumber);
             stream.Encode(item.PreviousFinalizingBlockNumber);

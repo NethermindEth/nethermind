@@ -9,22 +9,31 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Clique
 {
-    internal sealed class SnapshotDecoder : RlpStreamDecoder<Snapshot>
+    internal sealed class SnapshotDecoder : RlpValueDecoder<Snapshot>
     {
         protected override Snapshot DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            rlpStream.ReadSequenceLength();
+            System.Span<byte> span = rlpStream.PeekNextItem();
+            Rlp.ValueDecoderContext ctx = new(span);
+            Snapshot result = DecodeInternal(ref ctx, rlpBehaviors);
+            rlpStream.SkipItem();
+            return result;
+        }
+
+        protected override Snapshot DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            decoderContext.ReadSequenceLength();
 
             // Block number
-            long number = (long)rlpStream.DecodeUInt256();
+            long number = (long)decoderContext.DecodeUInt256();
             // Hash
-            Hash256 hash = rlpStream.DecodeKeccak();
+            Hash256 hash = decoderContext.DecodeKeccak();
             // Signers
-            SortedList<Address, long> signers = DecodeSigners(rlpStream);
+            SortedList<Address, long> signers = DecodeSigners(ref decoderContext);
             // Votes
-            List<Vote> votes = DecodeVotes(rlpStream);
+            List<Vote> votes = DecodeVotes(ref decoderContext);
             // Tally
-            Dictionary<Address, Tally> tally = DecodeTally(rlpStream);
+            Dictionary<Address, Tally> tally = DecodeTally(ref decoderContext);
             Snapshot snapshot = new(number, hash, signers, tally) { Votes = votes };
 
             return snapshot;
@@ -65,51 +74,51 @@ namespace Nethermind.Consensus.Clique
             return (contentLength, signersLength, votesLength, tallyLength);
         }
 
-        private static SortedList<Address, long> DecodeSigners(RlpStream rlpStream)
+        private static SortedList<Address, long> DecodeSigners(ref Rlp.ValueDecoderContext decoderContext)
         {
-            rlpStream.ReadSequenceLength();
-            int length = rlpStream.DecodeInt();
-            rlpStream.GuardLimit(length);
+            decoderContext.ReadSequenceLength();
+            int length = decoderContext.DecodeInt();
+            decoderContext.GuardLimit(length);
             SortedList<Address, long> signers = new(AddressComparer.Instance);
             for (int i = 0; i < length; i++)
             {
-                Address signer = rlpStream.DecodeAddress();
-                long signedAt = (long)rlpStream.DecodeUInt256();
+                Address signer = decoderContext.DecodeAddress();
+                long signedAt = (long)decoderContext.DecodeUInt256();
                 signers.Add(signer, signedAt);
             }
 
             return signers;
         }
 
-        private static List<Vote> DecodeVotes(RlpStream rlpStream)
+        private static List<Vote> DecodeVotes(ref Rlp.ValueDecoderContext decoderContext)
         {
-            rlpStream.ReadSequenceLength();
-            int length = rlpStream.DecodeInt();
-            rlpStream.GuardLimit(length);
+            decoderContext.ReadSequenceLength();
+            int length = decoderContext.DecodeInt();
+            decoderContext.GuardLimit(length);
             List<Vote> votes = new(length);
             for (int i = 0; i < length; i++)
             {
-                Address signer = rlpStream.DecodeAddress();
-                long block = (long)rlpStream.DecodeUInt256();
-                Address address = rlpStream.DecodeAddress();
-                bool authorize = rlpStream.DecodeBool();
+                Address signer = decoderContext.DecodeAddress();
+                long block = (long)decoderContext.DecodeUInt256();
+                Address address = decoderContext.DecodeAddress();
+                bool authorize = decoderContext.DecodeBool();
                 Vote vote = new Vote(signer, block, address, authorize);
                 votes.Add(vote);
             }
             return votes;
         }
 
-        private static Dictionary<Address, Tally> DecodeTally(RlpStream rlpStream)
+        private static Dictionary<Address, Tally> DecodeTally(ref Rlp.ValueDecoderContext decoderContext)
         {
-            rlpStream.ReadSequenceLength();
-            int length = rlpStream.DecodeInt();
-            rlpStream.GuardLimit(length);
+            decoderContext.ReadSequenceLength();
+            int length = decoderContext.DecodeInt();
+            decoderContext.GuardLimit(length);
             Dictionary<Address, Tally> tally = new(length);
             for (int i = 0; i < length; i++)
             {
-                Address address = rlpStream.DecodeAddress();
-                int votes = rlpStream.DecodeInt();
-                bool authorize = rlpStream.DecodeBool();
+                Address address = decoderContext.DecodeAddress();
+                int votes = decoderContext.DecodeInt();
+                bool authorize = decoderContext.DecodeBool();
                 Tally tallyItem = new Tally(authorize);
                 tallyItem.Votes = votes;
                 tally[address] = tallyItem;
