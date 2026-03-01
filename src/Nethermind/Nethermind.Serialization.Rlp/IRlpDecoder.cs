@@ -16,10 +16,14 @@ namespace Nethermind.Serialization.Rlp
         int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
-    public interface IRlpStreamDecoder<T> : IRlpDecoder<T>
+    public interface IRlpStreamEncoder<T> : IRlpDecoder<T>
+    {
+        void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    }
+
+    public interface IRlpStreamDecoder<T> : IRlpStreamEncoder<T>
     {
         T Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-        void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
     public interface IRlpObjectDecoder<in T> : IRlpDecoder<T>
@@ -41,10 +45,20 @@ namespace Nethermind.Serialization.Rlp
         }
     }
 
-    public abstract class RlpStreamDecoder<T> : IRlpStreamDecoder<T>
+    public abstract class RlpStreamEncoder<T> : IRlpStreamEncoder<T>
     {
         public abstract int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
+        public abstract void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        protected static void ThrowRlpException(Exception exception) =>
+            throw new RlpException($"Cannot decode stream of {nameof(T)}", exception);
+    }
+
+    public abstract class RlpStreamDecoder<T> : RlpStreamEncoder<T>, IRlpStreamDecoder<T>
+    {
         public T Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             try
@@ -58,16 +72,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
-        protected static void ThrowRlpException(Exception exception)
-        {
-            throw new RlpException($"Cannot decode stream of {nameof(T)}", exception);
-        }
-
         protected abstract T DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-
-        public abstract void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
     public abstract class RlpValueDecoder<T> : RlpStreamDecoder<T>, IRlpValueDecoder<T>

@@ -202,6 +202,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static IRlpValueDecoder<T>? GetValueDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpValueDecoder<T> : null;
         public static IRlpStreamDecoder<T>? GetStreamDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpStreamDecoder<T> : null;
+        public static IRlpStreamEncoder<T>? GetStreamEncoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpStreamEncoder<T> : null;
         public static IRlpObjectDecoder<T> GetObjectDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.GetValueOrDefault(new(typeof(T), key)) as IRlpObjectDecoder<T> ?? throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static T Decode<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
