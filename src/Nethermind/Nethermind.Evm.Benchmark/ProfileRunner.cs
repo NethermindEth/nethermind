@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-// Standalone runner for profiling with dotnet-trace.
-// Usage: dotnet run -c Release --project Nethermind.Evm.Benchmark -- --profile [erc20|swap]
-// Then: dotnet-trace collect -p <PID> --duration 00:00:30
+// Standalone runner for profiling and benchmarking.
+// Profiling:  --profile [erc20|swap] [--trie|--flat]
+// Benchmarking: --profile [erc20|swap] [--trie|--flat] --bench
 
 #nullable enable
 
@@ -32,6 +32,10 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Evm.Benchmark;
 
@@ -43,8 +47,21 @@ public static class ProfileRunner
 {
     public static void Run(string[] args)
     {
-        string scenario = args.Length >= 2 ? args[1] : "erc20";
-        int iterations = 500;
+        // Parse args: --profile [erc20|swap] [--trie|--flat] [--bench]
+        string scenario = "erc20";
+        bool useFlatState = false;
+        bool benchMode = false;
+        for (int a = 1; a < args.Length; a++)
+        {
+            switch (args[a])
+            {
+                case "erc20": scenario = "erc20"; break;
+                case "swap": scenario = "swap"; break;
+                case "--flat": useFlatState = true; break;
+                case "--trie": useFlatState = false; break;
+                case "--bench": benchMode = true; break;
+            }
+        }
 
         IReleaseSpec spec = Osaka.Instance;
         PrivateKey senderKey = TestItem.PrivateKeyA;
@@ -110,7 +127,30 @@ public static class ProfileRunner
             .Build();
 
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager wsm;
+        BlockProcessingBenchmark.BenchmarkFlatDbManager? flatDbManagerRef = null;
+        if (useFlatState)
+        {
+            FlatDbConfig flatDbConfig = new() { TrieCacheMemoryBudget = 0 };
+            ResourcePool resourcePool = new(flatDbConfig);
+            TrieNodeCache trieNodeCache = new(flatDbConfig, LimboLogs.Instance);
+            BlockProcessingBenchmark.BenchmarkFlatDbManager flatDbManager = new(resourcePool, trieNodeCache);
+            flatDbManagerRef = flatDbManager;
+            FlatScopeProvider flatScopeProvider = new(
+                dbProvider.CodeDb,
+                flatDbManager,
+                flatDbConfig,
+                new NoopTrieWarmer(),
+                ResourcePool.Usage.MainBlockProcessing,
+                LimboLogs.Instance,
+                isReadOnly: false);
+            wsm = new BlockProcessingBenchmark.BenchmarkFlatWorldStateManager(flatScopeProvider, flatDbManager, dbProvider.CodeDb);
+        }
+        else
+        {
+            wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
+        }
+
         IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
 
         IBlockValidationModule[] validationModules = container.Resolve<IBlockValidationModule[]>();
@@ -189,14 +229,41 @@ public static class ProfileRunner
                 .TestObject;
         }
 
+        // Freeze the flat db manager so iterations don't accumulate snapshots
+        flatDbManagerRef?.Freeze();
+
         IBranchProcessor branchProcessor = processingScope.Resolve<IBranchProcessor>();
 
-        // Warmup
-        Console.Error.WriteLine($"Warming up {scenario}...");
+        string backendName = useFlatState ? "FlatState" : "Trie";
+
+        // Pin to a single core to reduce OS scheduler jitter
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+        {
+            Process.GetCurrentProcess().ProcessorAffinity = new IntPtr(1);
+        }
+
+        if (benchMode)
+        {
+            RunBench(branchProcessor, parentHeader, block, scenario, backendName);
+        }
+        else
+        {
+            RunProfile(branchProcessor, parentHeader, block, scenario, backendName);
+        }
+
+        processingScope.Dispose();
+        container.Dispose();
+    }
+
+    private static void RunProfile(IBranchProcessor branchProcessor, BlockHeader parentHeader, Block block, string scenario, string backendName)
+    {
+        int iterations = 500;
+
+        Console.Error.WriteLine($"Warming up {scenario} ({backendName})...");
         for (int i = 0; i < 10; i++)
             branchProcessor.Process(parentHeader, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
 
-        Console.Error.WriteLine($"PID={Environment.ProcessId} — running {iterations} iterations of {scenario}. Attach profiler now or wait...");
+        Console.Error.WriteLine($"PID={Environment.ProcessId} — running {iterations} iterations of {scenario} ({backendName}). Attach profiler now or wait...");
         Console.Error.WriteLine("Press ENTER to start timed loop (or wait 3s)...");
 
         // Give dotnet-trace time to attach
@@ -207,9 +274,71 @@ public static class ProfileRunner
             branchProcessor.Process(parentHeader, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         sw.Stop();
 
-        Console.Error.WriteLine($"Done: {iterations} iterations in {sw.ElapsedMilliseconds} ms ({sw.ElapsedMilliseconds * 1.0 / iterations:F2} ms/iter)");
+        Console.Error.WriteLine($"Done: {iterations} iterations of {scenario} ({backendName}) in {sw.ElapsedMilliseconds} ms ({sw.ElapsedMilliseconds * 1.0 / iterations:F2} ms/iter)");
+    }
 
-        processingScope.Dispose();
-        container.Dispose();
+    private static void RunBench(IBranchProcessor branchProcessor, BlockHeader parentHeader, Block block, string scenario, string backendName)
+    {
+        // Each "iteration" processes the block OpsPerIter times, so each
+        // timed measurement covers ~40-50 ms of real work, drowning out
+        // OS scheduling noise that dominates sub-5 ms measurements.
+        const int OpsPerIter = 10;
+        const int Rounds = 10;
+        const int ItersPerRound = 500;
+        int totalOps = Rounds * ItersPerRound * OpsPerIter;
+
+        Console.Error.WriteLine($"=== Bench: {scenario} ({backendName}) ===");
+        Console.Error.WriteLine($"  {Rounds} rounds x {ItersPerRound} iters x {OpsPerIter} ops/iter = {totalOps} total block processes");
+
+        // Warmup: 100 block processes
+        Console.Error.WriteLine("  Warming up (100 ops)...");
+        for (int i = 0; i < 100; i++)
+            branchProcessor.Process(parentHeader, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+
+        // Force GC before measurement
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
+
+        double[] roundMs = new double[Rounds];
+
+        for (int r = 0; r < Rounds; r++)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            for (int i = 0; i < ItersPerRound; i++)
+            {
+                for (int op = 0; op < OpsPerIter; op++)
+                    branchProcessor.Process(parentHeader, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+            }
+            sw.Stop();
+
+            double msPerOp = sw.Elapsed.TotalMilliseconds / (ItersPerRound * OpsPerIter);
+            roundMs[r] = msPerOp;
+            Console.Error.WriteLine($"  Round {r + 1,2}/{Rounds}: {msPerOp:F3} ms/op  ({sw.ElapsedMilliseconds} ms total)");
+        }
+
+        // Statistics
+        double mean = 0;
+        for (int i = 0; i < Rounds; i++) mean += roundMs[i];
+        mean /= Rounds;
+
+        double variance = 0;
+        for (int i = 0; i < Rounds; i++) variance += (roundMs[i] - mean) * (roundMs[i] - mean);
+        variance /= Rounds;
+        double stdev = Math.Sqrt(variance);
+        double cv = mean > 0 ? stdev / mean * 100 : 0;
+
+        // Median
+        double[] sorted = new double[Rounds];
+        Array.Copy(roundMs, sorted, Rounds);
+        Array.Sort(sorted);
+        double median = Rounds % 2 == 0
+            ? (sorted[Rounds / 2 - 1] + sorted[Rounds / 2]) / 2
+            : sorted[Rounds / 2];
+
+        Console.Error.WriteLine();
+        Console.Error.WriteLine($"  {scenario}({backendName}): mean={mean:F3} ms/op  median={median:F3} ms/op  stdev={stdev:F3}  CV={cv:F2}%");
+        // Machine-readable line for easy parsing
+        Console.WriteLine($"RESULT|{scenario}|{backendName}|{mean:F3}|{median:F3}|{stdev:F3}|{cv:F2}");
     }
 }
