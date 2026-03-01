@@ -34,7 +34,7 @@ class Program
         // where the input data for the Zisk guest should be written
         if (args.Length == 1)
         {
-            byte[] data = InputSerializer.Serialize(block, witness, (uint)specProvider.ChainId);
+            byte[] data = InputSerializer.Serialize(suggestedBlock, witness, (uint)specProvider.ChainId);
 
             File.WriteAllBytes(Path.Join(args[0], "input.bin"), data);
         }
