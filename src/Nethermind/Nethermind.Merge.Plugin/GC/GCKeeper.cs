@@ -21,19 +21,14 @@ public class GCKeeper
     private readonly ILogger _logger;
     private static readonly long _defaultSize = 512.MB();
     private Task _gcScheduleTask = Task.CompletedTask;
-    private readonly Func<IDisposable> _tryStartNoGCRegionFunc;
-
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
     {
         _gcStrategy = gcStrategy;
         _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
         _logger = logManager.GetClassLogger<GCKeeper>();
-        _tryStartNoGCRegionFunc = TryStartNoGCRegion;
     }
 
-    public Task<IDisposable> TryStartNoGCRegionAsync() => Task.Run(_tryStartNoGCRegionFunc);
-
-    private IDisposable TryStartNoGCRegion()
+    public IDisposable StartNoGCRegion()
     {
         long size = _defaultSize;
         bool pausedGCScheduler = GCScheduler.MarkGCPaused();

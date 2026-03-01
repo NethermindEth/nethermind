@@ -148,6 +148,18 @@ public partial class BlockProcessor(
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void CalculateBlooms(TxReceipt[] receipts)
     {
+        // Avoid parallel overhead for small receipt counts: ParallelUnbalancedWork queues
+        // ProcessorCount-1 ThreadPool items regardless of work size, which adds scheduling
+        // jitter and allocation overhead that exceeds the bloom computation cost for small blocks.
+        if (receipts.Length <= Environment.ProcessorCount)
+        {
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                receipts[i].CalculateBloom();
+            }
+            return;
+        }
+
         ParallelUnbalancedWork.For(
             0,
             receipts.Length,

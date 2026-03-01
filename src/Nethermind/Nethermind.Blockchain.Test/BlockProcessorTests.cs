@@ -39,6 +39,24 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockProcessorTests
 {
+    private sealed class CountingPreWarmer : IBlockCachePreWarmer
+    {
+        public int PreWarmCalls { get; private set; }
+        public int ClearCalls { get; private set; }
+
+        public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<Nethermind.Core.Eip2930.IHasAccessList> systemAccessLists)
+        {
+            PreWarmCalls++;
+            return Task.CompletedTask;
+        }
+
+        public Nethermind.State.CacheType ClearCaches()
+        {
+            ClearCalls++;
+            return Nethermind.State.CacheType.None;
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Prepared_block_contains_author_field()
     {
@@ -112,6 +130,51 @@ public class BlockProcessorTests
             new List<Block> { block },
             ProcessingOptions.None,
             AlwaysCancelBlockTracer.Instance));
+    }
+
+    // Below threshold (< 3 txs): no prewarm, 2 sync clears per Process call
+    [TestCase(2, 1, 0, 2)]
+    // At threshold (3 txs): prewarm triggered, 1 clear via continuation
+    [TestCase(3, 1, 1, 1)]
+    // Multiple calls below threshold: clears accumulate (2 per call)
+    [TestCase(1, 2, 0, 4)]
+    public void Prewarmer_triggered_only_above_transaction_threshold(
+        int transactionCount, int processCalls,
+        int expectedPreWarmCalls, int expectedClearCalls)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
+        blockhashProvider.Prefetch(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        CountingPreWarmer preWarmer = new();
+
+        BranchProcessor branchProcessor = new(
+            NullBlockProcessor.Instance,
+            HoodiSpecProvider.Instance,
+            stateProvider,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            blockhashProvider,
+            LimboLogs.Instance,
+            preWarmer);
+
+        Block parent = Build.A.Block.Genesis.TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithParent(parent)
+            .WithTransactions(transactionCount, Prague.Instance)
+            .TestObject;
+
+        for (int i = 0; i < processCalls; i++)
+        {
+            branchProcessor.Process(
+                parent.Header,
+                new List<Block> { block },
+                ProcessingOptions.None,
+                NullBlockTracer.Instance);
+        }
+
+        preWarmer.PreWarmCalls.Should().Be(expectedPreWarmCalls);
+        preWarmer.ClearCalls.Should().Be(expectedClearCalls);
     }
 
     [MaxTime(Timeout.MaxTestTime)]
