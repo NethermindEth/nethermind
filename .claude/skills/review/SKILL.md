@@ -1,7 +1,7 @@
 ---
 name: review
 description: Deep code review for an Ethereum execution client. Checks consensus correctness, security, robustness, performance, DI patterns, breaking changes, and observability. Use when asked to "review", "check this PR", "look for bugs", "audit", or "review my changes".
-allowed-tools: Read, Grep, Glob
+allowed-tools: [Bash(git diff*), Bash(git merge-base*), Bash(git log*), Read, Grep, Glob]
 ---
 
 # Code review
@@ -37,7 +37,13 @@ List skipped files and reason in scope.
 
 **Step 3: Categorize** remaining files: production / test / benchmark / CI / docs.
 
-**Step 4: Fetch diffs.** Emit one `git diff <base> HEAD -- <file>` per file in ONE parallel batch — but only for files that survived filtering. If more than 20 production files remain, prioritize files in critical paths (EVM, Engine API, State, Trie, Specs, Blockchain) and fetch the rest only if token budget allows.
+**Step 4: Size the diffs.** Run `git diff <base> HEAD --stat` to get per-file changed-line counts.
+
+**Step 4a: Fetch small diffs.** Files with **≤1000 changed lines**. Fetch in a single `git diff <base> HEAD -- file1 file2 ...` call. If the combined output exceeds **8000 lines**, split into two calls.
+
+**Step 4b: Delegate large diffs.** Files with **>1000 changed lines** go to subagents (see Subagent warning). Each subagent runs the full diff, reviews it, and returns only findings. Group 2–3 related large files per subagent when possible. Collect subagent findings for the verification pass (Plan step 7).
+
+**Prioritization:** If more than 20 production files survived filtering, review critical paths first (EVM, Engine API, State, Trie, Specs, Blockchain), then the rest.
 
 ### Phase 2 — Review (one file at a time)
 
@@ -51,7 +57,9 @@ Review each changed `.cs` file independently. Read the diff, check it, report fi
 
 ### Tool call discipline
 
-- **If the code execution tool is available:** prefer programmatic tool calling for Phase 1 recon. Write a single Python script that runs all git commands, filters the file list, categorizes files, and returns structured JSON. This keeps intermediate data out of your context window.
+- **Stat before diff.** Always run `--stat` (Step 4) before fetching full diffs.
+- **One combined diff call, not N.** Small files: single `git diff` call. Large files: subagents run their own.
+- **If the code execution tool is available:** prefer programmatic tool calling for Phase 1 recon. Write a single Python script that runs all git commands, filters, categorizes, sizes diffs, and returns structured JSON.
 - **Otherwise:** emit independent tool calls in one parallel batch. Never sequentially call tools that could have been parallel.
 - **Dependent calls are sequential.** If you need file A's content to decide whether to read file B, that's two turns. That's fine.
 - **Don't fetch what you won't read.** A diff fetched into context but never analyzed is pure waste.
@@ -64,11 +72,11 @@ Follow these steps in order. At each checkpoint, list your findings for that cat
 
 1. **Scope** — Run Phase 1 recon (see Operational constraints). List every changed file grouped by project, noting which were skipped and why. Note which review categories apply.
 2. **Checkpoint: scope** — Report file list and applicable categories.
-3. **Project rules check** — Read each file and check against `.claude/rules/` conventions (DI, style, robustness, performance, packages). See Step 2 below.
+3. **Project rules check** — For small files: read and check against `.claude/rules/` conventions (DI, style, robustness, performance, packages). See Step 2 below. Large files: checked by subagents (Step 4b).
 4. **Checkpoint: rules** — List every rule violation with file:line, or state "no violations" per category.
-5. **Domain checks** — Apply consensus, security, breaking changes, test quality checks as applicable.
+5. **Domain checks** — Apply consensus, security, breaking changes, test quality checks as applicable. Large files: checked by subagents (Step 4b). Collect all subagent findings before proceeding.
 6. **Checkpoint: domain** — List every domain finding, or state "no findings" per category.
-7. **Verification pass** — Treat each finding from steps 4 and 6 as a hypothesis. For each one:
+7. **Verification pass** — Treat each finding from steps 4 and 6 — including subagent findings — as a hypothesis. For each one:
    1. Identify what specific evidence would **falsify** it.
    2. Check for that evidence.
    3. State **KEEP** or **DROP** (verdict first, then rationale).
