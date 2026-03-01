@@ -47,6 +47,8 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
+            if (!snapshots[i].MightContainAddress(key))
+                continue;
             if (snapshots[i].TryGetAccount(key, out Account? acc))
             {
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountSnapshotLabel);
@@ -72,10 +74,10 @@ public sealed class ReadOnlySnapshotBundle(
     {
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
+            if (!snapshots[i].MightContainAddress(address))
+                continue;
             if (snapshots[i].HasSelfDestruct(address))
-            {
                 return i;
-            }
         }
 
         return -1;
@@ -88,6 +90,12 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
+            if (!snapshots[i].MightContainAddress(address))
+            {
+                if (i <= selfDestructStateIdx) return null;
+                continue;
+            }
+
             if (snapshots[i].TryGetStorage(address, index, out SlotValue? slotValue))
             {
                 byte[]? res = slotValue?.ToEvmBytes();
