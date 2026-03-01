@@ -70,6 +70,7 @@ namespace Nethermind.Specs.Test
         public bool IsOpIsthmusEnabled { get; set; } = spec.IsOpIsthmusEnabled;
         public bool IsOpJovianEnabled { get; set; } = spec.IsOpJovianEnabled;
         public bool IsEip7623Enabled { get; set; } = spec.IsEip7623Enabled;
+        public bool IsEip7981Enabled { get; set; } = spec.IsEip7981Enabled;
         public bool IsEip7918Enabled { get; set; } = spec.IsEip7918Enabled;
         public bool IsEip7883Enabled { get; set; } = spec.IsEip7883Enabled;
         public bool IsEip7934Enabled { get; set; } = spec.IsEip7934Enabled;

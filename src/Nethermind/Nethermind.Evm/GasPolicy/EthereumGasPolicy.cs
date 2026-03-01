@@ -179,12 +179,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
     {
         long tokensInCallData = IGasPolicy<EthereumGasPolicy>.CalculateTokensInCallData(tx, spec);
+        long tokensInAccessList = spec.IsEip7981Enabled ? IGasPolicy<EthereumGasPolicy>.CalculateTokensInAccessList(tx, spec) : 0L;
         long standard = GasCostOf.Transaction
                         + DataCost(tx, spec, tokensInCallData)
                         + CreateCost(tx, spec)
                         + IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec)
                         + AuthorizationListCost(tx, spec);
-        long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, spec);
+        long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, tokensInAccessList, spec);
         return new IntrinsicGas<EthereumGasPolicy>(FromLong(standard), FromLong(floorCost));
     }
 

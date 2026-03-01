@@ -177,6 +177,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
                 () => chainSpecJson.Params.ChainId == BlockchainIds.Mainnet ? Eip6110Constants.MainnetDepositContractAddress : null),
             Eip7002TransitionTimestamp = chainSpecJson.Params.Eip7002TransitionTimestamp,
             Eip7623TransitionTimestamp = chainSpecJson.Params.Eip7623TransitionTimestamp,
+            Eip7981TransitionTimestamp = chainSpecJson.Params.Eip7981TransitionTimestamp,
             Eip7883TransitionTimestamp = chainSpecJson.Params.Eip7883TransitionTimestamp,
             Eip7002ContractAddress = chainSpecJson.Params.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress,
             Eip7251TransitionTimestamp = chainSpecJson.Params.Eip7251TransitionTimestamp,
