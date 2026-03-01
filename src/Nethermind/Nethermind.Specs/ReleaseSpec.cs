@@ -87,6 +87,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsOpIsthmusEnabled { get; set; }
     public bool IsOpJovianEnabled { get; set; }
     public bool IsEip7623Enabled { get; set; }
+    public bool IsEip7981Enabled { get; set; }
     public bool IsEip7883Enabled { get; set; }
     public bool IsEip5656Enabled { get; set; }
     public bool IsEip6780Enabled { get; set; }

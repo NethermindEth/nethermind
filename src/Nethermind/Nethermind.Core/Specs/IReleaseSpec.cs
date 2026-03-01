@@ -364,6 +364,11 @@ namespace Nethermind.Core.Specs
         bool IsEip7623Enabled { get; }
 
         /// <summary>
+        ///  Increase access list cost
+        /// </summary>
+        bool IsEip7981Enabled { get; }
+
+        /// <summary>
         ///  Transaction gas limit cap
         /// </summary>
         bool IsEip7825Enabled { get; }
