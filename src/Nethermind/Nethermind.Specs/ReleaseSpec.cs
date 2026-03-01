@@ -126,6 +126,8 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsRip7728Enabled { get; set; }
     private FrozenSet<AddressAsKey>? _precompiles;
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
+    private SpecGasCosts? _gasCosts;
+    SpecGasCosts IReleaseSpec.GasCosts => _gasCosts ??= new SpecGasCosts(this);
     public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
     public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
     {

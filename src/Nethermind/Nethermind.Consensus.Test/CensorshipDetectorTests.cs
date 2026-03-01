@@ -237,7 +237,7 @@ public class CensorshipDetectorTests
     {
         if (eip1559Enabled)
         {
-            _specProvider = Substitute.For<ISpecProvider>();
+            _specProvider = SpecProviderSubstitute.Create();
             _specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
         }
         else

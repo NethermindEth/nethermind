@@ -13,6 +13,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -90,7 +91,7 @@ public class TxCertifierFilterTests
     {
         _filter.IsAllowed(
             Build.A.Transaction.WithGasPrice(gasPrice).WithSenderAddress(address).TestObject,
-            Build.A.BlockHeader.TestObject, Substitute.For<IReleaseSpec>()).Equals(AcceptTxResult.Accepted).Should().Be(expected);
+            Build.A.BlockHeader.TestObject, ReleaseSpecSubstitute.Create()).Equals(AcceptTxResult.Accepted).Should().Be(expected);
     }
 
     [Test]

@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
@@ -24,7 +25,7 @@ public class CachedCodeInfoRepositoryTests
 {
     private static IReleaseSpec CreateSpecWithPrecompile(Address precompileAddress)
     {
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.Precompiles.Returns(new HashSet<AddressAsKey> { precompileAddress }.ToFrozenSet());
         return spec;
     }
@@ -255,7 +256,7 @@ public class CachedCodeInfoRepositoryTests
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
 
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.Precompiles.Returns(new HashSet<AddressAsKey>
         {
             Sha256Precompile.Address,
