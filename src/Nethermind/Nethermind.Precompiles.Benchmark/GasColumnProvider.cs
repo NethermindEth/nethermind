@@ -3,25 +3,50 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Columns;
+using BenchmarkDotNet.Mathematics;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using Nethermind.Specs.Forks;
-using BenchmarkDotNet.Mathematics;
 using Perfolizer.Mathematics.Common;
+
+[assembly: InternalsVisibleTo("Nethermind.Precompiles.Benchmark.Test")]
 
 namespace Nethermind.Precompiles.Benchmark;
 
 public class GasColumnProvider : IColumnProvider
 {
+
     private static readonly IColumn[] Columns = [
         new GasColumn(),
         new GasThroughputColumn(),
-        new GasConfidenceIntervalColumn(true),  // Lower bound
-        new GasConfidenceIntervalColumn(false)  // Upper bound
+        new GasConfidenceIntervalColumn(true),
+        new GasConfidenceIntervalColumn(false)
     ];
 
     public IEnumerable<IColumn> GetColumns(Summary summary) => Columns;
+
+    /// <summary>
+    /// Converts gas consumed and execution time into MGas/s throughput.
+    /// </summary>
+    internal static double CalculateMGasThroughput(long gas, double nanoseconds)
+    {
+        double opThroughput = 1_000_000_000.0 / nanoseconds;
+        return gas * opThroughput / 1_000_000.0;
+    }
+
+    /// <summary>
+    /// Computes the MGas/s throughput for a given Benchmark Statistics.
+    /// </summary>
+    internal static double GetThroughputBound(long gas, Statistics stats, bool isLowerBound)
+    {
+        ConfidenceInterval ci = stats.GetConfidenceInterval(ConfidenceLevel.L99);
+        // BDN's CI is in nanoseconds; throughput = gas/time is inversely proportional,
+        // so the lower throughput bound uses the upper time bound and vice versa.
+        double timeBound = isLowerBound ? ci.Upper : ci.Lower;
+        return CalculateMGasThroughput(gas, timeBound);
+    }
 
     private abstract class BaseGasColumn : IColumn
     {
@@ -43,12 +68,6 @@ public class GasColumnProvider : IColumnProvider
                 : (long?)null;
             Statistics? stats = summary.Reports.FirstOrDefault(r => r.BenchmarkCase == benchmarkCase)?.ResultStatistics;
             return (gas, stats);
-        }
-
-        protected static double CalculateMGasThroughput(long gas, double nanoseconds)
-        {
-            double opThroughput = 1_000_000_000.0 / nanoseconds;
-            return gas * opThroughput / 1_000_000.0;
         }
 
         public abstract string GetValue(Summary summary, BenchmarkCase benchmarkCase);
@@ -112,9 +131,7 @@ public class GasColumnProvider : IColumnProvider
                 return "N/A";
             }
 
-            ConfidenceInterval ci = stats.GetConfidenceInterval(ConfidenceLevel.L99);
-            double bound = isLower ? ci.Lower : ci.Upper;
-            double mgasThroughput = CalculateMGasThroughput(gas.Value, bound);
+            double mgasThroughput = GetThroughputBound(gas.Value, stats, isLower);
             return mgasThroughput.ToString("F2") + " MGas/s";
         }
     }
