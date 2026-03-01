@@ -41,14 +41,15 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockProcessorTests
 {
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Prepared_block_contains_author_field()
+    private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) CreateProcessorAndBranch(
+        IRewardCalculator? rewardCalculator = null,
+        IBlockCachePreWarmer? preWarmer = null)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new(HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
-            NoBlockRewards.Instance,
+            rewardCalculator ?? NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
@@ -63,7 +64,16 @@ public class BlockProcessorTests
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashProvider>(),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            preWarmer);
+
+        return (processor, branchProcessor, stateProvider);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Prepared_block_contains_author_field()
+    {
+        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch();
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -79,27 +89,8 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Recovers_state_on_cancel()
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new(
-            HoodiSpecProvider.Instance,
-            TestBlockValidator.AlwaysValid,
-            new RewardCalculator(MainnetSpecProvider.Instance),
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
-            stateProvider,
-            NullReceiptStorage.Instance,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance,
-            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(transactionProcessor));
-        BranchProcessor branchProcessor = new(
-            processor,
-            HoodiSpecProvider.Instance,
-            stateProvider,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            Substitute.For<IBlockhashProvider>(),
-            LimboLogs.Instance);
+        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(
+            rewardCalculator: new RewardCalculator(MainnetSpecProvider.Instance));
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
@@ -152,19 +143,7 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void TransactionsExecuted_event_fires_during_ProcessOne()
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new(HoodiSpecProvider.Instance,
-            TestBlockValidator.AlwaysValid,
-            NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
-            stateProvider,
-            NullReceiptStorage.Instance,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance,
-            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(transactionProcessor));
+        (BlockProcessor processor, _, IWorldState stateProvider) = CreateProcessorAndBranch();
 
         bool eventFired = false;
         processor.TransactionsExecuted += () => eventFired = true;
@@ -182,34 +161,9 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event()
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new(HoodiSpecProvider.Instance,
-            TestBlockValidator.AlwaysValid,
-            NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
-            stateProvider,
-            NullReceiptStorage.Instance,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance,
-            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(transactionProcessor));
-
-        // Manual prewarmer implementation that captures the CancellationToken.
-        // NSubstitute can't proxy ReadOnlySpan<T> (ref struct) parameters.
         TokenCapturingPreWarmer preWarmer = new();
+        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
 
-        BranchProcessor branchProcessor = new(
-            processor,
-            HoodiSpecProvider.Instance,
-            stateProvider,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            Substitute.For<IBlockhashProvider>(),
-            LimboLogs.Instance,
-            preWarmer);
-
-        // Build a block with >= 3 txs so prewarming activates
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).WithTransactions(3, MuirGlacier.Instance).TestObject;
 
@@ -226,27 +180,7 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_unsubscribes_from_TransactionsExecuted_after_processing()
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new(HoodiSpecProvider.Instance,
-            TestBlockValidator.AlwaysValid,
-            NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
-            stateProvider,
-            NullReceiptStorage.Instance,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance,
-            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(transactionProcessor));
-
-        BranchProcessor branchProcessor = new(
-            processor,
-            HoodiSpecProvider.Instance,
-            stateProvider,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            Substitute.For<IBlockhashProvider>(),
-            LimboLogs.Instance);
+        (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) = CreateProcessorAndBranch();
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -275,29 +209,7 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new(HoodiSpecProvider.Instance,
-            TestBlockValidator.AlwaysValid,
-            NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
-            stateProvider,
-            NullReceiptStorage.Instance,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance,
-            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(transactionProcessor));
-
-        // No prewarmer — TransactionsExecuted event still fires but cancel is a no-op
-        BranchProcessor branchProcessor = new(
-            processor,
-            HoodiSpecProvider.Instance,
-            stateProvider,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            Substitute.For<IBlockhashProvider>(),
-            LimboLogs.Instance,
-            preWarmer: null);
+        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: null);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).WithTransactions(3, MuirGlacier.Instance).TestObject;
