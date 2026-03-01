@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Block = Nethermind.Core.Block;
+using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.Facade
 {
@@ -50,5 +51,7 @@ namespace Nethermind.Facade
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>;
         bool HasStateForBlock(BlockHeader? baseBlock);
+
+        Witness GenerateExecutionWitness(BlockHeader parent, Block block);
     }
 }

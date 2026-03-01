@@ -16,7 +16,7 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain;
 
-public class CachedCodeInfoRepository(
+public class PrecompileCachedCodeInfoRepository(
     IPrecompileProvider precompileProvider,
     ICodeInfoRepository baseCodeInfoRepository,
     ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache) : ICodeInfoRepository
