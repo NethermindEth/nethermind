@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Consensus.Stateless;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Serialization.Rlp;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Nethermind.Consensus.Stateless;
-using Nethermind.Core;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Stateless.Execution;
 
@@ -61,10 +62,10 @@ public static class InputSerializer
         blockContext.Check(blockLength);
         offset += blockLength;
 
-        byte[][] codes = ReadJaggedArray(input, ref offset);
-        byte[][] headers = ReadJaggedArray(input, ref offset);
-        byte[][] keys = ReadJaggedArray(input, ref offset);
-        byte[][] state = ReadJaggedArray(input, ref offset);
+        IOwnedReadOnlyList<byte[]> codes = ReadJaggedArray(input, ref offset);
+        IOwnedReadOnlyList<byte[]> headers = ReadJaggedArray(input, ref offset);
+        IOwnedReadOnlyList<byte[]> keys = ReadJaggedArray(input, ref offset);
+        IOwnedReadOnlyList<byte[]> state = ReadJaggedArray(input, ref offset);
 
         Debug.Assert(offset == input.Length, "Invalid input length");
 
@@ -111,15 +112,15 @@ public static class InputSerializer
         offset += sizeof(uint);
     }
 
-    private static byte[][] ReadJaggedArray(ReadOnlySpan<byte> source, ref int offset)
+    private static ArrayPoolList<byte[]> ReadJaggedArray(ReadOnlySpan<byte> source, ref int offset)
     {
         var sectionLen = ReadInt32(source, ref offset);
 
         if (sectionLen == 0)
-            return [];
+            return ArrayPoolList<byte[]>.Empty();
 
         var count = ReadInt32(source, ref offset);
-        byte[][] output = new byte[count][];
+        ArrayPoolList<byte[]> output = new(count, count);
 
         for (int i = 0; i < count; i++)
         {
@@ -133,17 +134,17 @@ public static class InputSerializer
     }
 
     private static void WriteJaggedArray(
-        ReadOnlySpan<byte[]> value,
+        IOwnedReadOnlyList<byte[]> value,
         int sectionLength,
         Span<byte> destination,
         ref int offset)
     {
         WriteInt32(sectionLength, destination, ref offset);
 
-        if (value.IsEmpty)
+        if (value.Count == 0)
             return;
 
-        var valueLen = value.Length;
+        var valueLen = value.Count;
 
         WriteInt32(valueLen, destination, ref offset);
 
@@ -158,15 +159,15 @@ public static class InputSerializer
         }
     }
 
-    private static int GetSerializedLength(ReadOnlySpan<byte[]> data)
+    private static int GetSerializedLength(IOwnedReadOnlyList<byte[]> value)
     {
-        if (data.IsEmpty)
+        if (value.Count == 0)
             return 0;
 
         var len = sizeof(int);
 
-        for (int i = 0; i < data.Length; i++)
-            len += sizeof(int) + data[i].Length;
+        for (int i = 0; i < value.Count; i++)
+            len += sizeof(int) + value[i].Length;
 
         return len;
     }

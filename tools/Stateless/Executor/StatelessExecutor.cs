@@ -35,7 +35,7 @@ public class StatelessExecutor
         processedBlock = null;
         BlockHeader? baseBlock = null;
 
-        foreach (BlockHeader header in witness.DecodedHeaders)
+        foreach (BlockHeader header in witness.DecodeHeaders())
         {
             if (header.Hash == suggestedBlock.Header.ParentHash)
                 baseBlock = header; // no break?
