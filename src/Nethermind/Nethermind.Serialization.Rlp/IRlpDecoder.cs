@@ -21,11 +21,6 @@ namespace Nethermind.Serialization.Rlp
         void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
-    public interface IRlpStreamDecoder<T> : IRlpStreamEncoder<T>
-    {
-        T Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-    }
-
     public interface IRlpObjectDecoder<in T> : IRlpDecoder<T>
     {
         Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
@@ -57,25 +52,7 @@ namespace Nethermind.Serialization.Rlp
             throw new RlpException($"Cannot decode stream of {nameof(T)}", exception);
     }
 
-    public abstract class RlpStreamDecoder<T> : RlpStreamEncoder<T>, IRlpStreamDecoder<T>
-    {
-        public T Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            try
-            {
-                return DecodeInternal(rlpStream, rlpBehaviors);
-            }
-            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
-            {
-                ThrowRlpException(e);
-                return default;
-            }
-        }
-
-        protected abstract T DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-    }
-
-    public abstract class RlpValueDecoder<T> : RlpStreamDecoder<T>, IRlpValueDecoder<T>
+    public abstract class RlpValueDecoder<T> : RlpStreamEncoder<T>, IRlpValueDecoder<T>
     {
         public T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -88,15 +65,6 @@ namespace Nethermind.Serialization.Rlp
                 ThrowRlpException(e);
                 return default;
             }
-        }
-
-        protected override T DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            Span<byte> span = rlpStream.PeekNextItem();
-            Rlp.ValueDecoderContext ctx = new(span);
-            T result = DecodeInternal(ref ctx, rlpBehaviors);
-            rlpStream.SkipItem();
-            return result;
         }
 
         protected abstract T DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);

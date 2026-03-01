@@ -123,7 +123,16 @@ public class BlockDecoderTests
 
         byte[] bytes = Bytes.FromHexString(regression5644);
         Rlp.ValueDecoderContext valueDecoderContext = new(bytes);
-        Block? decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(bytes));
+        Block? decoded;
+        if (valueDecoder)
+        {
+            decoded = decoder.Decode(ref valueDecoderContext);
+        }
+        else
+        {
+            Rlp.ValueDecoderContext ctx = new(bytes);
+            decoded = decoder.Decode(ref ctx);
+        }
         Rlp encoded = decoder.Encode(decoded);
         Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(bytes.ToHexString()));
     }
@@ -136,7 +145,16 @@ public class BlockDecoderTests
         BlockDecoder decoder = new();
         Rlp encoded = decoder.Encode(block);
         Rlp.ValueDecoderContext valueDecoderContext = new(encoded.Bytes);
-        Block? decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(encoded.Bytes));
+        Block? decoded;
+        if (valueDecoder)
+        {
+            decoded = decoder.Decode(ref valueDecoderContext);
+        }
+        else
+        {
+            Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+            decoded = decoder.Decode(ref ctx);
+        }
         Rlp encoded2 = decoder.Encode(decoded);
         Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
     }
@@ -225,7 +243,10 @@ public class BlockDecoderTests
     public void Rejects_malformed_input(byte[] input)
     {
         BlockDecoder decoder = new();
-        RlpStream rlpStream = new(input);
-        Assert.Throws<RlpException>(() => decoder.Decode(rlpStream));
+        Assert.Throws<RlpException>(() =>
+        {
+            Rlp.ValueDecoderContext ctx = new(input);
+            decoder.Decode(ref ctx);
+        });
     }
 }

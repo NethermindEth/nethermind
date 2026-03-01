@@ -24,18 +24,6 @@ namespace Nethermind.Serialization.Rlp
             _slimFormat = slimFormat;
         }
 
-        public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(RlpStream rlpStream)
-        {
-            rlpStream.SkipLength();
-            rlpStream.SkipItem();
-            rlpStream.SkipItem();
-
-            Hash256 storageRoot = DecodeStorageRoot(rlpStream);
-            Hash256 codeHash = DecodeCodeHash(rlpStream);
-
-            return (codeHash, storageRoot);
-        }
-
         public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref Rlp.ValueDecoderContext context)
         {
             context.SkipLength();
@@ -168,22 +156,6 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        private Hash256 DecodeStorageRoot(RlpStream rlpStream)
-        {
-            Hash256 storageRoot;
-            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
-            {
-                rlpStream.ReadByte();
-                storageRoot = Keccak.EmptyTreeHash;
-            }
-            else
-            {
-                storageRoot = rlpStream.DecodeKeccak()!;
-            }
-
-            return storageRoot;
-        }
-
         private Hash256 DecodeStorageRoot(Rlp.ValueDecoderContext context)
         {
             Hash256 storageRoot;
@@ -200,22 +172,6 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-
-        private Hash256 DecodeCodeHash(RlpStream rlpStream)
-        {
-            Hash256 codeHash;
-            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
-            {
-                rlpStream.ReadByte();
-                codeHash = Keccak.OfAnEmptyString;
-            }
-            else
-            {
-                codeHash = rlpStream.DecodeKeccak();
-            }
-
-            return codeHash;
-        }
 
         protected override Account? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

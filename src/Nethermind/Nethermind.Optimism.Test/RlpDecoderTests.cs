@@ -31,7 +31,8 @@ public class RlpDecoderTests
         _decoder.Encode(rlpStream, tx);
         rlpStream.Reset();
 
-        Transaction? decodedTx = _decoder.Decode(rlpStream);
+        Rlp.ValueDecoderContext ctx = new(rlpStream.Data);
+        Transaction? decodedTx = _decoder.Decode(ref ctx);
 
         decodedTx.Should().NotBeNull();
     }

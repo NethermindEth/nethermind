@@ -249,7 +249,7 @@ namespace Nethermind.Consensus.Clique
             byte[]? bytes = _blocksDb.Get(key);
             if (bytes is null) return null;
 
-            return _decoder.Decode(bytes.AsRlpStream());
+            return _decoder.Decode(bytes);
         }
 
         private void Store(Snapshot snapshot)

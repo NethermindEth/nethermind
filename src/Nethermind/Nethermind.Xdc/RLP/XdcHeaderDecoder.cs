@@ -37,21 +37,6 @@ public sealed class XdcHeaderDecoder : BaseXdcHeaderDecoder<XdcBlockHeader>
         }
     }
 
-    protected override void DecodeHeaderSpecificFields(RlpStream rlpStream, XdcBlockHeader header, RlpBehaviors rlpBehaviors, int headerCheck)
-    {
-        header.Validators = rlpStream.DecodeByteArray();
-        if (!IsForSealing(rlpBehaviors))
-        {
-            header.Validator = rlpStream.DecodeByteArray();
-        }
-        header.Penalties = rlpStream.DecodeByteArray();
-
-        if (rlpStream.Position != headerCheck)
-        {
-            header.BaseFeePerGas = rlpStream.DecodeUInt256();
-        }
-    }
-
     protected override void EncodeHeaderSpecificFields(RlpStream rlpStream, XdcBlockHeader header, RlpBehaviors rlpBehaviors)
     {
         rlpStream.Encode(header.Validators);
