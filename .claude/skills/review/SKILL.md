@@ -11,7 +11,7 @@ Nethermind is an Ethereum execution client built on .NET. Consensus correctness 
 **Only comment when you have HIGH CONFIDENCE (>80%) that a real issue exists.**
 Be concise: one sentence per comment when possible. If uncertain, stay silent.
 
-**Subagent warning:** Subagents do not inherit `.claude/rules/` or CLAUDE.md. If you launch subagents for this review, you **must** paste the relevant project rules (DI patterns, coding style, robustness, performance) into the subagent prompt. After receiving subagent output, cross-check their findings against the rules in your own context.
+**Subagent warning:** Subagents do not inherit `.claude/rules/` or CLAUDE.md. If you launch subagents for this review, you **must** paste all `.claude/rules/` content and all applicable domain review sections from this skill into the subagent prompt. After receiving subagent output, cross-check their findings against the rules in your own context.
 
 ---
 
@@ -72,9 +72,9 @@ Follow these steps in order. At each checkpoint, list your findings for that cat
 
 1. **Scope** — Run Phase 1 recon (see Operational constraints). List every changed file grouped by project, noting which were skipped and why. Note which review categories apply.
 2. **Checkpoint: scope** — Report file list and applicable categories.
-3. **Project rules check** — For small files: read and check against `.claude/rules/` conventions (DI, style, robustness, performance, packages). See Step 2 below. Large files: checked by subagents (Step 4b).
+3. **Project rules check** — For small files: read and check against all `.claude/rules/` rule files. See "Project rules check" section below. Large files: checked by subagents (Step 4b).
 4. **Checkpoint: rules** — List every rule violation with file:line, or state "no violations" per category.
-5. **Domain checks** — Apply consensus, security, breaking changes, test quality checks as applicable. Large files: checked by subagents (Step 4b). Collect all subagent findings before proceeding.
+5. **Domain checks** — Apply all domain review sections below as applicable. Large files: checked by subagents (Step 4b). Collect all subagent findings before proceeding.
 6. **Checkpoint: domain** — List every domain finding, or state "no findings" per category.
 7. **Verification pass** — Treat each finding from steps 4 and 6 — including subagent findings — as a hypothesis. For each one:
    1. Identify what specific evidence would **falsify** it.
@@ -106,15 +106,7 @@ Also skip: naming conventions, missing XML docs on `internal`/`private` members,
 
 ## Step 2: Project rules check
 
-For every changed file, explicitly check these conventions. Use Grep to search for the patterns listed.
-
-| Rule | Grep for | What it means |
-|------|----------|---------------|
-| **DI patterns** | `new ContainerBuilder`, `new WorldState(`, `new TransactionProcessor(`, `new BlockProcessor(`, `new TrieStore(` | If found, check `Nethermind.Init/Modules/` — if a module already registers that component, it's a violation. For tests/benchmarks, check if `TestBlockchain` should be used instead. |
-| **Coding style** | `var ` declarations, `== null`, `!= null` | Use explicit types (not `var`). Use `is null` / `is not null`. Exception: `var` for very long nested generic types. |
-| **Robustness** | `async void`, `.Result`, `.Wait()`, `catch { }`, `catch (Exception) { }` | `async void` swallows exceptions. `.Result`/`.Wait()` risk deadlock. Empty catch swallows diagnostics. |
-| **Performance** | `.Select(`, `.Where(`, `.Any(`, `.ToList()`, `new byte[` | LINQ in per-block/per-tx logic allocates on every call. `byte[]` in hot paths should be `Span<T>`. |
-| **Packages** | `Version=` in `<PackageReference>` | Versions belong in `Directory.Packages.props` only. |
+For every changed file, check the diff against every rule file in `.claude/rules/`. Each rule file defines conventions for a specific concern (DI patterns, coding style, robustness, performance, package management, etc.). Read the rule files if you haven't already, then verify the diff complies with each one.
 
 **Reminder: You must report findings for every rule category, even if the finding is "no violations". Do not skip any.**
 
