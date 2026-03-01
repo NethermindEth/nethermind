@@ -61,27 +61,22 @@ internal class XdcSealValidatorTests
 
     public static IEnumerable<TestCaseData> InvalidSignatureCases()
     {
-        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        header.Beneficiary = TestItem.AddressA;
+        XdcBlockHeader header = Build.A.XdcBlockHeader().WithBeneficiary(TestItem.AddressA).TestObject;
         yield return new TestCaseData(header, new byte[0]);
 
-        header = Build.A.XdcBlockHeader().TestObject;
-        header.Beneficiary = TestItem.AddressA;
+        header = Build.A.XdcBlockHeader().WithBeneficiary(TestItem.AddressA).TestObject;
         yield return new TestCaseData(header, new byte[65]);
 
-        header = Build.A.XdcBlockHeader().TestObject;
-        header.Beneficiary = TestItem.AddressA;
+        header = Build.A.XdcBlockHeader().WithBeneficiary(TestItem.AddressA).TestObject;
         yield return new TestCaseData(header, new byte[66]);
 
-        header = Build.A.XdcBlockHeader().TestObject;
-        header.Beneficiary = TestItem.AddressA;
+        header = Build.A.XdcBlockHeader().WithBeneficiary(TestItem.AddressA).TestObject;
         byte[] extraLongSignature = new byte[66];
         var keyASig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyA, header).BytesWithRecovery;
         keyASig.CopyTo(extraLongSignature, 0);
         yield return new TestCaseData(header, extraLongSignature);
 
-        header = Build.A.XdcBlockHeader().TestObject;
-        header.Beneficiary = TestItem.AddressA;
+        header = Build.A.XdcBlockHeader().WithBeneficiary(TestItem.AddressA).TestObject;
         var keyBSig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyB, header).BytesWithRecovery;
         yield return new TestCaseData(header, keyBSig);
     }
