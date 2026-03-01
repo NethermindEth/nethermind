@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.State;
 using NUnit.Framework;
@@ -64,10 +66,15 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        int[] snapshots = new int[4];
+        snapshots[0] = Snapshot.EmptyPosition;
         provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        snapshots[1] = provider.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot;
         provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        snapshots[2] = provider.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot;
         provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
-        provider.Restore(Snapshot.EmptyPosition, snapshot, Snapshot.EmptyPosition);
+        snapshots[3] = provider.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot;
+        provider.Restore(Snapshot.EmptyPosition, snapshots[snapshot + 1], Snapshot.EmptyPosition);
 
         Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
     }
@@ -89,6 +96,44 @@ public class StorageProviderTests
         Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[1]));
     }
 
+    [Test]
+    public void Persistent_restore_same_token_after_noop_restore_undoes_new_writes()
+    {
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Set(cell, _values[1]);
+        Snapshot snapshot = provider.TakeSnapshot();
+
+        // No writes after snapshot: this restore trims empty frames only.
+        provider.Restore(snapshot);
+
+        provider.Set(cell, _values[2]);
+        provider.Restore(snapshot);
+
+        provider.Get(cell).ToArray().Should().BeEquivalentTo(_values[1]);
+    }
+
+    [Test]
+    public void Persistent_restore_older_token_after_intermediate_noop_restore()
+    {
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Set(cell, _values[1]);
+        Snapshot snapshot1 = provider.TakeSnapshot();
+        provider.Set(cell, _values[2]);
+        Snapshot snapshot2 = provider.TakeSnapshot();
+
+        provider.Restore(snapshot2); // no-op restore (no writes after snapshot2)
+        provider.Set(cell, _values[3]);
+        provider.Restore(snapshot1);
+
+        provider.Get(cell).ToArray().Should().BeEquivalentTo(_values[1]);
+    }
+
     [TestCase(-1)]
     [TestCase(0)]
     [TestCase(1)]
@@ -97,10 +142,15 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        int[] snapshots = new int[4];
+        snapshots[0] = Snapshot.EmptyPosition;
         provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        snapshots[1] = provider.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot;
         provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
+        snapshots[2] = provider.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot;
         provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
-        provider.Restore(Snapshot.EmptyPosition, snapshot, Snapshot.EmptyPosition);
+        snapshots[3] = provider.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot;
+        provider.Restore(Snapshot.EmptyPosition, snapshots[snapshot + 1], Snapshot.EmptyPosition);
 
         Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[Math.Min(snapshot + 1, 1)]));
     }
@@ -155,15 +205,20 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        int[] snapshots = new int[4];
+        snapshots[0] = Snapshot.EmptyPosition;
         provider.Get(new StorageCell(ctx.Address1, 1));
         provider.Get(new StorageCell(ctx.Address1, 1));
         provider.Get(new StorageCell(ctx.Address1, 1));
         provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        snapshots[1] = provider.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot;
         provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        snapshots[2] = provider.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot;
         provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
-        provider.Restore(Snapshot.EmptyPosition, 2, Snapshot.EmptyPosition);
-        provider.Restore(Snapshot.EmptyPosition, 1, Snapshot.EmptyPosition);
-        provider.Restore(Snapshot.EmptyPosition, 0, Snapshot.EmptyPosition);
+        snapshots[3] = provider.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot;
+        provider.Restore(Snapshot.EmptyPosition, snapshots[2], Snapshot.EmptyPosition);
+        provider.Restore(Snapshot.EmptyPosition, snapshots[1], Snapshot.EmptyPosition);
+        provider.Restore(Snapshot.EmptyPosition, snapshots[0], Snapshot.EmptyPosition);
         provider.Get(new StorageCell(ctx.Address1, 1));
         provider.Get(new StorageCell(ctx.Address1, 1));
         provider.Get(new StorageCell(ctx.Address1, 1));
@@ -288,10 +343,6 @@ public class StorageProviderTests
         provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[3]);
         snapshots[3] = provider.TakeSnapshot();
 
-        Assert.That(snapshot, Is.EqualTo(snapshots[snapshot + 1].StorageSnapshot.TransientStorageSnapshot));
-        // Persistent storage is unimpacted by transient storage
-        Assert.That(snapshots[snapshot + 1].StorageSnapshot.PersistentStorageSnapshot, Is.EqualTo(-1));
-
         provider.Restore(snapshots[snapshot + 1]);
 
         Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
@@ -341,6 +392,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        int requestedSnapshot = snapshot;
         Snapshot[] snapshots = new Snapshot[4];
 
         // No updates
@@ -366,12 +418,17 @@ public class StorageProviderTests
         {
             snapshot--;
         }
-        snapshots[0].StorageSnapshot.Should().BeEquivalentTo(Snapshot.Storage.Empty);
-        snapshots[1].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(Snapshot.EmptyPosition, 0));
-        snapshots[2].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(0, 1));
-        snapshots[3].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(1, 1));
 
         _values[snapshot + 1].Should().BeEquivalentTo(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray());
+
+        byte[] expectedPersistent = requestedSnapshot switch
+        {
+            -1 => _values[0],
+            0 => _values[0],
+            1 => _values[9],
+            _ => _values[8],
+        };
+        expectedPersistent.Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray());
     }
 
     /// <summary>
@@ -386,6 +443,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        int requestedSnapshot = snapshot;
         Snapshot[] snapshots = new Snapshot[4];
 
         // No updates
@@ -412,14 +470,16 @@ public class StorageProviderTests
             snapshot--;
         }
 
-        snapshots.Should().Equal(
-            Snapshot.Empty,
-            new Snapshot(new Snapshot.Storage(0, Snapshot.EmptyPosition), Snapshot.EmptyPosition),
-            new Snapshot(new Snapshot.Storage(1, 0), Snapshot.EmptyPosition),
-            new Snapshot(new Snapshot.Storage(1, 1), Snapshot.EmptyPosition)
-        );
-
         _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray());
+
+        byte[] expectedTransient = requestedSnapshot switch
+        {
+            -1 => _values[0],
+            0 => _values[0],
+            1 => _values[9],
+            _ => _values[8],
+        };
+        expectedTransient.Should().BeEquivalentTo(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray());
     }
 
     /// <summary>
@@ -696,6 +756,437 @@ public class StorageProviderTests
         var clearedHash = worldState.StateRoot;
 
         clearedHash.Should().Be(emptyHash);
+    }
+
+    [Test]
+    public void Commit_empty_account_with_storage_value_materializes_account()
+    {
+        IWorldState worldState = new WorldState(
+            new TrieStoreScopeProvider(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), LogManager);
+
+        BlockHeader baseBlock = null;
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(TestItem.AddressA, 0);
+            worldState.Set(new StorageCell(TestItem.AddressA, 1), [1]);
+
+            // Pre-EIP-161 empty accounts are not auto-deleted during commit.
+            Assert.DoesNotThrow(() => worldState.Commit(Frontier.Instance));
+            worldState.AccountExists(TestItem.AddressA).Should().BeTrue();
+
+            worldState.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(worldState.StateRoot).WithNumber(0).TestObject;
+        }
+
+        using (worldState.BeginScope(baseBlock))
+        {
+            worldState.AccountExists(TestItem.AddressA).Should().BeTrue();
+            worldState.Get(new StorageCell(TestItem.AddressA, 1)).ToArray().Should().BeEquivalentTo([1]);
+        }
+    }
+
+    // --- 6.4.2 Regression: GetOriginal cross-transaction ---
+
+    [Test]
+    public void GetOriginal_returns_value_at_transaction_start_after_prior_commit()
+    {
+        // TX1 writes slot A=5, commits.
+        // TX2 reads slot A (gets 5). TX2 writes slot A=7.
+        // GetOriginal must return 5 (value at TX2 start), not 0 (on-disk value).
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        // TX1: write 5, commit
+        provider.Set(cell, [5]);
+        provider.Commit(Frontier.Instance);
+
+        // TX2: take snapshot with newTransactionStart=true
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cell); // read to populate _originalValues
+        provider.Set(cell, [7]);
+
+        byte[] original = provider.GetOriginal(cell);
+        original.Should().BeEquivalentTo(new byte[] { 5 });
+    }
+
+    [Test]
+    public void GetOriginal_returns_on_disk_value_when_prior_tx_reverted()
+    {
+        // TX1 writes slot A=5, TX1 reverts.
+        // TX2 writes slot A=7.
+        // GetOriginal must return 0 (on-disk value, TX1 was reverted).
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        // TX1: write 5, then revert
+        Snapshot snap = provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cell); // read first to populate _originalValues
+        provider.Set(cell, [5]);
+        provider.Restore(snap);
+
+        // TX2: write 7
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cell);
+        provider.Set(cell, [7]);
+
+        byte[] original = provider.GetOriginal(cell);
+        original.Should().BeEquivalentTo(StorageTree.ZeroBytes);
+    }
+
+    [Test]
+    public void GetOriginal_returns_on_disk_value_within_single_transaction()
+    {
+        // Within single TX: write A=5, write A=7.
+        // GetOriginal must return 0 (on-disk value, since value-at-tx-start was 0).
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cell); // read to populate _originalValues
+        provider.Set(cell, [5]);
+        provider.Set(cell, [7]);
+
+        byte[] original = provider.GetOriginal(cell);
+        original.Should().BeEquivalentTo(StorageTree.ZeroBytes);
+    }
+
+    // --- BuildUp mode: no commit between transactions (block production path) ---
+    // In BuildUp mode there is no Commit between transactions. GetOriginal must still
+    // return the correct value-at-transaction-start for EIP-2200 net gas metering.
+    // The call sequence mirrors the real EVM: SLOAD → Get, then SSTORE → GetOriginal
+    // (before Set). GetOriginal is always called BEFORE Set for the current SSTORE.
+
+    [Test]
+    public void GetOriginal_without_commit_returns_prior_tx_value()
+    {
+        // TX1 writes slot A=5. No commit.
+        // TX2 reads A (gets 5), then SSTORE calls GetOriginal before Set.
+        // GetOriginal must return 5 (value at TX2 start), not 0 (stale tree value).
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        // TX1: SLOAD + SSTORE
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cell);
+        provider.Set(cell, [5]);
+
+        // TX2: no commit — new transaction boundary only
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cell);
+
+        // SSTORE sequence: GetOriginal is called BEFORE Set
+        byte[] original = provider.GetOriginal(cell);
+        original.Should().BeEquivalentTo(new byte[] { 5 });
+        provider.Set(cell, [7]);
+    }
+
+    [Test]
+    public void GetOriginal_without_commit_returns_tree_value_for_new_slot()
+    {
+        // TX1 writes slot A=5. No commit.
+        // TX2 first accesses NEW slot B, writes B=10, then 2nd SSTORE writes B=20.
+        // On the 2nd SSTORE, GetOriginal(B) must return 0 (tree value),
+        // not 10 (current _slotsHot value after 1st SSTORE).
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cellA = new(ctx.Address1, 1);
+        StorageCell cellB = new(ctx.Address1, 2);
+
+        // TX1: write slot A
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cellA);
+        provider.Set(cellA, [5]);
+
+        // TX2: first access slot B, 1st SSTORE writes 10
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cellB);
+        provider.Set(cellB, [10]);
+
+        // 2nd SSTORE on B: GetOriginal before Set
+        byte[] original = provider.GetOriginal(cellB);
+        original.Should().BeEquivalentTo(StorageTree.ZeroBytes);
+        provider.Set(cellB, [20]);
+    }
+
+    [Test]
+    public void GetOriginal_without_commit_handles_both_slot_types()
+    {
+        // Combined: TX1 writes A=5. No commit.
+        // TX2: SSTORE A=7 (GetOriginal(A) must be 5),
+        //      1st SSTORE B=10, 2nd SSTORE B=20 (GetOriginal(B) must be 0).
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cellA = new(ctx.Address1, 1);
+        StorageCell cellB = new(ctx.Address1, 2);
+
+        // TX1
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cellA);
+        provider.Set(cellA, [5]);
+
+        // TX2 — no commit
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cellA);
+        provider.Get(cellB);
+
+        // SSTORE A: GetOriginal before Set
+        provider.GetOriginal(cellA).Should().BeEquivalentTo(new byte[] { 5 });
+        provider.Set(cellA, [7]);
+
+        // 1st SSTORE B
+        provider.Set(cellB, [10]);
+
+        // 2nd SSTORE B: GetOriginal before Set
+        provider.GetOriginal(cellB).Should().BeEquivalentTo(StorageTree.ZeroBytes);
+        provider.Set(cellB, [20]);
+    }
+
+    // --- 6.4.2 Regression: nested SSTORE revert ---
+
+    [Test]
+    public void Nested_sstore_revert_restores_value()
+    {
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Set(cell, [1]);
+        Snapshot snap = provider.TakeSnapshot();
+        provider.Set(cell, [2]);
+        Snapshot snap2 = provider.TakeSnapshot();
+        provider.Set(cell, [3]);
+
+        // Revert inner
+        provider.Restore(snap2);
+        provider.Get(cell).ToArray().Should().BeEquivalentTo(new byte[] { 2 });
+
+        // Revert outer
+        provider.Restore(snap);
+        provider.Get(cell).ToArray().Should().BeEquivalentTo(new byte[] { 1 });
+    }
+
+    // --- 6.4.2 Regression: TSTORE revert ---
+
+    [Test]
+    public void Nested_tstore_revert_restores_value()
+    {
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.SetTransientState(cell, [1]);
+        Snapshot snap = provider.TakeSnapshot();
+        provider.SetTransientState(cell, [2]);
+        Snapshot snap2 = provider.TakeSnapshot();
+        provider.SetTransientState(cell, [3]);
+
+        // Revert inner
+        provider.Restore(snap2);
+        provider.GetTransientState(cell).ToArray().Should().BeEquivalentTo(new byte[] { 2 });
+
+        // Revert outer
+        provider.Restore(snap);
+        provider.GetTransientState(cell).ToArray().Should().BeEquivalentTo(new byte[] { 1 });
+    }
+
+    // --- 6.4.3 Regression: read tracing ---
+
+    [Test]
+    public void Read_tracing_reports_exact_read_and_changed_sets()
+    {
+        // Exact-set assertions: read-only cells appear via ReportStorageRead,
+        // written cells via ReportStorageChange — no overlap, no extras.
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell readCell = new(ctx.Address1, 1);
+        StorageCell writeCell = new(ctx.Address1, 2);
+
+        provider.Get(readCell);       // read only
+        provider.Set(writeCell, [5]); // write only (no prior read)
+
+        TestStorageTracer tracer = new();
+        provider.Commit(Frontier.Instance, tracer);
+
+        tracer.ReadCells.Should().BeEquivalentTo(new[] { readCell });
+        tracer.ChangedCells.Should().HaveCount(1);
+        tracer.ChangedCells.Should().ContainKey(writeCell);
+    }
+
+    [Test]
+    public void Read_tracing_does_not_report_written_cells_as_reads()
+    {
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Get(cell);      // read first
+        provider.Set(cell, [5]); // then write — promotes from Read to Dirty
+
+        TestStorageTracer tracer = new();
+        provider.Commit(Frontier.Instance, tracer);
+
+        // Cell was written, so it appears in ChangedCells only
+        tracer.ChangedCells.Should().ContainKey(cell);
+        tracer.ReadCells.Should().BeEmpty();
+    }
+
+    [Test]
+    public void Read_tracing_hash_key_cells_bypass_slot_cache_and_tracing()
+    {
+        // Hash-key reads (StorageCell with IsHash=true) must NOT create slots,
+        // so they should NOT appear in either ReportStorageRead or ReportStorageChange.
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell normalCell = new(ctx.Address1, 1);
+        ValueHash256 hash = new(Keccak.Compute("test").ValueHash256.Bytes);
+        StorageCell hashCell = new(ctx.Address1, hash);
+
+        provider.Get(normalCell); // normal read — should be traced
+        provider.Get(hashCell);   // hash-key read — should bypass tracing
+
+        TestStorageTracer tracer = new();
+        provider.Commit(Frontier.Instance, tracer);
+
+        tracer.ReadCells.Should().BeEquivalentTo(new[] { normalCell });
+        tracer.ChangedCells.Should().BeEmpty();
+    }
+
+    [Test]
+    public void Read_tracing_after_restore_past_read_then_write()
+    {
+        // Edge case: read → restore past the read → write same cell.
+        // The read slot gets reverted (flags cleared back to pre-read state).
+        // The subsequent write creates a fresh dirty entry.
+        // The cell should appear in ChangedCells, not ReadCells.
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        Snapshot snap = provider.TakeSnapshot();
+        provider.Get(cell); // read — creates slot with Read flag
+        provider.Restore(snap); // undo restores slot to pre-read state
+
+        provider.Set(cell, [5]); // fresh write after restore
+
+        TestStorageTracer tracer = new();
+        provider.Commit(Frontier.Instance, tracer);
+
+        tracer.ChangedCells.Should().ContainKey(cell);
+        tracer.ReadCells.Should().BeEmpty();
+    }
+
+    // --- 6.4.4 Regression: ClearStorage + revert ---
+
+    [Test]
+    public void ClearStorage_zeros_all_cached_cells()
+    {
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cellA = new(ctx.Address1, 1);
+        StorageCell cellB = new(ctx.Address1, 2);
+        StorageCell cellC = new(ctx.Address1, 3);
+
+        provider.Set(cellA, [1]);
+        provider.Set(cellB, [2]);
+        provider.Get(cellC); // read only
+
+        provider.ClearStorage(ctx.Address1);
+
+        provider.Get(cellA).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+        provider.Get(cellB).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+        provider.Get(cellC).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+    }
+
+    [Test]
+    public void ClearStorage_revert_restores_written_values()
+    {
+        Context ctx = new();
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cellA = new(ctx.Address1, 1);
+        StorageCell cellB = new(ctx.Address1, 2);
+
+        provider.Set(cellA, [1]);
+        provider.Set(cellB, [2]);
+
+        Snapshot snap = provider.TakeSnapshot();
+        provider.ClearStorage(ctx.Address1);
+
+        provider.Get(cellA).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+
+        provider.Restore(snap);
+
+        provider.Get(cellA).ToArray().Should().BeEquivalentTo(new byte[] { 1 });
+        provider.Get(cellB).ToArray().Should().BeEquivalentTo(new byte[] { 2 });
+    }
+
+    [Test]
+    public void ClearStorage_revert_restores_nonzero_read_only_tree_values()
+    {
+        // Pre-populate storage with non-zero values in the tree, then in a new
+        // scope read a cell (creating a read-only slot), ClearStorage, and revert.
+        // The read-only cell must be restored to its non-zero tree value.
+        Context ctx = new(setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cellA = new(ctx.Address1, 1);
+        StorageCell cellB = new(ctx.Address1, 2);
+
+        // Block 0: persist non-zero values to tree
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 0);
+            provider.Set(cellA, [10]);
+            provider.Set(cellB, [20]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        // Block 1: read cellB (non-zero from tree), write cellA, ClearStorage, revert
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Set(cellA, [99]);
+            provider.Get(cellB).ToArray().Should().BeEquivalentTo(new byte[] { 20 }); // read-only, non-zero
+
+            Snapshot snap = provider.TakeSnapshot();
+            provider.ClearStorage(ctx.Address1);
+
+            provider.Get(cellA).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+            provider.Get(cellB).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+
+            provider.Restore(snap);
+
+            // Written cell restored to pre-clear value
+            provider.Get(cellA).ToArray().Should().BeEquivalentTo(new byte[] { 99 });
+            // Read-only cell restored to non-zero tree value — not zero
+            provider.Get(cellB).ToArray().Should().BeEquivalentTo(new byte[] { 20 });
+        }
+    }
+
+    // --- Test tracer for 6.4.3 ---
+
+    private class TestStorageTracer : IWorldStateTracer
+    {
+        public HashSet<StorageCell> ReadCells { get; } = new();
+        public Dictionary<StorageCell, (byte[] Before, byte[] After)> ChangedCells { get; } = new();
+
+        public bool IsTracingState => true;
+        public bool IsTracingStorage => true;
+
+#nullable enable
+        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) { }
+        public void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
+        public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
+#nullable restore
+        public void ReportAccountRead(Address address) { }
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+            => ChangedCells[storageCell] = (before, after);
+        public void ReportStorageRead(in StorageCell storageCell) => ReadCells.Add(storageCell);
     }
 
     private class Context

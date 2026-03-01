@@ -46,21 +46,19 @@ public class CodeInfoRepository : ICodeInfoRepository
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource))
         {
-            return _localPrecompiles[codeSource];
+            return GetPrecompile(codeSource);
         }
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);
-
-        if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
+        if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress) && followDelegation)
         {
-            if (followDelegation)
-            {
-                codeInfo = InternalGetCodeInfo(delegationAddress, vmSpec);
-            }
+            codeInfo = InternalGetCodeInfo(delegationAddress, vmSpec);
         }
 
         return codeInfo;
     }
+
+    private CodeInfo GetPrecompile(Address codeSource) => _localPrecompiles[codeSource];
 
     private CodeInfo InternalGetCodeInfo(Address codeSource, IReleaseSpec vmSpec)
     {
@@ -81,7 +79,6 @@ public class CodeInfoRepository : ICodeInfoRepository
         [DoesNotReturn, StackTraceHidden]
         static void MissingCode(in ValueHash256 codeHash) => throw new DataException($"Code {codeHash} missing in the state");
     }
-
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         InsertCode(_worldState, code, codeOwner, spec, out _);
@@ -107,7 +104,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         {
             authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
             Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
-            codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
+            codeSource.Bytes.CopyTo(authorizedBuffer.AsSpan(Eip7702Constants.DelegationHeader.Length));
             codeHash = ValueKeccak.Compute(authorizedBuffer);
         }
         else
@@ -127,17 +124,48 @@ public class CodeInfoRepository : ICodeInfoRepository
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
     {
         ValueHash256 codeHash = _worldState.GetCodeHash(address);
-        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
+        if (codeHash == ValueKeccak.OfAnEmptyString)
         {
-            return Keccak.OfAnEmptyString.ValueHash256;
+            return ValueKeccak.OfAnEmptyString;
         }
 
         CodeInfo codeInfo = _codeInfoLoader(codeHash, spec);
         return codeInfo.IsEmpty
-            ? Keccak.OfAnEmptyString.ValueHash256
+            ? ValueKeccak.OfAnEmptyString
             : codeHash;
     }
 
     public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(address, spec).CodeSpan, out delegatedAddress);
+
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, out CodeInfo codeInfo, [NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        if (spec.IsPrecompile(address))
+        {
+            codeInfo = GetPrecompile(address);
+            delegatedAddress = null;
+            return false;
+        }
+
+        codeInfo = InternalGetCodeInfo(address, spec);
+        if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegatedAddress))
+        {
+            codeInfo = InternalGetCodeInfo(delegatedAddress, spec);
+            return true;
+        }
+
+        delegatedAddress = null;
+        return false;
+    }
+
+    public bool IsDelegated(Address address, IReleaseSpec spec)
+    {
+        if (spec.IsPrecompile(address))
+        {
+            return false;
+        }
+
+        CodeInfo codeInfo = InternalGetCodeInfo(address, spec);
+        return !codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out _);
+    }
 }

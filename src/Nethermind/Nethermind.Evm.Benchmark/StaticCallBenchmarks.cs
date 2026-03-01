@@ -26,11 +26,11 @@ namespace Nethermind.Evm.Benchmark
     {
         private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
         private ITxTracer _txTracer = NullTxTracer.Instance;
-        private ExecutionEnvironment _environment;
         private IVirtualMachine _virtualMachine;
         private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
-        private VmState<EthereumGasPolicy> _evmState;
+        private CallFrame<EthereumGasPolicy> _callFrame;
+        private AccessTrackingState _trackingState;
         private IWorldState _stateProvider;
 
         public IEnumerable<byte[]> Bytecodes
@@ -89,38 +89,33 @@ namespace Nethermind.Evm.Benchmark
             _virtualMachine = new EthereumVirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
             _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
             _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
-            _environment = ExecutionEnvironment.Rent(
-                executingAccount: Address.Zero,
-                codeSource: Address.Zero,
-                caller: Address.Zero,
-                codeInfo: new CodeInfo(Bytecode),
-                callDepth: 0,
-                value: 0,
-                transferValue: 0,
-                inputData: default
-            );
-
-            _evmState = VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromLong(100_000_000L), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+            _trackingState = AccessTrackingState.RentState();
+            _callFrame = CallFrame<EthereumGasPolicy>.RentTopLevel(
+                EthereumGasPolicy.FromLong(100_000_000L),
+                ExecutionType.TRANSACTION,
+                new CodeInfo(Bytecode), Address.Zero, Address.Zero, Address.Zero,
+                default, default,
+                default, _trackingState, _stateProvider.TakeSnapshot());
         }
 
         [GlobalCleanup]
         public void GlobalCleanup()
         {
-            _evmState.Dispose();
-            _environment.Dispose();
+            _callFrame.Dispose();
+            AccessTrackingState.ResetAndReturn(_trackingState);
         }
 
         [Benchmark(Baseline = true)]
         public void ExecuteCode()
         {
-            _virtualMachine.ExecuteTransaction<OffFlag>(_evmState, _stateProvider, _txTracer);
+            _virtualMachine.ExecuteTransaction<OffFlag>(_callFrame, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }
 
         [Benchmark]
         public void ExecuteCodeNoTracing()
         {
-            _virtualMachine.ExecuteTransaction<OffFlag>(_evmState, _stateProvider, _txTracer);
+            _virtualMachine.ExecuteTransaction<OffFlag>(_callFrame, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }
 

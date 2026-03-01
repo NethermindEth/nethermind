@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -30,23 +30,42 @@ namespace Nethermind.State
     {
         private static readonly UInt256 _zero = UInt256.Zero;
 
-        private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = new();
-        private readonly HashSet<AddressAsKey> _committedThisRound = new();
-        private readonly HashSet<AddressAsKey> _nullAccountReads = new();
+        private readonly Dictionary<AddressAsKey, int> _slotIndex = new();
+        private (Address? Key, int SlotIndex) _inlineCache0;
+        private (Address? Key, int SlotIndex) _inlineCache1;
+        private (Address? Key, int SlotIndex) _inlineCache2;
+        private (Address? Key, int SlotIndex) _inlineCache3;
+        private bool[] _exists = new bool[Resettable.StartCapacity];
+        private UInt256[] _balances = new UInt256[Resettable.StartCapacity];
+        private UInt256[] _nonces = new UInt256[Resettable.StartCapacity];
+        private Hash256?[] _codeHashes = new Hash256?[Resettable.StartCapacity];
+        private bool[] _hasCode = new bool[Resettable.StartCapacity];
+        private SlotMeta[] _slotsMeta = new SlotMeta[Resettable.StartCapacity];
+        private int _slotCount;
+        private UndoEntry[] _undoBuffer = new UndoEntry[64];
+        private int _undoCount;
+        private int[] _frameUndoOffsets = new int[32];
+        private int[] _frameIds = new int[32];
+        private int _frameCount = 1;
+        private int _currentFrameId;
+        private int[] _dirtySlotIndices = new int[Resettable.StartCapacity];
+        private int _dirtyCount;
+        private int _dirtyGeneration = 1;
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _persistedCodeInsertFilter = new(1_024);
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _blockCodeInsertFilter = new(256);
-        private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
+        private readonly Dictionary<AddressAsKey, int> _blockSlotIndex = new(4_096);
+        private AddressAsKey[] _blockAddresses = new AddressAsKey[4_096];
+        private Account?[] _blockBefore = new Account?[4_096];
+        private Account?[] _blockAfter = new Account?[4_096];
+        private int _blockSlotCount;
 
-        private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
         private Dictionary<Hash256AsKey, byte[]> _codeBatch;
         private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
-
-        private readonly List<Change> _changes = new(Resettable.StartCapacity);
         internal IWorldStateScopeProvider.IScope? _tree;
 
         private bool _needsStateRootUpdate;
@@ -76,7 +95,7 @@ namespace Nethermind.State
             }
         }
 
-        public int ChangedAccountCount => _blockChanges.Count;
+        public int ChangedAccountCount => _blockSlotCount;
 
         public void SetScope(IWorldStateScopeProvider.IScope? scope)
         {
@@ -86,33 +105,34 @@ namespace Nethermind.State
 
         public bool IsContract(Address address)
         {
-            Account? account = GetThroughCache(address);
-            return account is not null && account.IsContract;
+            int slotIndex = GetSlotIndexFast(address);
+            return _exists[slotIndex] && _hasCode[slotIndex];
         }
 
-        public bool AccountExists(Address address) =>
-            _intraTxCache.TryGetValue(address, out StackList<int> value)
-                ? _changes[value.Peek()]!.ChangeType != ChangeType.Delete
-                : GetAndAddToCache(address) is not null;
+        public bool AccountExists(Address address)
+        {
+            int slotIndex = GetSlotIndexFast(address);
+            return _exists[slotIndex];
+        }
 
-        public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
+        public Account GetAccount(Address address) => GetAccountFromCache(address) ?? Account.TotallyEmpty;
 
         public bool IsDeadAccount(Address address)
         {
-            Account? account = GetThroughCache(address);
-            return account?.IsEmpty ?? true;
+            int slotIndex = GetSlotIndexFast(address);
+            return !_exists[slotIndex] || IsEmpty(slotIndex);
         }
 
         public UInt256 GetNonce(Address address)
         {
-            Account? account = GetThroughCache(address);
-            return account?.Nonce ?? UInt256.Zero;
+            int slotIndex = GetSlotIndexFast(address);
+            return _exists[slotIndex] ? _nonces[slotIndex] : UInt256.Zero;
         }
 
         public ref readonly UInt256 GetBalance(Address address)
         {
-            Account? account = GetThroughCache(address);
-            return ref account is not null ? ref account.Balance : ref _zero;
+            int slotIndex = GetSlotIndexFast(address);
+            return ref _exists[slotIndex] ? ref _balances[slotIndex] : ref _zero;
         }
 
         public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
@@ -129,66 +149,65 @@ namespace Nethermind.State
                     _codeBatch = new(Hash256AsKeyComparer.Instance);
                     _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
                 }
-                if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
-                    && codeArray.Offset == 0
-                    && codeArray.Count == code.Length)
-                {
-                    _codeBatchAlternate[codeHash] = codeArray.Array;
-                }
-                else
-                {
-                    _codeBatchAlternate[codeHash] = code.ToArray();
-                }
+                _codeBatchAlternate[codeHash] = code.AsArray();
 
                 _blockCodeInsertFilter.Set(codeHash);
                 inserted = true;
             }
 
-            Account? account = GetThroughCache(address) ?? ThrowIfNull(address);
-            if (account.CodeHash.ValueHash256 != codeHash)
+            int slotIndex = GetSlotIndexFast(address);
+            if (!_exists[slotIndex])
+            {
+                ThrowIfNull(address);
+            }
+
+            Hash256? previousCodeHash = _codeHashes[slotIndex];
+            if (previousCodeHash is null || previousCodeHash.ValueHash256 != codeHash)
             {
                 _needsStateRootUpdate = true;
-                if (_logger.IsDebug) Debug(address, codeHash, account);
-                Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
+                if (_logger.IsDebug) Debug(address, codeHash, previousCodeHash);
 
-                PushUpdate(address, changedAccount);
+                MutateSlotMeta(slotIndex, SlotFlags.None, MutationClearMask);
+                Hash256? normalizedCodeHash = codeHash == Keccak.OfAnEmptyString.ValueHash256
+                    ? null
+                    : codeHash.ToHash256();
+                _codeHashes[slotIndex] = normalizedCodeHash;
+                _hasCode[slotIndex] = normalizedCodeHash is not null;
             }
             else if (spec.IsEip158Enabled && !isGenesis)
             {
                 if (_logger.IsTrace) Trace(address);
-                if (account.IsEmpty)
+                if (IsEmpty(slotIndex))
                 {
-                    PushTouch(address, account, spec, account.Balance.IsZero);
+                    ApplyTouch(slotIndex, spec, isZero: true);
                 }
             }
 
             return inserted;
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void Debug(Address address, in ValueHash256 codeHash, Account account)
-                => _logger.Debug($"Update {address} C {account.CodeHash} -> {codeHash}");
+            void Debug(Address address, in ValueHash256 codeHash, Hash256? previousCodeHash)
+                => _logger.Debug($"Update {address} C {previousCodeHash ?? Keccak.OfAnEmptyString} -> {codeHash}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address) => _logger.Trace($"Touch {address} (code hash)");
 
             [DoesNotReturn, StackTraceHidden]
-            static Account ThrowIfNull(Address address)
+            static void ThrowIfNull(Address address)
                 => throw new InvalidOperationException($"Account {address} is null when updating code hash");
         }
 
-        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
+        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting, bool incrementNonce = false)
         {
-            _needsStateRootUpdate = true;
-
-            Account GetThroughCacheCheckExists()
+            int GetSlotIndexCheckExists()
             {
-                Account result = GetThroughCache(address);
-                if (result is null)
+                int slotIndex = GetSlotIndexFast(address);
+                if (!_exists[slotIndex])
                 {
                     ThrowNonExistingAccount();
                 }
 
-                return result;
+                return slotIndex;
 
                 [DoesNotReturn, StackTraceHidden]
                 static void ThrowNonExistingAccount()
@@ -196,45 +215,64 @@ namespace Nethermind.State
             }
 
             bool isZero = balanceChange.IsZero;
-            if (isZero)
+            if (!incrementNonce && isZero)
             {
                 // this also works like this in Geth (they don't follow the spec ¯\_(*~*)_/¯)
                 // however we don't do it because of a consensus issue with Geth, just to avoid
                 // hitting non-existing account when subtracting Zero-value from the sender
                 if (releaseSpec.IsEip158Enabled && !isSubtracting)
                 {
-                    Account touched = GetThroughCacheCheckExists();
+                    int touchedSlotIndex = GetSlotIndexCheckExists();
 
                     if (_logger.IsTrace) TraceTouch(address);
-                    if (touched.IsEmpty)
+                    if (IsEmpty(touchedSlotIndex))
                     {
-                        PushTouch(address, touched, releaseSpec, true);
+                        _needsStateRootUpdate = true;
+                        ApplyTouch(touchedSlotIndex, releaseSpec, true);
                     }
                 }
 
                 return;
             }
 
-            Account account = GetThroughCacheCheckExists();
+            _needsStateRootUpdate = true;
+            int slotIndex = GetSlotIndexCheckExists();
+            UInt256 currentBalance = _balances[slotIndex];
 
-            if (isSubtracting && account.Balance < balanceChange)
+            if (isSubtracting && currentBalance < balanceChange)
             {
                 ThrowInsufficientBalanceException(address);
             }
 
-            UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
+            UInt256 newBalance;
+            if (isZero)
+            {
+                newBalance = currentBalance;
+            }
+            else if (isSubtracting)
+            {
+                currentBalance.Subtract(in balanceChange, out newBalance);
+            }
+            else
+            {
+                currentBalance.Add(in balanceChange, out newBalance);
+            }
 
-            Account changedAccount = account.WithChangedBalance(newBalance);
-            if (_logger.IsTrace) TraceUpdate(address, in balanceChange, isSubtracting, account, in newBalance);
+            if (_logger.IsTrace) TraceUpdate(address, in balanceChange, isSubtracting, in currentBalance, in newBalance);
 
-            PushUpdate(address, changedAccount);
+            MutateSlotMeta(slotIndex, SlotFlags.None, MutationClearMask);
+            _balances[slotIndex] = newBalance;
+            if (incrementNonce)
+            {
+                _nonces[slotIndex] += UInt256.One;
+            }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceTouch(Address address) => _logger.Trace($"Touch {address} (balance)");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceUpdate(Address address, in UInt256 balanceChange, bool isSubtracting, Account account, in UInt256 newBalance)
-                => _logger.Trace($"Update {address} B {account.Balance.ToHexString(skipLeadingZeros: true)} -> {newBalance.ToHexString(skipLeadingZeros: true)} ({(isSubtracting ? "-" : "+")}{balanceChange})");
+            void TraceUpdate(Address address, in UInt256 balanceChange, bool isSubtracting, in UInt256 oldBalance, in UInt256 newBalance)
+                => _logger.Trace($"Update {address} B {oldBalance.ToHexString(skipLeadingZeros: true)} -> {newBalance.ToHexString(skipLeadingZeros: true)} ({(isSubtracting ? "-" : "+")}{balanceChange})");
 
             [DoesNotReturn, StackTraceHidden]
             static void ThrowInsufficientBalanceException(Address address)
@@ -243,54 +281,48 @@ namespace Nethermind.State
 
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
-            SetNewBalance(address, balanceChange, releaseSpec, true);
+            SetNewBalance(address, balanceChange, releaseSpec, isSubtracting: true);
         }
 
-        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool incrementNonce = false)
         {
-            SetNewBalance(address, balanceChange, releaseSpec, false);
+            SetNewBalance(address, balanceChange, releaseSpec, isSubtracting: false, incrementNonce);
         }
 
-        public void IncrementNonce(Address address, UInt256 delta)
-        {
-            _needsStateRootUpdate = true;
-            Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
-            Account changedAccount = account.WithChangedNonce(account.Nonce + delta);
-            if (_logger.IsTrace) Trace(address, account, changedAccount);
+        public void IncrementNonce(Address address, UInt256 delta) => ChangeNonce(address, delta, subtract: false);
 
-            PushUpdate(address, changedAccount);
+        public void DecrementNonce(Address address, UInt256 delta) => ChangeNonce(address, delta, subtract: true);
 
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(Address address, Account account, Account changedAccount)
-                => _logger.Trace($"Update {address} N {account.Nonce.ToHexString(skipLeadingZeros: true)} -> {changedAccount.Nonce.ToHexString(skipLeadingZeros: true)}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static Account ThrowNullAccount(Address address)
-                => throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
-        }
-
-        public void DecrementNonce(Address address, UInt256 delta)
+        private void ChangeNonce(Address address, UInt256 delta, bool subtract)
         {
             _needsStateRootUpdate = true;
-            Account? account = GetThroughCache(address) ?? ThrowNullAccount(address);
-            Account changedAccount = account.WithChangedNonce(account.Nonce - delta);
-            if (_logger.IsTrace) Trace(address, account, changedAccount);
+            int slotIndex = GetSlotIndexFast(address);
+            if (!_exists[slotIndex])
+            {
+                ThrowNullNonceAccount(address);
+            }
 
-            PushUpdate(address, changedAccount);
+            UInt256 oldNonce = _nonces[slotIndex];
+            UInt256 newNonce = subtract ? oldNonce - delta : oldNonce + delta;
+            if (_logger.IsTrace) Trace(address, in oldNonce, in newNonce);
+
+            MutateSlotMeta(slotIndex, SlotFlags.None, MutationClearMask);
+            _nonces[slotIndex] = newNonce;
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(Address address, Account account, Account changedAccount)
-                => _logger.Trace($"  Update {address} N {account.Nonce.ToHexString(skipLeadingZeros: true)} -> {changedAccount.Nonce.ToHexString(skipLeadingZeros: true)}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static Account ThrowNullAccount(Address address)
-                => throw new InvalidOperationException($"Account {address} is null when decrementing nonce");
+            void Trace(Address address, in UInt256 previousNonce, in UInt256 changedNonce)
+                => _logger.Trace($"Update {address} N {previousNonce.ToHexString(skipLeadingZeros: true)} -> {changedNonce.ToHexString(skipLeadingZeros: true)}");
         }
 
         public ref readonly ValueHash256 GetCodeHash(Address address)
         {
-            Account? account = GetThroughCache(address);
-            return ref account is not null ? ref account.CodeHash.ValueHash256 : ref Keccak.OfAnEmptyString.ValueHash256;
+            int slotIndex = GetSlotIndexFast(address);
+            if (_exists[slotIndex] && _hasCode[slotIndex])
+            {
+                return ref _codeHashes[slotIndex]!.ValueHash256;
+            }
+
+            return ref Keccak.OfAnEmptyString.ValueHash256;
         }
 
         public byte[] GetCode(in ValueHash256 codeHash)
@@ -313,96 +345,131 @@ namespace Nethermind.State
 
         public byte[] GetCode(Address address)
         {
-            Account? account = GetThroughCache(address);
-            if (account is null)
+            int slotIndex = GetSlotIndexFast(address);
+            if (!_exists[slotIndex] || !_hasCode[slotIndex])
             {
                 return [];
             }
 
-            return GetCode(in account.CodeHash.ValueHash256);
+            return GetCode(in _codeHashes[slotIndex]!.ValueHash256);
         }
 
         public void DeleteAccount(Address address)
         {
             _needsStateRootUpdate = true;
-            PushDelete(address);
+            int slotIndex = GetOrCreateSlotIndex(address);
+            ApplyDelete(slotIndex);
         }
 
         public int TakeSnapshot()
         {
-            int currentPosition = _changes.Count - 1;
-            if (_logger.IsTrace) Trace(currentPosition);
-
-            return currentPosition;
+            int snapshot = _currentFrameId;
+            int nextFrameId = snapshot + 1;
+            EnsureFrameCapacity(_frameCount + 1);
+            _frameUndoOffsets[_frameCount] = _undoCount;
+            _frameIds[_frameCount] = nextFrameId;
+            _frameCount++;
+            _currentFrameId = nextFrameId;
+            if (_logger.IsTrace) Trace(snapshot);
+            return snapshot;
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(int currentPosition) => _logger.Trace($"State snapshot {currentPosition}");
         }
 
         /// <summary>
-        /// Restores the <see cref="StateProvider"/> to a prior state snapshot.
-        /// Rolls back any changes recorded after the specified <paramref name="snapshot"/> index,
-        /// while preserving lightweight cache-only entries.
+        /// Restores the <see cref="StateProvider"/> to a prior frame snapshot.
+        /// Rolls back all undo entries recorded after the specified <paramref name="snapshot"/> frame id.
         /// </summary>
-        /// <param name="snapshot">Zero-based index representing the position in the change log to restore to.
-        /// Must be between 0 and the current last change index.</param>
+        /// <param name="snapshot">Frame id returned by <see cref="TakeSnapshot"/>, or -1 to revert everything.</param>
         /// <exception cref="InvalidOperationException">
-        /// Thrown if <paramref name="snapshot"/> is beyond the current position,
-        /// or if internal consistency checks fail during rollback.</exception>
+        /// Thrown if <paramref name="snapshot"/> is beyond the current frame position.</exception>
         public void Restore(int snapshot)
         {
-            int lastIndex = _changes.Count - 1;
-            if (snapshot > lastIndex) ThrowCannotRestore(lastIndex, snapshot);
+            if (snapshot > _currentFrameId) ThrowCannotRestore(_currentFrameId, snapshot);
             if (_logger.IsTrace) Trace(snapshot);
-            // No-op if already at the desired snapshot
-            if (snapshot == lastIndex) return;
 
-            int stepsBack = lastIndex - snapshot;
-            // Reserve capacity up‐front (avoid grows)
-            if (_keptInCache.Capacity < stepsBack)
-                _keptInCache.Capacity = stepsBack;
-
-            ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
-            // Roll back each change from newest down to target
-            for (int i = 0; i < stepsBack; i++)
+            int startOffset;
+            int keptFrameCount;
+            if (snapshot < 0)
             {
-                int nextPosition = lastIndex - i;
-                ref readonly Change change = ref changes[nextPosition];
-                StackList<int> stack = _intraTxCache[change!.Address];
-
-                int actualPosition = stack.Pop();
-                if (actualPosition != nextPosition) ThrowUnexpectedPosition(lastIndex, i, actualPosition);
-
-                if (stack.Count == 0)
+                // Revert everything including the base frame
+                startOffset = 0;
+                keptFrameCount = 0;
+                snapshot = 0;
+            }
+            else
+            {
+                keptFrameCount = _frameCount;
+                while (keptFrameCount > 0 && _frameIds[keptFrameCount - 1] > snapshot)
                 {
-                    if (change.ChangeType == ChangeType.JustCache)
+                    keptFrameCount--;
+                }
+
+                if (keptFrameCount == _frameCount)
+                {
+                    // No frames to pop. But there may be undo entries at the current
+                    // frame level (mutations before any TakeSnapshot that need reverting
+                    // when Restore(Snapshot.Empty) is called repeatedly).
+                    if (_undoCount > 0 && keptFrameCount > 0
+                        && _undoCount > _frameUndoOffsets[keptFrameCount - 1])
                     {
-                        // Keep if was caching entry
-                        _keptInCache.Add(change);
+                        startOffset = _frameUndoOffsets[keptFrameCount - 1];
+                        keptFrameCount--;
                     }
                     else
                     {
-                        // Remove address entry entirely if no more changes
-                        if (_intraTxCache.Remove(change.Address, out StackList<int>? removed))
-                        {
-                            removed.Return();
-                        }
+                        return;
                     }
+                }
+                else if (keptFrameCount == 0)
+                {
+                    startOffset = 0;
+                }
+                else
+                {
+                    startOffset = _frameUndoOffsets[keptFrameCount];
                 }
             }
 
-            ReadOnlySpan<Change> keepInCache = CollectionsMarshal.AsSpan(_keptInCache);
-            // Truncate the change log to the restore point
-            CollectionsMarshal.SetCount(_changes, snapshot + 1);
-
-            // Re-append any cache-only entries, updating their positions
-            foreach (ref readonly Change kept in keepInCache)
+            int undoEnd = _undoCount;
+            for (int frameIndex = _frameCount - 1; frameIndex >= keptFrameCount; frameIndex--)
             {
-                snapshot++;
-                _changes.Add(kept);
-                _intraTxCache[kept.Address].Push(snapshot);
+                int frameStart = _frameUndoOffsets[frameIndex];
+                // Forward iteration per frame keeps access sequential while preserving correctness
+                // when multiple nested frames touched the same slot.
+                for (int i = frameStart; i < undoEnd; i++)
+                {
+                    ref readonly UndoEntry undoEntry = ref _undoBuffer[i];
+                    int slotIndex = undoEntry.SlotIndex;
+                    _exists[slotIndex] = undoEntry.PreviousExists;
+                    _balances[slotIndex] = undoEntry.PreviousBalance;
+                    _nonces[slotIndex] = undoEntry.PreviousNonce;
+                    _codeHashes[slotIndex] = undoEntry.PreviousCodeHash;
+                    _hasCode[slotIndex] = undoEntry.PreviousCodeHash is not null;
+                    ref SlotMeta meta = ref _slotsMeta[slotIndex];
+                    meta.Flags = undoEntry.PreviousFlags;
+                    meta.OwnerFrameId = undoEntry.PreviousOwnerFrameId;
+                    meta.StorageRoot = undoEntry.PreviousStorageRoot;
+                }
+
+                undoEnd = frameStart;
             }
-            _keptInCache.Clear();
+
+            _undoCount = startOffset;
+            _frameCount = keptFrameCount > 0 ? keptFrameCount : 1;
+
+            // Always push a fresh frame after restore (even when no undo entries were
+            // replayed). Trimming frames changes the frame topology; without a new boundary,
+            // subsequent mutations create undo entries scoped to the wrong frame, causing a
+            // later deeper Restore to replay too many entries.
+            int newFrameId = _currentFrameId + 1;
+            EnsureFrameCapacity(_frameCount + 1);
+            _frameUndoOffsets[_frameCount] = startOffset;
+            _frameIds[_frameCount] = newFrameId;
+            _frameCount++;
+            _currentFrameId = newFrameId;
+            ClearInlineCache();
 
             // Local helpers to keep cold code from throws and string interpolation out of hot code.
             [MethodImpl(MethodImplOptions.NoInlining)]
@@ -411,10 +478,6 @@ namespace Nethermind.State
             [DoesNotReturn, StackTraceHidden]
             static void ThrowCannotRestore(int current, int snap)
                 => throw new InvalidOperationException($"{nameof(StateProvider)} tried to restore snapshot {snap} beyond current position {current}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnexpectedPosition(int current, int step, int actual)
-                => throw new InvalidOperationException($"Expected actual position {actual} to be equal to {current} - {step}");
         }
 
         public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
@@ -422,8 +485,8 @@ namespace Nethermind.State
             _needsStateRootUpdate = true;
             if (_logger.IsTrace) Trace(address, balance, nonce);
 
-            Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
-            PushNew(address, account);
+            int slotIndex = GetOrCreateSlotIndex(address);
+            ApplyNew(slotIndex, in balance, in nonce, null, null);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, in UInt256 balance, in UInt256 nonce)
@@ -432,19 +495,17 @@ namespace Nethermind.State
 
         public void CreateEmptyAccountIfDeletedOrNew(Address address)
         {
-            if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+            if (TryGetExistingSlotIndex(address, out int slotIndex))
             {
-                //we only want to persist empty accounts if they were deleted or created as empty
-                //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
-                var lastChange = _changes[value.Peek()];
-                if (lastChange.ChangeType == ChangeType.Delete ||
-                    (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.Account.IsEmpty))
+                ref SlotMeta meta = ref _slotsMeta[slotIndex];
+                bool createdOrTouchedEmpty = _exists[slotIndex]
+                    && IsEmpty(slotIndex)
+                    && (meta.Flags & (SlotFlags.LatestNew | SlotFlags.Touched)) != 0;
+                if ((meta.Flags & SlotFlags.Deleted) != 0 || createdOrTouchedEmpty)
                 {
                     _needsStateRootUpdate = true;
                     if (_logger.IsTrace) Trace(address);
-
-                    Account account = Account.TotallyEmpty;
-                    PushRecreateEmpty(address, account, value);
+                    ApplyRecreateEmpty(slotIndex);
                 }
             }
 
@@ -461,154 +522,136 @@ namespace Nethermind.State
             }
         }
 
-        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec, bool incrementNonce = false)
         {
             if (AccountExists(address))
             {
-                AddToBalance(address, balance, spec);
+                AddToBalance(address, balance, spec, incrementNonce);
                 return false;
             }
             else
             {
-                CreateAccount(address, balance);
+                CreateAccount(address, balance, in incrementNonce ? ref UInt256.One : ref UInt256.Zero);
                 return true;
             }
         }
 
-        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
+        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis, Address? retainInCache = null)
         {
             Task codeFlushTask = !commitRoots || _codeBatch is null || _codeBatch.Count == 0
                 ? Task.CompletedTask
                 : CommitCodeAsync(_codeDb);
 
             bool isTracing = _logger.IsTrace;
-            int stepsBack = _changes.Count - 1;
-            if (stepsBack < 0)
+            Dictionary<AddressAsKey, ChangeTrace>? trace = !stateTracer.IsTracingState ? null : [];
+            HashSet<AddressAsKey>? nullAccountReads = trace is null ? null : [];
+
+            if (_dirtyCount == 0)
             {
                 if (isTracing) TraceNoChanges();
+
+                if (trace is not null)
+                {
+                    CollectReadOnlyTrace(trace, nullAccountReads!);
+                    trace.ReportStateTrace(stateTracer, nullAccountReads!, this);
+                }
+
+                Account? retainedReadOnlyAccount = retainInCache is null ? null : ResolveRetainedAccount(retainInCache);
+                ResetTransactionSlots(retainInCache, retainedReadOnlyAccount);
 
                 codeFlushTask.GetAwaiter().GetResult();
                 return;
             }
 
-            if (isTracing) TraceCommit(stepsBack);
-            if (_changes[stepsBack].IsNull)
+            if (isTracing) TraceCommit(_dirtyCount);
+            Span<int> dirtySlots = _dirtySlotIndices.AsSpan(0, _dirtyCount);
+            for (int i = 0; i < dirtySlots.Length; i++)
             {
-                ThrowStartOfCommitIsNull(stepsBack);
-            }
+                int slotIndex = dirtySlots[i];
+                ref SlotMeta meta = ref _slotsMeta[slotIndex];
 
-            Dictionary<AddressAsKey, ChangeTrace>? trace = !stateTracer.IsTracingState ? null : [];
-
-            ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
-            for (int i = 0; i <= stepsBack; i++)
-            {
-                ref readonly Change change = ref changes[stepsBack - i];
-                if (trace is null && change!.ChangeType == ChangeType.JustCache)
-                {
+                // Slot may have been reverted after being added to the dirty list
+                if ((meta.Flags & SlotFlags.Dirty) == 0)
                     continue;
-                }
 
-                if (_committedThisRound.Contains(change!.Address))
+                Account? account = _exists[slotIndex] ? ReconstructAccount(slotIndex) : null;
+                Address address = meta.Address;
+                int blockSlotIndex = meta.BlockSlotIndex;
+                Account? before = trace is null ? null : _blockAfter[blockSlotIndex];
+
+                bool shouldApplyState;
+                bool shouldReportTrace;
+                Account? after;
+
+                if ((meta.Flags & SlotFlags.RecreatedEmpty) != 0)
                 {
-                    if (change.ChangeType == ChangeType.JustCache)
+                    shouldApplyState = true;
+                    shouldReportTrace = true;
+                    after = account;
+                    if (isTracing && after is not null) TraceCreate(address, after);
+                }
+                else if ((meta.Flags & SlotFlags.Deleted) != 0)
+                {
+                    bool wasCreatedThisTransaction = (meta.Flags & SlotFlags.Created) != 0;
+                    shouldApplyState = !wasCreatedThisTransaction;
+                    shouldReportTrace = !wasCreatedThisTransaction;
+                    after = null;
+                    if (isTracing) TraceRemove(address);
+                }
+                else if (_exists[slotIndex]
+                    && releaseSpec.IsEip158Enabled
+                    && IsEmpty(slotIndex)
+                    && !isGenesis)
+                {
+                    Account nonNullAccount = account!;
+                    bool wasLatestChangeNew = (meta.Flags & SlotFlags.LatestNew) != 0;
+                    shouldApplyState = !wasLatestChangeNew;
+                    shouldReportTrace = !wasLatestChangeNew;
+                    after = null;
+                    if (isTracing && shouldApplyState) TraceRemoveEmpty(address, nonNullAccount);
+                }
+                else
+                {
+                    shouldApplyState = true;
+                    shouldReportTrace = true;
+                    after = account;
+                    if (isTracing && after is not null)
                     {
-                        trace?.UpdateTrace(change.Address, change.Account);
+                        if ((meta.Flags & SlotFlags.LatestNew) != 0) TraceCreate(address, after);
+                        else TraceUpdate(address, after);
                     }
-
-                    continue;
                 }
 
-                // because it was not committed yet it means that the just cache is the only state (so it was read only)
-                if (trace is not null && change.ChangeType == ChangeType.JustCache)
+                if (shouldApplyState)
                 {
-                    _nullAccountReads.Add(change.Address);
-                    continue;
+                    _blockAfter[blockSlotIndex] = after;
+                    _needsStateRootUpdate = true;
                 }
 
-                StackList<int> stack = _intraTxCache[change.Address];
-                int forAssertion = stack.Pop();
-                if (forAssertion != stepsBack - i)
+                if (trace is not null)
                 {
-                    ThrowUnexpectedPosition(stepsBack, i, forAssertion);
-                }
-
-                _committedThisRound.Add(change.Address);
-
-                switch (change.ChangeType)
-                {
-                    case ChangeType.JustCache:
-                        break;
-                    case ChangeType.Touch:
-                    case ChangeType.Update:
-                        {
-                            if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
-                            {
-                                if (isTracing) TraceRemoveEmpty(change);
-                                SetState(change.Address, null);
-                                trace?.AddToTrace(change.Address, null);
-                            }
-                            else
-                            {
-                                if (isTracing) TraceUpdate(change);
-                                SetState(change.Address, change.Account);
-                                trace?.AddToTrace(change.Address, change.Account);
-                            }
-
-                            break;
-                        }
-                    case ChangeType.New:
-                        {
-                            if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
-                            {
-                                if (isTracing) TraceCreate(change);
-                                SetState(change.Address, change.Account);
-                                trace?.AddToTrace(change.Address, change.Account);
-                            }
-
-                            break;
-                        }
-                    case ChangeType.RecreateEmpty:
-                        {
-                            if (isTracing) TraceCreate(change);
-                            SetState(change.Address, change.Account);
-                            trace?.AddToTrace(change.Address, change.Account);
-
-                            break;
-                        }
-                    case ChangeType.Delete:
-                        {
-                            if (isTracing) TraceRemove(change);
-                            bool wasItCreatedNow = false;
-                            while (stack.Count > 0)
-                            {
-                                int previousOne = stack.Pop();
-                                wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
-                                if (wasItCreatedNow)
-                                {
-                                    break;
-                                }
-                            }
-
-                            if (!wasItCreatedNow)
-                            {
-                                SetState(change.Address, null);
-                                trace?.AddToTrace(change.Address, null);
-                            }
-
-                            break;
-                        }
-                    default:
-                        ThrowUnknownChangeType();
-                        break;
+                    if (shouldReportTrace)
+                    {
+                        trace[address] = new ChangeTrace(before, after);
+                    }
+                    else if ((meta.Flags & SlotFlags.NullRead) != 0)
+                    {
+                        // Address was read as non-existent before being mutated.
+                        // Even though the mutation was suppressed (e.g. EIP-158 empty
+                        // account deletion), the tracer needs to know it was accessed.
+                        nullAccountReads!.Add(address);
+                    }
                 }
             }
 
-            trace?.ReportStateTrace(stateTracer, _nullAccountReads, this);
+            if (trace is not null)
+            {
+                CollectReadOnlyTrace(trace, nullAccountReads!);
+                trace.ReportStateTrace(stateTracer, nullAccountReads!, this);
+            }
 
-            _changes.Clear();
-            _committedThisRound.Clear();
-            _nullAccountReads.Clear();
-            _intraTxCache.ResetAndClear();
+            Account? retainedAccount = retainInCache is null ? null : ResolveRetainedAccount(retainInCache);
+            ResetTransactionSlots(retainInCache, retainedAccount);
 
             codeFlushTask.GetAwaiter().GetResult();
 
@@ -622,17 +665,15 @@ namespace Nethermind.State
                 {
                     using (var batch = codeDb.BeginCodeWrite())
                     {
-                        // Insert ordered for improved performance
-                        foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
+                        // Insert ordered for improved RocksDB performance
+                        Hash256AsKey[] keys = new Hash256AsKey[dict.Count];
+                        dict.Keys.CopyTo(keys, 0);
+                        Array.Sort(keys);
+                        foreach (Hash256AsKey key in keys)
                         {
-                            batch.Set(kvp.Key.Value, kvp.Value);
+                            batch.Set(key.Value, dict[key]);
+                            _persistedCodeInsertFilter.Set(key.Value.ValueHash256);
                         }
-                    }
-
-                    // Mark all inserted codes as persisted
-                    foreach (Hash256AsKey kvp in dict.Keys)
-                    {
-                        _persistedCodeInsertFilter.Set(kvp.Value.ValueHash256);
                     }
 
                     // Reuse Dictionary if not already re-initialized
@@ -645,36 +686,25 @@ namespace Nethermind.State
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceCommit(int currentPosition) => _logger.Trace($"Committing state changes (at {currentPosition})");
+            void TraceCommit(int dirtyCount) => _logger.Trace($"Committing state changes (dirty slots: {dirtyCount})");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceNoChanges() => _logger.Trace("No state changes to commit");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceRemove(in Change change) => _logger.Trace($"Commit remove {change.Address}");
+            void TraceRemove(Address address) => _logger.Trace($"Commit remove {address}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceCreate(in Change change)
-                => _logger.Trace($"Commit create {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
+            void TraceCreate(Address address, Account account)
+                => _logger.Trace($"Commit create {address} B = {account.Balance.ToHexString(skipLeadingZeros: true)} N = {account.Nonce.ToHexString(skipLeadingZeros: true)}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceUpdate(in Change change)
-                => _logger.Trace($"Commit update {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)} C = {change.Account.CodeHash}");
+            void TraceUpdate(Address address, Account account)
+                => _logger.Trace($"Commit update {address} B = {account.Balance.ToHexString(skipLeadingZeros: true)} N = {account.Nonce.ToHexString(skipLeadingZeros: true)} C = {account.CodeHash}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceRemoveEmpty(in Change change)
-                => _logger.Trace($"Commit remove empty {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowStartOfCommitIsNull(int currentPosition)
-                => throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(StateProvider)}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnknownChangeType() => throw new ArgumentOutOfRangeException();
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnexpectedPosition(int currentPosition, int i, int forAssertion)
-                => throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
+            void TraceRemoveEmpty(Address address, Account account)
+                => _logger.Trace($"Commit remove empty {address} B = {account.Balance.ToHexString(skipLeadingZeros: true)} N = {account.Nonce.ToHexString(skipLeadingZeros: true)}");
         }
 
         internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
@@ -682,13 +712,14 @@ namespace Nethermind.State
             int writes = 0;
             int skipped = 0;
 
-            foreach (AddressAsKey key in _blockChanges.Keys)
+            for (int i = 0; i < _blockSlotCount; i++)
             {
-                ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
-                if (change.Before != change.After)
+                Account? before = _blockBefore[i];
+                Account? after = _blockAfter[i];
+                if (before != after)
                 {
-                    change.Before = change.After;
-                    writeBatch.Set(key, change.After);
+                    _blockBefore[i] = after;
+                    writeBatch.Set(_blockAddresses[i], after);
                     writes++;
                 }
                 else
@@ -708,126 +739,471 @@ namespace Nethermind.State
 
         private Account? GetState(Address address)
         {
-            AddressAsKey addressAsKey = address;
-            ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
-            if (!exists)
-            {
-                Metrics.IncrementStateTreeReads();
-                Account? account = _tree.Get(address);
-
-                accountChanges = new(account, account);
-            }
-            else
-            {
-                Metrics.IncrementStateTreeCacheHits();
-            }
-            return accountChanges.After;
+            int blockSlotIndex = GetOrCreateBlockSlotIndex(address, loadFromState: true);
+            return _blockAfter[blockSlotIndex];
         }
 
         internal void SetState(Address address, Account? account)
         {
-            ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
-            accountChanges.After = account;
+            int blockSlotIndex = GetOrCreateBlockSlotIndex(address, loadFromState: false);
+            _blockAfter[blockSlotIndex] = account;
             _needsStateRootUpdate = true;
         }
 
-        private Account? GetAndAddToCache(Address address)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private Account? GetAccountFromCache(Address address)
         {
-            if (_nullAccountReads.Contains(address)) return null;
-
-            Account? account = GetState(address);
-            if (account is not null)
-            {
-                PushJustCache(address, account);
-            }
-            else
-            {
-                // just for tracing - potential perf hit, maybe a better solution?
-                _nullAccountReads.Add(address);
-            }
-
-            return account;
+            int idx = GetSlotIndexFast(address);
+            return ReconstructAccount(idx);
         }
 
-        private Account? GetThroughCache(Address address)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private Account? ReconstructAccount(int slotIndex)
         {
-            if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+            if (!_exists[slotIndex])
             {
-                return _changes[value.Peek()].Account;
+                return null;
             }
 
-            Account account = GetAndAddToCache(address);
-            return account;
+            UInt256 balance = _balances[slotIndex];
+            UInt256 nonce = _nonces[slotIndex];
+            Hash256? codeHash = _codeHashes[slotIndex];
+            Hash256? storageRoot = _slotsMeta[slotIndex].StorageRoot;
+            if (codeHash is null && storageRoot is null && balance.IsZero && nonce.IsZero)
+            {
+                return Account.TotallyEmpty;
+            }
+
+            return new Account(nonce, balance, storageRoot ?? Keccak.EmptyTreeHash, codeHash ?? Keccak.OfAnEmptyString);
         }
 
-        private void PushJustCache(Address address, Account account)
-            => Push(address, account, ChangeType.JustCache);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool IsEmpty(int slotIndex)
+            => !_hasCode[slotIndex] && _balances[slotIndex].IsZero && _nonces[slotIndex].IsZero;
 
-        private void PushUpdate(Address address, Account account)
-            => Push(address, account, ChangeType.Update);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Hash256? NormalizeCodeHash(Hash256 codeHash)
+            => codeHash == Keccak.OfAnEmptyString ? null : codeHash;
 
-        private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Hash256? NormalizeStorageRoot(Hash256 storageRoot)
+            => storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetSlotValues(int slotIndex, bool exists, in UInt256 balance, in UInt256 nonce, Hash256? codeHash, Hash256? storageRoot)
         {
-            if (isZero && address == releaseSpec.Eip158IgnoredAccount) return;
-            Push(address, account, ChangeType.Touch);
+            _exists[slotIndex] = exists;
+            _balances[slotIndex] = balance;
+            _nonces[slotIndex] = nonce;
+            _codeHashes[slotIndex] = codeHash;
+            _hasCode[slotIndex] = codeHash is not null;
+            _slotsMeta[slotIndex].StorageRoot = storageRoot;
         }
 
-        private void PushDelete(Address address)
-            => Push(address, null, ChangeType.Delete);
-
-        private void Push(Address address, Account? touchedAccount, ChangeType changeType)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int GetSlotIndexFast(Address address)
         {
-            StackList<int> stack = SetupCache(address);
-            if (changeType == ChangeType.Touch
-                && _changes[stack.Peek()]!.ChangeType == ChangeType.Touch)
+            int bucket = GetInlineCacheBucket(address);
+            ref (Address? Key, int SlotIndex) entry = ref GetInlineCacheEntry(bucket);
+            if (ReferenceEquals(entry.Key, address))
+            {
+                return entry.SlotIndex;
+            }
+
+            return GetSlotIndexSlow(address, bucket, loadFromState: true);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int GetOrCreateSlotIndex(Address address)
+        {
+            int bucket = GetInlineCacheBucket(address);
+            ref (Address? Key, int SlotIndex) entry = ref GetInlineCacheEntry(bucket);
+            if (ReferenceEquals(entry.Key, address))
+            {
+                return entry.SlotIndex;
+            }
+
+            return GetSlotIndexSlow(address, bucket, loadFromState: false);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool TryGetExistingSlotIndex(Address address, out int slotIndex)
+        {
+            int bucket = GetInlineCacheBucket(address);
+            ref (Address? Key, int SlotIndex) entry = ref GetInlineCacheEntry(bucket);
+            if (ReferenceEquals(entry.Key, address))
+            {
+                slotIndex = entry.SlotIndex;
+                return true;
+            }
+
+            if (_slotIndex.TryGetValue(address, out slotIndex))
+            {
+                entry.Key = address;
+                entry.SlotIndex = slotIndex;
+                return true;
+            }
+
+            slotIndex = -1;
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private int GetSlotIndexSlow(Address address, int bucket, bool loadFromState)
+        {
+            ref int slotIndexRef = ref CollectionsMarshal.GetValueRefOrAddDefault(_slotIndex, address, out bool exists);
+            if (!exists)
+            {
+                int slotIndex = _slotCount;
+                EnsureSlotCapacity(slotIndex + 1);
+
+                int blockSlotIndex = GetOrCreateBlockSlotIndex(address, loadFromState);
+                Account? account = loadFromState ? _blockAfter[blockSlotIndex] : null;
+                SlotFlags flags = loadFromState && account is null ? SlotFlags.NullRead : SlotFlags.None;
+                if (account is null)
+                {
+                    _slotsMeta[slotIndex] = new SlotMeta
+                    {
+                        OwnerFrameId = -1,
+                        DirtyGeneration = 0,
+                        Flags = flags,
+                        Address = address,
+                        BlockSlotIndex = blockSlotIndex,
+                        StorageRoot = null,
+                    };
+                    SetSlotValues(slotIndex, exists: false, in _zero, in _zero, null, null);
+                }
+                else
+                {
+                    Hash256? codeHash = NormalizeCodeHash(account.CodeHash);
+                    Hash256? storageRoot = NormalizeStorageRoot(account.StorageRoot);
+                    _slotsMeta[slotIndex] = new SlotMeta
+                    {
+                        OwnerFrameId = -1,
+                        DirtyGeneration = 0,
+                        Flags = flags,
+                        Address = address,
+                        BlockSlotIndex = blockSlotIndex,
+                        StorageRoot = storageRoot,
+                    };
+                    SetSlotValues(slotIndex, exists: true, account.Balance, account.Nonce, codeHash, storageRoot);
+                }
+
+                _slotCount = slotIndex + 1;
+                slotIndexRef = slotIndex;
+            }
+
+            ref (Address? Key, int SlotIndex) entry = ref GetInlineCacheEntry(bucket);
+            entry.Key = address;
+            entry.SlotIndex = slotIndexRef;
+            return slotIndexRef;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int GetOrCreateBlockSlotIndex(Address address, bool loadFromState)
+        {
+            ref int blockSlotIndexRef = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockSlotIndex, address, out bool exists);
+            if (!exists)
+            {
+                int blockSlotIndex = _blockSlotCount;
+                EnsureBlockSlotCapacity(blockSlotIndex + 1);
+
+                Account? account = null;
+                if (loadFromState)
+                {
+                    Metrics.IncrementStateTreeReads();
+                    account = _tree.Get(address);
+                }
+
+                _blockAddresses[blockSlotIndex] = address;
+                _blockBefore[blockSlotIndex] = account;
+                _blockAfter[blockSlotIndex] = account;
+                _blockSlotCount = blockSlotIndex + 1;
+                blockSlotIndexRef = blockSlotIndex;
+            }
+            else if (loadFromState)
+            {
+                Metrics.IncrementStateTreeCacheHits();
+            }
+
+            return blockSlotIndexRef;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int GetInlineCacheBucket(Address address) => RuntimeHelpers.GetHashCode(address) & 3;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private ref (Address? Key, int SlotIndex) GetInlineCacheEntry(int bucket)
+        {
+            switch (bucket)
+            {
+                case 0:
+                    return ref _inlineCache0;
+                case 1:
+                    return ref _inlineCache1;
+                case 2:
+                    return ref _inlineCache2;
+                default:
+                    return ref _inlineCache3;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ApplyTouch(int slotIndex, IReleaseSpec releaseSpec, bool isZero)
+        {
+            Address address = _slotsMeta[slotIndex].Address;
+            if (isZero && address == releaseSpec.Eip158IgnoredAccount)
             {
                 return;
             }
 
-            stack.Push(_changes.Count);
-            _changes.Add(new Change(address, touchedAccount, changeType));
-        }
-
-        private void PushNew(Address address, Account account)
-        {
-            StackList<int> stack = SetupCache(address);
-            stack.Push(_changes.Count);
-            _changes.Add(new Change(address, account, ChangeType.New));
-        }
-
-        private void PushRecreateEmpty(Address address, Account account, StackList<int> stack)
-        {
-            stack.Push(_changes.Count);
-            _changes.Add(new Change(address, account, ChangeType.RecreateEmpty));
-        }
-
-        private StackList<int> SetupCache(Address address)
-        {
-            ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraTxCache, address, out bool exists);
-            if (!exists)
+            ref SlotMeta meta = ref _slotsMeta[slotIndex];
+            if ((meta.Flags & SlotFlags.Touched) != 0
+                && (meta.Flags & (SlotFlags.Deleted | SlotFlags.RecreatedEmpty)) == 0)
             {
-                value = StackList<int>.Rent();
+                return;
             }
 
-            return value;
+            MutateSlotMeta(slotIndex, SlotFlags.Touched, SlotFlags.Deleted | SlotFlags.RecreatedEmpty | SlotFlags.LatestNew);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ApplyDelete(int slotIndex)
+        {
+            MutateSlotMeta(slotIndex, SlotFlags.Deleted, SlotFlags.Touched | SlotFlags.RecreatedEmpty | SlotFlags.LatestNew);
+            SetSlotValues(slotIndex, exists: false, in _zero, in _zero, null, null);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ApplyNew(int slotIndex, in UInt256 balance, in UInt256 nonce, Hash256? codeHash, Hash256? storageRoot)
+        {
+            MutateSlotMeta(slotIndex, SlotFlags.Created | SlotFlags.LatestNew, SlotFlags.Deleted | SlotFlags.Touched | SlotFlags.RecreatedEmpty);
+            SetSlotValues(slotIndex, exists: true, in balance, in nonce, codeHash, storageRoot);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ApplyRecreateEmpty(int slotIndex)
+        {
+            MutateSlotMeta(slotIndex, SlotFlags.RecreatedEmpty, SlotFlags.Deleted | SlotFlags.Touched | SlotFlags.LatestNew);
+            SetSlotValues(slotIndex, exists: true, in _zero, in _zero, null, null);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void MutateSlotMeta(int slotIndex, SlotFlags setFlags, SlotFlags clearFlags)
+        {
+            ref SlotMeta meta = ref _slotsMeta[slotIndex];
+            if (meta.OwnerFrameId < _currentFrameId)
+            {
+                SaveUndoAndUpdateFrame(slotIndex, ref meta);
+            }
+
+            SlotFlags flags = (meta.Flags | SlotFlags.Dirty | setFlags) & ~clearFlags;
+            meta.Flags = flags;
+
+            if (meta.DirtyGeneration != _dirtyGeneration)
+            {
+                TrackDirty(slotIndex, ref meta);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void SaveUndoAndUpdateFrame(int slotIndex, ref SlotMeta meta)
+        {
+            EnsureUndoCapacity(_undoCount + 1);
+            _undoBuffer[_undoCount++] = new UndoEntry(
+                slotIndex,
+                meta.OwnerFrameId,
+                meta.Flags,
+                _exists[slotIndex],
+                _balances[slotIndex],
+                _nonces[slotIndex],
+                _codeHashes[slotIndex],
+                meta.StorageRoot);
+            meta.OwnerFrameId = _currentFrameId;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TrackDirty(int slotIndex, ref SlotMeta meta)
+        {
+            _dirtySlotIndices[_dirtyCount++] = slotIndex;
+            meta.DirtyGeneration = _dirtyGeneration;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void AdvanceDirtyGeneration()
+        {
+            if (_dirtyGeneration == int.MaxValue)
+            {
+                for (int i = 0; i < _slotCount; i++)
+                {
+                    _slotsMeta[i].DirtyGeneration = 0;
+                }
+                _dirtyGeneration = 1;
+            }
+            else
+            {
+                _dirtyGeneration++;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int GrowCapacity(int current, int required)
+            => (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(required, current));
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void EnsureSlotCapacity(int requiredSize)
+        {
+            if (_exists.Length >= requiredSize) return;
+
+            int newLength = GrowCapacity(_exists.Length, requiredSize);
+            Array.Resize(ref _exists, newLength);
+            Array.Resize(ref _balances, newLength);
+            Array.Resize(ref _nonces, newLength);
+            Array.Resize(ref _codeHashes, newLength);
+            Array.Resize(ref _hasCode, newLength);
+            Array.Resize(ref _slotsMeta, newLength);
+            Array.Resize(ref _dirtySlotIndices, newLength);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void EnsureBlockSlotCapacity(int requiredSize)
+        {
+            if (_blockAddresses.Length >= requiredSize) return;
+
+            int newLength = GrowCapacity(_blockAddresses.Length, requiredSize);
+            Array.Resize(ref _blockAddresses, newLength);
+            Array.Resize(ref _blockBefore, newLength);
+            Array.Resize(ref _blockAfter, newLength);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void EnsureUndoCapacity(int requiredSize)
+        {
+            if (_undoBuffer.Length >= requiredSize) return;
+
+            int newLength = GrowCapacity(_undoBuffer.Length, requiredSize);
+            Array.Resize(ref _undoBuffer, newLength);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void EnsureFrameCapacity(int requiredSize)
+        {
+            if (_frameUndoOffsets.Length >= requiredSize) return;
+
+            int newLength = GrowCapacity(_frameUndoOffsets.Length, requiredSize);
+
+            Array.Resize(ref _frameUndoOffsets, newLength);
+            Array.Resize(ref _frameIds, newLength);
+        }
+
+        private void CollectReadOnlyTrace(Dictionary<AddressAsKey, ChangeTrace> trace, HashSet<AddressAsKey> nullAccountReads)
+        {
+            for (int i = 0; i < _slotCount; i++)
+            {
+                ref SlotMeta meta = ref _slotsMeta[i];
+                if ((meta.Flags & SlotFlags.Dirty) != 0 || trace.ContainsKey(meta.Address))
+                {
+                    continue;
+                }
+
+                if ((meta.Flags & SlotFlags.NullRead) != 0 || !_exists[i])
+                {
+                    nullAccountReads.Add(meta.Address);
+                    continue;
+                }
+
+                Account account = ReconstructAccount(i)!;
+                trace[meta.Address] = new ChangeTrace(account, account);
+            }
+        }
+
+        private Account? ResolveRetainedAccount(Address address)
+        {
+            if (TryGetExistingSlotIndex(address, out int slotIndex))
+            {
+                return ReconstructAccount(slotIndex);
+            }
+
+            return _blockSlotIndex.TryGetValue(address, out int blockSlotIndex)
+                ? _blockAfter[blockSlotIndex]
+                : null;
+        }
+
+        private void ResetTransactionSlots(Address? retainInCache, Account? retainedAccount)
+        {
+            int previousSlotCount = _slotCount;
+            int previousUndoCount = _undoCount;
+            if (previousSlotCount > 0)
+            {
+                Array.Clear(_exists, 0, previousSlotCount);
+                Array.Clear(_balances, 0, previousSlotCount);
+                Array.Clear(_nonces, 0, previousSlotCount);
+                Array.Clear(_codeHashes, 0, previousSlotCount);
+                Array.Clear(_hasCode, 0, previousSlotCount);
+                Array.Clear(_slotsMeta, 0, previousSlotCount);
+            }
+            if (previousUndoCount > 0)
+            {
+                Array.Clear(_undoBuffer, 0, previousUndoCount);
+            }
+
+            _slotIndex.Clear();
+            _slotCount = 0;
+            _undoCount = 0;
+            _frameCount = 1;
+            _frameUndoOffsets[0] = 0;
+            _frameIds[0] = 0;
+            _currentFrameId = 0;
+            _dirtyCount = 0;
+            AdvanceDirtyGeneration();
+            ClearInlineCache();
+
+            if (retainInCache is not null && retainedAccount is not null)
+            {
+                int retainedBlockSlotIndex = GetOrCreateBlockSlotIndex(retainInCache, loadFromState: false);
+                _blockAfter[retainedBlockSlotIndex] = retainedAccount;
+
+                EnsureSlotCapacity(1);
+                Hash256? codeHash = NormalizeCodeHash(retainedAccount.CodeHash);
+                Hash256? storageRoot = NormalizeStorageRoot(retainedAccount.StorageRoot);
+                _slotsMeta[0] = new SlotMeta
+                {
+                    OwnerFrameId = -1,
+                    DirtyGeneration = 0,
+                    Flags = SlotFlags.None,
+                    Address = retainInCache,
+                    BlockSlotIndex = retainedBlockSlotIndex,
+                    StorageRoot = storageRoot,
+                };
+                SetSlotValues(0, exists: true, retainedAccount.Balance, retainedAccount.Nonce, codeHash, storageRoot);
+                _slotIndex[retainInCache] = 0;
+                _slotCount = 1;
+
+                int bucket = GetInlineCacheBucket(retainInCache);
+                ref (Address? Key, int SlotIndex) cacheEntry = ref GetInlineCacheEntry(bucket);
+                cacheEntry.Key = retainInCache;
+                cacheEntry.SlotIndex = 0;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ClearInlineCache()
+        {
+            _inlineCache0 = default;
+            _inlineCache1 = default;
+            _inlineCache2 = default;
+            _inlineCache3 = default;
         }
 
         public ArrayPoolList<AddressAsKey>? ChangedAddresses()
         {
-            int count = _blockChanges.Count;
+            int count = _blockSlotCount;
             if (count == 0)
             {
                 return null;
             }
-            else
-            {
-                ArrayPoolList<AddressAsKey> addresses = new(count);
-                foreach (AddressAsKey address in _blockChanges.Keys)
-                {
-                    addresses.Add(address);
-                }
-                return addresses;
-            }
+
+            return new ArrayPoolList<AddressAsKey>(_blockAddresses.AsSpan(0, count));
         }
 
         public void Reset(bool resetBlockChanges = true)
@@ -836,13 +1212,18 @@ namespace Nethermind.State
             if (resetBlockChanges)
             {
                 _blockCodeInsertFilter.Clear();
-                _blockChanges.Clear();
+                if (_blockSlotCount > 0)
+                {
+                    Array.Clear(_blockAddresses, 0, _blockSlotCount);
+                    Array.Clear(_blockBefore, 0, _blockSlotCount);
+                    Array.Clear(_blockAfter, 0, _blockSlotCount);
+                    _blockSlotCount = 0;
+                }
+
+                _blockSlotIndex.Clear();
                 _codeBatch?.Clear();
             }
-            _intraTxCache.ResetAndClear();
-            _committedThisRound.Clear();
-            _nullAccountReads.Clear();
-            _changes.Clear();
+            ResetTransactionSlots(null, null);
             _needsStateRootUpdate = false;
 
             [MethodImpl(MethodImplOptions.NoInlining)]
@@ -861,39 +1242,97 @@ namespace Nethermind.State
         internal void SetNonce(Address address, in UInt256 nonce)
         {
             _needsStateRootUpdate = true;
-            Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
-            Account changedAccount = account.WithChangedNonce(nonce);
-            if (_logger.IsTrace) Trace(address, account, changedAccount);
+            int slotIndex = GetSlotIndexFast(address);
+            if (!_exists[slotIndex])
+            {
+                ThrowNullNonceAccount(address);
+            }
 
-            PushUpdate(address, changedAccount);
+            UInt256 previousNonce = _nonces[slotIndex];
+            if (_logger.IsTrace) Trace(address, in previousNonce, in nonce);
+
+            MutateSlotMeta(slotIndex, SlotFlags.None, MutationClearMask);
+            _nonces[slotIndex] = nonce;
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(Address address, Account account, Account changedAccount)
-                => _logger.Trace($"Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static Account ThrowNullAccount(Address address)
-                => throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
+            void Trace(Address address, in UInt256 oldNonce, in UInt256 changedNonce)
+                => _logger.Trace($"Update {address} N {oldNonce} -> {changedNonce}");
         }
 
-        private enum ChangeType
+        private struct SlotMeta
         {
-            Null = 0,
-            JustCache,
-            Touch,
-            Update,
-            New,
-            Delete,
-            RecreateEmpty,
+            public int OwnerFrameId;
+            public int DirtyGeneration;
+            public int BlockSlotIndex;
+            public SlotFlags Flags;
+            public Address Address;
+            public Hash256? StorageRoot;
         }
 
-        private readonly struct Change(Address address, Account? account, ChangeType type)
-        {
-            public readonly Address Address = address;
-            public readonly Account? Account = account;
-            public readonly ChangeType ChangeType = type;
+        private const SlotFlags MutationClearMask = SlotFlags.Deleted | SlotFlags.Touched | SlotFlags.RecreatedEmpty | SlotFlags.LatestNew;
 
-            public bool IsNull => ChangeType == ChangeType.Null;
+        [Flags]
+        private enum SlotFlags
+        {
+            None = 0,
+            Created = 1,
+            Deleted = 2,
+            Touched = 4,
+            Dirty = 8,
+            NullRead = 16,
+            RecreatedEmpty = 32,
+            LatestNew = 64,
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowNullNonceAccount(Address address)
+            => throw new InvalidOperationException($"Account {address} is null when changing nonce");
+
+        private readonly struct UndoEntry
+        {
+            private const int OwnerFrameIdMask = 0x00FFFFFF;
+            private const int PackedNoOwner = OwnerFrameIdMask;
+
+            private readonly ulong _packed;
+            public readonly bool PreviousExists;
+            public readonly UInt256 PreviousBalance;
+            public readonly UInt256 PreviousNonce;
+            public readonly Hash256? PreviousCodeHash;
+            public readonly Hash256? PreviousStorageRoot;
+
+            public UndoEntry(
+                int slotIndex,
+                int previousOwnerFrameId,
+                SlotFlags previousFlags,
+                bool previousExists,
+                in UInt256 previousBalance,
+                in UInt256 previousNonce,
+                Hash256? previousCodeHash,
+                Hash256? previousStorageRoot)
+            {
+                uint ownerFrameId = previousOwnerFrameId < 0 ? PackedNoOwner : (uint)previousOwnerFrameId;
+                _packed = (ulong)(uint)slotIndex
+                    | ((ulong)(ownerFrameId & OwnerFrameIdMask) << 32)
+                    | ((ulong)(byte)previousFlags << 56);
+                PreviousExists = previousExists;
+                PreviousBalance = previousBalance;
+                PreviousNonce = previousNonce;
+                PreviousCodeHash = previousCodeHash;
+                PreviousStorageRoot = previousStorageRoot;
+            }
+
+            public int SlotIndex => (int)(uint)_packed;
+
+            public int PreviousOwnerFrameId
+            {
+                get
+                {
+                    int ownerFrameId = (int)((_packed >> 32) & OwnerFrameIdMask);
+                    return ownerFrameId == PackedNoOwner ? -1 : ownerFrameId;
+                }
+            }
+
+            public SlotFlags PreviousFlags => (SlotFlags)(byte)(_packed >> 56);
         }
 
         internal struct ChangeTrace(Account? before, Account? after)
@@ -910,23 +1349,10 @@ namespace Nethermind.State
     internal static class Extensions
     {
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void AddToTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change)
-        {
-            trace.Add(address, new ChangeTrace(change));
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void UpdateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change)
-        {
-            trace[address] = new ChangeTrace(change, trace[address].After);
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void ReportStateTrace(this Dictionary<AddressAsKey, ChangeTrace>? trace, IWorldStateTracer stateTracer, HashSet<AddressAsKey> nullAccountReads, StateProvider stateProvider)
         {
             foreach (Address nullRead in nullAccountReads)
             {
-                // // this may be enough, let us write tests
                 stateTracer.ReportAccountRead(nullRead);
             }
             ReportChanges(trace, stateTracer, stateProvider);

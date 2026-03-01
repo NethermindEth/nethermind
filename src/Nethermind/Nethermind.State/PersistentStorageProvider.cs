@@ -4,11 +4,11 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -18,8 +18,8 @@ using Nethermind.Core.Resettables;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
-using Nethermind.Logging;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.State;
 
@@ -41,8 +41,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// </summary>
     private readonly Dictionary<StorageCell, byte[]> _originalValues = new();
 
-    private readonly HashSet<StorageCell> _committedThisRound = new();
-
     /// <summary>
     /// Manages persistent storage allowing for snapshotting and restoring
     /// Persists data to ITrieStore
@@ -61,7 +59,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         base.Reset();
         _originalValues.Clear();
-        _committedThisRound.Clear();
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
@@ -79,8 +76,23 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
-    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell)
+    {
+        if (!storageCell.IsHash && TryGetCachedValue(storageCell, out byte[]? bytes))
+        {
+            return bytes!;
+        }
+
+        byte[] value = LoadFromTree(storageCell);
+        if (!storageCell.IsHash)
+        {
+            int slotIndex = GetOrCreateSlotIndex(storageCell);
+            CacheReadSlot(slotIndex, value);
+            _originalValues[storageCell] = value;
+        }
+
+        return value;
+    }
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -89,23 +101,45 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// <returns></returns>
     public byte[] GetOriginal(in StorageCell storageCell)
     {
-        if (!_originalValues.TryGetValue(storageCell, out var value))
+        if (!_originalValues.TryGetValue(storageCell, out byte[]? value))
         {
-            throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            ThrowNotAccessed();
         }
 
-        if (_transactionChangesSnapshots.TryPeek(out int snapshot))
+        if (!TryGetSlotIndex(storageCell, out int slotIndex))
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
-            {
-                if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
-                {
-                    return _changes[lastChangeIndexBeforeOriginalSnapshot].Value;
-                }
-            }
+            return value;
+        }
+
+        if (!TryGetCurrentTransactionStartOffset(out int transactionStartOffset))
+        {
+            return value;
+        }
+
+        byte[]? valueAtTransactionStart = FindValueBeforeOffset(slotIndex, transactionStartOffset);
+        if (valueAtTransactionStart is not null)
+        {
+            return valueAtTransactionStart;
+        }
+
+        // No undo entries found for this slot since the transaction start.
+        // Two cases depending on when the slot was first touched:
+        // - Prior tx frame (OwnerFrameId < currentFrameId): the slot was loaded/written
+        //   before this tx. _slotsHot has the value at tx start (GetOriginal is called
+        //   before Set, so current SSTORE hasn't modified it yet).
+        // - Current tx frame (OwnerFrameId == currentFrameId): the slot was first accessed
+        //   in this tx. No undo entries were created because GetOrCreateSlotIndex sets
+        //   OwnerFrameId = currentFrameId. _originalValues has the correct tree value.
+        if (_slotsMeta[slotIndex].OwnerFrameId < _currentFrameId)
+        {
+            return _slotsHot[slotIndex] ?? value;
         }
 
         return value;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowNotAccessed()
+            => throw new InvalidOperationException("Get original should only be called after get within the same caching round");
     }
 
     public Hash256 GetStorageRoot(Address address)
@@ -126,16 +160,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         if (_logger.IsTrace) _logger.Trace("Committing storage changes");
 
-        int currentPosition = _changes.Count - 1;
-        if (currentPosition < 0)
-        {
-            return;
-        }
-        if (_changes[currentPosition].IsNull)
-        {
-            throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(PartialStorageProviderBase)}");
-        }
-
         HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= new());
 
         bool isTracing = tracer.IsTracingStorage;
@@ -145,59 +169,55 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             trace = [];
         }
 
-        for (int i = 0; i <= currentPosition; i++)
+        bool isLogTracing = _logger.IsTrace;
+        for (int i = 0; i < _dirtyCount; i++)
         {
-            Change change = _changes[currentPosition - i];
-            if (!isTracing && change!.ChangeType == ChangeType.JustCache)
+            int slotIndex = _dirtySlotIndices[i];
+            ref SlotMeta meta = ref _slotsMeta[slotIndex];
+            if ((meta.Flags & SlotFlags.Dirty) == 0)
             {
                 continue;
             }
 
-            if (_committedThisRound.Contains(change!.StorageCell))
+            StorageCell storageCell = meta.Cell;
+            byte[] value = _slotsHot[slotIndex]!;
+            if (isLogTracing)
             {
-                if (isTracing && change.ChangeType == ChangeType.JustCache)
-                {
-                    trace![change.StorageCell] = new StorageChangeTrace(change.Value, trace[change.StorageCell].After);
-                }
-
-                continue;
+                Trace(in storageCell, value);
             }
 
-            if (isTracing && change.ChangeType == ChangeType.JustCache)
+            if (_originalValues.TryGetValue(storageCell, out byte[]? initialValue) &&
+                initialValue.AsSpan().SequenceEqual(value))
             {
-                tracer!.ReportStorageRead(change.StorageCell);
+                // no need to update the tree if the value is the same
+            }
+            else
+            {
+                toUpdateRoots.Add(storageCell.Address);
+                GetOrCreateStorage(storageCell.Address).SaveChange(storageCell, value);
             }
 
-            _committedThisRound.Add(change.StorageCell);
-            int forAssertion = _intraBlockCache[change.StorageCell].Pop();
-            if (forAssertion != currentPosition - i)
+            if (isTracing)
             {
-                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
-            }
-
-            if (change.ChangeType == ChangeType.Update)
-            {
-                if (_logger.IsTrace)
+                if (initialValue is not null)
                 {
-                    _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
-                }
-
-                if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
-                    initialValue.AsSpan().SequenceEqual(change.Value))
-                {
-                    // no need to update the tree if the value is the same
+                    trace![storageCell] = new StorageChangeTrace(initialValue, value);
                 }
                 else
                 {
-                    toUpdateRoots.Add(change.StorageCell.Address);
-
-                    GetOrCreateStorage(change.StorageCell.Address)
-                        .SaveChange(change.StorageCell, change.Value);
+                    trace![storageCell] = new StorageChangeTrace(value);
                 }
+            }
+        }
 
-                if (isTracing)
+        if (isTracing)
+        {
+            for (int i = 0; i < _slotCount; i++)
+            {
+                ref SlotMeta meta = ref _slotsMeta[i];
+                if ((meta.Flags & (SlotFlags.Read | SlotFlags.Dirty)) == SlotFlags.Read)
                 {
-                    trace![change.StorageCell] = new StorageChangeTrace(change.Value);
+                    tracer.ReportStorageRead(meta.Cell);
                 }
             }
         }
@@ -226,12 +246,15 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         base.CommitCore(tracer);
         _originalValues.Clear();
-        _committedThisRound.Clear();
 
         if (isTracing)
         {
-            ReportChanges(tracer!, trace!);
+            ReportChanges(tracer, trace!);
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void Trace(in StorageCell storageCell, byte[] value)
+            => _logger.Trace($"  Update {storageCell.Address}_{storageCell.Index} V = {value.ToHexString(true)}");
     }
 
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
@@ -343,21 +366,31 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
         else
         {
-            LoadFromTree(in storageCell);
+            GetCurrentValue(in storageCell);
         }
     }
 
-    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
+    private bool TryGetCurrentTransactionStartOffset(out int offset)
     {
-        return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
+        while (TryGetTransactionSnapshot(out int snapshot))
+        {
+            if (TryGetUndoOffsetForSnapshot(snapshot, out offset))
+            {
+                return true;
+            }
+
+            // Transaction-start markers can outlive their frame ids after restores.
+            // Prune stale markers lazily so GetOriginal keeps finding a valid boundary.
+            _transactionStartSnapshots.Pop();
+        }
+
+        offset = 0;
+        return false;
     }
 
-    private void PushToRegistryOnly(in StorageCell cell, byte[] value)
+    private byte[] LoadFromTree(in StorageCell storageCell)
     {
-        StackList<int> stack = SetupRegistry(cell);
-        _originalValues[cell] = value;
-        stack.Push(_changes.Count);
-        _changes.Add(new Change(in cell, value, ChangeType.JustCache));
+        return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
     }
 
     private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
@@ -391,7 +424,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     private sealed class DefaultableDictionary()
     {
         private bool _missingAreDefault;
-        private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
+        private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new();
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
         public int Capacity => _dictionary.Capacity;
@@ -430,19 +463,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
 
         public Dictionary<UInt256, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
-
-        private sealed class Comparer : IEqualityComparer<UInt256>
-        {
-            public static Comparer Instance { get; } = new();
-
-            private Comparer() { }
-
-            public bool Equals(UInt256 x, UInt256 y)
-                => Unsafe.As<UInt256, Vector256<byte>>(ref x) == Unsafe.As<UInt256, Vector256<byte>>(ref y);
-
-            public int GetHashCode([DisallowNull] UInt256 obj)
-                => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
-        }
 
         public void UnmarkClear()
         {
@@ -540,7 +560,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
         }
 
-        public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
+        public byte[] LoadFromTree(in StorageCell storageCell)
         {
             ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
@@ -554,7 +574,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 Db.Metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
             return valueChange.After;
         }
 
@@ -567,9 +586,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 ? _backend.Get(storageCell.Index)
                 : _backend.Get(storageCell.Hash);
         }
-
-        private static byte[] LoadFromTreeStorage(StorageCell storageCell, PerContractState @this)
-            => @this.LoadFromTreeStorage(storageCell);
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {

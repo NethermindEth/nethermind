@@ -5,6 +5,7 @@
 using System;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -70,7 +71,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 iterationsCount++;
-                confidenceLevelReached += tracer.CurrentState.ProgramCounter == JUMP_OPCODE_PTR_BREAK_POINT.pc ? 1 : 0;
+                confidenceLevelReached += tracer.CurrentFrame.ProgramCounter == JUMP_OPCODE_PTR_BREAK_POINT.pc ? 1 : 0;
                 if (iterationsCount == confidenceLevelDesired)
                 {
                     TestFailed = confidenceLevelReached < confidenceLevelDesired;
@@ -123,7 +124,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 iterationsCount++;
-                confidenceLevelReached += tracer.CurrentState.ProgramCounter == JUMP_OPCODE_PTR_BREAK_POINT.pc ? 1 : 0;
+                confidenceLevelReached += tracer.CurrentFrame.ProgramCounter == JUMP_OPCODE_PTR_BREAK_POINT.pc ? 1 : 0;
 
                 if (iterationsCount == confidenceLevelDesired)
                 {
@@ -268,7 +269,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         {
             if (tracer.CanReadState)
             {
-                tracer.CurrentState.ProgramCounter++;
+                tracer.CurrentFrame.ProgramCounter++;
                 tracer.MoveNext();
             }
         }
@@ -302,7 +303,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we pop the condition and overwrite it with a false to force breaking out of the loop
-                EvmStack stack = new(tracer.CurrentState.DataStackHead, tracer, tracer.CurrentState.DataStack);
+                EvmStack stack = new(tracer.CurrentFrame.DataStackHead, tracer, ref MemoryMarshal.GetArrayDataReference(tracer.CurrentFrame.DataStack), default);
                 if (!stack.PopLimbo()) throw new EvmStackUnderflowException();
                 stack.PushByte<OffFlag>(0x00);
 
@@ -339,7 +340,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we alter the value stored in memory to force EQ check at the end to fail
-                tracer.CurrentState.Memory.TrySaveByte(31, 0x0A);
+                tracer.CurrentFrame.Memory.TrySaveByte(31, 0x0A);
 
                 tracer.MoveNext();
             }
@@ -381,10 +382,10 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we alter the value stored in memory to force EQ check at the end to fail
-                if (gasAvailable_pre_MSTORE is null) gasAvailable_pre_MSTORE = EthereumGasPolicy.GetRemainingGas(tracer.CurrentState.Gas);
+                if (gasAvailable_pre_MSTORE is null) gasAvailable_pre_MSTORE = EthereumGasPolicy.GetRemainingGas(tracer.CurrentFrame.Gas);
                 else
                 {
-                    long gasAvailable_post_MSTORE = EthereumGasPolicy.GetRemainingGas(tracer.CurrentState.Gas);
+                    long gasAvailable_post_MSTORE = EthereumGasPolicy.GetRemainingGas(tracer.CurrentFrame.Gas);
                     Assert.That(gasAvailable_pre_MSTORE - gasAvailable_post_MSTORE, Is.EqualTo(GasCostOf.VeryLow));
                 }
                 tracer.MoveNext();
@@ -443,7 +444,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         {
             if (tracer.CanReadState)
             {
-                if (tracer.CurrentState.Env.CallDepth == TARGET_OPCODE_PTR_BREAK_POINT.depth && tracer.CurrentState.ProgramCounter == TARGET_OPCODE_PTR_BREAK_POINT.pc)
+                if (tracer.CallDepth == TARGET_OPCODE_PTR_BREAK_POINT.depth && tracer.CurrentFrame.ProgramCounter == TARGET_OPCODE_PTR_BREAK_POINT.pc)
                 {
                     stoppedAtCorrectBreakpoint = true;
                 }
@@ -478,7 +479,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         {
             if (tracer.CanReadState)
             {
-                Assert.That(tracer.CurrentState.DataStackHead, Is.EqualTo(DATA_STACK_HEIGHT));
+                Assert.That(tracer.CurrentFrame.DataStackHead, Is.EqualTo(DATA_STACK_HEIGHT));
                 stoppedAtLeastOneTime = true;
                 tracer.MoveNext();
             }

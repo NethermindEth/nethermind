@@ -274,6 +274,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             finally
             {
                 _dirtyAccounts.Clear();
+                OnAccountUpdated = null;
 
                 Interlocked.Increment(ref scope._hintSequenceId);
             }

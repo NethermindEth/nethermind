@@ -18,6 +18,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Optimism;
 
