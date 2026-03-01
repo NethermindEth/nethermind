@@ -115,7 +115,9 @@ jobs:
                --artifacts "${RUNNER_TEMP}/bdn-pr"
 
       - name: Save PR benchmark files
-        run: cp -r src/Nethermind/Nethermind.Evm.Benchmark "${RUNNER_TEMP}/pr-bench-src"
+        run: |
+          cp -r src/Nethermind/Nethermind.Evm.Benchmark "${RUNNER_TEMP}/pr-bench-src"
+          cp Directory.Packages.props "${RUNNER_TEMP}/pr-Directory.Packages.props"
 
       - name: Check out base branch (master)
         uses: actions/checkout@v6
@@ -127,6 +129,7 @@ jobs:
         run: |
           rm -rf src/Nethermind/Nethermind.Evm.Benchmark
           cp -r "${RUNNER_TEMP}/pr-bench-src" src/Nethermind/Nethermind.Evm.Benchmark
+          cp "${RUNNER_TEMP}/pr-Directory.Packages.props" Directory.Packages.props
 
       - name: Build base branch
         run: |
