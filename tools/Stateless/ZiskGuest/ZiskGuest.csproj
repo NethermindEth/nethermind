@@ -5,7 +5,6 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>Nethermind.Stateless.ZiskGuest</RootNamespace>
-    <EnableZkvm>true</EnableZkvm>
   </PropertyGroup>
 
   <ItemGroup>

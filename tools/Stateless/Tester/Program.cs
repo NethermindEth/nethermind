@@ -17,13 +17,13 @@ namespace Nethermind.Stateless.Tester;
 class Program
 {
     static void Main(
-#if !ZKVM
+#if !ZK_EVM
         string[] args
 #endif
         )
     {
         (Block block, Witness witness, ISpecProvider specProvider) = GetSample();
-#if ZKVM
+#if ZK_EVM
         block = StatelessExecutor.Execute(block, witness, specProvider)
             ?? throw new InvalidOperationException("Stateless execution failed");
 

@@ -76,17 +76,17 @@ build-docker-bflat:
 	docker build --platform linux/amd64 -f $(MAKEFILE_DIR)/Dockerfile.bflat -t bflat-riscv64-local $(MAKEFILE_DIR)
 
 build-dotnet-tester:
-	dotnet build -c release -p:EnableZkvm=true $(TESTER_DIR)/Tester.csproj
+	dotnet build -c release -p:EnableZkEvm=true $(TESTER_DIR)/Tester.csproj
 
 build-dotnet-zisk:
-	dotnet build -c release -p:EnableZkvm=true $(ZISK_DIR)/ZiskGuest.csproj
+	dotnet build -c release -p:EnableZkEvm=true $(ZISK_DIR)/ZiskGuest.csproj
 
 build-tester: build-dotnet-tester build-docker-bflat
 	$(DOCKER_RUN) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/Tester/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(TESTER_DIR)",target=$(SRC_DIR) \
 		bflat-riscv64-local \
-		$(BFLAT_BUILD) --libc zisk_sim -d ZKVM $(BFLAT_REFS) \
+		$(BFLAT_BUILD) --libc zisk_sim -d ZK_EVM $(BFLAT_REFS) \
 		$(SRC_DIR)/Program.cs
 	mkdir -p $(TESTER_DIR)/bin && \
 		mv -f $(TESTER_DIR)/Program $(TESTER_DIR)/bin/nethermind
