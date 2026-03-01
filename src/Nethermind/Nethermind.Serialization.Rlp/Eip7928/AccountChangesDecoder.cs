@@ -3,10 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -17,6 +15,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
     public static AccountChangesDecoder Instance => _instance ??= new();
 
     private static readonly RlpLimit _slotsLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
+    private static readonly RlpLimit _storageLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
     private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
     public AccountChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
@@ -40,7 +39,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             slotChangesList.Add(slot, slotChange);
         }
 
-        StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance, true, default, _slotsLimit);
+        StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance, true, default, _storageLimit);
         SortedSet<StorageRead> storageReadsList = [];
         StorageRead? lastRead = null;
         foreach (StorageRead storageRead in storageReads)
@@ -95,6 +94,11 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             }
             lastIndex = index;
             codeChangesList.Add(index, codeChange);
+        }
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        {
+            ctx.Check(check);
         }
 
         return new(address, slotChangesList, storageReadsList, balanceChangesList, nonceChangesList, codeChangesList);

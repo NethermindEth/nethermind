@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
+using System;
 
 namespace Nethermind.Blockchain.Headers;
 
@@ -19,7 +20,10 @@ public class BlockAccessListStore(
     private readonly BlockAccessListDecoder _balDecoder = decoder ?? new();
 
     public void Insert(Hash256 blockHash, BlockAccessList bal)
-        => balDb.Set(blockHash, Rlp.Encode(bal).Bytes);
+    {
+        using NettyRlpStream rlpStream = BlockAccessListDecoder.Instance.EncodeToNewNettyStream(bal);
+        balDb.Set(blockHash, rlpStream.AsSpan());
+    }
 
     public void Insert(Hash256 blockHash, byte[] encodedBal)
         => balDb.Set(blockHash, encodedBal);
@@ -29,8 +33,8 @@ public class BlockAccessListStore(
 
     public BlockAccessList? Get(Hash256 blockHash)
     {
-        byte[]? rlp = balDb.Get(blockHash);
-        return rlp is null ? null : _balDecoder.Decode(rlp);
+        ReadOnlySpan<byte> rlp = balDb.GetSpan(blockHash);
+        return rlp.IsEmpty ? null : _balDecoder.Decode(rlp);
     }
 
     public void Delete(Hash256 blockHash)
