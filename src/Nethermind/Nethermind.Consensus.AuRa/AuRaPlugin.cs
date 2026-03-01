@@ -54,6 +54,10 @@ namespace Nethermind.Consensus.AuRa
         private StartBlockProducerAuRa BlockProducerStarter => _blockProducerStarter ??= _nethermindApi!.CreateStartBlockProducer();
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
+
+        public void InitTxTypesAndRlpDecoders(INethermindApi api, RlpDecoderRegistryBuilder rlpBuilder) =>
+            rlpBuilder.RegisterDecoders(typeof(AuRaPlugin).Assembly);
+
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi as AuRaNethermindApi;
@@ -130,7 +134,6 @@ namespace Nethermind.Consensus.AuRa
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
 
-            if (Rlp.GetStreamEncoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
         }
 
         /// <summary>

@@ -14,11 +14,6 @@ namespace Nethermind.Network
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB(), nameof(NetworkNode.HostIp));
 
-        static NetworkNodeDecoder()
-        {
-            Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
-        }
-
         protected override NetworkNode DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.ReadSequenceLength();

@@ -24,6 +24,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
 
@@ -78,6 +79,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<ITimestamper>(_ => Core.Timestamper.Default)
             .AddSingleton<ITimerFactory>(_ => Core.Timers.TimerFactory.Default)
             .AddSingleton<IFileSystem>(_ => new FileSystem())
+            .AddSingleton<IRlpDecoderRegistry>(_ => Rlp.DefaultRegistry)
             ;
 
         if (!configProvider.GetConfig<ITxPoolConfig>().BlobsSupport.IsPersistentStorage())

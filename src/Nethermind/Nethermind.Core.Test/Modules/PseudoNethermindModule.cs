@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Reflection;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
@@ -15,9 +14,7 @@ using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.ScopeProvider;
@@ -89,14 +86,5 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             ;
 
 
-        // Yep... this global thing need to work.
-        builder.RegisterBuildCallback((_) =>
-        {
-            Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
-            if (assembly is not null)
-            {
-                Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
-            }
-        });
     }
 }

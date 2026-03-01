@@ -82,11 +82,11 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     #endregion
 
-    public void InitTxTypesAndRlpDecoders(INethermindApi api)
+    public void InitTxTypesAndRlpDecoders(INethermindApi api, RlpDecoderRegistryBuilder rlpBuilder)
     {
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
-        Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
+        rlpBuilder.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, canOverrideExistingDecoders: true);
     }
 
     public Task Init(INethermindApi api)

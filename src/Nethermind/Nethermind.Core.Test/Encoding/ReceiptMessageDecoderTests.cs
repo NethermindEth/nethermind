@@ -11,7 +11,7 @@ public class ReceiptMessageDecoderTests
     [Test]
     public void TestGlobalReceiptEncoderMustBeReceiptMessageDecoder()
     {
-        Rlp.Decoders[typeof(TxReceipt)].Equals(typeof(ReceiptMessageDecoder));
-        Rlp.Decoders[typeof(LogEntry)].Equals(typeof(LogEntryDecoder));
+        Assert.That(Rlp.GetStreamEncoder<TxReceipt>(), Is.InstanceOf<ReceiptMessageDecoder>());
+        Assert.That(Rlp.GetStreamEncoder<LogEntry>(), Is.InstanceOf<LogEntryDecoder>());
     }
 }

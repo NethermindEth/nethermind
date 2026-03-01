@@ -60,7 +60,6 @@ using Nethermind.Network.Config;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.TxPool;
@@ -123,17 +122,6 @@ public class EthereumRunnerTests
         }
 
         return result;
-    }
-
-    [OneTimeTearDown]
-    public void OneTimeTearDown()
-    {
-        // Optimism override decoder globally, which mess up other test
-        Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
-        if (assembly is not null)
-        {
-            Rlp.RegisterDecoders(assembly, true);
-        }
     }
 
     public static IEnumerable ChainSpecRunnerTests
@@ -337,7 +325,6 @@ public class EthereumRunnerTests
 
     private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
     {
-        Rlp.ResetDecoders(); // One day this will be fix. But that day is not today, because it is seriously difficult.
         configProvider.GetConfig<IInitConfig>().DiagnosticMode = DiagnosticMode.MemDb;
         var tempPath = TempPath.GetTempDirectory();
         Directory.CreateDirectory(tempPath.Path);

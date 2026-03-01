@@ -11,7 +11,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -55,7 +54,30 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
         static Rlp()
         {
-            RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
+#if !ZKVM
+            // Build the baseline registry from this assembly.
+            // InitTxTypesAndRlp will replace it with a more complete one at startup.
+            _builder.RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
+            _defaultRegistry = _builder.Build();
+#else
+            // Under ZKVM/bflat AOT, register decoders explicitly (no reflection).
+            _builder
+                .RegisterDecoder(typeof(Account), new AccountDecoder())
+                .RegisterDecoder(typeof(BlockBody), new BlockBodyDecoder())
+                .RegisterDecoder(typeof(Block), new BlockDecoder())
+                .RegisterDecoder(typeof(BlockInfo), new BlockInfoDecoder())
+                .RegisterDecoder(typeof(ChainLevelInfo), new ChainLevelDecoder())
+                .RegisterDecoder(typeof(LogEntry), new LogEntryDecoder())
+                .RegisterDecoder(typeof(Hash256), new KeccakDecoder())
+                .RegisterDecoder(typeof(BlockHeader), new HeaderDecoder())
+                .RegisterDecoder(typeof(Withdrawal), new WithdrawalDecoder())
+                .RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Storage), new CompactReceiptStorageDecoder())
+                .RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), new ReceiptArrayStorageDecoder())
+                .RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Default), new ReceiptMessageDecoder())
+                .RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Trie), new ReceiptMessageDecoder())
+                .RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+            _defaultRegistry = _builder.Build();
+#endif
         }
 
         /// <summary>
@@ -80,29 +102,29 @@ namespace Nethermind.Serialization.Rlp
 
         public int Length => Bytes.Length;
 
-        private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
-        private static Lock _decoderLock = new();
+        private static IRlpDecoderRegistry _defaultRegistry;
+        private static RlpDecoderRegistryBuilder _builder = new();
 
-        public static void ResetDecoders()
+        /// <summary>
+        /// The default <see cref="IRlpDecoderRegistry"/> instance.
+        /// Set initially from the base assembly, then replaced by <c>InitTxTypesAndRlp</c>
+        /// with a complete registry including network and plugin decoders.
+        /// </summary>
+        public static IRlpDecoderRegistry DefaultRegistry
         {
-            using Lock.Scope _ = _decoderLock.EnterScope();
-            _decoderBuilder.Clear();
-            _decodersSnapshot = null;
-            RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
-            RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+            get => _defaultRegistry;
+            set => _defaultRegistry = value;
         }
 
+        /// <summary>
+        /// Registers a decoder in the default registry. Rebuilds the frozen registry.
+        /// Prefer using <see cref="RlpDecoderRegistryBuilder"/> directly for batch registration.
+        /// </summary>
         public static void RegisterDecoder(RlpDecoderKey key, IRlpDecoder decoder)
         {
-            using Lock.Scope _ = _decoderLock.EnterScope();
-            _decoderBuilder[key] = decoder;
-            _decodersSnapshot = null;
+            _builder.RegisterDecoder(key, decoder);
+            _defaultRegistry = _builder.Build();
         }
-
-        public static partial void RegisterDecoders(
-            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.Interfaces)]
-            Assembly assembly,
-            bool canOverrideExistingDecoders = false);
 
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => Decode<T>(oldRlp.Bytes.AsSpan(), rlpBehaviors);
@@ -156,9 +178,9 @@ namespace Nethermind.Serialization.Rlp
             return span.ToPooledList();
         }
 
-        public static IRlpValueDecoder<T>? GetValueDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpValueDecoder<T> : null;
-        public static IRlpStreamEncoder<T>? GetStreamEncoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpStreamEncoder<T> : null;
-        public static IRlpObjectDecoder<T> GetObjectDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.GetValueOrDefault(new(typeof(T), key)) as IRlpObjectDecoder<T> ?? throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+        public static IRlpValueDecoder<T>? GetValueDecoder<T>(string key = RlpDecoderKey.Default) => DefaultRegistry.GetValueDecoder<T>(key);
+        public static IRlpStreamEncoder<T>? GetStreamEncoder<T>(string key = RlpDecoderKey.Default) => DefaultRegistry.GetStreamEncoder<T>(key);
+        public static IRlpObjectDecoder<T> GetObjectDecoder<T>(string key = RlpDecoderKey.Default) => DefaultRegistry.GetObjectDecoder<T>(key);
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {

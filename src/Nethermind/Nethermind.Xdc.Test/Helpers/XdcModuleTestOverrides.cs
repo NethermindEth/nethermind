@@ -13,9 +13,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Xdc.Contracts;
@@ -24,7 +22,6 @@ using Nethermind.Xdc.Types;
 using NSubstitute;
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading.Tasks;
 using Module = Autofac.Module;
 
@@ -75,13 +72,6 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             ;
 
 
-        // Yep... this global thing need to work.
-        builder.RegisterBuildCallback((_) =>
-        {
-            var assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
-            if (assembly is not null)
-                Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
-        });
     }
 
     internal class RandomPenaltyHandler(ISpecProvider specProvider) : IPenaltyHandler

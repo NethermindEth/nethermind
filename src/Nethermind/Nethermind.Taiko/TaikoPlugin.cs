@@ -51,6 +51,9 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     private TaikoNethermindApi? _api;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
+    public void InitTxTypesAndRlpDecoders(INethermindApi api, RlpDecoderRegistryBuilder rlpBuilder) =>
+        rlpBuilder.RegisterDecoders(typeof(TaikoPlugin).Assembly);
+
     public Task Init(INethermindApi api)
     {
         _api = (TaikoNethermindApi)api;
@@ -201,11 +204,6 @@ public class TaikoModule : Module
             // TDX attestation (enabled with Surge.TdxEnabled) 
             .AddModule(new TdxModule())
 
-            // Need to set the rlp globally
-            .OnBuild(ctx =>
-            {
-                Rlp.RegisterDecoder(typeof(L1Origin), ctx.Resolve<RlpValueDecoder<L1Origin>>());
-            })
             ;
     }
 
