@@ -81,12 +81,6 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
         return header;
     }
 
-    public BlockHeader? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        Rlp.ValueDecoderContext ctx = rlpStream.Data.AsSpan().AsRlpValueContext();
-        return Decode(ref ctx, rlpBehaviors);
-    }
-
     public void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
