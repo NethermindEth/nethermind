@@ -66,6 +66,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
+        private readonly IBlockAccessListBuilder? _balBuilder;
 
         [Flags]
         protected enum ExecutionOptions
@@ -126,6 +127,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
+            _balBuilder = worldState as IBlockAccessListBuilder;
             _blobBaseFeeCalculator = blobBaseFeeCalculator;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
@@ -303,9 +305,15 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple))!;
 
-                if (!IsValidForExecution(authTuple, accessTracker, out string? error))
+                AuthorizationTupleResult authorizationResult = IsValidForExecution(authTuple, accessTracker, spec, out string? error);
+                if (authorizationResult != AuthorizationTupleResult.Valid)
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
+
+                    if (_balBuilder is not null && _balBuilder.TracingEnabled && IncludeAccountRead(authorizationResult))
+                    {
+                        _balBuilder.AddAccountRead(authority);
+                    }
                 }
                 else
                 {
@@ -324,52 +332,66 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             return refunds;
+        }
 
-            bool IsValidForExecution(
-                AuthorizationTuple authorizationTuple,
-                StackAccessTracker accessTracker,
-                [NotNullWhen(false)] out string? error)
+        private static bool IncludeAccountRead(in AuthorizationTupleResult res)
+            => res is AuthorizationTupleResult.IncorrectNonce or AuthorizationTupleResult.InvalidAsCodeDeployed;
+
+        private enum AuthorizationTupleResult
+        {
+            Valid,
+            IncorrectNonce,
+            InvalidNonce,
+            InvalidChainId,
+            InvalidSignature,
+            InvalidAsCodeDeployed
+        }
+
+        private AuthorizationTupleResult IsValidForExecution(
+            AuthorizationTuple authorizationTuple,
+            in StackAccessTracker accessTracker,
+            IReleaseSpec spec,
+            [NotNullWhen(false)] out string? error)
+        {
+            if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
             {
-                if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
-                {
-                    error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
-                    return false;
-                }
-
-                if (authorizationTuple.Nonce == ulong.MaxValue)
-                {
-                    error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
-                    return false;
-                }
-
-                UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
-                if (authorizationTuple.Authority is null
-                    || s > Secp256K1Curve.HalfN
-                    //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
-                    || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
-                {
-                    error = "Bad signature.";
-                    return false;
-                }
-
-                accessTracker.WarmUp(authorizationTuple.Authority);
-
-                if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
-                {
-                    error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
-                    return false;
-                }
-
-                UInt256 authNonce = WorldState.GetNonce(authorizationTuple.Authority);
-                if (authNonce != authorizationTuple.Nonce)
-                {
-                    error = $"Skipping tuple in authorization_list because nonce is set to {authorizationTuple.Nonce}, but authority ({authorizationTuple.Authority}) has {authNonce}.";
-                    return false;
-                }
-
-                error = null;
-                return true;
+                error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
+                return AuthorizationTupleResult.InvalidChainId;
             }
+
+            if (authorizationTuple.Nonce == ulong.MaxValue)
+            {
+                error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
+                return AuthorizationTupleResult.InvalidNonce;
+            }
+
+            UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
+            if (authorizationTuple.Authority is null
+                || s > Secp256K1Curve.HalfN
+                //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
+                || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
+            {
+                error = "Bad signature.";
+                return AuthorizationTupleResult.InvalidSignature;
+            }
+
+            accessTracker.WarmUp(authorizationTuple.Authority);
+
+            if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
+            {
+                error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
+                return AuthorizationTupleResult.InvalidAsCodeDeployed;
+            }
+
+            UInt256 authNonce = WorldState.GetNonce(authorizationTuple.Authority);
+            if (authNonce != authorizationTuple.Nonce)
+            {
+                error = $"Skipping tuple in authorization_list because nonce is set to {authorizationTuple.Nonce}, but authority ({authorizationTuple.Authority}) has {authNonce}.";
+                return AuthorizationTupleResult.IncorrectNonce;
+            }
+
+            error = null;
+            return AuthorizationTupleResult.Valid;
         }
 
         protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;

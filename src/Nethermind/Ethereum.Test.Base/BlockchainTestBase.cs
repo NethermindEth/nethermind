@@ -89,7 +89,7 @@ public abstract class BlockchainTestBase
         List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
             isEngineTest ?
             [((ForkActivation)0, test.Network)] :
-            [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+            [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
         if (test.NetworkAfterTransition is not null)
         {
@@ -312,7 +312,7 @@ public abstract class BlockchainTestBase
 
     private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule)
     {
-        (ExecutionPayloadV3, string[]?, string[]?, int, int)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
+        (ExecutionPayloadV4, string[]?, string[]?, int, int)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
 
         // blockchain test engine
         foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, int newPayloadVersion, int fcuVersion) in payloads)

@@ -52,6 +52,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<ICodeInfoRepository, CacheCodeInfoRepository>()
                 .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
             .AddScoped<IWorldState, WorldState>()
+            .AddDecorator<IWorldState, ParallelWorldState>()
             .AddScoped<IVirtualMachine, EthereumVirtualMachine>()
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
             .AddSingleton<IBlockhashCache, BlockhashCache>()

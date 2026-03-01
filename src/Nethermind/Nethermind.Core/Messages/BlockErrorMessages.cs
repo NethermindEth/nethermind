@@ -150,6 +150,21 @@ public static class BlockErrorMessages
     public static string ExceededBlockSizeLimit(int limit) =>
         $"ExceededBlockSizeLimit: Exceeded block size limit of {limit} bytes.";
 
+    public const string MissingBlockLevelAccessList = "MissingBlockLevelAccessList: Must be present in block body.";
+
+    public const string MissingBlockLevelAccessListHash = "MissingBlockLevelAccessListHash: Must be present in block header.";
+
+    public const string InvalidBlockLevelAccessList =
+        $"InvalidBlockLevelAccessList: Unable to decode.";
+
+    public const string BlockLevelAccessListNotEnabled =
+        "BlockLevelAccessListNotEnabled: Block body cannot have block level access list.";
+
+    public const string BlockLevelAccessListHashNotEnabled =
+        "BlockLevelAccessListHashNotEnabled: Block header cannot have block level access list hash.";
+    public static string InvalidBlockLevelAccessListHash(Hash256 expected, Hash256 actual) =>
+        $"InvalidBlockLevelAccessListHash: Expected {expected}, got {actual}";
+
     public static string ReceiptCountMismatch(int expectedCount, int actualCount) =>
         $"ReceiptCountMismatch: Expected {expectedCount} receipts to match transaction count, but got {actualCount}.";
 }

@@ -36,6 +36,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IBlockStore, BlockStore>()
             .AddSingleton<IReceiptStorage, PersistentReceiptStorage>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
+            .AddSingleton<IBlockAccessListStore, IDb>(CreateBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
             .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
@@ -83,8 +84,9 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
                 Bloom.ByteLength);
     }
 
-    private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig)
-    {
-        return new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100);
-    }
+    private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig) =>
+        new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100);
+
+    private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb) =>
+        new BlockAccessListStore(balDb);
 }

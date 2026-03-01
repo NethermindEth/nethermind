@@ -1518,6 +1518,45 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
+            public ushort DecodeUShort()
+            {
+                int prefix = ReadByte();
+
+                switch (prefix)
+                {
+                    case 0:
+                        throw new RlpException($"Non-canonical ushort (leading zero bytes) at position {Position}");
+                    case < 128:
+                        return (ushort)prefix;
+                    case 128:
+                        return 0;
+                }
+
+                int length = prefix - 128;
+                if (length > 8)
+                {
+                    throw new RlpException($"Unexpected length of ushort value: {length}");
+                }
+
+                ushort result = 0;
+                for (int i = 2; i > 0; i--)
+                {
+                    result <<= 8;
+                    if (i <= length)
+                    {
+                        result |= PeekByte(length - i);
+                        if (result == 0)
+                        {
+                            throw new RlpException($"Non-canonical ushort (leading zero bytes) at position {Position}");
+                        }
+                    }
+                }
+
+                SkipBytes(length);
+
+                return result;
+            }
+
             public byte DecodeByte()
             {
                 byte byteValue = PeekByte();
@@ -1667,6 +1706,8 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static int LengthOf(int value) => LengthOf((long)value);
+
+        public static int LengthOf(ushort value) => LengthOf((long)value);
 
         public static int LengthOf(Hash256? item) => item is null ? 1 : 33;
 
