@@ -72,17 +72,19 @@ Follow these steps in order. At each checkpoint, list your findings for that cat
 
 1. **Scope** — Run Phase 1 recon (see Operational constraints). List every changed file grouped by project, noting which were skipped and why. Note which review categories apply.
 2. **Checkpoint: scope** — Report file list and applicable categories.
-3. **Project rules check** — For small files: read and check against all `.claude/rules/` rule files. See "Project rules check" section below. Large files: checked by subagents (Step 4b).
-4. **Checkpoint: rules** — List every rule violation with file:line, or state "no violations" per category.
-5. **Domain checks** — Apply all domain review sections below as applicable. Large files: checked by subagents (Step 4b). Collect all subagent findings before proceeding.
-6. **Checkpoint: domain** — List every domain finding, or state "no findings" per category.
-7. **Verification pass** — Treat each finding from steps 4 and 6 — including subagent findings — as a hypothesis. For each one:
+3. **Load all project rules** — **MANDATORY.** Use `Glob` to list every `.md` file in `.claude/rules/`, then `Read` them all in a single parallel batch. Do not rely on auto-loading — conditional `paths:` filters may silently fail to trigger. After reading, list each rule file with: (a) filename, (b) whether it has a `paths:` filter and what it matches, (c) whether it is relevant to the files in scope.
+4. **Checkpoint: rules loaded** — Present the full table of rule files and their relevance status. Any rule file that was not successfully read is a blocker — retry before proceeding.
+5. **Project rules check** — For small files: check the diff against every loaded rule file. See "Project rules check" section below. Large files: checked by subagents (Step 4b).
+6. **Checkpoint: rules violations** — List every rule violation with file:line, or state "no violations" per category.
+7. **Domain checks** — Apply all domain review sections below as applicable. Large files: checked by subagents (Step 4b). Collect all subagent findings before proceeding.
+8. **Checkpoint: domain** — List every domain finding, or state "no findings" per category.
+9. **Verification pass** — Treat each finding from steps 6 and 8 — including subagent findings — as a hypothesis. For each one:
    1. Identify what specific evidence would **falsify** it.
    2. Check for that evidence.
    3. State **KEEP** or **DROP** (verdict first, then rationale).
    4. If DROP, state what falsified it.
    Only findings that survive this step appear in the final report.
-8. **Final report** — Compile surviving findings into the report template at the bottom.
+10. **Final report** — Compile surviving findings into the report template at the bottom.
 
 ---
 
@@ -104,9 +106,9 @@ Also skip: naming conventions, missing XML docs on `internal`/`private` members,
 
 ---
 
-## Step 2: Project rules check
+## Step 5: Project rules check
 
-For every changed file, check the diff against every rule file in `.claude/rules/`. Each rule file defines conventions for a specific concern (DI patterns, coding style, robustness, performance, package management, etc.). Read the rule files if you haven't already, then verify the diff complies with each one.
+For every changed file, check the diff against every rule file loaded in step 3. Each rule file defines conventions for a specific concern (DI patterns, coding style, robustness, performance, package management, etc.). All rule files must already be loaded from step 3 — if any are missing, go back and load them before proceeding.
 
 **Reminder: You must report findings for every rule category, even if the finding is "no violations". Do not skip any.**
 
