@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -118,11 +119,13 @@ namespace Nethermind.State
             return _stateProvider.IsContract(address);
         }
 
+        [SkipLocalsInit]
         public StorageValue GetOriginal(in StorageCell storageCell)
         {
             DebugGuardInScope();
             return _persistentStorageProvider.GetOriginal(storageCell);
         }
+        [SkipLocalsInit]
         public StorageValue Get(in StorageCell storageCell)
         {
             DebugGuardInScope();
@@ -133,6 +136,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             _persistentStorageProvider.Set(storageCell, newValue);
         }
+        [SkipLocalsInit]
         public StorageValue GetTransientState(in StorageCell storageCell)
         {
             DebugGuardInScope();
