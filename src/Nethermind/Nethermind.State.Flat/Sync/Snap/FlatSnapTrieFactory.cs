@@ -25,7 +25,7 @@ public class FlatSnapTrieFactory(IPersistence persistence, ILogManager logManage
         EnsureDatabaseCleared();
 
         IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
-        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState, WriteFlags.DisableWAL);
+        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         return new FlatSnapStateTree(reader, writeBatch, logManager);
     }
 
@@ -34,7 +34,7 @@ public class FlatSnapTrieFactory(IPersistence persistence, ILogManager logManage
         EnsureDatabaseCleared();
 
         IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
-        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState, WriteFlags.DisableWAL);
+        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), logManager);
     }
 
