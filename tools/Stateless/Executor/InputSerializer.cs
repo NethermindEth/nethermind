@@ -22,12 +22,8 @@ public static class InputSerializer
         var headersLen = GetSerializedLength(witness.Headers);
         var keysLen = GetSerializedLength(witness.Keys);
         var stateLen = GetSerializedLength(witness.State);
-        var outputLen = sizeof(uint) + // chain id
-            sizeof(int) + blockLen +   // length | block
-            sizeof(int) + codesLen +   // length | codes 
-            sizeof(int) + headersLen + // length | headers
-            sizeof(int) + keysLen +    // length | keys
-            sizeof(int) + stateLen;    // length | state
+        var outputLen = MinSerializedLength +
+            blockLen + codesLen + headersLen + keysLen + stateLen;
 
         byte[] output = GC.AllocateUninitializedArray<byte>(outputLen);
         var offset = 0;
@@ -53,7 +49,7 @@ public static class InputSerializer
 
     public static (Block, Witness, uint) Deserialize(ReadOnlySpan<byte> input)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(input.Length, sizeof(int));
+        ArgumentOutOfRangeException.ThrowIfLessThan(input.Length, MinSerializedLength);
 
         var offset = 0;
         var chainId = ReadUInt32(input, ref offset);
@@ -174,4 +170,12 @@ public static class InputSerializer
 
         return len;
     }
+
+    private static int MinSerializedLength =>
+        sizeof(uint) + // chain id
+        sizeof(int) +  // block length
+        sizeof(int) +  // codes length
+        sizeof(int) +  // headers length
+        sizeof(int) +  // keys length
+        sizeof(int);   // state length
 }
