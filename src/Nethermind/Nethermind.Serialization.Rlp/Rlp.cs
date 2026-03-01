@@ -21,6 +21,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.Serialization.Rlp
 {
+    public delegate T DecodeRlpValue<T>(ref Rlp.ValueDecoderContext ctx);
+
     /// <summary>
     ///     https://github.com/ethereum/wiki/wiki/RLP
     ///
@@ -1568,6 +1570,60 @@ namespace Nethermind.Serialization.Rlp
                     else
                     {
                         result[i] = decoder.Decode(ref this);
+                    }
+                }
+
+                if (checkPositions)
+                {
+                    Check(positionCheck);
+                }
+
+                return result;
+            }
+
+            public T[] DecodeArray<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+            {
+                int positionCheck = ReadSequenceLength() + Position;
+                int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
+                GuardLimit(count, limit);
+                T[] result = new T[count];
+                for (int i = 0; i < result.Length; i++)
+                {
+                    if (PeekByte() == OfEmptyList[0])
+                    {
+                        result[i] = defaultElement;
+                        Position++;
+                    }
+                    else
+                    {
+                        result[i] = decodeItem(ref this);
+                    }
+                }
+
+                if (checkPositions)
+                {
+                    Check(positionCheck);
+                }
+
+                return result;
+            }
+
+            public ArrayPoolList<T> DecodeArrayPoolList<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+            {
+                int positionCheck = ReadSequenceLength() + Position;
+                int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
+                GuardLimit(count, limit);
+                ArrayPoolList<T> result = new(count, count);
+                for (int i = 0; i < result.Count; i++)
+                {
+                    if (PeekByte() == OfEmptyList[0])
+                    {
+                        result[i] = defaultElement;
+                        Position++;
+                    }
+                    else
+                    {
+                        result[i] = decodeItem(ref this);
                     }
                 }
 
