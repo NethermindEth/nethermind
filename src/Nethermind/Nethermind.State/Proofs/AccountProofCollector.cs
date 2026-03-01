@@ -128,11 +128,14 @@ namespace Nethermind.State.Proofs
             _accountProof.Proof = _accountProofItems.ToArray();
             for (int i = 0; i < _storageProofItems.Length; i++)
             {
-                _accountProof.StorageProofs[i].Proof = _storageProofItems[i].ToArray();
+                _accountProof.StorageProofs![i].Proof = _storageProofItems[i].ToArray();
             }
 
             return _accountProof;
         }
+
+        public (IReadOnlyList<byte[]> AccountProof, IReadOnlyList<byte[]>[] StorageProof) GetRawResult()
+            => (_accountProofItems, _storageProofItems);
 
         public bool IsFullDbScan => false;
 

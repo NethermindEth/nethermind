@@ -669,6 +669,7 @@
       "nethermind.consensus": {
         "type": "Project",
         "dependencies": {
+          "Collections.Pooled": "[1.0.82, )",
           "Nethermind.Blockchain": "[1.37.0-unstable, )",
           "Nethermind.Config": "[1.37.0-unstable, )",
           "Nethermind.Core": "[1.37.0-unstable, )",
