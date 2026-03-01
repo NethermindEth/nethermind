@@ -144,7 +144,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-#if !ZKVM
+#if !ZK_EVM
     virtual
 #endif
     public TransactionSubstate ExecuteTransaction<TTracingInst>(
@@ -1175,7 +1175,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
     [SkipLocalsInit]
-#if !ZKVM
+#if !ZK_EVM
     virtual
 #endif
     protected CallResult RunByteCode<TTracingInst, TCancelable>(

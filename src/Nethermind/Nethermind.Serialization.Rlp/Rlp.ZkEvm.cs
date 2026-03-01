@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#if ZKVM
+#if ZK_EVM
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -35,7 +35,7 @@ public partial class Rlp
 
     public static partial void RegisterDecoders(Assembly assembly,bool canOverrideExistingDecoders)
     {
-        // Under ZKVM/bflat AOT we cannot rely on reflection-based auto-discovery of decoders
+        // Under ZK_EVM/bflat AOT we cannot rely on reflection-based auto-discovery of decoders
         // (CustomAttribute instantiation can trigger TypeLoader failures).
         // Register the required decoders explicitly instead.
         RegisterDecoder(typeof(Account), new AccountDecoder());
