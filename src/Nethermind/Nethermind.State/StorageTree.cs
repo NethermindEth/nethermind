@@ -97,14 +97,14 @@ namespace Nethermind.State
             return new BulkSetEntry(in key, encodedValue);
         }
 
-        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, StorageValue value)
+        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, in StorageValue value)
         {
             if (value.IsZero)
             {
                 return new BulkSetEntry(in key, []);
             }
 
-            return new BulkSetEntry(in key, RlpEncodeStorageValue(value));
+            return new BulkSetEntry(in key, RlpEncodeStorageValue(in value));
         }
 
         [SkipLocalsInit]
@@ -226,28 +226,28 @@ namespace Nethermind.State
         }
 
         [SkipLocalsInit]
-        public void Set(in UInt256 index, StorageValue value)
+        public void Set(in UInt256 index, in StorageValue value)
         {
             ValueHash256[] lookup = Lookup;
             ulong u0 = index.u0;
             if (index.IsUint64 && u0 < (uint)lookup.Length)
             {
-                SetInternal(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), value);
+                SetInternal(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), in value);
             }
             else
             {
-                SetWithKeyGenerate(in index, value);
+                SetWithKeyGenerate(in index, in value);
             }
 
             [SkipLocalsInit]
-            void SetWithKeyGenerate(in UInt256 index, StorageValue value)
+            void SetWithKeyGenerate(in UInt256 index, in StorageValue value)
             {
                 ComputeKey(index, out ValueHash256 key);
-                SetInternal(in key, value);
+                SetInternal(in key, in value);
             }
         }
 
-        private void SetInternal(in ValueHash256 hash, StorageValue value)
+        private void SetInternal(in ValueHash256 hash, in StorageValue value)
         {
             ReadOnlySpan<byte> rawKey = hash.Bytes;
             if (value.IsZero)
@@ -256,7 +256,7 @@ namespace Nethermind.State
             }
             else
             {
-                byte[] rlpEncoded = RlpEncodeStorageValue(value);
+                byte[] rlpEncoded = RlpEncodeStorageValue(in value);
                 Set(rawKey, rlpEncoded);
             }
         }
@@ -266,7 +266,7 @@ namespace Nethermind.State
         /// avoiding the intermediate byte[] from ToEvmBytes() and the Rlp wrapper.
         /// </summary>
         [SkipLocalsInit]
-        private static byte[] RlpEncodeStorageValue(StorageValue value)
+        private static byte[] RlpEncodeStorageValue(in StorageValue value)
         {
             ReadOnlySpan<byte> trimmed = value.AsReadOnlySpan.WithoutLeadingZeros();
             int rlpLength = Rlp.LengthOf(trimmed);

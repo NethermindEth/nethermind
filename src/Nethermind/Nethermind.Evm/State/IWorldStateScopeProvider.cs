@@ -115,7 +115,7 @@ public interface IWorldStateScopeProvider
 
     public interface IStorageWriteBatch : IDisposable
     {
-        void Set(in UInt256 index, StorageValue value);
+        void Set(in UInt256 index, in StorageValue value);
 
         /// <summary>
         /// Self-destruct. Maybe costly. Must be called first.

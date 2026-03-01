@@ -144,9 +144,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch,
         FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        public void Set(in UInt256 index, StorageValue value)
+        public void Set(in UInt256 index, in StorageValue value)
         {
-            storageTreeBulkWriteBatch.Set(in index, value);
+            storageTreeBulkWriteBatch.Set(in index, in value);
             storageTree.Set(in index, in value);
         }
 
