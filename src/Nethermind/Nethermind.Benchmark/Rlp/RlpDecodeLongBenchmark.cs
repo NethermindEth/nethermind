@@ -58,13 +58,15 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark]
         public long Improved()
         {
-            return new RlpStream(_value).DecodeLong();
+            Serialization.Rlp.Rlp.ValueDecoderContext ctx = new(_value);
+            return ctx.DecodeLong();
         }
 
         [Benchmark]
         public long Current()
         {
-            return new RlpStream(_value).DecodeLong();
+            Serialization.Rlp.Rlp.ValueDecoderContext ctx = new(_value);
+            return ctx.DecodeLong();
         }
     }
 }
