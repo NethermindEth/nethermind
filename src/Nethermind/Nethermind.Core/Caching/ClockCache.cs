@@ -15,7 +15,7 @@ namespace Nethermind.Core.Caching;
 public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition = null, IEqualityComparer<TKey>? comparer = null) : ClockCacheBase<TKey>(maxCapacity)
     where TKey : struct, IEquatable<TKey>
 {
-#if ZKVM
+#if ZK_EVM
     private readonly int? _lockPartition = lockPartition;
     private readonly Dictionary<TKey, LruCacheItem> _cacheMap = new(maxCapacity, comparer ?? throw new ArgumentNullException(nameof(comparer)));
     private readonly MockLock _lock = new();

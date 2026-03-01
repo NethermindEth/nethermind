@@ -9,7 +9,7 @@ zisk-sim: build-tool-local build-zisk-sim execute-zisk-sim execute-zisk-qemu
 zisk: build-tool-local build-zisk execute-zisk
 
 build-tool-local:
-	dotnet build -c release -p:EnableZkvm=true
+	dotnet build -c release -p:EnableZkEvm=true
 
 run-docker:
 	docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk  /bin/bash
@@ -19,7 +19,7 @@ build-zisk:
 	rm -f Program.patched; \
 	rm -f Program.o; \
 	./docker_build.sh bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk \
-		-d ZKVM \
+		-d ZK_EVM \
 		--nostdlibrefs \
 		--no-stacktrace-data \
 		--no-globalization \
@@ -81,7 +81,7 @@ build-zisk:
 build-zisk-sim:
 	rm -f Program; \
 	./docker_build.sh bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk_sim \
-		-d ZKVM \
+		-d ZK_EVM \
 		--nostdlibrefs \
 		--no-stacktrace-data \
 		--no-globalization \

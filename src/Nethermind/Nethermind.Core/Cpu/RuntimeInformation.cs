@@ -22,7 +22,7 @@ public static class RuntimeInformation
 
     public static CpuInfo? GetCpuInfo()
     {
-#if !ZKVM
+#if !ZK_EVM
         if (IsWindows())
             return WmicCpuInfoProvider.WmicCpuInfo.Value;
         if (IsLinux())
