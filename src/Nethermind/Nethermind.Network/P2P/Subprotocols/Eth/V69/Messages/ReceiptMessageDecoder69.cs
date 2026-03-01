@@ -12,16 +12,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 [Rlp.SkipGlobalRegistration] // Created explicitly
 public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : RlpValueDecoder<TxReceipt>
 {
-    protected override TxReceipt? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new(span);
-        TxReceipt response = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return response;
-    }
-
     protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (ctx.IsNextItemEmptyList())

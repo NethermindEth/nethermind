@@ -18,15 +18,6 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
 {
     private readonly bool _skipStateAndStatus = skipStateAndStatus;
 
-    protected override OptimismTxReceipt DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new(span);
-        OptimismTxReceipt result = DecodeInternal(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-        return result;
-    }
-
     protected override OptimismTxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         OptimismTxReceipt txReceipt = new();

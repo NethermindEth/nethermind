@@ -13,15 +13,6 @@ public sealed class L1OriginDecoder : RlpValueDecoder<L1Origin>
     const int BuildPayloadArgsIdLength = 8;
     internal const int SignatureLength = 65;
 
-    protected override L1Origin DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new(span);
-        L1Origin result = DecodeInternal(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-        return result;
-    }
-
     protected override L1Origin DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         (int _, int contentLength) = decoderContext.ReadPrefixAndContentLength();

@@ -57,26 +57,6 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        protected override Account? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            int length = rlpStream.ReadSequenceLength();
-            if (length == 1)
-            {
-                return null;
-            }
-
-            UInt256 nonce = rlpStream.DecodeUInt256();
-            UInt256 balance = rlpStream.DecodeUInt256();
-            Hash256 storageRoot = DecodeStorageRoot(rlpStream);
-            Hash256 codeHash = DecodeCodeHash(rlpStream);
-            if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
-            {
-                return new(nonce, balance);
-            }
-
-            return new(nonce, balance, storageRoot, codeHash);
-        }
-
         public override void Encode(RlpStream stream, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)

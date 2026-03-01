@@ -66,44 +66,6 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
 
     public void RegisterDecoder(TxType type, ITxDecoder decoder) => _decoders[(int)type] = decoder;
 
-    protected override T? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        static void ThrowIfLegacy(TxType txType1)
-        {
-            if (txType1 == TxType.Legacy)
-            {
-                throw new RlpException("Legacy transactions are not allowed in EIP-2718 Typed Transaction Envelope");
-            }
-        }
-
-        if (rlpStream.IsNextItemEmptyList())
-        {
-            rlpStream.ReadByte();
-            return null;
-        }
-
-        Span<byte> transactionSequence = rlpStream.PeekNextItem();
-        TxType txType = TxType.Legacy;
-        if (rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping))
-        {
-            if (rlpStream.PeekByte() <= Transaction.MaxTxType) // it is typed transactions
-            {
-                transactionSequence = rlpStream.Peek(rlpStream.Length);
-                txType = (TxType)rlpStream.ReadByte(); // read tx type
-                ThrowIfLegacy(txType);
-            }
-        }
-        else if (!rlpStream.IsSequenceNext())
-        {
-            (int _, int contentLength) = rlpStream.ReadPrefixAndContentLength();
-            transactionSequence = rlpStream.Peek(contentLength);
-            txType = (TxType)rlpStream.ReadByte();
-            ThrowIfLegacy(txType);
-        }
-
-        return (T)GetDecoder(txType).Decode(transactionSequence, rlpStream, rlpBehaviors);
-    }
-
     private ITxDecoder GetDecoder(TxType txType) =>
         _decoders.TryGetByTxType(txType, out ITxDecoder decoder)
             ? decoder

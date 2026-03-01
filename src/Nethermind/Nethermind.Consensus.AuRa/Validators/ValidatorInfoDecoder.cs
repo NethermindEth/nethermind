@@ -8,15 +8,6 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     internal sealed class ValidatorInfoDecoder : RlpValueDecoder<ValidatorInfo>, IRlpObjectDecoder<ValidatorInfo>
     {
-        protected override ValidatorInfo? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            System.Span<byte> span = rlpStream.PeekNextItem();
-            Rlp.ValueDecoderContext ctx = new(span);
-            ValidatorInfo? result = DecodeInternal(ref ctx, rlpBehaviors);
-            rlpStream.SkipItem();
-            return result;
-        }
-
         protected override ValidatorInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())

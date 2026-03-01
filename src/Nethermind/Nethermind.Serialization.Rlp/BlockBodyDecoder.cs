@@ -108,16 +108,6 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
         return new BlockBody(transactions, uncles, withdrawals);
     }
 
-    protected override BlockBody DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(span);
-        BlockBody response = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return response;
-    }
-
     public override void Encode(RlpStream stream, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetBodyLength(body));

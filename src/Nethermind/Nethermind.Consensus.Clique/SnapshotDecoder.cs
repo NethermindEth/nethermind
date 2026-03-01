@@ -11,15 +11,6 @@ namespace Nethermind.Consensus.Clique
 {
     internal sealed class SnapshotDecoder : RlpValueDecoder<Snapshot>
     {
-        protected override Snapshot DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            System.Span<byte> span = rlpStream.PeekNextItem();
-            Rlp.ValueDecoderContext ctx = new(span);
-            Snapshot result = DecodeInternal(ref ctx, rlpBehaviors);
-            rlpStream.SkipItem();
-            return result;
-        }
-
         protected override Snapshot DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.ReadSequenceLength();

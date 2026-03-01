@@ -90,6 +90,15 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        protected override T DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            Span<byte> span = rlpStream.PeekNextItem();
+            Rlp.ValueDecoderContext ctx = new(span);
+            T result = DecodeInternal(ref ctx, rlpBehaviors);
+            rlpStream.SkipItem();
+            return result;
+        }
+
         protected abstract T DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 }

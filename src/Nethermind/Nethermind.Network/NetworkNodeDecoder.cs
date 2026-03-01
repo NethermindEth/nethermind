@@ -19,15 +19,6 @@ namespace Nethermind.Network
             Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
         }
 
-        protected override NetworkNode DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            Span<byte> span = rlpStream.PeekNextItem();
-            Rlp.ValueDecoderContext ctx = new(span);
-            NetworkNode result = DecodeInternal(ref ctx, rlpBehaviors);
-            rlpStream.SkipItem();
-            return result;
-        }
-
         protected override NetworkNode DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.ReadSequenceLength();

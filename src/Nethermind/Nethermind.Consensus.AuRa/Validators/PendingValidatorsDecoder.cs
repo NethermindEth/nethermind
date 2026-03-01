@@ -9,15 +9,6 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     internal sealed class PendingValidatorsDecoder : RlpValueDecoder<PendingValidators>, IRlpObjectDecoder<PendingValidators>
     {
-        protected override PendingValidators DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            System.Span<byte> span = rlpStream.PeekNextItem();
-            Rlp.ValueDecoderContext ctx = new(span);
-            PendingValidators result = DecodeInternal(ref ctx, rlpBehaviors);
-            rlpStream.SkipItem();
-            return result;
-        }
-
         protected override PendingValidators DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())

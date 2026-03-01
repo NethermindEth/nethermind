@@ -37,32 +37,6 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
         return new Timeout(round, signature, gapNumber);
     }
 
-    protected override Timeout DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemEmptyList())
-        {
-            rlpStream.ReadByte();
-            return null;
-        }
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        int endPosition = rlpStream.Position + sequenceLength;
-
-        ulong round = rlpStream.DecodeULong();
-
-        Signature signature = null;
-        if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
-        {
-            signature = rlpStream.DecodeSignature();
-        }
-
-        ulong gapNumber = rlpStream.DecodeUlong();
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-            rlpStream.Check(endPosition);
-
-        return new Timeout(round, signature, gapNumber);
-    }
-
     public Rlp Encode(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
