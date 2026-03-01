@@ -846,9 +846,9 @@ public class StorageProviderTests
                 baseStorageBatch?.Dispose();
             }
 
-            public void Set(in UInt256 index, StorageValue value)
+            public void Set(in UInt256 index, in StorageValue value)
             {
-                baseStorageBatch.Set(in index, value);
+                baseStorageBatch.Set(in index, in value);
                 writtenData.Slots[new StorageCell(address, index)] = value.ToEvmBytes();
             }
 

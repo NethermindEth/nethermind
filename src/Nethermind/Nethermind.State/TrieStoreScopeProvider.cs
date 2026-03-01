@@ -244,17 +244,17 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         private ValueHash256 _keyBuff = new ValueHash256();
 
-        public void Set(in UInt256 index, StorageValue value)
+        public void Set(in UInt256 index, in StorageValue value)
         {
             _wasSetCalled = true;
             if (_bulkWrite is null)
             {
-                storageTree.Set(index, value);
+                storageTree.Set(in index, in value);
             }
             else
             {
                 StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
-                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
+                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, in value));
             }
         }
 
