@@ -9,7 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
-using System.IO.Abstractions.TestingHelpers;
+using Testably.Abstractions.Testing;
 
 namespace Nethermind.Evm.Test.Tracing;
 

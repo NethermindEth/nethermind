@@ -17,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -47,7 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             JsonRpcConfig jsonRpcConfig = new();
             jsonRpcConfig.EnabledModules = [];
-            _moduleProvider = new RpcModuleProvider(new FileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
+            _moduleProvider = new RpcModuleProvider(new RealFileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
             _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), false));
             ModuleResolution resolution = _moduleProvider.Check("proof_call", _context);
             Assert.That(resolution, Is.EqualTo(ModuleResolution.Disabled));
@@ -134,7 +135,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             JsonRpcConfig jsonRpcConfig = new();
             jsonRpcConfig.EnabledModules = [ModuleType.Admin];
-            IRpcModuleProvider moduleProvider = new RpcModuleProvider(new FileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), [
+            IRpcModuleProvider moduleProvider = new RpcModuleProvider(new RealFileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), [
                 new RpcModuleInfo(typeof(IEraAdminRpcModule), new SingletonModulePool<IEraAdminRpcModule>(Substitute.For<IEraAdminRpcModule>()))
             ], LimboLogs.Instance);
             ModuleResolution resolution = moduleProvider.Check("admin_exportHistory", _context);
@@ -146,7 +147,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             JsonRpcConfig jsonRpcConfig = new();
             jsonRpcConfig.EnabledModules = [ModuleType.Admin];
-            IRpcModuleProvider moduleProvider = new RpcModuleProvider(new FileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), [
+            IRpcModuleProvider moduleProvider = new RpcModuleProvider(new RealFileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), [
                 new RpcModuleInfo(typeof(IEraAdminRpcModule), new SingletonModulePool<IEraAdminRpcModule>(Substitute.For<IEraAdminRpcModule>()))
             ], LimboLogs.Instance);
 

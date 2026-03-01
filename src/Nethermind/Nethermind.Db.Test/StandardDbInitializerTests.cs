@@ -19,6 +19,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Db.Test
 {
@@ -94,7 +95,7 @@ namespace Nethermind.Db.Test
                 .AddSingleton<IDbConfig>(new DbConfig())
                 .AddSingleton<IInitConfig>(initConfig)
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
-                .AddSingleton<IFileSystem, FileSystem>()
+                .AddSingleton<IFileSystem, RealFileSystem>()
                 .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1))
                 .AddSingleton<IDbProvider, ContainerOwningDbProvider>()
                 .Build();

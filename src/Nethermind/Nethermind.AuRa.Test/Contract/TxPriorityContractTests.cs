@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,6 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.AuRa.Test.Contract
 {
@@ -361,7 +361,7 @@ namespace Nethermind.AuRa.Test.Contract
             protected override Task<TestBlockchain> Build(Action<ContainerBuilder> configurer = null)
             {
                 TempFile = TempPath.GetTempFile();
-                LocalDataSource = new TxPriorityContract.LocalDataSource(TempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, Interval);
+                LocalDataSource = new TxPriorityContract.LocalDataSource(TempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, Interval);
 
                 FileSemaphore = new SemaphoreSlim(0);
                 Semaphore = new SemaphoreSlim(0);
