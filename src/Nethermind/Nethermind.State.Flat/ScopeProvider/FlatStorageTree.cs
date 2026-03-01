@@ -115,7 +115,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public StorageValue Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
 
-    private void Set(UInt256 slot, StorageValue value) => _bundle.SetChangedSlot(_address, slot, value);
+    private void Set(in UInt256 slot, in StorageValue value) => _bundle.SetChangedSlot(_address, in slot, in value);
 
     public void SelfDestruct()
     {
@@ -147,7 +147,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         public void Set(in UInt256 index, StorageValue value)
         {
             storageTreeBulkWriteBatch.Set(in index, value);
-            storageTree.Set(index, value);
+            storageTree.Set(in index, in value);
         }
 
         public void Clear()
