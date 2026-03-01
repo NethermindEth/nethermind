@@ -105,61 +105,15 @@ namespace Nethermind.Serialization.Rlp
             bool canOverrideExistingDecoders = false);
 
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => Decode<T>(oldRlp.Bytes.AsRlpStream(), rlpBehaviors);
+            => Decode<T>(oldRlp.Bytes.AsSpan(), rlpBehaviors);
 
         public static T Decode<T>(byte[]? bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => Decode<T>(bytes.AsRlpStream(), rlpBehaviors);
+            => Decode<T>((bytes ?? []).AsSpan(), rlpBehaviors);
 
         public static T Decode<T>(Span<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             var valueContext = bytes.AsRlpValueContext();
             return Decode<T>(ref valueContext, rlpBehaviors);
-        }
-
-        public static T[] DecodeArray<T>(RlpStream rlpStream, IRlpStreamDecoder<T>? rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
-        {
-            int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
-            int length = rlpStream.PeekNumberOfItemsRemaining(checkPosition);
-            rlpStream.GuardLimit(length, limit);
-            T[] result = new T[length];
-            for (int i = 0; i < result.Length; i++)
-            {
-                result[i] = rlpDecoder.Decode(rlpStream, rlpBehaviors);
-            }
-
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-            {
-                rlpStream.Check(checkPosition);
-            }
-
-            return result;
-        }
-
-        public static ArrayPoolList<T> DecodeArrayPool<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
-        {
-            IRlpStreamDecoder<T>? rlpDecoder = GetStreamDecoder<T>();
-            return rlpDecoder is not null
-                ? DecodeArrayPool(rlpStream, rlpDecoder, rlpBehaviors, limit)
-                : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
-        }
-
-        public static ArrayPoolList<T> DecodeArrayPool<T>(RlpStream rlpStream, IRlpStreamDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
-        {
-            int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
-            int length = rlpStream.PeekNumberOfItemsRemaining(checkPosition);
-            rlpStream.GuardLimit(length, limit);
-            ArrayPoolList<T> result = new(length);
-            for (int i = 0; i < length; i++)
-            {
-                result.Add(rlpDecoder.Decode(rlpStream, rlpBehaviors));
-            }
-
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-            {
-                rlpStream.Check(checkPosition);
-            }
-
-            return result;
         }
 
         internal static byte[] ByteSpanToArray(ReadOnlySpan<byte> span)
@@ -206,22 +160,6 @@ namespace Nethermind.Serialization.Rlp
         public static IRlpStreamDecoder<T>? GetStreamDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpStreamDecoder<T> : null;
         public static IRlpStreamEncoder<T>? GetStreamEncoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpStreamEncoder<T> : null;
         public static IRlpObjectDecoder<T> GetObjectDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.GetValueOrDefault(new(typeof(T), key)) as IRlpObjectDecoder<T> ?? throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
-
-        public static T Decode<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            IRlpStreamDecoder<T>? rlpDecoder = GetStreamDecoder<T>();
-            return Decode<T>(rlpStream, rlpDecoder, rlpBehaviors);
-        }
-        public static T Decode<T>(RlpStream rlpStream, IRlpStreamDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            ArgumentNullException.ThrowIfNull(rlpDecoder, nameof(rlpDecoder));
-            bool shouldCheckStream = rlpStream.Position == 0 && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes;
-            int length = rlpStream.Length;
-            T? result = rlpDecoder.Decode(rlpStream, rlpBehaviors);
-            if (shouldCheckStream)
-                rlpStream.Check(length);
-            return result;
-        }
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
@@ -274,12 +212,12 @@ namespace Nethermind.Serialization.Rlp
                 return rlp;
             }
 
-            IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
-            if (rlpStreamDecoder is not null)
+            IRlpStreamEncoder<T>? rlpStreamEncoder = GetStreamEncoder<T>();
+            if (rlpStreamEncoder is not null)
             {
-                int totalLength = rlpStreamDecoder.GetLength(item, behaviors);
+                int totalLength = rlpStreamEncoder.GetLength(item, behaviors);
                 RlpStream stream = new(totalLength);
-                rlpStreamDecoder.Encode(stream, item, behaviors);
+                rlpStreamEncoder.Encode(stream, item, behaviors);
                 return new Rlp(stream.Data.ToArray());
             }
 
@@ -293,12 +231,12 @@ namespace Nethermind.Serialization.Rlp
                 return OfEmptyList;
             }
 
-            IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
-            if (rlpStreamDecoder is not null)
+            IRlpStreamEncoder<T>? rlpStreamEncoder = GetStreamEncoder<T>();
+            if (rlpStreamEncoder is not null)
             {
-                int totalLength = rlpStreamDecoder.GetLength(items, behaviors);
+                int totalLength = rlpStreamEncoder.GetLength(items, behaviors);
                 RlpStream stream = new(totalLength);
-                rlpStreamDecoder.Encode(stream, items, behaviors);
+                rlpStreamEncoder.Encode(stream, items, behaviors);
                 return new Rlp(stream.Data.ToArray());
             }
 

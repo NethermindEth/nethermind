@@ -63,7 +63,7 @@ namespace Nethermind.Serialization.Rlp
                 WriteByte(Rlp.EmptyListByte);
                 return;
             }
-            IRlpStreamDecoder<T> decoder = Rlp.GetStreamDecoder<T>();
+            IRlpStreamEncoder<T> decoder = Rlp.GetStreamEncoder<T>();
             int contentLength = decoder.GetContentLength(items);
 
             StartSequence(contentLength);
