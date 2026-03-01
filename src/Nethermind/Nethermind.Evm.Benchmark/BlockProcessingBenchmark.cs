@@ -617,7 +617,7 @@ public class BlockProcessingBenchmark
 
     // ── FlatState helper types ───────────────────────────────────────────
 
-    private sealed class BenchmarkFlatDbManager(ResourcePool resourcePool, TrieNodeCache trieNodeCache) : IFlatDbManager
+    internal sealed class BenchmarkFlatDbManager(ResourcePool resourcePool, TrieNodeCache trieNodeCache) : IFlatDbManager
     {
         private readonly Lock _lock = new();
         private readonly List<Nethermind.State.Flat.Snapshot> _snapshots = new();
@@ -689,7 +689,7 @@ public class BlockProcessingBenchmark
         public void FlushCache(CancellationToken cancellationToken) { }
     }
 
-    private sealed class BenchmarkFlatWorldStateManager(
+    internal sealed class BenchmarkFlatWorldStateManager(
         FlatScopeProvider flatScopeProvider,
         BenchmarkFlatDbManager flatDbManager,
         IDb codeDb) : IWorldStateManager
