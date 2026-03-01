@@ -776,7 +776,7 @@ namespace Nethermind.State
 
         private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
         {
-            if (isZero && releaseSpec.IsEip158IgnoredAccount(address)) return;
+            if (isZero && address == releaseSpec.Eip158IgnoredAccount) return;
             Push(address, account, ChangeType.Touch);
         }
 

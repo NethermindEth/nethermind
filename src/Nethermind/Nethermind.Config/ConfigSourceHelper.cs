@@ -17,21 +17,16 @@ namespace Nethermind.Config
     {
         public static object ParseValue(Type valueType, string valueString, string category, string name)
         {
-            if (Nullable.GetUnderlyingType(valueType) is { } nullableType)
-            {
-                return IsNullString(valueString) ? null : ParseValue(nullableType, valueString, category, name);
-            }
-
-            if (!valueType.IsValueType && IsNullString(valueString))
-            {
-                return null;
-            }
-
             try
             {
                 object value;
                 if (valueType.IsArray || (valueType.IsGenericType && valueType.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
                 {
+                    if (IsNullString(valueString))
+                    {
+                        return null;
+                    }
+
                     //supports Arrays, e.g int[] and generic IEnumerable<T>, IList<T>
                     var itemType = valueType.IsGenericType ? valueType.GetGenericArguments()[0] : valueType.GetElementType();
 

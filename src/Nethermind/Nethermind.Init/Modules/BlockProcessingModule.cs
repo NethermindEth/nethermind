@@ -49,7 +49,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             // Block processing components common between rpc, validation and production
             .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
             .AddScoped<ITransactionProcessor, EthereumTransactionProcessor>()
-            .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
+            .AddScoped<ICodeInfoRepository, CacheCodeInfoRepository>()
                 .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
             .AddScoped<IWorldState, WorldState>()
             .AddDecorator<IWorldState, ParallelWorldState>()

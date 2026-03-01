@@ -55,7 +55,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     public IPrecompile? Precompile { get; }
 
-    private readonly JumpDestinationAnalyzer _analyzer;
+    private readonly JumpDestinationAnalyzer? _analyzer;
 
     public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer);
     public bool IsPrecompile => Precompile is not null;
