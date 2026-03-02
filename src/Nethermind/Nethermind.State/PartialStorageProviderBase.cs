@@ -259,6 +259,14 @@ namespace Nethermind.State
         protected StackList<int> SetupRegistry(in StorageCell cell)
         {
             InternalStorageKey ikey = new(in cell);
+            return SetupRegistry(in ikey);
+        }
+
+        /// <summary>
+        /// Initialize the StackList at the storage key position if needed
+        /// </summary>
+        protected StackList<int> SetupRegistry(in InternalStorageKey ikey)
+        {
             ref int stackIdx = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, ikey, out bool exists);
             if (!exists)
             {
@@ -288,6 +296,15 @@ namespace Nethermind.State
         protected bool TryGetStack(in StorageCell cell, out StackList<int> stack)
         {
             InternalStorageKey ikey = new(in cell);
+            return TryGetStack(in ikey, out stack);
+        }
+
+        /// <summary>
+        /// Try to get the StackList for an internal storage key
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        protected bool TryGetStack(in InternalStorageKey ikey, out StackList<int> stack)
+        {
             if (_intraBlockCache.TryGetValue(ikey, out int idx))
             {
                 stack = _stackPool[idx]!;
@@ -379,7 +396,8 @@ namespace Nethermind.State
             private readonly Vector128<byte> _addrLo; // 16 bytes
             private readonly uint _addrHi;            // 4 bytes
             private readonly UInt256 _index;           // 32 bytes
-            // Total: 52 bytes, NO references
+            private readonly int _hash;               // 4 bytes
+            // Total: 56 bytes, NO references
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public InternalStorageKey(in StorageCell cell)
@@ -388,6 +406,7 @@ namespace Nethermind.State
                 _addrLo = Unsafe.As<byte, Vector128<byte>>(ref addrBytes);
                 _addrHi = Unsafe.As<byte, uint>(ref Unsafe.Add(ref addrBytes, 16));
                 _index = cell.Index;
+                _hash = ComputeHash();
             }
 
             public UInt256 Index => _index;
@@ -409,7 +428,8 @@ namespace Nethermind.State
 
             public override bool Equals(object? obj) => obj is InternalStorageKey other && Equals(other);
 
-            public override int GetHashCode()
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private int ComputeHash()
             {
                 int hash = MemoryMarshal.AsBytes(
                     MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _index), 1)).FastHash();
@@ -417,6 +437,8 @@ namespace Nethermind.State
                     ref Unsafe.As<Vector128<byte>, byte>(ref Unsafe.AsRef(in _addrLo)), 20);
                 return hash ^ addrSpan.FastHash();
             }
+
+            public override int GetHashCode() => _hash;
         }
     }
 }

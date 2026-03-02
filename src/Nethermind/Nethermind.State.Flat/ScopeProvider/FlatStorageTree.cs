@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -62,6 +63,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     }
 
     public Hash256 RootHash => _tree.RootHash;
+    [SkipLocalsInit]
     public StorageValue Get(in UInt256 index)
     {
         StorageValue value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx)

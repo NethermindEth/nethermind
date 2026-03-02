@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -81,6 +82,7 @@ public sealed class ReadOnlySnapshotBundle(
         return -1;
     }
 
+    [SkipLocalsInit]
     public StorageValue? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
     {
         GuardDispose();
@@ -100,7 +102,7 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        StorageValue outStorageValue = new();
+        Unsafe.SkipInit(out StorageValue outStorageValue);
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         bool found = persistenceReader.TryGetSlot(address, index, ref outStorageValue);

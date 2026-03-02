@@ -111,7 +111,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         if (_transactionChangesSnapshots.TryPeek(out int snapshot))
         {
-            if (TryGetStack(storageCell, out StackList<int> stack))
+            if (TryGetStack(in ikey, out StackList<int> stack))
             {
                 if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                 {
@@ -376,8 +376,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     [SkipLocalsInit]
     private void PushToRegistryOnly(in StorageCell cell, StorageValue value)
     {
-        StackList<int> stack = SetupRegistry(cell);
         InternalStorageKey ikey = new(in cell);
+        StackList<int> stack = SetupRegistry(in ikey);
         ref OriginalValue entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_originalValues, ikey, out _);
         entry.Value = value;
         entry.Round = _commitRound;
