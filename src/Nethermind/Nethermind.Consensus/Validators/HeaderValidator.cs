@@ -94,7 +94,8 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || ValidateBlockNumber(header, parent, ref error))
                    && (orphaned || Validate1559(header, parent, spec, ref error))
                    && (orphaned || ValidateBlobGasFields(header, parent, spec, ref error))
-                   && ValidateRequestsHash(header, spec, ref error);
+                   && ValidateRequestsHash(header, spec, ref error)
+                   && ValidateBlockAccessListHash(header, spec, ref error);
         }
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
@@ -380,6 +381,29 @@ namespace Nethermind.Consensus.Validators
         protected virtual ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec)
         {
             return BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+        }
+
+        protected virtual bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip7928Enabled)
+            {
+                if (header.BlockAccessListHash is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field is not set.");
+                    error = BlockErrorMessages.MissingBlockLevelAccessListHash;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.BlockAccessListHash is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field should not have value.");
+                    error = BlockErrorMessages.BlockLevelAccessListHashNotEnabled;
+                    return false;
+                }
+            }
+            return true;
         }
     }
 }

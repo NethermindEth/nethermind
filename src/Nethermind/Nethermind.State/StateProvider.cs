@@ -26,7 +26,7 @@ using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State
 {
-    internal class StateProvider
+    internal class StateProvider : IJournal<int>
     {
         private static readonly UInt256 _zero = UInt256.Zero;
 
@@ -41,7 +41,7 @@ namespace Nethermind.State
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _blockCodeInsertFilter = new(256);
         private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
 
-        private readonly List<Change> _keptInCache = new();
+        private readonly List<Change> _keptInCache = [];
         private readonly ILogger _logger;
         private Dictionary<Hash256AsKey, byte[]> _codeBatch;
         private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
@@ -176,7 +176,7 @@ namespace Nethermind.State
                 => throw new InvalidOperationException($"Account {address} is null when updating code hash");
         }
 
-        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
+        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting, out UInt256 oldBalance)
         {
             _needsStateRootUpdate = true;
 
@@ -212,6 +212,7 @@ namespace Nethermind.State
                     }
                 }
 
+                oldBalance = 0;
                 return;
             }
 
@@ -222,6 +223,7 @@ namespace Nethermind.State
                 ThrowInsufficientBalanceException(address);
             }
 
+            oldBalance = account.Balance;
             UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
 
             Account changedAccount = account.WithChangedBalance(newBalance);
@@ -242,20 +244,25 @@ namespace Nethermind.State
         }
 
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
-        {
-            SetNewBalance(address, balanceChange, releaseSpec, true);
-        }
+            => SubtractFromBalance(address, balanceChange, releaseSpec, out _);
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, out UInt256 oldBalance)
+            => SetNewBalance(address, balanceChange, releaseSpec, true, out oldBalance);
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
-        {
-            SetNewBalance(address, balanceChange, releaseSpec, false);
-        }
+            => AddToBalance(address, balanceChange, releaseSpec, out _);
+
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, out UInt256 oldBalance)
+            => SetNewBalance(address, balanceChange, releaseSpec, false, out oldBalance);
 
         public void IncrementNonce(Address address, UInt256 delta)
+            => IncrementNonce(address, delta, out _);
+
+        public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
         {
             _needsStateRootUpdate = true;
             Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
-            Account changedAccount = account.WithChangedNonce(account.Nonce + delta);
+            oldNonce = account.Nonce;
+            Account changedAccount = account.WithChangedNonce(oldNonce + delta);
             if (_logger.IsTrace) Trace(address, account, changedAccount);
 
             PushUpdate(address, changedAccount);
@@ -461,15 +468,16 @@ namespace Nethermind.State
             }
         }
 
-        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec, out UInt256 oldBalance)
         {
             if (AccountExists(address))
             {
-                AddToBalance(address, balance, spec);
+                AddToBalance(address, balance, spec, out oldBalance);
                 return false;
             }
             else
             {
+                oldBalance = 0;
                 CreateAccount(address, balance);
                 return true;
             }
