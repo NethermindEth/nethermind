@@ -14,13 +14,49 @@ Nethermind uses Autofac for DI with a custom DSL defined in `Nethermind.Core/Con
 
 ## Production modules (`Nethermind.Init/Modules/`)
 
-| Module | Registers | File |
-|--------|-----------|------|
-| `NethermindModule` | Top-level composition of all modules | `NethermindModule.cs` |
-| `DbModule` | Database factories and stores | `DbModule.cs` |
-| `WorldStateModule` | World state, trie, node storage | `WorldStateModule.cs` |
-| `BlockProcessingModule` | Transaction processors, validators, EVM | `BlockProcessingModule.cs` |
-| `NetworkModule` | Message serializers, network | `NetworkModule.cs` |
+| Module | Registers | When to touch |
+|--------|-----------|---------------|
+| `NethermindModule` | Top-level composition — calls all other modules | Only to add a new top-level module |
+| `DbModule` | `IDbFactory`, `IDbProvider`, all named databases | New database or new DB diagnostic mode |
+| `WorldStateModule` | `IWorldStateManager`, `IStateReader`, trie store, node storage | New state backend or pruning strategy |
+| `BlockProcessingModule` | `ITransactionProcessor`, `IBlockProcessor`, `IVirtualMachine`, validators | New transaction type or block processing hook |
+| `BlockTreeModule` | `IBlockTree`, `IBlockStore`, `IHeaderStore`, `IReceiptStorage` | New chain storage or receipt backend |
+| `NetworkModule` | Message serializers (Eth62–Eth69, Snap, Witness), RLPx host | New protocol version or message type |
+| `DiscoveryModule` | Peer discovery, `INodeSource` | Discovery protocol changes |
+| `RpcModules` | JSON-RPC modules (`Eth`, `Debug`, `Admin`, etc.) | New RPC method module |
+| `PrewarmerModule` | State prewarming for block production | Prewarmer tuning |
+| `BuiltInStepsModule` | Node initialization step chain | New startup step |
+
+## WorldState Architecture
+
+`IWorldState` handles the EVM→State interface. Previously it also handled storage concerns, but that was extracted into `IWorldStateScopeProvider`, leaving snapshot and journaling logic in `IWorldState`.
+
+`IWorldStateScopeProvider` is provided into each block processing context from `IWorldStateManager` manually depending on usage. Each instance of `IWorldStateScopeProvider` is shareable across different block processing contexts. These are done in:
+
+- `MainProcessingContext`, used for the main processing context, with `IWorldStateManager.GlobalWorldState`.
+- And many other places using `IWorldStateManager.CreateOverridableWorldScope` or `IWorldStateManager.CreateResettableWorldState`.
+
+## Singleton vs Scoped
+
+- `AddSingleton<T>()` — one instance for the lifetime of the node. Use for stateless services, caches, and shared infrastructure.
+- `AddScoped<T>()` — one instance per DI lifetime scope. Use for **stateful per-block components**: `IWorldState`, `ITransactionProcessor`, `IBranchProcessor`. A new scope is opened for each block branch.
+
+```csharp
+// Correct — WorldState is scoped because it holds per-block dirty state
+builder.AddScoped<IWorldState, WorldState>();
+
+// Wrong — registering WorldState as singleton would leak state across blocks
+builder.AddSingleton<IWorldState, WorldState>();
+```
+
+## Adding a new component
+
+1. Identify which module owns the domain (see table above).
+2. Register with `AddSingleton` or `AddScoped` as appropriate.
+3. If the component wraps or extends an existing one, use `AddDecorator<T, TDecorator>()`.
+4. If multiple implementations are composed into one, use `AddComposite<T, TComposite>()`.
+5. If one type should be aliased to another already-registered type, use `Bind<TTo, TFrom>()`.
+6. Never register test-specific stubs or `MemDb` overrides in a production module — put them in `TestEnvironmentModule` or `TestBlockProcessingModule`.
 
 ## Test modules (`Nethermind.Core.Test/Modules/`)
 
@@ -46,52 +82,45 @@ Nethermind uses Autofac for DI with a custom DSL defined in `Nethermind.Core/Con
 - `IBlockProducerRunner` → `StandardBlockProducerRunner`
 - `IGasLimitCalculator` → `TargetAdjustedGasLimitCalculator` (scoped)
 
-## Key DSL methods
-
-- `AddSingleton<T>()` / `AddSingleton<T, TImpl>()` — singleton registration
-- `AddScoped<T>()` — per-lifetime-scope (WorldState, TransactionProcessor)
-- `AddModule(module)` — compose modules
-- `Map<TTo, TFrom>(mapper)` — extract component from composite
-- `Bind<TTo, TFrom>()` — alias registration
-- `AddDecorator<T, TDecorator>()` — decorator pattern
-- `AddComposite<T, TComposite>()` — composite pattern
-
-## Module composition pattern
+## DSL reference (from `ContainerBuilderExtensions.cs`)
 
 ```csharp
 builder
-    .AddModule(new DbModule(...))
-    .AddModule(new WorldStateModule(...))
-    .AddModule(new BlockProcessingModule(...));
+    .AddSingleton<IFoo, Foo>()          // singleton by type
+    .AddScoped<IBar>()                  // scoped, resolved by type
+    .AddDecorator<IFoo, FooDecorator>() // wraps existing IFoo registration
+    .AddComposite<IFoo, CompositeFoo>() // aggregates all IFoo registrations
+    .Bind<IFoo, IBar>()                 // alias: resolving IFoo returns IBar
+    .Map<IFoo, IComposite>(c => c.Foo)  // extract a sub-component
+    .AddModule(new OtherModule())       // compose modules
+    ;
 ```
 
-## Test setup pattern (preferred)
+## Test setup pattern (preferred: direct DI)
 
 ```csharp
-// Use TestBlockchain — not manual wiring
-var chain = await TestBlockchain.ForMainnet().Build();
-// Access components through DI:
-chain.BlockTree, chain.StateReader, chain.TxPool
+// Preferred — use production modules directly with test overrides
+IContainer container = new ContainerBuilder()
+    .AddModule(new NethermindModule(spec, configProvider, logManager))
+    .AddModule(new TestEnvironmentModule(nodeKey, null))
+    .Build();
 ```
 
 ## Extending TestBlockchain for domain-specific test bases
 
-Subclass `TestBlockchain` and override `Build` to inject domain-specific modules or component overrides:
+`TestBlockchain` is a legacy wrapper. Prefer direct DI for new tests. If you do use it, always dispose with `using`:
 
 ```csharp
 public class MyTestBlockchain : TestBlockchain
 {
     public IMyService MyService => Container.Resolve<IMyService>();
 
-    protected override Task<TestBlockchain> Build(
-        ISpecProvider? specProvider = null,
-        UInt256? initialValues = null,
-        Action<ContainerBuilder>? configureContainer = null)
+    protected override Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
     {
-        return base.Build(specProvider, initialValues, builder =>
+        return base.Build(builder =>
         {
             builder.AddSingleton<IMyService, MyService>();
-            configureContainer?.Invoke(builder);
+            configurer?.Invoke(builder);
         });
     }
 }

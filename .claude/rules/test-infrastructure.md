@@ -10,14 +10,14 @@ This is the **only** folder-scoped rule for test and benchmark projects. It appl
 
 ## TestBlockchain (`Nethermind.Core.Test/Blockchain/TestBlockchain.cs`)
 
-Full blockchain environment with DI, block processing, and state management.
+Legacy wrapper around DI. Prefer direct `ContainerBuilder` + production modules for new tests. If you do use `TestBlockchain`, always dispose with `using`:
 
 ```csharp
-// Basic usage
-var chain = await TestBlockchain.ForMainnet().Build();
+// Basic usage — always use `using` for disposal
+using TestBlockchain chain = await TestBlockchain.ForMainnet().Build();
 
 // With customization
-var chain = await TestBlockchain.ForMainnet()
+using TestBlockchain chain = await TestBlockchain.ForMainnet()
     .Build(builder => builder
         .AddSingleton<ISpecProvider>(mySpecProvider)
         .AddDecorator<ISpecProvider>((ctx, sp) => WrapSpecProvider(sp)));
@@ -25,7 +25,7 @@ var chain = await TestBlockchain.ForMainnet()
 
 **Provides**: `BlockTree`, `StateReader`, `TxPool`, `BlockProcessor`, `MainProcessingContext`, and 30+ other components — all wired via `PseudoNethermindModule`.
 
-**Don't mock what TestBlockchain provides.** If you need `IBlockTree`, `IWorldState`, `ITransactionProcessor`, use `TestBlockchain` instead of `Substitute.For<>()`.
+**Don't mock what TestBlockchain provides.** If you need `IBlockTree`, `IWorldState`, `ITransactionProcessor`, use DI instead of `Substitute.For<>()`.
 
 ## E2ESyncTests (`Synchronization.Test/E2ESyncTests.cs`)
 
@@ -58,7 +58,7 @@ IBlockProcessor blockProcessor = new BlockProcessor(..., txProcessor, worldState
 
 ```csharp
 // Unit tests: TestBlockchain with builder overrides
-var chain = await TestBlockchain.ForMainnet()
+using TestBlockchain chain = await TestBlockchain.ForMainnet()
     .Build(builder => builder
         .AddSingleton<ISpecProvider>(mySpecProvider)
         .AddDecorator<IBlockProcessor, MyCustomBlockProcessor>());
