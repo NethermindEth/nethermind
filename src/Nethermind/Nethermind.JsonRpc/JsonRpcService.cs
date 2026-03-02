@@ -90,8 +90,8 @@ public sealed class JsonRpcService : IJsonRpcService
         }
         else
         {
-            if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
-            return GetErrorResponse(ErrorCodes.ParseError, "Parse error", rpcRequest.Id, rpcRequest.Method);
+            errorCode = ErrorCodes.InternalError;
+            errorText = "Internal error";
         }
 
         if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
