@@ -105,7 +105,7 @@ public sealed class ULongStreamDecoder : RlpStreamDecoder<ulong>
 
     protected override ulong DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        return rlpStream.DecodeUInt();
+        return rlpStream.DecodeUlong();
     }
 
     public override void Encode(RlpStream stream, ulong item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

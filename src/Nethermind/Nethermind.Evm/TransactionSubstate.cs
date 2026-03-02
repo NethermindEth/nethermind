@@ -19,7 +19,7 @@ namespace Nethermind.Evm;
 public readonly ref struct TransactionSubstate
 {
     private readonly ILogger _logger;
-    private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>();
+    private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>(Address.EqualityComparer);
     private static readonly IToArrayCollection<LogEntry> _emptyLogs = new JournalCollection<LogEntry>();
 
     private const string SomeError = "error";

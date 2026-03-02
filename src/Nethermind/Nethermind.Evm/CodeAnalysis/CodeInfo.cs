@@ -76,7 +76,11 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     {
         if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
         {
+#if ZKVM
+            _analyzer.Execute();
+#else
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+#endif
         }
     }
 
