@@ -109,7 +109,7 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Can_ignore_node_data_and_not_throw_when_receiving_unrequested_node_data()
     {
-        using var msg63 = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
+        using var msg63 = new NodeDataMessage(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
         using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
         HandleIncomingStatusMessage();

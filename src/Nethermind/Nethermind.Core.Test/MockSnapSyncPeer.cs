@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
 
@@ -17,7 +18,7 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
     private static readonly byte[] _emptyBytes = [0];
     public Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
     {
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) = snapServer.GetAccountRanges(
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = snapServer.GetAccountRanges(
             range.RootHash,
             range.StartingHash,
             range.LimitHash,
@@ -33,7 +34,7 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
 
     public Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token)
     {
-        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IOwnedReadOnlyList<byte[]>? proof) = snapServer.GetStorageRanges(
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proof) = snapServer.GetStorageRanges(
             range.RootHash,
             range.Accounts,
             range.StartingHash,
@@ -48,29 +49,29 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
         });
     }
 
-    public Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
+    public Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
     {
-        IOwnedReadOnlyList<byte[]> codes = snapServer.GetByteCodes(codeHashes, int.MaxValue, token);
+        IByteArrayList codes = snapServer.GetByteCodes(codeHashes, int.MaxValue, token);
         return Task.FromResult(codes);
     }
 
-    public Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+    public Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
     {
-        ArrayPoolList<PathGroup> groups = new(request.Paths.Count);
-
+        PathGroup[] groups = new PathGroup[request.Paths.Count];
         for (int i = 0; i < request.Paths.Count; i++)
         {
             AccountWithStorageStartingHash path = request.Paths[i];
-            groups.Add(new PathGroup { Group = [path.PathAndAccount.Path.Bytes.ToArray(), _emptyBytes] });
+            groups[i] = new PathGroup { Group = [path.PathAndAccount.Path.Bytes.ToArray(), _emptyBytes] };
         }
 
-        IOwnedReadOnlyList<byte[]>? res = snapServer.GetTrieNodes(groups, request.RootHash, token);
-        return Task.FromResult(res!);
+        using RlpPathGroupList encoded = PathGroup.EncodeToRlpPathGroupList(groups);
+        IByteArrayList? res = snapServer.GetTrieNodes(encoded, request.RootHash, token);
+        return Task.FromResult<IByteArrayList>(res!);
     }
 
-    public Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+    public Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
     {
-        IOwnedReadOnlyList<byte[]>? res = snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
-        return Task.FromResult(res!);
+        IByteArrayList? res = snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
+        return Task.FromResult<IByteArrayList>(res!);
     }
 }

@@ -9,7 +9,7 @@ namespace Nethermind.State.Snap
     public class SlotsAndProofs : IDisposable
     {
         public IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> PathsAndSlots { get; set; }
-        public IOwnedReadOnlyList<byte[]> Proofs { get; set; }
+        public IByteArrayList Proofs { get; set; }
 
         private bool _disposed = false;
 

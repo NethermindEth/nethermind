@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using DotNetty.Buffers;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -12,19 +12,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public sealed class StorageRangesMessageSerializer : IZeroMessageSerializer<StorageRangeMessage>
     {
-        private readonly Func<RlpStream, PathWithStorageSlot> _decodeSlot;
-        private readonly Func<RlpStream, IOwnedReadOnlyList<PathWithStorageSlot>> _decodeSlotArray;
-
-        public StorageRangesMessageSerializer()
-        {
-            // Capture closures once
-            _decodeSlot = DecodeSlot;
-            _decodeSlotArray = s => s.DecodeArrayPoolList(_decodeSlot);
-        }
-
         public void Serialize(IByteBuffer byteBuffer, StorageRangeMessage message)
         {
-            (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) = CalculateLengths(message);
+            (int contentLength, int allSlotsLength, int[] accountSlotsLengths) = CalculateLengths(message);
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
             NettyRlpStream stream = new(byteBuffer);
@@ -61,46 +51,48 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 }
             }
 
-            if (message.Proofs is null || message.Proofs.Count == 0)
-            {
-                stream.EncodeNullObject();
-            }
-            else
-            {
-                stream.StartSequence(proofsLength);
-                for (int i = 0; i < message.Proofs.Count; i++)
-                {
-                    stream.Encode(message.Proofs[i]);
-                }
-            }
+            stream.WriteByteArrayList(message.Proofs);
         }
 
         public StorageRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
+            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            int startPos = ctx.Position;
+
+            ctx.ReadSequenceLength();
+
             StorageRangeMessage message = new();
-            NettyRlpStream stream = new(byteBuffer);
+            message.RequestId = ctx.DecodeLong();
 
-            stream.ReadSequenceLength();
+            int slotsCheck = ctx.ReadSequenceLength() + ctx.Position;
+            int slotsCount = ctx.PeekNumberOfItemsRemaining(slotsCheck);
+            ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> slots = new(slotsCount);
+            for (int i = 0; i < slotsCount; i++)
+            {
+                int accountSlotsCheck = ctx.ReadSequenceLength() + ctx.Position;
+                int accountSlotsCount = ctx.PeekNumberOfItemsRemaining(accountSlotsCheck);
+                ArrayPoolList<PathWithStorageSlot> accountSlots = new(accountSlotsCount);
+                for (int j = 0; j < accountSlotsCount; j++)
+                {
+                    ctx.ReadSequenceLength();
+                    Hash256 path = ctx.DecodeKeccak();
+                    byte[] value = ctx.DecodeByteArray();
+                    accountSlots.Add(new PathWithStorageSlot(in path.ValueHash256, value));
+                }
 
-            message.RequestId = stream.DecodeLong();
-            message.Slots = stream.DecodeArrayPoolList(_decodeSlotArray);
-            message.Proofs = stream.DecodeArrayPoolList(static s => s.DecodeByteArray());
+                slots.Add(accountSlots);
+            }
+
+            message.Slots = slots;
+            message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
 
             return message;
         }
 
-        private PathWithStorageSlot DecodeSlot(RlpStream stream)
-        {
-            stream.ReadSequenceLength();
-            Hash256 path = stream.DecodeKeccak();
-            byte[] value = stream.DecodeByteArray();
-
-            PathWithStorageSlot data = new(in path.ValueHash256, value);
-
-            return data;
-        }
-
-        private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) CalculateLengths(StorageRangeMessage message)
+        private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths) CalculateLengths(StorageRangeMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
 
@@ -130,26 +122,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
 
             contentLength += Rlp.LengthOfSequence(allSlotsLength);
+            contentLength += Rlp.LengthOfByteArrayList(message.Proofs);
 
-            int proofsLength = 0;
-            if (message.Proofs is null || message.Proofs.Count == 0)
-            {
-                proofsLength = 1;
-                contentLength++;
-            }
-            else
-            {
-                for (int i = 0; i < message.Proofs.Count; i++)
-                {
-                    proofsLength += Rlp.LengthOf(message.Proofs[i]);
-                }
-
-                contentLength += Rlp.LengthOfSequence(proofsLength);
-            }
-
-
-
-            return (contentLength, allSlotsLength, accountSlotsLengths, proofsLength);
+            return (contentLength, allSlotsLength, accountSlotsLengths);
         }
     }
 }

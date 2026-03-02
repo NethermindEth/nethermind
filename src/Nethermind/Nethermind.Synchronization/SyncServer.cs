@@ -25,6 +25,7 @@ using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -378,36 +379,45 @@ namespace Nethermind.Synchronization
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public IOwnedReadOnlyList<byte[]?> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
-            ArrayPoolList<byte[]?> values = new ArrayPoolList<byte[]>(keys.Count);
+            using DeferredRlpItemList.Builder builder = new(keys.Count);
+            DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
+            int count = 0;
+
             for (int i = 0; i < keys.Count; i++)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    return values;
-                }
+                if (cancellationToken.IsCancellationRequested) break;
 
-                values.Add(null);
-                if ((includedTypes & NodeDataType.State) == NodeDataType.State)
+                bool found = false;
+                if ((includedTypes & NodeDataType.State) == NodeDataType.State && _stateDb is not null)
                 {
-                    if (_stateDb is null)
+                    Span<byte> value = _stateDb.GetSpan(keys[i].Bytes);
+                    if (!value.IsNullOrEmpty())
                     {
-                        values[i] = null;
-                    }
-                    else
-                    {
-                        values[i] = _stateDb[keys[i].Bytes];
+                        writer.WriteValue(value);
+                        _stateDb.DangerousReleaseMemory(value);
+                        found = true;
                     }
                 }
 
-                if (values[i] is null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
+                if (!found && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
                 {
-                    values[i] = _codeDb[keys[i].Bytes];
+                    Span<byte> value = _codeDb.GetSpan(keys[i].Bytes);
+                    writer.WriteValue(value);
+                    _codeDb.DangerousReleaseMemory(value);
+                    found = true;
                 }
+
+                if (!found)
+                    writer.WriteValue([]);
+                count++;
             }
 
-            return values;
+            writer.Dispose();
+            return count == 0
+                ? EmptyByteArrayList.Instance
+                : new RlpByteArrayList(builder.ToRlpItemList());
         }
 
         public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);

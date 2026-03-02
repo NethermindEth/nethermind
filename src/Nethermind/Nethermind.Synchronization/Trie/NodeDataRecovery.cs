@@ -127,19 +127,19 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         if (syncPeer.ProtocolVersion < EthVersions.Eth67)
         {
             if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via eth");
-            IOwnedReadOnlyList<byte[]>? data = await syncPeer.GetNodeData([hash], cancellationToken);
+            IByteArrayList? data = await syncPeer.GetNodeData([hash], cancellationToken);
             if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
             {
-                return data[0];
+                return data[0].ToArray();
             }
         }
         else if (syncPeer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataPeer))
         {
             if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via nodedata");
-            IOwnedReadOnlyList<byte[]>? data = await nodeDataPeer.GetNodeData([hash], cancellationToken);
+            IByteArrayList? data = await nodeDataPeer.GetNodeData([hash], cancellationToken);
             if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
             {
-                return data[0];
+                return data[0].ToArray();
             }
         }
         else if (syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapSyncPeer))
@@ -166,16 +166,15 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
                 };
             }
 
-            using IOwnedReadOnlyList<byte[]>? item = await snapSyncPeer.GetTrieNodes(new GetTrieNodesRequest()
+            using IByteArrayList? item = await snapSyncPeer.GetTrieNodes(new GetTrieNodesRequest()
             {
                 RootHash = rootHash,
-                AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
-                { group },
+                AccountAndStoragePaths = PathGroup.EncodeToRlpPathGroupList([group]),
             }, cancellationToken);
 
             if (item is not null && item.Count > 0)
             {
-                return item[0];
+                return item[0].ToArray();
             }
         }
 

@@ -13,6 +13,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -166,11 +167,11 @@ public class SnapServerTest
         using var context = CreateContext();
         FillWithTestAccounts(context);
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) =
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
             context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
 
         AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, Keccak.Zero,
-            accounts.ToArray(), proofs.ToArray());
+            accounts.ToArray(), proofs);
 
         result.Should().Be(AddRangeResult.OK);
         context.PersistedNodeCount.Should().Be(10);
@@ -184,7 +185,7 @@ public class SnapServerTest
         using var context = CreateContext();
         FillWithTestAccounts(context);
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) =
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
             context.Server.GetAccountRanges(context.RootHash, Keccak.MaxValue, Keccak.Zero, 4000, CancellationToken.None);
 
         accounts.Count.Should().Be(0);
@@ -198,12 +199,13 @@ public class SnapServerTest
         using var context = CreateContext();
         FillWithTestAccounts(context);
 
-        using IOwnedReadOnlyList<byte[]> result = context.Server.GetTrieNodes([
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([
             new PathGroup()
             {
                 Group = [[]]
             }
-        ], context.RootHash, default)!;
+        ]);
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
         result.Count.Should().Be(1);
     }
@@ -214,14 +216,32 @@ public class SnapServerTest
         using var context = CreateContext();
         FillWithTestAccounts(context);
 
-        using IOwnedReadOnlyList<byte[]> result = context.Server.GetTrieNodes([
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([
             new PathGroup()
             {
                 Group = [TestItem.Tree.AccountsWithPaths[0].Path.Bytes.ToArray(), []]
             }
-        ], context.RootHash, default)!;
+        ]);
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
         result.Count.Should().Be(1);
+    }
+
+    [Test]
+    public void TestGetTrieNodes_RespectsHardResponseByteLimit()
+    {
+        using var context = CreateContext();
+        FillMultipleAccounts(context, 1000);
+
+        int requestCount = 5000;
+        PathGroup[] groups = new PathGroup[requestCount];
+        for (int i = 0; i < requestCount; i++)
+            groups[i] = new PathGroup { Group = [[]] };
+
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(groups);
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+
+        result.Count.Should().BeLessThan(requestCount);
     }
 
     [TestCase(true)]
@@ -237,12 +257,12 @@ public class SnapServerTest
 
         using var context = CreateContext(lastNStateRootTracker: lastNStateTracker);
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> accountProofs) =
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList accountProofs) =
             context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
 
         accounts.Count.Should().Be(0);
 
-        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IByteArrayList? proofs) =
             context.Server.GetStorageRanges(context.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
                 ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
 
@@ -263,7 +283,7 @@ public class SnapServerTest
         Hash256 startRange = Keccak.Zero;
         while (true)
         {
-            (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) =
+            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
                 context.Server.GetAccountRanges(context.RootHash, startRange, Keccak.MaxValue, 100, CancellationToken.None);
 
             try
@@ -299,7 +319,7 @@ public class SnapServerTest
         Hash256 startRange = Keccak.Zero;
         while (true)
         {
-            (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) =
+            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
                 context.Server.GetAccountRanges(context.RootHash, startRange, Keccak.MaxValue, byteLimit, CancellationToken.None);
 
             try
@@ -336,7 +356,7 @@ public class SnapServerTest
         ValueHash256 limit = new ValueHash256("0x8000000000000000000000000000000000000000000000000000000000000000");
         while (true)
         {
-            (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) = context.Server
+            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = context.Server
                 .GetAccountRanges(context.RootHash, startRange, limit, byteLimit, CancellationToken.None);
 
             try
@@ -366,7 +386,7 @@ public class SnapServerTest
         using var context = CreateContext();
         Hash256 storageRoot = FillAccountWithDefaultStorage(context);
 
-        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IByteArrayList? proofs) =
             context.Server.GetStorageRanges(context.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
                 ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
 
@@ -398,7 +418,7 @@ public class SnapServerTest
         var asInt = lastStorageHash.ToUInt256();
         ValueHash256 beyondLast = new ValueHash256((++asInt).ToBigEndian());
 
-        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IByteArrayList? proofs) =
             context.Server.GetStorageRanges(context.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
                 beyondLast, ValueKeccak.MaxValue, 10, CancellationToken.None);
 
@@ -418,7 +438,7 @@ public class SnapServerTest
         Hash256 startRange = Keccak.Zero;
         while (true)
         {
-            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
+            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IByteArrayList? proofs) =
                 context.Server.GetStorageRanges(context.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
                     startRange, ValueKeccak.MaxValue, 10000, CancellationToken.None);
 
@@ -474,7 +494,7 @@ public class SnapServerTest
         }
 
         // size of one PathWithAccount ranges from 39 -> 72
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> accountProofs)
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList accountProofs)
             = context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
         accounts.Count.Should().Be(1);
         accounts.Dispose();
@@ -508,7 +528,7 @@ public class SnapServerTest
 
         var accountWithStorageArray = accountWithStorage.ToArray();
 
-        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IOwnedReadOnlyList<byte[]>? proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
         slots.Count.Should().Be(1);
         slots[0].Count.Should().Be(1);
         proofs.Should().NotBeNull();
@@ -519,7 +539,7 @@ public class SnapServerTest
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 1000000, CancellationToken.None);
         slots.Count.Should().Be(1);
         slots[0].Count.Should().Be(1000);
-        proofs.Should().BeEmpty();
+        proofs?.Count.Should().Be(0);
 
         slots.DisposeRecursive();
         proofs?.Dispose();
@@ -544,7 +564,7 @@ public class SnapServerTest
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray, ValueKeccak.Zero, ValueKeccak.MaxValue, 3000000, CancellationToken.None);
         slots.Count.Should().Be(8);
         slots[^1].Count.Should().BeLessThan(8000);
-        proofs.Should().NotBeEmpty();
+        proofs?.Count.Should().BeGreaterThan(0);
 
         slots.DisposeRecursive();
         proofs?.Dispose();

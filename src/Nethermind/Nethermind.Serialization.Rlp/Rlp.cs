@@ -1635,6 +1635,23 @@ namespace Nethermind.Serialization.Rlp
             return size - (BitOperations.LeadingZeroCount(value) / 8);
         }
 
+        public static int LengthOfByteArrayList(IByteArrayList? list)
+        {
+            if (list is IRlpWrapper rlpWrapper)
+                return rlpWrapper.RlpLength;
+
+            if (list is null || list.Count == 0)
+                return LengthOfNull;
+
+            int contentLength = 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                contentLength += LengthOf(list[i]);
+            }
+
+            return LengthOfSequence(contentLength);
+        }
+
         public static int LengthOf(byte[][]? arrays)
         {
             int contentLength = 0;

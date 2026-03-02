@@ -26,7 +26,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = 1,
                 PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
-                Proofs = ArrayPoolList<byte[]>.Empty(),
+                Proofs = EmptyByteArrayList.Instance,
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -40,7 +40,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
-                Proofs = ArrayPoolList<byte[]>.Empty()
+                Proofs = EmptyByteArrayList.Instance
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -66,7 +66,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = new ArrayPoolList<PathWithAccount>(2) { new PathWithAccount(TestItem.KeccakA, acc01), new PathWithAccount(TestItem.KeccakB, acc02) },
-                Proofs = new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB }
+                Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -87,7 +87,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01) },
-                Proofs = new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB }
+                Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -108,7 +108,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01) },
-                Proofs = new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB }
+                Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
             AccountRangeMessageSerializer serializer = new();

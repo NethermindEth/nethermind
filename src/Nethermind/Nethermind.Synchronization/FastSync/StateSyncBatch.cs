@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Count ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
+    [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Count ?? 0}, Responses: {Responses?.Count ?? 0}, Assigned: {AssignedPeer?.Current}")]
     public class StateSyncBatch(Hash256 stateRoot, NodeDataType nodeDataType, IList<StateSyncItem> requestedNodes) : IDisposable
     {
         public NodeDataType NodeDataType { get; } = nodeDataType;
@@ -18,7 +18,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public IList<StateSyncItem>? RequestedNodes { get; } = requestedNodes;
 
-        public IOwnedReadOnlyList<byte[]>? Responses { get; set; }
+        public IByteArrayList? Responses { get; set; }
 
         public int ConsumerId { get; set; }
 
@@ -30,6 +30,7 @@ namespace Nethermind.Synchronization.FastSync
         public void Dispose()
         {
             Responses?.Dispose();
+            Responses = null;
         }
     }
 }

@@ -397,7 +397,7 @@ public partial class ForwardHeaderProviderTests
             throw new NotImplementedException();
         }
 
-        public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+        public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
         {
             throw new NotImplementedException();
         }
@@ -673,7 +673,7 @@ public partial class ForwardHeaderProviderTests
             throw new NotImplementedException();
         }
 
-        public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+        public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
         {
             throw new NotImplementedException();
         }
