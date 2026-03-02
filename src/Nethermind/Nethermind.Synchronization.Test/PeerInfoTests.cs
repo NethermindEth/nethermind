@@ -151,5 +151,22 @@ namespace Nethermind.Synchronization.Test
             peerInfo.IsAllocated(AllocationContexts.Headers).Should().BeTrue();
             peerInfo.IsAllocated(AllocationContexts.Bodies).Should().BeFalse();
         }
+
+        [Test]
+        public void WakeUp_does_not_set_unsleeping_context()
+        {
+            DateTime t0 = DateTime.UtcNow;
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
+
+            peerInfo.PutToSleep(AllocationContexts.Blocks, t0);
+            peerInfo.PutToSleep(AllocationContexts.Bodies, t0 - TimeSpan.FromSeconds(10));
+
+            peerInfo.TryToWakeUp(t0, TimeSpan.FromSeconds(5));
+
+            peerInfo.TryToWakeUp(t0 + TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5));
+
+            peerInfo.IsAsleep(AllocationContexts.Bodies).Should().BeFalse();
+            peerInfo.IsAsleep(AllocationContexts.Receipts).Should().BeFalse();
+        }
     }
 }
