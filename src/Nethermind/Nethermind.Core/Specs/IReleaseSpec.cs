@@ -210,6 +210,12 @@ namespace Nethermind.Core.Specs
         Eip158Spec Eip158 => new(IsEip158Enabled, Eip158IgnoredAccount);
 
         /// <summary>
+        /// Pre-packed spec for <c>ICodeInfoRepository</c> code-insertion methods.
+        /// Owns <see cref="Eip158Spec"/>.
+        /// </summary>
+        CodeInsertionSpec CodeInsertion => new(Eip158, IsEofEnabled);
+
+        /// <summary>
         /// BaseFee opcode
         /// </summary>
         bool IsEip3198Enabled { get; }

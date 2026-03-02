@@ -19,7 +19,7 @@ public readonly struct SpecSnapshot
     public readonly FrozenSet<AddressAsKey> Precompiles;
     public readonly long Eip2935RingBufferSize;
     public readonly Address? Eip2935ContractAddress;
-    public readonly Eip158Spec Eip158;
+    public readonly CodeInsertionSpec CodeInsertion;
 
     // Bit positions for _flags0
     private const int TimeAdjustmentPostOlympicBit = 0;
@@ -103,7 +103,7 @@ public readonly struct SpecSnapshot
         Precompiles = spec.Precompiles;
         Eip2935RingBufferSize = spec.Eip2935RingBufferSize;
         Eip2935ContractAddress = spec.Eip2935ContractAddress;
-        Eip158 = spec.Eip158;
+        CodeInsertion = spec.CodeInsertion;
 
         ulong f0 = 0;
         ulong f1 = 0;

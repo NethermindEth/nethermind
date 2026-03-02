@@ -104,7 +104,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public ILogger Logger => _logger;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
     public ref readonly SpecSnapshot Spec => ref _blockExecutionContext.Spec;
-    public ref readonly Eip158Spec Eip158 => ref _blockExecutionContext.Eip158;
+    public ref readonly CodeInsertionSpec CodeInsertion => ref _blockExecutionContext.CodeInsertion;
+    public Eip158Spec Eip158 => _blockExecutionContext.CodeInsertion.Eip158;
     public IReleaseSpec OriginalSpec => _blockExecutionContext.OriginalSpec;
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _worldState;
@@ -413,7 +414,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             // 4 - set state[new_address].code to the updated deploy container
             // push new_address onto the stack (already done before the ifs)
-            _codeInfoRepository.InsertCode(bytecodeResultArray, callCodeOwner, BlockExecutionContext.OriginalSpec);
+            _codeInfoRepository.InsertCode(bytecodeResultArray, callCodeOwner, in BlockExecutionContext.CodeInsertion);
             TGasPolicy.Consume(ref _currentState.Gas, codeDepositGasCost);
 
             if (_txTracer.IsTracingActions)
@@ -489,7 +490,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             // Deposit the contract code into the repository.
             ReadOnlyMemory<byte> code = callResult.Output.Bytes;
-            _codeInfoRepository.InsertCode(code, callCodeOwner, BlockExecutionContext.OriginalSpec);
+            _codeInfoRepository.InsertCode(code, callCodeOwner, in BlockExecutionContext.CodeInsertion);
 
             // Deduct the gas cost for the code deposit from the current state's available gas.
             TGasPolicy.Consume(ref _currentState.Gas, codeDepositGasCost);
@@ -942,7 +943,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             if (_worldState.AccountExists(_parityTouchBugAccount.Address))
             {
-                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Eip158);
+                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.CodeInsertion.Eip158);
             }
 
             _parityTouchBugAccount.ShouldDelete = false;
@@ -961,7 +962,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         long baseGasCost = precompile.BaseGasCost(spec);
         long dataGasCost = precompile.DataGasCost(callData, spec);
 
-        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, BlockExecutionContext.Eip158);
+        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, BlockExecutionContext.CodeInsertion.Eip158);
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
         // An additional issue was found in Parity,
@@ -1072,7 +1073,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (!vmState.IsContinuation)
         {
             // Ensure the executing account has sufficient balance and exists in the world state.
-            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, BlockExecutionContext.Eip158);
+            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, BlockExecutionContext.CodeInsertion.Eip158);
 
             // For contract creation calls, increment the nonce if the specification requires it.
             if (vmState.ExecutionType.IsAnyCreate() && Spec.ClearEmptyAccountWhenTouched)

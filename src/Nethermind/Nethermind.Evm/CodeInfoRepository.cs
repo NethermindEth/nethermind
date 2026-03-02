@@ -94,30 +94,32 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, in CodeInsertionSpec spec)
     {
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
+        Eip158Spec eip158 = spec.Eip158;
         // If the code is already in the cache, we don't need to create and add it again (and reanalyze it)
-        if (_worldState.InsertCode(codeOwner, in codeHash, code, spec) &&
+        if (_worldState.InsertCode(codeOwner, in codeHash, code, in eip158) &&
             _codeCache.Get(in codeHash) is null)
         {
-            CodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
+            CodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec.IsEofEnabled, ValidationStrategy.ExtractHeader);
             _codeCache.Set(in codeHash, codeInfo);
         }
     }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
+    public void SetDelegation(Address codeSource, Address authority, in CodeInsertionSpec spec)
     {
+        Eip158Spec eip158 = spec.Eip158;
         if (codeSource == Address.Zero)
         {
-            _worldState.InsertCode(authority, Keccak.OfAnEmptyString, Array.Empty<byte>(), spec);
+            _worldState.InsertCode(authority, Keccak.OfAnEmptyString, Array.Empty<byte>(), in eip158);
             return;
         }
         byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
         Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
         codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
         ValueHash256 codeHash = ValueKeccak.Compute(authorizedBuffer);
-        if (_worldState.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec)
+        if (_worldState.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), in eip158)
             // If the code is already in the cache, we don't need to create CodeInfo and add it again (and reanalyze it)
             && _codeCache.Get(in codeHash) is null)
         {
@@ -130,7 +132,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// </summary>
     /// <param name="worldState"></param>
     /// <param name="address"></param>
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
+    public ValueHash256 GetExecutableCodeHash(Address address, in CodeInsertionSpec spec)
     {
         ValueHash256 codeHash = _worldState.GetCodeHash(address);
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)

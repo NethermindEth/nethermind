@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-
 namespace Nethermind.Core.Specs;
 
 /// <summary>
@@ -10,12 +8,4 @@ namespace Nethermind.Core.Specs;
 /// balance and code-insertion methods. Stored as a field on <see cref="SpecSnapshot"/>
 /// — never allocated per-call.
 /// </summary>
-public readonly struct Eip158Spec(bool isEnabled, Address? ignoredAccount) : IEquatable<Eip158Spec>
-{
-    public readonly bool IsEnabled = isEnabled;
-    public readonly Address? IgnoredAccount = ignoredAccount;
-
-    public bool Equals(Eip158Spec other) => IsEnabled == other.IsEnabled && IgnoredAccount == other.IgnoredAccount;
-    public override bool Equals(object? obj) => obj is Eip158Spec other && Equals(other);
-    public override int GetHashCode() => HashCode.Combine(IsEnabled, IgnoredAccount);
-}
+public readonly record struct Eip158Spec(bool IsEnabled, Address? IgnoredAccount);

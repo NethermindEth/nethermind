@@ -36,19 +36,19 @@ public class CachedCodeInfoRepository(
         return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, in vmSpec, out delegationAddress);
     }
 
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
+    public ValueHash256 GetExecutableCodeHash(Address address, in CodeInsertionSpec spec)
     {
-        return baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
+        return baseCodeInfoRepository.GetExecutableCodeHash(address, in spec);
     }
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, in CodeInsertionSpec spec)
     {
-        baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
+        baseCodeInfoRepository.InsertCode(code, codeOwner, in spec);
     }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
+    public void SetDelegation(Address codeSource, Address authority, in CodeInsertionSpec spec)
     {
-        baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
+        baseCodeInfoRepository.SetDelegation(codeSource, authority, in spec);
     }
 
     public bool TryGetDelegation(Address address, in SpecSnapshot spec,

@@ -19,7 +19,7 @@ public readonly struct BlockExecutionContext(BlockHeader blockHeader, IReleaseSp
     public readonly ulong GasLimit = (ulong)blockHeader.GasLimit;
     public readonly ValueHash256 BlobBaseFee = blobBaseFee.ToValueHash();
     public readonly SpecSnapshot Spec = spec.GetSnapshot();
-    public readonly Eip158Spec Eip158 = spec.Eip158;
+    public readonly CodeInsertionSpec CodeInsertion = spec.CodeInsertion;
     public readonly IReleaseSpec OriginalSpec = spec;
 
     // Use the random value if post-merge; otherwise, use block difficulty.

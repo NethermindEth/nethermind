@@ -34,8 +34,8 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip155Enabled { get; set; }
     public bool IsEip158Enabled
     {
-        get => Eip158.IsEnabled;
-        set => Eip158 = new(value, Eip158.IgnoredAccount);
+        get => CodeInsertion.Eip158.IsEnabled;
+        set => CodeInsertion = CodeInsertion with { Eip158 = new(value, CodeInsertion.Eip158.IgnoredAccount) };
     }
     public bool IsEip160Enabled { get; set; }
     public bool IsEip170Enabled { get; set; }
@@ -64,10 +64,15 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip1559Enabled { get => field || IsEip4844Enabled; set; }
     public Address? Eip158IgnoredAccount
     {
-        get => Eip158.IgnoredAccount;
-        set => Eip158 = new(Eip158.IsEnabled, value);
+        get => CodeInsertion.Eip158.IgnoredAccount;
+        set => CodeInsertion = CodeInsertion with { Eip158 = new(CodeInsertion.Eip158.IsEnabled, value) };
     }
-    public Eip158Spec Eip158 { get; set; }
+    public Eip158Spec Eip158
+    {
+        get => CodeInsertion.Eip158;
+        set => CodeInsertion = CodeInsertion with { Eip158 = value };
+    }
+    public CodeInsertionSpec CodeInsertion { get; set; }
     public bool IsEip3198Enabled { get; set; }
     public bool IsEip3529Enabled { get; set; }
     public bool IsEip3607Enabled { get; set; }
@@ -120,7 +125,11 @@ public class ReleaseSpec : IReleaseSpec
     public Address? Eip7002ContractAddress { get => IsEip7002Enabled ? field : null; set; }
     [MemberNotNullWhen(true, nameof(IsEip4788Enabled))]
     public Address? Eip4788ContractAddress { get => IsEip4788Enabled ? field : null; set; }
-    public bool IsEofEnabled { get; set; }
+    public bool IsEofEnabled
+    {
+        get => CodeInsertion.IsEofEnabled;
+        set => CodeInsertion = CodeInsertion with { IsEofEnabled = value };
+    }
     public bool IsEip6110Enabled { get; set; }
     [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
     public Address? DepositContractAddress { get => IsEip6110Enabled ? field : null; set; }

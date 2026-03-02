@@ -35,8 +35,8 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, in vmSpec, out delegationAddress);
     }
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        codeInfoRepository.InsertCode(code, codeOwner, spec);
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, in CodeInsertionSpec spec) =>
+        codeInfoRepository.InsertCode(code, codeOwner, in spec);
 
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
@@ -52,8 +52,8 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverrides[precompileAddr] = (new CodeInfo(worldState.GetCode(precompileAddr)), worldState.GetCodeHash(precompileAddr));
     }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
-        codeInfoRepository.SetDelegation(codeSource, authority, spec);
+    public void SetDelegation(Address codeSource, Address authority, in CodeInsertionSpec spec) =>
+        codeInfoRepository.SetDelegation(codeSource, authority, in spec);
 
     public bool TryGetDelegation(Address address, in SpecSnapshot vmSpec,
         [NotNullWhen(true)] out Address? delegatedAddress)
@@ -65,9 +65,9 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     }
 
 
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) => _codeOverrides.TryGetValue(address, out var result)
+    public ValueHash256 GetExecutableCodeHash(Address address, in CodeInsertionSpec spec) => _codeOverrides.TryGetValue(address, out var result)
         ? result.codeHash
-        : codeInfoRepository.GetExecutableCodeHash(address, spec);
+        : codeInfoRepository.GetExecutableCodeHash(address, in spec);
 
     public void ResetOverrides()
     {

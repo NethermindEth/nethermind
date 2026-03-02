@@ -319,7 +319,8 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.IncrementNonce(authority);
                     }
 
-                    _codeInfoRepository.SetDelegation(authTuple.CodeAddress, authority, spec);
+                    CodeInsertionSpec codeInsertionSpec = spec.CodeInsertion;
+                    _codeInfoRepository.SetDelegation(authTuple.CodeAddress, authority, in codeInsertionSpec);
                 }
             }
 
@@ -801,7 +802,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 // Copy the bytes so it's not live memory that will be used in another tx
                 byte[] code = substate.Output.Bytes.ToArray();
-                _codeInfoRepository.InsertCode(code, codeOwner, spec);
+                _codeInfoRepository.InsertCode(code, codeOwner, in VirtualMachine.BlockExecutionContext.CodeInsertion);
                 if (code.Length > CodeSizeConstants.MaxCodeSizeEip170)
                 {
                     accessedItems.WarmUpLargeContract(codeOwner);
@@ -854,7 +855,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 // 4 - set state[new_address].code to the updated deploy container
                 // push new_address onto the stack (already done before the ifs)
-                _codeInfoRepository.InsertCode(bytecodeResult, codeOwner, spec);
+                _codeInfoRepository.InsertCode(bytecodeResult, codeOwner, in VirtualMachine.BlockExecutionContext.CodeInsertion);
                 if (bytecodeResult.Length > CodeSizeConstants.MaxCodeSizeEip170)
                 {
                     accessedItems.WarmUpLargeContract(codeOwner);

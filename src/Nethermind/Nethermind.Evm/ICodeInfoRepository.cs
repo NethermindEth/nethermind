@@ -16,9 +16,9 @@ public interface ICodeInfoRepository
     CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, in SpecSnapshot spec, out Address? delegationAddress);
     bool TryGetDelegation(Address address, in SpecSnapshot spec, [NotNullWhen(true)] out Address? delegatedAddress);
 
-    ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec);
-    void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
-    void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec);
+    ValueHash256 GetExecutableCodeHash(Address address, in CodeInsertionSpec spec);
+    void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, in CodeInsertionSpec spec);
+    void SetDelegation(Address codeSource, Address authority, in CodeInsertionSpec spec);
 
     /// <remarks>
     /// Parses delegation code to extract the contained address.
@@ -58,5 +58,23 @@ public static class CodeInfoRepositoryExtensions
     {
         SpecSnapshot snapshot = spec.GetSnapshot();
         return codeInfoRepository.TryGetDelegation(address, in snapshot, out delegatedAddress);
+    }
+
+    public static ValueHash256 GetExecutableCodeHash(this ICodeInfoRepository codeInfoRepository, Address address, IReleaseSpec spec)
+    {
+        CodeInsertionSpec codeInsertionSpec = spec.CodeInsertion;
+        return codeInfoRepository.GetExecutableCodeHash(address, in codeInsertionSpec);
+    }
+
+    public static void InsertCode(this ICodeInfoRepository codeInfoRepository, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    {
+        CodeInsertionSpec codeInsertionSpec = spec.CodeInsertion;
+        codeInfoRepository.InsertCode(code, codeOwner, in codeInsertionSpec);
+    }
+
+    public static void SetDelegation(this ICodeInfoRepository codeInfoRepository, Address codeSource, Address authority, IReleaseSpec spec)
+    {
+        CodeInsertionSpec codeInsertionSpec = spec.CodeInsertion;
+        codeInfoRepository.SetDelegation(codeSource, authority, in codeInsertionSpec);
     }
 }
