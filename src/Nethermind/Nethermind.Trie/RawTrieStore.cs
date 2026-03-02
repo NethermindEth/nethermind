@@ -15,23 +15,15 @@ namespace Nethermind.Trie;
 /// <param name="nodeStorage"></param>
 public class RawTrieStore(INodeStorage nodeStorage) : IReadOnlyTrieStore
 {
-    public RawTrieStore(IKeyValueStoreWithBatching kv) : this(new NodeStorage(kv))
-    {
-    }
+    public RawTrieStore(IKeyValueStoreWithBatching kv) : this(new NodeStorage(kv)) { }
 
-    void IDisposable.Dispose()
-    {
-    }
+    void IDisposable.Dispose() { }
 
-    public virtual ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags)
-    {
-        return new RawScopedTrieStore.Committer(nodeStorage, address, writeFlags);
-    }
+    public virtual ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) =>
+        new RawScopedTrieStore.Committer(nodeStorage, address, writeFlags);
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
-    {
-        return new TrieNode(NodeType.Unknown, hash);
-    }
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) =>
+        new(NodeType.Unknown, hash);
 
     public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
@@ -40,35 +32,16 @@ public class RawTrieStore(INodeStorage nodeStorage) : IReadOnlyTrieStore
         return ret;
     }
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        return nodeStorage.Get(address, path, hash, flags);
-    }
-
-    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
-    {
-        return nodeStorage.KeyExists(address, path, keccak);
-    }
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags) =>
+        nodeStorage.Get(address, path, hash, flags);
 
     public INodeStorage.KeyScheme Scheme { get; } = nodeStorage.Scheme;
 
-    public bool HasRoot(Hash256 stateRoot)
-    {
-        return nodeStorage.KeyExists(null, TreePath.Empty, stateRoot);
-    }
+    public bool HasRoot(Hash256 stateRoot) => nodeStorage.KeyExists(null, TreePath.Empty, stateRoot);
 
-    public IDisposable BeginScope(BlockHeader? baseBlock)
-    {
-        return new Reactive.AnonymousDisposable(() => { });
-    }
+    public IDisposable BeginScope(BlockHeader? baseBlock) => new Reactive.AnonymousDisposable(static () => { });
 
-    public IScopedTrieStore GetTrieStore(Hash256? address)
-    {
-        return new RawScopedTrieStore(nodeStorage, address);
-    }
+    public IScopedTrieStore GetTrieStore(Hash256? address) => new RawScopedTrieStore(nodeStorage, address);
 
-    public IBlockCommitter BeginBlockCommit(long blockNumber)
-    {
-        return NullCommitter.Instance;
-    }
+    public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
 }

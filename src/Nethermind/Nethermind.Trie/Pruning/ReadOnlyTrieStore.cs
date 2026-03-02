@@ -23,20 +23,17 @@ namespace Nethermind.Trie.Pruning
         public byte[]? TryLoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
             _trieStore.TryLoadRlp(address, treePath, hash, flags);
 
-        public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => _trieStore.IsPersisted(address, path, keccak);
-
         public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
 
-        public IBlockCommitter BeginBlockCommit(long blockNumber)
-        {
-            return NullCommitter.Instance;
-        }
+        public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
 
         public IDisposable BeginScope(BlockHeader? baseBlock) => new Reactive.AnonymousDisposable(() => { }); // Noop
 
         public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedReadOnlyTrieStore(this, address);
 
         public bool HasRoot(Hash256 stateRoot) => _trieStore.HasRoot(stateRoot);
+
+        public bool HasRoot(Hash256 stateRoot, long blockNumber) => _trieStore.HasRoot(stateRoot, blockNumber);
 
         public void Dispose() { }
 
@@ -56,9 +53,6 @@ namespace Nethermind.Trie.Pruning
             public INodeStorage.KeyScheme Scheme => fullTrieStore.Scheme;
 
             public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => NullCommitter.Instance;
-
-            public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
-                fullTrieStore.IsPersisted(address, path, in keccak);
         }
     }
 }

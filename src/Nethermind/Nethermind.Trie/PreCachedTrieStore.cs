@@ -29,29 +29,15 @@ public sealed class PreCachedTrieStore : ITrieStore
         _tryLoadRlp = (in NodeKey key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
     }
 
-    public void Dispose()
-    {
-        _inner.Dispose();
-    }
+    public void Dispose() => _inner.Dispose();
 
-    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags)
-    {
-        return _inner.BeginCommit(address, root, writeFlags);
-    }
+    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => _inner.BeginCommit(address, root, writeFlags);
 
-    public IBlockCommitter BeginBlockCommit(long blockNumber)
-    {
-        return _inner.BeginBlockCommit(blockNumber);
-    }
-
-    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
-    {
-        byte[]? rlp = _preBlockCache.GetOrAdd(new(address, in path, in keccak), _tryLoadRlp);
-
-        return rlp is not null;
-    }
+    public IBlockCommitter BeginBlockCommit(long blockNumber) => _inner.BeginBlockCommit(blockNumber);
 
     public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
+
+    public bool HasRoot(Hash256 stateRoot, long blockNumber) => _inner.HasRoot(stateRoot, blockNumber);
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => _inner.BeginScope(baseBlock);
 
@@ -67,7 +53,7 @@ public sealed class PreCachedTrieStore : ITrieStore
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         _preBlockCache.GetOrAdd(new(address, in path, hash),
             flags == ReadFlags.None ? _tryLoadRlp :
-            (in NodeKey key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
+            (in key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
 
     public INodeStorage.KeyScheme Scheme => _inner.Scheme;
 }

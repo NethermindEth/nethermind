@@ -466,7 +466,7 @@ public class TransactionProcessorTests
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(24080);
         tracer.GasSpent.Should().Be(35228L);
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        estimate.Should().Be(59307);
+        estimate.Should().Be(54225);
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -474,32 +474,19 @@ public class TransactionProcessorTests
 
     private void ConfirmEnoughEstimate(Transaction tx, Block block, long estimate)
     {
+        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+
         CallOutputTracer outputTracer = new();
         tx.GasLimit = estimate;
-        TestContext.Out.WriteLine(tx.GasLimit);
-
-        GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
-        _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
-        string traceEnoughGas = new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true);
-
         _transactionProcessor.CallAndRestore(tx, blkCtx, outputTracer);
-        traceEnoughGas.Should().NotContain("OutOfGas");
+        outputTracer.StatusCode.Should().Be(StatusCode.Success,
+            $"transaction should succeed at the estimate ({estimate})");
 
         outputTracer = new CallOutputTracer();
         tx.GasLimit = Math.Min(estimate - 1, estimate * 63 / 64);
-        TestContext.Out.WriteLine(tx.GasLimit);
-
-        gethTracer = new GethLikeTxMemoryTracer(tx, GethTraceOptions.Default);
-        _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
-
-        string traceOutOfGas = new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true);
-        TestContext.Out.WriteLine(traceOutOfGas);
-
         _transactionProcessor.CallAndRestore(tx, blkCtx, outputTracer);
-
-        bool failed = traceEnoughGas.Contains("failed") || traceEnoughGas.Contains("OutOfGas");
-        failed.Should().BeTrue();
+        outputTracer.StatusCode.Should().Be(StatusCode.Failure,
+            $"transaction should fail below the estimate ({tx.GasLimit})");
     }
 
     [TestCase]
@@ -769,5 +756,49 @@ public class TransactionProcessorTests
         }
 
         return result;
+    }
+
+    [Test]
+    public void Warmup_does_not_update_SpentGas()
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+            .WithGasLimit(100000).TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+        // Use a sentinel value because the SpentGas getter returns GasLimit when _spentGas is 0
+        const long sentinel = 42;
+        tx.SpentGas = sentinel;
+
+        _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        tx.SpentGas.Should().Be(sentinel, "Warmup must not modify tx.SpentGas");
+    }
+
+    [Test]
+    public void Warmup_does_not_modify_sender_nonce()
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+            .WithGasLimit(100000).TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+        UInt256 nonceBefore = _stateProvider.GetNonce(TestItem.AddressA);
+
+        _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        _stateProvider.GetNonce(TestItem.AddressA).Should().Be(nonceBefore, "Warmup must not increment sender nonce");
+    }
+
+    [Test]
+    public void Warmup_does_not_deduct_sender_balance()
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+            .WithGasLimit(100000).TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+        UInt256 balanceBefore = _stateProvider.GetBalance(TestItem.AddressA);
+
+        _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        _stateProvider.GetBalance(TestItem.AddressA).Should().Be(balanceBefore, "Warmup must not deduct sender balance (should use SystemTransactionProcessor path)");
     }
 }

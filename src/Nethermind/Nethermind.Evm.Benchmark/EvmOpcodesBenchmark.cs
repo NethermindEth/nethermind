@@ -1,0 +1,932 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
+using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Columns;
+using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Environments;
+using BenchmarkDotNet.Jobs;
+using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+
+namespace Nethermind.Evm.Benchmark;
+
+/// <summary>
+/// Benchmarks that execute real EVM instruction handlers via function pointer dispatch,
+/// matching the production execution path in VirtualMachine.
+/// Stack values are prepared per benchmark case based on <see cref="Opcode"/>.
+/// Run: dotnet run -c Release --filter "*EvmOpcodesBenchmark*"
+/// </summary>
+[Config(typeof(EvmOpcodesBenchmarkConfig))]
+public unsafe class EvmOpcodesBenchmark
+{
+    private const int InnerCount = 8192;
+    private const int KeccakWordSize = EvmStack.WordSize;
+    private const int DynamicStorageKeyCount = InnerCount * 8;
+    private const int DynamicCallTargetCount = InnerCount;
+
+    private delegate*<VirtualMachine<EthereumGasPolicy>, ref EvmStack, ref EthereumGasPolicy, ref int, EvmExceptionType>[] _opcodes = null!;
+    private BenchmarkVm _vm = null!;
+    private byte[] _stackBuffer = null!;
+    private int _stackOffset;
+    private int _stackLength;
+    private EthereumGasPolicy _gas;
+    private ExecutionEnvironment _env = null!;
+    private VmState<EthereumGasPolicy> _vmState = null!;
+    private IWorldState _stateProvider = null!;
+    private IDisposable _stateScope = null!;
+    private int _stackDepth;
+    private int _runsPerBatch;
+    private int _iterationId;
+    private UInt256[] _dynamicStorageKeys = null!;
+    private UInt256[] _dynamicKeccakOffsets = null!;
+    private UInt256[] _dynamicCallTargets = null!;
+    private EthereumCodeInfoRepository _codeInfoRepository = null!;
+
+    // Full-width 256-bit test values for 2-param ops (a is popped first from slot[1], b from slot[0]).
+    private static readonly UInt256 ValueA = UInt256.Parse("0x6F1D2C3B4A59687766554433221100FFEEDDCCBBAA99887766554433221100FF");
+    private static readonly UInt256 ValueB = UInt256.Parse("0x5A0F9E8D7C6B5A4938271605F4E3D2C1B0A99887766554433221100FFEDCBA98");
+    private static readonly UInt256 StarkFieldModulus = UInt256.Parse("0x0800000000000011000000000000000000000000000000000000000000000001");
+    private static readonly UInt256 TernaryOperandA = UInt256.MaxValue - new UInt256(0x12345UL);
+    private static readonly UInt256 TernaryOperandB = UInt256.MaxValue - new UInt256(0xABCDEUL);
+    private static readonly UInt256 MulOperandA = UInt256.Parse("0xF91D2C3B4A59687766554433221100FFEEDDCCBBAA99887766554433221100F1");
+    private static readonly UInt256 MulOperandB = UInt256.Parse("0xD50F9E8D7C6B5A4938271605F4E3D2C1B0A99887766554433221100FFEDCBAE3");
+    private static readonly UInt256 DivisorOperand = UInt256.Parse("0x2B7D4E1943A6C1E28F30517294B6D8FA1C3E507294B6D8FA1C3E507294B6D8F9");
+    private static readonly UInt256 DividendOperand = UInt256.Parse("0xE4A39F6C2D18B57A93C4E1F6287D3A5CB7E9D1F30496A8BCD2E4F6A8C1D3E5F7");
+    private static readonly UInt256 ShiftAmount = new(64);
+    private static readonly UInt256 BytePosition = new(15);
+    private static readonly UInt256 SignExtendPosition = new(15);
+    private static readonly UInt256 JumpDestination = UInt256.Zero;
+    private static readonly UInt256 One = UInt256.One;
+    private static readonly UInt256 CallTarget = new(0x1000UL);
+    private static readonly UInt256 CallGasLimit = new(100_000UL);
+    private const ulong DynamicCallTargetBase = 0x2000UL;
+    private static readonly UInt256 DynamicStorageBase = new(1_000_000UL);
+    private static readonly UInt256 KeccakLength = new((ulong)KeccakWordSize);
+    private static readonly Address CallTargetAddress = Address.FromNumber(0x1000);
+    private static readonly byte[] StopCode = [(byte)Instruction.STOP];
+    private static readonly Instruction[] AllValidLegacyOpcodes = Enum
+        .GetValues<Instruction>()
+        .Where(static opcode => opcode.IsValid(isEofContext: false) && opcode != Instruction.INVALID)
+        .ToArray();
+    private static readonly Instruction[] PerRunRefreshedOpcodes =
+    [
+        Instruction.KECCAK256,
+        Instruction.SLOAD,
+        Instruction.SSTORE,
+        Instruction.TLOAD,
+        Instruction.TSTORE,
+        Instruction.CALL,
+        Instruction.CALLCODE,
+        Instruction.DELEGATECALL,
+        Instruction.STATICCALL,
+    ];
+
+    // Regression detection thresholds per opcode category.
+    // Comparison uses Median (robust to outliers), so thresholds can be tighter than Mean-based.
+    // Call opcodes involve nested frames and GC pressure.
+    // State opcodes touch storage tries and caches with cold-access variance.
+    // Log opcodes allocate variable-size log entries.
+    private const double DefaultThresholdPercent = 5.0;
+    private const double CallThresholdPercent = 15.0;
+    private const double StateThresholdPercent = 20.0;
+    private const double LogThresholdPercent = 15.0;
+
+    internal static double GetThresholdPercent(Instruction opcode) => opcode switch
+    {
+        Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL
+            => CallThresholdPercent,
+        Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE or Instruction.KECCAK256
+            => StateThresholdPercent,
+        Instruction.LOG0 or Instruction.LOG1 or Instruction.LOG2 or Instruction.LOG3 or Instruction.LOG4
+            => LogThresholdPercent,
+        _ => DefaultThresholdPercent,
+    };
+    public IEnumerable<Instruction> Opcodes => AllValidLegacyOpcodes;
+
+    [ParamsSource(nameof(Opcodes))]
+    public Instruction Opcode { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        (_stackBuffer, _stackOffset, _stackLength) = CreateStackBuffer();
+        _gas = EthereumGasPolicy.FromLong(long.MaxValue);
+
+        // Pre-fill 20 stack slots with unique values for DUP/SWAP tests
+        for (int i = 0; i < 20; i++)
+        {
+            WriteStackSlot(i, new UInt256((ulong)(i + 1) * 0x0102030405060708UL));
+        }
+
+        // Create VM with opcode table - mirrors VirtualMachine.Warmup pattern
+        IReleaseSpec spec = Fork.GetLatest();
+        _vm = new BenchmarkVm(new NoOpBlockhashProvider(), MainnetSpecProvider.Instance, LimboLogs.Instance);
+        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Address address = Address.SystemUser;
+        _stateProvider.CreateAccount(address, UInt256.One);
+        _stateProvider.CreateAccount(CallTargetAddress, UInt256.Zero);
+        _stateProvider.InsertCode(CallTargetAddress, StopCode, spec);
+        if (Opcode is Instruction.SSTORE or Instruction.SLOAD or Instruction.TSTORE or Instruction.TLOAD)
+        {
+            InitializeDynamicStorageLocations(address);
+        }
+        if (IsCallOpcode(Opcode))
+        {
+            InitializeDynamicCallTargets(spec);
+        }
+        _stateProvider.Commit(spec);
+
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        _codeInfoRepository = codeInfoRepository;
+
+        BlockHeader header = new(
+            Keccak.Zero,
+            Keccak.Zero,
+            address,
+            UInt256.One,
+            MainnetSpecProvider.PragueActivation.BlockNumber,
+            long.MaxValue,
+            1UL,
+            [],
+            0,
+            0);
+        _vm.SetBlockExecutionContext(new BlockExecutionContext(header, spec, UInt256.Zero));
+        _vm.SetTxExecutionContext(new TxExecutionContext(address, codeInfoRepository, null, 0));
+        _vm.SetExecutionDependencies(_stateProvider, codeInfoRepository);
+
+        // Create bytecode buffer for PUSH instructions (64 bytes of data after the opcode)
+        byte[] bytecode = new byte[64];
+        bytecode[0] = (byte)Instruction.JUMPDEST;
+        for (int i = 0; i < bytecode.Length; i++)
+        {
+            if (i > 0)
+            {
+                bytecode[i] = (byte)(i + 1);
+            }
+        }
+
+        _env = ExecutionEnvironment.Rent(
+            codeInfo: new CodeInfo(bytecode),
+            executingAccount: address,
+            caller: address,
+            codeSource: address,
+            callDepth: 0,
+            transferValue: 0,
+            value: 0,
+            inputData: default);
+
+        _vmState = VmState<EthereumGasPolicy>.RentTopLevel(
+            EthereumGasPolicy.FromLong(long.MaxValue),
+            ExecutionType.TRANSACTION,
+            _env,
+            new StackAccessTracker(),
+            Snapshot.Empty);
+        _vmState.InitializeStacks();
+        InitializeKeccakMemoryLocations();
+
+        _vm.SetVmState(_vmState);
+        _vm.SetTracer(NullTxTracer.Instance);
+
+        // Generate the opcode function pointer table (same as production)
+        _opcodes = EvmInstructions.GenerateOpCodes<EthereumGasPolicy, OffFlag>(spec);
+
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+    }
+
+    [GlobalCleanup]
+    public void Cleanup()
+    {
+        _vmState?.Dispose();
+        _env?.Dispose();
+        _stateScope?.Dispose();
+    }
+
+    [Benchmark(OperationsPerInvoke = InnerCount)]
+    public EvmExceptionType ExecuteOpcode()
+    {
+        if (RequiresPerRunLocationSetup(Opcode))
+        {
+            return ExecuteOpcodeWithPerRunRefresh();
+        }
+
+        if (RequiresIndependentBinaryInputs(Opcode))
+        {
+            return ExecuteOpcodeWithIndependentBinaryInputs();
+        }
+
+        return ExecuteOpcodeWithStackWalk();
+    }
+
+    private EvmExceptionType ExecuteOpcodeWithStackWalk()
+    {
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        EvmExceptionType result = EvmExceptionType.None;
+        int remaining = InnerCount;
+        while (remaining > 0)
+        {
+            int runs = Math.Min(remaining, _runsPerBatch);
+            stack.Head = _stackDepth;
+
+            for (int i = 0; i < runs; i++)
+            {
+                EthereumGasPolicy gas = _gas;
+                int pc = 0;
+                result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+                DisposeNestedReturnFrame();
+            }
+
+            remaining -= runs;
+        }
+
+        return result;
+    }
+
+    private EvmExceptionType ExecuteOpcodeWithPerRunRefresh()
+    {
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        EvmExceptionType result = EvmExceptionType.None;
+        for (int runIndex = 0; runIndex < InnerCount; runIndex++)
+        {
+            stack.Head = _stackDepth;
+            PreparePerRunLocationSetup(runIndex);
+
+            EthereumGasPolicy gas = _gas;
+            int pc = 0;
+            result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+            DisposeNestedReturnFrame();
+        }
+
+        return result;
+    }
+
+    private EvmExceptionType ExecuteOpcodeWithIndependentBinaryInputs()
+    {
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        EvmExceptionType result = EvmExceptionType.None;
+        int remaining = InnerCount;
+        while (remaining > 0)
+        {
+            int runs = Math.Min(remaining, _runsPerBatch);
+            int depth = SetupStackForIndependentBinaryRuns(Opcode, runs);
+            for (int i = 0; i < runs; i++)
+            {
+                stack.Head = depth - (i * 2);
+
+                EthereumGasPolicy gas = _gas;
+                int pc = 0;
+                result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+                DisposeNestedReturnFrame();
+            }
+
+            remaining -= runs;
+        }
+
+        return result;
+    }
+
+    [IterationCleanup]
+    public void CleanupStack()
+    {
+        _stateProvider.Reset(resetBlockChanges: true);
+        CacheCodeInfoRepository.Clear();
+    }
+
+    [IterationSetup]
+    public void SetupStackForOpcode()
+    {
+        _iterationId++;
+        bool requiresPerRunRefresh = RequiresPerRunLocationSetup(Opcode);
+        if (requiresPerRunRefresh)
+        {
+            _stackDepth = SetupStackForOpcode(Opcode, runs: 1);
+            _runsPerBatch = InnerCount;
+
+            // Pre-seed transient storage so internal collections are pre-sized,
+            // eliminating hash map resize events during measurement.
+            // TLOAD: keeps populated slots to measure real lookups.
+            // TSTORE: resets after sizing so writes go to empty slots (first-write cost).
+            if (Opcode is Instruction.TLOAD or Instruction.TSTORE)
+            {
+                PreSeedTransientStorageForIteration();
+                if (Opcode is Instruction.TSTORE)
+                {
+                    _stateProvider.ResetTransient();
+                }
+            }
+
+            return;
+        }
+
+        if (RequiresIndependentBinaryInputs(Opcode))
+        {
+            _runsPerBatch = Math.Min(InnerCount, EvmStack.MaxStackSize / 2);
+            _stackDepth = _runsPerBatch * 2;
+            return;
+        }
+
+        _stackDepth = SetupStackForOpcode(Opcode, InnerCount);
+        _runsPerBatch = CalculateRunsPerBatch(Opcode, _stackDepth, InnerCount);
+    }
+
+    internal static bool TryEstimateOpcodeGas(Instruction opcode, out long gas)
+    {
+        EvmOpcodesBenchmark probe = new() { Opcode = opcode };
+        try
+        {
+            probe.Setup();
+            probe.SetupStackForOpcode();
+            gas = probe.ExecuteOpcodeOnceForGas();
+            return true;
+        }
+        catch
+        {
+            gas = 0;
+            return false;
+        }
+        finally
+        {
+            probe.Cleanup();
+        }
+    }
+
+    private static int CalculateRunsPerBatch(Instruction opcode, int depth, int requestedRuns)
+    {
+        if (requestedRuns <= 1)
+        {
+            return 1;
+        }
+
+        (int inputCount, int outputCount) = GetStackIo(opcode);
+        int netChange = outputCount - inputCount;
+        int maxRuns;
+
+        if (netChange < 0)
+        {
+            int consumptionPerRun = -netChange;
+            if (depth < inputCount)
+            {
+                return 1;
+            }
+
+            maxRuns = ((depth - inputCount) / consumptionPerRun) + 1;
+        }
+        else if (netChange > 0)
+        {
+            int maxHead = EvmStack.MaxStackSize - 1;
+            int availableGrowth = maxHead - depth;
+            if (availableGrowth < 0)
+            {
+                return 1;
+            }
+
+            maxRuns = availableGrowth / netChange;
+        }
+        else
+        {
+            maxRuns = requestedRuns;
+        }
+
+        return Math.Clamp(maxRuns, 1, requestedRuns);
+    }
+
+    private static (int InputCount, int OutputCount) GetStackIo(Instruction opcode)
+    {
+        return opcode switch
+        {
+            Instruction.CALL or Instruction.CALLCODE => (7, 1),
+            Instruction.DELEGATECALL or Instruction.STATICCALL => (6, 1),
+            _ => (opcode.StackRequirements().InputCount, opcode.StackRequirements().OutputCount),
+        };
+    }
+
+    private int SetupStackForOpcode(Instruction opcode, int runs = 1)
+    {
+        switch (opcode)
+        {
+            case Instruction.ADDMOD:
+            case Instruction.MULMOD:
+                return SetupStackForTernaryRuns(runs, in TernaryOperandA, in TernaryOperandB, in StarkFieldModulus);
+
+            case Instruction.SIGNEXTEND:
+                return SetupStackForBinaryRuns(runs, in SignExtendPosition, in ValueA);
+
+            case Instruction.BYTE:
+                return SetupStackForBinaryRuns(runs, in BytePosition, in ValueA);
+
+            case Instruction.SHL:
+            case Instruction.SHR:
+            case Instruction.SAR:
+                return SetupStackForBinaryRuns(runs, in ShiftAmount, in ValueA);
+
+            case Instruction.JUMP:
+                WriteStackSlot(0, in JumpDestination);
+                return 1;
+
+            case Instruction.JUMPI:
+                SetupStack2(in JumpDestination, in One);
+                return 2;
+
+            case Instruction.CALL:
+            case Instruction.CALLCODE:
+                SetupCallStack(hasValue: true);
+                return 7;
+
+            case Instruction.DELEGATECALL:
+            case Instruction.STATICCALL:
+                SetupCallStack(hasValue: false);
+                return 6;
+
+            case Instruction.EXTCODECOPY:
+                return SetupExtCodeCopyStack(runs);
+
+            case Instruction.ADD:
+            case Instruction.SUB:
+            case Instruction.EXP:
+            case Instruction.LT:
+            case Instruction.GT:
+            case Instruction.SLT:
+            case Instruction.SGT:
+            case Instruction.EQ:
+            case Instruction.AND:
+            case Instruction.OR:
+            case Instruction.XOR:
+                return SetupStackForBinaryRuns(runs);
+
+            case Instruction.MUL:
+                return SetupStackForBinaryRuns(runs, in MulOperandA, in MulOperandB);
+
+            case Instruction.DIV:
+            case Instruction.SDIV:
+            case Instruction.MOD:
+            case Instruction.SMOD:
+                return SetupStackForBinaryRuns(runs, in DividendOperand, in DivisorOperand);
+
+            default:
+                return SetupGenericStack(opcode);
+        }
+    }
+
+    private int SetupStackForBinaryRuns(int runs, in UInt256 first, in UInt256 second)
+    {
+        int effectiveRuns = Math.Clamp(runs, 1, EvmStack.MaxStackSize - 1);
+        int depth = Math.Max(2, effectiveRuns + 1);
+        for (int i = 0; i < depth; i++)
+        {
+            UInt256 value = (i & 1) == 0 ? second : first;
+            WriteStackSlot(i, in value);
+        }
+
+        int top = depth - 1;
+        WriteStackSlot(top - 1, in second);
+        WriteStackSlot(top, in first);
+        return depth;
+    }
+
+    private int SetupStackForBinaryRuns(int runs)
+    {
+        return SetupStackForBinaryRuns(runs, in ValueA, in ValueB);
+    }
+
+    private int SetupStackForTernaryRuns(int runs, in UInt256 first, in UInt256 second, in UInt256 modulus)
+    {
+        int effectiveRuns = Math.Clamp(runs, 1, (EvmStack.MaxStackSize - 1) / 2);
+        int depth = Math.Max(3, (effectiveRuns * 2) + 1);
+        int top = depth - 1;
+        WriteStackSlot(top, in first);
+
+        // For each chained ternary op run:
+        // a = previous result (or initial first), b = constant second, m = constant modulus.
+        for (int offset = 1; offset < depth; offset++)
+        {
+            int slot = top - offset;
+            if ((offset & 1) == 1)
+            {
+                WriteStackSlot(slot, in second);
+            }
+            else
+            {
+                WriteStackSlot(slot, in modulus);
+            }
+        }
+
+        return depth;
+    }
+
+    private int SetupExtCodeCopyStack(int runs)
+    {
+        int availableSlots = _stackLength / EvmStack.WordSize;
+        int effectiveRuns = Math.Clamp(runs, 1, availableSlots / 4);
+        int depth = Math.Max(4, effectiveRuns * 4);
+        for (int run = 0; run < effectiveRuns; run++)
+        {
+            int slot = run * 4;
+            WriteStackSlot(slot + 0, UInt256.Zero); // length
+            WriteStackSlot(slot + 1, UInt256.Zero); // sourceOffset
+            WriteStackSlot(slot + 2, UInt256.Zero); // memoryOffset
+            WriteStackSlot(slot + 3, in CallTarget); // address (popped first)
+        }
+
+        return depth;
+    }
+
+    private int SetupGenericStack(Instruction opcode)
+    {
+        int inputCount = opcode.StackRequirements().InputCount;
+        for (int i = 0; i < inputCount; i++)
+        {
+            UInt256 value = new((ulong)(i + 1));
+            WriteStackSlot(i, in value);
+        }
+
+        return inputCount;
+    }
+
+    private void SetupCallStack(bool hasValue)
+    {
+        SetupCallStack(hasValue, in CallTarget);
+    }
+
+    private void SetupCallStack(bool hasValue, in UInt256 target)
+    {
+        // Stack order from top to bottom:
+        // CALL/CALLCODE: gas, addr, value, inOffset, inLength, outOffset, outLength
+        // DELEGATECALL/STATICCALL: gas, addr, inOffset, inLength, outOffset, outLength
+        WriteStackSlot(0, UInt256.Zero); // outLength
+        WriteStackSlot(1, UInt256.Zero); // outOffset
+        WriteStackSlot(2, UInt256.Zero); // inLength
+        WriteStackSlot(3, UInt256.Zero); // inOffset
+
+        if (hasValue)
+        {
+            WriteStackSlot(4, UInt256.Zero); // value
+            WriteStackSlot(5, in target); // addr
+            WriteStackSlot(6, in CallGasLimit); // gas
+        }
+        else
+        {
+            WriteStackSlot(4, in target); // addr
+            WriteStackSlot(5, in CallGasLimit); // gas
+        }
+    }
+
+    private void SetupStack2(in UInt256 a, in UInt256 b)
+    {
+        WriteStackSlot(0, in b);
+        WriteStackSlot(1, in a);
+    }
+
+    private long ExecuteOpcodeOnceForGas()
+    {
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        if (RequiresPerRunLocationSetup(Opcode))
+        {
+            stack.Head = _stackDepth;
+            PreparePerRunLocationSetup(0);
+        }
+        else if (RequiresIndependentBinaryInputs(Opcode))
+        {
+            int depth = SetupStackForIndependentBinaryRuns(Opcode, runs: 1);
+            stack.Head = depth;
+        }
+        else
+        {
+            stack.Head = _stackDepth;
+        }
+
+        EthereumGasPolicy gas = _gas;
+        int pc = 0;
+        _ = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+        DisposeNestedReturnFrame();
+
+        return _gas.Value - gas.Value;
+    }
+
+    private void DisposeNestedReturnFrame()
+    {
+        if (_vm.ReturnData is VmState<EthereumGasPolicy> nestedFrame)
+        {
+            nestedFrame.Dispose();
+            _vm.ReturnData = null!;
+        }
+    }
+
+    private void SetupStack3(in UInt256 a, in UInt256 b, in UInt256 c)
+    {
+        WriteStackSlot(0, in c);
+        WriteStackSlot(1, in b);
+        WriteStackSlot(2, in a);
+    }
+
+    private void InitializeDynamicStorageLocations(Address executingAddress)
+    {
+        _dynamicStorageKeys = new UInt256[DynamicStorageKeyCount];
+        for (int i = 0; i < DynamicStorageKeyCount; i++)
+        {
+            UInt256 key = DynamicStorageBase + (UInt256)(ulong)i;
+            _dynamicStorageKeys[i] = key;
+
+            // Seed a larger storage keyspace so SLOAD/SSTORE do not benchmark an empty trie
+            // or repeatedly hit the same small hot subset across benchmark iterations.
+            UInt256 initialValue = (i & 1) == 0 ? ValueA : ValueB;
+            _stateProvider.Set(new StorageCell(executingAddress, key), ToStorageBytes(initialValue));
+        }
+    }
+
+    private static ulong s_keccak;
+    private void InitializeKeccakMemoryLocations()
+    {
+        _dynamicKeccakOffsets = new UInt256[InnerCount];
+        Span<byte> word = stackalloc byte[KeccakWordSize];
+        for (int i = 0; i < InnerCount; i++)
+        {
+            s_keccak++;
+            UInt256 offset = (UInt256)(ulong)(i * KeccakWordSize);
+            _dynamicKeccakOffsets[i] = offset;
+
+            for (int b = 0; b < word.Length; b++)
+            {
+                word[b] = (byte)((i * 131 + b * 17 + 11) & 0xFF);
+            }
+
+            ulong adjust = s_keccak;
+            ValueHash256 hash = ValueKeccak.Compute(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref adjust, 1)));
+
+            word.Xor(hash.Bytes);
+
+            _vmState.Memory.TrySave(in offset, word);
+        }
+    }
+
+    private static byte[] ToStorageBytes(in UInt256 value)
+    {
+        byte[] bytes = new byte[KeccakWordSize];
+        value.ToBigEndian(bytes);
+        return bytes;
+    }
+
+    /// <summary>
+    /// Pre-populates transient storage with the keys that will be accessed in this iteration.
+    /// For TLOAD, entries remain so reads hit populated slots.
+    /// For TSTORE, the caller resets after this call so writes go to empty slots,
+    /// but the internal collections retain their capacity (no resize events during measurement).
+    /// </summary>
+    private void PreSeedTransientStorageForIteration()
+    {
+        Address address = _env.ExecutingAccount;
+        byte[] seedValue = ToStorageBytes(ValueA);
+        for (int i = 0; i < InnerCount; i++)
+        {
+            long sequence = ((long)_iterationId * InnerCount) + i;
+            int index = (int)(sequence % _dynamicStorageKeys.Length);
+            UInt256 key = _dynamicStorageKeys[index];
+            StorageCell cell = new(address, key);
+            _stateProvider.SetTransientState(in cell, seedValue);
+        }
+    }
+
+    private static bool RequiresPerRunLocationSetup(Instruction opcode)
+    {
+        return PerRunRefreshedOpcodes.Contains(opcode);
+    }
+
+    private static bool IsCallOpcode(Instruction opcode)
+    {
+        return opcode is Instruction.CALL
+            or Instruction.CALLCODE
+            or Instruction.DELEGATECALL
+            or Instruction.STATICCALL;
+    }
+
+    private static bool RequiresIndependentBinaryInputs(Instruction opcode)
+    {
+        return opcode is Instruction.MUL
+            or Instruction.DIV
+            or Instruction.SDIV
+            or Instruction.MOD
+            or Instruction.SMOD;
+    }
+
+    private int SetupStackForIndependentBinaryRuns(Instruction opcode, int runs)
+    {
+        int effectiveRuns = Math.Clamp(runs, 1, EvmStack.MaxStackSize / 2);
+        int depth = effectiveRuns * 2;
+        GetIndependentBinaryOperands(opcode, out UInt256 first, out UInt256 second);
+        for (int run = 0; run < effectiveRuns; run++)
+        {
+            int head = depth - (run * 2);
+            WriteStackSlot(head - 1, in first);
+            WriteStackSlot(head - 2, in second);
+        }
+
+        return depth;
+    }
+
+    private static void GetIndependentBinaryOperands(Instruction opcode, out UInt256 first, out UInt256 second)
+    {
+        if (opcode == Instruction.MUL)
+        {
+            first = MulOperandA;
+            second = MulOperandB;
+            return;
+        }
+
+        first = DividendOperand;
+        second = DivisorOperand;
+    }
+
+    private void InitializeDynamicCallTargets(IReleaseSpec spec)
+    {
+        _dynamicCallTargets = new UInt256[DynamicCallTargetCount];
+        for (int i = 0; i < DynamicCallTargetCount; i++)
+        {
+            ulong addressNumber = DynamicCallTargetBase + (ulong)i;
+            UInt256 target = new(addressNumber);
+            _dynamicCallTargets[i] = target;
+
+            Address targetAddress = Address.FromNumber(addressNumber);
+            _stateProvider.CreateAccount(targetAddress, UInt256.Zero);
+            _stateProvider.InsertCode(targetAddress, CreateDynamicCallCode(i), spec);
+        }
+    }
+
+    private static byte[] CreateDynamicCallCode(int index)
+    {
+        // STOP halts immediately; trailing bytes make each code hash distinct.
+        return
+        [
+            (byte)Instruction.STOP,
+            (byte)(index & 0xFF),
+            (byte)((index >> 8) & 0xFF),
+            (byte)((index * 31 + 17) & 0xFF),
+            (byte)((index * 73 + 41) & 0xFF),
+            (byte)Instruction.ADD,
+            (byte)Instruction.POP,
+        ];
+    }
+
+    private void PreparePerRunLocationSetup(int runIndex)
+    {
+        long sequence = ((long)_iterationId * InnerCount) + runIndex;
+
+        switch (Opcode)
+        {
+            case Instruction.KECCAK256:
+                int keccakIndex = (int)(sequence % _dynamicKeccakOffsets.Length);
+                UInt256 offset = _dynamicKeccakOffsets[keccakIndex];
+                WriteStackSlot(0, in KeccakLength); // length
+                WriteStackSlot(1, in offset); // offset (popped first)
+                break;
+
+            case Instruction.SLOAD:
+            case Instruction.TLOAD:
+                int loadStorageIndex = (int)(sequence % _dynamicStorageKeys.Length);
+                UInt256 loadKey = _dynamicStorageKeys[loadStorageIndex];
+                WriteStackSlot(0, in loadKey);
+                break;
+
+            case Instruction.SSTORE:
+            case Instruction.TSTORE:
+                int storeStorageIndex = (int)(sequence % _dynamicStorageKeys.Length);
+                UInt256 storeKey = _dynamicStorageKeys[storeStorageIndex];
+                UInt256 value = ((runIndex + _iterationId) & 1) == 0 ? ValueA : ValueB;
+                WriteStackSlot(0, in value); // value (popped second)
+                WriteStackSlot(1, in storeKey); // key (popped first)
+                break;
+
+            case Instruction.CALL:
+            case Instruction.CALLCODE:
+                int callStoreIndex = (int)(sequence % _dynamicCallTargets.Length);
+                UInt256 callTarget = _dynamicCallTargets[callStoreIndex];
+                SetupCallStack(hasValue: true, in callTarget);
+                break;
+
+            case Instruction.DELEGATECALL:
+            case Instruction.STATICCALL:
+                int delegateCallIndex = (int)(sequence % _dynamicCallTargets.Length);
+                UInt256 delegateCallTarget = _dynamicCallTargets[delegateCallIndex];
+                SetupCallStack(hasValue: false, in delegateCallTarget);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Creates a pinned stack buffer and returns an aligned stack window matching VM execution.
+    /// </summary>
+    public static (byte[] Buffer, int Offset, int Size) CreateStackBuffer()
+    {
+        // EXTCODECOPY pops 4 values and pushes none; reserve enough slots for InnerCount runs.
+        int slots = InnerCount * 4;
+        if (slots < EvmStack.MaxStackSize)
+        {
+            slots = EvmStack.MaxStackSize;
+        }
+
+        int stackSize = slots * EvmStack.WordSize;
+        byte[] buffer = GC.AllocateUninitializedArray<byte>(stackSize + EvmStack.WordSize, pinned: true);
+        int offset = GetAlignmentOffset(buffer, EvmStack.WordSize);
+        return (buffer, offset, stackSize);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Span<byte> GetAlignedStackSpan()
+        => _stackBuffer.AsSpan(_stackOffset, _stackLength);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void WriteStackSlot(int slotIndex, in UInt256 value)
+        => WriteStackSlot(GetAlignedStackSpan(), slotIndex, in value);
+
+    /// <summary>
+    /// Writes a UInt256 value to stack slot in big-endian format.
+    /// </summary>
+    private static void WriteStackSlot(Span<byte> buffer, int slotIndex, in UInt256 value)
+    {
+        Span<byte> slot = buffer.Slice(slotIndex * 32, 32);
+        value.ToBigEndian(slot);
+    }
+
+    private unsafe static int GetAlignmentOffset(byte[] array, uint alignment)
+    {
+        nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
+        uint mask = alignment - 1;
+        return (int)((-(nint)address) & mask);
+    }
+
+    /// <summary>
+    /// Subclass to access protected VirtualMachine members for benchmark setup.
+    /// </summary>
+    private class BenchmarkVm(IBlockhashProvider bhp, ISpecProvider sp, ILogManager lm)
+        : VirtualMachine<EthereumGasPolicy>(bhp, sp, lm)
+    {
+        private static readonly FieldInfo CodeInfoRepositoryField =
+            typeof(VirtualMachine<EthereumGasPolicy>)
+                .GetField("_codeInfoRepository", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        public void SetVmState(VmState<EthereumGasPolicy> state) => VmState = state;
+        public void SetTracer(ITxTracer tracer) => _txTracer = tracer;
+
+        public void SetExecutionDependencies(IWorldState state, ICodeInfoRepository codeInfoRepository)
+        {
+            _worldState = state;
+            CodeInfoRepositoryField.SetValue(this, codeInfoRepository);
+        }
+    }
+
+    private class NoOpBlockhashProvider : IBlockhashProvider
+    {
+        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec) => Keccak.Zero;
+        public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;
+    }
+
+    public class EvmOpcodesBenchmarkConfig : ManualConfig
+    {
+        public EvmOpcodesBenchmarkConfig()
+        {
+            // 3 process launches x 15 measurement iterations = 45 data points.
+            // GcForce ensures a GC collection between iterations to reduce allocation noise.
+            // Without an explicit job, BDN falls back to Job.Default (1 launch, auto-pilot)
+            // because the runner's DashboardConfig.AddJob is commented out.
+            AddJob(Job.Default
+                .WithRuntime(CoreRuntime.Core10_0)
+                .WithGcForce(true)
+                .WithEnvironmentVariable("DOTNET_GCServer", "1")
+                .WithEnvironmentVariable("DOTNET_gcConcurrent", "0")
+                .WithInvocationCount(1)
+                .WithUnrollFactor(1)
+                .WithLaunchCount(3)
+                .WithWarmupCount(15)
+                .WithIterationCount(15));
+            HideColumns(Column.Method);
+            AddColumn(StatisticColumn.Min);
+            AddColumn(StatisticColumn.Max);
+            AddColumn(StatisticColumn.Median);
+            AddColumn(StatisticColumn.P90);
+            AddColumn(StatisticColumn.P95);
+            AddColumnProvider(new EvmOpcodeGasColumnProvider());
+        }
+    }
+}
