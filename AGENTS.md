@@ -11,32 +11,15 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 
 ## Coding guidelines and style
 
-- Do follow the [CONTRIBUTING.md](./CONTRIBUTING.md) guidelines
-- Do follow the [.editorconfig](./.editorconfig) rules
-- Do prefer low-allocation code patterns
-- Prefer the latest C# syntax and conventions
-- Prefer file-scoped namespaces (for existing files, follow their style)
-- Prefer pattern matching and switch expressions over the traditional control flow
-- Use the `nameof` operator instead of string literals for member references
-- Use `is null` and `is not null` instead of `== null` and `!= null`
-- Use `?.` null-conditional operator where applicable
-- Use the `ArgumentNullException.ThrowIfNull` method for null checks and other similar methods
-- Use the `ObjectDisposedException.ThrowIf` method for disposal checks
-- Use documentation comments for all public APIs with proper structure
-- Avoid `var` when declaring variables, the only acceptable exceptions are very long type names e.g. nested generic types
-- Consider performance implications in high-throughput paths
-- Trust null annotations, do not add redundant null checks
-- When fixing a bug, always add a regression test that fails without the fix and passes with it
-- Add tests to existing test files rather than creating new ones
-- When adding multiple, similar tests write one test with test cases
-- When adding a test, check if previous tests can be reused with new test case
-- Code comments must explain _why_, not _what_
-- **NEVER suggest using LINQ (`.Select()`, `.Where()`, `.Any()`, etc.) when a simple `foreach` or `for` loop would work.** LINQ has overhead and is less readable for simple iterations. Use LINQ only for complex queries where the declarative syntax significantly improves clarity.
-- Keep changes minimal and focused: do not rename variables, reformat surrounding code, or refactor unrelated logic as part of a fix. Touch only what is necessary to solve the problem.
-- Follow DRY: after making changes, review the result for duplicated logic. Extract repeated blocks (roughly 5+ lines) into shared methods, but do not over-extract trivial one-liners into their own methods.
-- In generic types, move methods that do not depend on the type parameter to a non-generic base class or static helper to avoid redundant JIT instantiations per closed type.
-- Do not use the `#region` and `#endregion` pragmas
-- Do not alter anything in the [src/bench_precompiles](./src/bench_precompiles/) and [src/tests](./src/tests/) directories
+- Follow [CONTRIBUTING.md](./CONTRIBUTING.md) and [.editorconfig](./.editorconfig)
+- Prefer low-allocation code, latest C# syntax, pattern matching, `is null`/`is not null`
+- Avoid `var` (exception: very long nested generic types)
+- **No LINQ** when a simple `for`/`foreach` works — use LINQ only for complex queries
+- Keep changes minimal and focused — don't touch unrelated code
+- When fixing a bug, always add a regression test
+- Do not alter [src/bench_precompiles](./src/bench_precompiles/) or [src/tests](./src/tests/)
+
+> **Detailed conventions** live in `.claude/rules/` — coding style, DI patterns, test infrastructure, performance, robustness, package management, and `.github` workflow rules. Path-scoped rules (e.g. tests, .github) are auto-loaded when editing matching files. Before opening a PR, run `/review` for a deep correctness/security audit.
 
 ## Project structure
 

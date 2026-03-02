@@ -1,0 +1,288 @@
+---
+name: review
+description: Deep code review for an Ethereum execution client. Checks consensus correctness, security, robustness, performance, DI patterns, breaking changes, and observability. Use when asked to "review", "check this PR", "look for bugs", "audit", or "review my changes".
+allowed-tools: [Bash(git diff*), Bash(git merge-base*), Bash(git log*), Read, Grep, Glob]
+---
+
+# Code review
+
+Nethermind is an Ethereum execution client built on .NET. Consensus correctness is non-negotiable — a wrong opcode, a missed fork condition, or an Engine API violation means invalid blocks on a live network.
+
+**Only comment when you have HIGH CONFIDENCE (>80%) that a real issue exists.**
+Be concise: one sentence per comment when possible. If uncertain, stay silent.
+
+**Subagent warning:** Subagents do not inherit `.claude/rules/` or CLAUDE.md. If you launch subagents for this review, you **must** paste all `.claude/rules/` content and all applicable domain review sections from this skill into the subagent prompt. After receiving subagent output, cross-check their findings against the rules in your own context.
+
+---
+
+## Operational constraints
+
+### Phase 1 — Recon (batch aggressively)
+
+All recon calls are independent — emit them in a single parallel batch.
+
+**Step 1: Identify the diff base.** Run in ONE parallel batch:
+- `git merge-base HEAD origin/master` (or the PR's target branch)
+- `git log --oneline --merges <base>..HEAD` (detect merge commits)
+- `git diff <base> HEAD --name-only` (full file list — always cheap)
+
+**Never diff against `master` directly.** `git diff master` compares against the current master tip, which includes commits merged after the branch diverged. Always use the merge base.
+
+**Step 2: Filter the file list.** From the file list, remove:
+- Binary/compressed: `.zst`, `.zip`, `.gz`, `.tar`, `.bin`, `.png`, `.jpg`, `.wasm`, `.dll`, `.exe`, `.dat`, Git LFS pointers
+- Auto-generated: `Chains/*.json`, runner configs
+- If merge commits exist: run `git log --no-merges --format="" --name-only <base>..HEAD | sort -u` to get only files touched by the PR author's commits. Files only in the full list but not in the author-only list came in through merges — skip them unless the PR description says otherwise.
+
+List skipped files and reason in scope.
+
+**Step 3: Categorize** remaining files: production / test / benchmark / CI / docs.
+
+**Step 4: Size the diffs.** Run `git diff <base> HEAD --stat` to get per-file changed-line counts.
+
+**Step 4a: Fetch small diffs.** Files with **≤1000 changed lines**. Fetch in a single `git diff <base> HEAD -- file1 file2 ...` call. If the combined output exceeds **8000 lines**, split into two calls.
+
+**Step 4b: Delegate large diffs.** Files with **>1000 changed lines** go to subagents (see Subagent warning). Each subagent runs the full diff, reviews it, and returns only findings. Group 2–3 related large files per subagent when possible. Collect subagent findings for the verification pass (Plan step 7).
+
+**Prioritization:** If more than 20 production files survived filtering, review critical paths first (EVM, Engine API, State, Trie, Specs, Blockchain), then the rest.
+
+### Phase 2 — Review (one file at a time)
+
+Review each changed `.cs` file independently. Read the diff, check it, report findings, move to the next.
+
+- **Minimize context reads:** Only read files outside the diff to verify a specific finding (e.g., confirming a DI module registration). Do not speculatively read files "for context".
+- **Stay in the diff:** Findings must only come from changed files.
+- **Batch verification reads:** If reviewing a file surfaces multiple findings that each need a different context file, read all context files in one parallel batch — don't round-trip one at a time.
+- **Never fabricate:** If a category does not apply, write "N/A".
+- **MANDATORY: Never invent exceptions to rules.** If a rule in `.claude/rules/` covers a pattern and the code matches that pattern, report it. Do not dismiss a violation by reasoning that the context "probably" justifies it — that is the author's call, not yours. If the rule is wrong, flag the violation and note the rule may need updating.If you believe the rule is wrong for this case, report the violation AND add a note that the rule may need an exception — but the violation still appears in the count.
+
+### Tool call discipline
+
+- **Stat before diff.** Always run `--stat` (Step 4) before fetching full diffs.
+- **One combined diff call, not N.** Small files: single `git diff` call. Large files: subagents run their own.
+- **If the code execution tool is available:** prefer programmatic tool calling for Phase 1 recon. Write a single Python script that runs all git commands, filters, categorizes, sizes diffs, and returns structured JSON.
+- **Otherwise:** emit independent tool calls in one parallel batch. Never sequentially call tools that could have been parallel.
+- **Dependent calls are sequential.** If you need file A's content to decide whether to read file B, that's two turns. That's fine.
+- **Don't fetch what you won't read.** A diff fetched into context but never analyzed is pure waste.
+
+---
+
+## Plan
+
+Follow these steps in order. At each checkpoint, list your findings for that category (or explicitly state "no findings") before proceeding to the next step. Do not skip steps.
+
+1. **Scope** — Run Phase 1 recon (see Operational constraints). List every changed file grouped by project, noting which were skipped and why. Note which review categories apply.
+2. **Checkpoint: scope** — Report file list and applicable categories.
+3. **Load all project rules** — **MANDATORY.** Use `Glob` to list every `.md` file in `.claude/rules/`, then `Read` them all in a single parallel batch. Do not rely on auto-loading — conditional `paths:` filters may silently fail to trigger. After reading, list each rule file with: (a) filename, (b) whether it has a `paths:` filter and what it matches, (c) whether it is relevant to the files in scope.
+4. **Checkpoint: rules loaded** — Present the full table of rule files and their relevance status. Any rule file that was not successfully read is a blocker — retry before proceeding.
+5. **Project rules check** — For small files: check the diff against every loaded rule file. See "Project rules check" section below. Large files: checked by subagents (Step 4b).
+6. **Checkpoint: rules violations** — List every rule violation with file:line, or state "no violations" per category.
+7. **Domain checks** — Apply all domain review sections below as applicable. Large files: checked by subagents (Step 4b). Collect all subagent findings before proceeding.
+8. **Checkpoint: domain** — List every domain finding, or state "no findings" per category.
+9. **Verification pass** — Treat each finding from steps 6 and 8 — including subagent findings — as a hypothesis. For each one:
+   1. Identify what specific evidence would **falsify** it.
+   2. Check for that evidence.
+   3. State **KEEP** or **DROP** (verdict first, then rationale).
+   4. If DROP, state what falsified it.
+   Only findings that survive this step appear in the final report.
+10. **Final report** — Compile surviving findings into the report template at the bottom.
+
+---
+
+## Skip these — CI already handles it
+
+Do not comment on anything below. CI will block the merge if any of it fails.
+
+| Concern | Workflow |
+|---|---|
+| Code formatting, whitespace, EditorConfig | `code-formatting.yml` (`dotnet format`) |
+| Build errors | `build-solutions.yml` |
+| All unit & integration tests | `nethermind-tests.yml` |
+| CodeQL security analysis | `codeql.yml` |
+| Dependency vulnerabilities | `dependency-review.yml` |
+| Ethereum Foundation hive tests (consensus, RPC, Engine API) | `hive-tests.yml`, `hive-consensus-tests.yml` |
+| JSON-RPC output correctness | `rpc-comparison.yml` |
+
+Also skip: naming conventions, missing XML docs on `internal`/`private` members, minor grammar, refactoring suggestions that don't fix a real bug, logging improvements (unless security-related), build warnings that have no behavioural impact.
+
+---
+
+## Step 5: Project rules check
+
+For every changed file, check the diff against every rule file loaded in step 3. Each rule file defines conventions for a specific concern (DI patterns, coding style, robustness, performance, package management, etc.). All rule files must already be loaded from step 3 — if any are missing, go back and load them before proceeding.
+
+**Reminder: You must report findings for every rule category, even if the finding is "no violations". Do not skip any.**
+
+---
+
+## Test quality
+
+CI runs all tests and fails on regressions — don't flag test failures. Do flag genuine gaps:
+
+- A new consensus rule, EIP, or opcode change with no corresponding test — wrong EVM behaviour cannot be caught without one
+- Tests that cover only the happy path and miss **boundary conditions** (e.g., block number exactly at a fork, gas exactly at the limit, `UInt256.MaxValue`)
+- A bug fix with no regression test — without one, the bug will return
+- Tests using `Thread.Sleep` or wall-clock time instead of deterministic mocks — these are flaky in CI
+- Integration tests written for pure algorithmic logic with no I/O or state dependency — unit tests are faster and easier to debug; integration tests are appropriate when multiple components or real storage are genuinely involved
+- Performance-sensitive code paths with no benchmark or allocation test — throughput regressions are invisible without measurements
+
+---
+
+## Documentation
+
+Only flag when it genuinely affects correctness or usability:
+
+- A new public interface (`IPlugin`, `INethermindPlugin`, JSON-RPC method, Engine API handler, config key) with no XML doc comment — public surfaces need documentation because consumers cannot read intent from implementation
+- A comment or doc that **contradicts the code** — misleading docs are worse than no docs
+- A non-obvious consensus rule or algorithm applied with no reference to the EIP or Yellow Paper section — link it so future reviewers can verify
+- Config keys whose units or defaults are ambiguous (e.g., is it milliseconds or seconds?)
+
+---
+
+## Implementation
+
+### Consensus & EVM correctness (CRITICAL)
+
+Wrong EVM behaviour produces invalid blocks, causing chain desync and validators building on an invalid chain — leading to missed attestations and potential safety failures.
+
+- EVM opcode with incorrect gas cost, wrong stack effect, or wrong memory expansion rule
+- Fork/EIP activation condition checked by block number when it should use timestamp (all forks from Cancun onward activate by timestamp), or applied at the wrong boundary
+- Engine API payload accepted or rejected contrary to the spec — each version has distinct required fields: `engine_newPayloadV1` (pre-Shanghai), `engine_newPayloadV2` (+ `withdrawals`), `engine_newPayloadV3` (+ `blobGasUsed`, `excessBlobGas`, `parentBeaconBlockRoot`), `engine_newPayloadV4` (+ `executionRequests`)
+- Blob transaction (EIP-4844) handling with incorrect blob gas accounting, wrong blob base fee calculation, missing KZG commitment verification, or blob gas limit not enforced (6 blobs per block pre-Electra)
+- Wrong state root computation — trie updates, storage root recomputation, or nonce/balance changes that don't match the block header's `stateRoot`; this is the ground truth for block validity
+- Incorrect receipt fields (`cumulativeGasUsed`, bloom filter, logs, status) — receipts are hashed into `receiptsRoot` in the block header; wrong values propagate as invalid blocks to peers
+- System-level withdrawal processing (EIP-4895) applied out of order, to the wrong address, or with wrong amounts — withdrawals bypass the gas system and any error corrupts the state root
+- EIP-1559 base fee computed incorrectly from parent gas used vs target — wrong base fee breaks transaction validity and fee burning for every subsequent block
+- Incorrect RLP encoding or decoding of any Ethereum data structure
+- `UInt256` arithmetic that could overflow or truncate (Ethereum arithmetic is exact 256-bit)
+- BLS12-381 or secp256k1 operations with wrong input format or missing validation
+- EIP-2930 access list gas accounting applied incorrectly — warm vs cold storage access costs (EIP-2929) must account for pre-warmed slots declared in the access list
+- Keccak-256 computed using `System.Security.Cryptography.SHA3_256` instead of Nethermind's `ValueKeccak` / `KeccakHash` — NIST SHA3 and Ethereum's Keccak-256 use different padding and produce different output on every input
+
+### Key code locations
+
+- EVM instruction handlers: `src/Nethermind/Nethermind.Evm/VirtualMachine.cs`
+- Gas cost tables: `src/Nethermind/Nethermind.Evm/GasCostOf.cs`
+- Engine API handlers: `src/Nethermind/Nethermind.Merge.Plugin/Handlers/`
+- Fork activation specs: `src/Nethermind/Nethermind.Specs/`
+- State root computation: `src/Nethermind/Nethermind.State/`
+- Receipt processing: `src/Nethermind/Nethermind.Blockchain/Receipts/`
+
+### Security
+
+- Hardcoded JWT token, private key, credential, or secret in any form
+- Engine API endpoints (`engine_*`) reachable without JWT authentication
+- P2P or JSON-RPC input used in a context that allows command injection or path traversal
+- `unsafe` block without a comment justifying the safety invariant — reviewers cannot verify correctness without it
+- Exception message or log entry that includes a private key, seed, or user credential
+- Missing validation on data received from untrusted sources (peers, RPC callers)
+- P2P message handlers that process externally-supplied sizes or counts without an upper bound — Ethereum's devp2p has no built-in rate limiting, so unbounded `GetBlockHeaders` ranges or oversized transaction batches are a DoS vector
+
+### C# / .NET robustness
+
+- `async void` — exceptions are silently swallowed; use `async Task`
+- `.Result` or `.Wait()` on a `Task` inside an `async` method — deadlock or thread-pool starvation risk; use `await` instead
+- Missing `await` on an async call where fire-and-forget is not the documented intent
+- Async method performing I/O or network calls without accepting a `CancellationToken` — uncooperative with graceful shutdown
+- `IDisposable` / `IAsyncDisposable` object (especially `IDb`, streams, channels) not wrapped in `using` — resource leak
+- Shared mutable state (caches, peer tables, chain state) modified from multiple threads without synchronisation
+- `NullReferenceException` risk when processing untrusted external input without a null check or guard
+- Exception silently swallowed in an empty `catch` block — lost diagnostics
+
+### Performance
+
+Nethermind is the fastest Ethereum execution client. Guard regressions in hot paths.
+
+- Unnecessary heap allocation inside block processing or EVM execution loops (prefer `Span<T>`, `stackalloc`, `ArrayPool<T>`)
+- `byte[]` passed through a hot call stack where `ReadOnlySpan<byte>` or `Memory<byte>` would avoid copies
+- Blocking I/O call inside an `async` path — ties up thread-pool threads
+- Database reads inside a tight loop without batching via `IBatch` or caching — amplifies I/O significantly
+- LINQ with closures or `ToList()` in per-block or per-transaction logic — allocates on every call
+- Large object allocations that could be pooled with `ObjectPool<T>` or `ArrayPool<T>`
+
+### Observability
+
+- A new code path that can fail silently with no log, metric, or counter — silent errors are the hardest to diagnose on a running node
+- A new sync stage, block processor step, or P2P handler with no metrics — throughput regressions will go undetected
+
+### Dependencies
+
+- A new NuGet package added to a core or network project that is large, has a restrictive licence, or duplicates existing functionality — new dependencies increase binary size and attack surface
+
+---
+
+## API & breaking changes
+
+These are the most expensive issues to fix after release and the hardest for automated tools to catch. Always review carefully.
+
+### Breaking changes (flag any of these)
+
+- **JSON-RPC method signature changed** — wallets, dApps, indexers, and monitoring tools depend on exact field names, types, and ordering; any removal or rename is a breaking change
+- **Engine API response shape changed** — consensus clients (Lighthouse, Prysm, Teku, Nimbus, Lodestar) call these methods on every slot; a schema change breaks beacon node integration
+- **Public plugin interface modified** (`IPlugin`, `INethermindPlugin`, or any interface in `Nethermind.Core`) without a versioning strategy — third-party plugin authors break silently at runtime
+- **Config key renamed, removed, or type-changed** — existing node operators' config files will silently stop working or apply wrong values
+- **Metric name or log format changed** — breaks dashboards, alerting rules, and log-parsing pipelines in production deployments
+
+### API design
+
+- A new public interface or class that exposes an implementation detail (e.g., a `RocksDb`-specific type in a `Core` namespace) — internals that leak into the contract become impossible to change later
+- A new method added to an existing `IPlugin` interface without a default implementation — all existing plugin authors break at compile time
+- Two ways of doing the same thing added without deprecating the old one — creates lasting ambiguity for callers
+- A new JSON-RPC or Engine API parameter that is required but has no backwards-compatible default — breaks existing callers that don't send the new field
+- Chain-specific logic added to `Nethermind.Core`, `Nethermind.Evm`, or `Nethermind.Blockchain` instead of the appropriate chain plugin (`Nethermind.Optimism`, `Nethermind.Merge.Plugin`, etc.) — poisons the shared abstraction
+
+### File headers
+
+New source files missing the required SPDX header (replace year with the current year):
+```
+// SPDX-FileCopyrightText: <year> Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+```
+
+---
+
+## Response format
+
+1. **Problem** — one sentence: what is wrong
+2. **Impact** — one sentence: why it matters in an Ethereum client context *(omit if obvious)*
+3. **Fix** — a concrete suggestion or short code snippet
+
+**Example:**
+
+> `GetGasCost` returns `long` but is compared against a `UInt256` balance — values above `long.MaxValue` will silently truncate and pass the check incorrectly.
+> Cast before the comparison: `if ((UInt256)gasCost > balance)`.
+
+---
+
+## Final report template
+
+```markdown
+## Review report
+
+**Scope:** <files reviewed, grouped by category; list skipped files>
+
+### Findings
+<numbered list of every finding, each with: category tag, file:line, problem, impact (if not obvious), fix>
+<if no findings in a category, omit it — don't write "clean" or "N/A">
+
+### Summary
+- Findings: N (list categories with counts, e.g. "DI: 1, Security: 1")
+- Total: N
+```
+
+If the review is genuinely clean — zero findings across all categories — write:
+
+```markdown
+### Findings
+None.
+
+### Summary
+- Total: 0
+```
+
+---
+
+## When to stay silent
+
+**Rule violations (step 3) are always reported** — the confidence threshold does not apply. If a grep pattern from Step 2 matched, report it. You may add a note that the rule may need an exception for this case, but the finding must appear in the report. It is the author's decision to dismiss it, not yours.
+
+For domain findings (step 5), if you are not at least 80% confident that something is a real problem, do not comment. One high-confidence comment is worth more than five uncertain ones.
