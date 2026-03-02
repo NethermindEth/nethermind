@@ -1282,8 +1282,6 @@ namespace Nethermind.Blockchain
 
         public void UpdateHeadBlock(Hash256 blockHash)
         {
-            if (Logger.IsError) Logger.Error($"Block tree override detected - updating head block to {blockHash}.");
-            _blockInfoDb.Set(HeadAddressInDb, blockHash.Bytes);
             BlockHeader? header = FindHeader(blockHash, BlockTreeLookupOptions.None);
             if (header is not null)
             {
