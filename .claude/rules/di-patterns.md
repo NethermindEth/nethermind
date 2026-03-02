@@ -31,7 +31,7 @@ Nethermind uses Autofac for DI with a custom DSL defined in `Nethermind.Core/Con
 
 `IWorldState` handles the EVM→State interface. Previously it also handled storage concerns, but that was extracted into `IWorldStateScopeProvider`, leaving snapshot and journaling logic in `IWorldState`.
 
-`IWorldStateScopeProvider` is provided into each block processing context from `IWorldStateManager` manually depending on usage. Each instance of `IWorldStateScopeProvider` is shareable across different block processing contexts. These are done in:
+`IWorldStateScopeProvider` is provided into each block processing context from `IWorldStateManager` manually depending on usage. Each instance of `IWorldStateScopeProvider` is NOT shareable across different block processing contexts. These are done in:
 
 - `MainProcessingContext`, used for the main processing context, with `IWorldStateManager.GlobalWorldState`.
 - And many other places using `IWorldStateManager.CreateOverridableWorldScope` or `IWorldStateManager.CreateResettableWorldState`.
