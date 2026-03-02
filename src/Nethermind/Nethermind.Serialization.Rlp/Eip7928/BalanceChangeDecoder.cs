@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class BalanceChangeDecoder : IRlpValueDecoder<BalanceChange>, IRlpStreamDecoder<BalanceChange>
+public class BalanceChangeDecoder : IRlpValueDecoder<BalanceChange>
 {
     private static BalanceChangeDecoder? _instance = null;
     public static BalanceChangeDecoder Instance => _instance ??= new();
@@ -32,16 +30,6 @@ public class BalanceChangeDecoder : IRlpValueDecoder<BalanceChange>, IRlpStreamD
         }
 
         return balanceChange;
-    }
-
-    public BalanceChange Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new(span);
-        BalanceChange res = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return res;
     }
 
     public void Encode(RlpStream stream, BalanceChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

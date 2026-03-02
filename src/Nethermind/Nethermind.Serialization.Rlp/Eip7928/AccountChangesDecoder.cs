@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStreamDecoder<AccountChanges>
+public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>
 {
     private static AccountChangesDecoder? _instance = null;
     public static AccountChangesDecoder Instance => _instance ??= new();
@@ -107,16 +107,6 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
     public int GetLength(AccountChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public AccountChanges Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new(span);
-        AccountChanges res = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return res;
-    }
-
     public void Encode(RlpStream stream, AccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
@@ -128,7 +118,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         stream.EncodeArray([.. item.CodeChanges], rlpBehaviors);
     }
 
-    private static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors)
+    public static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors)
     {
         int slotChangesLen = 0;
         foreach (SlotChanges slotChanges in item.StorageChanges)

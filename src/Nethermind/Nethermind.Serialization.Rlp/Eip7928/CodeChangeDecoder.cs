@@ -4,11 +4,10 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder<CodeChange>
+public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>
 {
     private static CodeChangeDecoder? _instance = null;
     public static CodeChangeDecoder Instance => _instance ??= new();
@@ -38,16 +37,6 @@ public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder
 
     public int GetLength(CodeChange item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-
-    public CodeChange Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new(span);
-        CodeChange res = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return res;
-    }
 
     public void Encode(RlpStream stream, CodeChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

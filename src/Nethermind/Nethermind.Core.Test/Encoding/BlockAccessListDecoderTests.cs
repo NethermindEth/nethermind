@@ -19,7 +19,7 @@ public class BlockAccessListDecoderTests
     [TestCaseSource(nameof(BlockAccessListTestSource))]
     public void Can_decode_then_encode(string rlp, BlockAccessList expected)
     {
-        BlockAccessList bal = Rlp.Decode<BlockAccessList>(Bytes.FromHexString(rlp).AsRlpStream());
+        BlockAccessList bal = Rlp.Decode<BlockAccessList>(Bytes.FromHexString(rlp));
 
         Assert.That(bal, Is.EqualTo(expected));
 

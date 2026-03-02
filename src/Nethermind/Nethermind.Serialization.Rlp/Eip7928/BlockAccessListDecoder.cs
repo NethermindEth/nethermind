@@ -9,7 +9,7 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStreamDecoder<BlockAccessList>
+public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStreamEncoder<BlockAccessList>
 {
     private static BlockAccessListDecoder? _instance = null;
     public static BlockAccessListDecoder Instance => _instance ??= new();
@@ -39,19 +39,16 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
         return blockAccessList;
     }
 
-    public BlockAccessList Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new(span);
-        BlockAccessList res = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return res;
-    }
-
     public void Encode(RlpStream stream, BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => stream.EncodeArray([.. item.AccountChanges], rlpBehaviors);
 
     private static int GetContentLength(BlockAccessList item, RlpBehaviors rlpBehaviors)
-        => AccountChangesDecoder.Instance.GetContentLength([.. item.AccountChanges], rlpBehaviors);
+    {
+        int len = 0;
+        foreach (AccountChanges accountChanges in item.AccountChanges)
+        {
+            len += AccountChangesDecoder.GetContentLength(accountChanges, rlpBehaviors);
+        }
+        return len;
+    }
 }

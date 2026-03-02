@@ -34,28 +34,6 @@ internal class SyncInfoDecoder : RlpValueDecoder<SyncInfo>
         return new SyncInfo(highestQuorumCert, highestTimeoutCert);
     }
 
-    protected override SyncInfo DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemEmptyList())
-        {
-            rlpStream.ReadByte();
-            return null;
-        }
-
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        int endPosition = rlpStream.Position + sequenceLength;
-
-        QuorumCertificate highestQuorumCert = _quorumCertificateDecoder.Decode(rlpStream, rlpBehaviors);
-        TimeoutCertificate highestTimeoutCert = _timeoutCertificateDecoder.Decode(rlpStream, rlpBehaviors);
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            rlpStream.Check(endPosition);
-        }
-
-        return new SyncInfo(highestQuorumCert, highestTimeoutCert);
-    }
-
     public Rlp Encode(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

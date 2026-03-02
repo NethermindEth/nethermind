@@ -20,14 +20,15 @@ namespace Nethermind.Network.P2P
 
         public void Send(Request<TMsg, TData> request)
         {
-            if (_isClosed)
-            {
-                request.Message.TryDispose();
-                return;
-            }
-
             lock (_lock)
             {
+                if (_isClosed)
+                {
+                    request.Message.TryDispose();
+                    request.CompletionSource.TrySetCanceled();
+                    return;
+                }
+
                 if (_currentRequest is null)
                 {
                     _currentRequest = request;
@@ -66,7 +67,23 @@ namespace Nethermind.Network.P2P
 
         public void CompleteAdding()
         {
-            _isClosed = true;
+            lock (_lock)
+            {
+                _isClosed = true;
+
+                if (_currentRequest is not null)
+                {
+                    _currentRequest.Message.TryDispose();
+                    _currentRequest.CompletionSource.TrySetCanceled();
+                    _currentRequest = null;
+                }
+
+                while (_requestQueue.TryDequeue(out Request<TMsg, TData>? request))
+                {
+                    request.Message.TryDispose();
+                    request.CompletionSource.TrySetCanceled();
+                }
+            }
         }
     }
 }

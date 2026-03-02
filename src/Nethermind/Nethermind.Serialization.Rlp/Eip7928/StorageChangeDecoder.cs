@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamDecoder<StorageChange>
+public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>
 {
     private static StorageChangeDecoder? _instance = null;
     public static StorageChangeDecoder Instance => _instance ??= new();
@@ -35,16 +34,6 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
 
     public int GetLength(StorageChange item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-
-    public StorageChange Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new(span);
-        StorageChange res = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return res;
-    }
 
     public void Encode(RlpStream stream, StorageChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

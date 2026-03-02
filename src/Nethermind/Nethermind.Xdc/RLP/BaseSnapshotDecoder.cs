@@ -57,23 +57,6 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    protected TResult DecodeBase<TResult>(RlpStream rlpStream, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
-    {
-        if (rlpStream.IsNextItemEmptyList())
-        {
-            rlpStream.ReadByte();
-            return null;
-        }
-
-        rlpStream.ReadSequenceLength();
-
-        long number = rlpStream.DecodeLong();
-        Hash256 hash256 = rlpStream.DecodeKeccak();
-        Address[] candidate = rlpStream.DecodeArray<Address>(s => s.DecodeAddress()) ?? [];
-
-        return createSnapshot(number, hash256, candidate);
-    }
-
     public override void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

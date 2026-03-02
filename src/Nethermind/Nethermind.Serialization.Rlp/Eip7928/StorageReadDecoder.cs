@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class StorageReadDecoder : IRlpValueDecoder<StorageRead>, IRlpStreamDecoder<StorageRead>
+public class StorageReadDecoder : IRlpValueDecoder<StorageRead>
 {
     private static StorageReadDecoder? _instance = null;
     public static StorageReadDecoder Instance => _instance ??= new();
@@ -15,16 +14,6 @@ public class StorageReadDecoder : IRlpValueDecoder<StorageRead>, IRlpStreamDecod
         => GetContentLength(item, rlpBehaviors);
 
     public StorageRead Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors) => new(ctx.DecodeUInt256());
-
-    public StorageRead Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new(span);
-        StorageRead res = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return res;
-    }
 
     public void Encode(RlpStream stream, StorageRead item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => stream.Encode(item.Key);
