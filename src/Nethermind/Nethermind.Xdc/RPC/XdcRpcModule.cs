@@ -40,7 +40,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     public ResultWrapper<EpochNumInfo> GetBlockInfoByV2EpochNum(ulong epochNumber)
     {
         BlockRoundInfo? thisEpoch = epochSwitchManager.GetBlockByEpochNumber(epochNumber);
-        if (thisEpoch == null)
+        if (thisEpoch is null)
         {
             return ResultWrapper<EpochNumInfo>.Fail($"Cannot find epoch {epochNumber}");
         }
@@ -65,13 +65,13 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     public ResultWrapper<ulong[]> GetEpochNumbersBetween(long begin, long end)
     {
         BlockHeader beginHeader = tree.FindHeader(begin);
-        if (beginHeader == null)
+        if (beginHeader is null)
         {
             return ResultWrapper<ulong[]>.Fail($"illegal begin block number {begin}");
         }
 
         BlockHeader endHeader = tree.FindHeader(end);
-        if (endHeader == null)
+        if (endHeader is null)
         {
             return ResultWrapper<ulong[]>.Fail($"illegal end block number {end}");
         }
@@ -89,13 +89,13 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         XdcBlockHeader xdcBeginHeader = beginHeader as XdcBlockHeader;
         XdcBlockHeader xdcEndHeader = endHeader as XdcBlockHeader;
 
-        if (xdcBeginHeader == null || xdcEndHeader == null)
+        if (xdcBeginHeader is null || xdcEndHeader is null)
         {
             return ResultWrapper<ulong[]>.Fail("Headers are not XDC block headers");
         }
 
         EpochSwitchInfo[] epochSwitchInfos = epochSwitchManager.GetEpochSwitchInfoBetween(xdcBeginHeader, xdcEndHeader);
-        if (epochSwitchInfos == null)
+        if (epochSwitchInfos is null)
         {
             return ResultWrapper<ulong[]>.Fail("Failed to get epoch switch info");
         }
@@ -146,19 +146,19 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     public ResultWrapper<PoolStatus> GetLatestPoolStatus()
     {
         BlockHeader? header = tree.Head?.Header;
-        if (header == null)
+        if (header is null)
         {
             return ResultWrapper<PoolStatus>.Fail("Cannot get current block header");
         }
 
         XdcBlockHeader? xdcHeader = header as XdcBlockHeader;
-        if (xdcHeader == null)
+        if (xdcHeader is null)
         {
             return ResultWrapper<PoolStatus>.Fail("Current header is not an XDC block header");
         }
 
         EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
-        if (epochSwitchInfo == null)
+        if (epochSwitchInfo is null)
         {
             return ResultWrapper<PoolStatus>.Fail($"Cannot get epoch switch info for current block {header.Number}");
         }
@@ -203,7 +203,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     {
         BlockHeader? header;
 
-        if (blockNumber == null || blockNumber.Type == BlockParameterType.Latest)
+        if (blockNumber is null || blockNumber.Type == BlockParameterType.Latest)
         {
             header = tree.Head?.Header;
         }
@@ -228,18 +228,18 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             header = tree.FindHeader(blockNumber.BlockNumber.Value);
         }
 
-        if (header == null)
+        if (header is null)
         {
             return ResultWrapper<MasternodesStatus>.Fail($"can not get header by number {blockNumber.BlockNumber}");
         }
 
         XdcBlockHeader? xdcHeader = header as XdcBlockHeader;
-        if (xdcHeader == null)
+        if (xdcHeader is null)
         {
             return ResultWrapper<MasternodesStatus>.Fail("Header is not an XDC block header");
         }
 
-        if (xdcHeader.ExtraConsensusData == null)
+        if (xdcHeader.ExtraConsensusData is null)
         {
 
             return ResultWrapper<MasternodesStatus>.Fail($"Block {header.Number} does not contain consensus data (round information)");
@@ -251,7 +251,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         ulong epochNum = (ulong)spec.SwitchEpoch + round / (ulong)spec.EpochLength;
 
         EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
-        if (epochSwitchInfo == null)
+        if (epochSwitchInfo is null)
         {
             return ResultWrapper<MasternodesStatus>.Fail($"Cannot get epoch switch info for block {header.Number}, hash {header.Hash}");
         }
@@ -280,7 +280,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     {
         BlockHeader? header;
         
-        if (blockNumber == null || blockNumber.Type == BlockParameterType.Latest)
+        if (blockNumber is null || blockNumber.Type == BlockParameterType.Latest)
         {
             header = tree.Head?.Header;
         }
@@ -293,13 +293,13 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             header = tree.FindHeader(blockNumber.BlockNumber.Value);
         }
 
-        if (header == null)
+        if (header is null)
         {
             return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail("can not get header by number");
         }
 
         XdcBlockHeader? xdcHeader = header as XdcBlockHeader;
-        if (xdcHeader == null)
+        if (xdcHeader is null)
         {
             return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail("Header is not an XDC block header");
         }
@@ -324,7 +324,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     {
         BlockHeader header;
 
-        if (blockParam == null || blockParam.Type == BlockParameterType.Latest)
+        if (blockParam is null || blockParam.Type == BlockParameterType.Latest)
         {
             header = tree.Head?.Header;
         }
@@ -337,7 +337,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             header = tree.FindHeader(blockParam.BlockNumber.Value);
         }
 
-        if (header == null)
+        if (header is null)
         {
             return ResultWrapper<Address[]>.Fail("Unknown block");
         }
@@ -351,11 +351,11 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     public ResultWrapper<Address[]> GetSignersAtHash(BlockParameter blockParam)
     {
         BlockHeader header;
-        if (blockParam == null || blockParam.Type == BlockParameterType.Latest)
+        if (blockParam is null || blockParam.Type == BlockParameterType.Latest)
         {
             header = tree.Head?.Header;
         }
-        else if (blockParam.BlockHash == null)
+        else if (blockParam.BlockHash is null)
         {
             return ResultWrapper<Address[]>.Fail("Block hash must be provided");
         }
@@ -363,7 +363,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.FindHeader(blockParam.BlockHash);
         }
-        if (header == null)
+        if (header is null)
         {
             return ResultWrapper<Address[]>.Fail("Unknown block");
         }
@@ -376,7 +376,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     {
         BlockHeader header;
 
-        if (blockParam == null || blockParam.Type == BlockParameterType.Latest)
+        if (blockParam is null || blockParam.Type == BlockParameterType.Latest)
         {
             header = tree.Head?.Header;
         }
@@ -389,7 +389,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             header = tree.FindHeader(blockParam.BlockNumber.Value);
         }
 
-        if (header == null)
+        if (header is null)
         {
             return ResultWrapper<PublicApiSnapshot>.Fail("Unknown block");
         }
@@ -403,11 +403,11 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     public ResultWrapper<PublicApiSnapshot> GetSnapshotAtHash(BlockParameter blockParam)
     {
         BlockHeader header;
-        if (blockParam == null || blockParam.Type == BlockParameterType.Latest)
+        if (blockParam is null || blockParam.Type == BlockParameterType.Latest)
         {
             header = tree.Head?.Header;
         }
-        else if (blockParam.BlockHash == null)
+        else if (blockParam.BlockHash is null)
         {
             return ResultWrapper<PublicApiSnapshot>.Fail("Block hash must be provided");
         }
@@ -415,7 +415,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.FindHeader(blockParam.BlockHash);
         }
-        if (header == null)
+        if (header is null)
         {
             return ResultWrapper<PublicApiSnapshot>.Fail("Unknown block");
         }
@@ -427,11 +427,11 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     public ResultWrapper<V2BlockInfo> GetV2BlockByHash(BlockParameter blockParam)
     {
         BlockHeader header;
-        if (blockParam == null || blockParam.Type == BlockParameterType.Latest)
+        if (blockParam is null || blockParam.Type == BlockParameterType.Latest)
         {
             header = tree.Head?.Header;
         }
-        else if (blockParam.BlockHash == null)
+        else if (blockParam.BlockHash is null)
         {
             return ResultWrapper<V2BlockInfo>.Fail("Block hash must be provided");
         }
@@ -439,7 +439,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.FindHeader(blockParam.BlockHash);
         }
-        if (header == null)
+        if (header is null)
         {
             return ResultWrapper<V2BlockInfo>.Fail("Unknown block");
         }
@@ -448,13 +448,13 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
     public ResultWrapper<V2BlockInfo> GetV2BlockByHeader(BlockHeader header, bool uncle)
     {
-        if (header == null)
+        if (header is null)
         {
             return ResultWrapper<V2BlockInfo>.Fail("Header cannot be null");
         }
 
         XdcBlockHeader xdcHeader = header as XdcBlockHeader;
-        if (xdcHeader == null)
+        if (xdcHeader is null)
         {
             return ResultWrapper<V2BlockInfo>.Fail("Header is not an XDC block header");
         }
@@ -462,7 +462,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         bool committed = false;
         var latestCommittedBlock = quorumCertificateManager.HighestKnownCertificate?.ProposedBlockInfo;
         
-        if (latestCommittedBlock == null)
+        if (latestCommittedBlock is null)
         {
             return ResultWrapper<V2BlockInfo>.Success(new V2BlockInfo
             {
@@ -517,7 +517,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     public ResultWrapper<V2BlockInfo> GetV2BlockByNumber(BlockParameter blockNumber)
     {
         BlockHeader header;
-        if (blockNumber == null || blockNumber.Type == BlockParameterType.Latest)
+        if (blockNumber is null || blockNumber.Type == BlockParameterType.Latest)
         {
             header = tree.Head?.Header;
         }
@@ -529,7 +529,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.FindHeader(blockNumber.BlockNumber.Value);
         }
-        if (header == null)
+        if (header is null)
         {
             return ResultWrapper<V2BlockInfo>.Fail("Unknown block");
         }
