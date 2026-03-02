@@ -41,16 +41,21 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        if (inputData.Length != L1PrecompileConstants.ExpectedInputLength) return Errors.InvalidInputLength;
+        if (inputData.Length != L1PrecompileConstants.ExpectedInputLength)
+        {
+            return Errors.InvalidInputLength;
+        }
 
         Address contractAddress = new(inputData.Span[..L1PrecompileConstants.AddressBytes]);
         UInt256 storageKey = new(inputData.Span[L1PrecompileConstants.AddressBytes..(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)], isBigEndian: true);
         UInt256 blockNumber = new(inputData.Span[(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)..], isBigEndian: true);
 
         UInt256? storageValue = GetL1StorageValue(contractAddress, storageKey, blockNumber);
-        if (storageValue is null) return Errors.L1StorageAccessFailed;
+        if (storageValue is null)
+        {
+            return Errors.L1StorageAccessFailed;
+        }
 
-        // Convert storage value to output bytes
         byte[] output = new byte[32];
         storageValue.Value.ToBigEndian().CopyTo(output.AsSpan());
 
