@@ -4,9 +4,9 @@ import sys
 
 network = os.getenv("NETWORK")
 
-bad_logs = {"Exception": 1, "Missing node found!": 1}
-good_logs = {"Processed": 0, "Stats after finishing state": 0}
-required_count = {"Processed": 20, "Stats after finishing state": 1}
+bad_logs = {"Exception": 1, "Verification failed": 1}
+good_logs = {"Processed": 0, "Verification complete.": 0, "MismatchedAccounts=0, MismatchedSlots=0, MissingInFlat=0, MissingInTrie=0": 0}
+required_count = {"Processed": 20, "Verification complete.": 1, "MismatchedAccounts=0, MismatchedSlots=0, MissingInFlat=0, MissingInTrie=0": 1}
 
 if network not in {"joc-mainnet", "joc-testnet", "linea-mainnet", "linea-sepolia", "energyweb", "volta"}:
     good_logs["Synced Chain Head"] = 0
@@ -49,9 +49,10 @@ try:
         for good_log in good_logs:
             if good_log in line:
                 good_logs[good_log] += 1
+                print(f"[DEBUG] Matched '{good_log}' (count={good_logs[good_log]}): {line.strip()[:120]}", flush=True)
 
         if all(good_logs[log] >= required_count[log] for log in required_count):
-            print("All required logs found.")
+            print(f"All required logs found. Counts: {good_logs}", flush=True)
             sys.exit(0)
 
 except Exception as e:

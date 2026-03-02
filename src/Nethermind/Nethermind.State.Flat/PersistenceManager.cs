@@ -15,6 +15,7 @@ using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
 namespace Nethermind.State.Flat;
 
@@ -218,6 +219,12 @@ public class PersistenceManager(
         }
 
         return currentPersistedState;
+    }
+
+    public void ResetPersistedStateId()
+    {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        _currentPersistedStateId = reader.CurrentState;
     }
 
     internal void PersistSnapshot(Snapshot snapshot)
