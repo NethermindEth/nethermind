@@ -66,30 +66,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
         }
 
-        public StorageRangeMessage Deserialize(IByteBuffer byteBuffer)
+        public StorageRangeMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private static StorageRangeMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             StorageRangeMessage message = new();
-            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            try
-            {
-                ctx.ReadSequenceLength();
+            ctx.ReadSequenceLength();
 
-                message.RequestId = ctx.DecodeLong();
-                message.Slots = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => (IOwnedReadOnlyList<PathWithStorageSlot>)c.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext inner) =>
-                {
-                    inner.ReadSequenceLength();
-                    Hash256 path = inner.DecodeKeccak();
-                    byte[] value = inner.DecodeByteArray();
-                    return new PathWithStorageSlot(in path.ValueHash256, value);
-                }));
-                message.Proofs = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
-
-                return message;
-            }
-            finally
+            message.RequestId = ctx.DecodeLong();
+            message.Slots = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => (IOwnedReadOnlyList<PathWithStorageSlot>)c.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext inner) =>
             {
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            }
+                inner.ReadSequenceLength();
+                Hash256 path = inner.DecodeKeccak();
+                byte[] value = inner.DecodeByteArray();
+                return new PathWithStorageSlot(in path.ValueHash256, value);
+            }));
+            message.Proofs = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
+
+            return message;
         }
 
         private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) CalculateLengths(StorageRangeMessage message)

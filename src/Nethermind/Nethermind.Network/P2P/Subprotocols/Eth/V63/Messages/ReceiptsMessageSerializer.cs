@@ -85,15 +85,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 return ReceiptsMessage.Empty;
             }
 
-            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            try
-            {
-                return Deserialize(ref ctx);
-            }
-            finally
-            {
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            }
+            return byteBuffer.DeserializeRlp(Deserialize);
         }
 
         public ReceiptsMessage Deserialize(ref Rlp.ValueDecoderContext ctx)

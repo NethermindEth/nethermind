@@ -25,19 +25,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             }
         }
 
-        public NodeDataMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            try
-            {
-                ArrayPoolList<byte[]> result = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray(), limit: RlpLimit);
-                return new NodeDataMessage(result);
-            }
-            finally
-            {
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            }
-        }
+        public NodeDataMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private static NodeDataMessage Deserialize(ref Rlp.ValueDecoderContext ctx) =>
+            new(ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray(), limit: RlpLimit));
 
         public int GetLength(NodeDataMessage message, out int contentLength)
         {

@@ -18,19 +18,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
             _txsMessageDeserializer.Serialize(byteBuffer, message);
         }
 
-        public PooledTransactionsMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            try
-            {
-                IOwnedReadOnlyList<Transaction> txs = TransactionsMessageSerializer.DeserializeTxs(ref ctx);
-                return new PooledTransactionsMessage(txs);
-            }
-            finally
-            {
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            }
-        }
+        public PooledTransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private static PooledTransactionsMessage Deserialize(ref Rlp.ValueDecoderContext ctx) =>
+            new(TransactionsMessageSerializer.DeserializeTxs(ref ctx));
 
         public int GetLength(PooledTransactionsMessage message, out int contentLength)
         {

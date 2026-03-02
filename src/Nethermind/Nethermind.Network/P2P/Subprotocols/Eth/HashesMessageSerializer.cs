@@ -10,27 +10,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public abstract class HashesMessageSerializer<T> : IZeroInnerMessageSerializer<T> where T : HashesMessage
     {
-        protected Hash256[] DeserializeHashes(IByteBuffer byteBuffer)
-        {
-            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            Hash256[] hashes = DeserializeHashes(ref ctx);
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            return hashes;
-        }
+        protected Hash256[] DeserializeHashes(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(static (ref Rlp.ValueDecoderContext ctx) => DeserializeHashes(ref ctx));
 
-        protected static Hash256[] DeserializeHashes(ref Rlp.ValueDecoderContext ctx, RlpLimit? limit = null)
-        {
-            Hash256[] hashes = ctx.DecodeArray(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: limit);
-            return hashes;
-        }
+        protected static Hash256[] DeserializeHashes(ref Rlp.ValueDecoderContext ctx, RlpLimit? limit = null) =>
+            ctx.DecodeArray(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: limit);
 
-        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null)
-        {
-            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            ArrayPoolList<Hash256> result = DeserializeHashesArrayPool(ref ctx, limit);
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            return result;
-        }
+        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null) =>
+            byteBuffer.DeserializeRlp((ref Rlp.ValueDecoderContext ctx) => DeserializeHashesArrayPool(ref ctx, limit));
 
         protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref Rlp.ValueDecoderContext ctx, RlpLimit? limit = null)
         {

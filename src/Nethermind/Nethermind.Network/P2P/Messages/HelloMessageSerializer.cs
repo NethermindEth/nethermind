@@ -53,50 +53,45 @@ namespace Nethermind.Network.P2P.Messages
             return (contentLength, innerContentLength);
         }
 
-        public HelloMessage Deserialize(IByteBuffer msgBytes)
+        public HelloMessage Deserialize(IByteBuffer msgBytes) =>
+            msgBytes.DeserializeRlp(Deserialize);
+
+        private static HelloMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
-            Rlp.ValueDecoderContext ctx = msgBytes.AsRlpContext();
-            try
+            ctx.ReadSequenceLength();
+
+            HelloMessage helloMessage = new();
+            helloMessage.P2PVersion = ctx.DecodeByte();
+            helloMessage.ClientId = ctx.DecodeString();
+            helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
             {
-                ctx.ReadSequenceLength();
-
-                HelloMessage helloMessage = new();
-                helloMessage.P2PVersion = ctx.DecodeByte();
-                helloMessage.ClientId = ctx.DecodeString();
-                helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
+                c.ReadSequenceLength();
+                ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan();
+                if (!Contract.P2P.ProtocolParser.TryGetProtocolCode(protocolSpan, out string? protocolCode))
                 {
-                    c.ReadSequenceLength();
-                    ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan();
-                    if (!Contract.P2P.ProtocolParser.TryGetProtocolCode(protocolSpan, out string? protocolCode))
-                    {
-                        protocolCode = Encoding.UTF8.GetString(protocolSpan);
-                    }
-                    int version = c.DecodeByte();
-                    return new Capability(protocolCode, version);
-                });
-
-                helloMessage.ListenPort = ctx.DecodeInt();
-
-                ReadOnlySpan<byte> publicKeyBytes = ctx.DecodeByteArraySpan(RlpLimit.L64);
-                if (publicKeyBytes.Length != PublicKey.LengthInBytes &&
-                    publicKeyBytes.Length != PublicKey.PrefixedLengthInBytes)
-                {
-                    throw new NetworkingException(
-                        $"Client {helloMessage.ClientId} sent an invalid public key format " +
-                        $"(length was {publicKeyBytes.Length})",
-                        NetworkExceptionType.HandshakeOrInit);
+                    protocolCode = Encoding.UTF8.GetString(protocolSpan);
                 }
-                else
-                {
-                    helloMessage.NodeId = new PublicKey(publicKeyBytes);
-                }
+                int version = c.DecodeByte();
+                return new Capability(protocolCode, version);
+            });
 
-                return helloMessage;
-            }
-            finally
+            helloMessage.ListenPort = ctx.DecodeInt();
+
+            ReadOnlySpan<byte> publicKeyBytes = ctx.DecodeByteArraySpan(RlpLimit.L64);
+            if (publicKeyBytes.Length != PublicKey.LengthInBytes &&
+                publicKeyBytes.Length != PublicKey.PrefixedLengthInBytes)
             {
-                msgBytes.SetReaderIndex(msgBytes.ReaderIndex + ctx.Position);
+                throw new NetworkingException(
+                    $"Client {helloMessage.ClientId} sent an invalid public key format " +
+                    $"(length was {publicKeyBytes.Length})",
+                    NetworkExceptionType.HandshakeOrInit);
             }
+            else
+            {
+                helloMessage.NodeId = new PublicKey(publicKeyBytes);
+            }
+
+            return helloMessage;
         }
     }
 }

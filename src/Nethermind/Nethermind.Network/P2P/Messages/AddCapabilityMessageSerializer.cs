@@ -26,21 +26,16 @@ namespace Nethermind.Network.P2P.Messages
             stream.Encode(msg.Capability.Version);
         }
 
-        public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            try
-            {
-                ctx.ReadSequenceLength();
-                string protocolCode = ctx.DecodeString(RlpLimit);
-                byte version = ctx.DecodeByte();
+        public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
 
-                return new AddCapabilityMessage(new Capability(protocolCode, version));
-            }
-            finally
-            {
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            }
+        private static AddCapabilityMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        {
+            ctx.ReadSequenceLength();
+            string protocolCode = ctx.DecodeString(RlpLimit);
+            byte version = ctx.DecodeByte();
+
+            return new AddCapabilityMessage(new Capability(protocolCode, version));
         }
         private static int GetLength(AddCapabilityMessage msg, out int contentLength)
         {

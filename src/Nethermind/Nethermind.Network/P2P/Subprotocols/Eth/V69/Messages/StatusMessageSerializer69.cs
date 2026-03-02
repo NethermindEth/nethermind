@@ -43,30 +43,23 @@ public class StatusMessageSerializer69 :
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    public StatusMessage69 Deserialize(IByteBuffer byteBuffer)
+    public StatusMessage69 Deserialize(IByteBuffer byteBuffer) =>
+        byteBuffer.DeserializeRlp(Deserialize);
+
+    private static StatusMessage69 Deserialize(ref Rlp.ValueDecoderContext ctx)
     {
-        Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-        try
-        {
-            ctx.ReadSequenceLength();
+        ctx.ReadSequenceLength();
 
-            StatusMessage69 statusMessage = new()
-            {
-                ProtocolVersion = ctx.DecodeByte(),
-                NetworkId = ctx.DecodeUInt256(),
-                GenesisHash = ctx.DecodeKeccak() ?? Hash256.Zero,
-                ForkId = DecodeForkId(ref ctx),
-                EarliestBlock = ctx.DecodeLong(),
-                LatestBlock = ctx.DecodeLong(),
-                LatestBlockHash = ctx.DecodeKeccak() ?? Hash256.Zero
-            };
-
-            return statusMessage;
-        }
-        finally
+        return new StatusMessage69
         {
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-        }
+            ProtocolVersion = ctx.DecodeByte(),
+            NetworkId = ctx.DecodeUInt256(),
+            GenesisHash = ctx.DecodeKeccak() ?? Hash256.Zero,
+            ForkId = DecodeForkId(ref ctx),
+            EarliestBlock = ctx.DecodeLong(),
+            LatestBlock = ctx.DecodeLong(),
+            LatestBlockHash = ctx.DecodeKeccak() ?? Hash256.Zero
+        };
     }
 
     private static void EncodeForkId(RlpStream rlpStream, ForkId forkId)
