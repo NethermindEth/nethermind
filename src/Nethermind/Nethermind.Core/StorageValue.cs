@@ -19,13 +19,7 @@ public readonly struct StorageValue : IEquatable<StorageValue>
     public static readonly StorageValue Zero = default;
     private static readonly byte[] ZeroByte = [0];
 
-    public readonly Vector256<byte> _bytes;
-
-    public Span<byte> AsSpan
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
-    }
+    private readonly Vector256<byte> _bytes;
 
     public ReadOnlySpan<byte> AsReadOnlySpan
     {

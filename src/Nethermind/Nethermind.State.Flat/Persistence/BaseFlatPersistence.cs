@@ -239,7 +239,7 @@ public static class BaseFlatPersistence
 
             if (slot.HasValue)
             {
-                ReadOnlySpan<byte> withoutLeadingZeros = slot.Value.AsSpan.WithoutLeadingZeros();
+                ReadOnlySpan<byte> withoutLeadingZeros = slot.Value.AsReadOnlySpan.WithoutLeadingZeros();
                 storage.PutSpan(theKey, withoutLeadingZeros, flags);
             }
             else

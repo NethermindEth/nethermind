@@ -249,7 +249,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         toUpdateRoots.Clear();
 
         base.CommitCore(tracer);
-        _commitRound++;
         _committedThisRound.Clear();
 
         if (isTracing)
