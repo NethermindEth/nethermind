@@ -139,7 +139,7 @@ namespace Nethermind.Synchronization.Test
             peerInfo.PutToSleep(AllocationContexts.Blocks, DateTime.MinValue);
             peerInfo.CanBeAllocated(AllocationContexts.Bodies).Should().BeFalse();
         }
-        
+
         [Test]
         public void Free_does_not_set_unallocated_context()
         {
