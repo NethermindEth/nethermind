@@ -51,9 +51,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     private TaikoNethermindApi? _api;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-    public void InitTxTypesAndRlpDecoders(INethermindApi api, RlpDecoderRegistryBuilder rlpBuilder) =>
-        rlpBuilder.RegisterDecoders(typeof(TaikoPlugin).Assembly);
-
     public Task Init(INethermindApi api)
     {
         _api = (TaikoNethermindApi)api;
@@ -201,10 +198,14 @@ public class TaikoModule : Module
             .RegisterSingletonJsonRpcModule<ITaikoEngineRpcModule, TaikoEngineRpcModule>()
                 .AddSingleton<IForkchoiceUpdatedHandler, TaikoForkchoiceUpdatedHandler>()
 
-            // TDX attestation (enabled with Surge.TdxEnabled) 
+            // TDX attestation (enabled with Surge.TdxEnabled)
             .AddModule(new TdxModule())
 
             ;
+
+        builder.OnBuild(scope =>
+            scope.Resolve<RlpDecoderRegistryBuilder>()
+                .RegisterDecoders(typeof(TaikoPlugin).Assembly));
     }
 
     private static IPayloadPreparationService CreatePayloadPreparationService(

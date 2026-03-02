@@ -55,9 +55,6 @@ namespace Nethermind.Consensus.AuRa
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-        public void InitTxTypesAndRlpDecoders(INethermindApi api, RlpDecoderRegistryBuilder rlpBuilder) =>
-            rlpBuilder.RegisterDecoders(typeof(AuRaPlugin).Assembly);
-
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi as AuRaNethermindApi;
@@ -134,6 +131,9 @@ namespace Nethermind.Consensus.AuRa
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
 
+            builder.OnBuild(scope =>
+                scope.Resolve<RlpDecoderRegistryBuilder>()
+                    .RegisterDecoders(typeof(AuRaPlugin).Assembly));
         }
 
         /// <summary>

@@ -82,11 +82,10 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     #endregion
 
-    public void InitTxTypesAndRlpDecoders(INethermindApi api, RlpDecoderRegistryBuilder rlpBuilder)
+    public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
-        rlpBuilder.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, canOverrideExistingDecoders: true);
     }
 
     public Task Init(INethermindApi api)
@@ -258,5 +257,8 @@ public class OptimismModule(ChainSpec chainSpec) : Module
                 .Bind<IRpcModuleFactory<IEthRpcModule>, OptimismEthModuleFactory>()
             ;
 
+        builder.OnBuild(scope =>
+            scope.Resolve<RlpDecoderRegistryBuilder>()
+                .RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, canOverrideExistingDecoders: true));
     }
 }
