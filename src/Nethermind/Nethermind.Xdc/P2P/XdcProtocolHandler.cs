@@ -93,7 +93,7 @@ internal class XdcProtocolHandler(
 
     private void Handle(VoteMsg voteMsg)
     {
-        _votesManager.OnReceiveVote(voteMsg.Vote);
+        _ = _votesManager.OnReceiveVote(voteMsg.Vote);
     }
     private void Handle(TimeoutMsg timeoutMsg)
     {
