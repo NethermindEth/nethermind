@@ -15,7 +15,7 @@ namespace Nethermind.Consensus
         IBlockchainProcessor ChainProcessor,
         IWorldState ReadOnlyStateProvider,
         ITxSource TxSource,
-        IPrefetchManager? PrefetchManager = null) : IBlockProducerEnv;
+        IBlockCachePreWarmer? BlockCachePreWarmer = null) : IBlockProducerEnv;
 
     public interface IBlockProducerEnv
     {
@@ -23,11 +23,6 @@ namespace Nethermind.Consensus
         public IBlockchainProcessor ChainProcessor { get; }
         public IWorldState ReadOnlyStateProvider { get; }
         public ITxSource TxSource { get; }
-        public IPrefetchManager? PrefetchManager { get; }
-    }
-
-    public interface IPrefetchManager
-    {
-        void PrefetchBlock(Block preWarmBlock, BlockHeader parentHeader, IReleaseSpec releaseSpec);
+        public IBlockCachePreWarmer? BlockCachePreWarmer { get; }
     }
 }

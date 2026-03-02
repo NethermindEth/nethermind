@@ -125,20 +125,15 @@ public delegate TValue? InFactory<TKey, out TValue>(in TKey key);
 public interface IPreBlockCachesInner
 {
     public CacheType ClearCaches();
-
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache { get; }
 
+    //accounts
     Account? GetOrAdd(in AddressAsKey key, InFactory<AddressAsKey, Account> factory);
-    Account? AddOrUpdate(in AddressAsKey key, Account newValue, Func<AddressAsKey, Account?, Account?> updateFunc);
     bool TryGetValue(AddressAsKey key, out Account? account);
-    bool TryRemove(AddressAsKey key, out Account? account);
 
+    //storage slots
     byte[]? GetOrAdd(in StorageCell key, InFactory<StorageCell, byte[]> factory);
     bool TryGetValue(in StorageCell key, out byte[] account);
-
-    byte[] AddOrUpdate(in StorageCell key, byte[] newValue, Func<StorageCell, byte[], byte[]> updateFunc);
-
-    public void Seal();
 }
 
 [Flags]
