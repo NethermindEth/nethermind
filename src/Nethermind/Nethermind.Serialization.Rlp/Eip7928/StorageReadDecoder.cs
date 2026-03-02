@@ -5,7 +5,7 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class StorageReadDecoder : IRlpValueDecoder<StorageRead>
+public class StorageReadDecoder : IRlpValueDecoder<StorageRead>, IRlpStreamEncoder<StorageRead>
 {
     private static StorageReadDecoder? _instance = null;
     public static StorageReadDecoder Instance => _instance ??= new();

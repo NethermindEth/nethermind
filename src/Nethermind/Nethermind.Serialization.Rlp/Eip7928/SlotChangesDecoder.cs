@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>
+public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncoder<SlotChanges>
 {
     private static SlotChangesDecoder? _instance = null;
     public static SlotChangesDecoder Instance => _instance ??= new();

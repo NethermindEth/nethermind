@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>
+public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStreamEncoder<AccountChanges>
 {
     private static AccountChangesDecoder? _instance = null;
     public static AccountChangesDecoder Instance => _instance ??= new();

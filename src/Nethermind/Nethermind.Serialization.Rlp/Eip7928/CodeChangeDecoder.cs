@@ -7,7 +7,7 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>
+public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamEncoder<CodeChange>
 {
     private static CodeChangeDecoder? _instance = null;
     public static CodeChangeDecoder Instance => _instance ??= new();

@@ -6,7 +6,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>
+public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamEncoder<StorageChange>
 {
     private static StorageChangeDecoder? _instance = null;
     public static StorageChangeDecoder Instance => _instance ??= new();

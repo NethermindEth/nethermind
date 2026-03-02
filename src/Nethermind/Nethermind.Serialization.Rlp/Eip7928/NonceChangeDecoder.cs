@@ -5,7 +5,7 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class NonceChangeDecoder : IRlpValueDecoder<NonceChange>
+public class NonceChangeDecoder : IRlpValueDecoder<NonceChange>, IRlpStreamEncoder<NonceChange>
 {
     private static NonceChangeDecoder? _instance = null;
     public static NonceChangeDecoder Instance => _instance ??= new();

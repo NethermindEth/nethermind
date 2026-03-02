@@ -5,7 +5,7 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class BalanceChangeDecoder : IRlpValueDecoder<BalanceChange>
+public class BalanceChangeDecoder : IRlpValueDecoder<BalanceChange>, IRlpStreamEncoder<BalanceChange>
 {
     private static BalanceChangeDecoder? _instance = null;
     public static BalanceChangeDecoder Instance => _instance ??= new();
