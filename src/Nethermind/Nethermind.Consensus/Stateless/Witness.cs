@@ -29,7 +29,7 @@ public class Witness : IDisposable
 
 public static class WitnessExtensions
 {
-    private static readonly HeaderDecoder _decoder = new();
+    private static readonly IRlpValueDecoder<BlockHeader> _decoder = Rlp.GetValueDecoder<BlockHeader>();
 
     extension(Witness witness)
     {
