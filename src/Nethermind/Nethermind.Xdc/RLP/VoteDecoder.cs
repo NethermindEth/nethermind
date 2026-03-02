@@ -38,31 +38,6 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         return new Vote(proposedBlockInfo, gapNumber, signature);
     }
 
-    protected override Vote DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemEmptyList())
-        {
-            rlpStream.ReadByte();
-            return null;
-        }
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        int endPosition = rlpStream.Position + sequenceLength;
-
-        BlockRoundInfo proposedBlockInfo = _xdcBlockInfoDecoder.Decode(rlpStream, rlpBehaviors);
-        Signature signature = null;
-        if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
-        {
-            signature = rlpStream.DecodeSignature();
-        }
-        ulong gapNumber = rlpStream.DecodeULong();
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            rlpStream.Check(endPosition);
-        }
-        return new Vote(proposedBlockInfo, gapNumber, signature);
-    }
-
     public override void Encode(RlpStream stream, Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

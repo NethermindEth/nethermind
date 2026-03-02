@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -71,7 +72,8 @@ public class SyncInfoDecoderTests
 
         if (useRlpStream)
         {
-            decoded = decoder.Decode(stream);
+            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+            decoded = decoder.Decode(ref decoderContext);
         }
         else
         {
@@ -103,9 +105,9 @@ public class SyncInfoDecoderTests
         decoder.Encode(stream, syncInfo);
         stream.Position = 0;
 
-        // Decode with RlpStream
-        SyncInfo decodedStream = decoder.Decode(stream);
-        stream.Position = 0;
+        // Decode with ValueDecoderContext
+        Rlp.ValueDecoderContext streamCtx = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+        SyncInfo decodedStream = decoder.Decode(ref streamCtx);
 
         // Decode with ValueDecoderContext
         Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
@@ -155,9 +157,7 @@ public class SyncInfoDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         var decoder = new SyncInfoDecoder();
-        var stream = new RlpStream(Rlp.OfEmptyList.Bytes);
-
-        SyncInfo decoded = decoder.Decode(stream);
+        SyncInfo decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes);
 
         Assert.That(decoded, Is.Null);
     }

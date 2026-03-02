@@ -11,25 +11,6 @@ public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(WithdrawalDecoder))]
     public WithdrawalDecoder() { }
 
-    protected override Withdrawal? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemEmptyList())
-        {
-            rlpStream.ReadByte();
-            return null;
-        }
-
-        rlpStream.ReadSequenceLength();
-
-        return new()
-        {
-            Index = rlpStream.DecodeULong(),
-            ValidatorIndex = rlpStream.DecodeULong(),
-            Address = rlpStream.DecodeAddress(),
-            AmountInGwei = rlpStream.DecodeULong()
-        };
-    }
-
     protected override Withdrawal? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
