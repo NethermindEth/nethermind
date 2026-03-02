@@ -4,10 +4,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Filters;
 using Nethermind.Logging;
@@ -17,13 +19,13 @@ namespace Nethermind.Blockchain.Filters
 {
     public sealed class FilterManager
     {
-        private readonly ConcurrentDictionary<int, List<FilterLog>> _logs =
+        private readonly ConcurrentDictionary<int, ConcurrentQueue<FilterLog>> _logs =
             new();
 
-        private readonly ConcurrentDictionary<int, List<Hash256>> _blockHashes =
+        private readonly ConcurrentDictionary<int, ConcurrentQueue<Hash256>> _blockHashes =
             new();
 
-        private readonly ConcurrentDictionary<int, List<Hash256>> _pendingTransactions =
+        private readonly ConcurrentDictionary<int, ConcurrentQueue<Option<Hash256>>> _pendingTransactions =
             new();
 
         private Hash256? _lastBlockHash;
@@ -73,10 +75,9 @@ namespace Nethermind.Blockchain.Filters
             foreach (PendingTransactionFilter filter in filters)
             {
                 int filterId = filter.Id;
-                List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new List<Hash256>());
-                transactions.Add(e.Transaction.Hash);
+                ConcurrentQueue<Option<Hash256>> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new ConcurrentQueue<Option<Hash256>>());
+                transactions.Enqueue(new Option<Hash256>(e.Transaction.Hash));
                 if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId} contains {transactions.Count} transactions.");
-
             }
         }
 
@@ -87,32 +88,38 @@ namespace Nethermind.Blockchain.Filters
             foreach (PendingTransactionFilter filter in filters)
             {
                 int filterId = filter.Id;
-                List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new List<Hash256>());
-                transactions.Remove(e.Transaction.Hash);
-                if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId} contains {transactions.Count} transactions.");
+                if (!_pendingTransactions.TryGetValue(filterId, out ConcurrentQueue<Option<Hash256>>? transactions))
+                    continue;
 
+                // Scan the queue and mark the matching item as removed.
+                foreach (Option<Hash256> option in transactions)
+                {
+                    if (!option.IsRemoved && option.Value == e.Transaction.Hash)
+                    {
+                        option.MarkRemoved();
+                        if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId}: transaction {e.Transaction.Hash} marked as removed.");
+                    }
+                }
             }
         }
 
         public FilterLog[] GetLogs(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            _logs.TryGetValue(filterId, out List<FilterLog> logs);
-            return logs?.ToArray() ?? [];
+            return _logs.TryGetValue(filterId, out ConcurrentQueue<FilterLog> logs) ? logs.ToArray() : [];
         }
 
         public Hash256[] GetBlocksHashes(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            _blockHashes.TryGetValue(filterId, out List<Hash256> blockHashes);
-            return blockHashes?.ToArray() ?? [];
+            return _blockHashes.TryGetValue(filterId, out ConcurrentQueue<Hash256> blockHashes) ? blockHashes.ToArray() : [];
         }
 
         [Todo("Truffle sends transaction first and then polls so we hack it here for now")]
         public Hash256[] PollBlockHashes(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            if (!_blockHashes.TryGetValue(filterId, out var blockHashes))
+            if (!_blockHashes.TryGetValue(filterId, out ConcurrentQueue<Hash256> blockHashes))
             {
                 if (_lastBlockHash is not null)
                 {
@@ -124,39 +131,43 @@ namespace Nethermind.Blockchain.Filters
                 return [];
             }
 
-            var existingBlockHashes = blockHashes.ToArray();
-            _blockHashes[filterId].Clear();
-
-            return existingBlockHashes;
+            using ArrayPoolListRef<Hash256> result = new(blockHashes.Count);
+            while (blockHashes.TryDequeue(out Hash256? hash))
+            {
+                result.Add(hash);
+            }
+            return result.ToArray();
         }
 
         public FilterLog[] PollLogs(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            if (!_logs.TryGetValue(filterId, out var logs))
-            {
+            if (!_logs.TryGetValue(filterId, out ConcurrentQueue<FilterLog> logs))
                 return [];
+
+            using ArrayPoolListRef<FilterLog> result = new(logs.Count);
+            while (logs.TryDequeue(out FilterLog? log))
+            {
+                result.Add(log);
             }
-
-            var existingLogs = logs.ToArray();
-            _logs[filterId].Clear();
-
-            return existingLogs;
+            return result.ToArray();
         }
 
         public Hash256[] PollPendingTransactionHashes(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-
-            if (!_pendingTransactions.TryGetValue(filterId, out var pendingTransactions))
-            {
+            if (!_pendingTransactions.TryGetValue(filterId, out ConcurrentQueue<Option<Hash256>>? pendingTransactions))
                 return [];
+
+            using ArrayPoolListRef<Hash256> result = new(pendingTransactions.Count);
+            while (pendingTransactions.TryDequeue(out Option<Hash256>? option))
+            {
+                if (!option.IsRemoved)
+                {
+                    result.Add(option.Value);
+                }
             }
-
-            var existingPendingTransactions = pendingTransactions.ToArray();
-            _pendingTransactions[filterId].Clear();
-
-            return existingPendingTransactions;
+            return result.ToArray();
         }
 
         private void AddReceipts(TxReceipt txReceipt, ulong blockTimestamp)
@@ -191,8 +202,8 @@ namespace Nethermind.Blockchain.Filters
                 throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
             }
 
-            List<Hash256> blocks = _blockHashes.GetOrAdd(filter.Id, static i => new List<Hash256>());
-            blocks.Add(block.Hash);
+            ConcurrentQueue<Hash256> blocks = _blockHashes.GetOrAdd(filter.Id, static _ => new ConcurrentQueue<Hash256>());
+            blocks.Enqueue(block.Hash);
             if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
         }
 
@@ -203,23 +214,20 @@ namespace Nethermind.Blockchain.Filters
                 return;
             }
 
-            List<FilterLog> logs = _logs.GetOrAdd(filter.Id, static i => new List<FilterLog>());
+            ConcurrentQueue<FilterLog>? logs = null;
             for (int i = 0; i < txReceipt.Logs.Length; i++)
             {
                 LogEntry? logEntry = txReceipt.Logs[i];
                 FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, blockTimestamp);
                 if (filterLog is not null)
                 {
-                    logs.Add(filterLog);
+                    logs ??= _logs.GetOrAdd(filter.Id, static _ => new ConcurrentQueue<FilterLog>());
+                    logs.Enqueue(filterLog);
                 }
             }
 
-            if (logs.Count == 0)
-            {
-                return;
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {logs.Count} logs.");
+            if (_logger.IsTrace && logs is not null)
+                _logger.Trace($"Filter with id: {filter.Id} contains {logs.Count} logs.");
         }
 
         private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, ulong blockTimestamp)
@@ -255,6 +263,21 @@ namespace Nethermind.Blockchain.Filters
             }
 
             return new FilterLog(index, txReceipt, logEntry, blockTimestamp);
+        }
+
+        private sealed class Option<T>
+        {
+            private bool _isRemoved;
+
+            public T Value { get; }
+            public bool IsRemoved => Volatile.Read(ref _isRemoved);
+
+            public Option(T value)
+            {
+                Value = value;
+            }
+
+            public void MarkRemoved() => Volatile.Write(ref _isRemoved, true);
         }
     }
 }
