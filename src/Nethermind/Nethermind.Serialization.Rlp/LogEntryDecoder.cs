@@ -15,28 +15,6 @@ namespace Nethermind.Serialization.Rlp
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(LogEntryDecoder))]
         public LogEntryDecoder() { }
 
-        protected override LogEntry? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (rlpStream.IsNextItemEmptyList())
-            {
-                rlpStream.ReadByte();
-                return null;
-            }
-
-            rlpStream.ReadSequenceLength();
-            Address? address = rlpStream.DecodeAddress();
-            long sequenceLength = rlpStream.ReadSequenceLength();
-            Hash256[] topics = new Hash256[sequenceLength / 33];
-            for (int i = 0; i < topics.Length; i++)
-            {
-                topics[i] = rlpStream.DecodeKeccak();
-            }
-
-            byte[] data = rlpStream.DecodeByteArray();
-
-            return new LogEntry(address, data, topics);
-        }
-
         protected override LogEntry? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())

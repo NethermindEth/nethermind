@@ -19,7 +19,7 @@ public class NeighborsMsgSerializer(
     INodeIdResolver nodeIdResolver)
     : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<NeighborsMsg>
 {
-    private static readonly Func<RlpStream, Node> _decodeItem = static ctx =>
+    private static readonly DecodeRlpValue<Node?> _decodeItem = static (ref Rlp.ValueDecoderContext ctx) =>
     {
         int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
@@ -66,18 +66,14 @@ public class NeighborsMsgSerializer(
     {
         (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
 
-        NettyRlpStream rlp = new(Data);
-        rlp.ReadSequenceLength();
-        Node[] nodes = DeserializeNodes(rlp);
+        Rlp.ValueDecoderContext ctx = Data.AsRlpContext();
+        ctx.ReadSequenceLength();
+        Node[] nodes = ctx.DecodeArray(_decodeItem)!;
 
-        long expirationTime = rlp.DecodeLong();
+        long expirationTime = ctx.DecodeLong();
+        Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
         NeighborsMsg msg = new(FarPublicKey, expirationTime, nodes);
         return msg;
-    }
-
-    private static Node[] DeserializeNodes(RlpStream rlpStream)
-    {
-        return rlpStream.DecodeArray<Node>(_decodeItem);
     }
 
     private static int GetNodesLength(ArraySegment<Node> nodes, out int contentLength)

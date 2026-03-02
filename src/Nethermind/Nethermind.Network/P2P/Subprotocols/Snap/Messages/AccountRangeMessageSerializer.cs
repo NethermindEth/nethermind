@@ -55,25 +55,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
         }
 
-        public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
+        public AccountRangeMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private AccountRangeMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             AccountRangeMessage message = new();
-            NettyRlpStream rlpStream = new(byteBuffer);
+            ctx.ReadSequenceLength();
 
-            rlpStream.ReadSequenceLength();
-
-            message.RequestId = rlpStream.DecodeLong();
-            message.PathsWithAccounts = rlpStream.DecodeArrayPoolList(DecodePathWithRlpData);
-            message.Proofs = rlpStream.DecodeArrayPoolList(static s => s.DecodeByteArray());
+            message.RequestId = ctx.DecodeLong();
+            message.PathsWithAccounts = ctx.DecodeArrayPoolList(DecodePathWithRlpData);
+            message.Proofs = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
 
             return message;
         }
 
-        private PathWithAccount DecodePathWithRlpData(RlpStream stream)
+        private PathWithAccount DecodePathWithRlpData(ref Rlp.ValueDecoderContext ctx)
         {
-            stream.ReadSequenceLength();
+            ctx.ReadSequenceLength();
 
-            PathWithAccount data = new(stream.DecodeKeccak(), _decoder.Decode(stream));
+            PathWithAccount data = new(ctx.DecodeKeccak(), _decoder.Decode(ref ctx));
 
             return data;
         }

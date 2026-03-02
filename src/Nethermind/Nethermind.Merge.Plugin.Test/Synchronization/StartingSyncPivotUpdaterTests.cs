@@ -93,9 +93,9 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             _syncModeSelector!.Changed += Raise.EventWith(args);
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
-            RlpStream pivotStream = new(storedData!);
-            long storedPivotBlockNumber = pivotStream.DecodeLong();
-            Hash256 storedFinalizedHash = pivotStream.DecodeKeccak()!;
+            Rlp.ValueDecoderContext ctx = new(storedData!);
+            long storedPivotBlockNumber = ctx.DecodeLong();
+            Hash256 storedFinalizedHash = ctx.DecodeKeccak()!;
 
             storedFinalizedHash.Should().Be(expectedFinalizedHash);
             storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
@@ -123,9 +123,9 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             _syncModeSelector!.Changed += Raise.EventWith(args);
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
-            RlpStream pivotStream = new(storedData!);
-            long storedPivotBlockNumber = pivotStream.DecodeLong();
-            Hash256 storedPivotBlockHash = pivotStream.DecodeKeccak()!;
+            Rlp.ValueDecoderContext ctx = new(storedData!);
+            long storedPivotBlockNumber = ctx.DecodeLong();
+            Hash256 storedPivotBlockHash = ctx.DecodeKeccak()!;
 
             storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
             storedPivotBlockHash.Should().Be(expectedPivotBlockHash);
