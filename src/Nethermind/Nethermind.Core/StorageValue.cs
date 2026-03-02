@@ -13,7 +13,7 @@ namespace Nethermind.Core;
 /// Inline 32-byte struct for storage slot values, replacing heap-allocated byte[].
 /// Uses Vector256&lt;byte&gt; for efficient SIMD comparison and zero-check.
 /// </summary>
-[StructLayout(LayoutKind.Sequential, Size = 32)]
+[StructLayout(LayoutKind.Sequential, Size = 32, Pack = 1)]
 public readonly struct StorageValue : IEquatable<StorageValue>
 {
     public static readonly StorageValue Zero = default;

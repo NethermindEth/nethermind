@@ -242,7 +242,9 @@ public class PrewarmerScopeProvider(
 
         private byte[] LoadFromTreeStorageBytes(in StorageCell storageCell)
         {
-            return LoadFromTreeStorage(in storageCell).ToEvmBytes();
+            // Store full 32-byte padded value so FromSpanWithoutLeadingZero always hits the
+            // fast inline path (length == 32, single ReadUnaligned) on every cache hit.
+            return LoadFromTreeStorage(in storageCell).AsReadOnlySpan.ToArray();
         }
 
         public StorageValue Get(in ValueHash256 hash) =>

@@ -410,7 +410,7 @@ namespace Nethermind.State
         /// Reference-free key for _intraBlockCache. Inlines the 20-byte address to avoid
         /// references, so Dictionary.Clear() skips entry zeroing entirely.
         /// </summary>
-        [StructLayout(LayoutKind.Sequential)]
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
         protected readonly struct InternalStorageKey : IEquatable<InternalStorageKey>
         {
             private readonly Vector128<byte> _addrLo; // 16 bytes
