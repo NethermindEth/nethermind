@@ -3,6 +3,7 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Specs;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Serialization.Rlp;
 
@@ -11,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
     : IZeroInnerMessageSerializer<ReceiptsMessage70>
 {
-    private readonly IZeroInnerMessageSerializer<ReceiptsInnerMessage69> _receiptsSerializer = new ReceiptsMessageInnerSerializer69(specProvider);
+    private readonly ReceiptsMessageInnerSerializer69 _receiptsSerializer = new(specProvider);
 
     public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage70 message)
     {
@@ -27,16 +28,22 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
         _receiptsSerializer.Serialize(byteBuffer, inner);
     }
 
-    public ReceiptsMessage70 Deserialize(IByteBuffer byteBuffer)
+    public ReceiptsMessage70 Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
+
+    private ReceiptsMessage70 Deserialize(ref Rlp.ValueDecoderContext ctx)
     {
-        NettyRlpStream stream = new(byteBuffer);
-        stream.ReadSequenceLength();
+        ctx.ReadSequenceLength();
 
-        long requestId = stream.DecodeLong();
-        bool lastBlockIncomplete = stream.DecodeLong() != 0;
+        long requestId = ctx.DecodeLong();
+        ulong lastBlockIncomplete = ctx.DecodeULong();
 
-        ReceiptsInnerMessage69 inner = _receiptsSerializer.Deserialize(byteBuffer);
-        return new ReceiptsMessage70(requestId, inner, lastBlockIncomplete);
+        if (lastBlockIncomplete is not 0 and not 1)
+        {
+            throw new RlpException($"{lastBlockIncomplete} is not correct value for {nameof(lastBlockIncomplete)}");
+        }
+
+        ReceiptsMessage inner = _receiptsSerializer.Deserialize(ref ctx);
+        return new ReceiptsMessage70(requestId, inner, lastBlockIncomplete is 1);
     }
 
     public int GetLength(ReceiptsMessage70 message, out int contentLength)
