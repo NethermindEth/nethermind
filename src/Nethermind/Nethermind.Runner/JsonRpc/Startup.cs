@@ -321,6 +321,10 @@ public class Startup : IStartup
                         ctx.Response.ContentType = "application/json";
                         ctx.Response.StatusCode = GetStatusCode(result);
 
+                        // Apply any response headers set by handlers
+                        if (jsonRpcContext.ResponseHeaders is { } responseHeaders)
+                            foreach (var (key, value) in responseHeaders) ctx.Response.Headers[key] = value;
+
                         // Flush headers before body for unbuffered responses
                         if (stream is null)
                         {
