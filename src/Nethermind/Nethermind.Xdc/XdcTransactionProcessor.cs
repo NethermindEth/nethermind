@@ -62,7 +62,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         }
 
         Address coinbase = header.GasBeneficiary!;
-        Address owner = _masternodeVotingContract.GetCandidateOwnerDuringProcessing(this, header, coinbase);
+        Address owner = _masternodeVotingContract.GetCandidateOwner(this, header, coinbase);
 
         if (owner is null || owner == Address.Zero)
             return;
@@ -80,7 +80,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
         out UInt256 blobBaseFee)
     {
-        if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec))
+        if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec) || tx.IsSpecialTransaction((XdcReleaseSpec)spec))
         {
             premiumPerGas = 0;
             senderReservedGasPayment = 0;
@@ -121,6 +121,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         if (tx.RequiresSpecialHandling(spec))
         {
             return ExecuteSpecialTransaction(tx, tracer, opts);
+
         }
 
         return base.Execute(tx, tracer, opts);

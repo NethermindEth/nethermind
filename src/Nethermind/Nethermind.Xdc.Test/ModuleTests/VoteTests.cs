@@ -3,9 +3,11 @@
 
 using FluentAssertions;
 using Nethermind.Crypto;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
+using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Linq;
@@ -76,12 +78,13 @@ public class VoteTests
     {
         return new VotesManager(
             blockchain.XdcContext,
+            Substitute.For<ISyncPeerPool>(),
             blockchain.BlockTree,
             blockchain.EpochSwitchManager,
             blockchain.SnapshotManager,
             blockchain.QuorumCertificateManager,
             blockchain.SpecProvider,
             blockchain.Signer,
-            NSubstitute.Substitute.For<IForensicsProcessor>());
+            Substitute.For<IForensicsProcessor>());
     }
 }

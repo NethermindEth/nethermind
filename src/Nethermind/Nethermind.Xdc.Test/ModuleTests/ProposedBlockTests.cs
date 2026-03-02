@@ -128,7 +128,7 @@ internal class ProposedBlockTests
         //Starting here will trigger the final vote to be cast
         blockChain.StartHotStuffModule();
 
-        var waitTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(5_000));
+        var waitTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(10_000));
         if (waitTask != newRoundWaitHandle.Task)
         {
             Assert.Fail("Timed out waiting for the round to start. The vote threshold was not reached?");

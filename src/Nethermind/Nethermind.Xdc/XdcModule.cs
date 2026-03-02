@@ -4,38 +4,43 @@
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Abi;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Init.Modules;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Xdc.Contracts;
-using Nethermind.Xdc.Spec;
-using Nethermind.TxPool;
-using Nethermind.Logging;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Xdc.TxPool;
-using Nethermind.Api.Steps;
+using Nethermind.Init.Modules;
+using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.TxPool;
+using Nethermind.Xdc.Contracts;
+using Nethermind.Xdc.P2P;
+using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.TxPool;
 
 namespace Nethermind.Xdc;
 
 public class XdcModule : Module
 {
-    private const string SnapshotDbName = "Snapshots";
+    private const string SnapshotDbName = "XdcSnapshots";
 
     protected override void Load(ContainerBuilder builder)
     {
+        builder.AddStep(typeof(XdcInitializeNetwork));
+
         base.Load(builder);
 
         builder
@@ -47,6 +52,9 @@ public class XdcModule : Module
 
             .AddDecorator<IGenesisBuilder, XdcGenesisBuilder>()
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
+
+            .Add<StartXdcBlockProducer>()
+
 
             // stores
             .AddSingleton<IHeaderStore, XdcHeaderStore>()
@@ -72,9 +80,10 @@ public class XdcModule : Module
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
 
             // reward handler
-            .AddSingleton<IRewardCalculator, XdcRewardCalculator>()
+            .AddDecorator<IRewardCalculatorSource, XdcRewardCalculatorSource>()
 
             // forensics handler
+            .AddSingleton<IForensicsProcessor, ForensicsProcessor>()
 
             // Validators
             .AddSingleton<IHeaderValidator, XdcHeaderValidator>()
@@ -100,12 +109,24 @@ public class XdcModule : Module
             .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
             .AddSingleton<XdcStateSyncSnapshotManager>()
             .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
+            .AddSingleton<ISyncDownloader<StateSyncBatch>, XdcStateSyncDownloader>()
+
+
+            //Network
+            .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
+            .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
+            .AddSingleton(new BlockDecoder(new XdcHeaderDecoder()))
+            .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
+            .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
+            .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
             // block processing
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
-            ;
+            .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
+            .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
+            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
     }
 
     private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)

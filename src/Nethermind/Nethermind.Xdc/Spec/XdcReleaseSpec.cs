@@ -22,7 +22,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int MinePeriod { get; set; }                  // Miner mine period to mine a block
     public int TimeoutSyncThreshold { get; set; }        // send syncInfo after number of timeout
     public int TimeoutPeriod { get; set; }               // Duration in ms
-    public double CertThreshold { get; set; }            // Necessary number of messages from master nodes to form a certificate
+    public double CertificateThreshold { get; set; }            // Necessary number of messages from master nodes to form a certificate
     public double MasternodeReward { get; set; }         // Block reward per master node (core validator) - unit Ether
     public double ProtectorReward { get; set; }          // Block reward per protector - unit Ether
     public double ObserverReward { get; set; }           // Block reward per observer - unit Ether
@@ -57,7 +57,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
         V2ConfigParams configParams = GetConfigAtRound(V2Configs, round);
         SwitchRound = configParams.SwitchRound;
         MaxMasternodes = configParams.MaxMasternodes;
-        CertThreshold = configParams.CertThreshold;
+        CertificateThreshold = configParams.CertificateThreshold;
         TimeoutSyncThreshold = configParams.TimeoutSyncThreshold;
         TimeoutPeriod = configParams.TimeoutPeriod;
         MinePeriod = configParams.MinePeriod;
@@ -109,7 +109,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int MinePeriod { get; set; }              // Miner mine period to mine a block
     public int TimeoutSyncThreshold { get; set; }    // send syncInfo after number of timeout
     public int TimeoutPeriod { get; set; }           // Duration in ms
-    public double CertThreshold { get; set; }        // Necessary number of messages from master nodes to form a certificate
+    public double CertificateThreshold { get; set; }        // Necessary number of messages from master nodes to form a certificate
     public double MasternodeReward { get; set; }     // Block reward per master node (core validator) - unit Ether
     public double ProtectorReward { get; set; }      // Block reward per protector - unit Ether
     public double ObserverReward { get; set; }       // Block reward per observer - unit Ether

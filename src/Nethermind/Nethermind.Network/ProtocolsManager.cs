@@ -49,26 +49,27 @@ namespace Nethermind.Network
         private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols =
             new();
 
+        protected readonly ISyncPeerPool _syncPool;
+        protected readonly ISyncServer _syncServer;
+        protected readonly ITxPool _txPool;
+        protected readonly ILogManager _logManager;
+        protected readonly ISpecProvider _specProvider;
+        protected readonly INodeStatsManager _stats;
+        protected readonly IMessageSerializationService _serializer;
+        protected readonly ITxGossipPolicy _txGossipPolicy;
+        protected readonly IForkInfo _forkInfo;
+        protected readonly IGossipPolicy _gossipPolicy;
+        protected readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
+
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
-        private readonly ISyncPeerPool _syncPool;
-        private readonly ISyncServer _syncServer;
-        private readonly ITxPool _txPool;
         private readonly IDiscoveryApp _discoveryApp;
-        private readonly IMessageSerializationService _serializer;
         private readonly IRlpxHost _rlpxHost;
-        private readonly INodeStatsManager _stats;
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
-        private readonly IForkInfo _forkInfo;
-        private readonly IGossipPolicy _gossipPolicy;
-        private readonly ITxGossipPolicy _txGossipPolicy;
-        private readonly ILogManager _logManager;
         private readonly ITxPoolConfig _txPoolConfig;
-        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
-        private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
         private readonly ISnapServer? _snapServer;
 
         public ProtocolsManager(
@@ -195,17 +196,17 @@ namespace Nethermind.Network
             protocolHandler.Init();
         }
 
-        public void AddProtocol(string code, Func<ISession, IProtocolHandler> factory)
+        public void AddProtocol(string code, Func<ISession, int, IProtocolHandler> factory)
         {
             if (_protocolFactories.ContainsKey(code))
             {
                 throw new InvalidOperationException($"Protocol {code} was already added.");
             }
 
-            _protocolFactories[code] = (session, _) => factory(session);
+            _protocolFactories[code] = (session, version) => factory(session, version);
         }
 
-        private IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
+        protected virtual IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
             => new Dictionary<string, Func<ISession, int, IProtocolHandler>>
             {
                 [Protocol.P2P] = (session, _) =>
@@ -226,7 +227,6 @@ namespace Nethermind.Network
                         69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfig, _specProvider, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
-
                     InitSyncPeerProtocol(session, ethHandler);
                     return ethHandler;
                 },
@@ -238,7 +238,6 @@ namespace Nethermind.Network
                         _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
                     };
                     InitSatelliteProtocol(session, handler);
-
                     return handler;
                 },
                 [Protocol.NodeData] = (session, version) =>
@@ -249,12 +248,11 @@ namespace Nethermind.Network
                         _ => throw new NotSupportedException($"{Protocol.NodeData}.{version} is not supported.")
                     };
                     InitSatelliteProtocol(session, handler);
-
                     return handler;
                 }
             };
 
-        private void InitSatelliteProtocol(ISession session, ProtocolHandlerBase handler)
+        protected void InitSatelliteProtocol(ISession session, ProtocolHandlerBase handler)
         {
             session.Node.EthDetails = handler.Name;
             handler.ProtocolInitialized += (sender, args) =>
@@ -334,7 +332,7 @@ namespace Nethermind.Network
             };
         }
 
-        private void InitSyncPeerProtocol(ISession session, SyncPeerProtocolHandlerBase handler)
+        protected void InitSyncPeerProtocol(ISession session, SyncPeerProtocolHandlerBase handler)
         {
             session.Node.EthDetails = handler.Name;
             handler.ProtocolInitialized += (sender, args) =>

@@ -115,7 +115,8 @@ internal class XdcSealValidator(IMasternodesCalculator masternodesCalculator, IE
     {
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
-
+        if (xdcHeader.Number == 0)
+            return true;
         if (header.Author is null)
         {
             if (xdcHeader.Validator is null

@@ -8,6 +8,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -20,6 +22,7 @@ namespace Nethermind.Xdc;
 
 internal class VotesManager(
     IXdcConsensusContext context,
+    ISyncPeerPool syncPeerPool,
     IBlockTree tree,
     IEpochSwitchManager epochSwitchManager,
     ISnapshotManager snapshotManager,
@@ -33,6 +36,7 @@ internal class VotesManager(
     private readonly ISnapshotManager _snapshotManager = snapshotManager;
     private readonly IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager;
     private readonly IXdcConsensusContext _ctx = context;
+    private readonly ISyncPeerPool _syncPeerPool = syncPeerPool;
     private readonly IForensicsProcessor _forensicsProcessor = forensicsProcessor;
     private readonly ISpecProvider _specProvider = specProvider;
     private readonly ISigner _signer = signer;
@@ -66,7 +70,6 @@ internal class VotesManager(
         _highestVotedRound = (long)blockInfo.Round;
 
         HandleVote(vote);
-        //TODO Broadcast vote to peers
         return Task.CompletedTask;
     }
 
@@ -103,7 +106,9 @@ internal class VotesManager(
             throw new InvalidOperationException($"Epoch has empty master node list for {vote.ProposedBlockInfo.Hash}");
         }
 
-        double certThreshold = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round).CertThreshold;
+        BroadcastVote(vote);
+
+        double certThreshold = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round).CertificateThreshold;
         double requiredVotes = masternodeCount * certThreshold;
         bool thresholdReached = roundVotes.Count >= requiredVotes;
         if (thresholdReached)
@@ -125,7 +130,7 @@ internal class VotesManager(
         return Task.CompletedTask;
     }
 
-    private void EndRound(ulong round)
+    private void CleanupVotes(ulong round)
     {
         _votePool.EndRound(round);
 
@@ -194,11 +199,20 @@ internal class VotesManager(
         return snapshot.NextEpochCandidates.Any(x => x == vote.Signer);
     }
 
+    private void BroadcastVote(Vote vote)
+    {
+        foreach (PeerInfo peer in _syncPeerPool.AllPeers)
+        {
+            if (peer.SyncPeer is XdcProtocolHandler xdcProtocol)
+                xdcProtocol.SendVote(vote);
+        }
+    }
+
     private void OnVotePoolThresholdReached(Signature[] validSignatures, Vote currVote)
     {
         QuorumCertificate qc = new(currVote.ProposedBlockInfo, validSignatures, currVote.GapNumber);
         _quorumCertificateManager.CommitCertificate(qc);
-        EndRound(currVote.ProposedBlockInfo.Round);
+        CleanupVotes(currVote.ProposedBlockInfo.Round);
     }
 
     private bool IsExtendingFromAncestor(Hash256 blockHash, long blockNumber, BlockRoundInfo ancestorBlockInfo)

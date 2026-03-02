@@ -12,5 +12,6 @@ public interface IQuorumCertificateManager
 
     void CommitCertificate(QuorumCertificate qc);
     bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader certificateTarget, out string error);
+    bool VerifyCertificate(QuorumCertificate qc, out string error);
     void Initialize(XdcBlockHeader current);
 }

@@ -93,7 +93,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
 
-    private int GetContentLength(Vote item, RlpBehaviors rlpBehaviors)
+    public int GetContentLength(Vote item, RlpBehaviors rlpBehaviors)
     {
         return
             ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0)

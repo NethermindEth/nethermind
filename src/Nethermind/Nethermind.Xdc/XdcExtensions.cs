@@ -9,7 +9,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Immutable;
 
 namespace Nethermind.Xdc;
 
@@ -49,8 +48,7 @@ internal static partial class XdcExtensions
         spec.ApplyV2Config(round);
         return spec;
     }
-
-    public static ImmutableArray<Address>? ExtractAddresses(this Span<byte> data)
+    public static Address[]? ExtractAddresses(this Span<byte> data)
     {
         if (data.Length % Address.Size != 0)
             return null;
@@ -60,7 +58,7 @@ internal static partial class XdcExtensions
         {
             addresses[i] = new Address(data.Slice(i * Address.Size, Address.Size));
         }
-        return addresses.ToImmutableArray();
+        return addresses;
     }
 
     public static bool ValidateBlockInfo(this BlockRoundInfo blockInfo, XdcBlockHeader blockHeader) =>

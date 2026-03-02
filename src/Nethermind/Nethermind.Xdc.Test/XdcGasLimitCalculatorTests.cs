@@ -3,17 +3,12 @@
 
 using FluentAssertions;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
-using Nethermind.Specs;
 using Nethermind.Xdc.Spec;
 using NSubstitute;
 using NUnit.Framework;
-using System;
 
 namespace Nethermind.Xdc.Test;
 

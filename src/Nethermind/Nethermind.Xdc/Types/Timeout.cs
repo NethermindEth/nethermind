@@ -11,10 +11,15 @@ namespace Nethermind.Xdc.Types;
 public class Timeout(ulong round, Signature? signature, ulong gapNumber) : IXdcPoolItem
 {
     private static readonly TimeoutDecoder _decoder = new();
+    private Hash256 _hash;
     public ulong Round { get; set; } = round;
     public Signature? Signature { get; set; } = signature;
     public ulong GapNumber { get; set; } = gapNumber;
     public Address? Signer { get; set; }
+    public Hash256 Hash => _hash ??= Keccak.Compute(_decoder.Encode(this, RlpBehaviors.None).Bytes);
     public override string ToString() => $"{Round}:{GapNumber}";
     public (ulong Round, Hash256 hash) PoolKey() => (Round, Keccak.Compute(_decoder.Encode(this, RlpBehaviors.ForSealing).Bytes));
+    public override bool Equals(object? obj) =>
+        obj is Vote other && Hash == other.Hash;
+    public override int GetHashCode() => Hash.GetHashCode();
 }

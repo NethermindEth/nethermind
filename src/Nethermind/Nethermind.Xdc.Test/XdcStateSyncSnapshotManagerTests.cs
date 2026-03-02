@@ -2,18 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Xdc.Contracts;
-using Nethermind.Xdc.Spec;
-using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Xdc.Test.Helpers;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 

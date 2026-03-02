@@ -102,7 +102,7 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
-    private int GetContentLength(Timeout? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public int GetContentLength(Timeout? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return 0;
