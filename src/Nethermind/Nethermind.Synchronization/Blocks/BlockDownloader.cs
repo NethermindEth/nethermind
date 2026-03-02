@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.Blocks
         private static readonly IPeerAllocationStrategy EstimatedAllocationStrategy =
             BlocksSyncPeerAllocationStrategyFactory.AllocationStrategy;
 
-        private static readonly IRlpStreamEncoder<TxReceipt> _receiptDecoder = Rlp.GetStreamEncoder<TxReceipt>() ?? throw new InvalidOperationException();
+        private readonly IRlpStreamEncoder<TxReceipt> _receiptDecoder;
 
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
@@ -86,6 +86,7 @@ namespace Nethermind.Synchronization.Blocks
             IReceiptsRecovery receiptsRecovery,
             IBlockProcessingQueue processingQueue,
             ISyncConfig syncConfig,
+            IRlpDecoderRegistry rlpDecoderRegistry,
             ILogManager logManager)
         {
             _blockTree = blockTree;
@@ -97,6 +98,7 @@ namespace Nethermind.Synchronization.Blocks
             _fullStateFinder = fullStateFinder;
             _forwardHeaderProvider = forwardHeaderProvider;
             _syncPeerPool = syncPeerPool;
+            _receiptDecoder = rlpDecoderRegistry.GetStreamEncoder<TxReceipt>() ?? throw new InvalidOperationException();
             _logger = logManager.GetClassLogger();
             // Assume that each tx cost about 1kb.
             _maxTxInBuffer = (int)(syncConfig.ForwardSyncDownloadBufferMemoryBudget / 1000);

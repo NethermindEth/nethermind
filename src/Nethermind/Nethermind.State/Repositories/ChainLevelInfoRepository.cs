@@ -14,15 +14,23 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Repositories
 {
-    public class ChainLevelInfoRepository([KeyFilter(DbNames.BlockInfos)] IDb blockInfoDb) : IChainLevelInfoRepository, IClearableCache
+    public class ChainLevelInfoRepository : IChainLevelInfoRepository, IClearableCache
     {
         private const int CacheSize = 64;
 
         private readonly object _writeLock = new();
         private readonly ClockCache<long, ChainLevelInfo> _blockInfoCache = new(CacheSize);
-        private readonly IRlpValueDecoder<ChainLevelInfo> _decoder = Rlp.GetValueDecoder<ChainLevelInfo>();
+        private readonly IRlpValueDecoder<ChainLevelInfo> _decoder;
 
-        private readonly IDb _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
+        public ChainLevelInfoRepository(IDb blockInfoDb) : this(blockInfoDb, Rlp.DefaultRegistry) { }
+
+        public ChainLevelInfoRepository([KeyFilter(DbNames.BlockInfos)] IDb blockInfoDb, IRlpDecoderRegistry rlpDecoderRegistry)
+        {
+            _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
+            _decoder = rlpDecoderRegistry.GetValueDecoder<ChainLevelInfo>()!;
+        }
+
+        private readonly IDb _blockInfoDb;
 
         public void Delete(long number, BatchWrite? batch = null)
         {
@@ -72,7 +80,7 @@ namespace Nethermind.State.Repositories
 
         public BatchWrite StartBatch() => new(_writeLock, _blockInfoDb.StartWriteBatch());
 
-        public ChainLevelInfo? LoadLevel(long number) => _blockInfoDb.Get(number, Rlp.GetValueDecoder<ChainLevelInfo>(), _blockInfoCache);
+        public ChainLevelInfo? LoadLevel(long number) => _blockInfoDb.Get(number, _decoder, _blockInfoCache);
 
         public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<long> blockNumbers)
         {

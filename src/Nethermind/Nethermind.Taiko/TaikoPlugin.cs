@@ -198,15 +198,14 @@ public class TaikoModule : Module
             .RegisterSingletonJsonRpcModule<ITaikoEngineRpcModule, TaikoEngineRpcModule>()
                 .AddSingleton<IForkchoiceUpdatedHandler, TaikoForkchoiceUpdatedHandler>()
 
-            // TDX attestation (enabled with Surge.TdxEnabled) 
+            // TDX attestation (enabled with Surge.TdxEnabled)
             .AddModule(new TdxModule())
 
-            // Need to set the rlp globally
-            .OnBuild(ctx =>
-            {
-                Rlp.RegisterDecoder(typeof(L1Origin), ctx.Resolve<RlpValueDecoder<L1Origin>>());
-            })
             ;
+
+        builder.OnBuild(scope =>
+            scope.Resolve<RlpDecoderRegistryBuilder>()
+                .RegisterDecoders(typeof(TaikoPlugin).Assembly));
     }
 
     private static IPayloadPreparationService CreatePayloadPreparationService(

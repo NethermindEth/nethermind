@@ -86,7 +86,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
-        Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
     }
 
     public Task Init(INethermindApi api)
@@ -258,5 +257,8 @@ public class OptimismModule(ChainSpec chainSpec) : Module
                 .Bind<IRpcModuleFactory<IEthRpcModule>, OptimismEthModuleFactory>()
             ;
 
+        builder.OnBuild(scope =>
+            scope.Resolve<RlpDecoderRegistryBuilder>()
+                .RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, canOverrideExistingDecoders: true));
     }
 }

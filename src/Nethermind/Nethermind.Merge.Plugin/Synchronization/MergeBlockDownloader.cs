@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -32,6 +33,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IReceiptsRecovery receiptsRecovery,
         IBlockProcessingQueue blockProcessingQueue,
         ISyncConfig syncConfig,
+        IRlpDecoderRegistry rlpDecoderRegistry,
         ILogManager logManager)
         : BlockDownloader(
             blockTree,
@@ -46,6 +48,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             receiptsRecovery,
             blockProcessingQueue,
             syncConfig,
+            rlpDecoderRegistry,
             logManager)
     {
         private readonly IBlockTree _blockTree = blockTree;
