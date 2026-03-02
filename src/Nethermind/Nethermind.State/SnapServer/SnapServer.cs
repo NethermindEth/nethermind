@@ -71,7 +71,7 @@ public class SnapServer : ISnapServer
 
     public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
     {
-        if (IsRootMissing(rootHash)) return BuildEmptyRlpByteArrayList();
+        if (IsRootMissing(rootHash)) return EmptyByteArrayList.Instance;
 
         if (_logger.IsDebug) _logger.Debug($"Get trie nodes {pathSet.Count}");
         // TODO: use cache to reduce node retrieval from disk
@@ -288,12 +288,6 @@ public class SnapServer : ISnapServer
 
         ArrayPoolList<byte[]> proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? visitor.GetProofs() : ArrayPoolList<byte[]>.Empty();
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
-    }
-
-    private static RlpByteArrayList BuildEmptyRlpByteArrayList()
-    {
-        using DeferredRlpItemList.Builder b = new(0, 0);
-        return new RlpByteArrayList(b.ToRlpItemList());
     }
 
     private Account? GetAccountByPath(StateTree tree, in ValueHash256 rootHash, byte[] accountPath)

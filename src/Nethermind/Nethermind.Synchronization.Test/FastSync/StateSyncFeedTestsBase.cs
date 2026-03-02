@@ -329,8 +329,8 @@ public abstract class StateSyncFeedTestsBase(
 
         public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
         {
-            RlpByteArrayList? nodes = _snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
-            return Task.FromResult<IByteArrayList>(nodes!);
+            IByteArrayList? nodes = _snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
+            return Task.FromResult(nodes!);
         }
     }
 }

@@ -65,26 +65,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             StorageRangeMessage message = new();
             message.RequestId = ctx.DecodeLong();
 
-            int slotsCheck = ctx.ReadSequenceLength() + ctx.Position;
-            int slotsCount = ctx.PeekNumberOfItemsRemaining(slotsCheck);
-            ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> slots = new(slotsCount);
-            for (int i = 0; i < slotsCount; i++)
-            {
-                int accountSlotsCheck = ctx.ReadSequenceLength() + ctx.Position;
-                int accountSlotsCount = ctx.PeekNumberOfItemsRemaining(accountSlotsCheck);
-                ArrayPoolList<PathWithStorageSlot> accountSlots = new(accountSlotsCount);
-                for (int j = 0; j < accountSlotsCount; j++)
+            message.Slots = ctx.DecodeArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(static (ref Rlp.ValueDecoderContext outerCtx) =>
+                outerCtx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext innerCtx) =>
                 {
-                    ctx.ReadSequenceLength();
-                    Hash256 path = ctx.DecodeKeccak();
-                    byte[] value = ctx.DecodeByteArray();
-                    accountSlots.Add(new PathWithStorageSlot(in path.ValueHash256, value));
-                }
-
-                slots.Add(accountSlots);
-            }
-
-            message.Slots = slots;
+                    innerCtx.ReadSequenceLength();
+                    Hash256 path = innerCtx.DecodeKeccak();
+                    byte[] value = innerCtx.DecodeByteArray();
+                    return new PathWithStorageSlot(in path.ValueHash256, value);
+                }));
             message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
 
             byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
