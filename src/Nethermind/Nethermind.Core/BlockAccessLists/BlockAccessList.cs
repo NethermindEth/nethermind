@@ -240,7 +240,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(key);
 
         bool changedDuringTx = HasStorageChangedDuringTx(accountChanges.Address, key, before, after);
-        slotChanges.PopStorageChange(Index, out StorageChange? oldStorageChange);
+        slotChanges.TryPopStorageChange(Index, out StorageChange? oldStorageChange);
 
         _changes.Push(new()
         {
@@ -308,7 +308,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     StorageChange? previousStorage = change.PreviousValue is null ? null : (StorageChange)change.PreviousValue;
                     SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(change.Slot!.Value);
 
-                    slotChanges.PopStorageChange(Index, out _);
+                    slotChanges.TryPopStorageChange(Index, out _);
                     if (previousStorage is not null)
                     {
                         slotChanges.Changes.Add(previousStorage.Value.BlockAccessIndex, previousStorage.Value);
@@ -321,7 +321,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
     }
 
-    public IEnumerable<(Address, BalanceChange?, NonceChange?, CodeChange?, IEnumerable<SlotChanges>, int)> GetChangesAtIndex(ushort index)
+    public IEnumerable<ChangeAtIndex> GetChangesAtIndex(ushort index)
     {
         foreach (AccountChanges accountChanges in AccountChanges)
         {
@@ -330,14 +330,14 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                 accountChanges.Address == Eip7251Constants.ConsolidationRequestPredeployAddress;
 
             yield return
-            (
-                accountChanges.Address,
-                accountChanges.BalanceChangeAtIndex(index),
-                accountChanges.NonceChangeAtIndex(index),
-                accountChanges.CodeChangeAtIndex(index),
-                accountChanges.SlotChangesAtIndex(index),
-                isPostExecutionSystemContract ? 0 : accountChanges.StorageReads.Count
-            );
+                new(
+                    accountChanges.Address,
+                    accountChanges.BalanceChangeAtIndex(index),
+                    accountChanges.NonceChangeAtIndex(index),
+                    accountChanges.CodeChangeAtIndex(index),
+                    accountChanges.SlotChangesAtIndex(index),
+                    isPostExecutionSystemContract ? 0 : accountChanges.StorageReads.Count
+                );
         }
     }
 
@@ -506,3 +506,5 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         public ushort BlockAccessIndex { get; init; }
     }
 }
+
+public record struct ChangeAtIndex(Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads);

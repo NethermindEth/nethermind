@@ -27,14 +27,14 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
         byte[]? extraData);
 
     protected abstract void DecodeHeaderSpecificFields(ref Rlp.ValueDecoderContext decoderContext, TH header, RlpBehaviors rlpBehaviors, int headerCheck);
-    protected abstract void DecodeHeaderSpecificFields(RlpStream rlpStream, TH header, RlpBehaviors rlpBehaviors, int headerCheck);
     protected abstract void EncodeHeaderSpecificFields(RlpStream rlpStream, TH header, RlpBehaviors rlpBehaviors);
     protected abstract int GetHeaderSpecificContentLength(TH header, RlpBehaviors rlpBehaviors);
 
     public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
         {
+            decoderContext.ReadByte();
             return null;
         }
 
@@ -81,57 +81,6 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
         return header;
     }
 
-    public BlockHeader? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemNull())
-        {
-            rlpStream.ReadByte();
-            return null;
-        }
-
-        Span<byte> headerRlp = rlpStream.PeekNextItem();
-        int headerSequenceLength = rlpStream.ReadSequenceLength();
-        int headerCheck = rlpStream.Position + headerSequenceLength;
-
-        // Common fields
-        Hash256? parentHash = rlpStream.DecodeKeccak();
-        Hash256? unclesHash = rlpStream.DecodeKeccak();
-        Address? beneficiary = rlpStream.DecodeAddress();
-        Hash256? stateRoot = rlpStream.DecodeKeccak();
-        Hash256? transactionsRoot = rlpStream.DecodeKeccak();
-        Hash256? receiptsRoot = rlpStream.DecodeKeccak();
-        Bloom? bloom = rlpStream.DecodeBloom();
-        UInt256 difficulty = rlpStream.DecodeUInt256();
-        long number = rlpStream.DecodeLong();
-        long gasLimit = rlpStream.DecodeLong();
-        long gasUsed = rlpStream.DecodeLong();
-        ulong timestamp = rlpStream.DecodeULong();
-        byte[]? extraData = rlpStream.DecodeByteArray();
-
-        TH header = CreateHeader(
-            parentHash, unclesHash, beneficiary,
-            difficulty, number, gasLimit, timestamp, extraData);
-
-        header.StateRoot = stateRoot;
-        header.TxRoot = transactionsRoot;
-        header.ReceiptsRoot = receiptsRoot;
-        header.Bloom = bloom;
-        header.GasUsed = gasUsed;
-        header.Hash = Keccak.Compute(headerRlp);
-
-        header.MixHash = rlpStream.DecodeKeccak();
-        header.Nonce = (ulong)rlpStream.DecodeUInt256(NonceLength);
-
-        DecodeHeaderSpecificFields(rlpStream, header, rlpBehaviors, headerCheck);
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            rlpStream.Check(headerCheck);
-        }
-
-        return header;
-    }
-
     public void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
@@ -169,7 +118,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
     {
         if (item is null)
         {
-            return Rlp.OfEmptySequence;
+            return Rlp.OfEmptyList;
         }
 
         if (item is not TH header)

@@ -8,6 +8,12 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      build_on_remote:
+        description: Build on remote RISC-V host
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   build-zisk-sim:
@@ -38,7 +44,7 @@ jobs:
         working-directory: tools/StatelessExecution
         run: make build-tool-local
 
-      - name: Build Zisk Simulator binary
+      - name: Build Zisk simulator binary
         working-directory: tools/StatelessExecution
         run: make build-zisk-sim
 
@@ -55,14 +61,14 @@ jobs:
           fi
           echo "::notice::Program executed successfully with exit code 0"
 
-      - name: Execute Zisk Sim binary on on RISC-V host
+      - name: Execute Zisk simulator binary on RISC-V host
+        if: github.event.inputs.build_on_remote == 'true'
         working-directory: tools/StatelessExecution
         env:
           STATELESS_EXECUTOR_RISCV_HOST: ${{ secrets.STATELESS_EXECUTOR_RISCV_HOST }}
           STATELESS_EXECUTOR_RISCV_USERNAME: ${{ secrets.STATELESS_EXECUTOR_RISCV_USERNAME }}
           STATELESS_EXECUTOR_RISCV_SSH_PRIVATE_KEY: ${{ secrets.STATELESS_EXECUTOR_RISCV_SSH_PRIVATE_KEY }}
-        run: |
-          ./stateless_exec_test.sh
+        run: ./stateless_exec_test.sh
 
       - name: Upload Zisk simulator binary
         uses: actions/upload-artifact@v4

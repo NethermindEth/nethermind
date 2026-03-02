@@ -58,7 +58,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip2929Enabled { get; set; }
     public bool IsEip2930Enabled { get; set; }
     public bool IsEip1559Enabled { get => field || IsEip4844Enabled; set; }
-    public bool IsEip158IgnoredAccount(Address address) => false;
+    public Address? Eip158IgnoredAccount { get; set; }
     public bool IsEip3198Enabled { get; set; }
     public bool IsEip3529Enabled { get; set; }
     public bool IsEip3607Enabled { get; set; }
@@ -169,6 +169,17 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7843Enabled { get; set; }
 
     public bool IsEip7708Enabled { get; set; }
+
+    private ReleaseSpec? _systemSpec;
+
+    internal ReleaseSpec SystemSpec => _systemSpec ??= CreateSystemSpec();
+
+    private ReleaseSpec CreateSystemSpec()
+    {
+        ReleaseSpec clone = Clone();
+        clone.IsEip158Enabled = false;
+        return clone;
+    }
 
     // used only in testing
     public ReleaseSpec Clone() => (ReleaseSpec)MemberwiseClone();

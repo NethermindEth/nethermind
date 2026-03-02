@@ -29,5 +29,5 @@ public readonly struct StorageChange(ushort blockAccessIndex, UInt256 newValue) 
     public static bool operator !=(StorageChange left, StorageChange right) =>
         !(left == right);
 
-    public override readonly string ToString() => $"@{BlockAccessIndex}:{NewValue}";
+    public override readonly string ToString() => $"{BlockAccessIndex}:{NewValue}";
 }

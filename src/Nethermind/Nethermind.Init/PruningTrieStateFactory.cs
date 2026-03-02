@@ -11,10 +11,10 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.LogIndex;
@@ -53,7 +53,7 @@ public class PruningTrieStateFactory(
 
     public (IWorldStateManager, IPruningTrieStateAdminRpcModule) Build()
     {
-        CompositePruningTrigger compositePruningTrigger = new();
+        CompositePruningTrigger compositePruningTrigger = new CompositePruningTrigger();
 
         IPruningTrieStore trieStore = mainPruningTrieStoreFactory.PruningTrieStore;
 
@@ -78,7 +78,7 @@ public class PruningTrieStateFactory(
                 logManager);
 
         IWorldStateManager stateManager = new WorldStateManager(
-            new ParallelWorldStateScopeProvider(scopeProvider),
+            scopeProvider,
             trieStore,
             dbProvider,
             logManager,

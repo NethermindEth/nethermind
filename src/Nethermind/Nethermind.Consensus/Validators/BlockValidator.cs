@@ -426,8 +426,6 @@ public class BlockValidator(
 
     }
 
-    // public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
-    //     ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
     private bool ValidateTxRootMatchesTxs(Block block, bool validateHashes, [NotNullWhen(false)] ref string? errorMessage)
     {
         if (validateHashes && !ValidateTxRootMatchesTxs(block.Header, block.Body, out Hash256 txRoot))

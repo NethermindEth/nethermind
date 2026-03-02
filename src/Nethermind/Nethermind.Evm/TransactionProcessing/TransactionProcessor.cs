@@ -167,7 +167,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
+            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                 return _systemTransactionProcessor.Execute(tx, tracer, opts);
@@ -306,12 +306,12 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple))!;
 
-                AuthorizationTupleResult res = IsValidForExecution(authTuple, accessTracker, spec, out string? error);
-                if (res != AuthorizationTupleResult.Valid)
+                AuthorizationTupleResult authorizationResult = IsValidForExecution(authTuple, accessTracker, spec, out string? error);
+                if (authorizationResult != AuthorizationTupleResult.Valid)
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
 
-                    if (_balBuilder is not null && _balBuilder.TracingEnabled && IncludeAccountRead(res))
+                    if (_balBuilder is not null && _balBuilder.TracingEnabled && IncludeAccountRead(authorizationResult))
                     {
                         _balBuilder.AddAccountRead(authority);
                     }
@@ -335,8 +335,8 @@ namespace Nethermind.Evm.TransactionProcessing
             return refunds;
         }
 
-        private bool IncludeAccountRead(AuthorizationTupleResult res)
-            => res == AuthorizationTupleResult.IncorrectNonce || res == AuthorizationTupleResult.InvalidAsCodeDeployed;
+        private static bool IncludeAccountRead(in AuthorizationTupleResult res)
+            => res is AuthorizationTupleResult.IncorrectNonce or AuthorizationTupleResult.InvalidAsCodeDeployed;
 
         private enum AuthorizationTupleResult
         {
@@ -350,7 +350,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private AuthorizationTupleResult IsValidForExecution(
             AuthorizationTuple authorizationTuple,
-            StackAccessTracker accessTracker,
+            in StackAccessTracker accessTracker,
             IReleaseSpec spec,
             [NotNullWhen(false)] out string? error)
         {

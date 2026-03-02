@@ -4,8 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Runtime.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -161,11 +159,11 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         if (TracingEnabled)
         {
             GeneratedBlockAccessList.AddAccountRead(address);
-            if (balance != 0)
+            if (!balance.IsZero)
             {
                 GeneratedBlockAccessList.AddBalanceChange(address, 0, balance);
             }
-            if (nonce != 0)
+            if (!nonce.IsZero)
             {
                 GeneratedBlockAccessList.AddNonceChange(address, (ulong)nonce);
             }
@@ -245,11 +243,11 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             return;
         }
 
-        var generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
-        var suggestedChanges = _suggestedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
+        IEnumerator<ChangeAtIndex> generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
+        IEnumerator<ChangeAtIndex> suggestedChanges = _suggestedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
 
-        (Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads)? generatedHead;
-        (Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads)? suggestedHead;
+        ChangeAtIndex? generatedHead;
+        ChangeAtIndex? suggestedHead;
 
         int generatedReads = 0;
         int suggestedReads = 0;
@@ -331,7 +329,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         }
     }
 
-    private static bool HasNoChanges((Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int) c)
+    private static bool HasNoChanges(in ChangeAtIndex c)
         => c.BalanceChange is null &&
             c.NonceChange is null &&
             c.CodeChange is null &&

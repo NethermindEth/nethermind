@@ -385,7 +385,7 @@ public partial class EngineModuleTests
 
         if (auraWithdrawalContractAddress is not null)
         {
-            expectedBalBuilder.WithAccountChanges([new(new Address(auraWithdrawalContractAddress)), new(Address.SystemUser)]);
+            expectedBalBuilder.WithAccountChanges([new(new Address(auraWithdrawalContractAddress))]);
         }
 
         BlockAccessList expected = expectedBalBuilder.TestObject;
