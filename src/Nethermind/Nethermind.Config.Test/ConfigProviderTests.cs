@@ -14,6 +14,21 @@ namespace Nethermind.Config.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
+    public class ConfigSourceHelperTests
+    {
+        [TestCase(typeof(int), 0)]
+        [TestCase(typeof(bool), false)]
+        [TestCase(typeof(long), 0L)]
+        [TestCase(typeof(string), null)]
+        public void GetDefault_returns_correct_default_value(Type type, object expected)
+        {
+            object result = ConfigSourceHelper.GetDefault(type);
+            Assert.That(result, Is.EqualTo(expected));
+        }
+    }
+
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class DefaultConfigProviderTests
     {
         [Test]
