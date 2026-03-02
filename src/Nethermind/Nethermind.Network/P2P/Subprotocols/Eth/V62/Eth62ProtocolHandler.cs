@@ -309,9 +309,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private ValueTask Handle(NewBlockMessage msg, CancellationToken cancellationToken)
         {
-            msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
             try
             {
+                msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
                 SyncServer.AddNewBlock(msg.Block, this);
             }
             catch (Exception e)

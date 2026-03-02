@@ -16,7 +16,6 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Types;
 using System;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.P2P;
 
