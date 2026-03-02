@@ -131,7 +131,7 @@ namespace Nethermind.Blockchain.Filters
                 return [];
             }
 
-            using ArrayPoolListRef<Hash256> result = new(0);
+            using ArrayPoolListRef<Hash256> result = new(blockHashes.Count);
             while (blockHashes.TryDequeue(out Hash256? hash))
             {
                 result.Add(hash);
@@ -145,7 +145,7 @@ namespace Nethermind.Blockchain.Filters
             if (!_logs.TryGetValue(filterId, out ConcurrentQueue<FilterLog> logs))
                 return [];
 
-            using ArrayPoolListRef<FilterLog> result = new(0);
+            using ArrayPoolListRef<FilterLog> result = new(logs.Count);
             while (logs.TryDequeue(out FilterLog? log))
             {
                 result.Add(log);
@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain.Filters
             if (!_pendingTransactions.TryGetValue(filterId, out ConcurrentQueue<Option<Hash256>>? pendingTransactions))
                 return [];
 
-            using ArrayPoolListRef<Hash256> result = new(0);
+            using ArrayPoolListRef<Hash256> result = new(pendingTransactions.Count);
             while (pendingTransactions.TryDequeue(out Option<Hash256>? option))
             {
                 if (!option.IsRemoved)
