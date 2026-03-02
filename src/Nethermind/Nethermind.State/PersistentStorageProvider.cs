@@ -608,12 +608,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 
-            foreach (UInt256 key in BlockChange.Keys)
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
-                ref StorageChangeTrace entry = ref BlockChange.GetValueRefOrNullRef(key);
-                if (entry.IsDirty || entry.IsInitialValue)
+                if (kvp.Value.IsDirty || kvp.Value.IsInitialValue)
                 {
-                    storageWriteBatch.Set(key, in entry.After);
+                    ref StorageChangeTrace entry = ref BlockChange.GetValueRefOrNullRef(kvp.Key);
+                    storageWriteBatch.Set(kvp.Key, in entry.After);
                     entry.IsDirty = false;
                     entry.IsInitialValue = false;
 

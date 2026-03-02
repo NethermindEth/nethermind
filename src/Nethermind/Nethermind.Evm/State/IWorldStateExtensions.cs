@@ -24,8 +24,8 @@ public static class WorldStateExtensions
     }
 
     internal static void Set(this IWorldState worldState, in StorageCell storageCell, byte[] value)
-        => worldState.Set(in storageCell, new StorageValue(value));
+        => worldState.Set(in storageCell, StorageValue.FromSpanWithoutLeadingZero(value));
 
     internal static void SetTransientState(this IWorldState worldState, in StorageCell storageCell, byte[] value)
-        => worldState.SetTransientState(in storageCell, new StorageValue(value));
+        => worldState.SetTransientState(in storageCell, StorageValue.FromSpanWithoutLeadingZero(value));
 }

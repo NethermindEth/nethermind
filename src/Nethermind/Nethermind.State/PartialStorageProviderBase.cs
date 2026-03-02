@@ -356,12 +356,18 @@ namespace Nethermind.State
         {
             // We are setting cached values to zero so we do not use previously set values
             // when the contract is revived with CREATE2 inside the same block
+            using ArrayPoolList<UInt256> toZero = new(16);
             foreach (KeyValuePair<InternalStorageKey, int> entry in _intraBlockCache)
             {
                 if (entry.Key.AddressEquals(address))
                 {
-                    Set(new StorageCell(address, entry.Key.Index), StorageValue.Zero);
+                    toZero.Add(entry.Key.Index);
                 }
+            }
+
+            for (int i = 0; i < toZero.Count; i++)
+            {
+                Set(new StorageCell(address, toZero[i]), StorageValue.Zero);
             }
         }
 
@@ -435,7 +441,7 @@ namespace Nethermind.State
                     MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _index), 1)).FastHash();
                 ReadOnlySpan<byte> addrSpan = MemoryMarshal.CreateReadOnlySpan(
                     ref Unsafe.As<Vector128<byte>, byte>(ref Unsafe.AsRef(in _addrLo)), 20);
-                return hash ^ addrSpan.FastHash();
+                return (hash * 397) ^ addrSpan.FastHash();
             }
 
             public override int GetHashCode() => _hash;

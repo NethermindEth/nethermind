@@ -55,7 +55,8 @@ public readonly struct StorageValue : IEquatable<StorageValue>
         else
         {
             _bytes = Vector256<byte>.Zero;
-            data.CopyTo(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _bytes, 1)));
+            Span<byte> span = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _bytes, 1));
+            data.CopyTo(span[(ByteCount - data.Length)..]);
         }
     }
 
