@@ -52,13 +52,13 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         if (tx.IsDeposit())
             return UInt256.Zero;
 
-        UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot), true);
+        UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot).AsReadOnlySpan, true);
 
         if (opSpecHelper.IsFjord(header))
         {
-            UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot), true);
+            UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot).AsReadOnlySpan, true);
 
-            ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot);
+            ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot).AsReadOnlySpan;
 
             const int baseFeeFieldsStart = 16;
             const int fieldSize = sizeof(uint);
@@ -80,9 +80,9 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
 
         if (opSpecHelper.IsEcotone(header))
         {
-            UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot), true);
+            UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot).AsReadOnlySpan, true);
 
-            ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot);
+            ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot).AsReadOnlySpan;
 
             const int baseFeeFieldsStart = 16;
             const int fieldSize = sizeof(uint);
@@ -96,8 +96,8 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         }
         else
         {
-            UInt256 overhead = new(worldState.Get(_overheadSlot), true);
-            UInt256 feeScalar = new(worldState.Get(_scalarSlot), true);
+            UInt256 overhead = new(worldState.Get(_overheadSlot).AsReadOnlySpan, true);
+            UInt256 feeScalar = new(worldState.Get(_scalarSlot).AsReadOnlySpan, true);
 
             return ComputeL1CostPreEcotone(dataGas + overhead, l1BaseFee, feeScalar);
         }
@@ -108,30 +108,18 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         if (!opSpecHelper.IsIsthmus(header))
             return UInt256.Zero;
 
-        var span = worldState.Get(_operatorFeeParamsSlot);
-        if (span.IsEmpty)
+        StorageValue sv = worldState.Get(_operatorFeeParamsSlot);
+        if (sv.IsZero)
             return UInt256.Zero;
+
+        ReadOnlySpan<byte> span = sv.AsReadOnlySpan;
 
         const int scalarSize = 4;
         const int constantSize = 8;
         const int size = scalarSize + constantSize;
 
-        (uint scalar, ulong constant) operatorFee;
-
-        switch (span.Length)
-        {
-            case size:
-                operatorFee = Parse(span);
-                break;
-            case > size:
-                operatorFee = Parse(span.Slice(span.Length - size));
-                break;
-            case < size:
-                Span<byte> aligned = stackalloc byte[size];
-                span.CopyTo(aligned.Slice(size - span.Length));
-                operatorFee = Parse(aligned);
-                break;
-        }
+        // StorageValue.AsReadOnlySpan is always 32 bytes; extract the last `size` bytes (big-endian)
+        (uint scalar, ulong constant) operatorFee = Parse(span.Slice(span.Length - size));
 
         return opSpecHelper.IsJovian(header)
             ? (UInt256)gas * operatorFee.scalar * 100 + operatorFee.constant // TODO: tests

@@ -165,7 +165,8 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         {
             using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
             int selfDestructIdx = snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
-            return snapshotBundle.GetSlot(address, index, selfDestructIdx) ?? [];
+            StorageValue? slot = snapshotBundle.GetSlot(address, index, selfDestructIdx);
+            return slot?.ToEvmBytes() ?? [];
         }
 
         public byte[]? GetCode(Hash256 codeHash)

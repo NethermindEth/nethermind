@@ -124,8 +124,8 @@ public class FlatOverridableWorldScopeTests
 
                 using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 2))
                 {
-                    storageBatch.Set(storageIndex1, storageValue1);
-                    storageBatch.Set(storageIndex2, storageValue2);
+                    storageBatch.Set(storageIndex1, StorageValue.FromSpanWithoutLeadingZero(storageValue1));
+                    storageBatch.Set(storageIndex2, StorageValue.FromSpanWithoutLeadingZero(storageValue2));
                 }
             }
             scope.Commit(1);

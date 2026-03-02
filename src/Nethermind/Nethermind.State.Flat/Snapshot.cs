@@ -40,7 +40,7 @@ public class Snapshot(
     public StateId To => to;
     public IEnumerable<KeyValuePair<AddressAsKey, Account?>> Accounts => content.Accounts;
     public IEnumerable<KeyValuePair<AddressAsKey, bool>> SelfDestructedStorageAddresses => content.SelfDestructedStorageAddresses;
-    public IEnumerable<KeyValuePair<(AddressAsKey, UInt256), SlotValue?>> Storages => content.Storages;
+    public IEnumerable<KeyValuePair<(AddressAsKey, UInt256), StorageValue?>> Storages => content.Storages;
     public IEnumerable<KeyValuePair<(Hash256AsKey, TreePath), TrieNode>> StorageNodes => content.StorageNodes;
     public IEnumerable<(Hash256AsKey, TreePath)> StorageTrieNodeKeys => content.StorageNodes.Keys;
     public IEnumerable<KeyValuePair<TreePath, TrieNode>> StateNodes => content.StateNodes;
@@ -55,7 +55,7 @@ public class Snapshot(
 
     public bool HasSelfDestruct(Address address) => content.SelfDestructedStorageAddresses.TryGetValue(address, out bool _);
 
-    public bool TryGetStorage(Address address, in UInt256 index, out SlotValue? value) => content.Storages.TryGetValue((address, index), out value);
+    public bool TryGetStorage(Address address, in UInt256 index, out StorageValue? value) => content.Storages.TryGetValue((address, index), out value);
 
     public bool TryGetStateNode(in TreePath path, [NotNullWhen(true)] out TrieNode? node) => content.StateNodes.TryGetValue(path, out node);
 
@@ -72,7 +72,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
 
     // They dont actually need to be concurrent, but it makes commit fast by just passing the whole content.
     public readonly ConcurrentDictionary<AddressAsKey, Account?> Accounts = new();
-    public readonly ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> Storages = new();
+    public readonly ConcurrentDictionary<(AddressAsKey, UInt256), StorageValue?> Storages = new();
 
     // Bool is true if this is a new account also
     public readonly ConcurrentDictionary<AddressAsKey, bool> SelfDestructedStorageAddresses = new();
@@ -99,7 +99,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
         // ConcurrentDictionary entry overhead ~48 bytes, includes Account object (~104 bytes)
         return
             Accounts.Count * 168 +                         // Key (8B) + Value ref (8B) + concurrent dictionary overhead (48) + Account object (~104B)
-            Storages.Count * 128 +                         // Key (40B) + Value (40B SlotValue?) + concurrent dictionary overhead (48)
+            Storages.Count * 128 +                         // Key (40B) + Value (40B StorageValue?) + concurrent dictionary overhead (48)
             SelfDestructedStorageAddresses.Count * 60 +    // Key (8B) + Value (4B) + concurrent dictionary overhead (48)
             StateNodes.Count * (NodeSizeEstimate + 92) +   // Key (36B) + Value ref (8B) + concurrent dictionary overhead (48) + TrieNode
             StorageNodes.Count * (NodeSizeEstimate + 100); // Key (44B) + Value ref (8B) + concurrent dictionary overhead (48) + TrieNode
@@ -116,7 +116,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
         // Reference type values (Account, TrieNode) not counted - already accounted by non-compacted snapshot
         return
             Accounts.Count * 64 +                          // Key (8B) + Value ref (8B) + concurrent dictionary overhead (48)
-            Storages.Count * 128 +                         // Key (40B) + Value (40B SlotValue?) + concurrent dictionary overhead (48)
+            Storages.Count * 128 +                         // Key (40B) + Value (40B StorageValue?) + concurrent dictionary overhead (48)
             SelfDestructedStorageAddresses.Count * 60 +    // Key (8B) + Value (4B) + concurrent dictionary overhead (48)
             StateNodes.Count * 92 +                        // Key (36B TreePath) + Value ref (8B) + concurrent dictionary overhead (48)
             StorageNodes.Count * 100;                      // Key (44B) + Value ref (8B) + concurrent dictionary overhead (48)

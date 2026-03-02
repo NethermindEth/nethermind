@@ -85,7 +85,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         TestState.CreateAccount(Address.Zero, 100.Ether());
         StorageCell storageCell = new StorageCell(TestItem.AddressB, 32);
         byte[] storageData = Bytes.FromHexString("123456789abcdef");
-        TestState.Set(storageCell, storageData);
+        TestState.Set(storageCell, StorageValue.FromSpanWithoutLeadingZero(storageData));
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
         GethLikeTxTrace trace = Execute(

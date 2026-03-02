@@ -81,6 +81,16 @@ public ref struct EvmStack
     }
 
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void PushStorageValue<TTracingInst>(in StorageValue value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+            _tracer.ReportStackPush(value.AsReadOnlySpan);
+
+        PushedHead() = Unsafe.As<StorageValue, Word>(ref Unsafe.AsRef(in value));
+    }
+
     public void PushBytes<TTracingInst>(scoped in ZeroPaddedSpan value)
         where TTracingInst : struct, IFlag
     {

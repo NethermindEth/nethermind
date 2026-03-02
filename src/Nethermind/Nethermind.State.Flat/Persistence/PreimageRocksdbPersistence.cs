@@ -168,7 +168,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             _flatWriteBatch.SetAccount(fakeAddrHash, stream.AsSpan());
         }
 
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
+        public void SetStorage(Address addr, in UInt256 slot, in StorageValue? value)
         {
             ValueHash256 fakeAddrHash = ValueKeccak.Zero;
             addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
@@ -179,7 +179,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             _flatWriteBatch.SetStorage(fakeAddrHash, fakeSlotHash, value);
         }
 
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value) =>
+        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in StorageValue? value) =>
             throw new InvalidOperationException("Raw operations not available in preimage mode");
 
         public void SetAccountRaw(Hash256 addrHash, Account account) =>
@@ -210,7 +210,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             return AccountDecoder.Slim.Decode(ref ctx);
         }
 
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+        public bool TryGetSlot(Address address, in UInt256 slot, ref StorageValue outValue)
         {
             ValueHash256 fakeHash = ValueKeccak.Zero;
             address.Bytes.CopyTo(fakeHash.BytesAsSpan);
@@ -224,7 +224,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
         public byte[] GetAccountRaw(Hash256 addrHash) =>
             throw new InvalidOperationException("Raw operation not available in preimage mode");
 
-        public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue) =>
+        public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref StorageValue outValue) =>
             _flatReader.TryGetStorage(address, slotHash, ref outValue);
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>

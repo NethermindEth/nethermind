@@ -4,12 +4,15 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Diagnosers;
+using BenchmarkDotNet.Diagnostics.dotTrace;
 using BenchmarkDotNet.Exporters.Json;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
@@ -33,8 +36,15 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.SnapServer;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Evm.Benchmark;
+
+public enum StateBackend { Trie, FlatState }
 
 /// <summary>
 /// Block-level processing benchmark measuring <see cref="BranchProcessor.Process"/>
@@ -59,12 +69,17 @@ namespace Nethermind.Evm.Benchmark;
 /// - EmptyBlock, SingleTransfer, Transfers_50, Transfers_200
 /// - Eip1559_200, AccessList_50, ContractDeploy_10
 /// - ContractCall_200, MixedBlock (100 legacy + 60 EIP-1559 + 30 AL + 10 calls)
+/// - ERC20_Transfer_200 (storage-heavy: 2 SLOAD + 2 SSTORE + 2 KECCAK per tx)
+/// - Swap_200 (storage-heavy: 8 SLOAD + 6 SSTORE + 1 KECCAK per tx)
 /// </summary>
+[DotTraceDiagnoser]
 [Config(typeof(BlockProcessingConfig))]
 [MemoryDiagnoser]
 [JsonExporterAttribute.FullCompressed]
 public class BlockProcessingBenchmark
 {
+    [Params(StateBackend.Trie, StateBackend.FlatState)]
+    public StateBackend Backend { get; set; }
     /// <summary>
     /// Repetitions per BDN invocation. Used for low per-op benchmarks
     /// (EmptyBlock ~21 us, SingleTransfer ~46 us, ContractDeploy_10 ~400 us)
@@ -101,7 +116,32 @@ public class BlockProcessingBenchmark
         }
     }
 
+    /// <summary>
+    /// Lightweight config for profiling sessions — fewer iterations to reduce total
+    /// run time while still capturing a meaningful dotTrace snapshot.
+    /// Use via: <c>--filter '*ERC20*' --job ProfilingConfig</c>
+    /// </summary>
+    private class ProfilingConfig : ManualConfig
+    {
+        public ProfilingConfig()
+        {
+            AddJob(Job.Default
+                .WithToolchain(InProcessNoEmitToolchain.Instance)
+                .WithInvocationCount(1)
+                .WithUnrollFactor(1)
+                .WithLaunchCount(1)
+                .WithWarmupCount(1)
+                .WithIterationCount(3)
+                .WithGcForce(true));
+            AddDiagnoser(new DotTraceDiagnoser());
+            AddDiagnoser(MemoryDiagnoser.Default);
+        }
+    }
+
     private static readonly IReleaseSpec Spec = Osaka.Instance;
+
+    private static readonly Address Erc20Address = Address.FromNumber(0x1000);
+    private static readonly Address SwapAddress = Address.FromNumber(0x2000);
 
     private static readonly byte[] ContractCode = Prepare.EvmCode
         .PushData(0x01)
@@ -143,6 +183,8 @@ public class BlockProcessingBenchmark
     private Block _contractDeploy10Block = null!;
     private Block _contractCall200Block = null!;
     private Block _mixedBlock = null!;
+    private Block _erc20Transfer200Block = null!;
+    private Block _swap200Block = null!;
 
     private BlockHeader _header = null!;
 
@@ -185,6 +227,9 @@ public class BlockProcessingBenchmark
         BuildContractCalls(10, nonce).CopyTo(mixedTxs, 190);
         _mixedBlock = BuildBlock(mixedTxs);
 
+        _erc20Transfer200Block = BuildBlock(BuildErc20Transfers(200, 0));
+        _swap200Block = BuildBlock(BuildSwapCalls(200, 0));
+
         // Build DI container using standard modules instead of hand-wiring.
         // TestNethermindModule wires PseudoNethermindModule + TestEnvironmentModule
         // with TestSpecProvider(Osaka.Instance) and in-memory databases.
@@ -196,7 +241,30 @@ public class BlockProcessingBenchmark
         // Single world state — BranchProcessor.Process() manages scope internally,
         // matching the live client's block processing path.
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager wsm;
+        BenchmarkFlatDbManager? flatDbManagerRef = null;
+        if (Backend == StateBackend.FlatState)
+        {
+            FlatDbConfig flatDbConfig = new() { TrieCacheMemoryBudget = 0 };
+            ResourcePool resourcePool = new(flatDbConfig);
+            TrieNodeCache trieNodeCache = new(flatDbConfig, LimboLogs.Instance);
+            BenchmarkFlatDbManager flatDbManager = new(resourcePool, trieNodeCache);
+            flatDbManagerRef = flatDbManager;
+            FlatScopeProvider flatScopeProvider = new(
+                dbProvider.CodeDb,
+                flatDbManager,
+                flatDbConfig,
+                new NoopTrieWarmer(),
+                ResourcePool.Usage.MainBlockProcessing,
+                LimboLogs.Instance,
+                isReadOnly: false);
+            wsm = new BenchmarkFlatWorldStateManager(flatScopeProvider, flatDbManager, dbProvider.CodeDb);
+        }
+        else
+        {
+            wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
+        }
+
         IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
 
         IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();
@@ -223,6 +291,47 @@ public class BlockProcessingBenchmark
             stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, UInt256.Zero);
             stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, StopCode, Spec);
 
+            // ── ERC20 contract: deploy code and pre-seed sender balance ──
+            stateProvider.CreateAccount(Erc20Address, UInt256.Zero);
+            stateProvider.InsertCode(Erc20Address, StorageBenchmarkContracts.BuildErc20RuntimeCode(), Spec);
+
+            UInt256 senderBalanceSlot = StorageBenchmarkContracts.ComputeMappingSlot(_sender, UInt256.Zero);
+            byte[] senderBalance = new byte[32];
+            ((UInt256)1_000_000).ToBigEndian(senderBalance);
+            stateProvider.Set(new StorageCell(Erc20Address, senderBalanceSlot), senderBalance);
+
+            // Pre-seed first half of recipient balances so the benchmark measures a realistic mix:
+            // - 100 recipients with existing balance (non-zero→non-zero SSTORE, 2,900 gas)
+            // - 100 recipients with zero balance (zero→non-zero SSTORE, 20,000 gas)
+            byte[] recipientInitialBalance = new byte[32];
+            ((UInt256)100).ToBigEndian(recipientInitialBalance);
+            for (int i = 0; i < 100; i++)
+            {
+                Address recipient = Address.FromNumber((UInt256)(100 + i));
+                UInt256 recipientSlot = StorageBenchmarkContracts.ComputeMappingSlot(recipient, UInt256.Zero);
+                stateProvider.Set(new StorageCell(Erc20Address, recipientSlot), recipientInitialBalance);
+            }
+
+            // ── Swap contract: deploy code and pre-seed pool state ──
+            stateProvider.CreateAccount(SwapAddress, UInt256.Zero);
+            stateProvider.InsertCode(SwapAddress, StorageBenchmarkContracts.BuildSwapRuntimeCode(), Spec);
+
+            // Pre-seed slots 0-7 with non-zero values so SSTOREs are non-zero→non-zero (2,900 gas, not 20,000)
+            SeedSwapSlot(stateProvider, 0, 1_000_000_000);    // reserve0
+            SeedSwapSlot(stateProvider, 1, 1_000_000_000);    // reserve1
+            SeedSwapSlot(stateProvider, 2, 500_000);           // totalLiquidity
+            SeedSwapSlot(stateProvider, 3, 30);                // feeNumerator (initial accumulator)
+            SeedSwapSlot(stateProvider, 4, 1);                 // lastTimestamp
+            SeedSwapSlot(stateProvider, 5, 1);                 // priceCumulative0
+            SeedSwapSlot(stateProvider, 6, 1);                 // priceCumulative1
+            SeedSwapSlot(stateProvider, 7, 1_000_000_000);    // kLast
+
+            // Pre-seed sender balance in mapping slot 8 so first SSTORE is non-zero→non-zero
+            UInt256 senderSwapSlot = StorageBenchmarkContracts.ComputeMappingSlot(_sender, (UInt256)8);
+            byte[] senderSwapBalance = new byte[32];
+            ((UInt256)1_000).ToBigEndian(senderSwapBalance);
+            stateProvider.Set(new StorageCell(SwapAddress, senderSwapSlot), senderSwapBalance);
+
             stateProvider.Commit(Spec);
             stateProvider.CommitTree(0);
 
@@ -232,6 +341,9 @@ public class BlockProcessingBenchmark
                 .WithGasLimit(30_000_000)
                 .TestObject;
         }
+
+        // Freeze the flat db manager so benchmark iterations don't accumulate snapshots
+        flatDbManagerRef?.Freeze();
 
         _branchProcessor = _processingScope.Resolve<IBranchProcessor>();
     }
@@ -335,6 +447,26 @@ public class BlockProcessingBenchmark
         return result;
     }
 
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] ERC20_Transfer_200()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_erc20Transfer200Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Swap_200()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_swap200Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
     // ── Block builder ─────────────────────────────────────────────────────
 
     private Block BuildBlock(params Transaction[] transactions)
@@ -431,5 +563,167 @@ public class BlockProcessingBenchmark
                 .TestObject;
         }
         return txs;
+    }
+
+    private Transaction[] BuildErc20Transfers(int count, int startNonce)
+    {
+        Transaction[] txs = new Transaction[count];
+        for (int i = 0; i < count; i++)
+        {
+            // Calldata: [to (32 bytes), amount (32 bytes)]
+            byte[] calldata = new byte[64];
+            Address.FromNumber((UInt256)(100 + i)).Bytes.CopyTo(calldata.AsSpan(12));
+            ((UInt256)1).ToBigEndian(calldata.AsSpan(32));
+
+            txs[i] = Build.A.Transaction
+                .WithNonce((UInt256)(startNonce + i))
+                .WithTo(Erc20Address)
+                .WithData(calldata)
+                .WithGasLimit(100_000)
+                .WithGasPrice(2.GWei())
+                .SignedAndResolved(_senderKey)
+                .TestObject;
+        }
+        return txs;
+    }
+
+    private Transaction[] BuildSwapCalls(int count, int startNonce)
+    {
+        Transaction[] txs = new Transaction[count];
+        for (int i = 0; i < count; i++)
+        {
+            // Calldata: [amountIn (32 bytes)]
+            byte[] calldata = new byte[32];
+            ((UInt256)(i + 1)).ToBigEndian(calldata);
+
+            txs[i] = Build.A.Transaction
+                .WithNonce((UInt256)(startNonce + i))
+                .WithTo(SwapAddress)
+                .WithData(calldata)
+                .WithGasLimit(200_000)
+                .WithGasPrice(2.GWei())
+                .SignedAndResolved(_senderKey)
+                .TestObject;
+        }
+        return txs;
+    }
+
+    private static void SeedSwapSlot(IWorldState stateProvider, UInt256 slot, UInt256 value)
+    {
+        byte[] bytes = new byte[32];
+        value.ToBigEndian(bytes);
+        stateProvider.Set(new StorageCell(SwapAddress, slot), bytes);
+    }
+
+    // ── FlatState helper types ───────────────────────────────────────────
+
+    internal sealed class BenchmarkFlatDbManager(ResourcePool resourcePool, TrieNodeCache trieNodeCache) : IFlatDbManager
+    {
+        private readonly Lock _lock = new();
+        private readonly List<Nethermind.State.Flat.Snapshot> _snapshots = new();
+        private bool _frozen;
+
+        /// <summary>
+        /// After initial state setup, freeze so benchmark iterations don't accumulate snapshots.
+        /// </summary>
+        public void Freeze() => _frozen = true;
+
+        public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
+        {
+            add { }
+            remove { }
+        }
+
+        public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
+        {
+            lock (_lock)
+            {
+                SnapshotPooledList pooled = new(_snapshots.Count);
+                for (int i = 0; i < _snapshots.Count; i++)
+                {
+                    _snapshots[i].AcquireLease();
+                    pooled.Add(_snapshots[i]);
+                }
+
+                NoopPersistenceReader persistenceReader = new();
+                ReadOnlySnapshotBundle roBundle = new(pooled, persistenceReader, recordDetailedMetrics: false);
+                return new SnapshotBundle(roBundle, trieNodeCache, resourcePool, usage);
+            }
+        }
+
+        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+        {
+            lock (_lock)
+            {
+                SnapshotPooledList pooled = new(_snapshots.Count);
+                for (int i = 0; i < _snapshots.Count; i++)
+                {
+                    _snapshots[i].AcquireLease();
+                    pooled.Add(_snapshots[i]);
+                }
+
+                NoopPersistenceReader persistenceReader = new();
+                return new ReadOnlySnapshotBundle(pooled, persistenceReader, recordDetailedMetrics: false);
+            }
+        }
+
+        public bool HasStateForBlock(in StateId stateId) => true;
+
+        public void AddSnapshot(Nethermind.State.Flat.Snapshot snapshot, TransientResource transientResource)
+        {
+            if (_frozen)
+            {
+                snapshot.Dispose();
+                transientResource.Dispose();
+                return;
+            }
+
+            lock (_lock)
+            {
+                _snapshots.Add(snapshot);
+            }
+
+            transientResource.Dispose();
+        }
+
+        public void FlushCache(CancellationToken cancellationToken) { }
+    }
+
+    internal sealed class BenchmarkFlatWorldStateManager(
+        FlatScopeProvider flatScopeProvider,
+        BenchmarkFlatDbManager flatDbManager,
+        IDb codeDb) : IWorldStateManager
+    {
+        public IWorldStateScopeProvider GlobalWorldState => flatScopeProvider;
+
+        public IStateReader GlobalStateReader => new FlatStateReader(codeDb, flatDbManager, LimboLogs.Instance);
+
+        public ISnapServer? SnapServer => null;
+
+        public IReadOnlyKeyValueStore? HashServer => null;
+
+        public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
+        {
+            add { }
+            remove { }
+        }
+
+        public IWorldStateScopeProvider CreateResettableWorldState()
+        {
+            return new FlatScopeProvider(
+                codeDb,
+                flatDbManager,
+                new FlatDbConfig { TrieCacheMemoryBudget = 0 },
+                new NoopTrieWarmer(),
+                ResourcePool.Usage.ReadOnlyProcessingEnv,
+                LimboLogs.Instance,
+                isReadOnly: true);
+        }
+
+        public IOverridableWorldScope CreateOverridableWorldScope() => throw new NotSupportedException();
+
+        public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) => true;
+
+        public void FlushCache(CancellationToken cancellationToken) { }
     }
 }

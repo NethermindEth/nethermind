@@ -25,12 +25,8 @@ public class Db
     {
         using var handle = ArrayPoolDisposableReturn.Rent(32, out byte[] array);
 
-        ReadOnlySpan<byte> bytes = WorldState.Get(new StorageCell(address.ToAddress(), hash.GetHash()));
-        if (bytes.Length < array.Length)
-        {
-            Array.Clear(array);
-        }
-        bytes.CopyTo(array.AsSpan(array.Length - bytes.Length));
+        StorageValue value = WorldState.Get(new StorageCell(address.ToAddress(), hash.GetHash()));
+        value.AsReadOnlySpan.CopyTo(array);
         return array.ToTypedScriptArray();
     }
 

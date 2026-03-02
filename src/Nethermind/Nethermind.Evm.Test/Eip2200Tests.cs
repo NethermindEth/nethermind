@@ -38,7 +38,7 @@ namespace Nethermind.Evm.Test
         public void Test(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
-            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            TestState.Set(new StorageCell(Recipient, 0), StorageValue.FromSpanWithoutLeadingZero(new[] { originalValue }));
             TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(Bytes.FromHexString(codeHex));
@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Test
         public void Test_when_gas_at_stipend(string codeHex, long gasUsed, long refund, byte originalValue, bool outOfGasExpected)
         {
             TestState.CreateAccount(Recipient, 0);
-            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            TestState.Set(new StorageCell(Recipient, 0), StorageValue.FromSpanWithoutLeadingZero(new[] { originalValue }));
             TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2300 - 800), Bytes.FromHexString(codeHex));
@@ -78,7 +78,7 @@ namespace Nethermind.Evm.Test
         public void Test_when_gas_just_above_stipend(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
-            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            TestState.Set(new StorageCell(Recipient, 0), StorageValue.FromSpanWithoutLeadingZero(new[] { originalValue }));
             TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2301 - 800), Bytes.FromHexString(codeHex));
@@ -90,7 +90,7 @@ namespace Nethermind.Evm.Test
         public void Test_when_gas_just_below_stipend(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
-            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            TestState.Set(new StorageCell(Recipient, 0), StorageValue.FromSpanWithoutLeadingZero(new[] { originalValue }));
             TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2299 - 800), Bytes.FromHexString(codeHex));

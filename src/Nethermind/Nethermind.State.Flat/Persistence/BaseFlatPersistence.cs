@@ -76,7 +76,7 @@ public static class BaseFlatPersistence
             return state.Get(key, outBuffer);
         }
 
-        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
+        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref StorageValue outValue)
         {
             ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], address, slot);
 
@@ -89,18 +89,18 @@ public static class BaseFlatPersistence
             // Bypass bounds check on the slice - the length is already validated by the if guard above.
             // This writes the variable-length DB value into the end of the 32-byte struct.
             int len = value.Length;
-            if (len == SlotValue.ByteCount)
+            if (len == StorageValue.ByteCount)
             {
-                outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
+                outValue = Unsafe.As<byte, StorageValue>(ref MemoryMarshal.GetReference(value));
             }
             else
             {
-                ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
+                ref byte destBase = ref Unsafe.As<StorageValue, byte>(ref outValue);
 
                 // Zero-initialize the leading bytes before copying the value
-                Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
+                Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(StorageValue.ByteCount - len));
 
-                ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
+                ref byte destPtr = ref Unsafe.Add(ref destBase, StorageValue.ByteCount - len);
 
                 Unsafe.CopyBlockUnaligned(
                     ref destPtr,
@@ -233,7 +233,7 @@ public static class BaseFlatPersistence
             state.Remove(key);
         }
 
-        public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? slot)
+        public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, in StorageValue? slot)
         {
             ReadOnlySpan<byte> theKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], addrHash, slotHash);
 

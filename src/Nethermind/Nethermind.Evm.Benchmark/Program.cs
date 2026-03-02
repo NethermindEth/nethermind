@@ -9,6 +9,12 @@ public static class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--profile")
+        {
+            ProfileRunner.Run(args);
+            return;
+        }
+
         BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
     }
 }

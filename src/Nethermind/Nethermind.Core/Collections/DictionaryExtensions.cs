@@ -59,7 +59,7 @@ public static class DictionaryExtensions
     /// <param name="dictionary">The dictionary whose values will be returned and cleared.</param>
     /// <typeparam name="TKey">The type of the keys in the dictionary.</typeparam>
     /// <typeparam name="TValue">The type of the values in the dictionary, which must implement <see cref="IReturnable"/>.</typeparam>
-    extension<TKey, TValue>(IDictionary<TKey, TValue> dictionary) where TValue : class, IReturnable
+    extension<TKey, TValue>(Dictionary<TKey, TValue> dictionary) where TKey : notnull where TValue : class, IReturnable
     {
         /// <summary>
         /// Returns all values in the dictionary to their pool by calling <see cref="IReturnable.Return"/> on each value,
@@ -67,7 +67,27 @@ public static class DictionaryExtensions
         /// </summary>
         /// <remarks>
         /// Use this method when you need to both return pooled objects and clear the dictionary in one operation.
+        /// Uses concrete <see cref="Dictionary{TKey, TValue}"/> to avoid interface dispatch and enumerator boxing.
         /// </remarks>
+        public void ResetAndClear()
+        {
+            foreach (TValue value in dictionary.Values)
+            {
+                value.Return();
+            }
+            dictionary.Clear();
+        }
+    }
+
+    /// <param name="dictionary">The dictionary whose values will be returned and cleared.</param>
+    /// <typeparam name="TKey">The type of the keys in the dictionary.</typeparam>
+    /// <typeparam name="TValue">The type of the values in the dictionary, which must implement <see cref="IReturnable"/>.</typeparam>
+    extension<TKey, TValue>(IDictionary<TKey, TValue> dictionary) where TValue : class, IReturnable
+    {
+        /// <summary>
+        /// Returns all values in the dictionary to their pool by calling <see cref="IReturnable.Return"/> on each value,
+        /// then clears the dictionary.
+        /// </summary>
         public void ResetAndClear()
         {
             foreach (TValue value in dictionary.Values)
