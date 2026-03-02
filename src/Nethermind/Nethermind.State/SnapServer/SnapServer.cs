@@ -120,7 +120,7 @@ public class SnapServer : ISnapServer
                                 byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
                                 writer.WriteValue(sRlp);
                                 responseSize += sRlp?.Length ?? 0;
-                                    }
+                            }
                         }
                     }
                     catch (MissingTrieNodeException)
