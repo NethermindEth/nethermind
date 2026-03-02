@@ -145,22 +145,4 @@ internal class XdcProtocolHandler(
         _notifiedTimeouts.Set(timeout.Hash);
         return true;
     }
-
-    protected override void Handle(NewBlockMessage msg)
-    {
-        // XDC-only: run AddNewBlock on thread pool to avoid DotNetty event loop self-deadlock in TrieStoreScopeProvider.Commit (Task.WaitAll + ExecutorTaskScheduler).
-        msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
-        _ = Task.Run(() =>
-        {
-            try
-            {
-                SyncServer.AddNewBlock(msg.Block, this);
-            }
-            catch (Exception e)
-            {
-                if (Logger.IsDebug) Logger.Debug($"Handling {msg} from {Node:c} failed: " + e.Message);
-                throw;
-            }
-        });
-    }
 }
