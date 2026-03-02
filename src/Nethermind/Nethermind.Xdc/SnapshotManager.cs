@@ -13,14 +13,11 @@ using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
 internal class SnapshotManager : ISnapshotManager
 {
-
     private readonly LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");
 
     private readonly SnapshotDecoder _snapshotDecoder = new();
@@ -31,7 +28,7 @@ internal class SnapshotManager : ISnapshotManager
 
     public SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
     {
-        blockTree.NewHeadBlock += OnNewHeadBlock;
+        blockTree.BlockAddedToMain += OnBlockAddedToMain;
         this.snapshotDb = snapshotDb;
         this.blockTree = blockTree;
         this.votingContract = votingContract;
@@ -83,8 +80,10 @@ internal class SnapshotManager : ISnapshotManager
         _snapshotCache.Set(snapshot.HeaderHash, snapshot);
     }
 
-    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+    private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
     {
+        if (e.Block.Hash is null || !blockTree.WasProcessed(e.Block.Number, e.Block.Hash))
+            return;
         UpdateMasterNodes((XdcBlockHeader)e.Block.Header);
     }
 
