@@ -13,7 +13,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.State.Flat.Sync;
 
 /// <summary>
-/// Utility for writing flat entries during sync. The purpose is to cerrectly identify the required flat entry to
+/// Utility for writing flat entries during sync. The purpose is to correctly identify the required flat entry to
 /// save given a trie node. Handles both direct leaf nodes and inline leaf children (nodes with RLP &lt; 32 bytes embedded in parent).
 /// </summary>
 internal static class FlatEntryWriter
