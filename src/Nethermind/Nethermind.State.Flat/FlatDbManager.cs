@@ -27,6 +27,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly ISnapshotRepository _snapshotRepository;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly IResourcePool _resourcePool;
+    private readonly IBloomFilterManager _bloomFilterManager;
+    private readonly int _bloomRangeSize;
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
     // it save a decent amount of CPU.
@@ -76,6 +78,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         _compactSize = config.CompactSize;
         _inlineCompaction = config.InlineCompaction;
+        _bloomRangeSize = config.BloomFilterRangeSize;
+        _bloomFilterManager = new BloomFilterManager(_bloomRangeSize, 10_000, 14);
 
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
 
@@ -234,7 +238,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (baseBlock == StateId.PreGenesis)
         {
             // Special case for pregenesis. Note: nethermind always tries to generate genesis.
-            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics);
+            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, NoopBloomFilterManager.Instance, _bloomRangeSize);
         }
 
         long sw = 0;
@@ -295,7 +299,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
 
-            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _enableDetailedMetrics);
+            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _enableDetailedMetrics, _bloomFilterManager, _bloomRangeSize);
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))
@@ -328,6 +332,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             snapshot.Dispose();
             return;
         }
+
+        _bloomFilterManager.AddEntries(snapshot);
 
         if (_inlineCompaction)
         {
@@ -403,6 +409,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await _populateTrieNodeCacheTask;
         await _persistenceTask;
 
+        (_bloomFilterManager as IDisposable)?.Dispose();
         _cancelTokenSource.Dispose();
     }
 }

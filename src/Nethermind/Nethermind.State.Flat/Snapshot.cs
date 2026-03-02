@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.IO.Hashing;
 using System.Linq;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
@@ -14,7 +13,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
@@ -35,8 +33,6 @@ public class Snapshot(
     ResourcePool.Usage usage
 ) : RefCountingDisposable
 {
-    private readonly BloomFilter? _accountBloom = BuildAddressBloom(content);
-
     public long EstimateMemory() => content.EstimateMemory();
     public ResourcePool.Usage Usage => usage;
 
@@ -55,19 +51,6 @@ public class Snapshot(
     public int StorageNodesCount => content.StorageNodes.Count;
     public SnapshotContent Content => content;
 
-    /// <summary>
-    /// Returns false if the address is definitely not in this snapshot (bloom negative).
-    /// Returns true if it might be (bloom positive or no bloom).
-    /// </summary>
-    public bool MightContainAddress(AddressAsKey key)
-    {
-        if (_accountBloom is null) return true;
-        bool result = _accountBloom.MightContain(XxHash64.HashToUInt64(((Address)key).Bytes));
-        if (!result) Metrics.BloomFilterSkip++;
-        else Metrics.BloomFilterPass++;
-        return result;
-    }
-
     public bool TryGetAccount(AddressAsKey key, out Account? acc) => content.Accounts.TryGetValue(key, out acc);
 
     public bool HasSelfDestruct(Address address) => content.SelfDestructedStorageAddresses.TryGetValue(address, out bool _);
@@ -78,30 +61,10 @@ public class Snapshot(
 
     public bool TryGetStorageNode(Hash256 address, in TreePath path, [NotNullWhen(true)] out TrieNode? node) => content.StorageNodes.TryGetValue((address, path), out node);
 
-    protected override void CleanUp()
-    {
-        _accountBloom?.Dispose();
+    protected override void CleanUp() =>
         resourcePool.ReturnSnapshotContent(usage, content);
-    }
 
     public bool TryAcquire() => TryAcquireLease();
-
-    private static BloomFilter? BuildAddressBloom(SnapshotContent content)
-    {
-        int estimatedTotal = content.Accounts.Count
-                           + content.SelfDestructedStorageAddresses.Count
-                           + content.Storages.Count / 4; // rough dedup estimate for storage addresses
-        if (estimatedTotal == 0) return null;
-
-        BloomFilter bloom = new(Math.Max(estimatedTotal, 64), 14);
-        foreach (AddressAsKey key in content.Accounts.Keys)
-            bloom.Add(XxHash64.HashToUInt64(((Address)key).Bytes));
-        foreach (AddressAsKey key in content.SelfDestructedStorageAddresses.Keys)
-            bloom.Add(XxHash64.HashToUInt64(((Address)key).Bytes));
-        foreach ((AddressAsKey addr, UInt256 _) in content.Storages.Keys)
-            bloom.Add(XxHash64.HashToUInt64(((Address)addr).Bytes));
-        return bloom;
-    }
 }
 
 public sealed class SnapshotContent : IDisposable, IResettable

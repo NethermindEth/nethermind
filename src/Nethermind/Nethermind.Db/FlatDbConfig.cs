@@ -21,4 +21,5 @@ public class FlatDbConfig : IFlatDbConfig
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public long BlockCacheSizeBudget { get; set; } = 1.GiB();
     public long TrieCacheMemoryBudget { get; set; } = 512.MiB();
+    public int BloomFilterRangeSize { get; set; } = 128;
 }
