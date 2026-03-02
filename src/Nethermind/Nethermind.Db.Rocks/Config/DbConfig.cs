@@ -415,4 +415,7 @@ public class DbConfig : IDbConfig
 
     public string? PreimageDbRocksDbOptions { get; set; } = "";
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
+
+    public string SnapshotsDbRocksDbOptions { get; set; } = "";
+    public string? SnapshotsDbAdditionalRocksDbOptions { get; set; } = "";
 }
