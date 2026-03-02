@@ -10,35 +10,26 @@ using System.Text;
 
 namespace Nethermind.Xdc.RPC;
 
-internal class XdcModuleFactory : ModuleFactoryBase<IXdcRpcModule>
-{
-    private readonly IBlockTree _blockTree;
-    private readonly ISnapshotManager _snapshotManager;
-    private readonly ISpecProvider _specProvider;
-    private readonly IQuorumCertificateManager _quorumCertificateManager;
-    private readonly IEpochSwitchManager _epochSwitchManager;
-
-    public XdcModuleFactory(
+internal class XdcModuleFactory(
         IBlockTree blockTree,
         ISnapshotManager snapshotManager,
         ISpecProvider specProvider,
         IQuorumCertificateManager quorumCertificateManager,
-        IEpochSwitchManager epochSwitchManager)
-    {
-        _blockTree = blockTree;
-        _snapshotManager = snapshotManager;
-        _specProvider = specProvider;
-        _quorumCertificateManager = quorumCertificateManager;
-        _epochSwitchManager = epochSwitchManager;
-    }
-
+        IEpochSwitchManager epochSwitchManager,
+        IVotesManager votesManager,
+        ITimeoutCertificateManager timeoutCertificateManager,
+        ISyncInfoManager syncInfoManager) : ModuleFactoryBase<IXdcRpcModule>
+{
     public override IXdcRpcModule Create()
     {
         return new XdcRpcModule(
-            _blockTree,
-            _snapshotManager,
-            _specProvider,
-            _quorumCertificateManager,
-            _epochSwitchManager);
+            blockTree,
+            snapshotManager,
+            specProvider,
+            quorumCertificateManager,
+            epochSwitchManager,
+            votesManager,
+            timeoutCertificateManager,
+            syncInfoManager);
     }
 }
