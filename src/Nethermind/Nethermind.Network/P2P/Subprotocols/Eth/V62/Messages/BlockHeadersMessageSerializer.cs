@@ -45,10 +45,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public static BlockHeadersMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        public BlockHeadersMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             BlockHeadersMessage message = new();
-            message.BlockHeaders = Rlp.DecodeArrayPool<BlockHeader>(ref ctx, limit: RlpLimit);
+            message.BlockHeaders = Rlp.DecodeArrayPool(ref ctx, _headerDecoder, limit: RlpLimit);
             return message;
         }
     }

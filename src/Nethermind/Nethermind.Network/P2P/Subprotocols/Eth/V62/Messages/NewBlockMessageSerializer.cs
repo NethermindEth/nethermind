@@ -37,7 +37,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             NewBlockMessage message = new();
             ctx.ReadSequenceLength();
-            message.Block = _blockDecoder.Decode<Block>(ref ctx);
+            message.Block = _blockDecoder.Decode(ref ctx);
             message.TotalDifficulty = ctx.DecodeUInt256();
             return message;
         }
