@@ -225,7 +225,7 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<ILogManager>(),
                     new XdcTransactionComparerProvider(SpecProvider, BlockTree).GetDefaultComparer(),
                     compoundPolicy,
-                    new SignTransactionFilter(Signer, BlockTree, SpecProvider),
+                    new SignTransactionFilter(SnapshotManager, BlockTree, SpecProvider),
                     ctx.Resolve<ITxValidator>()
                 );
 
@@ -553,7 +553,7 @@ public class XdcTestBlockchain : TestBlockchain
                 //Will cast a random master candidate vote for the head block and when vote threshold is reached the block should be proposed
                 var vote = new Vote(new BlockRoundInfo(head.Hash!, head.ExtraConsensusData?.BlockRound ?? XdcContext.CurrentRound, head.Number), (ulong)gapNumber);
                 SignRandom(vote);
-                var voteTask = this.VotesManager.OnReceiveVote(vote);
+                await this.VotesManager.OnReceiveVote(vote);
             }
             //Voting will trigger QC creation which triggers new round
             var finishedTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(5_000));
