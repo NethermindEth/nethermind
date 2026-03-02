@@ -61,7 +61,8 @@ public class Snapshot(
 
     public bool TryGetStorageNode(Hash256 address, in TreePath path, [NotNullWhen(true)] out TrieNode? node) => content.StorageNodes.TryGetValue((address, path), out node);
 
-    protected override void CleanUp() => resourcePool.ReturnSnapshotContent(usage, content);
+    protected override void CleanUp() =>
+        resourcePool.ReturnSnapshotContent(usage, content);
 
     public bool TryAcquire() => TryAcquireLease();
 }

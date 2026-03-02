@@ -48,4 +48,7 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
+
+    [ConfigItem(Description = "Block range size for bloom filters", DefaultValue = "128")]
+    int BloomFilterRangeSize { get; set; }
 }

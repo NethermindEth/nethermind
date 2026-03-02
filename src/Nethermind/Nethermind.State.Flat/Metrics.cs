@@ -85,4 +85,11 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 1, LabelNames = [])]
     public static IMetricObserver CompactTime { get; set; } = new NoopMetricObserver();
 
+    [CounterMetric]
+    [Description("Bloom filter true negatives (skipped snapshot)")]
+    public static long BloomFilterSkip { get; set; }
+
+    [CounterMetric]
+    [Description("Bloom filter passes (might contain, checked dictionary)")]
+    public static long BloomFilterPass { get; set; }
 }
