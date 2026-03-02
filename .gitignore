@@ -445,7 +445,6 @@ FodyWeavers.xsd
 !.claude/rules/**
 !.claude/skills
 !.claude/skills/**
-!.claude/settings.json
 .gemini/
 
 # Worktrees
