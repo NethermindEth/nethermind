@@ -131,10 +131,10 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _persistentStorageProvider.Get(storageCell);
         }
-        public void Set(in StorageCell storageCell, StorageValue newValue)
+        public void Set(in StorageCell storageCell, in StorageValue newValue)
         {
             DebugGuardInScope();
-            _persistentStorageProvider.Set(storageCell, newValue);
+            _persistentStorageProvider.Set(in storageCell, in newValue);
         }
         [SkipLocalsInit]
         public StorageValue GetTransientState(in StorageCell storageCell)
@@ -142,10 +142,10 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _transientStorageProvider.Get(storageCell);
         }
-        public void SetTransientState(in StorageCell storageCell, StorageValue newValue)
+        public void SetTransientState(in StorageCell storageCell, in StorageValue newValue)
         {
             DebugGuardInScope();
-            _transientStorageProvider.Set(storageCell, newValue);
+            _transientStorageProvider.Set(in storageCell, in newValue);
         }
         public void Reset(bool resetBlockChanges = true)
         {

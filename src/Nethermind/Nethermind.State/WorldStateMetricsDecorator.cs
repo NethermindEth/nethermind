@@ -24,11 +24,11 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public StorageValue Get(in StorageCell storageCell) => innerState.Get(in storageCell);
 
-    public void Set(in StorageCell storageCell, StorageValue newValue) => innerState.Set(in storageCell, newValue);
+    public void Set(in StorageCell storageCell, in StorageValue newValue) => innerState.Set(in storageCell, in newValue);
 
     public StorageValue GetTransientState(in StorageCell storageCell) => innerState.GetTransientState(in storageCell);
 
-    public void SetTransientState(in StorageCell storageCell, StorageValue newValue) => innerState.SetTransientState(in storageCell, newValue);
+    public void SetTransientState(in StorageCell storageCell, in StorageValue newValue) => innerState.SetTransientState(in storageCell, in newValue);
 
     public void Reset(bool resetBlockChanges = true)
     {

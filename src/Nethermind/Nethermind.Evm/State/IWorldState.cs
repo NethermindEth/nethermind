@@ -48,7 +48,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void Set(in StorageCell storageCell, StorageValue newValue);
+    void Set(in StorageCell storageCell, in StorageValue newValue);
 
 
     /// <summary>
@@ -63,7 +63,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void SetTransientState(in StorageCell storageCell, StorageValue newValue);
+    void SetTransientState(in StorageCell storageCell, in StorageValue newValue);
 
 
     /// <summary>

@@ -108,7 +108,7 @@ internal static partial class EvmInstructions
         StorageValue newValue = Unsafe.As<byte, StorageValue>(ref MemoryMarshal.GetReference(bytes));
 
         // Store the value to transient storage.
-        vm.WorldState.SetTransientState(in storageCell, newValue);
+        vm.WorldState.SetTransientState(in storageCell, in newValue);
 
         // If storage tracing is enabled, retrieve the current stored value and log the operation.
         if (vm.TxTracer.IsTracingStorage)
@@ -376,7 +376,7 @@ internal static partial class EvmInstructions
         bool currentIsZero = currentValue.IsZero;
 
         // Determine whether the new value is identical to the current stored value.
-        bool newSameAsCurrent = newStorageValue == currentValue;
+        bool newSameAsCurrent = StorageValue.Equals(in newStorageValue, in currentValue);
 
         // Retrieve the refund value associated with clearing storage.
         long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
@@ -401,7 +401,7 @@ internal static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
-            vm.WorldState.Set(in storageCell, newStorageValue);
+            vm.WorldState.Set(in storageCell, in newStorageValue);
         }
 
         // Report storage changes for tracing if enabled.
@@ -484,7 +484,7 @@ internal static partial class EvmInstructions
         bool currentIsZero = currentValue.IsZero;
 
         // Determine whether the new value is identical to the current stored value.
-        bool newSameAsCurrent = newStorageValue == currentValue;
+        bool newSameAsCurrent = StorageValue.Equals(in newStorageValue, in currentValue);
 
         // Retrieve the refund value associated with clearing storage.
         long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
@@ -499,7 +499,7 @@ internal static partial class EvmInstructions
             // Retrieve the original storage value to determine if this is a reversal.
             StorageValue originalValue = vm.WorldState.GetOriginal(in storageCell);
             bool originalIsZero = originalValue.IsZero;
-            bool currentSameAsOriginal = originalValue == currentValue;
+            bool currentSameAsOriginal = StorageValue.Equals(in originalValue, in currentValue);
 
             if (currentSameAsOriginal)
             {
@@ -546,7 +546,7 @@ internal static partial class EvmInstructions
                 }
 
                 // If the new value reverts to the original, grant a reversal refund.
-                bool newSameAsOriginal = newStorageValue == originalValue;
+                bool newSameAsOriginal = StorageValue.Equals(in newStorageValue, in originalValue);
                 if (newSameAsOriginal)
                 {
                     long refundFromReversal = originalIsZero
@@ -563,7 +563,7 @@ internal static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
-            vm.WorldState.Set(in storageCell, newStorageValue);
+            vm.WorldState.Set(in storageCell, in newStorageValue);
         }
 
         // Report storage changes for tracing if enabled.

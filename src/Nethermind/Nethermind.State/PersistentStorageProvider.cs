@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -42,7 +41,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// </summary>
     private readonly Dictionary<InternalStorageKey, OriginalValue> _originalValues = new(1_024);
 
-    private int _commitRound;
+    private int _commitRound = 1;
 
     private readonly HashSet<InternalStorageKey> _committedThisRound = new();
 
@@ -70,8 +69,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     public override void Reset(bool resetBlockChanges = true)
     {
         base.Reset();
-        _originalValues.Clear();
-        _commitRound = 0;
+        _commitRound++;
+        if (_commitRound == int.MaxValue || _originalValues.Count > 16_384)
+        {
+            _originalValues.Clear();
+            _commitRound = 1;
+        }
         _committedThisRound.Clear();
         if (resetBlockChanges)
         {
@@ -149,6 +152,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
         ReadOnlySpan<ChangeKey> keys = _changeKeys.AsSpan(0, _changeCount);
         ReadOnlySpan<StorageValue> values = _changeValues.AsSpan(0, _changeCount);
+        Address[] addresses = _changeAddresses;
         if (keys[currentPosition].IsNull)
         {
             throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(PartialStorageProviderBase)}");
@@ -172,12 +176,14 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 continue;
             }
 
-            InternalStorageKey ikey = new(in key.StorageCell);
-            if (_committedThisRound.Contains(ikey))
+            Address address = addresses[pos];
+            StorageCell storageCell = new(address, in key.Index);
+            InternalStorageKey ikey = new(in storageCell);
+            if (!_committedThisRound.Add(ikey))
             {
                 if (isTracing && key.ChangeType == ChangeType.JustCache)
                 {
-                    trace![key.StorageCell] = new TracingStorageChange(value, trace[key.StorageCell].After);
+                    trace![storageCell] = new TracingStorageChange(value, trace[storageCell].After);
                 }
 
                 continue;
@@ -185,10 +191,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             if (isTracing && key.ChangeType == ChangeType.JustCache)
             {
-                tracer!.ReportStorageRead(key.StorageCell);
+                tracer!.ReportStorageRead(storageCell);
             }
-
-            _committedThisRound.Add(ikey);
             int forAssertion = GetStack(in ikey).Pop();
             if (forAssertion != pos)
             {
@@ -199,25 +203,25 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"  Update {key.StorageCell.Address}_{key.StorageCell.Index} V = {value.ToEvmBytes().ToHexString(true)}");
+                    _logger.Trace($"  Update {address}_{key.Index} V = {value.ToEvmBytes().ToHexString(true)}");
                 }
 
                 ref OriginalValue originalEntry = ref CollectionsMarshal.GetValueRefOrNullRef(_originalValues, ikey);
-                if (!Unsafe.IsNullRef(ref originalEntry) && originalEntry.Round == _commitRound && originalEntry.Value == value)
+                if (!Unsafe.IsNullRef(ref originalEntry) && originalEntry.Round == _commitRound && StorageValue.Equals(in originalEntry.Value, in value))
                 {
                     // no need to update the tree if the value is the same
                 }
                 else
                 {
-                    toUpdateRoots.Add(key.StorageCell.Address);
+                    toUpdateRoots.Add(address);
 
-                    GetOrCreateStorage(key.StorageCell.Address)
-                        .SaveChange(key.StorageCell, value);
+                    GetOrCreateStorage(address)
+                        .SaveChange(in storageCell, in value);
                 }
 
                 if (isTracing)
                 {
-                    trace![key.StorageCell] = new TracingStorageChange(StorageValue.Zero, value);
+                    trace![storageCell] = new TracingStorageChange(StorageValue.Zero, value);
                 }
             }
         }
@@ -292,17 +296,17 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         void UpdateRootHashesMultiThread()
         {
             // We can recalculate the roots in parallel as they are all independent tries
-            using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = _storages
-                // Only consider contracts that actually have pending changes
-                .Where(kv => _toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
-                // Schedule larger changes first to help balance the work
-                .OrderByDescending(kv => kv.Value.EstimatedChanges)
-                .Select((kv) => (
-                    kv.Key,
-                    kv.Value,
-                    writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
-                ))
-                .ToPooledList(_storages.Count);
+            ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = new(_storages.Count);
+            foreach (KeyValuePair<AddressAsKey, PerContractState> kv in _storages)
+            {
+                if (_toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
+                {
+                    storages.Add((kv.Key, kv.Value, writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)));
+                }
+            }
+            // Schedule larger changes first to help balance the work
+            storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
+            using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> _ = storages;
 
             ParallelUnbalancedWork.For(
                 0,
@@ -374,7 +378,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     }
 
     [SkipLocalsInit]
-    private void PushToRegistryOnly(in StorageCell cell, StorageValue value)
+    private void PushToRegistryOnly(in StorageCell cell, in StorageValue value)
     {
         InternalStorageKey ikey = new(in cell);
         StackList<int> stack = SetupRegistry(in ikey);
@@ -383,8 +387,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         entry.Round = _commitRound;
         stack.Push(_changeCount);
         EnsureChangeCapacity();
-        _changeKeys[_changeCount] = new ChangeKey(in cell, ChangeType.JustCache);
+        _changeKeys[_changeCount] = new ChangeKey(cell.Index, ChangeType.JustCache);
         _changeValues[_changeCount] = value;
+        _changeAddresses[_changeCount] = cell.Address;
         _changeCount++;
     }
 
@@ -392,7 +397,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         foreach ((StorageCell address, TracingStorageChange change) in trace)
         {
-            if (change.Before != change.After)
+            if (StorageValue.NotEquals(in change.Before, in change.After))
             {
                 tracer.ReportStorageChange(address, change.Before.ToEvmBytes(), change.After.ToEvmBytes());
             }
@@ -549,7 +554,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
 
         [SkipLocalsInit]
-        public void SaveChange(StorageCell storageCell, StorageValue value)
+        public void SaveChange(in StorageCell storageCell, in StorageValue value)
         {
             _wasWritten = true;
             ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
@@ -578,7 +583,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 Db.Metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
+            if (!storageCell.IsHash) _provider.PushToRegistryOnly(in storageCell, in valueChange.After);
             return valueChange.After;
         }
 
