@@ -18,11 +18,11 @@ public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IB
     protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
     {
         Rlp.ValueDecoderContext decoderContext = new(input.AsSpan());
-        int packetLength = decoderContext.PeekNextRlpLength();
+        int packetTypeLen = decoderContext.PeekNextRlpLength();
 
-        int maxLength = Snappy.GetMaxCompressedLength(input.ReadableBytes);
-        output.EnsureWritable(packetLength + maxLength);
-        output.WriteBytes(input.ReadBytes(packetLength));
+        int maxLength = Snappy.GetMaxCompressedLength(input.ReadableBytes - packetTypeLen);
+        output.EnsureWritable(packetTypeLen + maxLength);
+        output.WriteBytes(input.ReadBytes(packetTypeLen));
 
         if (_logger.IsTrace) _logger.Trace($"Compressing with Snappy a message of length {input.ReadableBytes}");
 
