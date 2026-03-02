@@ -35,7 +35,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
     }
 
-    protected override TransactionResult Execute<TLogTracing>(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
         {
@@ -43,13 +43,13 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         }
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
-        return base.Execute<TLogTracing>(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation
+        return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation
             && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
             ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }
 
-    protected override TransactionResult BuyGas<TLogTracing>(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+    protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
         out UInt256 blobBaseFee)
     {
@@ -61,9 +61,9 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
 
     protected override IReleaseSpec GetSpec(BlockHeader header) => base.GetSpec(header).ForSystemTransaction(_isAura, header.IsGenesis);
 
-    protected override TransactionResult ValidateGas<TLogTracing>(Transaction tx, BlockHeader header, long minGasRequired) => TransactionResult.Ok;
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired) => TransactionResult.Ok;
 
-    protected override TransactionResult IncrementNonce<TLogTracing>(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) => TransactionResult.Ok;
+    protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) => TransactionResult.Ok;
 
     protected override void DecrementNonce(Transaction tx) { }
 
@@ -80,11 +80,11 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
     protected override IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
         tx is SystemCall ? default : base.CalculateIntrinsicGas(tx, spec);
 
-    protected override bool RecoverSenderIfNeeded<TLogTracing>(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
+    protected override bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
     {
         Address? sender = tx.SenderAddress;
         return (sender is null || (sender == spec.Eip158IgnoredAccount && !WorldState.AccountExists(sender)))
-               && base.RecoverSenderIfNeeded<TLogTracing>(tx, spec, opts, in effectiveGasPrice);
+               && base.RecoverSenderIfNeeded(tx, spec, opts, in effectiveGasPrice);
     }
 
     protected override void PayRefund(Transaction tx, in UInt256 refundAmount, IReleaseSpec spec) { }

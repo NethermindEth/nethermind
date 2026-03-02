@@ -75,6 +75,8 @@ public partial class VirtualMachine<TGasPolicy>
             CallResultType.PrecompileFailure => false,
             _ => null
         };
+        /// <summary>True for non-precompile calls or successful precompiles; false only for precompile failure.</summary>
+        public bool IsSuccessResult => _resultType != CallResultType.PrecompileFailure;
         public bool IsReturn => FrameToExecute is null;
         //EvmExceptionType.Revert is returned when the top frame encounters a REVERT opcode, which is not an exception.
         public bool IsException => ExceptionType != EvmExceptionType.None && ExceptionType != EvmExceptionType.Revert;

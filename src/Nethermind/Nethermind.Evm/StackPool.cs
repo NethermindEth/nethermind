@@ -20,7 +20,7 @@ internal sealed class StackPool
     /// <summary>
     /// Returns a data stack to the pool.
     /// </summary>
-    public void ReturnStacks(byte[] dataStack)
+    public void ReturnStack(byte[] dataStack)
     {
         // Reserve a slot first - O(1) bound without touching ConcurrentQueue.Count.
         if (Interlocked.Increment(ref _poolCount) > MaxStacksPooled)
@@ -38,7 +38,7 @@ internal sealed class StackPool
 
     public const int StackLength = (EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32;
 
-    public byte[] RentStacks()
+    public byte[] RentStack()
     {
         if (Volatile.Read(ref _poolCount) > 0 && _stackPool.TryDequeue(out byte[]? result))
         {

@@ -42,6 +42,16 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
+    [Test]
+    public void Div32Ceiling_near_ulong_max_sets_out_of_gas()
+    {
+        // ulong.MaxValue - 1 is large enough that (result + 31) would overflow
+        // with the naive implementation. The overflow-safe version must set outOfGas.
+        long result = EvmCalculations.Div32Ceiling(ulong.MaxValue - 1, out bool outOfGas);
+        Assert.That(outOfGas, Is.True);
+        Assert.That(result, Is.EqualTo(0));
+    }
+
     private const int MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
 
     [TestCase(0, 0)]

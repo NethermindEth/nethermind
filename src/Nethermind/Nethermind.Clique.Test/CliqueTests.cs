@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
@@ -145,5 +146,43 @@ public class CliqueTests
     {
         tree.SuggestBlock(block);
         tree.UpdateMainChain(block);
+    }
+
+    [Test]
+    public void ExtractSigners_returns_correct_addresses()
+    {
+        // Layout: [32 vanity][addr1 (20)][addr2 (20)][65 seal]
+        Address addr1 = new("0x0000000000000000000000000000000000000001");
+        Address addr2 = new("0x0000000000000000000000000000000000000002");
+
+        byte[] extraData = new byte[Consensus.Clique.Clique.ExtraVanityLength + 2 * Address.Size + Consensus.Clique.Clique.ExtraSealLength];
+        addr1.Bytes.CopyTo(extraData.AsSpan(Consensus.Clique.Clique.ExtraVanityLength));
+        addr2.Bytes.CopyTo(extraData.AsSpan(Consensus.Clique.Clique.ExtraVanityLength + Address.Size));
+
+        BlockHeader header = Build.A.BlockHeader.WithExtraData(extraData).TestObject;
+
+        Address[] signers = Consensus.Clique.BlockHeaderExtensions.ExtractSigners(header);
+
+        Assert.That(signers.Length, Is.EqualTo(2));
+        Assert.That(signers[0], Is.EqualTo(addr1));
+        Assert.That(signers[1], Is.EqualTo(addr2));
+    }
+
+    [Test]
+    public void ExtractSigners_single_signer()
+    {
+        Address addr = new("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+        byte[] extraData = new byte[Consensus.Clique.Clique.ExtraVanityLength + Address.Size + Consensus.Clique.Clique.ExtraSealLength];
+        addr.Bytes.CopyTo(extraData.AsSpan(Consensus.Clique.Clique.ExtraVanityLength));
+        // Put non-zero bytes in the seal region to detect over-reading
+        extraData.AsSpan(Consensus.Clique.Clique.ExtraVanityLength + Address.Size).Fill(0xFF);
+
+        BlockHeader header = Build.A.BlockHeader.WithExtraData(extraData).TestObject;
+
+        Address[] signers = Consensus.Clique.BlockHeaderExtensions.ExtractSigners(header);
+
+        Assert.That(signers.Length, Is.EqualTo(1));
+        Assert.That(signers[0], Is.EqualTo(addr));
     }
 }

@@ -122,8 +122,8 @@ public class ByteBenchmark
         ref byte bytes = ref stack.PopBytesByRef();
 
         // Branchless: use conditional move pattern
-        // mask = position < 32 ? 0xFF : 0x00
-        uint mask = (uint)-(int)(31 - position >> 31); // 0xFFFFFFFF if position < 32, else 0
+        // mask = position < 32 ? 0xFFFFFFFF : 0x00
+        uint mask = (uint)((int)(position - 32) >> 31); // 0xFFFFFFFF if position < 32, else 0
         byte result = (byte)(Unsafe.Add(ref bytes, (nuint)(position & 31)) & mask);
         stack.PushByte<OffFlag>(result);
 
@@ -139,7 +139,7 @@ public class ByteBenchmark
         stack.TryPopSmallIndex(out uint position);
         ref byte bytes = ref stack.PopBytesByRef();
 
-        uint mask = (uint)-(int)(31 - position >> 31);
+        uint mask = (uint)((int)(position - 32) >> 31);
         byte result = (byte)(Unsafe.Add(ref bytes, (nuint)(position & 31)) & mask);
         stack.PushByte<OffFlag>(result);
 

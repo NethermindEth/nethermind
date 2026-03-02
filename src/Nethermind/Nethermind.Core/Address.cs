@@ -129,7 +129,7 @@ namespace Nethermind.Core
             return false;
         }
 
-        public Address(byte[] bytes) : this(new ReadOnlySpan<byte>(bytes))
+        public Address(byte[] bytes) : this(new ReadOnlySpan<byte>(bytes ?? throw new ArgumentNullException(nameof(bytes))))
         {
         }
 

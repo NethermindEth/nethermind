@@ -9,7 +9,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
-using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 

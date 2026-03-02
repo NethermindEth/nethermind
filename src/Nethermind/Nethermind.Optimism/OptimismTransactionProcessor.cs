@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -26,7 +27,7 @@ public class OptimismTransactionProcessor(
 {
     private UInt256? _currentTxL1Cost;
 
-    protected override TransactionResult Execute<TLogTracing>(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (tx.SupportsBlobs)
         {
@@ -44,7 +45,7 @@ public class OptimismTransactionProcessor(
 
         Snapshot snapshot = WorldState.TakeSnapshot();
 
-        TransactionResult result = base.Execute<TLogTracing>(tx, tracer, opts);
+        TransactionResult result = base.Execute(tx, tracer, opts);
 
         if (!result && tx.IsDeposit() && result.Error != TransactionResult.ErrorType.BlockGasLimitExceeded)
         {
@@ -66,7 +67,7 @@ public class OptimismTransactionProcessor(
         return result;
     }
 
-    protected override TransactionResult BuyGas<TLogTracing>(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+    protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
     {
         premiumPerGas = UInt256.Zero;
@@ -87,13 +88,13 @@ public class OptimismTransactionProcessor(
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             if (validate && !tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
             {
-                if (TLogTracing.IsActive) Logger.Trace($"Invalid tx {tx.Hash} ({"MINER_PREMIUM_IS_NEGATIVE"})");
+                if (Logger.IsTrace) TraceMinerPremiumNeg();
                 return TransactionResult.MinerPremiumNegative;
             }
 
             if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
             {
-                if (TLogTracing.IsActive) Logger.Trace($"Invalid tx {tx.Hash} (INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance})");
+                if (Logger.IsTrace) TraceInsufficientBalance();
                 return TransactionResult.InsufficientSenderBalance;
             }
 
@@ -102,21 +103,21 @@ public class OptimismTransactionProcessor(
 
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost + maxOperatorCost, out balanceLeft))
             {
-                if (TLogTracing.IsActive) Logger.Trace($"Invalid tx {tx.Hash} (INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance})");
+                if (Logger.IsTrace) TraceInsufficientBalance();
                 return TransactionResult.InsufficientSenderBalance;
             }
 
             bool overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
             if (spec.IsEip1559Enabled && !tx.IsFree() && (overflows || balanceLeft < maxGasFee))
             {
-                if (TLogTracing.IsActive) Logger.Trace($"Invalid tx {tx.Hash} (INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas})");
+                if (Logger.IsTrace) TraceInsufficientMaxFee();
                 return TransactionResult.InsufficientMaxFeePerGasForSenderBalance;
             }
 
             overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
             if (overflows || senderReservedGasPayment > balanceLeft)
             {
-                if (TLogTracing.IsActive) Logger.Trace($"Invalid tx {tx.Hash} (INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance})");
+                if (Logger.IsTrace) TraceInsufficientBalance();
                 return TransactionResult.InsufficientSenderBalance;
             }
 
@@ -127,19 +128,26 @@ public class OptimismTransactionProcessor(
             WorldState.SubtractFromBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
 
         return TransactionResult.Ok;
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceMinerPremiumNeg() => Logger.Trace($"Invalid tx {tx.Hash} (MINER_PREMIUM_IS_NEGATIVE)");
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceInsufficientBalance() => Logger.Trace($"Invalid tx {tx.Hash} (INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance})");
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceInsufficientMaxFee() => Logger.Trace($"Invalid tx {tx.Hash} (INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas})");
     }
 
-    protected override TransactionResult IncrementNonce<TLogTracing>(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
         if (!tx.IsDeposit())
-            return base.IncrementNonce<TLogTracing>(tx, header, spec, tracer, opts);
+            return base.IncrementNonce(tx, header, spec, tracer, opts);
 
         WorldState.IncrementNonce(tx.SenderAddress!);
         return TransactionResult.Ok;
     }
 
-    protected override TransactionResult ValidateSender<TLogTracing>(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) =>
-        tx.IsDeposit() ? TransactionResult.Ok : base.ValidateSender<TLogTracing>(tx, header, spec, tracer, opts);
+    protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) =>
+        tx.IsDeposit() ? TransactionResult.Ok : base.ValidateSender(tx, header, spec, tracer, opts);
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
         in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobGasFee, int statusCode)

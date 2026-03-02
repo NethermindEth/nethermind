@@ -24,8 +24,8 @@ public class ExecuteOpcodesBenchmark
     // Simple bytecode: PUSH1 0x01, PUSH1 0x02, ADD, POP (repeated)
     private static readonly byte[] SimpleLoop = CreateSimpleLoop(100);
 
-    // Bytecode with jumps: PUSH1 dest, JUMP, JUMPDEST, PUSH1 1, POP, ...
-    private static readonly byte[] JumpLoop = CreateJumpLoop(50);
+    // Bytecode with mixed arithmetic and stack ops: PUSH1, ADD, POP repeated
+    private static readonly byte[] MixedArithmetic = CreateMixedArithmetic(50);
 
     [GlobalSetup]
     public void Setup()
@@ -151,27 +151,21 @@ public class ExecuteOpcodesBenchmark
         return code;
     }
 
-    private static byte[] CreateJumpLoop(int iterations)
+    private static byte[] CreateMixedArithmetic(int iterations)
     {
-        // Create a simple jump-based loop
-        // JUMPDEST, PUSH1 1, PUSH1 0, JUMPI (conditional exit)
-        var code = new byte[iterations * 10 + 1];
-        code[0] = (byte)Instruction.JUMPDEST;
-
+        // Linear sequence of PUSH1/ADD/POP per iteration, terminated by implicit STOP.
+        byte[] code = new byte[iterations * 6 + 1];
         for (int i = 0; i < iterations; i++)
         {
-            int offset = 1 + i * 10;
+            int offset = i * 6;
             code[offset] = (byte)Instruction.PUSH1;
             code[offset + 1] = 0x01;
             code[offset + 2] = (byte)Instruction.PUSH1;
-            code[offset + 3] = 0x00;
+            code[offset + 3] = 0x02;
             code[offset + 4] = (byte)Instruction.ADD;
             code[offset + 5] = (byte)Instruction.POP;
-            code[offset + 6] = (byte)Instruction.PUSH1;
-            code[offset + 7] = 0x00;  // Jump to start
-            code[offset + 8] = (byte)Instruction.PUSH1;
-            code[offset + 9] = 0x00;  // Condition (false = don't jump)
         }
+        code[iterations * 6] = (byte)Instruction.STOP;
 
         return code;
     }

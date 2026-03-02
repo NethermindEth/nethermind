@@ -28,14 +28,17 @@ public static class EvmCalculations
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long Div32Ceiling(ulong result, out bool outOfGas)
     {
-        // For EVM, the max valid memory size is 0x7FFFFFE0 bytes (MaxMemorySize).
-        // Div32Ceiling(0x7FFFFFE0) = 0x3FFFFFF0, which is well under uint.MaxValue.
-        // The overflow check is provably unreachable because:
-        // 1. Values with upper 192 bits set are rejected by IsLargerThanULong() before this call
-        // 2. EVM enforces memory limits (CheckMemoryAccessViolation) well before uint.MaxValue * 32 bytes
-        Debug.Assert(((result + 31) >> 5) <= uint.MaxValue, "Div32Ceiling result exceeds uint.MaxValue - caller should validate input against EVM memory limits");
+        // Overflow-safe: (result >> 5) + ceil_bit avoids wrapping on large ulong values.
+        // Equivalent to (result + 31) / 32 but without the addition overflow risk.
+        ulong quotient = (result >> 5) + ((result & 31) != 0 ? 1ul : 0ul);
+        if (quotient > uint.MaxValue)
+        {
+            outOfGas = true;
+            return 0;
+        }
+
         outOfGas = false;
-        return (long)((result + 31) >> 5);
+        return (long)quotient;
     }
 
     public static long Div32Ceiling(in UInt256 length)

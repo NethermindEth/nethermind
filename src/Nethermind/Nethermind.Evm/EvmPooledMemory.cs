@@ -219,7 +219,14 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (location > int.MaxValue)
         {
-            return new byte[(long)length.u0];
+            // Memory beyond int.MaxValue was never populated; return zeroes.
+            // Guard against oversized or truncated length to prevent OOM.
+            if (length.IsLargerThanULong() || length.u0 > (ulong)int.MaxValue)
+            {
+                return default;
+            }
+
+            return new byte[length.u0];
         }
 
         if (_memory is null)

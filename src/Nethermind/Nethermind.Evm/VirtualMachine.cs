@@ -4,10 +4,8 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -98,12 +96,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     protected CallFrame<TGasPolicy> _currentFrame;
     private CallFrame<TGasPolicy> _frameToDispose; // Pending dispose - cleared by outer exception handler
+    private bool _hasPendingDispose;
 
     // Cached ExecutionEnvironment for tracing — rebuilt lazily on frame transitions
     private ExecutionEnvironment _tracingEnv;
     private CallFrame<TGasPolicy> _tracingEnvSource;
-    protected ReadOnlyMemory<byte> _previousCallResult;
-    protected UInt256 _previousCallOutputDestination;
+    protected byte _previousCallResultStatus; // 0=none, 1=success, 2=failure, 3=address bytes
+    protected byte[]? _previousCallResultBytes; // Only used when status==3 (CREATE address)
+    protected ulong _previousCallOutputDestination;
 
     public ILogger Logger => _logger;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
@@ -128,9 +128,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected CallFrame<TGasPolicy> FrameStackPop()
     {
         Debug.Assert(_frameStackHead > 0, "State stack underflow — pop without matching push");
-        CallFrame<TGasPolicy> state = _frameStackBuffer[--_frameStackHead];
-        _frameStackBuffer[_frameStackHead] = null; // Clear slot to allow GC of returned-to-pool CallFrame
-        return state;
+        // Don't null-clear the slot: the CallFrame is returned to the pool by Dispose(),
+        // and the slot will be overwritten on the next push. The bounded array (MaxCallDepth)
+        // means at most ~10 stale references in practice, which is negligible GC pressure.
+        return _frameStackBuffer[--_frameStackHead];
     }
 
     private BlockExecutionContext _blockExecutionContext;
@@ -180,8 +181,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _currentFrame = callFrame;
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
-        _previousCallResult = default;
-        _previousCallOutputDestination = default;
+        _previousCallResultStatus = 0;
+        _previousCallOutputDestination = 0;
         _tracingEnvSource = null;
         OpCodeCount = 0;
         // Prepare the specification and opcode mapping based on the current block header.
@@ -243,9 +244,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             finally
             {
                 // Restore and dispose any state that was pending when exception occurred
-                _frameToDispose?.RestoreAccessTracker(TrackingState);
-                _frameToDispose?.Dispose();
-                _frameToDispose = null;
+                if (_hasPendingDispose)
+                {
+                    _frameToDispose.RestoreAccessTracker(TrackingState);
+                    _frameToDispose.Dispose();
+                    _frameToDispose = null;
+                    _hasPendingDispose = false;
+                }
             }
 
             // Recovery path - only reached after catching an exception
@@ -274,8 +279,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         where TTracingActions : struct, IFlag
         where TCancellable : struct, IFlag
     {
-        // Skip init for out parameter - always assigned before return
-        Unsafe.SkipInit(out substate);
         // Skip init - assigned by HandleRegularReturn/HandleRevert or reset at ClearOutput before use
         Unsafe.SkipInit(out ZeroPaddedSpan previousCallOutput);
         while (true)
@@ -287,8 +290,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 ReturnDataBuffer = default;
             }
 
-            // Skip init - all branches assign callResult before use
-            Unsafe.SkipInit(out CallResult callResult);
+            CallResult callResult;
             // Cache CodeInfo to avoid repeated null-conditional access
             CodeInfo? codeInfo = currentFrame.CodeInfo;
             if (codeInfo is null)
@@ -343,6 +345,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             CallFrame<TGasPolicy> previousState = currentFrame;
             // Mark for disposal - outer method will dispose if exception occurs
             _frameToDispose = previousState;
+            _hasPendingDispose = true;
 
             CallFrame<TGasPolicy> current = _currentFrame = FrameStackPop();
             current.IsContinuation = true;
@@ -357,16 +360,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 {
                     long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
                     bool previousStateSucceeded = ExecuteCreate<TTracingActions>(
-                        in callResult,
                         previousState,
-                        gasAvailableForCodeDeposit,
-                        executionType);
+                        gasAvailableForCodeDeposit);
                     if (previousStateSucceeded)
                     {
                         previousState.CommitToParent(current);
                     }
                     previousState.Dispose();
-                    _frameToDispose = null;
+                    _hasPendingDispose = false;
                     goto ClearOutput;
                 }
                 else
@@ -377,10 +378,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             }
             else
             {
-                previousCallOutput = HandleRevert<TTracingActions>(previousState, in callResult);
+                previousCallOutput = HandleRevert<TTracingActions>(previousState);
             }
 
-            _frameToDispose = null;
+            _hasPendingDispose = false;
             previousState.RestoreAccessTracker(TrackingState);
             previousState.Dispose();
             continue;
@@ -444,14 +445,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         => result = CallResult.InvalidCodeException;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private bool ExecuteCreate<TTracingActions>(in CallResult callResult, CallFrame<TGasPolicy> previousState, long gasAvailableForCodeDeposit, ExecutionType executionType)
+    private bool ExecuteCreate<TTracingActions>(CallFrame<TGasPolicy> previousState, long gasAvailableForCodeDeposit)
             where TTracingActions : struct, IFlag
     {
         // Capture code to deploy before PrepareCreateData clears ReturnDataBuffer
         ReadOnlyMemory<byte> codeToDeployMemory = ReturnDataBuffer;
         PrepareCreateData(previousState);
         return HandleCreate<TTracingActions>(
-            in callResult,
             previousState,
             gasAvailableForCodeDeposit,
             codeToDeployMemory);
@@ -459,8 +459,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     protected void PrepareCreateData(CallFrame<TGasPolicy> previousState)
     {
-        _previousCallResult = previousState.ExecutingAccount.Bytes.ToArray();
-        _previousCallOutputDestination = default;
+        _previousCallResultBytes = previousState.ExecutingAccount.Bytes.ToArray();
+        _previousCallResultStatus = 3;
+        _previousCallOutputDestination = 0;
         ReturnDataBuffer = default;
     }
 
@@ -472,8 +473,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // ReturnDataBuffer is already set by DispatchExecution/RunPrecompile
         ReadOnlySpan<byte> returnSpan = ReturnDataBuffer.Span;
 
-        bool? precompileSuccess = callResult.PrecompileSuccess;
-        _previousCallResult = precompileSuccess.GetValueOrDefault(true) ? StatusCode.SuccessBytes : StatusCode.FailureBytes;
+        _previousCallResultStatus = callResult.IsSuccessResult ? (byte)1 : (byte)2;
 
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
@@ -522,7 +522,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// </param>
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected bool HandleCreate<TTracingActions>(
-        in CallResult callResult,
         CallFrame<TGasPolicy> previousState,
         long gasAvailableForCodeDeposit,
         ReadOnlyMemory<byte> code)
@@ -570,7 +569,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             }
 
             // Reset the previous call result to indicate that no valid code was deployed.
-            _previousCallResult = BytesZero;
+            _previousCallResultStatus = 2;
 
             // Report an error via the tracer, indicating whether the failure was due to invalid code or gas exhaustion.
             if (TTracingActions.IsActive)
@@ -627,7 +626,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// padded to match the expected length.
     /// </param>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected ZeroPaddedSpan HandleRevert<TTracingActions>(CallFrame<TGasPolicy> previousState, scoped in CallResult callResult)
+    protected ZeroPaddedSpan HandleRevert<TTracingActions>(CallFrame<TGasPolicy> previousState)
         where TTracingActions : struct, IFlag
     {
         // Restore the world state to the snapshot taken before the execution of the call.
@@ -636,7 +635,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // ReturnDataBuffer is already set by DispatchExecution
         ReadOnlyMemory<byte> outputBytes = ReturnDataBuffer;
 
-        _previousCallResult = StatusCode.FailureBytes;
+        _previousCallResultStatus = 2;
 
         // Record the output destination address for subsequent operations.
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
@@ -752,10 +751,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             txTracer.ReportActionError(errorType);
         }
 
-        _previousCallResult = StatusCode.FailureBytes;
+        _previousCallResultStatus = 2;
 
         // Reset output destination and return data.
-        _previousCallOutputDestination = default;
+        _previousCallOutputDestination = 0;
         ReturnDataBuffer = default;
 
         // Dispose of the current failing state and restore the previous call frame from the stack.
@@ -813,10 +812,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _txTracer.ReportActionError(errorType);
         }
 
-        _previousCallResult = StatusCode.FailureBytes;
+        _previousCallResultStatus = 2;
 
         // Reset output destination and return data.
-        _previousCallOutputDestination = default;
+        _previousCallOutputDestination = 0;
         ReturnDataBuffer = default;
         // Restore access tracker and dispose of the current failing state, then restore the previous call frame from the stack.
         currentFrame.RestoreAccessTracker(TrackingState);
@@ -844,7 +843,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _currentFrame = callResult.FrameToExecute;
 
         // Clear the previous call result as the execution context is moving to a new frame.
-        _previousCallResult = default;
+        _previousCallResultStatus = 0;
 
         // Reset the return data buffer to ensure no residual data persists across call frames.
         ReturnDataBuffer = default;
@@ -881,10 +880,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Revert any modifications that might have been applied due to the Parity touch bug.
         RevertParityTouchBugAccount();
 
-        _previousCallResult = StatusCode.FailureBytes;
+        _previousCallResultStatus = 2;
 
         // Reset output destination and clear return data.
-        _previousCallOutputDestination = default;
+        _previousCallOutputDestination = 0;
         ReturnDataBuffer = default;
 
         // Restore access tracker, clean up the current failing state, and pop the parent call frame from the state stack.
@@ -1256,12 +1255,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             callFrame.InitializeStacks(codeSpan, out stack);
         }
 
-        // Check length before materializing span to avoid MemoryManager type check overhead.
-        // Length check also handles the default(ReadOnlyMemory<byte>) case (length is 0).
-        ReadOnlyMemory<byte> previousCallResult = _previousCallResult;
-        if (previousCallResult.Length > 0)
+        // Push previous call result onto stack: 0=none, 1=success(0x01), 2=failure(0x00), 3=address bytes
+        byte previousStatus = _previousCallResultStatus;
+        if (previousStatus != 0)
         {
-            stack.PushBytes<TTracingInst>(previousCallResult.Span);
+            ReadOnlySpan<byte> resultSpan = previousStatus switch
+            {
+                1 => [StatusCode.Success],
+                2 => [StatusCode.Failure],
+                _ => _previousCallResultBytes
+            };
+            stack.PushBytes<TTracingInst>(resultSpan);
             if (TTracingInst.IsActive)
             {
                 _txTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(callFrame.Gas));
@@ -1272,7 +1276,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         int outputLength = previousCallOutput.Length;
         if (outputLength > 0)
         {
-            ref readonly UInt256 localPreviousDest = ref _previousCallOutputDestination;
+            UInt256 localPreviousDest = _previousCallOutputDestination;
             bool success = TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (uint)outputLength, callFrame)
                          && callFrame.Memory.TrySave(in localPreviousDest, previousCallOutput);
 

@@ -23,21 +23,21 @@ public class CodeInfoRepository : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
-    private readonly Func<ValueHash256, IReleaseSpec, CodeInfo> _codeInfoLoader;
+    private readonly Func<ValueHash256, CodeInfo> _codeInfoLoader;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
         : this(worldState, precompileProvider, codeInfoLoader: null)
     {
     }
 
-    internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, Func<ValueHash256, IReleaseSpec, CodeInfo>? codeInfoLoader)
+    internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, Func<ValueHash256, CodeInfo>? codeInfoLoader)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
         _codeInfoLoader = codeInfoLoader ?? DefaultLoad;
 
-        CodeInfo DefaultLoad(ValueHash256 codeHash, IReleaseSpec spec) =>
-            codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, in codeHash, spec);
+        CodeInfo DefaultLoad(ValueHash256 codeHash) =>
+            codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, in codeHash);
     }
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
@@ -48,10 +48,10 @@ public class CodeInfoRepository : ICodeInfoRepository
             return GetPrecompile(codeSource);
         }
 
-        CodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);
+        CodeInfo codeInfo = InternalGetCodeInfo(codeSource);
         if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress) && followDelegation)
         {
-            codeInfo = InternalGetCodeInfo(delegationAddress, vmSpec);
+            codeInfo = InternalGetCodeInfo(delegationAddress);
         }
 
         return codeInfo;
@@ -59,13 +59,13 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     private CodeInfo GetPrecompile(Address codeSource) => _localPrecompiles[codeSource];
 
-    private CodeInfo InternalGetCodeInfo(Address codeSource, IReleaseSpec vmSpec)
+    private CodeInfo InternalGetCodeInfo(Address codeSource)
     {
         ref readonly ValueHash256 codeHash = ref _worldState.GetCodeHash(codeSource);
-        return _codeInfoLoader(codeHash, vmSpec);
+        return _codeInfoLoader(codeHash);
     }
 
-    internal static CodeInfo GetCodeInfo(IWorldState worldState, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    internal static CodeInfo GetCodeInfo(IWorldState worldState, in ValueHash256 codeHash)
     {
         byte[]? code = worldState.GetCode(in codeHash);
         if (code is null)
@@ -128,7 +128,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return ValueKeccak.OfAnEmptyString;
         }
 
-        CodeInfo codeInfo = _codeInfoLoader(codeHash, spec);
+        CodeInfo codeInfo = _codeInfoLoader(codeHash);
         return codeInfo.IsEmpty
             ? ValueKeccak.OfAnEmptyString
             : codeHash;
@@ -143,10 +143,10 @@ public class CodeInfoRepository : ICodeInfoRepository
             return false;
         }
 
-        codeInfo = InternalGetCodeInfo(address, spec);
+        codeInfo = InternalGetCodeInfo(address);
         if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegatedAddress))
         {
-            codeInfo = InternalGetCodeInfo(delegatedAddress, spec);
+            codeInfo = InternalGetCodeInfo(delegatedAddress);
             return true;
         }
 
@@ -161,7 +161,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return false;
         }
 
-        CodeInfo codeInfo = InternalGetCodeInfo(address, spec);
+        CodeInfo codeInfo = InternalGetCodeInfo(address);
         return !codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out _);
     }
 }

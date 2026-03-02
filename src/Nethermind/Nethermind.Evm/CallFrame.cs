@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -239,7 +238,7 @@ public sealed class CallFrame<TGasPolicy> : IDisposable
         if (DataStack is not null)
         {
             // Only return if initialized
-            _stackPool.ReturnStacks(DataStack);
+            _stackPool.ReturnStack(DataStack);
             DataStack = null;
         }
 
@@ -292,17 +291,14 @@ public sealed class CallFrame<TGasPolicy> : IDisposable
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         byte[] dataStack = DataStack;
-        if (dataStack is null)
-        {
-            dataStack = AllocateStacks();
-        }
+        dataStack ??= AllocateStacks();
 
         return dataStack;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         byte[] AllocateStacks()
         {
-            DataStack = _stackPool.RentStacks();
+            DataStack = _stackPool.RentStack();
             return DataStack;
         }
     }
@@ -316,10 +312,10 @@ public sealed class CallFrame<TGasPolicy> : IDisposable
     public Memory<byte> MemoryStacks(int count)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        return AsAlignedMemory(DataStack, alignment: EvmStack.WordSize, size: count * EvmStack.WordSize);
+        return AsAlignedMemory(DataStack, size: count * EvmStack.WordSize);
     }
 
-    private static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
+    private static Memory<byte> AsAlignedMemory(byte[] array, int size)
     {
         nuint offset = GetAlignmentOffset32(array);
         return array.AsMemory((int)(uint)offset, size);

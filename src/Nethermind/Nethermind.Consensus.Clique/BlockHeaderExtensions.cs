@@ -21,11 +21,17 @@ namespace Nethermind.Consensus.Clique
                 throw new BlockchainException("Block header ExtraData cannot be null when extracting signers");
             }
 
-            Span<byte> signersData = blockHeader.ExtraData.AsSpan(Clique.ExtraVanityLength, (blockHeader.ExtraData.Length - Clique.ExtraSealLength));
+            int signersLength = blockHeader.ExtraData.Length - Clique.ExtraVanityLength - Clique.ExtraSealLength;
+            if (signersLength < 0 || signersLength % Address.Size != 0)
+            {
+                throw new BlockchainException("Block header ExtraData has invalid length for Clique signers");
+            }
+
+            Span<byte> signersData = blockHeader.ExtraData.AsSpan(Clique.ExtraVanityLength, signersLength);
             Address[] signers = new Address[signersData.Length / Address.Size];
             for (int i = 0; i < signers.Length; i++)
             {
-                signers[i] = new Address(signersData.Slice(i * 20, 20));
+                signers[i] = new Address(signersData.Slice(i * Address.Size, Address.Size));
             }
 
             return signers;

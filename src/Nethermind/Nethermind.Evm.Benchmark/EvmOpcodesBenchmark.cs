@@ -20,6 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -942,5 +943,42 @@ public unsafe class EvmOpcodesBenchmark
             AddColumn(StatisticColumn.P95);
             AddColumnProvider(new EvmOpcodeGasColumnProvider());
         }
+    }
+}
+
+internal static class InstructionBenchmarkExtensions
+{
+    public static bool IsValid(this Instruction instruction) => Enum.IsDefined(instruction);
+
+    public static (ushort InputCount, ushort OutputCount, ushort immediates) StackRequirements(this Instruction instruction)
+    {
+        return instruction switch
+        {
+            Instruction.STOP or Instruction.INVALID or Instruction.JUMPDEST => (0, 0, 0),
+            Instruction.POP or Instruction.SELFDESTRUCT or Instruction.JUMP => (1, 0, 0),
+            Instruction.ISZERO or Instruction.NOT or Instruction.BALANCE or Instruction.CALLDATALOAD
+                or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.BLOCKHASH
+                or Instruction.MLOAD or Instruction.SLOAD or Instruction.BLOBHASH or Instruction.TLOAD => (1, 1, 0),
+            Instruction.MSTORE or Instruction.MSTORE8 or Instruction.SSTORE or Instruction.LOG0
+                or Instruction.REVERT or Instruction.TSTORE or Instruction.RETURN or Instruction.JUMPI => (2, 0, 0),
+            Instruction.CALLDATACOPY or Instruction.CODECOPY or Instruction.RETURNDATACOPY
+                or Instruction.LOG1 or Instruction.MCOPY => (3, 0, 0),
+            Instruction.EXTCODECOPY or Instruction.LOG2 => (4, 0, 0),
+            Instruction.LOG3 => (5, 0, 0),
+            Instruction.LOG4 => (6, 0, 0),
+            Instruction.ADDMOD or Instruction.MULMOD or Instruction.CREATE => (3, 1, 0),
+            Instruction.CREATE2 => (4, 1, 0),
+            Instruction.ADDRESS or Instruction.ORIGIN or Instruction.CALLER or Instruction.CALLVALUE
+                or Instruction.CALLDATASIZE or Instruction.CODESIZE or Instruction.GASPRICE
+                or Instruction.RETURNDATASIZE or Instruction.COINBASE or Instruction.TIMESTAMP
+                or Instruction.NUMBER or Instruction.PREVRANDAO or Instruction.GASLIMIT
+                or Instruction.CHAINID or Instruction.SELFBALANCE or Instruction.BASEFEE
+                or Instruction.MSIZE or Instruction.GAS or Instruction.PC or Instruction.BLOBBASEFEE => (0, 1, 0),
+            Instruction.CALL or Instruction.DELEGATECALL or Instruction.STATICCALL or Instruction.CALLCODE => (6, 1, 0),
+            >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, instruction - Instruction.PUSH0),
+            >= Instruction.DUP1 and <= Instruction.DUP16 => ((ushort)(instruction - Instruction.DUP1 + 1), (ushort)(instruction - Instruction.DUP1 + 2), 0),
+            >= Instruction.SWAP1 and <= Instruction.SWAP16 => ((ushort)(instruction - Instruction.SWAP1 + 2), (ushort)(instruction - Instruction.SWAP1 + 2), 0),
+            _ => Enum.IsDefined(instruction) ? ((ushort)2, (ushort)1, (ushort)0) : throw new NotImplementedException($"opcode {instruction} not implemented yet"),
+        };
     }
 }

@@ -489,50 +489,6 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
-        {
-            int positionStored = Position;
-            int numberOfItems = 0;
-            while (Position < (beforePosition ?? Length))
-            {
-                int prefix = ReadByte();
-                if (prefix <= 128)
-                {
-                }
-                else if (prefix <= 183)
-                {
-                    int length = prefix - 128;
-                    SkipBytes(length);
-                }
-                else if (prefix < 192)
-                {
-                    int lengthOfLength = prefix - 183;
-                    int length = DeserializeLength(lengthOfLength);
-                    if (length < RlpHelpers.SmallPrefixBarrier)
-                    {
-                        RlpHelpers.ThrowUnexpectedLength(length);
-                    }
-
-                    SkipBytes(length);
-                }
-                else
-                {
-                    Position--;
-                    int sequenceLength = ReadSequenceLength();
-                    SkipBytes(sequenceLength);
-                }
-
-                numberOfItems++;
-                if (numberOfItems >= maxSearch)
-                {
-                    break;
-                }
-            }
-
-            Position = positionStored;
-            return numberOfItems;
-        }
-
         public void SkipLength() => SkipBytes(PeekPrefixLength());
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -924,60 +880,6 @@ namespace Nethermind.Serialization.Rlp
             return default;
         }
 
-        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
-        {
-            int positionCheck = ReadSequenceLength() + Position;
-            int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
-            GuardLimit(count, limit);
-            T[] result = new T[count];
-            for (int i = 0; i < result.Length; i++)
-            {
-                if (PeekByte() == Rlp.OfEmptyList[0])
-                {
-                    result[i] = defaultElement;
-                    Position++;
-                }
-                else
-                {
-                    result[i] = decodeItem(this);
-                }
-            }
-
-            if (checkPositions)
-            {
-                Check(positionCheck);
-            }
-
-            return result;
-        }
-
-        public ArrayPoolList<T> DecodeArrayPoolList<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
-        {
-            int positionCheck = ReadSequenceLength() + Position;
-            int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
-            GuardLimit(count, limit);
-            var result = new ArrayPoolList<T>(count, count);
-            for (int i = 0; i < result.Count; i++)
-            {
-                if (PeekByte() == Rlp.OfEmptyList[0])
-                {
-                    result[i] = defaultElement;
-                    Position++;
-                }
-                else
-                {
-                    result[i] = decodeItem(this);
-                }
-            }
-
-            if (checkPositions)
-            {
-                Check(positionCheck);
-            }
-
-            return result;
-        }
-
         public string DecodeString(RlpLimit? limit = null)
         {
             ReadOnlySpan<byte> bytes = DecodeByteArraySpan(limit);
@@ -1206,7 +1108,8 @@ namespace Nethermind.Serialization.Rlp
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void SkipItem() => SkipBytes(PeekNextRlpLength());
+        public void GuardLimit(int count, RlpLimit? limit = null) =>
+            Rlp.GuardLimit(count, Length - Position, limit);
 
         public void Reset() => Position = 0;
 

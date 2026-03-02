@@ -19,7 +19,7 @@ namespace Nethermind.Evm;
 public readonly ref struct TransactionSubstate
 {
     private static readonly JournalSet<Address> _emptyDestroyList = new(Address.EqualityComparer);
-    private static readonly JournalCollection<LogEntry> _emptyLogs = new JournalCollection<LogEntry>();
+    private static readonly JournalCollection<LogEntry> _emptyLogs = [];
 
     /// <summary>
     /// Returns a successful substate for simple transfers (no code execution, no logs, no refunds).
@@ -29,7 +29,7 @@ public readonly ref struct TransactionSubstate
         destroyList: _emptyDestroyList,
         logs: _emptyLogs,
         shouldRevert: false,
-        tracer: Tracing.NullTxTracer.Instance,
+        tracer: NullTxTracer.Instance,
         outputBytes: default);
 
     private const string SomeError = "error";
@@ -181,7 +181,7 @@ public readonly ref struct TransactionSubstate
         return EncodeErrorMessage(span);
     }
 
-    private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
+    private static string? TryGetErrorMessage(ReadOnlySpan<byte> span)
     {
         try
         {
