@@ -25,16 +25,15 @@ namespace Nethermind.Trie.Pruning
 
         public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
 
-        public IBlockCommitter BeginBlockCommit(long blockNumber)
-        {
-            return NullCommitter.Instance;
-        }
+        public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
 
         public IDisposable BeginScope(BlockHeader? baseBlock) => new Reactive.AnonymousDisposable(() => { }); // Noop
 
         public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedReadOnlyTrieStore(this, address);
 
         public bool HasRoot(Hash256 stateRoot) => _trieStore.HasRoot(stateRoot);
+
+        public bool HasRoot(Hash256 stateRoot, long blockNumber) => _trieStore.HasRoot(stateRoot, blockNumber);
 
         public void Dispose() { }
 

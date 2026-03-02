@@ -5,7 +5,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
-using System;
 
 namespace Nethermind.Xdc;
 
@@ -15,8 +14,12 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
 
     protected override Vote DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
+        {
+            decoderContext.ReadByte();
             return null;
+        }
+
         int sequenceLength = decoderContext.ReadSequenceLength();
         int endPosition = decoderContext.Position + sequenceLength;
 
@@ -31,28 +34,6 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
         {
             decoderContext.Check(endPosition);
-        }
-        return new Vote(proposedBlockInfo, gapNumber, signature);
-    }
-
-    protected override Vote DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemNull())
-            return null;
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        int endPosition = rlpStream.Position + sequenceLength;
-
-        BlockRoundInfo proposedBlockInfo = _xdcBlockInfoDecoder.Decode(rlpStream, rlpBehaviors);
-        Signature signature = null;
-        if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
-        {
-            signature = rlpStream.DecodeSignature();
-        }
-        ulong gapNumber = rlpStream.DecodeULong();
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            rlpStream.Check(endPosition);
         }
         return new Vote(proposedBlockInfo, gapNumber, signature);
     }
@@ -74,7 +55,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
     public Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptySequence;
+            return Rlp.OfEmptyList;
 
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);

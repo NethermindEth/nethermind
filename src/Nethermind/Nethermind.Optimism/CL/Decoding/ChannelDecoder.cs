@@ -31,7 +31,7 @@ public class ChannelDecoder
         {
             throw new Exception($"Unsupported compression algorithm {data[0]}");
         }
-        return memoryStream.GetBuffer();
+        return memoryStream.GetBuffer().AsMemory(0, (int)memoryStream.Length);
     }
 
     private static void CopyDataWithLimit(Stream input, Stream output)

@@ -450,7 +450,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     private void ConfigureStateSyncComponent(ContainerBuilder serviceCollection)
     {
         serviceCollection
-            .AddSingleton<StateSyncPivot>()
+            .AddSingleton<IStateSyncPivot, StateSyncPivot>()
             .AddSingleton<ITreeSyncStore, PatriciaTreeSyncStore>()
             .AddSingleton<ITreeSync, TreeSync>();
 

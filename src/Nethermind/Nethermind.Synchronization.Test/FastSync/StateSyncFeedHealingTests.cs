@@ -22,7 +22,7 @@ namespace Nethermind.Synchronization.Test.FastSync;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class StateSyncFeedHealingTests() : StateSyncFeedTestsBase()
+public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
 {
     [Test]
     public async Task HealTreeWithoutBoundaryProofs()
@@ -32,7 +32,7 @@ public class StateSyncFeedHealingTests() : StateSyncFeedTestsBase()
 
         Hash256 rootHash = remote.StateTree.RootHash;
 
-        await using IContainer container = PrepareDownloader(remote);
+        await using IContainer container = PrepareDownloader(remote, syncDispatcherAllocateTimeoutMs: 2000);
         var local = container.Resolve<IStateSyncTestOperation>();
         ISnapTrieFactory snapTrieFactory = container.Resolve<ISnapTrieFactory>();
 

@@ -18,55 +18,47 @@ namespace Nethermind.Core.Extensions
     public static class SpanExtensions
     {
         // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
-        // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
+        // one node, they will not be the same on another node or across a restart so hash collision cannot be used to degrade
         // the performance of the network as a whole.
-        private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+        public static readonly uint InstanceRandom =
+#if ZK_EVM
+            2098026241U;
+#else
+            (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+#endif
+        internal static uint ComputeSeed(int len) => InstanceRandom + (uint)len;
 
-        internal static uint ComputeSeed(int len) => s_instanceRandom + (uint)len;
+        public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false) =>
+            memory.Span.ToHexString(withZeroX, false, false);
 
-        public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false)
+        public static string ToHexString(this in ReadOnlyMemory<byte> memory, bool withZeroX = false) =>
+            memory.Span.ToHexString(withZeroX, false, false);
+
+        extension(in ReadOnlySpan<byte> span)
         {
-            return ToHexString(memory.Span, withZeroX, false, false);
+            public string ToHexString(bool withZeroX) =>
+                span.ToHexString(withZeroX, false, false);
+
+            public string ToHexString(bool withZeroX, bool noLeadingZeros) =>
+                ToHexViaLookup(span, withZeroX, noLeadingZeros, false);
+
+            public string ToHexString() =>
+                span.ToHexString(false, false, false);
+
+            public string ToHexString(bool withZeroX, bool noLeadingZeros, bool withEip55Checksum) =>
+                ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
         }
 
-        public static string ToHexString(this in ReadOnlyMemory<byte> memory, bool withZeroX = false)
+        extension(in Span<byte> span)
         {
-            return ToHexString(memory.Span, withZeroX, false, false);
-        }
+            public string ToHexString(bool withZeroX) =>
+                ToHexViaLookup(span, withZeroX, false, false);
 
-        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX)
-        {
-            return ToHexString(span, withZeroX, false, false);
-        }
+            public string ToHexString() =>
+                ToHexViaLookup(span, false, false, false);
 
-        public static string ToHexString(this in Span<byte> span, bool withZeroX)
-        {
-            return ToHexViaLookup(span, withZeroX, false, false);
-        }
-
-        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX, bool noLeadingZeros)
-        {
-            return ToHexViaLookup(span, withZeroX, noLeadingZeros, false);
-        }
-
-        public static string ToHexString(this in ReadOnlySpan<byte> span)
-        {
-            return ToHexString(span, false, false, false);
-        }
-
-        public static string ToHexString(this in Span<byte> span)
-        {
-            return ToHexViaLookup(span, false, false, false);
-        }
-
-        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
-        {
-            return ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
-        }
-
-        public static string ToHexString(this in Span<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
-        {
-            return ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
+            public string ToHexString(bool withZeroX, bool noLeadingZeros, bool withEip55Checksum) =>
+                ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
         }
 
         [DebuggerStepThrough]
@@ -228,12 +220,14 @@ namespace Nethermind.Core.Extensions
         /// </remarks>
         [SkipLocalsInit]
         public static int FastHash(this ReadOnlySpan<byte> input)
+            => FastHash(input, InstanceRandom + (uint)input.Length);
+
+        internal static int FastHash(ReadOnlySpan<byte> input, uint seed)
         {
             int len = input.Length;
             if (len == 0) return 0;
 
             ref byte start = ref MemoryMarshal.GetReference(input);
-            uint seed = s_instanceRandom + (uint)len;
 
             if (len >= 16)
             {
@@ -342,7 +336,8 @@ namespace Nethermind.Core.Extensions
         internal static int FastHashAesArm(ref byte start, int len, uint seed)
         {
             Vector128<byte> seedVec = Vector128.CreateScalar(seed).AsByte();
-            Vector128<byte> acc0 = Unsafe.As<byte, Vector128<byte>>(ref start) ^ seedVec;
+            Vector128<byte> input0 = Unsafe.As<byte, Vector128<byte>>(ref start);
+            Vector128<byte> acc0 = input0 ^ seedVec;
 
             if (len > 64)
             {
@@ -417,10 +412,19 @@ namespace Nethermind.Core.Extensions
                 Vector128<byte> last = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 16));
                 acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(last, acc0));
             }
-            else
+            else if (len > 16)
             {
                 Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 16));
                 acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, acc0));
+            }
+            else
+            {
+                // len == 16: start+len-16 == start, so data would be the same bytes
+                // that built acc0. ARM Arm.Aes.Encrypt XORs its operands before scrambling,
+                // so Encrypt(input, input^seed) cancels input, losing all input dependence.
+                // Feed input and seedVec directly so the XOR yields (input ^ seed),
+                // then SubBytes and ShiftRows, and Arm.Aes.MixColumns completes the round.
+                acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(input0, seedVec));
             }
 
             ulong compressed = acc0.AsUInt64().GetElement(0) ^ acc0.AsUInt64().GetElement(1);
@@ -538,7 +542,7 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static long FastHash64For32Bytes(ref byte start)
         {
-            uint seed = s_instanceRandom + 32;
+            uint seed = InstanceRandom + 32;
 
             if (x64.Aes.IsSupported || Arm.Aes.IsSupported)
             {
@@ -570,7 +574,7 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static long FastHash64For20Bytes(ref byte start)
         {
-            uint seed = s_instanceRandom + 20;
+            uint seed = InstanceRandom + 20;
 
             if (x64.Aes.IsSupported || Arm.Aes.IsSupported)
             {

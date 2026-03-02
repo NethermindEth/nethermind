@@ -81,12 +81,10 @@ internal static partial class XdcExtensions
 
     public static Signature DecodeSignature(this RlpStream stream)
     {
-        //includes the list prefix, which is 2 bytes for a 65 byte signature
-        ReadOnlySpan<byte> sigBytes = stream.PeekNextItem();
-        if (sigBytes.Length != Signature.Size + 2)
-            throw new RlpException($"Invalid signature length in '{nameof(Vote)}'");
-        Signature signature = new Signature(sigBytes.Slice(2, 64), sigBytes[66]);
-        stream.SkipItem();
+        Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
+        ctx.Position = stream.Position;
+        Signature signature = DecodeSignature(ref ctx);
+        stream.Position = ctx.Position;
         return signature;
     }
 }

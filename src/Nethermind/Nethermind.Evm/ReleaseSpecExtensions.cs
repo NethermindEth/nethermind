@@ -4,99 +4,112 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
     public static class ReleaseSpecExtensions
     {
-        public static long GetClearReversalRefund(this IReleaseSpec spec) =>
-            spec.UseHotAndColdStorage
-                ? RefundOf.SResetReversedHotCold
-                : spec.UseIstanbulNetGasMetering
-                    ? RefundOf.SResetReversedEip2200
-                    : spec.UseConstantinopleNetGasMetering
-                        ? RefundOf.SResetReversedEip1283
-                        : throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled");
+        extension(IReleaseSpec spec)
+        {
+            public long GetClearReversalRefund() =>
+                spec.UseHotAndColdStorage
+                    ? RefundOf.SResetReversedHotCold
+                    : spec.UseIstanbulNetGasMetering
+                        ? RefundOf.SResetReversedEip2200
+                        : spec.UseConstantinopleNetGasMetering
+                            ? RefundOf.SResetReversedEip1283
+                            : throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled");
 
-        public static long GetSetReversalRefund(this IReleaseSpec spec) =>
-            spec.UseHotAndColdStorage
-                ? RefundOf.SSetReversedHotCold
-                : spec.UseIstanbulNetGasMetering
-                    ? RefundOf.SSetReversedEip2200
-                    : spec.UseConstantinopleNetGasMetering
-                        ? RefundOf.SSetReversedEip1283
-                        : throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled");
+            public long GetSetReversalRefund() =>
+                spec.UseHotAndColdStorage
+                    ? RefundOf.SSetReversedHotCold
+                    : spec.UseIstanbulNetGasMetering
+                        ? RefundOf.SSetReversedEip2200
+                        : spec.UseConstantinopleNetGasMetering
+                            ? RefundOf.SSetReversedEip1283
+                            : throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled");
 
-        public static long GetSStoreResetCost(this IReleaseSpec spec) =>
-            spec.UseHotAndColdStorage
-                ? GasCostOf.SReset - GasCostOf.ColdSLoad
-                : GasCostOf.SReset;
+            public long GetSStoreResetCost() =>
+                spec.UseHotAndColdStorage
+                    ? GasCostOf.SReset - GasCostOf.ColdSLoad
+                    : GasCostOf.SReset;
 
-        public static long GetNetMeteredSStoreCost(this IReleaseSpec spec) =>
-            spec.UseHotAndColdStorage
-                ? GasCostOf.WarmStateRead
-                : spec.UseIstanbulNetGasMetering
-                    ? GasCostOf.SStoreNetMeteredEip2200
-                    : spec.UseConstantinopleNetGasMetering
-                        ? GasCostOf.SStoreNetMeteredEip1283
-                        : throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled");
+            public long GetNetMeteredSStoreCost() =>
+                spec.UseHotAndColdStorage
+                    ? GasCostOf.WarmStateRead
+                    : spec.UseIstanbulNetGasMetering
+                        ? GasCostOf.SStoreNetMeteredEip2200
+                        : spec.UseConstantinopleNetGasMetering
+                            ? GasCostOf.SStoreNetMeteredEip1283
+                            : throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled");
 
-        public static long GetBalanceCost(this IReleaseSpec spec) =>
-            spec.UseHotAndColdStorage
-                ? 0L
-                : spec.UseLargeStateDDosProtection
-                    ? GasCostOf.BalanceEip1884
+            public long GetBalanceCost() =>
+                spec.UseHotAndColdStorage
+                    ? 0L
+                    : spec.UseLargeStateDDosProtection
+                        ? GasCostOf.BalanceEip1884
+                        : spec.UseShanghaiDDosProtection
+                            ? GasCostOf.BalanceEip150
+                            : GasCostOf.Balance;
+
+            public long GetSLoadCost() =>
+                spec.UseHotAndColdStorage
+                    ? 0L
+                    : spec.UseLargeStateDDosProtection
+                        ? GasCostOf.SLoadEip1884
+                        : spec.UseShanghaiDDosProtection
+                            ? GasCostOf.SLoadEip150
+                            : GasCostOf.SLoad;
+
+            public long GetExtCodeHashCost() =>
+                spec.UseHotAndColdStorage
+                    ? 0L
+                    : spec.UseLargeStateDDosProtection
+                        ? GasCostOf.ExtCodeHashEip1884
+                        : GasCostOf.ExtCodeHash;
+
+            public long GetExtCodeCost() =>
+                spec.UseHotAndColdStorage
+                    ? 0L
                     : spec.UseShanghaiDDosProtection
-                        ? GasCostOf.BalanceEip150
-                        : GasCostOf.Balance;
+                        ? GasCostOf.ExtCodeEip150
+                        : GasCostOf.ExtCode;
 
-        public static long GetSLoadCost(this IReleaseSpec spec) =>
-            spec.UseHotAndColdStorage
-                ? 0L
-                : spec.UseLargeStateDDosProtection
-                    ? GasCostOf.SLoadEip1884
+            public long GetCallCost() =>
+                spec.UseHotAndColdStorage
+                    ? 0L
                     : spec.UseShanghaiDDosProtection
-                        ? GasCostOf.SLoadEip150
-                        : GasCostOf.SLoad;
+                        ? GasCostOf.CallEip150
+                        : GasCostOf.Call;
 
-        public static long GetExtCodeHashCost(this IReleaseSpec spec) =>
-            spec.UseHotAndColdStorage
-                ? 0L
-                : spec.UseLargeStateDDosProtection
-                    ? GasCostOf.ExtCodeHashEip1884
-                    : GasCostOf.ExtCodeHash;
+            public long GetExpByteCost() =>
+                spec.UseExpDDosProtection
+                    ? GasCostOf.ExpByteEip160
+                    : GasCostOf.ExpByte;
 
-        public static long GetExtCodeCost(this IReleaseSpec spec) =>
-            spec.UseHotAndColdStorage
-                ? 0L
-                : spec.UseShanghaiDDosProtection
-                    ? GasCostOf.ExtCodeEip150
-                    : GasCostOf.ExtCode;
+            public ulong GetMaxBlobGasPerBlock() =>
+                spec.MaxBlobCount * Eip4844Constants.GasPerBlob;
 
-        public static long GetCallCost(this IReleaseSpec spec) =>
-            spec.UseHotAndColdStorage
-                ? 0L
-                : spec.UseShanghaiDDosProtection
-                    ? GasCostOf.CallEip150
-                    : GasCostOf.Call;
+            public ulong GetMaxBlobGasPerTx() =>
+                spec.MaxBlobsPerTx * Eip4844Constants.GasPerBlob;
 
-        public static long GetExpByteCost(this IReleaseSpec spec) =>
-            spec.UseExpDDosProtection
-                ? GasCostOf.ExpByteEip160
-                : GasCostOf.ExpByte;
+            public ulong GetTargetBlobGasPerBlock() =>
+                spec.TargetBlobCount * Eip4844Constants.GasPerBlob;
 
-        public static ulong GetMaxBlobGasPerBlock(this IReleaseSpec spec) =>
-            spec.MaxBlobCount * Eip4844Constants.GasPerBlob;
+            public int MaxProductionBlobCount(int? blockProductionBlobLimit) =>
+                blockProductionBlobLimit >= 0
+                    ? Math.Min(blockProductionBlobLimit.Value, (int)spec.MaxBlobCount)
+                    : (int)spec.MaxBlobCount;
 
-        public static ulong GetMaxBlobGasPerTx(this IReleaseSpec spec) =>
-            spec.MaxBlobsPerTx * Eip4844Constants.GasPerBlob;
+            public long GetTxDataNonZeroMultiplier() =>
+                spec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroMultiplierEip2028 : GasCostOf.TxDataNonZeroMultiplier;
 
-        public static ulong GetTargetBlobGasPerBlock(this IReleaseSpec spec) =>
-            spec.TargetBlobCount * Eip4844Constants.GasPerBlob;
+            public long GetBaseDataCost(Transaction tx) =>
+                tx.IsContractCreation && spec.IsEip3860Enabled
+                    ? EvmCalculations.Div32Ceiling((UInt256)tx.Data.Length) * GasCostOf.InitCodeWord
+                    : 0;
 
-        public static int MaxProductionBlobCount(this IReleaseSpec spec, int? blockProductionBlobLimit) =>
-            blockProductionBlobLimit >= 0
-                ? Math.Min(blockProductionBlobLimit.Value, (int)spec.MaxBlobCount)
-                : (int)spec.MaxBlobCount;
+        }
     }
 }

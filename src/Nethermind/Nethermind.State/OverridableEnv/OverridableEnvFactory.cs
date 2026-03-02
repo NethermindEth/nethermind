@@ -34,7 +34,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
         private readonly IOverridableCodeInfoRepository _codeInfoRepository = childLifetimeScope.Resolve<IOverridableCodeInfoRepository>();
         private readonly IWorldState _worldState = childLifetimeScope.Resolve<IWorldState>();
 
-        public IDisposable BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
+        public IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride)
         {
             if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");
 
@@ -43,7 +43,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
 
             try
             {
-                if (stateOverride is not null)
+                if (stateOverride is not null && header is not null)
                 {
                     _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
                     header.StateRoot = _worldState.StateRoot;
