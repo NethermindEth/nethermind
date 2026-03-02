@@ -106,24 +106,4 @@ IContainer container = new ContainerBuilder()
     .Build();
 ```
 
-## Extending TestBlockchain for domain-specific test bases
-
-`TestBlockchain` is a legacy wrapper. Prefer direct DI for new tests. If you do use it, always dispose with `using`:
-
-```csharp
-public class MyTestBlockchain : TestBlockchain
-{
-    public IMyService MyService => Container.Resolve<IMyService>();
-
-    protected override Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
-    {
-        return base.Build(builder =>
-        {
-            builder.AddSingleton<IMyService, MyService>();
-            configurer?.Invoke(builder);
-        });
-    }
-}
-```
-
 Never add test-specific code to production modules. Overrides belong in `TestEnvironmentModule`, `TestBlockProcessingModule`, or a new test module passed to `Build`.

@@ -57,20 +57,20 @@ IBlockProcessor blockProcessor = new BlockProcessor(..., txProcessor, worldState
 **Correct — use DI with targeted overrides:**
 
 ```csharp
-// Unit tests: TestBlockchain with builder overrides
-using TestBlockchain chain = await TestBlockchain.ForMainnet()
-    .Build(builder => builder
-        .AddSingleton<ISpecProvider>(mySpecProvider)
-        .AddDecorator<IBlockProcessor, MyCustomBlockProcessor>());
+// Unit tests: direct DI with targeted overrides
+IContainer container = new ContainerBuilder()
+    .AddModule(new PseudoNethermindModule(spec, configProvider, logManager))
+    .AddModule(new TestEnvironmentModule(nodeKey, null))
+    .Build();
 
 // Benchmarks: production modules + DiagnosticMode.MemDb
-new ContainerBuilder()
+IContainer container = new ContainerBuilder()
     .AddModule(new NethermindModule(spec, configProvider, LimboLogs.Instance))
     .AddModule(new TestEnvironmentModule(nodeKey, null))
     .Build();
 ```
 
-The rule: **if `TestBlockchain` or production modules already wire a component, use them — don't construct it yourself**.
+The rule: **if production modules already wire a component, use them — don't construct it yourself**.
 
 ## Test guidelines
 
