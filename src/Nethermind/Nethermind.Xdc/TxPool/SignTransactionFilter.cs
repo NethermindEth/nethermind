@@ -55,10 +55,6 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
         }
 
         Snapshot? snapshot = snapshotManager.GetSnapshotByBlockNumber(headerNumber, spec);
-        if (snapshot is null)
-        {
-            return AcceptTxResult.Invalid;
-        }
 
         if (!IsEpochCandidate(snapshot, tx.SenderAddress))
         {
@@ -68,9 +64,9 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
         return AcceptTxResult.Accepted;
     }
 
-    private static bool IsEpochCandidate(Snapshot snapshot, Address? senderAddress)
+    private static bool IsEpochCandidate(Snapshot? snapshot, Address? senderAddress)
     {
-        if (senderAddress is null)
+        if (snapshot is null || senderAddress is null)
         {
             return false;
         }
