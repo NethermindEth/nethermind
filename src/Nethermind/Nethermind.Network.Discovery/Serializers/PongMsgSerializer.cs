@@ -42,18 +42,19 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
     {
         (PublicKey farPublicKey, _, IByteBuffer data) = PrepareForDeserialization(msgBytes);
 
-        NettyRlpStream rlp = new(data);
+        Rlp.ValueDecoderContext ctx = data.AsRlpContext();
 
-        rlp.ReadSequenceLength();
-        rlp.ReadSequenceLength();
+        ctx.ReadSequenceLength();
+        ctx.ReadSequenceLength();
 
-        // GetAddress(rlp.DecodeByteArray(), rlp.DecodeInt());
-        rlp.DecodeByteArraySpan();
-        rlp.DecodeInt(); // UDP port (we ignore and take it from Netty)
-        rlp.DecodeInt(); // TCP port
-        byte[] token = rlp.DecodeByteArray();
-        long expirationTime = rlp.DecodeLong();
+        // GetAddress(ctx.DecodeByteArray(), ctx.DecodeInt());
+        ctx.DecodeByteArraySpan();
+        ctx.DecodeInt(); // UDP port (we ignore and take it from Netty)
+        ctx.DecodeInt(); // TCP port
+        byte[] token = ctx.DecodeByteArray();
+        long expirationTime = ctx.DecodeLong();
 
+        data.SetReaderIndex(data.ReaderIndex + ctx.Position);
         PongMsg msg = new(farPublicKey, expirationTime, token);
         return msg;
     }
