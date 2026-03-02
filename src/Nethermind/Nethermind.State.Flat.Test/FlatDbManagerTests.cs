@@ -53,6 +53,7 @@ public class FlatDbManagerTests
         _snapshotCompactor,
         _snapshotRepository,
         _persistenceManager,
+        NoopBloomFilterManager.Instance,
         _config,
         LimboLogs.Instance,
         enableDetailedMetrics: false);

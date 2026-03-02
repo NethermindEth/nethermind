@@ -3,7 +3,7 @@
 
 namespace Nethermind.State.Flat.Persistence.BloomFilter;
 
-public interface IBloomFilter : IDisposable
+public interface IBloomFilter
 {
     long StartingBlockNumber { get; }
     long EndingBlockNumber { get; }

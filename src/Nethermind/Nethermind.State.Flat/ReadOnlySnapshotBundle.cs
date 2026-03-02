@@ -19,8 +19,7 @@ namespace Nethermind.State.Flat;
 
 /// <summary>
 /// A read-only bundle of <see cref="Snapshot"/>s backed by a persistence reader.
-/// When a <see cref="IBloomFilterManager"/> is provided, bloom segments group consecutive snapshots by block range
-/// so a single bloom miss skips all snapshots in that range at once.
+/// When bloom segments are provided, a single bloom miss skips all snapshots in that range at once.
 /// </summary>
 public sealed class ReadOnlySnapshotBundle : RefCountingDisposable
 {
@@ -45,64 +44,16 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable
         SnapshotPooledList snapshots,
         IPersistence.IPersistenceReader persistenceReader,
         bool recordDetailedMetrics,
-        IBloomFilterManager? bloomFilterManager = null,
-        int bloomRangeSize = 128)
+        BloomSegment[]? segments = null)
     {
         _snapshots = snapshots;
         _persistenceReader = persistenceReader;
         _recordDetailedMetrics = recordDetailedMetrics;
-        // Only build segments when we have a real bloom filter manager and snapshots to work with
-        _segments = bloomFilterManager is not null && snapshots.Count > 0
-            ? BuildSegments(snapshots, bloomFilterManager, bloomRangeSize)
-            : null;
+        // Normalize empty array to null (Autofac auto-resolves T[] as empty array)
+        _segments = segments is { Length: > 0 } ? segments : null;
     }
 
     public int SnapshotCount => _snapshots.Count;
-
-    /// <summary>
-    /// Groups consecutive snapshots whose block numbers fall in the same bloom range bucket.
-    /// Snapshots are ordered oldest-first (index 0 = oldest).
-    /// </summary>
-    private static BloomSegment[] BuildSegments(
-        SnapshotPooledList snapshots,
-        IBloomFilterManager bloomFilterManager,
-        int bloomRangeSize)
-    {
-        ArrayPoolList<BloomSegment> segments = new(Math.Max(1, snapshots.Count / 4));
-
-        int segStart = 0;
-        long currentBucket = snapshots[0].To.BlockNumber / bloomRangeSize;
-
-        for (int i = 1; i < snapshots.Count; i++)
-        {
-            long bucket = snapshots[i].To.BlockNumber / bloomRangeSize;
-            if (bucket != currentBucket)
-            {
-                IBloomFilter? bloom = GetSingleBloom(bloomFilterManager, currentBucket, bloomRangeSize);
-                segments.Add(new BloomSegment(bloom, segStart, i - 1));
-                segStart = i;
-                currentBucket = bucket;
-            }
-        }
-
-        // Final segment
-        {
-            IBloomFilter? bloom = GetSingleBloom(bloomFilterManager, currentBucket, bloomRangeSize);
-            segments.Add(new BloomSegment(bloom, segStart, snapshots.Count - 1));
-        }
-
-        BloomSegment[] result = segments.ToArray();
-        segments.Dispose();
-        return result;
-    }
-
-    private static IBloomFilter? GetSingleBloom(IBloomFilterManager bloomFilterManager, long bucket, int bloomRangeSize)
-    {
-        long bucketStart = bucket * bloomRangeSize;
-        long bucketEnd = (bucket + 1) * bloomRangeSize - 1;
-        using ArrayPoolList<IBloomFilter> blooms = bloomFilterManager.GetBloomFiltersForRange(bucketStart, bucketEnd);
-        return blooms.Count == 1 ? blooms[0] : null;
-    }
 
     public Account? GetAccount(Address address)
     {
@@ -118,7 +69,7 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable
             for (int seg = _segments.Length - 1; seg >= 0; seg--)
             {
                 BloomSegment segment = _segments[seg];
-                if (segment.Bloom is not null && !segment.Bloom.MightContain(bloomKey))
+                if (!segment.Bloom.MightContain(bloomKey))
                 {
                     Metrics.BloomFilterSkip++;
                     continue;
@@ -169,7 +120,7 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable
             for (int seg = _segments.Length - 1; seg >= 0; seg--)
             {
                 BloomSegment segment = _segments[seg];
-                if (segment.Bloom is not null && !segment.Bloom.MightContain(bloomKey))
+                if (!segment.Bloom.MightContain(bloomKey))
                     continue;
 
                 for (int i = segment.EndIdx; i >= segment.StartIdx; i--)
@@ -203,7 +154,7 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable
             for (int seg = _segments.Length - 1; seg >= 0; seg--)
             {
                 BloomSegment segment = _segments[seg];
-                if (segment.Bloom is not null && !segment.Bloom.MightContain(bloomKey))
+                if (!segment.Bloom.MightContain(bloomKey))
                 {
                     // Even when skipping, check if self-destruct boundary is within this segment
                     if (selfDestructStateIdx >= segment.StartIdx && selfDestructStateIdx <= segment.EndIdx)
@@ -290,13 +241,37 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable
         GuardDispose();
 
         long sw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        for (int i = _snapshots.Count - 1; i >= 0; i--)
+
+        if (_segments is not null)
         {
-            if (_snapshots[i].TryGetStorageNode(address, path, out node))
+            ulong bloomKey = XxHash64.HashToUInt64(((Hash256)address).Bytes);
+            for (int seg = _segments.Length - 1; seg >= 0; seg--)
             {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);
-                return true;
+                BloomSegment segment = _segments[seg];
+                if (!segment.Bloom.MightContain(bloomKey))
+                    continue;
+
+                for (int i = segment.EndIdx; i >= segment.StartIdx; i--)
+                {
+                    if (_snapshots[i].TryGetStorageNode(address, path, out node))
+                    {
+                        Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                        if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);
+                        return true;
+                    }
+                }
+            }
+        }
+        else
+        {
+            for (int i = _snapshots.Count - 1; i >= 0; i--)
+            {
+                if (_snapshots[i].TryGetStorageNode(address, path, out node))
+                {
+                    Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                    if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);
+                    return true;
+                }
             }
         }
 
@@ -341,9 +316,22 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable
 
         _snapshots.Dispose();
 
+        // Release leases on bloom filters acquired during segment building
+        if (_segments is not null)
+        {
+            for (int i = 0; i < _segments.Length; i++)
+            {
+                if (_segments[i].Bloom is IDisposable d)
+                    d.Dispose();
+            }
+        }
+
         // Null them in case unexpected mutation from trie warmer
         _persistenceReader.Dispose();
     }
 
-    private readonly record struct BloomSegment(IBloomFilter? Bloom, int StartIdx, int EndIdx);
+    /// <summary>
+    /// Groups consecutive snapshots whose block numbers fall in the same bloom range bucket.
+    /// </summary>
+    public readonly record struct BloomSegment(IBloomFilter Bloom, int StartIdx, int EndIdx);
 }

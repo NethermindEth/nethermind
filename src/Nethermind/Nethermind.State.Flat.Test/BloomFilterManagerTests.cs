@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -122,7 +123,11 @@ public class BloomFilterManagerTests
         list.Add(snapshot);
         snapshot.TryAcquire(); // Keep it alive
 
-        ReadOnlySnapshotBundle bundle = new(list, new NoopPersistenceReader(), false, manager, 128);
+        // Build segments manually (mimicking FlatDbManager.BuildBloomSegments)
+        using ArrayPoolList<IBloomFilter> blooms = manager.GetBloomFiltersForRange(0, 127);
+        ReadOnlySnapshotBundle.BloomSegment[] segments = [new(blooms[0], 0, 0)];
+
+        ReadOnlySnapshotBundle bundle = new(list, new NoopPersistenceReader(), false, segments);
         bundle.TryLease();
 
         // Looking up the address that IS in the snapshot should succeed

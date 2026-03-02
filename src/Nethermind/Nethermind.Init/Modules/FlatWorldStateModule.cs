@@ -45,6 +45,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<PruningTrieStateFactory>(_ => throw new NotSupportedException($"{nameof(PruningTrieStateFactory)} disabled."))
 
             // The actual flatDb components
+            .AddSingleton<IBloomFilterManager>((ctx) =>
+            {
+                IFlatDbConfig config = ctx.Resolve<IFlatDbConfig>();
+                return new BloomFilterManager(config.BloomFilterRangeSize, 10_000, 14);
+            })
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IProcessExitSource>(),
@@ -52,6 +57,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ISnapshotCompactor>(),
                 ctx.Resolve<ISnapshotRepository>(),
                 ctx.Resolve<IPersistenceManager>(),
+                ctx.Resolve<IBloomFilterManager>(),
                 ctx.Resolve<IFlatDbConfig>(),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))

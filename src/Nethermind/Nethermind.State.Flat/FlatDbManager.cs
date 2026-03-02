@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
@@ -64,6 +65,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         ISnapshotCompactor snapshotCompactor,
         ISnapshotRepository snapshotRepository,
         IPersistenceManager persistenceManager,
+        IBloomFilterManager bloomFilterManager,
         IFlatDbConfig config,
         ILogManager logManager,
         bool enableDetailedMetrics)
@@ -73,13 +75,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _snapshotRepository = snapshotRepository;
         _resourcePool = resourcePool;
         _persistenceManager = persistenceManager;
+        _bloomFilterManager = bloomFilterManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
 
         _compactSize = config.CompactSize;
         _inlineCompaction = config.InlineCompaction;
         _bloomRangeSize = config.BloomFilterRangeSize;
-        _bloomFilterManager = new BloomFilterManager(_bloomRangeSize, 10_000, 14);
 
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
 
@@ -155,6 +157,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (currentPersistedStateId == StateId.PreGenesis) return;
 
         _snapshotRepository.RemoveStatesUntil(currentPersistedStateId);
+        _bloomFilterManager.RemoveBloomsUpTo(currentPersistedStateId.BlockNumber);
         ClearReadOnlyBundleCache();
         ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(currentPersistedStateId.BlockNumber));
     }
@@ -238,7 +241,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (baseBlock == StateId.PreGenesis)
         {
             // Special case for pregenesis. Note: nethermind always tries to generate genesis.
-            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, NoopBloomFilterManager.Instance, _bloomRangeSize);
+            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics);
         }
 
         long sw = 0;
@@ -299,7 +302,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
 
-            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _enableDetailedMetrics, _bloomFilterManager, _bloomRangeSize);
+            ReadOnlySnapshotBundle.BloomSegment[]? segments = snapshots.Count > 0
+                ? BuildBloomSegments(snapshots)
+                : null;
+            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _enableDetailedMetrics, segments);
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))
@@ -310,6 +316,52 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             Metrics.SnapshotBundleSize = snapshots.Count;
             return res;
         }
+    }
+
+    /// <summary>
+    /// Groups consecutive snapshots whose block numbers fall in the same bloom range bucket.
+    /// Acquires leases on bloom filters so they stay alive as long as the bundle.
+    /// </summary>
+    private ReadOnlySnapshotBundle.BloomSegment[] BuildBloomSegments(SnapshotPooledList snapshots)
+    {
+        ArrayPoolList<ReadOnlySnapshotBundle.BloomSegment> segments = new(Math.Max(1, snapshots.Count / 4));
+
+        int segStart = 0;
+        long currentBucket = snapshots[0].To.BlockNumber / _bloomRangeSize;
+
+        for (int i = 1; i < snapshots.Count; i++)
+        {
+            long bucket = snapshots[i].To.BlockNumber / _bloomRangeSize;
+            if (bucket != currentBucket)
+            {
+                IBloomFilter bloom = AcquireBloomForBucket(currentBucket);
+                segments.Add(new ReadOnlySnapshotBundle.BloomSegment(bloom, segStart, i - 1));
+                segStart = i;
+                currentBucket = bucket;
+            }
+        }
+
+        // Final segment
+        {
+            IBloomFilter bloom = AcquireBloomForBucket(currentBucket);
+            segments.Add(new ReadOnlySnapshotBundle.BloomSegment(bloom, segStart, snapshots.Count - 1));
+        }
+
+        ReadOnlySnapshotBundle.BloomSegment[] result = segments.ToArray();
+        segments.Dispose();
+        return result;
+    }
+
+    private IBloomFilter AcquireBloomForBucket(long bucket)
+    {
+        long bucketStart = bucket * _bloomRangeSize;
+        long bucketEnd = (bucket + 1) * _bloomRangeSize - 1;
+        using ArrayPoolList<IBloomFilter> blooms = _bloomFilterManager.GetBloomFiltersForRange(bucketStart, bucketEnd);
+
+        if (blooms.Count == 1 && blooms[0] is BlockRangeBloomFilter b && b.TryAcquire())
+            return b;
+
+        return NoopBloomFilter.Instance;
     }
 
     public void AddSnapshot(Snapshot snapshot, TransientResource transientResource)
@@ -380,6 +432,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (cancellationToken.IsCancellationRequested) return;
 
         _snapshotRepository.RemoveStatesUntil(persistedState);
+        _bloomFilterManager.RemoveBloomsUpTo(persistedState.BlockNumber);
 
         ClearReadOnlyBundleCache();
         _trieNodeCache.Clear();
@@ -409,7 +462,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await _populateTrieNodeCacheTask;
         await _persistenceTask;
 
-        (_bloomFilterManager as IDisposable)?.Dispose();
         _cancelTokenSource.Dispose();
     }
 }

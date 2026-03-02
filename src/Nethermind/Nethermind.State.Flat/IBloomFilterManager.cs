@@ -10,4 +10,5 @@ public interface IBloomFilterManager
 {
     ArrayPoolList<IBloomFilter> GetBloomFiltersForRange(long startingBlockNumber, long endingBlockNumber);
     void AddEntries(Snapshot snapshot);
+    void RemoveBloomsUpTo(long blockNumber);
 }

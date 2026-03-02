@@ -14,4 +14,5 @@ public sealed class NoopBloomFilterManager : IBloomFilterManager
         new(0);
 
     public void AddEntries(Snapshot snapshot) { }
+    public void RemoveBloomsUpTo(long blockNumber) { }
 }
