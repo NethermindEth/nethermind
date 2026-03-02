@@ -726,6 +726,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             IBlockProcessor blockProcessor,
             BlockProcessorExceptionDetector blockProcessorExceptionDetector) : IBlockProcessor
         {
+            public event Action? TransactionsExecuted
+            {
+                add => blockProcessor.TransactionsExecuted += value;
+                remove => blockProcessor.TransactionsExecuted -= value;
+            }
 
             public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
                 IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
