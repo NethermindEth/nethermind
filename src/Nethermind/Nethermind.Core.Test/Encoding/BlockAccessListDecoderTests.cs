@@ -337,7 +337,7 @@ public class BlockAccessListDecoderTests
 
         Assert.That(
             () => Rlp.Decode<SlotChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage changes were in incorrect order."));
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage changes were in incorrect order. index=1, lastIndex=2"));
     }
 
     private static IEnumerable<TestCaseData> BlockAccessListTestSource
