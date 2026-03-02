@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
@@ -186,20 +185,11 @@ internal static partial class EvmInstructions
             vm.TrackingState.WarmUp(contractAddress);
         }
 
-        // Special case: if EOF code format is enabled and the init code starts with the EOF marker,
-        // the creation is not executed. This ensures that a special marker is not mistakenly executed as code.
-        if (spec.IsEofEnabled && initCode.Span.StartsWith(EofValidator.MAGIC))
-        {
-            vm.ReturnDataBuffer = Array.Empty<byte>();
-            TGasPolicy.UpdateGasUp(ref gas, callGas);
-            return new(programCounter, stack.PushZero<TTracingInst>());
-        }
-
         // Increment the nonce of the executing account to reflect the contract creation.
         state.IncrementNonce(callFrame.ExecutingAccount);
 
         // Analyze and compile the initialization code.
-        CodeInfoFactory.CreateInitCodeInfo(initCode, spec, out CodeInfo? codeInfo, out _);
+        CodeInfo codeInfo = CodeInfoFactory.CreateInitCodeInfo(initCode);
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();

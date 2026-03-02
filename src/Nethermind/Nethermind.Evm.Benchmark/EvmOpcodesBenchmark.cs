@@ -86,9 +86,9 @@ public unsafe class EvmOpcodesBenchmark
     private static readonly UInt256 KeccakLength = new((ulong)KeccakWordSize);
     private static readonly Address CallTargetAddress = Address.FromNumber(0x1000);
     private static readonly byte[] StopCode = [(byte)Instruction.STOP];
-    private static readonly Instruction[] AllValidLegacyOpcodes = Enum
+    private static readonly Instruction[] AllValidOpcodes = Enum
         .GetValues<Instruction>()
-        .Where(static opcode => opcode.IsValid(isEofContext: false) && opcode != Instruction.INVALID)
+        .Where(static opcode => opcode.IsValid() && opcode != Instruction.INVALID)
         .ToArray();
     private static readonly Instruction[] PerRunRefreshedOpcodes =
     [
@@ -123,7 +123,7 @@ public unsafe class EvmOpcodesBenchmark
             => LogThresholdPercent,
         _ => DefaultThresholdPercent,
     };
-    public IEnumerable<Instruction> Opcodes => AllValidLegacyOpcodes;
+    public IEnumerable<Instruction> Opcodes => AllValidOpcodes;
 
     [ParamsSource(nameof(Opcodes))]
     public Instruction Opcode { get; set; }

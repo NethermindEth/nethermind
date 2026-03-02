@@ -93,16 +93,10 @@ internal static unsafe partial class EvmInstructions
 
         // External code opcodes with spec-based specialization.
         // Using generic type parameters allows JIT to eliminate dead code paths.
-        lookup[(int)Instruction.EXTCODESIZE] = spec.IsEofEnabled ?
-            &InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag> :
-            &InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag>;
-        lookup[(int)Instruction.EXTCODECOPY] = (spec.IsEip7907Enabled, spec.IsEofEnabled) switch
-        {
-            (true, true) => &InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OnFlag>,
-            (true, false) => &InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OffFlag>,
-            (false, true) => &InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OnFlag>,
-            (false, false) => &InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OffFlag>,
-        };
+        lookup[(int)Instruction.EXTCODESIZE] = &InstructionExtCodeSize<TGasPolicy, TTracingInst>;
+        lookup[(int)Instruction.EXTCODECOPY] = spec.IsEip7907Enabled
+            ? &InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag>
+            : &InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag>;
 
         // Return data opcodes (if enabled).
         if (spec.ReturnDataOpcodesEnabled)
@@ -114,9 +108,7 @@ internal static unsafe partial class EvmInstructions
         // Extended code hash opcode handling.
         if (spec.ExtCodeHashOpcodeEnabled)
         {
-            lookup[(int)Instruction.EXTCODEHASH] = spec.IsEofEnabled ?
-                &InstructionExtCodeHashEof<TGasPolicy, TTracingInst> :
-                &InstructionExtCodeHash<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.EXTCODEHASH] = &InstructionExtCodeHash<TGasPolicy, TTracingInst>;
         }
 
         lookup[(int)Instruction.BLOCKHASH] = &InstructionBlockHash<TGasPolicy, TTracingInst>;
@@ -271,26 +263,6 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.LOG3] = &InstructionLog<TGasPolicy, Op3>;
         lookup[(int)Instruction.LOG4] = &InstructionLog<TGasPolicy, Op4>;
 
-        // Extended opcodes for EO (EoF) mode.
-        if (spec.IsEofEnabled)
-        {
-            lookup[(int)Instruction.DATALOAD] = &InstructionDataLoad<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.DATALOADN] = &InstructionDataLoadN<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.DATASIZE] = &InstructionDataSize<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.DATACOPY] = &InstructionDataCopy<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.RJUMP] = &InstructionRelativeJump;
-            lookup[(int)Instruction.RJUMPI] = &InstructionRelativeJumpIf;
-            lookup[(int)Instruction.RJUMPV] = &InstructionJumpTable;
-            lookup[(int)Instruction.CALLF] = &InstructionCallFunction;
-            lookup[(int)Instruction.RETF] = &InstructionReturnFunction;
-            lookup[(int)Instruction.JUMPF] = &InstructionJumpFunction;
-            lookup[(int)Instruction.DUPN] = &InstructionDupN<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.SWAPN] = &InstructionSwapN<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.EXCHANGE] = &InstructionExchange<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.EOFCREATE] = &InstructionEofCreate<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.RETURNCODE] = &InstructionReturnCode;
-        }
-
         // Contract creation and call opcodes.
         lookup[(int)Instruction.CREATE] = &InstructionCreate<TGasPolicy, OpCreate, TTracingInst>;
         lookup[(int)Instruction.RETURN] = &InstructionReturn;
@@ -350,23 +322,6 @@ internal static unsafe partial class EvmInstructions
         if (spec.Create2OpcodeEnabled)
         {
             lookup[(int)Instruction.CREATE2] = &InstructionCreate<TGasPolicy, OpCreate2, TTracingInst>;
-        }
-
-        lookup[(int)Instruction.RETURNDATALOAD] = &InstructionReturnDataLoad<TGasPolicy, TTracingInst>;
-
-        // Extended call opcodes in EO mode.
-        if (spec.IsEofEnabled)
-        {
-            lookup[(int)Instruction.EXTCALL] = &InstructionEofCall<TGasPolicy, OpEofCall, TTracingInst>;
-            if (spec.DelegateCallEnabled)
-            {
-                lookup[(int)Instruction.EXTDELEGATECALL] =
-                    &InstructionEofCall<TGasPolicy, OpEofDelegateCall, TTracingInst>;
-            }
-            if (spec.StaticCallEnabled)
-            {
-                lookup[(int)Instruction.EXTSTATICCALL] = &InstructionEofCall<TGasPolicy, OpEofStaticCall, TTracingInst>;
-            }
         }
 
         if (spec.RevertOpcodeEnabled)

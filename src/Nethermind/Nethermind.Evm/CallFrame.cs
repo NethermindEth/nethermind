@@ -29,12 +29,9 @@ public sealed class CallFrame<TGasPolicy> : IDisposable
 
     // --- Hot fields (accessed every opcode) ---
     public byte[]? DataStack;
-    public ReturnState[]? ReturnStack;
     public TGasPolicy Gas;
     public int DataStackHead;
-    public int ReturnStackHead;
     public int ProgramCounter { get; set; }
-    public int FunctionIndex { get; set; }
     public Address ExecutingAccount { get; private set; } = null!;
     public Address Caller { get; private set; } = null!;
     public Address? CodeSource { get; private set; }
@@ -116,9 +113,7 @@ public sealed class CallFrame<TGasPolicy> : IDisposable
         frame.OutputLength = 0;
         frame.Refund = 0;
         frame.DataStackHead = 0;
-        frame.ReturnStackHead = 0;
         frame.ProgramCounter = 0;
-        frame.FunctionIndex = 0;
         frame.ExecutionType = executionType;
         frame.IsTopLevel = true;
         frame._canRestore = false;
@@ -175,9 +170,7 @@ public sealed class CallFrame<TGasPolicy> : IDisposable
         frame.OutputLength = outputLength;
         frame.Refund = 0;
         frame.DataStackHead = 0;
-        frame.ReturnStackHead = 0;
         frame.ProgramCounter = 0;
-        frame.FunctionIndex = 0;
         frame.ExecutionType = executionType;
         frame.IsTopLevel = false;
         frame._canRestore = true;
@@ -246,9 +239,8 @@ public sealed class CallFrame<TGasPolicy> : IDisposable
         if (DataStack is not null)
         {
             // Only return if initialized
-            _stackPool.ReturnStacks(DataStack, ReturnStack!);
+            _stackPool.ReturnStacks(DataStack);
             DataStack = null;
-            ReturnStack = null;
         }
 
         _memory.Dispose();
@@ -310,7 +302,7 @@ public sealed class CallFrame<TGasPolicy> : IDisposable
         [MethodImpl(MethodImplOptions.NoInlining)]
         byte[] AllocateStacks()
         {
-            (DataStack, ReturnStack) = _stackPool.RentStacks();
+            DataStack = _stackPool.RentStacks();
             return DataStack;
         }
     }
@@ -351,13 +343,3 @@ public sealed class CallFrame<TGasPolicy> : IDisposable
     }
 }
 
-/// <summary>
-/// Return state for EVM call stack management.
-/// </summary>
-[StructLayout(LayoutKind.Auto)]
-public struct ReturnState
-{
-    public int Index;
-    public int Offset;
-    public int Height;
-}

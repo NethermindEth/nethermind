@@ -406,11 +406,6 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         CallFrame<TGasPolicy> callFrame = vm.CallFrame;
-        // RETURN is not allowed during contract creation.
-        if (callFrame.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
-        {
-            goto BadInstruction;
-        }
 
         // Pop memory position and length for the return data.
         if (!stack.PopUInt256(out UInt256 position, out UInt256 length))
@@ -431,7 +426,5 @@ internal static partial class EvmInstructions
         return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
         return new(programCounter, EvmExceptionType.StackUnderflow);
-    BadInstruction:
-        return new(programCounter, EvmExceptionType.BadInstruction);
     }
 }

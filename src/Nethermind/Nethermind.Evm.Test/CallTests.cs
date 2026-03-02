@@ -108,26 +108,6 @@ namespace Nethermind.Evm.Test
         }
 
         /// <summary>
-        /// Regression: CodeInfo.Version was hardcoded to 0 for all CodeInfo subclasses
-        /// because `codeInfo is CodeInfo` always matches (EofCodeInfo inherits CodeInfo).
-        /// Verify that non-zero versions propagate correctly through CodeInfo.
-        /// </summary>
-        [Test]
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        public void CodeInfo_Version_propagates_correctly(int version)
-        {
-            byte[] code = new byte[] { 0x00 }; // STOP
-            CodeInfo codeInfo = version == 0
-                ? new CodeInfo(code)
-                : new TestCodeInfoWithVersion(version, code);
-
-            Assert.That(codeInfo.Version, Is.EqualTo(version));
-            Assert.That(codeInfo.CodeSpan.Length, Is.EqualTo(1));
-        }
-
-        /// <summary>
         /// A tracer that only traces actions (not instructions).
         /// Regression test verifier: ReportActionError must be called even when
         /// IsTracingInstructions is false.
@@ -155,14 +135,5 @@ namespace Nethermind.Evm.Test
             { }
         }
 
-        /// <summary>
-        /// Test helper: CodeInfo subclass with a custom version, simulating EofCodeInfo
-        /// without requiring a full EOF container.
-        /// </summary>
-        private sealed class TestCodeInfoWithVersion : CodeInfo
-        {
-            public TestCodeInfoWithVersion(int version, ReadOnlyMemory<byte> code)
-                : base(version, code) { }
-        }
     }
 }

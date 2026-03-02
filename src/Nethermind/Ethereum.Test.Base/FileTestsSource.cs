@@ -32,7 +32,6 @@ namespace Ethereum.Test.Base
 
                 return testType switch
                 {
-                    TestType.Eof => JsonToEthereumTest.ConvertToEofTests(json),
                     TestType.State => JsonToEthereumTest.ConvertStateTest(json),
                     _ => JsonToEthereumTest.ConvertToBlockchainTests(json)
                 };

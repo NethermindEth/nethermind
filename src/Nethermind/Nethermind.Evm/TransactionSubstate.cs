@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -31,7 +30,6 @@ public readonly ref struct TransactionSubstate
         logs: _emptyLogs,
         shouldRevert: false,
         tracer: Tracing.NullTxTracer.Instance,
-        deployCode: null!,
         outputBytes: default);
 
     private const string SomeError = "error";
@@ -65,7 +63,6 @@ public readonly ref struct TransactionSubstate
     public string? SubstateError { get; }
     public EvmExceptionType EvmExceptionType { get; }
     public readonly ReadOnlyMemory<byte> OutputBytes;
-    public CodeInfo DeployCode { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
     public JournalCollection<LogEntry> Logs => _logs ?? _emptyLogs;
@@ -93,8 +90,6 @@ public readonly ref struct TransactionSubstate
         ShouldRevert = false;
     }
 
-    public static TransactionSubstate FailedInitCode => new("Eip 7698: Invalid CreateTx InitCode");
-
     private TransactionSubstate(string errorCode)
     {
         Error = errorCode;
@@ -110,12 +105,10 @@ public readonly ref struct TransactionSubstate
         JournalCollection<LogEntry> logs,
         bool shouldRevert,
         ITxTracer tracer,
-        CodeInfo deployCode,
         ReadOnlyMemory<byte> outputBytes,
         EvmExceptionType evmExceptionType = default)
     {
         OutputBytes = outputBytes;
-        DeployCode = deployCode;
         Refund = refund;
         _destroyList = destroyList;
         _logs = logs;

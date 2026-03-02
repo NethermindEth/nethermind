@@ -12,14 +12,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
-using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
@@ -749,10 +747,7 @@ namespace Nethermind.Evm.TransactionProcessing
             inputData = tx.IsMessageCall ? tx.Data : default;
             if (tx.IsContractCreation)
             {
-                if (CodeInfoFactory.CreateInitCodeInfo(tx.Data, spec, out codeInfo, out ReadOnlyMemory<byte> trailingData))
-                {
-                    inputData = trailingData;
-                }
+                codeInfo = CodeInfoFactory.CreateInitCodeInfo(tx.Data);
             }
             else
             {
@@ -886,30 +881,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
             PayValue(tx, spec, opts);
 
-            if (codeInfo is not null)
+            if (tx.IsContractCreation)
             {
-                if (tx.IsContractCreation)
+                // if transaction is a contract creation then recipient address is the contract deployment address
+                if (!PrepareAccountForContractDeployment<TLogTracing>(recipient, _codeInfoRepository, spec))
                 {
-                    // if transaction is a contract creation then recipient address is the contract deployment address
-                    if (!PrepareAccountForContractDeployment<TLogTracing>(recipient, _codeInfoRepository, spec))
-                    {
-                        goto FailContractCreate;
-                    }
+                    goto FailContractCreate;
                 }
             }
-            else
-            {
-                // If EOF header parsing or full container validation fails, transaction is considered valid and failing.
-                // Gas for initcode execution is not consumed, only intrinsic creation transaction costs are charged.
-                long minimalGasLong = TGasPolicy.GetRemainingGas(gas.MinimalGas);
-                gasConsumed = minimalGasLong;
-                // If noValidation we didn't charge for gas, so do not refund; otherwise return unspent gas
-                if ((opts & ExecutionOptions.SkipValidation) == 0)
-                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - minimalGasLong) * VirtualMachine.TxExecutionContext.GasPrice, spec);
-                goto Complete;
-            }
 
-            ExecutionType executionType = tx.IsContractCreation ? ((spec.IsEofEnabled && tx.IsEofContractCreation) ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
+            ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
 
             // Set tracking state on VM so instruction handlers can access it
             VirtualMachine.TrackingState = trackingState;
@@ -938,19 +919,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (tx.IsContractCreation)
                     {
-                        if (!spec.IsEofEnabled || tx.IsLegacyContractCreation)
+                        if (!DeployContract(spec, recipient, in substate, trackingState, ref gasAvailable))
                         {
-                            if (!DeployLegacyContract(spec, recipient, in substate, trackingState, ref gasAvailable))
-                            {
-                                goto FailContractCreate;
-                            }
-                        }
-                        else
-                        {
-                            if (!DeployEofContract(spec, recipient, in substate, trackingState, ref gasAvailable))
-                            {
-                                goto FailContractCreate;
-                            }
+                            goto FailContractCreate;
                         }
                     }
 
@@ -998,7 +969,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts) => tx.GasLimit;
 
-        protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, AccessTrackingState trackingState, ref TGasPolicy unspentGas)
+        protected virtual bool DeployContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, AccessTrackingState trackingState, ref TGasPolicy unspentGas)
         {
             ReadOnlyMemory<byte> code = substate.OutputBytes;
             long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, code.Length);
@@ -1007,7 +978,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return false;
             }
 
-            if (CodeDepositHandler.CodeIsInvalid(spec, code, 0))
+            if (CodeDepositHandler.CodeIsInvalid(spec, code))
             {
                 return false;
             }
@@ -1021,57 +992,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     trackingState.WarmUpLargeContract(codeOwner);
                 }
 
-                TGasPolicy.Consume(ref unspentGas, codeDepositGasCost);
-            }
-
-            return true;
-        }
-
-        private bool DeployEofContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, AccessTrackingState trackingState, ref TGasPolicy unspentGas)
-        {
-            // 1 - load deploy EOF subContainer at deploy_container_index in the container from which RETURNCODE is executed
-            ReadOnlySpan<byte> auxExtraData = substate.OutputBytes.Span;
-            EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.DeployCode;
-
-            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, deployCodeInfo.Code.Length + auxExtraData.Length);
-            if (TGasPolicy.GetRemainingGas(unspentGas) < codeDepositGasCost && spec.ChargeForTopLevelCreate)
-            {
-                return false;
-            }
-            int codeLength = deployCodeInfo.Code.Length + auxExtraData.Length;
-            // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-            if (codeLength > spec.MaxCodeSize)
-            {
-                return false;
-            }
-            // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
-            byte[] bytecodeResult = new byte[codeLength];
-            // 2 - 1 - 1 - copy old container
-            deployCodeInfo.Code.Span.CopyTo(bytecodeResult);
-            // 2 - 1 - 2 - copy aux data to dataSection
-            auxExtraData.CopyTo(bytecodeResult.AsSpan(deployCodeInfo.Code.Length));
-
-            // 2 - 2 - update data section size in the header u16
-            int dataSubHeaderSectionStart =
-                VERSION_OFFSET // magic + version
-                + Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
-                + ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
-                + (ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections?.Count) ?? 0 // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size) ?? (0 bytes if no container section is available)
-                + ONE_BYTE_LENGTH; // data section separator
-
-            ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
-            bytecodeResult[dataSubHeaderSectionStart + 1] = (byte)(dataSize >> 8);
-            bytecodeResult[dataSubHeaderSectionStart + 2] = (byte)(dataSize & 0xFF);
-
-            if (TGasPolicy.GetRemainingGas(unspentGas) >= codeDepositGasCost)
-            {
-                // 4 - set state[new_address].code to the updated deploy container
-                // push new_address onto the stack (already done before the ifs)
-                _codeInfoRepository.InsertCode(bytecodeResult, codeOwner, spec);
-                if (bytecodeResult.Length > CodeSizeConstants.MaxCodeSizeEip170)
-                {
-                    trackingState.WarmUpLargeContract(codeOwner);
-                }
                 TGasPolicy.Consume(ref unspentGas, codeDepositGasCost);
             }
 

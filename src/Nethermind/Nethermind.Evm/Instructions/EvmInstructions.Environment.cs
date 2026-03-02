@@ -7,7 +7,6 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -631,58 +630,6 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Retrieves the code hash of an external account, considering the possibility of an EOF-validated contract.
-    /// If the code is an EOF contract, a predefined EOF hash is pushed.
-    /// </summary>
-    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
-    /// <param name="vm">The virtual machine instance.</param>
-    /// <param name="stack">The execution stack where the gas value will be pushed.</param>
-    /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
-    /// <param name="programCounter">The current program counter.</param>
-    /// <returns>
-    /// <see cref="EvmExceptionType.None"/> if gas is available,
-    /// <see cref="EvmExceptionType.OutOfGas"/> if the gas becomes negative
-    /// or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
-    /// </returns>
-    [SkipLocalsInit]
-    public static OpcodeResult InstructionExtCodeHashEof<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TTracingInst : struct, IFlag
-    {
-        IReleaseSpec spec = vm.Spec;
-        TGasPolicy.Consume(ref gas, spec.GetExtCodeHashCost());
-
-        Address address = stack.PopAddress();
-        if (address is null) goto StackUnderflow;
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, vm.TrackingState, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
-
-        IWorldState state = vm.WorldState;
-        if (state.IsDeadAccount(address))
-        {
-            return new(programCounter, stack.PushZero<TTracingInst>());
-        }
-        else
-        {
-            Memory<byte> code = state.GetCode(address);
-            // If the code passes EOF validation, push the EOF-specific hash.
-            if (EofValidator.IsEof(code, out _))
-            {
-                return new(programCounter, stack.Push32Bytes<TTracingInst>(ref MemoryMarshal.GetArrayDataReference(EofHash256)));
-            }
-            else
-            {
-                // Otherwise, push the standard code hash.
-                return new(programCounter, stack.Push32Bytes<TTracingInst>(in state.GetCodeHash(address)));
-            }
-        }
-    // Jump forward to be unpredicted by the branch predictor.
-    OutOfGas:
-        return new(programCounter, EvmExceptionType.OutOfGas);
-    StackUnderflow:
-        return new(programCounter, EvmExceptionType.StackUnderflow);
-    }
-
-    /// <summary>
     /// Implements the PREVRANDAO opcode.
     /// Pushes the previous random value (post-merge) or block difficulty (pre-merge) onto the stack.
     /// </summary>
@@ -831,5 +778,64 @@ internal static partial class EvmInstructions
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return new(programCounter, EvmExceptionType.StackUnderflow);
+    }
+
+    /// <summary>
+    /// Retrieves the length of the return data buffer and pushes it onto the stack.
+    /// </summary>
+    [SkipLocalsInit]
+    public static OpcodeResult InstructionReturnDataSize<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.Base);
+        return new(programCounter, stack.PushUInt32<TTracingInst>((uint)vm.ReturnDataBuffer.Length));
+    }
+
+    /// <summary>
+    /// Copies a slice from the VM's return data buffer into memory.
+    /// </summary>
+    [SkipLocalsInit]
+    public static OpcodeResult InstructionReturnDataCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (!stack.PopUInt256(out UInt256 destOffset) ||
+            !stack.PopUInt256(out UInt256 sourceOffset) ||
+            !stack.PopUInt256(out UInt256 size))
+        {
+            goto StackUnderflow;
+        }
+
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas));
+        if (outOfGas) goto OutOfGas;
+
+        ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
+        if (UInt256.AddOverflow(size, sourceOffset, out UInt256 result) || result > returnDataBuffer.Length)
+        {
+            goto AccessViolation;
+        }
+
+        if (!size.IsZero)
+        {
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in destOffset, size, vm.CallFrame))
+                goto OutOfGas;
+
+            ZeroPaddedSpan slice = returnDataBuffer.Span.SliceWithZeroPadding(sourceOffset, (int)size);
+            if (!vm.CallFrame.Memory.TrySave(in destOffset, in slice)) goto OutOfGas;
+
+            if (TTracingInst.IsActive)
+            {
+                vm.TxTracer.ReportMemoryChange(destOffset, in slice);
+            }
+        }
+
+        return new(programCounter, EvmExceptionType.None);
+    OutOfGas:
+        return new(programCounter, EvmExceptionType.OutOfGas);
+    StackUnderflow:
+        return new(programCounter, EvmExceptionType.StackUnderflow);
+    AccessViolation:
+        return new(programCounter, EvmExceptionType.AccessViolation);
     }
 }

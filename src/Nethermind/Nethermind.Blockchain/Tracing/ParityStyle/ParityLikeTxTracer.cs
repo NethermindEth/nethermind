@@ -80,8 +80,7 @@ public class ParityLikeTxTracer : TxTracer
     {
         return executionType switch
         {
-            ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.EOFCREATE
-                or ExecutionType.TXCREATE => "create",
+            ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
             ExecutionType.CALL or ExecutionType.TRANSACTION => "call",
             ExecutionType.DELEGATECALL => "delegatecall",
             ExecutionType.STATICCALL => "staticcall",
@@ -94,8 +93,7 @@ public class ParityLikeTxTracer : TxTracer
     {
         return executionType switch
         {
-            ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.EOFCREATE
-                or ExecutionType.TXCREATE => "create",
+            ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
             _ => "call"
         };
     }
@@ -237,7 +235,7 @@ public class ParityLikeTxTracer : TxTracer
     {
         ParityVmOperationTrace operationTrace = new();
         _gasAlreadySetForCurrentOp = false;
-        operationTrace.Pc = pc + (env.CodeInfo is EofCodeInfo eof ? eof.PcOffset() : 0);
+        operationTrace.Pc = pc;
         operationTrace.Cost = gas;
         // skip codeSection
         // skip functionDepth
@@ -405,8 +403,6 @@ public class ParityLikeTxTracer : TxTracer
         {
             ExecutionType.CREATE => "create",
             ExecutionType.CREATE2 => "create2",
-            ExecutionType.EOFCREATE => "create3",
-            ExecutionType.TXCREATE => "create4",
             _ => null
         };
     }

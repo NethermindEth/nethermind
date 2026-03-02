@@ -316,11 +316,6 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
-        /// Eof execution env in EVM
-        /// </summary>
-        bool IsEofEnabled { get; }
-
-        /// <summary>
         /// Transactions that allows code delegation for EOA
         /// </summary>
         bool IsEip7702Enabled { get; }

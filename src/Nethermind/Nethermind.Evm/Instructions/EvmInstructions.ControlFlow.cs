@@ -164,18 +164,11 @@ internal static partial class EvmInstructions
 
     /// <summary>
     /// Stops the execution of the EVM.
-    /// In EOFCREATE or TXCREATE executions, the STOP opcode is considered illegal.
     /// </summary>
     [SkipLocalsInit]
     public static OpcodeResult InstructionStop<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // In contract creation contexts, a STOP is not permitted.
-        if (vm.CallFrame.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
-        {
-            return new(programCounter, EvmExceptionType.BadInstruction);
-        }
-
         return new(programCounter, EvmExceptionType.Stop);
     }
 

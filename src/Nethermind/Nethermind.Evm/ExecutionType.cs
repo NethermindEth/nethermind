@@ -9,24 +9,12 @@ namespace Nethermind.Evm;
 public static class ExecutionTypeExtensions
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsAnyCreateLegacy(this ExecutionType executionType) =>
-        (executionType & ExecutionType.IsEofCreate) == ExecutionType.IsCreate;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsAnyCreateEof(this ExecutionType executionType) =>
-        (executionType & ExecutionType.IsEofCreate) == ExecutionType.IsEofCreate;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsAnyCreate(this ExecutionType executionType) =>
         (executionType & ExecutionType.IsCreate) != 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsAnyCallEof(this ExecutionType executionType) =>
-        (executionType & ExecutionType.IsEofCall) == ExecutionType.IsEofCall;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsAnyDelegateCall(this ExecutionType executionType) =>
-        executionType is ExecutionType.DELEGATECALL or ExecutionType.EOFDELEGATECALL;
+        executionType is ExecutionType.DELEGATECALL;
 
     public static Instruction ToInstruction(this ExecutionType executionType) =>
         executionType switch
@@ -38,10 +26,6 @@ public static class ExecutionTypeExtensions
             ExecutionType.DELEGATECALL => Instruction.DELEGATECALL,
             ExecutionType.CREATE => Instruction.CREATE,
             ExecutionType.CREATE2 => Instruction.CREATE2,
-            ExecutionType.EOFCREATE => Instruction.EOFCREATE,
-            ExecutionType.EOFCALL => Instruction.EXTCALL,
-            ExecutionType.EOFSTATICCALL => Instruction.EXTSTATICCALL,
-            ExecutionType.EOFDELEGATECALL => Instruction.EXTDELEGATECALL,
             _ => throw new NotSupportedException($"Execution type {executionType} is not supported.")
         };
 }
@@ -57,16 +41,8 @@ public enum ExecutionType : byte
     CALLCODE = 4 | IsCall,
     CREATE = 5 | IsCreate,
     CREATE2 = 6 | IsCreate,
-    EOFCREATE = 7 | IsCreate | IsEof,
-    TXCREATE = 8 | IsCreate | IsEof,
-    EOFCALL = 9 | IsEof | IsCall,
-    EOFSTATICCALL = 10 | IsEof | IsCall,
-    EOFDELEGATECALL = 11 | IsEof | IsCall,
 
     IsCreate = 16,
     IsCall = 32,
-    IsEof = 64,
-    IsEofCall = IsEof | IsCall,
-    IsEofCreate = IsEof | IsCreate
 }
 // ReSharper restore IdentifierTypo InconsistentNaming

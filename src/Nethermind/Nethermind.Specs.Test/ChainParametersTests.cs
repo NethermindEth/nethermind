@@ -39,8 +39,7 @@ public class ChainParametersTests
         string[] exceptions = [
             "MaxCodeSizeTransitionTimestamp",
             "Eip4844FeeCollectorTransitionTimestamp",
-            "Eip6110TransitionTimestamp",
-            "Eip7692TransitionTimestamp"
+            "Eip6110TransitionTimestamp"
         ];
 
         const ulong testValue = 1ul;

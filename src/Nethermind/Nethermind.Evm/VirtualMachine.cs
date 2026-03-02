@@ -14,14 +14,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 
-using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 using static Nethermind.Evm.VirtualMachineStatics;
 
 #if DEBUG
@@ -47,9 +45,8 @@ public sealed class EthereumVirtualMachine(
 /// </summary>
 public static class VirtualMachineStatics
 {
-    public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
+    public const int MaxCallDepth = 1024;
     public static readonly UInt256 P255Int = new(0, 0, 0, 9223372036854775808); // 2^255
-    public static readonly byte[] EofHash256 = KeccakHash.ComputeHashBytes(EvmObjectFormat.EofValidator.MAGIC);
     public static ref readonly UInt256 P255 => ref P255Int;
     public static readonly UInt256 BigInt256 = 256;
     public static readonly UInt256 BigInt32 = 32;
@@ -148,7 +145,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
     public CallFrame<TGasPolicy> CallFrame { get => _currentFrame; protected set => _currentFrame = value; }
-    public int SectionIndex { get; set; }
     public int OpCodeCount { get; set; }
 
     /// <summary>
@@ -454,17 +450,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Capture code to deploy before PrepareCreateData clears ReturnDataBuffer
         ReadOnlyMemory<byte> codeToDeployMemory = ReturnDataBuffer;
         PrepareCreateData(previousState);
-        return executionType.IsAnyCreateLegacy() ?
-            HandleLegacyCreate<TTracingActions>(
-                in callResult,
-                previousState,
-                gasAvailableForCodeDeposit,
-                codeToDeployMemory) :
-            HandleEofCreate<TTracingActions>(
-                in callResult,
-                previousState,
-                gasAvailableForCodeDeposit,
-                codeToDeployMemory);
+        return HandleCreate<TTracingActions>(
+            in callResult,
+            previousState,
+            gasAvailableForCodeDeposit,
+            codeToDeployMemory);
     }
 
     protected void PrepareCreateData(CallFrame<TGasPolicy> previousState)
@@ -482,13 +472,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // ReturnDataBuffer is already set by DispatchExecution/RunPrecompile
         ReadOnlySpan<byte> returnSpan = ReturnDataBuffer.Span;
 
-        // Determine status code - EOF uses different codes than legacy
-        bool isEof = previousState.ExecutionType.IsAnyCallEof();
         bool? precompileSuccess = callResult.PrecompileSuccess;
-        // For EOF: always success. For legacy: success unless precompile explicitly failed
-        _previousCallResult = isEof
-            ? EofStatusCode.SuccessBytes
-            : (precompileSuccess.GetValueOrDefault(true) ? StatusCode.SuccessBytes : StatusCode.FailureBytes);
+        _previousCallResult = precompileSuccess.GetValueOrDefault(true) ? StatusCode.SuccessBytes : StatusCode.FailureBytes;
 
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
@@ -514,94 +499,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return result;
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    protected bool HandleEofCreate<TTracingActions>(in CallResult callResult, CallFrame<TGasPolicy> previousState, long gasAvailableForCodeDeposit, ReadOnlyMemory<byte> auxData)
-        where TTracingActions : struct, IFlag
-    {
-        Address callCodeOwner = previousState.ExecutingAccount;
-        // ReturnCode was called with a container index and auxdata
-        // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCODE is executed
-        ReadOnlySpan<byte> auxExtraData = auxData.Span;
-        EofCodeInfo deployCodeInfo = (EofCodeInfo)callResult.DeployCode;
-
-        // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
-        Span<byte> bytecodeResult = new byte[deployCodeInfo.Code.Length + auxExtraData.Length];
-        // 2 - 1 - 1 - copy old container
-        deployCodeInfo.Code.Span.CopyTo(bytecodeResult);
-        // 2 - 1 - 2 - copy aux data to dataSection
-        auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.Code.Length..]);
-
-        // 2 - 2 - update data section size in the header u16
-        int dataSubHeaderSectionStart =
-            // magic + version
-            VERSION_OFFSET
-            // type section : (1 byte of separator + 2 bytes for size)
-            + Eof1.MINIMUM_HEADER_SECTION_SIZE
-            // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
-            + ONE_BYTE_LENGTH
-            + TWO_BYTE_LENGTH
-            + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.CodeSections.Count
-            // container section
-            + (deployCodeInfo.EofContainer.Header.ContainerSections is null
-                // bytes if no container section is available
-                ? 0
-                // 1 byte of separator + (ContainerSections count) * 2 bytes for size
-                : ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections.Value.Count)
-            // data section separator
-            + ONE_BYTE_LENGTH;
-
-        ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
-        bytecodeResult[dataSubHeaderSectionStart + 1] = (byte)(dataSize >> 8);
-        bytecodeResult[dataSubHeaderSectionStart + 2] = (byte)(dataSize & 0xFF);
-
-        byte[] bytecodeResultArray = bytecodeResult.ToArray();
-
-        IReleaseSpec spec = BlockExecutionContext.Spec;
-        // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-        bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
-        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, bytecodeResultArray?.Length ?? 0);
-
-        bool success = true;
-        if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
-        {
-            // 4 - set state[new_address].code to the updated deploy container
-            // push new_address onto the stack (already done before the ifs)
-            _codeInfoRepository.InsertCode(bytecodeResultArray, callCodeOwner, spec);
-            TGasPolicy.Consume(ref _currentFrame.Gas, codeDepositGasCost);
-
-            if (TTracingActions.IsActive)
-            {
-                _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, bytecodeResultArray);
-            }
-        }
-        else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
-        {
-            TGasPolicy.Consume(ref _currentFrame.Gas, gasAvailableForCodeDeposit);
-            _worldState.Restore(previousState.Snapshot);
-            if (!previousState.IsCreateOnPreExistingAccount)
-            {
-                _worldState.DeleteAccount(callCodeOwner);
-            }
-
-            _previousCallResult = BytesZero;
-            success = false;
-
-            if (TTracingActions.IsActive)
-            {
-                _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
-            }
-        }
-        else if (TTracingActions.IsActive)
-        {
-            _txTracer.ReportActionEnd(0L, callCodeOwner, bytecodeResultArray);
-        }
-
-        return success;
-    }
-
     /// <summary>
-    /// Handles the code deposit for a legacy contract creation operation.
-    /// This method calculates the gas cost for depositing the contract code using legacy rules,
+    /// Handles the code deposit for a contract creation operation.
+    /// This method calculates the gas cost for depositing the contract code,
     /// validates the code, and either deposits the code or reverts the world state if the deposit fails.
     /// </summary>
     /// <param name="callResult">
@@ -621,7 +521,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// A reference flag indicating whether the previous call frame executed successfully. This flag is set to false if the deposit fails.
     /// </param>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected bool HandleLegacyCreate<TTracingActions>(
+    protected bool HandleCreate<TTracingActions>(
         in CallResult callResult,
         CallFrame<TGasPolicy> previousState,
         long gasAvailableForCodeDeposit,
@@ -634,10 +534,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IReleaseSpec spec = BlockExecutionContext.Spec;
         ReadOnlySpan<byte> codeSpan = code.Span;
 
-        // Calculate the gas cost required to deposit the contract code using legacy cost rules.
+        // Calculate the gas cost required to deposit the contract code.
         long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, codeSpan.Length);
 
-        bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, codeSpan);
+        bool invalidCode = !CodeDepositHandler.IsValid(spec, codeSpan);
 
         // Check if there is sufficient gas and the code is valid - most common path
         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
@@ -706,7 +606,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             callResult.ShouldRevert,
             tracer: _txTracer,
             outputBytes: ReturnDataBuffer,
-            deployCode: callResult.DeployCode,
             evmExceptionType: callResult.ExceptionType);
     }
 
@@ -737,13 +636,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // ReturnDataBuffer is already set by DispatchExecution
         ReadOnlyMemory<byte> outputBytes = ReturnDataBuffer;
 
-        // Determine the appropriate failure status code.
-        // For EOF: distinguish precompile failure (has value) from revert (null). Legacy always uses FailureBytes.
-        bool isEof = previousState.ExecutionType.IsAnyCallEof();
-        bool isPrecompileFailure = callResult.PrecompileSuccess is not null;
-        _previousCallResult = isEof
-            ? (isPrecompileFailure ? EofStatusCode.FailureBytes : EofStatusCode.RevertBytes)
-            : StatusCode.FailureBytes;
+        _previousCallResult = StatusCode.FailureBytes;
 
         // Record the output destination address for subsequent operations.
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
@@ -859,11 +752,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             txTracer.ReportActionError(errorType);
         }
 
-        // For nested call frames, prepare to revert to the parent frame.
-        // Set the previous call result to a failure code depending on the call type.
-        _previousCallResult = currentFrame.ExecutionType.IsAnyCallEof()
-            ? EofStatusCode.FailureBytes
-            : StatusCode.FailureBytes;
+        _previousCallResult = StatusCode.FailureBytes;
 
         // Reset output destination and return data.
         _previousCallOutputDestination = default;
@@ -924,11 +813,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _txTracer.ReportActionError(errorType);
         }
 
-        // For nested call frames, prepare to revert to the parent frame.
-        // Set the previous call result to a failure code depending on the call type.
-        _previousCallResult = currentFrame.ExecutionType.IsAnyCallEof()
-            ? EofStatusCode.FailureBytes
-            : StatusCode.FailureBytes;
+        _previousCallResult = StatusCode.FailureBytes;
 
         // Reset output destination and return data.
         _previousCallOutputDestination = default;
@@ -996,10 +881,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Revert any modifications that might have been applied due to the Parity touch bug.
         RevertParityTouchBugAccount();
 
-        // For nested calls, mark the previous call result as a failure code based on the call's EOF semantics.
-        _previousCallResult = currentFrame.ExecutionType.IsAnyCallEof()
-            ? EofStatusCode.FailureBytes
-            : StatusCode.FailureBytes;
+        _previousCallResult = StatusCode.FailureBytes;
 
         // Reset output destination and clear return data.
         _previousCallOutputDestination = default;
@@ -1187,7 +1069,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 }
             }
             // If the generated code is invalid (e.g., violates EIP-3541 by starting with 0xEF), report an invalid code error.
-            else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes, callResult.FromVersion))
+            else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes))
             {
                 _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
             }
@@ -1355,12 +1237,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         CodeInfo codeInfo = callFrame.CodeInfo;
-        int version = codeInfo.Version;
         ReadOnlySpan<byte> codeSpan = codeInfo.CodeSpan;
 
         if (codeSpan.Length == 0)
         {
-            EmptyCall(callFrame, version, out result);
+            EmptyCall(callFrame, out result);
             return;
         }
 
@@ -1411,18 +1292,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Use if rather than pattern match as it generates better asm for a large struct return.
         result = typeof(TGasPolicy) == typeof(EthereumGasPolicy) ?
             // Allow de-virtualizated call to improve performance.
-            DispatchExecution<TTracingInst, TCancellable>(ref stack, ref gas, version) :
-            RunByteCode<TTracingInst, TCancellable>(ref stack, ref gas, version);
+            DispatchExecution<TTracingInst, TCancellable>(ref stack, ref gas) :
+            RunByteCode<TTracingInst, TCancellable>(ref stack, ref gas);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void EmptyCall(CallFrame<TGasPolicy> callFrame, int version, out CallResult result)
+    private static void EmptyCall(CallFrame<TGasPolicy> callFrame, out CallResult result)
     {
         if (!callFrame.IsTopLevel)
         {
             Metrics.IncrementEmptyCalls();
         }
-        result = CallResult.Empty(version);
+        result = CallResult.Empty;
         return;
     }
 
@@ -1472,12 +1353,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 #endif
     protected CallResult RunByteCode<TTracingInst, TCancellable>(
         scoped ref EvmStack stack,
-        scoped ref TGasPolicy gas,
-        int version)
+        scoped ref TGasPolicy gas)
         where TTracingInst : struct, IFlag
         where TCancellable : struct, IFlag
     {
-        return DispatchExecution<TTracingInst, TCancellable>(ref stack, ref gas, version);
+        return DispatchExecution<TTracingInst, TCancellable>(ref stack, ref gas);
     }
 
     /// <summary>
@@ -1496,21 +1376,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// <typeparam name="TCancellable">Compile-time flag that enables or disables cancellation checks.</typeparam>
     /// <param name="stack">The EVM stack for the current invocation.</param>
     /// <param name="gas">The gas tracker/policy state for the current invocation.</param>
-    /// <param name="version">Protocol version used when constructing <see cref="CallResult"/>.</param>
     /// <returns>A <see cref="CallResult"/> describing success, revert, or failure.</returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected CallResult DispatchExecution<TTracingInst, TCancellable>(
         scoped ref EvmStack stack,
-        scoped ref TGasPolicy gas,
-        int version)
+        scoped ref TGasPolicy gas)
         where TTracingInst : struct, IFlag
         where TCancellable : struct, IFlag
     {
-        // Per-invocation reset. ReturnData is set by the opcode engine on RETURN/REVERT/EOF return paths.
+        // Per-invocation reset. ReturnData is set by the opcode engine on RETURN/REVERT return paths.
         ReturnData = null;
-        // Seed the current section/function index from the VM state (EOF-aware execution uses this).
-        SectionIndex = CallFrame.FunctionIndex;
 
         // Pin the opcode dispatch table so the engine can index it without array bounds checks.
         // The table is fixed-size (256 entries keyed by opcode byte), so the index is always valid.
@@ -1549,19 +1425,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         DataReturn:
             // Materialize the return based on what the engine stored into ReturnData.
-            // Ordered by fastest check: null (STOP), then frequency: byte[] (RETURN/REVERT with data) > CallFrame (nested calls) > EOF (rare)
+            // Ordered by fastest check: null (STOP), then frequency: byte[] (RETURN/REVERT with data) > CallFrame (nested calls)
             switch (ReturnData)
             {
                 case null:
                     ReturnDataBuffer = default;
-                    return CallResult.Empty(version);
+                    return CallResult.Empty;
                 case byte[] array:
                     ReturnDataBuffer = array;
-                    return new CallResult(null, version, shouldRevert, exceptionType);
+                    return new CallResult(shouldRevert, exceptionType);
                 case CallFrame<TGasPolicy> state:
                     return new CallResult(state);
                 default:
-                    return ReturnEof(version);
+                    ReturnDataBuffer = default;
+                    return CallResult.Empty;
             }
 
         OutOfGas:
@@ -1573,12 +1450,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        CallResult ReturnEof(int version)
-        {
-            // EOF return path: ReturnData carries EofCodeInfo, ReturnDataBuffer is already set.
-            return new CallResult((EofCodeInfo)ReturnData, version);
-        }
     }
 
     /// <summary>
@@ -1734,14 +1605,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         frame.ProgramCounter = pc;
         frame.Gas = gas;
         frame.DataStackHead = stackHead;
-        frame.FunctionIndex = SectionIndex;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void StartInstructionTrace(Instruction instruction, long gasAvailable, int programCounter, in EvmStack stackValue)
     {
         CallFrame<TGasPolicy> callFrame = CallFrame;
-        int sectionIndex = SectionIndex;
 
         // Cache the ExecutionEnvironment struct per frame to avoid rebuilding ~116 bytes per opcode.
         // Env fields are immutable within a frame; only rebuild on frame transitions.
@@ -1751,9 +1620,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _tracingEnvSource = callFrame;
         }
 
-        bool isEofFrame = callFrame.CodeInfo.Version > 0;
-        _txTracer.StartOperation(programCounter, instruction, gasAvailable, in _tracingEnv,
-            isEofFrame ? sectionIndex : 0, isEofFrame ? callFrame.ReturnStackHead + 1 : 0);
+        _txTracer.StartOperation(programCounter, instruction, gasAvailable, in _tracingEnv, 0, 0);
         if (_txTracer.IsTracingMemory)
         {
             _txTracer.SetOperationMemory(callFrame.Memory.GetTrace());

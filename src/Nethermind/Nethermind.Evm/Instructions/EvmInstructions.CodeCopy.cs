@@ -17,14 +17,6 @@ using Int256;
 internal static partial class EvmInstructions
 {
     /// <summary>
-    /// Fast EOF magic check without EofValidator static class overhead.
-    /// Checks if code starts with [0xEF, 0x00] magic bytes.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsEofMagic(ReadOnlySpan<byte> code)
-        => code.Length > 2 && code[0] == 0xEF && code[1] == 0x00;
-
-    /// <summary>
     /// Provides a mechanism to retrieve a code segment for code copy operations.
     /// Implementers return a ReadOnlySpan of bytes representing the code to copy.
     /// </summary>
@@ -143,9 +135,6 @@ internal static partial class EvmInstructions
     /// <typeparam name="TEip7907Enabled">
     /// A struct implementing <see cref="IFlag"/> indicating if EIP-7907 large contract charging is enabled.
     /// </typeparam>
-    /// <typeparam name="TEofEnabled">
-    /// A struct implementing <see cref="IFlag"/> indicating if EOF is enabled.
-    /// </typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">The EVM stack for operand retrieval and memory copy operations.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
@@ -154,14 +143,13 @@ internal static partial class EvmInstructions
     /// An <see cref="OpcodeResult"/> indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
-    public static OpcodeResult InstructionExtCodeCopy<TGasPolicy, TTracingInst, TEip7907Enabled, TEofEnabled>(VirtualMachine<TGasPolicy> vm,
+    public static OpcodeResult InstructionExtCodeCopy<TGasPolicy, TTracingInst, TEip7907Enabled>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
         int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TEip7907Enabled : struct, IFlag
-        where TEofEnabled : struct, IFlag
     {
         CallFrame<TGasPolicy> callFrame = vm.CallFrame;
         ITxTracer txTracer = vm.TxTracer;
@@ -203,13 +191,6 @@ internal static partial class EvmInstructions
                     goto OutOfGas;
             }
 
-            // If EOF is enabled and the code is an EOF contract, use the 2-byte EOF magic value.
-            // The TEofEnabled flag allows JIT to eliminate this block when not enabled.
-            if (TEofEnabled.IsActive && IsEofMagic(externalCode))
-            {
-                externalCode = [0xEF, 0x00];
-            }
-
             // Slice the external code starting at the source offset with appropriate zero-padding.
             // Length is safe to cast - UpdateMemoryCost already validated it fits in memory.
             ZeroPaddedSpan slice = externalCode.SliceWithZeroPadding(in b, (int)length);
@@ -240,9 +221,6 @@ internal static partial class EvmInstructions
     /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> indicating if instruction tracing is active.
     /// </typeparam>
-    /// <typeparam name="TEofEnabled">
-    /// A struct implementing <see cref="IFlag"/> indicating if EOF is enabled.
-    /// </typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the account address is popped and where the code size is pushed.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
@@ -251,13 +229,12 @@ internal static partial class EvmInstructions
     /// An <see cref="OpcodeResult"/> indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
-    public static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst, TEofEnabled>(VirtualMachine<TGasPolicy> vm,
+    public static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
         int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
-        where TEofEnabled : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct the gas cost for external code access.
@@ -326,12 +303,7 @@ internal static partial class EvmInstructions
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
             .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
-        // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
-        // The TEofEnabled flag allows JIT to eliminate this block when not enabled.
-        // Otherwise, push the actual code length (common case).
-        return new(programCounter, !(TEofEnabled.IsActive && IsEofMagic(accountCode))
-            ? stack.PushUInt32<TTracingInst>((uint)accountCode.Length)
-            : stack.PushUInt32<TTracingInst>(2));
+        return new(programCounter, stack.PushUInt32<TTracingInst>((uint)accountCode.Length));
 
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
