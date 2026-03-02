@@ -22,12 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return stream;
         }
 
-        public T Deserialize(IByteBuffer byteBuffer)
-        {
-            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            T result = Deserialize(ref ctx);
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            return result;
-        }
+        public T Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
     }
 }

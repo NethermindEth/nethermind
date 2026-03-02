@@ -59,15 +59,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         {
             AccountRangeMessage message = new();
             Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+            try
+            {
+                ctx.ReadSequenceLength();
 
-            ctx.ReadSequenceLength();
+                message.RequestId = ctx.DecodeLong();
+                message.PathsWithAccounts = ctx.DecodeArrayPoolList(DecodePathWithRlpData);
+                message.Proofs = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
 
-            message.RequestId = ctx.DecodeLong();
-            message.PathsWithAccounts = ctx.DecodeArrayPoolList(DecodePathWithRlpData);
-            message.Proofs = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
-
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            return message;
+                return message;
+            }
+            finally
+            {
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+            }
         }
 
         private PathWithAccount DecodePathWithRlpData(ref Rlp.ValueDecoderContext ctx)

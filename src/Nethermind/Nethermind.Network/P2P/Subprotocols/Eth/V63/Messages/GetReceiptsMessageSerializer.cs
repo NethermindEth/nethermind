@@ -20,13 +20,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             return new GetReceiptsMessage(hashes);
         }
 
-        public override GetReceiptsMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            GetReceiptsMessage message = Deserialize(ref ctx);
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            return message;
-        }
+        public override GetReceiptsMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
 
         public static GetReceiptsMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {

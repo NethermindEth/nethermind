@@ -20,12 +20,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         public NewPooledTransactionHashesMessage68 Deserialize(IByteBuffer byteBuffer)
         {
             Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            ctx.ReadSequenceLength();
-            ArrayPoolList<byte> types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
-            ArrayPoolList<int> sizes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeInt(), limit: SizesRlpLimit);
-            ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+            try
+            {
+                ctx.ReadSequenceLength();
+                ArrayPoolList<byte> types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
+                ArrayPoolList<int> sizes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeInt(), limit: SizesRlpLimit);
+                ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
+                return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+            }
+            finally
+            {
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+            }
         }
 
         public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage68 message)

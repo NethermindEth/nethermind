@@ -57,12 +57,6 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    protected TResult DecodeBase<TResult>(RlpStream rlpStream, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
-    {
-        Rlp.ValueDecoderContext ctx = rlpStream.Data.AsSpan().AsRlpValueContext();
-        return DecodeBase(ref ctx, createSnapshot, rlpBehaviors);
-    }
-
     public override void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

@@ -51,22 +51,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         {
             GetTrieNodesMessage message = new();
             Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+            try
+            {
+                ctx.ReadSequenceLength();
 
-            ctx.ReadSequenceLength();
+                message.RequestId = ctx.DecodeLong();
+                message.RootHash = ctx.DecodeKeccak();
+                PathGroup defaultValue = _defaultPathGroup;
+                message.Paths = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
+                    new PathGroup
+                    {
+                        Group = c.DecodeArray(static (ref Rlp.ValueDecoderContext inner) => inner.DecodeByteArray(), defaultElement: [])
+                    }, defaultElement: defaultValue);
 
-            message.RequestId = ctx.DecodeLong();
-            message.RootHash = ctx.DecodeKeccak();
-            PathGroup defaultValue = _defaultPathGroup;
-            message.Paths = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
-                new PathGroup
-                {
-                    Group = c.DecodeArray(static (ref Rlp.ValueDecoderContext inner) => inner.DecodeByteArray(), defaultElement: [])
-                }, defaultElement: defaultValue);
+                message.Bytes = ctx.DecodeLong();
 
-            message.Bytes = ctx.DecodeLong();
-
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            return message;
+                return message;
+            }
+            finally
+            {
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+            }
         }
 
         private static (int contentLength, int allPathsLength, int[] pathsLengths) CalculateLengths(GetTrieNodesMessage message)

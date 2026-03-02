@@ -29,13 +29,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public TrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
             Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+            try
+            {
+                ctx.ReadSequenceLength();
 
-            ctx.ReadSequenceLength();
-
-            long requestId = ctx.DecodeLong();
-            IOwnedReadOnlyList<byte[]> result = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            return new TrieNodesMessage(result) { RequestId = requestId };
+                long requestId = ctx.DecodeLong();
+                IOwnedReadOnlyList<byte[]> result = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
+                return new TrieNodesMessage(result) { RequestId = requestId };
+            }
+            finally
+            {
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+            }
         }
 
         public static (int contentLength, int nodesLength) GetLength(TrieNodesMessage message)

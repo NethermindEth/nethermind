@@ -25,13 +25,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
         }
 
-        public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            GetBlockBodiesMessage message = Deserialize(ref ctx);
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            return message;
-        }
+        public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
 
         public int GetLength(GetBlockBodiesMessage message, out int contentLength)
         {

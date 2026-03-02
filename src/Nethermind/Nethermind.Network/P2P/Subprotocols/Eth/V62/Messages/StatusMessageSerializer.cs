@@ -60,13 +60,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public StatusMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            StatusMessage message = Deserialize(ref ctx);
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            return message;
-        }
+        public StatusMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
 
         private static StatusMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {

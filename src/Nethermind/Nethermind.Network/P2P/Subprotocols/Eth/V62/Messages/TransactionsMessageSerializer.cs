@@ -30,9 +30,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public TransactionsMessage Deserialize(IByteBuffer byteBuffer)
         {
             Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            IOwnedReadOnlyList<Transaction> txs = DeserializeTxs(ref ctx);
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            return new TransactionsMessage(txs);
+            try
+            {
+                IOwnedReadOnlyList<Transaction> txs = DeserializeTxs(ref ctx);
+                return new TransactionsMessage(txs);
+            }
+            finally
+            {
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+            }
         }
 
         public int GetLength(TransactionsMessage message, out int contentLength)

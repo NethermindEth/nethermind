@@ -70,21 +70,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         {
             StorageRangeMessage message = new();
             Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-
-            ctx.ReadSequenceLength();
-
-            message.RequestId = ctx.DecodeLong();
-            message.Slots = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => (IOwnedReadOnlyList<PathWithStorageSlot>)c.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext inner) =>
+            try
             {
-                inner.ReadSequenceLength();
-                Hash256 path = inner.DecodeKeccak();
-                byte[] value = inner.DecodeByteArray();
-                return new PathWithStorageSlot(in path.ValueHash256, value);
-            }));
-            message.Proofs = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
+                ctx.ReadSequenceLength();
 
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            return message;
+                message.RequestId = ctx.DecodeLong();
+                message.Slots = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => (IOwnedReadOnlyList<PathWithStorageSlot>)c.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext inner) =>
+                {
+                    inner.ReadSequenceLength();
+                    Hash256 path = inner.DecodeKeccak();
+                    byte[] value = inner.DecodeByteArray();
+                    return new PathWithStorageSlot(in path.ValueHash256, value);
+                }));
+                message.Proofs = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
+
+                return message;
+            }
+            finally
+            {
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+            }
         }
 
         private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) CalculateLengths(StorageRangeMessage message)

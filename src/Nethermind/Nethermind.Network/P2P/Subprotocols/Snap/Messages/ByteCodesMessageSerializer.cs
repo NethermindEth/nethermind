@@ -27,14 +27,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public ByteCodesMessage Deserialize(IByteBuffer byteBuffer)
         {
             Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+            try
+            {
+                ctx.ReadSequenceLength();
 
-            ctx.ReadSequenceLength();
+                long requestId = ctx.DecodeLong();
+                IOwnedReadOnlyList<byte[]> result = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
 
-            long requestId = ctx.DecodeLong();
-            IOwnedReadOnlyList<byte[]> result = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
-
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            return new ByteCodesMessage(result) { RequestId = requestId };
+                return new ByteCodesMessage(result) { RequestId = requestId };
+            }
+            finally
+            {
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+            }
         }
 
         public static (int contentLength, int codesLength) GetLength(ByteCodesMessage message)

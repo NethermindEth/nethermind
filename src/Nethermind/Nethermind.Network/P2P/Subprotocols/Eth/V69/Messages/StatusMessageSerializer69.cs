@@ -46,21 +46,27 @@ public class StatusMessageSerializer69 :
     public StatusMessage69 Deserialize(IByteBuffer byteBuffer)
     {
         Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-        ctx.ReadSequenceLength();
-
-        StatusMessage69 statusMessage = new()
+        try
         {
-            ProtocolVersion = ctx.DecodeByte(),
-            NetworkId = ctx.DecodeUInt256(),
-            GenesisHash = ctx.DecodeKeccak() ?? Hash256.Zero,
-            ForkId = DecodeForkId(ref ctx),
-            EarliestBlock = ctx.DecodeLong(),
-            LatestBlock = ctx.DecodeLong(),
-            LatestBlockHash = ctx.DecodeKeccak() ?? Hash256.Zero
-        };
+            ctx.ReadSequenceLength();
 
-        byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-        return statusMessage;
+            StatusMessage69 statusMessage = new()
+            {
+                ProtocolVersion = ctx.DecodeByte(),
+                NetworkId = ctx.DecodeUInt256(),
+                GenesisHash = ctx.DecodeKeccak() ?? Hash256.Zero,
+                ForkId = DecodeForkId(ref ctx),
+                EarliestBlock = ctx.DecodeLong(),
+                LatestBlock = ctx.DecodeLong(),
+                LatestBlockHash = ctx.DecodeKeccak() ?? Hash256.Zero
+            };
+
+            return statusMessage;
+        }
+        finally
+        {
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+        }
     }
 
     private static void EncodeForkId(RlpStream rlpStream, ForkId forkId)

@@ -72,13 +72,14 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         }
         else
         {
+            int startPosition = decoderContext.Position;
             try
             {
                 return ValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
             }
             catch (RlpException)
             {
-                decoderContext.Position = 0;
+                decoderContext.Position = startPosition;
                 return ValueDecoder.DecodeArray(ref decoderContext);
             }
         }
