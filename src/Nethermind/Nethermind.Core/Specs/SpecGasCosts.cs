@@ -129,12 +129,12 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             : GasCostOf.TxDataNonZeroMultiplier;
 
         SClearRefund = spec.IsEip3529Enabled
-            ? RefundOf.SClearAfter3529
-            : RefundOf.SClearBefore3529;
+            ? RefundOf.SClearAfterEip3529
+            : RefundOf.SClearBeforeEip3529;
 
         DestroyRefund = spec.IsEip3529Enabled
-            ? RefundOf.DestroyAfter3529
-            : RefundOf.DestroyBefore3529;
+            ? RefundOf.DestroyAfterEip3529
+            : RefundOf.DestroyBeforeEip3529;
 
         int hashCode1 = HashCode.Combine(SLoadCost, BalanceCost, ExtCodeCost, ExtCodeHashCost, CallCost, ExpByteCost, sStoreResetCost, netMeteredSStoreCost);
         int hashCode2 = HashCode.Combine(TxDataNonZeroMultiplier, ClearReversalRefund, setReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock, DestroyRefund);
