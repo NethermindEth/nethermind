@@ -284,19 +284,15 @@ public class BlockchainBridgeTests
             Arg.Any<ITxTracer>());
     }
 
-    private static IEnumerable<TestCaseData> BlobBaseFeeTestCases()
-    {
-        string[] methods = [nameof(IBlockchainBridge.Call), nameof(IBlockchainBridge.EstimateGas), nameof(IBlockchainBridge.CreateAccessList)];
-        ulong[] excessBlobGasValues = [0, 100];
+    private static Action<IBlockchainBridge, BlockHeader, Transaction>[] BridgeCallSources() =>
+    [
+        (bridge, header, tx) => bridge.Call(header, tx),
+        (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
+        (bridge, header, tx) => bridge.CreateAccessList(header, tx, default, false),
+    ];
 
-        foreach (string method in methods)
-            foreach (ulong excessBlobGas in excessBlobGasValues)
-                yield return new TestCaseData(method, excessBlobGas)
-                    .SetDescription($"{method} with ExcessBlobGas={excessBlobGas}");
-    }
-
-    [TestCaseSource(nameof(BlobBaseFeeTestCases))]
-    public void BlobBaseFee_is_set_for_non_blob_transaction(string method, ulong excessBlobGas)
+    [Test, Combinatorial]
+    public void BlobBaseFee_is_set_for_non_blob_transaction([ValueSource(nameof(BridgeCallSources))] Action<IBlockchainBridge, BlockHeader, Transaction> bridgeCall, [Values(0ul, 100ul)] ulong excessBlobGas)
     {
         _timestamper.UtcNow = DateTime.MaxValue;
         BlockHeader header = Build.A.BlockHeader
@@ -312,18 +308,7 @@ public class BlockchainBridgeTests
         BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 expectedBlobBaseFee);
         ValueHash256 expectedBlobBaseFeeHash = expectedBlobBaseFee.ToValueHash();
 
-        switch (method)
-        {
-            case nameof(IBlockchainBridge.Call):
-                _blockchainBridge.Call(header, tx);
-                break;
-            case nameof(IBlockchainBridge.EstimateGas):
-                _blockchainBridge.EstimateGas(header, tx, 1);
-                break;
-            case nameof(IBlockchainBridge.CreateAccessList):
-                _blockchainBridge.CreateAccessList(header, tx, default, false);
-                break;
-        }
+        bridgeCall(_blockchainBridge, header, tx);
 
         _transactionProcessor.Received().SetBlockExecutionContext(
             Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.BlobBaseFee == expectedBlobBaseFeeHash));
