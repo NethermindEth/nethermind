@@ -206,7 +206,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_not_ignore_insufficient_funds_for_eip1559_transactions()
+        public async Task should_not_ignore_insufficient_funds_for_eip1559_transactions()
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
             var txPool = CreatePool(null, specProvider);
@@ -220,11 +220,15 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(AcceptTxResult.InsufficientFunds);
             EnsureSenderBalance(tx.SenderAddress, tx.Value);
 
-            var headProcessed = new ManualResetEventSlim(false);
-            txPool.TxPoolHeadChanged += (s, a) => headProcessed.Set();
-            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.WithGasLimit(10000000).TestObject));
+            Block block = Build.A.Block.WithGasLimit(10000000).TestObject;
+            Task waitTask = Wait.ForEventCondition<Block>(
+                default,
+                e => txPool.TxPoolHeadChanged += e,
+                e => txPool.TxPoolHeadChanged -= e,
+                _ => true);
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(block));
+            await waitTask;
 
-            headProcessed.Wait();
             result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.InsufficientFunds);
             txPool.GetPendingTransactionsCount().Should().Be(0);
@@ -762,7 +766,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_remove_txHash_from_hashCache_when_tx_removed_because_of_txPool_size_exceeded()
+        public async Task should_remove_txHash_from_hashCache_when_tx_removed_because_of_txPool_size_exceeded()
         {
             _txPool = CreatePool(new TxPoolConfig() { Size = 1 });
             Transaction transaction = Build.A.Transaction
@@ -781,12 +785,8 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(higherPriorityTx);
             _txPool.SubmitTx(higherPriorityTx, TxHandlingOptions.PersistentBroadcast);
 
-            var headProcessed = new ManualResetEventSlim(false);
-            _txPool.TxPoolHeadChanged += (s, a) => headProcessed.Set();
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
 
-            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.TestObject));
-
-            headProcessed.Wait();
             _txPool.IsKnown(higherPriorityTx.Hash).Should().BeTrue();
             _txPool.IsKnown(transaction.Hash).Should().BeFalse();
         }
@@ -872,7 +872,7 @@ namespace Nethermind.TxPool.Test
         [TestCase(10, 5)]
         [TestCase(10, 8)]
         [TestCase(10, 9)]
-        public void should_remove_stale_txs_from_persistent_transactions(int numberOfTxs, int nonceIncludedInBlock)
+        public async Task should_remove_stale_txs_from_persistent_transactions(int numberOfTxs, int nonceIncludedInBlock)
         {
             _txPool = CreatePool();
 
@@ -892,20 +892,14 @@ namespace Nethermind.TxPool.Test
             _txPool.GetOwnPendingTransactions().Length.Should().Be(numberOfTxs);
 
             Block block = Build.A.Block.WithTransactions(transactions[nonceIncludedInBlock]).TestObject;
-            BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
 
-            ManualResetEvent manualResetEvent = new(false);
-            _txPool.TxPoolHeadChanged += (o, e) => manualResetEvent.Set();
-            _blockTree.RaiseBlockAddedToMain(blockReplacementEventArgs);
-            bool signaled = manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(Timeout));
-
-            signaled.Should().BeTrue("TxPoolHeadChanged event should have been raised");
             // transactions[nonceIncludedInBlock] was included in the block and should be removed, as well as all lower nonces.
             _txPool.GetOwnPendingTransactions().Length.Should().Be(numberOfTxs - nonceIncludedInBlock - 1);
         }
 
         [Test]
-        public void broadcaster_should_work_well_when_there_are_no_txs_in_persistent_txs_from_sender_of_tx_included_in_block()
+        public async Task broadcaster_should_work_well_when_there_are_no_txs_in_persistent_txs_from_sender_of_tx_included_in_block()
         {
             _txPool = CreatePool();
 
@@ -931,14 +925,8 @@ namespace Nethermind.TxPool.Test
             _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
 
             Block block = Build.A.Block.WithTransactions(transactionA).TestObject;
-            BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
 
-            ManualResetEvent manualResetEvent = new(false);
-            _txPool.TxPoolHeadChanged += (o, e) => manualResetEvent.Set();
-            _blockTree.RaiseBlockAddedToMain(blockReplacementEventArgs);
-            bool signaled = manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(Timeout));
-
-            signaled.Should().BeTrue("TxPoolHeadChanged event should have been raised");
             _txPool.GetPendingTransactionsCount().Should().Be(1);
             _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
         }
@@ -1004,7 +992,7 @@ namespace Nethermind.TxPool.Test
         [TestCase(false, true, 100)]
         [TestCase(true, false, 100)]
         [TestCase(false, false, 100)]
-        public void should_remove_tx_from_txPool_when_included_in_block(bool sameTransactionSenderPerPeer, bool sameNoncePerPeer, int expectedTransactions)
+        public async Task should_remove_tx_from_txPool_when_included_in_block(bool sameTransactionSenderPerPeer, bool sameNoncePerPeer, int expectedTransactions)
         {
             _txPool = CreatePool();
 
@@ -1013,14 +1001,8 @@ namespace Nethermind.TxPool.Test
 
             Transaction[] transactions = _txPool.GetPendingTransactions();
             Block block = Build.A.Block.WithTransactions(transactions).TestObject;
-            BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
 
-            ManualResetEvent manualResetEvent = new(false);
-            _txPool.TxPoolHeadChanged += (o, e) => manualResetEvent.Set();
-            _blockTree.RaiseBlockAddedToMain(blockReplacementEventArgs);
-            bool signaled = manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(Timeout));
-
-            signaled.Should().BeTrue("TxPoolHeadChanged event should have been raised");
             _txPool.GetPendingTransactionsCount().Should().Be(0);
         }
 
@@ -1028,7 +1010,7 @@ namespace Nethermind.TxPool.Test
         [TestCase(false, true, 100)]
         [TestCase(true, false, 100)]
         [TestCase(false, false, 100)]
-        public void should_not_remove_txHash_from_hashCache_when_tx_removed_because_of_including_in_block(bool sameTransactionSenderPerPeer, bool sameNoncePerPeer, int expectedTransactions)
+        public async Task should_not_remove_txHash_from_hashCache_when_tx_removed_because_of_including_in_block(bool sameTransactionSenderPerPeer, bool sameNoncePerPeer, int expectedTransactions)
         {
             _txPool = CreatePool();
 
@@ -1037,14 +1019,8 @@ namespace Nethermind.TxPool.Test
 
             Transaction[] transactions = _txPool.GetPendingTransactions();
             Block block = Build.A.Block.WithTransactions(transactions).TestObject;
-            BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
 
-            ManualResetEvent manualResetEvent = new(false);
-            _txPool.TxPoolHeadChanged += (o, e) => manualResetEvent.Set();
-            _blockTree.RaiseBlockAddedToMain(blockReplacementEventArgs);
-            bool signaled = manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(Timeout));
-
-            signaled.Should().BeTrue("TxPoolHeadChanged event should have been raised");
             foreach (Transaction transaction in transactions)
             {
                 _txPool.IsKnown(transaction.Hash).Should().BeTrue();
@@ -2402,7 +2378,7 @@ namespace Nethermind.TxPool.Test
                 : new BlockReplacementEventArgs(block ?? Build.A.Block.TestObject, previousBlock);
 
             Task waitTask = Wait.ForEventCondition<Block>(
-                default,
+                CancellationToken.None,
                 e => _txPool.TxPoolHeadChanged += e,
                 e => _txPool.TxPoolHeadChanged -= e,
                 e => e.Number == block.Number
