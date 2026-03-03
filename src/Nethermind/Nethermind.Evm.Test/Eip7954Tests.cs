@@ -23,49 +23,22 @@ public class Eip7954Tests : VirtualMachineTestsBase
         Assert.That(Spec.MaxInitCodeSize, Is.EqualTo(2L * CodeSizeConstants.MaxCodeSizeEip7954));
     }
 
-    [Test]
-    public void InitCode_above_old_limit_accepted_with_eip7954()
+    [TestCase(true, 55000, ExpectedResult = false, TestName = "InitCode_between_old_and_new_limit_accepted")]
+    [TestCase(false, 55000, ExpectedResult = true, TestName = "InitCode_above_old_limit_rejected_before_eip7954")]
+    [TestCase(true, 2 * CodeSizeConstants.MaxCodeSizeEip7954 + 1, ExpectedResult = true, TestName = "InitCode_exceeding_new_limit_rejected")]
+    public bool InitCode_size_validation(bool eip7954Enabled, long initCodeSize)
     {
-        // Initcode between old limit (49152) and new limit (65536) should be accepted
-        (TransactionResult result, _) = ExecuteRawCreateTransaction(Timestamp, 55000);
-
-        Assert.That(result, Is.Not.EqualTo(TransactionResult.TransactionSizeOverMaxInitCodeSize));
+        ulong timestamp = eip7954Enabled ? Timestamp : MainnetSpecProvider.ShanghaiBlockTimestamp;
+        (TransactionResult result, _) = ExecuteRawCreateTransaction(timestamp, initCodeSize);
+        return result == TransactionResult.TransactionSizeOverMaxInitCodeSize;
     }
 
-    [Test]
-    public void InitCode_above_old_limit_rejected_before_eip7954()
+    [TestCase(30000, ExpectedResult = StatusCode.Success, TestName = "Code_deposit_between_old_and_new_limit_succeeds")]
+    [TestCase(CodeSizeConstants.MaxCodeSizeEip7954 + 1, ExpectedResult = StatusCode.Failure, TestName = "Code_deposit_above_new_limit_fails")]
+    public byte Code_deposit_size_validation(int deployedCodeSize)
     {
-        // Same initcode size should be rejected before EIP-7954 (Shanghai era)
-        (TransactionResult result, _) = ExecuteRawCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp, 55000);
-
-        Assert.That(result, Is.EqualTo(TransactionResult.TransactionSizeOverMaxInitCodeSize));
-    }
-
-    [Test]
-    public void InitCode_exceeding_new_limit_rejected()
-    {
-        // Initcode exceeding new limit (65536) should be rejected even with EIP-7954
-        (TransactionResult result, _) = ExecuteRawCreateTransaction(Timestamp, 2 * CodeSizeConstants.MaxCodeSizeEip7954 + 1);
-
-        Assert.That(result, Is.EqualTo(TransactionResult.TransactionSizeOverMaxInitCodeSize));
-    }
-
-    [Test]
-    public void Code_deposit_between_old_and_new_limit_succeeds()
-    {
-        // Deployed bytecode of 30000 bytes (between old 24576 and new 32768 limit) should succeed
-        (_, TestAllTracerWithOutput tracer) = ExecuteDeployTransaction(Timestamp, 30000);
-
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-    }
-
-    [Test]
-    public void Code_deposit_above_new_limit_fails()
-    {
-        // Deployed bytecode exceeding new limit (32768) should fail
-        (_, TestAllTracerWithOutput tracer) = ExecuteDeployTransaction(Timestamp, CodeSizeConstants.MaxCodeSizeEip7954 + 1);
-
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        (_, TestAllTracerWithOutput tracer) = ExecuteDeployTransaction(Timestamp, deployedCodeSize);
+        return tracer.StatusCode;
     }
 
     private (TransactionResult, TestAllTracerWithOutput) ExecuteRawCreateTransaction(ulong timestamp, long initCodeSize)
