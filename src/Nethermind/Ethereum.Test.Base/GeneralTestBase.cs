@@ -13,7 +13,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -65,8 +64,6 @@ namespace Ethereum.Test.Base
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
             Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
-
-            EofValidator.Logger = _logger;
 
             test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 

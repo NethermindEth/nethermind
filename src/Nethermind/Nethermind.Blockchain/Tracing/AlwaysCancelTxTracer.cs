@@ -102,5 +102,4 @@ public class AlwaysCancelTxTracer : ITxTracer
     public void ReportExtraGasPressure(long extraGasPressure) => throw new OperationCanceledException(ErrorMessage);
     public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) => throw new OperationCanceledException(ErrorMessage);
     public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new OperationCanceledException(ErrorMessage);
-    public void Dispose() { }
 }

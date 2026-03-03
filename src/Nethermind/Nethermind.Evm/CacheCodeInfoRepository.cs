@@ -25,7 +25,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         _inner = new CodeInfoRepository(worldState, precompileProvider, GetOrCacheCodeInfo);
     }
 
-    private CodeInfo GetOrCacheCodeInfo(ValueHash256 codeHash, IReleaseSpec spec)
+    private CodeInfo GetOrCacheCodeInfo(ValueHash256 codeHash)
     {
         if (codeHash == ValueKeccak.OfAnEmptyString)
         {
@@ -35,7 +35,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
         if (cachedCodeInfo is null)
         {
-            cachedCodeInfo = CodeInfoRepository.GetCodeInfo(_worldState, in codeHash, spec);
+            cachedCodeInfo = CodeInfoRepository.GetCodeInfo(_worldState, in codeHash);
             _codeCache.Set(in codeHash, cachedCodeInfo);
         }
         else
@@ -52,14 +52,17 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
         _inner.GetExecutableCodeHash(address, spec);
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, out Address? delegatedAddress) =>
-        _inner.TryGetDelegation(address, spec, out delegatedAddress);
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, out CodeInfo codeInfo, out Address? delegatedAddress) =>
+        _inner.TryGetDelegation(address, spec, out codeInfo, out delegatedAddress);
+
+    public bool IsDelegated(Address address, IReleaseSpec spec) =>
+        _inner.IsDelegated(address, spec);
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
         {
-            _codeCache.Set(in codeHash, CodeInfoFactory.CreateCodeInfo(code, spec));
+            _codeCache.Set(in codeHash, CodeInfoFactory.CreateCodeInfo(code));
         }
     }
 

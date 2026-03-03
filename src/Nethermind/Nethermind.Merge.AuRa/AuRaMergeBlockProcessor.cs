@@ -18,6 +18,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa;
 
@@ -26,7 +27,7 @@ public class AuRaMergeBlockProcessor(
     IBlockValidator blockValidator,
     IRewardCalculator rewardCalculator,
     IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
-    IWorldState stateProvider,
+    WorldState stateProvider,
     IReceiptStorage receiptStorage,
     IBeaconBlockRootHandler beaconBlockRootHandler,
     ILogManager logManager,

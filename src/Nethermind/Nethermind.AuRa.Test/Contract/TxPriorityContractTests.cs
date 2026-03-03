@@ -239,6 +239,13 @@ namespace Nethermind.AuRa.Test.Contract
 
         public class TxPermissionContractBlockchain : TestContractBlockchain
         {
+            public TxPermissionContractBlockchain()
+            {
+                // These tests build/ingest contract-heavy AuRa blocks during fixture setup.
+                // The default 10s timeout is occasionally too tight on loaded CI runners.
+                TestTimeout = DefaultTimeout * 3;
+            }
+
             public TxPriorityContract TxPriorityContract { get; private set; }
             public DictionaryContractDataStore<TxPriorityContract.Destination> Priorities { get; private set; }
 

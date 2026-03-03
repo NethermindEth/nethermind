@@ -232,4 +232,10 @@ public class AddressTests
             yield return new TestCaseData(Cancun.Instance) { ExpectedResult = true, TestName = nameof(Cancun) };
         }
     }
+
+    [Test]
+    public void Constructor_throws_ArgumentNullException_for_null_bytes()
+    {
+        Assert.That(() => new Address((byte[])null!), Throws.TypeOf<ArgumentNullException>());
+    }
 }

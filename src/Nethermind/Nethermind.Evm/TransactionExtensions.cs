@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -23,12 +25,12 @@ namespace Nethermind.Evm
             {
                 if (header.ExcessBlobGas is null)
                 {
-                    throw new ArgumentException($"Block that contains Shard Blob Transactions should have {nameof(header.ExcessBlobGas)} set.", nameof(header.ExcessBlobGas));
+                    ThrowBlockInvalid();
                 }
 
                 if (!BlobGasCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
                 {
-                    throw new OverflowException("Blob gas price calculation led to overflow.");
+                    ThrowOverflow();
                 }
                 ulong blobGas = BlobGasCalculator.CalculateBlobGas(tx);
 
@@ -36,6 +38,12 @@ namespace Nethermind.Evm
             }
 
             return new(effectiveGasPrice, null, null);
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowOverflow() => throw new OverflowException("Blob gas price calculation led to overflow.");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowBlockInvalid() => throw new ArgumentException($"Block that contains Shard Blob Transactions should have {nameof(header.ExcessBlobGas)} set.", nameof(header.ExcessBlobGas));
         }
     }
 

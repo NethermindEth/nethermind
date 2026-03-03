@@ -32,7 +32,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
     {
         private IDisposable? _worldScopeCloser;
         private readonly IOverridableCodeInfoRepository _codeInfoRepository = childLifetimeScope.Resolve<IOverridableCodeInfoRepository>();
-        private readonly IWorldState _worldState = childLifetimeScope.Resolve<IWorldState>();
+        private readonly WorldState _worldState = childLifetimeScope.Resolve<WorldState>();
 
         public IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride)
         {
@@ -77,7 +77,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
 
         protected override void Load(ContainerBuilder builder) =>
             builder
-                .AddScoped<IWorldState>(_worldState)
+                .AddScoped<WorldState>(_worldState)
                 .AddScoped<IStateReader>(overridableScope.GlobalStateReader)
                 .AddScoped<IOverridableEnv>(this)
                 .AddScoped<ICodeInfoRepository>(_codeInfoRepository)

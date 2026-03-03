@@ -79,7 +79,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual Address? Eip2935ContractAddress => spec.Eip2935ContractAddress;
     public virtual long Eip2935RingBufferSize => spec.Eip2935RingBufferSize;
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
-    public virtual bool IsEofEnabled => spec.IsEofEnabled;
     public virtual bool IsEip7702Enabled => spec.IsEip7702Enabled;
     public virtual bool IsEip7823Enabled => spec.IsEip7823Enabled;
     public virtual bool IsEip7825Enabled => spec.IsEip7825Enabled;
@@ -110,7 +109,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
-    FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
+    public virtual bool IsPrecompile(Address address) => spec.IsPrecompile(address);
     public virtual bool IsEip7939Enabled => spec.IsEip7939Enabled;
     public virtual bool IsEip7907Enabled => spec.IsEip7907Enabled;
     public virtual bool IsRip7728Enabled => spec.IsRip7728Enabled;

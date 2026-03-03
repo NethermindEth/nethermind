@@ -28,21 +28,17 @@ public static class EvmCalculations
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long Div32Ceiling(ulong result, out bool outOfGas)
     {
-        ulong rem = result & 31;
-        result >>= 5;
-        if (rem > 0)
-        {
-            result++;
-        }
-
-        if (result > uint.MaxValue)
+        // Overflow-safe: (result >> 5) + ceil_bit avoids wrapping on large ulong values.
+        // Equivalent to (result + 31) / 32 but without the addition overflow risk.
+        ulong quotient = (result >> 5) + ((result & 31) != 0 ? 1ul : 0ul);
+        if (quotient > uint.MaxValue)
         {
             outOfGas = true;
             return 0;
         }
 
         outOfGas = false;
-        return (long)result;
+        return (long)quotient;
     }
 
     public static long Div32Ceiling(in UInt256 length)

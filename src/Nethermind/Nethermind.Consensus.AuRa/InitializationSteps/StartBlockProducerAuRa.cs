@@ -126,7 +126,7 @@ public class StartBlockProducerAuRa(
         return blockProducer;
     }
 
-    private BlockProcessor CreateBlockProcessor(ITransactionProcessor txProcessor, IWorldState worldState)
+    private BlockProcessor CreateBlockProcessor(ITransactionProcessor txProcessor, WorldState worldState)
     {
         ITxFilter auRaTxFilter = apiTxAuRaFilterBuilders.CreateAuRaTxFilter(
             new LocalTxFilter(engineSigner));
@@ -263,7 +263,7 @@ public class StartBlockProducerAuRa(
             ILifetimeScope innerLifetime = lifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddSingleton<IWorldStateScopeProvider>(worldStateScopeProvider)
                 .AddSingleton<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-                .AddSingleton<IBlockProcessor, ITransactionProcessor, IWorldState>(CreateBlockProcessor)
+                .AddSingleton<IBlockProcessor, ITransactionProcessor, WorldState>(CreateBlockProcessor)
                 .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>());
             lifetimeScope.Disposer.AddInstanceForAsyncDisposal(innerLifetime);
 

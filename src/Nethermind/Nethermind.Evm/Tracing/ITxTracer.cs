@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public interface ITxTracer : IWorldStateTracer, IDisposable
+public interface ITxTracer : IWorldStateTracer
 {
     bool IsCancelable => false;
     bool IsCancelled => false;

@@ -26,7 +26,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState
+    public sealed class WorldState : IWorldState
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
@@ -34,6 +34,7 @@ namespace Nethermind.State
         private IWorldStateScopeProvider.IScope? _currentScope;
         private bool _isInScope;
         private readonly ILogger _logger;
+        private readonly EventHandler<IWorldStateScopeProvider.AccountUpdated> _onAccountUpdated;
 
         public Hash256 StateRoot
         {
@@ -53,6 +54,7 @@ namespace Nethermind.State
             _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger();
+            _onAccountUpdated = OnAccountUpdated;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -203,10 +205,10 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.AddToBalance(address, balanceChange, spec);
         }
-        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool incrementNonce = false)
         {
             DebugGuardInScope();
-            return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
+            return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, incrementNonce);
         }
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
@@ -318,21 +320,24 @@ namespace Nethermind.State
             return ScopeProvider.HasRoot(header);
         }
 
-        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
+        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true, Address? retainInCache = null)
         {
             DebugGuardInScope();
             _transientStorageProvider.Commit(tracer);
             _persistentStorageProvider.Commit(tracer);
-            _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
+            _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis, retainInCache);
 
             if (commitRoots)
             {
                 using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
-                writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
+                writeBatch.OnAccountUpdated += _onAccountUpdated;
                 _persistentStorageProvider.FlushToTree(writeBatch);
                 _stateProvider.FlushToTree(writeBatch);
             }
         }
+
+        private void OnAccountUpdated(object? _, IWorldStateScopeProvider.AccountUpdated updatedAccount)
+            => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
         {

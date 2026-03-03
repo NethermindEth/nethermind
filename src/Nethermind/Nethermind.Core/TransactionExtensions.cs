@@ -21,11 +21,12 @@ namespace Nethermind.Core
                 UInt256 feeCap = tx.Supports1559 ? tx.MaxFeePerGas : tx.MaxPriorityFeePerGas;
                 if (baseFeePerGas > feeCap)
                 {
-                    premiumPerGas = UInt256.Zero;
+                    premiumPerGas = default;
                     return freeTransaction;
                 }
 
-                premiumPerGas = UInt256.Min(tx.MaxPriorityFeePerGas, feeCap - baseFeePerGas);
+                UInt256.Subtract(feeCap, baseFeePerGas, out feeCap);
+                premiumPerGas = UInt256.Min(tx.MaxPriorityFeePerGas, feeCap);
                 return true;
             }
 

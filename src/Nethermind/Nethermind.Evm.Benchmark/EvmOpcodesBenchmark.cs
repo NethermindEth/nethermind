@@ -20,6 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -45,14 +46,15 @@ public unsafe class EvmOpcodesBenchmark
     private const int DynamicStorageKeyCount = InnerCount * 8;
     private const int DynamicCallTargetCount = InnerCount;
 
-    private delegate*<VirtualMachine<EthereumGasPolicy>, ref EvmStack, ref EthereumGasPolicy, ref int, EvmExceptionType>[] _opcodes = null!;
+    private delegate*<VirtualMachine<EthereumGasPolicy>, ref EvmStack, ref EthereumGasPolicy, int, OpcodeResult>[] _opcodes = null!;
     private BenchmarkVm _vm = null!;
     private byte[] _stackBuffer = null!;
     private int _stackOffset;
     private int _stackLength;
     private EthereumGasPolicy _gas;
-    private ExecutionEnvironment _env = null!;
-    private VmState<EthereumGasPolicy> _vmState = null!;
+    private ExecutionEnvironment _env;
+    private CallFrame<EthereumGasPolicy> _callFrame = null!;
+    private AccessTrackingState _trackingState = null!;
     private IWorldState _stateProvider = null!;
     private IDisposable _stateScope = null!;
     private int _stackDepth;
@@ -85,9 +87,9 @@ public unsafe class EvmOpcodesBenchmark
     private static readonly UInt256 KeccakLength = new((ulong)KeccakWordSize);
     private static readonly Address CallTargetAddress = Address.FromNumber(0x1000);
     private static readonly byte[] StopCode = [(byte)Instruction.STOP];
-    private static readonly Instruction[] AllValidLegacyOpcodes = Enum
+    private static readonly Instruction[] AllValidOpcodes = Enum
         .GetValues<Instruction>()
-        .Where(static opcode => opcode.IsValid(isEofContext: false) && opcode != Instruction.INVALID)
+        .Where(static opcode => opcode.IsValid() && opcode != Instruction.INVALID)
         .ToArray();
     private static readonly Instruction[] PerRunRefreshedOpcodes =
     [
@@ -122,7 +124,7 @@ public unsafe class EvmOpcodesBenchmark
             => LogThresholdPercent,
         _ => DefaultThresholdPercent,
     };
-    public IEnumerable<Instruction> Opcodes => AllValidLegacyOpcodes;
+    public IEnumerable<Instruction> Opcodes => AllValidOpcodes;
 
     [ParamsSource(nameof(Opcodes))]
     public Instruction Opcode { get; set; }
@@ -188,8 +190,9 @@ public unsafe class EvmOpcodesBenchmark
             }
         }
 
-        _env = ExecutionEnvironment.Rent(
-            codeInfo: new CodeInfo(bytecode),
+        CodeInfo codeInfo = new CodeInfo(bytecode);
+        _env = new ExecutionEnvironment(
+            codeInfo: codeInfo,
             executingAccount: address,
             caller: address,
             codeSource: address,
@@ -198,16 +201,20 @@ public unsafe class EvmOpcodesBenchmark
             value: 0,
             inputData: default);
 
-        _vmState = VmState<EthereumGasPolicy>.RentTopLevel(
+        _trackingState = AccessTrackingState.RentState();
+        _vm.TrackingState = _trackingState;
+        _callFrame = CallFrame<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromLong(long.MaxValue),
             ExecutionType.TRANSACTION,
-            _env,
-            new StackAccessTracker(),
+            codeInfo, address, address, address,
+            default, default,
+            default,
+            _trackingState,
             Snapshot.Empty);
-        _vmState.InitializeStacks();
+        _callFrame.InitializeStacks(_callFrame.CodeInfo.CodeSpan, out _);
         InitializeKeccakMemoryLocations();
 
-        _vm.SetVmState(_vmState);
+        _vm.SetCallFrame(_callFrame);
         _vm.SetTracer(NullTxTracer.Instance);
 
         // Generate the opcode function pointer table (same as production)
@@ -221,8 +228,8 @@ public unsafe class EvmOpcodesBenchmark
     [GlobalCleanup]
     public void Cleanup()
     {
-        _vmState?.Dispose();
-        _env?.Dispose();
+        _callFrame?.Dispose();
+        if (_trackingState is not null) AccessTrackingState.ResetAndReturn(_trackingState);
         _stateScope?.Dispose();
     }
 
@@ -244,8 +251,9 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithStackWalk()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
-        EvmExceptionType result = EvmExceptionType.None;
+        ref byte stackRef = ref GetAlignedStackRef();
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref stackRef, _env.CodeInfo.CodeSpan);
+        OpcodeResult result = new(0);
         int remaining = InnerCount;
         while (remaining > 0)
         {
@@ -256,20 +264,21 @@ public unsafe class EvmOpcodesBenchmark
             {
                 EthereumGasPolicy gas = _gas;
                 int pc = 0;
-                result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+                result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, pc);
                 DisposeNestedReturnFrame();
             }
 
             remaining -= runs;
         }
 
-        return result;
+        return result.Exception;
     }
 
     private EvmExceptionType ExecuteOpcodeWithPerRunRefresh()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
-        EvmExceptionType result = EvmExceptionType.None;
+        ref byte stackRef = ref GetAlignedStackRef();
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref stackRef, _env.CodeInfo.CodeSpan);
+        OpcodeResult result = new(0);
         for (int runIndex = 0; runIndex < InnerCount; runIndex++)
         {
             stack.Head = _stackDepth;
@@ -277,17 +286,18 @@ public unsafe class EvmOpcodesBenchmark
 
             EthereumGasPolicy gas = _gas;
             int pc = 0;
-            result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+            result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, pc);
             DisposeNestedReturnFrame();
         }
 
-        return result;
+        return result.Exception;
     }
 
     private EvmExceptionType ExecuteOpcodeWithIndependentBinaryInputs()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
-        EvmExceptionType result = EvmExceptionType.None;
+        ref byte stackRef = ref GetAlignedStackRef();
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref stackRef, _env.CodeInfo.CodeSpan);
+        OpcodeResult result = new(0);
         int remaining = InnerCount;
         while (remaining > 0)
         {
@@ -299,14 +309,14 @@ public unsafe class EvmOpcodesBenchmark
 
                 EthereumGasPolicy gas = _gas;
                 int pc = 0;
-                result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+                result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, pc);
                 DisposeNestedReturnFrame();
             }
 
             remaining -= runs;
         }
 
-        return result;
+        return result.Exception;
     }
 
     [IterationCleanup]
@@ -602,7 +612,8 @@ public unsafe class EvmOpcodesBenchmark
 
     private long ExecuteOpcodeOnceForGas()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        ref byte stackRef = ref GetAlignedStackRef();
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref stackRef, _env.CodeInfo.CodeSpan);
         if (RequiresPerRunLocationSetup(Opcode))
         {
             stack.Head = _stackDepth;
@@ -620,7 +631,7 @@ public unsafe class EvmOpcodesBenchmark
 
         EthereumGasPolicy gas = _gas;
         int pc = 0;
-        _ = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+        _ = _opcodes[(int)Opcode](_vm, ref stack, ref gas, pc);
         DisposeNestedReturnFrame();
 
         return _gas.Value - gas.Value;
@@ -628,7 +639,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private void DisposeNestedReturnFrame()
     {
-        if (_vm.ReturnData is VmState<EthereumGasPolicy> nestedFrame)
+        if (_vm.ReturnData is CallFrame<EthereumGasPolicy> nestedFrame)
         {
             nestedFrame.Dispose();
             _vm.ReturnData = null!;
@@ -678,7 +689,7 @@ public unsafe class EvmOpcodesBenchmark
 
             word.Xor(hash.Bytes);
 
-            _vmState.Memory.TrySave(in offset, word);
+            _callFrame.Memory.TrySave(in offset, word);
         }
     }
 
@@ -857,6 +868,10 @@ public unsafe class EvmOpcodesBenchmark
         => _stackBuffer.AsSpan(_stackOffset, _stackLength);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ref byte GetAlignedStackRef()
+        => ref MemoryMarshal.GetReference(GetAlignedStackSpan());
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WriteStackSlot(int slotIndex, in UInt256 value)
         => WriteStackSlot(GetAlignedStackSpan(), slotIndex, in value);
 
@@ -886,7 +901,7 @@ public unsafe class EvmOpcodesBenchmark
             typeof(VirtualMachine<EthereumGasPolicy>)
                 .GetField("_codeInfoRepository", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
-        public void SetVmState(VmState<EthereumGasPolicy> state) => VmState = state;
+        public void SetCallFrame(CallFrame<EthereumGasPolicy> frame) => CallFrame = frame;
         public void SetTracer(ITxTracer tracer) => _txTracer = tracer;
 
         public void SetExecutionDependencies(IWorldState state, ICodeInfoRepository codeInfoRepository)
@@ -928,5 +943,42 @@ public unsafe class EvmOpcodesBenchmark
             AddColumn(StatisticColumn.P95);
             AddColumnProvider(new EvmOpcodeGasColumnProvider());
         }
+    }
+}
+
+internal static class InstructionBenchmarkExtensions
+{
+    public static bool IsValid(this Instruction instruction) => Enum.IsDefined(instruction);
+
+    public static (ushort InputCount, ushort OutputCount, ushort immediates) StackRequirements(this Instruction instruction)
+    {
+        return instruction switch
+        {
+            Instruction.STOP or Instruction.INVALID or Instruction.JUMPDEST => (0, 0, 0),
+            Instruction.POP or Instruction.SELFDESTRUCT or Instruction.JUMP => (1, 0, 0),
+            Instruction.ISZERO or Instruction.NOT or Instruction.BALANCE or Instruction.CALLDATALOAD
+                or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.BLOCKHASH
+                or Instruction.MLOAD or Instruction.SLOAD or Instruction.BLOBHASH or Instruction.TLOAD => (1, 1, 0),
+            Instruction.MSTORE or Instruction.MSTORE8 or Instruction.SSTORE or Instruction.LOG0
+                or Instruction.REVERT or Instruction.TSTORE or Instruction.RETURN or Instruction.JUMPI => (2, 0, 0),
+            Instruction.CALLDATACOPY or Instruction.CODECOPY or Instruction.RETURNDATACOPY
+                or Instruction.LOG1 or Instruction.MCOPY => (3, 0, 0),
+            Instruction.EXTCODECOPY or Instruction.LOG2 => (4, 0, 0),
+            Instruction.LOG3 => (5, 0, 0),
+            Instruction.LOG4 => (6, 0, 0),
+            Instruction.ADDMOD or Instruction.MULMOD or Instruction.CREATE => (3, 1, 0),
+            Instruction.CREATE2 => (4, 1, 0),
+            Instruction.ADDRESS or Instruction.ORIGIN or Instruction.CALLER or Instruction.CALLVALUE
+                or Instruction.CALLDATASIZE or Instruction.CODESIZE or Instruction.GASPRICE
+                or Instruction.RETURNDATASIZE or Instruction.COINBASE or Instruction.TIMESTAMP
+                or Instruction.NUMBER or Instruction.PREVRANDAO or Instruction.GASLIMIT
+                or Instruction.CHAINID or Instruction.SELFBALANCE or Instruction.BASEFEE
+                or Instruction.MSIZE or Instruction.GAS or Instruction.PC or Instruction.BLOBBASEFEE => (0, 1, 0),
+            Instruction.CALL or Instruction.DELEGATECALL or Instruction.STATICCALL or Instruction.CALLCODE => (6, 1, 0),
+            >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, instruction - Instruction.PUSH0),
+            >= Instruction.DUP1 and <= Instruction.DUP16 => ((ushort)(instruction - Instruction.DUP1 + 1), (ushort)(instruction - Instruction.DUP1 + 2), 0),
+            >= Instruction.SWAP1 and <= Instruction.SWAP16 => ((ushort)(instruction - Instruction.SWAP1 + 2), (ushort)(instruction - Instruction.SWAP1 + 2), 0),
+            _ => Enum.IsDefined(instruction) ? ((ushort)2, (ushort)1, (ushort)0) : throw new NotImplementedException($"opcode {instruction} not implemented yet"),
+        };
     }
 }

@@ -28,6 +28,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -187,9 +188,9 @@ namespace Nethermind.AuRa.Test
             }
         }
 
-        private (BranchProcessor Processor, IWorldState StateProvider, IBlockTree blockTree) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
+        private (BranchProcessor Processor, WorldState StateProvider, IBlockTree blockTree) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
         {
-            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            WorldState stateProvider = TestWorldStateFactory.CreateForTest();
             IBlockTree blockTree = Build.A.BlockTree(GnosisSpecProvider.Instance).TestObject;
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new(

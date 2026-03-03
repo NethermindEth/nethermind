@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -28,5 +29,18 @@ public class GethLikeBlockNativeTracer : BlockTracerBase<GethLikeTxTrace, GethLi
 
     protected override bool ShouldTraceTx(Transaction? tx) => tx is not null && base.ShouldTraceTx(tx);
 
-    protected override GethLikeTxTrace OnEnd(GethLikeNativeTxTracer txTracer) => txTracer.BuildResult();
+    protected override GethLikeTxTrace OnEnd(GethLikeNativeTxTracer txTracer)
+    {
+        try
+        {
+            return txTracer.BuildResult();
+        }
+        finally
+        {
+            if (txTracer is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
+    }
 }

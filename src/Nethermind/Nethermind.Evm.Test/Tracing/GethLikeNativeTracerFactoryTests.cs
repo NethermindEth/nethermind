@@ -7,6 +7,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Evm.Tracing;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -64,5 +65,61 @@ public class GethLikeNativeTracerFactoryTests
         var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(null);
 
         Assert.That(isNativeTracer, Is.False);
+    }
+
+    [Test]
+    public void EndTxTrace_disposes_native_tracer()
+    {
+        TestNativeTxTracer? startedTracer = null;
+        GethLikeBlockNativeTracer blockTracer = new(null, (_, _) =>
+        {
+            startedTracer = new TestNativeTxTracer();
+            return startedTracer;
+        });
+
+        ((IBlockTracer)blockTracer).StartNewBlockTrace(_block);
+        ((IBlockTracer)blockTracer).StartNewTxTrace(_tx);
+        ((IBlockTracer)blockTracer).EndTxTrace();
+
+        Assert.That(startedTracer, Is.Not.Null);
+        Assert.That(startedTracer?.Disposed, Is.True);
+    }
+
+    [Test]
+    public void EndTxTrace_disposes_native_tracer_when_build_result_throws()
+    {
+        TestNativeTxTracer? startedTracer = null;
+        GethLikeBlockNativeTracer blockTracer = new(null, (_, _) =>
+        {
+            startedTracer = new TestNativeTxTracer(throwOnBuildResult: true);
+            return startedTracer;
+        });
+
+        ((IBlockTracer)blockTracer).StartNewBlockTrace(_block);
+        ((IBlockTracer)blockTracer).StartNewTxTrace(_tx);
+
+        Assert.Throws<InvalidOperationException>(() => ((IBlockTracer)blockTracer).EndTxTrace());
+        Assert.That(startedTracer, Is.Not.Null);
+        Assert.That(startedTracer?.Disposed, Is.True);
+    }
+
+    private sealed class TestNativeTxTracer(bool throwOnBuildResult = false) : GethLikeNativeTxTracer(GethTraceOptions.Default), IDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public override GethLikeTxTrace BuildResult()
+        {
+            if (throwOnBuildResult)
+            {
+                throw new InvalidOperationException("BuildResult failure");
+            }
+
+            return new GethLikeTxTrace();
+        }
+
+        public void Dispose()
+        {
+            Disposed = true;
+        }
     }
 }

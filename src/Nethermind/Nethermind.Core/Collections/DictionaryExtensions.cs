@@ -59,7 +59,9 @@ public static class DictionaryExtensions
     /// <param name="dictionary">The dictionary whose values will be returned and cleared.</param>
     /// <typeparam name="TKey">The type of the keys in the dictionary.</typeparam>
     /// <typeparam name="TValue">The type of the values in the dictionary, which must implement <see cref="IReturnable"/>.</typeparam>
-    extension<TKey, TValue>(IDictionary<TKey, TValue> dictionary) where TValue : class, IReturnable
+    extension<TKey, TValue>(IDictionary<TKey, TValue> dictionary)
+        where TValue : class, IReturnable
+        where TKey : IEquatable<TKey>
     {
         /// <summary>
         /// Returns all values in the dictionary to their pool by calling <see cref="IReturnable.Return"/> on each value,
@@ -76,6 +78,7 @@ public static class DictionaryExtensions
             }
             dictionary.Clear();
         }
+
     }
 
     extension<TKey, TValue, TAlternateKey>(Dictionary<TKey, TValue>.AlternateLookup<TAlternateKey> dictionary)

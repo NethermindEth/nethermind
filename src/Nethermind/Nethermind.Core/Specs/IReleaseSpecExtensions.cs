@@ -58,12 +58,6 @@ public static class IReleaseSpecExtensions
         public bool BlobBaseFeeEnabled => spec.IsEip4844Enabled;
         public bool IsAuthorizationListEnabled => spec.IsEip7702Enabled;
         public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled;
-        /// <summary>
-        /// Determines whether the specified address is a precompiled contract for this release specification.
-        /// </summary>
-        /// <param name="address">The address to check for precompile status.</param>
-        /// <returns>True if the address is a precompiled contract; otherwise, false.</returns>
-        public bool IsPrecompile(Address address) => spec.Precompiles.Contains(address);
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;
     }

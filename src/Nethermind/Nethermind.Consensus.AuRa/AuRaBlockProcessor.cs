@@ -21,6 +21,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa

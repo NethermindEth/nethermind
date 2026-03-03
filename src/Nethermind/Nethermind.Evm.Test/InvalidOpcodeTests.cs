@@ -99,31 +99,6 @@ namespace Nethermind.Evm.Test
                 }
             ).ToArray();
 
-        private static readonly Instruction[] OsakaInstructions =
-            CancunInstructions.Union(
-                new Instruction[]
-                {
-                    Instruction.RJUMP,
-                    Instruction.RJUMPI,
-                    Instruction.RJUMPV,
-                    Instruction.CALLF,
-                    Instruction.RETF,
-                    Instruction.JUMPF,
-                    Instruction.EOFCREATE,
-                    Instruction.RETURNCODE,
-                    Instruction.DATASIZE,
-                    Instruction.DATACOPY,
-                    Instruction.DATALOAD,
-                    Instruction.DATALOADN,
-                    Instruction.SWAPN,
-                    Instruction.DUPN,
-                    Instruction.EXCHANGE,
-                    Instruction.EXTCALL,
-                    Instruction.EXTDELEGATECALL,
-                    Instruction.EXTSTATICCALL,
-                }
-            ).ToArray();
-
         private readonly Dictionary<ForkActivation, Instruction[]> _validOpcodes
             = new()
             {
@@ -140,8 +115,8 @@ namespace Nethermind.Evm.Test
                 {MainnetSpecProvider.ShanghaiActivation, ShanghaiInstructions},
                 {MainnetSpecProvider.CancunActivation, CancunInstructions},
                 {MainnetSpecProvider.PragueActivation, CancunInstructions},
-                {MainnetSpecProvider.OsakaActivation, OsakaInstructions},
-                {(long.MaxValue, ulong.MaxValue), OsakaInstructions}
+                {MainnetSpecProvider.OsakaActivation, CancunInstructions},
+                {(long.MaxValue, ulong.MaxValue), CancunInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";

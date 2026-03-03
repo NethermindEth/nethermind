@@ -43,7 +43,8 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         }
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
-        return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
+        return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation
+            && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
             ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }
@@ -86,5 +87,5 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
                && base.RecoverSenderIfNeeded(tx, spec, opts, in effectiveGasPrice);
     }
 
-    protected override void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec) { }
+    protected override void PayRefund(Transaction tx, in UInt256 refundAmount, IReleaseSpec spec) { }
 }

@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
@@ -28,30 +29,35 @@ namespace Nethermind.Consensus.Processing
                 transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
             }
 
-            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+            [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
             {
                 Metrics.ResetBlockStats();
 
-                for (int i = 0; i < block.Transactions.Length; i++)
+                Transaction[] transactions = block.Transactions;
+                for (int i = 0; i < transactions.Length; i++)
                 {
-                    Transaction currentTx = block.Transactions[i];
-                    ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+                    ProcessTransaction(block, transactions[i], i, receiptsTracer, processingOptions);
                 }
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
-            protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
-                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
+                // Explicit null check avoids allocating TxProcessedEventArgs when no handler is registered;
+                // the ?. operator evaluates arguments before the null check.
+                if (transactionProcessedEventHandler is not null)
+                {
+                    transactionProcessedEventHandler.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
+                }
             }
 
             [DoesNotReturn, StackTraceHidden]
-            private void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
-            {
-                throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
-            }
+            private static void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
+                => throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
 
             /// <summary>
             /// Used by <see cref="FilterManager"/> through <see cref="IMainProcessingContext"/>

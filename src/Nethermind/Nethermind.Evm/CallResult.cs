@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using Nethermind.Evm.CodeAnalysis;
+using System.Runtime.InteropServices;
 using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
@@ -10,6 +9,7 @@ namespace Nethermind.Evm;
 public partial class VirtualMachine<TGasPolicy>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
+    [StructLayout(LayoutKind.Auto)]
     protected readonly ref struct CallResult
     {
         public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
@@ -23,55 +23,75 @@ public partial class VirtualMachine<TGasPolicy>
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow);
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
         public static CallResult InvalidAddressRange => new(EvmExceptionType.AddressOutOfRange);
-        public static CallResult Empty(int fromVersion) => new(container: null, output: default, precompileSuccess: null, fromVersion);
 
-        public CallResult(VmState<TGasPolicy> stateToExecute)
+        public static CallResult Empty => default;
+
+        public CallResult(CallFrame<TGasPolicy> frameToExecute)
         {
-            StateToExecute = stateToExecute;
-            Output = (null, Array.Empty<byte>());
-            PrecompileSuccess = null;
+            FrameToExecute = frameToExecute;
+            _resultType = CallResultType.EvmCall;
             ShouldRevert = false;
             ExceptionType = EvmExceptionType.None;
         }
 
-        public CallResult(ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        /// <summary>
+        /// Constructor for regular EVM call returns where output is stored in ReturnDataBuffer externally.
+        /// </summary>
+        public CallResult(bool shouldRevert, EvmExceptionType exceptionType = EvmExceptionType.None)
         {
-            StateToExecute = null;
-            Output = (null, output);
-            PrecompileSuccess = precompileSuccess;
+            FrameToExecute = null;
+            _resultType = CallResultType.EvmCall;
             ShouldRevert = shouldRevert;
             ExceptionType = exceptionType;
-            FromVersion = fromVersion;
         }
 
-        public CallResult(CodeInfo? container, ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        /// <summary>
+        /// Constructor for precompile results where output is stored in ReturnDataBuffer externally.
+        /// </summary>
+        public CallResult(bool precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
         {
-            StateToExecute = null;
-            Output = (container, output);
-            PrecompileSuccess = precompileSuccess;
+            FrameToExecute = null;
+            _resultType = precompileSuccess ? CallResultType.PrecompileSuccess : CallResultType.PrecompileFailure;
             ShouldRevert = shouldRevert;
             ExceptionType = exceptionType;
-            FromVersion = fromVersion;
         }
 
         private CallResult(EvmExceptionType exceptionType)
         {
-            StateToExecute = null;
-            Output = (null, StatusCode.FailureBytes);
-            PrecompileSuccess = null;
+            FrameToExecute = null;
+            _resultType = CallResultType.EvmCall;
             ShouldRevert = false;
             ExceptionType = exceptionType;
         }
 
-        public VmState<TGasPolicy>? StateToExecute { get; }
-        public (CodeInfo Container, ReadOnlyMemory<byte> Bytes) Output { get; }
+        private readonly CallResultType _resultType;
+
+        public CallFrame<TGasPolicy>? FrameToExecute { get; }
         public EvmExceptionType ExceptionType { get; }
         public bool ShouldRevert { get; }
-        public bool? PrecompileSuccess { get; }
-        public bool IsReturn => StateToExecute is null;
+        public bool? PrecompileSuccess => _resultType switch
+        {
+            CallResultType.PrecompileSuccess => true,
+            CallResultType.PrecompileFailure => false,
+            _ => null
+        };
+        /// <summary>True for non-precompile calls or successful precompiles; false only for precompile failure.</summary>
+        public bool IsSuccessResult => _resultType != CallResultType.PrecompileFailure;
+        public bool IsReturn => FrameToExecute is null;
         //EvmExceptionType.Revert is returned when the top frame encounters a REVERT opcode, which is not an exception.
         public bool IsException => ExceptionType != EvmExceptionType.None && ExceptionType != EvmExceptionType.Revert;
-        public int FromVersion { get; }
         public string? SubstateError { get; init; }
+        /// <summary>
+        /// Indicates the result type of a call execution.
+        /// </summary>
+        private enum CallResultType : byte
+        {
+            /// <summary>Regular EVM bytecode execution (not a precompile).</summary>
+            EvmCall = 0,
+            /// <summary>Precompile executed successfully.</summary>
+            PrecompileSuccess = 1,
+            /// <summary>Precompile execution failed.</summary>
+            PrecompileFailure = 2
+        }
     }
 }

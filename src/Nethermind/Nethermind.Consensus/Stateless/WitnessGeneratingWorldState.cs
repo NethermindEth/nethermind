@@ -77,7 +77,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         // Keys should be ordered like: <address1><address2><slot1-address2><slot2-address2><address3><slot1-address3>
         foreach (KeyValuePair<Address, HashSet<UInt256>> kvp in _storageSlots)
         {
-            keys.Add(kvp.Key.Bytes);
+            keys.Add(kvp.Key.Bytes.ToArray());
             foreach (UInt256 slot in kvp.Value)
                 keys.Add(slot.ToBigEndian());
         }
@@ -99,6 +99,12 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     {
         RecordEmptySlots(address);
         return ((IWorldState)inner).TryGetAccount(address, out account);
+    }
+
+    public Account GetAccount(Address address)
+    {
+        RecordEmptySlots(address);
+        return inner.GetAccount(address);
     }
 
     public Hash256 StateRoot => inner.StateRoot;
@@ -224,10 +230,10 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         inner.AddToBalance(address, in balanceChange, spec);
     }
 
-    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool incrementNonce = false)
     {
         RecordEmptySlots(address);
-        return inner.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec);
+        return inner.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, incrementNonce);
     }
 
     public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
@@ -257,8 +263,8 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true) =>
         inner.Commit(releaseSpec, isGenesis, commitRoots);
 
-    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true) =>
-        inner.Commit(releaseSpec, tracer, isGenesis, commitRoots);
+    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true, Address? retainInCache = null) =>
+        inner.Commit(releaseSpec, tracer, isGenesis, commitRoots, retainInCache);
 
     public void CommitTree(long blockNumber) => inner.CommitTree(blockNumber);
 

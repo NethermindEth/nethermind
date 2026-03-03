@@ -75,23 +75,38 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     protected virtual TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
     {
         Transaction transaction = CurrentTx!;
+        Block block = Block;
+
         TxReceipt txReceipt = new()
         {
-            Logs = logEntries,
-            TxType = transaction.Type,
-            // Bloom calculated in parallel with other receipts
-            GasUsedTotal = Block.GasUsed,
-            StatusCode = statusCode,
-            Recipient = transaction.IsContractCreation ? null : recipient,
-            BlockHash = Block.Hash,
-            BlockNumber = Block.Number,
-            Index = _currentIndex,
-            GasUsed = spentGas,
-            Sender = transaction.SenderAddress,
-            ContractAddress = transaction.IsContractCreation ? recipient : null,
+            BlockHash = block.Hash,
             TxHash = transaction.Hash,
-            PostTransactionState = stateRoot
+            Sender = transaction.SenderAddress,
+            Logs = logEntries,
+            BlockNumber = block.Number,
+            GasUsed = spentGas,
+            GasUsedTotal = block.GasUsed,
+            Index = _currentIndex,
+            TxType = transaction.Type,
+            StatusCode = statusCode
         };
+
+        // new zeros the object, so null writes are redundant.
+        // Only write recipient to the relevant field — the other stays null.
+        if (transaction.IsContractCreation)
+        {
+            txReceipt.ContractAddress = recipient;
+        }
+        else
+        {
+            txReceipt.Recipient = recipient;
+        }
+
+        // stateRoot is null post-EIP-658; skip the write barrier
+        if (stateRoot is not null)
+        {
+            txReceipt.PostTransactionState = stateRoot;
+        }
 
         return txReceipt;
     }
@@ -209,14 +224,13 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     public void Restore(int snapshot)
     {
-        int numToRemove = _txReceipts.Count - snapshot;
-
-        for (int i = 0; i < numToRemove; i++)
+        int count = _txReceipts.Count;
+        if (snapshot < count)
         {
-            _txReceipts.RemoveAt(_txReceipts.Count - 1);
+            _txReceipts.RemoveRange(snapshot, count - snapshot);
         }
 
-        Block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
+        Block.Header.GasUsed = snapshot > 0 ? _txReceipts[snapshot - 1].GasUsedTotal : 0;
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
@@ -227,6 +241,12 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         Block = block;
         _currentIndex = 0;
         _txReceipts.Clear();
+        int capacity = _txReceipts.Capacity;
+        int txCount = block.Transactions.Length;
+        if (capacity < txCount)
+        {
+            _txReceipts.Capacity = txCount;
+        }
 
         _otherTracer.StartNewBlockTrace(block);
     }
@@ -247,13 +267,13 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void EndBlockTrace()
     {
         _otherTracer.EndBlockTrace();
-        if (_txReceipts.Count > 0)
+        ReadOnlySpan<TxReceipt> receipts = CollectionsMarshal.AsSpan(_txReceipts);
+        if (receipts.Length > 0)
         {
             Bloom blockBloom = new();
             Block.Header.Bloom = blockBloom;
-            for (int index = 0; index < _txReceipts.Count; index++)
+            foreach (TxReceipt receipt in receipts)
             {
-                TxReceipt? receipt = _txReceipts[index];
                 blockBloom.Accumulate(receipt.Bloom!);
             }
         }
@@ -264,10 +284,5 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     {
         ArgumentNullException.ThrowIfNull(blockTracer);
         _otherTracer = blockTracer;
-    }
-
-    public void Dispose()
-    {
-        _currentTxTracer.Dispose();
     }
 }

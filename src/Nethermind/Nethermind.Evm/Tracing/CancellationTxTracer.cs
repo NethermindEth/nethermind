@@ -450,9 +450,4 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
             innerTracer.ReportFees(fees, burntFees);
         }
     }
-
-    public void Dispose()
-    {
-        innerTracer.Dispose();
-    }
 }

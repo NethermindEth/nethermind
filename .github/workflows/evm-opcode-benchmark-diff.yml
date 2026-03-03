@@ -243,7 +243,12 @@ jobs:
           def format_row(opcode, d):
               base_str = "N/A" if d["base_val"] is None else f"{d['base_val']:.3f}"
               pr_str = "N/A" if d["pr_val"] is None else f"{d['pr_val']:.3f}"
-              delta_str = "N/A" if d["delta_pct"] is None else f"{d['delta_pct']:+.2f}%"
+              if d["delta_pct"] is None:
+                  delta_str = "N/A"
+              elif d["delta_pct"] > 0:
+                  delta_str = f"\U0001F44E {d['delta_pct']:+.2f}%"
+              else:
+                  delta_str = f"\U0001F44D {d['delta_pct']:+.2f}%"
               delta_abs_str = "N/A" if d["delta_abs_ns"] is None else f"{d['delta_abs_ns']:.3f}"
               base_cv = fmt_cv(d["base_mean"], d["base_stddev"])
               pr_cv = fmt_cv(d["pr_mean"], d["pr_stddev"])

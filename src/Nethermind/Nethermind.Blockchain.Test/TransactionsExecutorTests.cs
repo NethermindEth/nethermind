@@ -19,10 +19,14 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Eip2930;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -364,9 +368,57 @@ namespace Nethermind.Blockchain.Test
         }
     }
 
-    public class WorldStateStab() : WorldState(Substitute.For<IWorldStateScopeProvider>(), LimboLogs.Instance), IWorldState
+    public class WorldStateStab : IWorldState
     {
+        private readonly WorldState _inner = new(Substitute.For<IWorldStateScopeProvider>(), LimboLogs.Instance);
+
         // we cannot mock ref methods
         ref readonly UInt256 IWorldState.GetBalance(Address address) => ref UInt256.MaxValue;
+        ref readonly ValueHash256 IWorldState.GetCodeHash(Address address) => ref _inner.GetCodeHash(address);
+
+        public void Restore(Snapshot snapshot) => _inner.Restore(snapshot);
+        public bool TryGetAccount(Address address, out AccountStruct account) => ((IAccountStateProvider)_inner).TryGetAccount(address, out account);
+        UInt256 IAccountStateProvider.GetBalance(Address address) => UInt256.MaxValue;
+        UInt256 IAccountStateProvider.GetNonce(Address address) => ((IAccountStateProvider)_inner).GetNonce(address);
+        ValueHash256 IAccountStateProvider.GetCodeHash(Address address) => ((IAccountStateProvider)_inner).GetCodeHash(address);
+        bool IAccountStateProvider.HasCode(Address address) => ((IAccountStateProvider)_inner).HasCode(address);
+        bool IAccountStateProvider.IsStorageEmpty(Address address) => ((IAccountStateProvider)_inner).IsStorageEmpty(address);
+        public byte[] GetOriginal(in StorageCell storageCell) => _inner.GetOriginal(in storageCell);
+        public ReadOnlySpan<byte> Get(in StorageCell storageCell) => _inner.Get(in storageCell);
+        public void Set(in StorageCell storageCell, byte[] newValue) => _inner.Set(in storageCell, newValue);
+        public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell) => _inner.GetTransientState(in storageCell);
+        public void SetTransientState(in StorageCell storageCell, byte[] newValue) => _inner.SetTransientState(in storageCell, newValue);
+        public void Reset(bool resetBlockChanges = true) => _inner.Reset(resetBlockChanges);
+        public Snapshot TakeSnapshot(bool newTransactionStart = false) => _inner.TakeSnapshot(newTransactionStart);
+        public void WarmUp(AccessList? accessList) => _inner.WarmUp(accessList);
+        public void WarmUp(Address address) => _inner.WarmUp(address);
+        public void ClearStorage(Address address) => _inner.ClearStorage(address);
+        public void RecalculateStateRoot() => _inner.RecalculateStateRoot();
+        public Hash256 StateRoot => _inner.StateRoot;
+        public void DeleteAccount(Address address) => _inner.DeleteAccount(address);
+        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default) => _inner.CreateAccount(address, in balance, in nonce);
+        public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default) => _inner.CreateAccountIfNotExists(address, in balance, in nonce);
+        public void CreateEmptyAccountIfDeleted(Address address) => _inner.CreateEmptyAccountIfDeleted(address);
+        public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false) => _inner.InsertCode(address, in codeHash, code, spec, isGenesis);
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec) => _inner.AddToBalance(address, in balanceChange, spec);
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool incrementNonce = false) => _inner.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, incrementNonce);
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec) => _inner.SubtractFromBalance(address, in balanceChange, spec);
+        public void IncrementNonce(Address address, UInt256 delta) => _inner.IncrementNonce(address, delta);
+        public void DecrementNonce(Address address, UInt256 delta) => _inner.DecrementNonce(address, delta);
+        public void SetNonce(Address address, in UInt256 nonce) => _inner.SetNonce(address, in nonce);
+        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true, Address? retainInCache = null) => _inner.Commit(releaseSpec, tracer, isGenesis, commitRoots, retainInCache);
+        public void CommitTree(long blockNumber) => _inner.CommitTree(blockNumber);
+        public ArrayPoolList<AddressAsKey>? GetAccountChanges() => ((IWorldState)_inner).GetAccountChanges();
+        public void ResetTransient() => _inner.ResetTransient();
+        public IDisposable BeginScope(BlockHeader? baseBlock) => _inner.BeginScope(baseBlock);
+        public bool IsInScope => _inner.IsInScope;
+        public IWorldStateScopeProvider ScopeProvider => _inner.ScopeProvider;
+        public bool HasStateForBlock(BlockHeader? baseBlock) => _inner.HasStateForBlock(baseBlock);
+        public Account GetAccount(Address address) => _inner.GetAccount(address);
+        public bool IsContract(Address address) => _inner.IsContract(address);
+        public bool AccountExists(Address address) => _inner.AccountExists(address);
+        public bool IsDeadAccount(Address address) => _inner.IsDeadAccount(address);
+        public byte[]? GetCode(Address address) => _inner.GetCode(address);
+        public byte[]? GetCode(in ValueHash256 codeHash) => _inner.GetCode(in codeHash);
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -87,13 +88,13 @@ public class OptimismTransactionProcessor(
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             if (validate && !tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
             {
-                TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
+                if (Logger.IsTrace) TraceMinerPremiumNeg();
                 return TransactionResult.MinerPremiumNegative;
             }
 
             if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
+                if (Logger.IsTrace) TraceInsufficientBalance();
                 return TransactionResult.InsufficientSenderBalance;
             }
 
@@ -102,21 +103,21 @@ public class OptimismTransactionProcessor(
 
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost + maxOperatorCost, out balanceLeft))
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
+                if (Logger.IsTrace) TraceInsufficientBalance();
                 return TransactionResult.InsufficientSenderBalance;
             }
 
             bool overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
             if (spec.IsEip1559Enabled && !tx.IsFree() && (overflows || balanceLeft < maxGasFee))
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
+                if (Logger.IsTrace) TraceInsufficientMaxFee();
                 return TransactionResult.InsufficientMaxFeePerGasForSenderBalance;
             }
 
             overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
             if (overflows || senderReservedGasPayment > balanceLeft)
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
+                if (Logger.IsTrace) TraceInsufficientBalance();
                 return TransactionResult.InsufficientSenderBalance;
             }
 
@@ -127,6 +128,13 @@ public class OptimismTransactionProcessor(
             WorldState.SubtractFromBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
 
         return TransactionResult.Ok;
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceMinerPremiumNeg() => Logger.Trace($"Invalid tx {tx.Hash} (MINER_PREMIUM_IS_NEGATIVE)");
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceInsufficientBalance() => Logger.Trace($"Invalid tx {tx.Hash} (INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance})");
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceInsufficientMaxFee() => Logger.Trace($"Invalid tx {tx.Hash} (INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas})");
     }
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
@@ -172,8 +180,8 @@ public class OptimismTransactionProcessor(
         }
     }
 
-    protected override GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in TransactionSubstate substate, in EthereumGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, EthereumGasPolicy floorGas)
+    protected override GasConsumed Refund<TLogTracing>(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
+        in TransactionSubstate substate, EthereumGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, EthereumGasPolicy floorGas)
     {
         // if deposit: skip refunds, skip tipping coinbase
         // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
@@ -185,6 +193,6 @@ public class OptimismTransactionProcessor(
             return gas;
         }
 
-        return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);
+        return base.Refund<TLogTracing>(tx, header, spec, opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);
     }
 }

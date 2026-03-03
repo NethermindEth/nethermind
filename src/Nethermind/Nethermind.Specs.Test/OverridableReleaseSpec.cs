@@ -110,7 +110,6 @@ namespace Nethermind.Specs.Test
         public UInt256 BaseFeeMaxChangeDenominator { get; set; } = spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier { get; set; } = spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator { get; set; } = spec.BaseFeeCalculator;
-        public bool IsEofEnabled { get; set; } = spec.IsEofEnabled;
         public bool IsEip6110Enabled { get; set; } = spec.IsEip6110Enabled;
         public Address? DepositContractAddress { get; set; } = spec.DepositContractAddress;
         public bool IsEip7594Enabled { get; set; } = spec.IsEip7594Enabled;
@@ -119,6 +118,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip7939Enabled { get; set; } = spec.IsEip7939Enabled;
         public bool IsEip7907Enabled { get; set; } = spec.IsEip7907Enabled;
         public bool IsRip7728Enabled { get; set; } = spec.IsRip7728Enabled;
-        FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
+        public bool IsPrecompile(Address address) => spec.IsPrecompile(address);
     }
 }

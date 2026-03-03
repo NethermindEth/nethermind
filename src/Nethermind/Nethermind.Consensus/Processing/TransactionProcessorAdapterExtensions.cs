@@ -4,7 +4,6 @@
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
@@ -22,7 +21,7 @@ internal static class TransactionProcessorAdapterExtensions
             currentTx.Nonce = stateProvider.GetNonce(currentTx.SenderAddress!);
         }
 
-        using ITxTracer tracer = receiptsTracer.StartNewTxTrace(currentTx);
+        receiptsTracer.StartNewTxTrace(currentTx);
         TransactionResult result = transactionProcessor.Execute(currentTx, receiptsTracer);
         receiptsTracer.EndTxTrace();
         return result;
