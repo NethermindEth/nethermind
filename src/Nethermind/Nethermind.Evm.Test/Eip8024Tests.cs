@@ -77,6 +77,14 @@ public class Eip8024Tests : VirtualMachineTestsBase
         yield return new TestCaseData(Prepare.EvmCode.PushData(0).PushData(1).PushData(2).Op(Instruction.EXCHANGE).Data(0x8e).MSTORE(0).Return(32, 0).Done, 2).SetName("EipTestVector_Exchange_3Items");
     }
 
+    [TestCaseSource(nameof(SuccessTestCases))]
+    public void ValidOperation_Succeeds(byte[] code, int expectedReturn)
+    {
+        TestAllTracerWithOutput result = Execute(code);
+        result.StatusCode.Should().Be(StatusCode.Success);
+        new UInt256(result.ReturnValue, true).Should().Be((UInt256)expectedReturn);
+    }
+
     private static IEnumerable<TestCaseData> FailureTestCases()
     {
         // Disallowed immediates (91-127 for DUPN/SWAPN, 82-127 for EXCHANGE)
@@ -108,6 +116,13 @@ public class Eip8024Tests : VirtualMachineTestsBase
         yield return new TestCaseData(Dup1Chain(15).Op(Instruction.DUPN).Data(0x80).Op(Instruction.STOP).Done).SetName("EipTestVector_DupN_StackUnderflow");
     }
 
+    [TestCaseSource(nameof(FailureTestCases))]
+    public void InvalidOperation_Fails(byte[] code)
+    {
+        TestAllTracerWithOutput result = Execute(code);
+        result.StatusCode.Should().Be(StatusCode.Failure);
+    }
+
     private static IEnumerable<TestCaseData> GasCostTestCases()
     {
         long Gas(int pushCount) => GasCostOf.Transaction + GasCostOf.VeryLow * pushCount + GasCostOf.VeryLow;
@@ -115,21 +130,6 @@ public class Eip8024Tests : VirtualMachineTestsBase
         yield return new TestCaseData(PushNValues(20).Op(Instruction.DUPN).Data(0x80).Op(Instruction.STOP).Done, Gas(20)).SetName("DupN_GasCost");
         yield return new TestCaseData(PushNValues(20).Op(Instruction.SWAPN).Data(0x80).Op(Instruction.STOP).Done, Gas(20)).SetName("SwapN_GasCost");
         yield return new TestCaseData(PushNValues(5).Op(Instruction.EXCHANGE).Data(0x9d).Op(Instruction.STOP).Done, Gas(5)).SetName("Exchange_GasCost");
-    }
-
-    [TestCaseSource(nameof(SuccessTestCases))]
-    public void ValidOperation_Succeeds(byte[] code, int expectedReturn)
-    {
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-        new UInt256(result.ReturnValue, true).Should().Be((UInt256)expectedReturn);
-    }
-
-    [TestCaseSource(nameof(FailureTestCases))]
-    public void InvalidOperation_Fails(byte[] code)
-    {
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
     }
 
     [TestCaseSource(nameof(GasCostTestCases))]
