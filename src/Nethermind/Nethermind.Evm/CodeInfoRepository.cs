@@ -24,7 +24,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
-    private readonly Func<ValueHash256, IReleaseSpec, int?, CodeInfo> _codeInfoLoader;
+    private readonly Func<Address, ValueHash256, IReleaseSpec, int?, CodeInfo> _codeInfoLoader;
     private readonly IBlockAccessListBuilder? _balBuilder;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
@@ -32,15 +32,15 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
     }
 
-    internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, Func<ValueHash256, IReleaseSpec, int?, CodeInfo>? codeInfoLoader)
+    internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, Func<Address, ValueHash256, IReleaseSpec, int?, CodeInfo>? codeInfoLoader)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
         _balBuilder = _worldState as IBlockAccessListBuilder;
         _codeInfoLoader = codeInfoLoader ?? DefaultLoad;
 
-        CodeInfo DefaultLoad(ValueHash256 codeHash, IReleaseSpec spec, int? blockAccessIndex) =>
-            codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, in codeHash, spec, blockAccessIndex);
+        CodeInfo DefaultLoad(Address address, ValueHash256 codeHash, IReleaseSpec spec, int? blockAccessIndex) =>
+            codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, address, in codeHash, spec, blockAccessIndex);
     }
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress, int? blockAccessIndex = null)
@@ -71,12 +71,12 @@ public class CodeInfoRepository : ICodeInfoRepository
     private CodeInfo InternalGetCodeInfo(Address codeSource, IReleaseSpec vmSpec, int? blockAccessIndex = null)
     {
         ValueHash256 codeHash = _worldState.GetCodeHash(codeSource, blockAccessIndex);
-        return _codeInfoLoader(codeHash, vmSpec, blockAccessIndex);
+        return _codeInfoLoader(codeSource, codeHash, vmSpec, blockAccessIndex);
     }
 
-    internal static CodeInfo GetCodeInfo(IWorldState worldState, in ValueHash256 codeHash, IReleaseSpec vmSpec, int? blockAccessIndex = null)
+    internal CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash, IReleaseSpec vmSpec, int? blockAccessIndex = null)
     {
-        byte[]? code = worldState.GetCode(in codeHash);
+        byte[]? code = _balBuilder.ParallelExecutionEnabled ? worldState.GetCode(in codeHash) : worldState.GetCode(address, blockAccessIndex);
         if (code is null)
         {
             MissingCode(in codeHash);

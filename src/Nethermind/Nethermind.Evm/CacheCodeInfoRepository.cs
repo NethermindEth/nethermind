@@ -25,7 +25,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         _inner = new CodeInfoRepository(worldState, precompileProvider, GetOrCacheCodeInfo);
     }
 
-    private CodeInfo GetOrCacheCodeInfo(ValueHash256 codeHash, IReleaseSpec spec, int? blockAccessIndex = null)
+    private CodeInfo GetOrCacheCodeInfo(Address address, ValueHash256 codeHash, IReleaseSpec spec, int? blockAccessIndex = null)
     {
         if (codeHash == ValueKeccak.OfAnEmptyString)
         {
@@ -35,7 +35,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
         if (cachedCodeInfo is null)
         {
-            cachedCodeInfo = CodeInfoRepository.GetCodeInfo(_worldState, in codeHash, spec, blockAccessIndex);
+            cachedCodeInfo = _inner.GetCodeInfo(_worldState, address, in codeHash, spec, blockAccessIndex);
             _codeCache.Set(in codeHash, cachedCodeInfo);
         }
         else
