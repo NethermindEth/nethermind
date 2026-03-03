@@ -857,6 +857,32 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
+    [Test]
+    public void Eip7954_sets_MaxCodeSize_from_chainspec()
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                MaxCodeSizeTransitionTimestamp = 5,
+                MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170,
+                Eip7954TransitionTimestamp = 10
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec((100, 9)).IsEip7954Enabled, Is.False);
+            Assert.That(provider.GetSpec((100, 9)).MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip170));
+            Assert.That(provider.GetSpec((100, 10)).IsEip7954Enabled, Is.True);
+            Assert.That(provider.GetSpec((100, 10)).MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
+            Assert.That(provider.GetSpec((100, 10)).MaxInitCodeSize, Is.EqualTo(2L * CodeSizeConstants.MaxCodeSizeEip7954));
+        }
+    }
+
     [TestCaseSource(nameof(BlockNumbersAndTimestampsNearForkActivations))]
     public void Forks_should_be_selected_properly_for_exact_matches(ForkActivation forkActivation, bool isEip3651Enabled, bool isEip3198Enabled, bool isEip3855Enabled)
     {
