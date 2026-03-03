@@ -17,7 +17,7 @@ public static class InputSerializer
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        IRlpStreamDecoder<Block> blockDecoder = Rlp.GetStreamDecoder<Block>()!; // cannot be null
+        IRlpStreamEncoder<Block> blockDecoder = Rlp.GetStreamEncoder<Block>()!; // cannot be null
         var blockLen = blockDecoder.GetLength(block, RlpBehaviors.None);
         var codesLen = GetSerializedLength(witness.Codes);
         var headersLen = GetSerializedLength(witness.Headers);
