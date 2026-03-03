@@ -18,595 +18,165 @@ public class Eip8024Tests : VirtualMachineTestsBase
 {
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
-
     protected override ISpecProvider SpecProvider => new TestSpecProvider(new Osaka() { IsEip8024Enabled = true });
 
-    [Test]
-    public void DupN_ValidImmediate_DuplicatesStackElement()
+    private static Prepare PushNValues(int count)
     {
-        // Push values 1-20 onto the stack, then DUPN with immediate 0x80 (depth=17)
-        // n = (0x80 + 145) & 0xFF = 17
-        // Should duplicate the 17th element from top
-        byte[] code = Prepare.EvmCode
-            .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
-            .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
-            .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-            .Op(Instruction.DUPN).Data(0x80) // DUPN with immediate 0x80 -> depth=17
-            .MSTORE(0)
-            .Return(32, 0)
-            .Done;
+        Prepare prepare = Prepare.EvmCode;
+        for (int i = 1; i <= count; i++) prepare.PushData(i);
+        return prepare;
+    }
 
+    private static Prepare PushZeros(int count)
+    {
+        Prepare prepare = Prepare.EvmCode;
+        for (int i = 0; i < count; i++) prepare.PushData(0);
+        return prepare;
+    }
+
+    private static Prepare Dup1Chain(int dup1Count)
+    {
+        Prepare prepare = Prepare.EvmCode.PushData(1).PushData(0);
+        for (int i = 0; i < dup1Count; i++) prepare.Op(Instruction.DUP1);
+        return prepare;
+    }
+
+    private static IEnumerable<TestCaseData> SuccessTestCases()
+    {
+        // DUPN valid: 20 items, depth=17, position 17 from top = value 4
+        yield return new TestCaseData(PushNValues(20).Op(Instruction.DUPN).Data(0x80).MSTORE(0).Return(32, 0).Done, 4).SetName("DupN_ValidImmediate");
+
+        // SWAPN valid: 20 items, depth=17, swap top (20) with 18th from top (3)
+        yield return new TestCaseData(PushNValues(20).Op(Instruction.SWAPN).Data(0x80).MSTORE(0).Return(32, 0).Done, 3).SetName("SwapN_ValidImmediate");
+
+        // Exchange valid: 5 items, (n=2,m=3) swaps positions 3 and 4, top unchanged
+        yield return new TestCaseData(PushNValues(5).Op(Instruction.EXCHANGE).Data(0x9d).MSTORE(0).Return(32, 0).Done, 5).SetName("Exchange_ValidImmediate");
+
+        // Exchange edge cases: newly valid 0x50 (was disallowed in old range 80-127)
+        yield return new TestCaseData(PushNValues(17).Op(Instruction.EXCHANGE).Data(0x50).MSTORE(0).Return(32, 0).Done, 17).SetName("Exchange_NewlyValid_0x50");
+
+        // Exchange edge cases: newly valid 0x51
+        yield return new TestCaseData(PushNValues(16).Op(Instruction.EXCHANGE).Data(0x51).MSTORE(0).Return(32, 0).Done, 16).SetName("Exchange_NewlyValid_0x51");
+
+        // Exchange high range: 0x2f -> k=0xa0, (n=1,m=19), needs 20 items
+        yield return new TestCaseData(PushNValues(20).Op(Instruction.EXCHANGE).Data(0x2f).MSTORE(0).Return(32, 0).Done, 20).SetName("Exchange_HighRange_0x2f");
+
+        // Exchange edge: 0xC0 -> k=0x4f=79, (n=5,m=16), needs 17 items
+        yield return new TestCaseData(PushNValues(17).Op(Instruction.EXCHANGE).Data(0xC0).MSTORE(0).Return(32, 0).Done, 17).SetName("Exchange_EdgeCase_0xC0");
+
+        // Exchange edge: 0xDF -> k=0x50=80, (n=1,m=24), needs 25 items
+        yield return new TestCaseData(PushNValues(25).Op(Instruction.EXCHANGE).Data(0xDF).MSTORE(0).Return(32, 0).Done, 25).SetName("Exchange_EdgeCase_0xDF");
+
+        // EIP test vector: PUSH1 1, PUSH1 0, DUP1 x15, DUPN 0x80 -> duplicates bottom item (1)
+        yield return new TestCaseData(Dup1Chain(15).Op(Instruction.DUPN).Data(0x80).MSTORE(0).Return(32, 0).Done, 1).SetName("EipTestVector_DupN_18Items");
+
+        // EIP test vector: PUSH1 1, PUSH1 0, DUP1 x15, PUSH1 2, SWAPN 0x80 -> swap top (2) with bottom (1)
+        yield return new TestCaseData(Dup1Chain(15).PushData(2).Op(Instruction.SWAPN).Data(0x80).MSTORE(0).Return(32, 0).Done, 1).SetName("EipTestVector_SwapN_18Items");
+
+        // EIP test vector: PUSH1 0, PUSH1 1, PUSH1 2, EXCHANGE 0x8e -> swaps positions 1,2, top stays 2
+        yield return new TestCaseData(Prepare.EvmCode.PushData(0).PushData(1).PushData(2).Op(Instruction.EXCHANGE).Data(0x8e).MSTORE(0).Return(32, 0).Done, 2).SetName("EipTestVector_Exchange_3Items");
+    }
+
+    private static IEnumerable<TestCaseData> FailureTestCases()
+    {
+        // Disallowed immediates (91-127 for DUPN/SWAPN, 82-127 for EXCHANGE)
+        yield return new TestCaseData(PushNValues(20).Op(Instruction.DUPN).Data(0x5b).Done).SetName("DupN_Disallowed_0x5b");
+        yield return new TestCaseData(PushNValues(20).Op(Instruction.SWAPN).Data(0x7f).Done).SetName("SwapN_Disallowed_0x7f");
+        yield return new TestCaseData(PushNValues(5).Op(Instruction.EXCHANGE).Data(0x52).Done).SetName("Exchange_Disallowed_0x52");
+
+        // Stack underflow: depth exceeds available items
+        yield return new TestCaseData(PushNValues(10).Op(Instruction.DUPN).Data(0x80).Done).SetName("DupN_StackUnderflow");
+        yield return new TestCaseData(PushNValues(10).Op(Instruction.SWAPN).Data(0x80).Done).SetName("SwapN_StackUnderflow");
+        yield return new TestCaseData(PushNValues(2).Op(Instruction.EXCHANGE).Data(0x9d).Done).SetName("Exchange_StackUnderflow");
+
+        // Missing immediate at end of code
+        yield return new TestCaseData(Prepare.EvmCode.Op(Instruction.DUPN).Done).SetName("DupN_MissingImmediate");
+        yield return new TestCaseData(Prepare.EvmCode.Op(Instruction.SWAPN).Done).SetName("SwapN_MissingImmediate");
+        yield return new TestCaseData(Prepare.EvmCode.Op(Instruction.EXCHANGE).Done).SetName("Exchange_MissingImmediate");
+
+        // Max depth: immediate 0x5a -> depth=235, only 234 items
+        yield return new TestCaseData(PushZeros(234).Op(Instruction.DUPN).Data(0x5a).Done).SetName("DupN_MaxDepth_235");
+        yield return new TestCaseData(PushZeros(234).Op(Instruction.SWAPN).Data(0x5a).Done).SetName("SwapN_MaxDepth_235");
+
+        // Exchange max depth: immediate 0x8f -> (n=1,m=29), needs 30 items, only 29
+        yield return new TestCaseData(PushZeros(29).Op(Instruction.EXCHANGE).Data(0x8f).Done).SetName("Exchange_MaxDepth_30");
+
+        // EIP test vector: SWAPN with disallowed immediate 0x5b
+        yield return new TestCaseData(new byte[] [0xe7, 0x5b]).SetName("EipTestVector_InvalidSwapn");
+
+        // EIP test vector: 16 items (PUSH0 + DUP1 x15), DUPN depth=17 -> underflow
+        yield return new TestCaseData(Dup1Chain(15).Op(Instruction.DUPN).Data(0x80).Op(Instruction.STOP).Done).SetName("EipTestVector_DupN_StackUnderflow");
+    }
+
+    private static IEnumerable<TestCaseData> GasCostTestCases()
+    {
+        long Gas(int pushCount) => GasCostOf.Transaction + GasCostOf.VeryLow * pushCount + GasCostOf.VeryLow;
+
+        yield return new TestCaseData(PushNValues(20).Op(Instruction.DUPN).Data(0x80).Op(Instruction.STOP).Done, Gas(20)).SetName("DupN_GasCost");
+        yield return new TestCaseData(PushNValues(20).Op(Instruction.SWAPN).Data(0x80).Op(Instruction.STOP).Done, Gas(20)).SetName("SwapN_GasCost");
+        yield return new TestCaseData(PushNValues(5).Op(Instruction.EXCHANGE).Data(0x9d).Op(Instruction.STOP).Done, Gas(5)).SetName("Exchange_GasCost");
+    }
+
+    [TestCaseSource(nameof(SuccessTestCases))]
+    public void ValidOperation_Succeeds(byte[] code, int expectedReturn)
+    {
         TestAllTracerWithOutput result = Execute(code);
         result.StatusCode.Should().Be(StatusCode.Success);
-
-        // Stack: [1, 2, 3, 4, 5, ..., 20] with 20 on top (20 items)
-        // Position 17 from top = index 20-17 = 3 = value 4
-        // After DUPN: top = 4
-        new UInt256(result.ReturnValue, true).Should().Be(4);
+        new UInt256(result.ReturnValue, true).Should().Be((UInt256)expectedReturn);
     }
 
-    [Test]
-    public void DupN_DisallowedImmediate_Fails()
+    [TestCaseSource(nameof(FailureTestCases))]
+    public void InvalidOperation_Fails(byte[] code)
     {
-        // DUPN with disallowed immediate 0x5b
-        byte[] code = Prepare.EvmCode
-            .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
-            .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
-            .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-            .Op(Instruction.DUPN).Data(0x5b) // Disallowed immediate
-            .Done;
-
         TestAllTracerWithOutput result = Execute(code);
         result.StatusCode.Should().Be(StatusCode.Failure);
     }
 
-    [Test]
-    public void DupN_StackUnderflow_Fails()
+    [TestCaseSource(nameof(GasCostTestCases))]
+    public void Opcode_CostsVeryLowGas(byte[] code, long expectedGas)
     {
-        // DUPN with immediate 0x80 (depth=17) but only 10 elements on stack
-        byte[] code = Prepare.EvmCode
-            .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
-            .Op(Instruction.DUPN).Data(0x80) // depth=17, but only 10 elements
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
-    }
-
-    [Test]
-    public void SwapN_ValidImmediate_SwapsStackElements()
-    {
-        // Push values, then SWAPN with immediate 0x80 (depth=17)
-        // n = (0x80 + 145) & 0xFF = 17
-        // Should swap top with 17th element from top
-        byte[] code = Prepare.EvmCode
-            .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
-            .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
-            .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-            .Op(Instruction.SWAPN).Data(0x80) // SWAPN with immediate 0x80 -> depth=17
-            .MSTORE(0) // Store new top
-            .Return(32, 0)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
+        TestAllTracerWithOutput result = Execute(Activation, 100000, code);
         result.StatusCode.Should().Be(StatusCode.Success);
-
-        // Stack: [1, 2, 3, 4, 5, ..., 20] with 20 on top (20 items)
-        // SWAPN decode(0x80)=17: swap top (20) with (n+1)th=18th item from top (value 3)
-        // After swap: top = 3
-        new UInt256(result.ReturnValue, true).Should().Be(3);
-    }
-
-    [Test]
-    public void SwapN_DisallowedImmediate_Fails()
-    {
-        // SWAPN with disallowed immediate 0x7f
-        byte[] code = Prepare.EvmCode
-            .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
-            .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
-            .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-            .Op(Instruction.SWAPN).Data(0x7f) // Disallowed immediate
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
-    }
-
-    [Test]
-    public void SwapN_StackUnderflow_Fails()
-    {
-        // SWAPN with immediate 0x80 (depth=17) but only 10 elements
-        byte[] code = Prepare.EvmCode
-            .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
-            .Op(Instruction.SWAPN).Data(0x80)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
-    }
-
-    [Test]
-    public void Exchange_ValidImmediate_ExchangesStackElements()
-    {
-        // Push values, then EXCHANGE with immediate 0x9d
-        // k = 0x9d ^ 0x8f = 0x12 = 18, q=1, r=2, q<r -> (n=2, m=3)
-        // Exchange positions 3 and 4 from top (1-indexed with +1 offset)
-        byte[] code = Prepare.EvmCode
-            .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .Op(Instruction.EXCHANGE).Data(0x9d) // (n=2, m=3) -> exchange positions 3 and 4
-            .MSTORE(0) // Store top
-            .Return(32, 0)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-
-        // Stack before EXCHANGE: [1, 2, 3, 4, 5] (5 on top)
-        // decode_pair(0x9d) returns n=3, m=4 (after +1 offset)
-        // EXCHANGE swaps positions 3 and 4 from top (values 3 and 2)
-        // After EXCHANGE: stack = [1, 3, 2, 4, 5] (5 still on top)
-        // MSTORE stores 5 at offset 0
-        new UInt256(result.ReturnValue, true).Should().Be(5);
-    }
-
-    [Test]
-    public void Exchange_DisallowedImmediate_Fails()
-    {
-        // EXCHANGE with disallowed immediate 0x52 (82, in invalid range 82-127)
-        byte[] code = Prepare.EvmCode
-            .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .Op(Instruction.EXCHANGE).Data(0x52) // Disallowed immediate
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
+        AssertGas(result, expectedGas);
     }
 
     [Test]
     public void Exchange_DisallowedRange_AllFail()
     {
-        // Full disallowed range 0x52-0x7f (82-127)
         for (byte imm = 0x52; imm <= 0x7f; imm++)
         {
-            Prepare prepare = Prepare.EvmCode;
-            for (int i = 0; i < 32; i++) prepare.PushData(i);
-            byte[] code = prepare.Op(Instruction.EXCHANGE).Data(imm).Done;
-
+            byte[] code = PushNValues(32).Op(Instruction.EXCHANGE).Data(imm).Done;
             TestAllTracerWithOutput result = Execute(code);
             result.StatusCode.Should().Be(StatusCode.Failure, $"Immediate 0x{imm:X2} should fail");
         }
     }
 
     [Test]
-    public void Exchange_NewlyValid_0x50_Succeeds()
-    {
-        // 0x50 was previously disallowed (old range 80-127), now valid (new range 82-127)
-        // k = 0x50 ^ 0x8F = 0xDF = 223, q=13, r=15, q<r -> (14, 16)
-        // Exchange(15, 17) needs 17 items on stack
-        Prepare prepare = Prepare.EvmCode;
-        for (int i = 1; i <= 17; i++) prepare.PushData(i);
-        byte[] code = prepare
-            .Op(Instruction.EXCHANGE).Data(0x50)
-            .MSTORE(0).Return(32, 0)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-    }
-
-    [Test]
-    public void Exchange_NewlyValid_0x51_Succeeds()
-    {
-        // 0x51 was previously disallowed (old range 80-127), now valid (new range 82-127)
-        // k = 0x51 ^ 0x8F = 0xDE = 222, q=13, r=14, q<r -> (14, 15)
-        // Exchange(15, 16) needs 16 items on stack
-        Prepare prepare = Prepare.EvmCode;
-        for (int i = 1; i <= 16; i++) prepare.PushData(i);
-        byte[] code = prepare
-            .Op(Instruction.EXCHANGE).Data(0x51)
-            .MSTORE(0).Return(32, 0)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-    }
-
-    [Test]
-    public void Exchange_HighRangeImmediate_Succeeds()
-    {
-        // 0x2f: k = 0x2f ^ 0x8f = 0xa0 = 160, q=10, r=0, q>=r -> n=r+2=2, m=(29-q)+1=20
-        // Exchange(2, 20) needs 20 items on stack
-        Prepare prepare = Prepare.EvmCode;
-        for (int i = 1; i <= 20; i++) prepare.PushData(i);
-        byte[] code = prepare
-            .Op(Instruction.EXCHANGE).Data(0x2f)
-            .MSTORE(0).Return(32, 0)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-        // Stack top is 20, which is stored
-        new UInt256(result.ReturnValue, true).Should().Be(20);
-    }
-
-    [Test]
-    public void Exchange_EdgeCase_0xC0_Succeeds()
-    {
-        // 0xC0: k = 0xC0 ^ 0x8F = 0x4F = 79, q=4, r=15, q<r -> (5, 16) -> Exchange(6, 17)
-        // Need 17 items on stack
-        Prepare prepare = Prepare.EvmCode;
-        for (int i = 1; i <= 17; i++) prepare.PushData(i);
-        byte[] code = prepare
-            .Op(Instruction.EXCHANGE).Data(0xC0)
-            .MSTORE(0).Return(32, 0)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-    }
-
-    [Test]
-    public void Exchange_EdgeCase_0xDF_Succeeds()
-    {
-        // 0xDF: k = 0xDF ^ 0x8F = 0x50 = 80, q=5, r=0, q>=r -> n=r+2=2, m=(29-5)+1=25
-        // Exchange(2, 25) needs 25 items on stack
-        Prepare prepare = Prepare.EvmCode;
-        for (int i = 1; i <= 25; i++) prepare.PushData(i);
-        byte[] code = prepare
-            .Op(Instruction.EXCHANGE).Data(0xDF)
-            .MSTORE(0).Return(32, 0)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-    }
-
-    [Test]
-    public void Exchange_StackUnderflow_Fails()
-    {
-        // EXCHANGE with immediate 0x9d -> decode_pair gives (3, 4)
-        // Exchange(3, 4) requires at least 4 items on stack
-        byte[] code = Prepare.EvmCode
-            .PushData(1).PushData(2)
-            .Op(Instruction.EXCHANGE).Data(0x9d) // (n=3, m=4) -> needs at least 4 elements
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
-    }
-
-    [Test]
-    public void DupN_MissingImmediateAtEnd_Fails()
-    {
-        byte[] code = Prepare.EvmCode
-            .Op(Instruction.DUPN)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
-    }
-
-    [Test]
-    public void SwapN_MissingImmediateAtEnd_Fails()
-    {
-        byte[] code = Prepare.EvmCode
-            .Op(Instruction.SWAPN)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
-    }
-
-    [Test]
-    public void Exchange_MissingImmediateAtEnd_Fails()
-    {
-        byte[] code = Prepare.EvmCode
-            .Op(Instruction.EXCHANGE)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
-    }
-
-    [Test]
-    public void DupN_MaxDepth_StackUnderflow()
-    {
-        // Immediate 0x5a -> depth = (90 + 145) & 0xFF = 235
-        Prepare prepare = Prepare.EvmCode;
-        for (int i = 0; i < 234; i++)
-        {
-            prepare.PushData(0);
-        }
-
-        byte[] code = prepare
-            .Op(Instruction.DUPN).Data(0x5a) // depth=235
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
-    }
-
-    [Test]
-    public void SwapN_MaxDepth_StackUnderflow()
-    {
-        // Immediate 0x5a -> depth = (90 + 145) & 0xFF = 235
-        Prepare prepare = Prepare.EvmCode;
-        for (int i = 0; i < 234; i++)
-        {
-            prepare.PushData(0);
-        }
-
-        byte[] code = prepare
-            .Op(Instruction.SWAPN).Data(0x5a) // depth=235
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
-    }
-
-    [Test]
-    public void Exchange_MaxDepth_StackUnderflow()
-    {
-        // Immediate 0x8f: k = 0x8f ^ 0x8f = 0, q=0, r=0, q>=r -> n=2, m=30 -> needs depth 30
-        Prepare prepare = Prepare.EvmCode;
-        for (int i = 0; i < 29; i++)
-        {
-            prepare.PushData(0);
-        }
-
-        byte[] code = prepare
-            .Op(Instruction.EXCHANGE).Data(0x8f) // n=2, m=30 -> needs depth 30, only 29 items
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
-    }
-
-    [Test]
-    public void DupN_CostsVeryLowGas()
-    {
-        // Gas cost should be 3 (VeryLow)
-        const long expectedGas = GasCostOf.Transaction + GasCostOf.VeryLow * 20 + GasCostOf.VeryLow; // 20 PUSH + DUPN
-
-        byte[] code = Prepare.EvmCode
-            .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
-            .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
-            .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-            .Op(Instruction.DUPN).Data(0x80) // depth=17
-            .Op(Instruction.STOP)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(Activation, 100000, code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-        AssertGas(result, expectedGas);
-    }
-
-    [Test]
-    public void SwapN_CostsVeryLowGas()
-    {
-        // Gas cost should be 3 (VeryLow)
-        const long expectedGas = GasCostOf.Transaction + GasCostOf.VeryLow * 20 + GasCostOf.VeryLow; // 20 PUSH + SWAPN
-
-        byte[] code = Prepare.EvmCode
-            .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
-            .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
-            .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-            .Op(Instruction.SWAPN).Data(0x80) // depth=17
-            .Op(Instruction.STOP)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(Activation, 100000, code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-        AssertGas(result, expectedGas);
-    }
-
-    [Test]
-    public void Exchange_CostsVeryLowGas()
-    {
-        // Gas cost should be 3 (VeryLow)
-        const long expectedGas = GasCostOf.Transaction + GasCostOf.VeryLow * 5 + GasCostOf.VeryLow; // 5 PUSH + EXCHANGE
-
-        byte[] code = Prepare.EvmCode
-            .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .Op(Instruction.EXCHANGE).Data(0x9d) // k=0x12, decode_pair = (3, 4)
-            .Op(Instruction.STOP)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(Activation, 100000, code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-        AssertGas(result, expectedGas);
-    }
-
-    [Test]
-    public void EipTestVector_DupN_18Items_TopIs1()
-    {
-        // EIP test: PUSH1 01, PUSH1 00, DUP1 x15, DUPN 0x80
-        // After setup: stack = [1, 0, 0, ...] (17 items, 1 at bottom)
-        // DUPN with decode(0x80)=17: duplicate 17th item from top = bottom item = 1
-        // Result: 18 items with top = 1
-        byte[] code = Prepare.EvmCode
-            .PushData(1)
-            .PushData(0)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1) // 15 DUP1s total
-            .Op(Instruction.DUPN).Data(0x80) // depth=17
-            .MSTORE(0)
-            .Return(32, 0)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-        new UInt256(result.ReturnValue, true).Should().Be(1);
-    }
-
-    [Test]
-    public void EipTestVector_SwapN_18Items_TopIs0()
-    {
-        // EIP test: PUSH1 01, PUSH1 00, DUP1 x15, PUSH1 02, SWAPN 0x80
-        // After setup: stack = [1, 0, 0, ..., 0, 2] (18 items with 2 on top, 1 at bottom)
-        // SWAPN decode(0x80)=17: swap top (2) with (n+1)th=18th item from top (value 1)
-        // Result: top = 1
-        byte[] code = Prepare.EvmCode
-            .PushData(1)
-            .PushData(0)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1) // 15 DUP1s total
-            .PushData(2)
-            .Op(Instruction.SWAPN).Data(0x80) // SWAPN with depth=17
-            .MSTORE(0)
-            .Return(32, 0)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-        // After SWAPN decode(0x80)=17: swap top (2) with (n+1)th=18th from top = 1
-        new UInt256(result.ReturnValue, true).Should().Be(1);
-    }
-
-    [Test]
-    public void EipTestVector_Exchange_3Items()
-    {
-        // EIP test: PUSH1 00, PUSH1 01, PUSH1 02, EXCHANGE 0x8e
-        // Stack before: [0, 1, 2] (2 on top)
-        // decode_pair(0x8e): k = 0x8e ^ 0x8f = 1, q=0, r=1, q<r -> (1, 2)
-        // TryDecodePair returns n=2, m=3, so EXCHANGE swaps stack positions 2 and 3 from the top.
-        // After: [1, 0, 2] (2 on top), matching the EIP vector.
-        byte[] code = Prepare.EvmCode
-            .PushData(0)
-            .PushData(1)
-            .PushData(2)
-            .Op(Instruction.EXCHANGE).Data(0x8e)
-            .MSTORE(0)
-            .Return(32, 0)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-        new UInt256(result.ReturnValue, true).Should().Be(2);
-    }
-
-    [Test]
-    public void EipTestVector_InvalidSwapn_Reverts()
-    {
-        // EIP test: e75b - SWAPN with disallowed immediate 0x5b causes revert
-        byte[] code = new byte[] { 0xe7, 0x5b };
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
-    }
-
-    [Test]
     public void EipTestVector_JumpOverInvalidDupn_Succeeds()
     {
-        // EIP test: 600456e65b
-        // PUSH1 04, JUMP, INVALID_DUPN (e6), JUMPDEST (5b)
-        // The JUMP skips over the invalid DUPN to land on JUMPDEST
-        // This tests that e65b is properly parsed as INVALID_DUPN followed by JUMPDEST
-        byte[] code = new byte[] { 0x60, 0x04, 0x56, 0xe6, 0x5b, 0x00 }; // Added STOP at end
-
+        // PUSH1 04, JUMP, DUPN (e6), JUMPDEST (5b), STOP
+        // JUMP skips over the invalid DUPN to land on JUMPDEST
+        byte[] code = [0x60, 0x04, 0x56, 0xe6, 0x5b, 0x00];
         TestAllTracerWithOutput result = Execute(code);
         result.StatusCode.Should().Be(StatusCode.Success);
     }
 
-    [Test]
-    public void EipTestVector_DupN_StackUnderflow_ExceptionalHalt()
-    {
-        // PUSH1 00, DUP1 x15, DUPN 0x80
-        // Stack has 16 items, DUPN depth=17 needs 17 -> exceptional halt.
-        byte[] code = Prepare.EvmCode
-            .PushData(0)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1) // 15 DUP1s total
-            .Op(Instruction.DUPN).Data(0x80) // depth=17, only 16 items
-            .Op(Instruction.STOP)
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
-    }
-
-    [Test]
-    public void EipTestVector_DupN_16Items_StackUnderflow()
-    {
-        // Test actual underflow: 16 items but need depth 17
-        byte[] code = Prepare.EvmCode
-            .PushData(0)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
-            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1) // Only 15 DUP1s = 16 items
-            .Op(Instruction.DUPN).Data(0x80) // depth=17, but only 16 items
-            .Done;
-
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
-    }
-
-    /// <summary>
-    /// Test class with EIP-8024 disabled to verify opcodes fail when not enabled.
-    /// </summary>
     public class Eip8024DisabledTests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
-
-        // EIP-8024 is NOT enabled in this test class
         protected override ISpecProvider SpecProvider => new TestSpecProvider(new Osaka() { IsEip8024Enabled = false });
 
-        [Test]
-        public void DupN_WhenDisabled_Fails()
+        private static IEnumerable<TestCaseData> DisabledTestCases()
         {
-            byte[] code = Prepare.EvmCode
-                .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-                .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
-                .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
-                .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-                .Op(Instruction.DUPN).Data(0x80)
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(code);
-
-            // The DUPN opcode should fail as a bad instruction when EIP-8024 is not enabled
-            result.StatusCode.Should().Be(StatusCode.Failure);
+            yield return new TestCaseData(PushNValues(20).Op(Instruction.DUPN).Data(0x80).Done).SetName("DupN_WhenDisabled");
+            yield return new TestCaseData(PushNValues(20).Op(Instruction.SWAPN).Data(0x80).Done).SetName("SwapN_WhenDisabled");
+            yield return new TestCaseData(PushNValues(5).Op(Instruction.EXCHANGE).Data(0x9d).Done).SetName("Exchange_WhenDisabled");
         }
 
-        [Test]
-        public void SwapN_WhenDisabled_Fails()
+        [TestCaseSource(nameof(DisabledTestCases))]
+        public void Opcode_WhenDisabled_Fails(byte[] code)
         {
-            byte[] code = Prepare.EvmCode
-                .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-                .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
-                .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
-                .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-                .Op(Instruction.SWAPN).Data(0x80)
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(StatusCode.Failure);
-        }
-
-        [Test]
-        public void Exchange_WhenDisabled_Fails()
-        {
-            byte[] code = Prepare.EvmCode
-                .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-                .Op(Instruction.EXCHANGE).Data(0x9d) // k=0x12, decode_pair = (3, 4)
-                .Done;
-
             TestAllTracerWithOutput result = Execute(code);
             result.StatusCode.Should().Be(StatusCode.Failure);
         }
