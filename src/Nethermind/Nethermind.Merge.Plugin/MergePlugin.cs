@@ -35,6 +35,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -68,6 +69,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     public virtual Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
+        EthereumJsonSerializer.AddTypeInfoResolver(EngineApiJsonContext.Default);
         _syncConfig = nethermindApi.Config<ISyncConfig>();
         _blocksConfig = nethermindApi.Config<IBlocksConfig>();
         _txPoolConfig = nethermindApi.Config<ITxPoolConfig>();
@@ -216,22 +218,24 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
             if (_poSSwitcher.TransitionFinished)
             {
-                AddEth69();
+                AddPostMergeNetworkProtocols();
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug("Delayed adding eth/69 capability until terminal block reached");
-                _poSSwitcher.TerminalBlockReached += (_, _) => AddEth69();
+                if (_logger.IsDebug) _logger.Debug("Delayed adding post-merge eth/* capabilities until terminal block reached");
+                _poSSwitcher.TerminalBlockReached += (_, _) => AddPostMergeNetworkProtocols();
             }
         }
 
         return Task.CompletedTask;
     }
 
-    private void AddEth69()
+    private void AddPostMergeNetworkProtocols()
     {
         if (_logger.IsInfo) _logger.Info("Adding eth/69 capability");
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 69));
+        if (_logger.IsInfo) _logger.Info("Adding eth/70 capability");
+        _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 70));
     }
 
     protected virtual IBlockFinalizationManager InitializeMergeFinalizationManager()

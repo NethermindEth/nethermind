@@ -48,10 +48,8 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         var round = header.ExtraConsensusData.BlockRound;
         var qc = header.ExtraConsensusData.QuorumCert;
-
         ulong parentRound = qc.ProposedBlockInfo.Round;
         ulong epochStartRound = round - (round % (ulong)xdcSpec.EpochLength);
-        ulong epochNumber = (ulong)xdcSpec.SwitchEpoch + round / (ulong)xdcSpec.EpochLength;
 
         if (qc.ProposedBlockInfo.BlockNumber == xdcSpec.SwitchBlock)
         {
@@ -324,8 +322,8 @@ internal class EpochSwitchManager : IEpochSwitchManager
         while (epochBlockInfo.Round > timeoutCert.Round)
         {
             tempTCEpoch--;
-
-            if (GetBlockByEpochNumber(tempTCEpoch) is null)
+            epochBlockInfo = GetBlockByEpochNumber(tempTCEpoch);
+            if (epochBlockInfo is null)
             {
                 return null;
             }

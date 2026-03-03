@@ -33,6 +33,7 @@ namespace Nethermind.Monitoring.Metrics
         private static bool _staticLabelsInitialized;
 
         private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = new();
+        private volatile IMetricUpdater[][] _updaterValues = [];
 
         // Largely for testing reason
         internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = new();
@@ -40,7 +41,7 @@ namespace Nethermind.Monitoring.Metrics
         private readonly bool _useCounters;
         private readonly bool _enableDetailedMetric;
 
-        private readonly List<Action> _callbacks = new();
+        private volatile Action[] _callbacks = [];
 
         public interface IMetricUpdater
         {
@@ -235,6 +236,7 @@ namespace Nethermind.Monitoring.Metrics
                     }
                 }
                 _metricUpdaters[type] = metricUpdaters.ToArray();
+                _updaterValues = [.. _metricUpdaters.Values];
             }
         }
 
@@ -354,7 +356,7 @@ namespace Nethermind.Monitoring.Metrics
                 callback();
             }
 
-            foreach (IMetricUpdater[] updaters in _metricUpdaters.Values)
+            foreach (IMetricUpdater[] updaters in _updaterValues)
             {
                 foreach (IMetricUpdater metricUpdater in updaters)
                 {
@@ -363,7 +365,7 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        public void AddMetricsUpdateAction(Action callback) => _callbacks.Add(callback);
+        public void AddMetricsUpdateAction(Action callback) => _callbacks = [.. _callbacks, callback];
 
         private static string GetGaugeNameKey(params string[] par) => string.Join('.', par);
 

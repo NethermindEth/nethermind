@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
+using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -15,6 +16,7 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
     private static BlockBodyDecoder? _instance = null;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
     // Cant set to private because of `Rlp.RegisterDecoder`.
     public BlockBodyDecoder(IHeaderDecoder headerDecoder = null)
     {
@@ -104,16 +106,6 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
         }
 
         return new BlockBody(transactions, uncles, withdrawals);
-    }
-
-    protected override BlockBody DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(span);
-        BlockBody response = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return response;
     }
 
     public override void Encode(RlpStream stream, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -33,11 +33,12 @@ public class EnrRequestMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMes
     public EnrRequestMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey farPublicKey, Memory<byte> mdc, IByteBuffer data) = PrepareForDeserialization(msgBytes);
-        NettyRlpStream rlpStream = new(data);
+        Rlp.ValueDecoderContext ctx = data.AsRlpContext();
 
-        rlpStream.ReadSequenceLength();
-        long expirationTime = rlpStream.DecodeLong();
+        ctx.ReadSequenceLength();
+        long expirationTime = ctx.DecodeLong();
 
+        data.SetReaderIndex(data.ReaderIndex + ctx.Position);
         EnrRequestMsg msg = new(farPublicKey, mdc, expirationTime);
         return msg;
     }
