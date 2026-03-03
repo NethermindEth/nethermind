@@ -110,7 +110,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         yield return new TestCaseData(PushZeros(29).Op(Instruction.EXCHANGE).Data(0x8f).Done).SetName("Exchange_MaxDepth_30");
 
         // EIP test vector: SWAPN with disallowed immediate 0x5b
-        yield return new TestCaseData(new byte[][0xe7, 0x5b]).SetName("EipTestVector_InvalidSwapn");
+        yield return new TestCaseData(new byte[] { 0xe7, 0x5b }).SetName("EipTestVector_InvalidSwapn");
 
         // EIP test vector: 16 items (PUSH0 + DUP1 x15), DUPN depth=17 -> underflow
         yield return new TestCaseData(Dup1Chain(15).Op(Instruction.DUPN).Data(0x80).Op(Instruction.STOP).Done).SetName("EipTestVector_DupN_StackUnderflow");
