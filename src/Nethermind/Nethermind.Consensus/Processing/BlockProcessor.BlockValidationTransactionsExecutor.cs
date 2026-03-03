@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -38,6 +37,7 @@ namespace Nethermind.Consensus.Processing
             private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
             private readonly ITransactionProcessorAdapter _transactionProcessor = transactionProcessor; // system tx exec
             private BlockExecutionContext _blockExecutionContext;
+            private ILogger _logger = logManager.GetClassLogger();
 
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             {
@@ -52,6 +52,8 @@ namespace Nethermind.Consensus.Processing
                 int len = block.Transactions.Length;
                 if (_balBuilder.ParallelExecutionEnabled)
                 {
+                    _logger.Info($"[parallel] beginning parallel execution for block {block.Number}");
+
                     ITransactionProcessorAdapter[] transactionProcessors = new ITransactionProcessorAdapter[len];
                     BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
                     TaskCompletionSource<long>[] gasResults = new TaskCompletionSource<long>[len];
@@ -72,7 +74,7 @@ namespace Nethermind.Consensus.Processing
                     const int GasValidationChunkSize = 8;
                     Task validatorTask = Task.Run(() =>
                     {
-                        Console.WriteLine("[parallel] running gas validation");
+                        _logger.Info("[parallel] running gas validation");
 
                         long totalGas = 0;
                         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
@@ -83,7 +85,7 @@ namespace Nethermind.Consensus.Processing
                                 totalGas += gasResults[j].Task.GetAwaiter().GetResult();
                                 long gasRemaining = block.Header.GasLimit - totalGas;
                                 bool validateStorageReads = j == chunkEnd - 1;
-                                Console.WriteLine($"[parallel] validating block access list at index {j + 1} (storage read check: {validateStorageReads})");
+                                _logger.Info($"[parallel] validating block access list at index {j + 1} (storage read check: {validateStorageReads})");
                                 // _balBuilder?.ValidateBlockAccessList((ushort)(j + 1), gasRemaining, validateStorageReads);
                             }
 
@@ -99,7 +101,7 @@ namespace Nethermind.Consensus.Processing
                         0,
                         len + 1,
                         ParallelUnbalancedWork.DefaultOptions,
-                        (block, processingOptions, stateProvider, transactionProcessors, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
+                        (block, processingOptions, stateProvider, transactionProcessors, receiptsTracers, gasResults, specProvider, txs: block.Transactions, logger: _logger),
                         static (i, state) =>
                         {
                             if (i == 0)
@@ -117,7 +119,8 @@ namespace Nethermind.Consensus.Processing
                                 state.txs[txIndex],
                                 txIndex,
                                 state.receiptsTracers[txIndex],
-                                state.processingOptions);
+                                state.processingOptions,
+                                state.logger);
                             state.gasResults[txIndex].SetResult(state.txs[txIndex].BlockGasUsed);
                             return state;
                         });
@@ -200,15 +203,16 @@ namespace Nethermind.Consensus.Processing
                 Transaction currentTx,
                 int index,
                 BlockReceiptsTracer receiptsTracer,
-                ProcessingOptions processingOptions)
+                ProcessingOptions processingOptions,
+                ILogger logger)
             {
-                Console.WriteLine($"[parallel] started executing transaction with bal index {index + 1}");
+                logger.Info($"[parallel] started executing transaction with bal index {index + 1}");
 
                 currentTx.BlockAccessIndex = index + 1;
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
 
-                Console.WriteLine($"[parallel] completed executing transaction with bal index {index + 1}");
+                logger.Info($"[parallel] completed executing transaction with bal index {index + 1}");
             }
 
             [DoesNotReturn, StackTraceHidden]
