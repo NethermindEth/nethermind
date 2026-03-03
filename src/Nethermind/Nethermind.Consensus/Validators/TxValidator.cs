@@ -337,7 +337,7 @@ public abstract class BaseSignatureTxValidator : ITxValidator
 
         UInt256 sMax = releaseSpec.IsEip2Enabled ? Secp256K1Curve.HalfNPlusOne : Secp256K1Curve.N;
         return sValue.IsZero || sValue >= sMax ? TxErrorMessages.InvalidTxSignature
-            : rValue.IsZero || rValue >= Secp256K1Curve.NMinusOne ? TxErrorMessages.InvalidTxSignature
+            : rValue.IsZero || rValue >= Secp256K1Curve.N ? TxErrorMessages.InvalidTxSignature
             : signature.V is 27 or 28 ? ValidationResult.Success
             : ValidateChainId(transaction, releaseSpec);
     }
