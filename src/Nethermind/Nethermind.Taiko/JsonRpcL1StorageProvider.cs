@@ -31,6 +31,8 @@ public class JsonRpcL1StorageProvider : IL1StorageProvider
     {
         try
         {
+            if (_logger.IsInfo) _logger.Info($"[jmadibekov] L1StorageProvider: sending eth_getStorageAt to L1 — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}");
+
             string? response = _rpcClient.Post<string>("eth_getStorageAt", new object[]
             {
                 contractAddress.ToString(),
@@ -40,15 +42,17 @@ public class JsonRpcL1StorageProvider : IL1StorageProvider
 
             if (response == null)
             {
-                _logger.Warn($"Failed to read L1 storage: contract={contractAddress}, key={storageKey}, block={blockNumber}");
+                _logger.Warn($"[jmadibekov] L1StorageProvider: eth_getStorageAt returned NULL — contract={contractAddress}, key={storageKey}, block={blockNumber}");
                 return null;
             }
 
-            return UInt256.Parse(response);
+            var parsedValue = UInt256.Parse(response);
+            if (_logger.IsInfo) _logger.Info($"[jmadibekov] L1StorageProvider: eth_getStorageAt SUCCESS — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}, rawResponse={response}, parsedValue={parsedValue}");
+            return parsedValue;
         }
         catch (Exception ex)
         {
-            _logger.Error($"L1 storage read failed: {ex.Message}");
+            _logger.Error($"[jmadibekov] L1StorageProvider: eth_getStorageAt EXCEPTION — contract={contractAddress}, key={storageKey}, block={blockNumber}, error={ex.Message}");
             return null;
         }
     }

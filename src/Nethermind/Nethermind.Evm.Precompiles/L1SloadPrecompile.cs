@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -33,6 +34,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
     public static Address Address { get; } = Address.FromNumber(0x10001);
     public static string Name => "L1SLOAD";
     public static IL1StorageProvider? L1StorageProvider { get; set; }
+    public static ILogger? Logger { get; set; }
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.FixedGasCost;
 
@@ -41,8 +43,11 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        if (Logger?.IsInfo == true) Logger.Info($"[jmadibekov] L1SLOAD precompile CALLED, input_len={inputData.Length}");
+
         if (inputData.Length != L1PrecompileConstants.ExpectedInputLength)
         {
+            if (Logger?.IsWarn == true) Logger.Warn($"[jmadibekov] L1SLOAD REJECTED: invalid input length {inputData.Length}, expected {L1PrecompileConstants.ExpectedInputLength}");
             return Errors.InvalidInputLength;
         }
 
@@ -50,11 +55,17 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
         UInt256 storageKey = new(inputData.Span[L1PrecompileConstants.AddressBytes..(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)], isBigEndian: true);
         UInt256 blockNumber = new(inputData.Span[(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)..], isBigEndian: true);
 
+        if (Logger?.IsInfo == true) Logger.Info($"[jmadibekov] L1SLOAD request: contract={contractAddress}, storageKey={storageKey}, blockNumber={blockNumber}");
+        if (Logger?.IsInfo == true) Logger.Info($"[jmadibekov] L1SLOAD calling L1StorageProvider (provider is {(L1StorageProvider is null ? "NULL" : "set")})...");
+
         UInt256? storageValue = GetL1StorageValue(contractAddress, storageKey, blockNumber);
         if (storageValue is null)
         {
+            if (Logger?.IsWarn == true) Logger.Warn($"[jmadibekov] L1SLOAD FAILED: L1 storage access returned null for contract={contractAddress}, key={storageKey}, block={blockNumber}");
             return Errors.L1StorageAccessFailed;
         }
+
+        if (Logger?.IsInfo == true) Logger.Info($"[jmadibekov] L1SLOAD SUCCESS: contract={contractAddress}, key={storageKey}, block={blockNumber}, value={storageValue.Value}");
 
         byte[] output = new byte[32];
         storageValue.Value.ToBigEndian().CopyTo(output.AsSpan());
@@ -73,10 +84,13 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
     {
         try
         {
-            return L1StorageProvider?.GetStorageValue(contractAddress, storageKey, blockNumber);
+            var result = L1StorageProvider?.GetStorageValue(contractAddress, storageKey, blockNumber);
+            if (Logger?.IsInfo == true) Logger.Info($"[jmadibekov] L1SLOAD L1StorageProvider returned: {(result is null ? "null" : result.Value.ToString())}");
+            return result;
         }
-        catch
+        catch (Exception ex)
         {
+            if (Logger?.IsError == true) Logger.Error($"[jmadibekov] L1SLOAD EXCEPTION in GetL1StorageValue: {ex.Message}", ex);
             return null;
         }
     }
