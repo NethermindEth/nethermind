@@ -837,6 +837,7 @@ public class ChainSpecBasedSpecProviderTests
             {
                 MaxCodeSizeTransitionTimestamp = 10,
                 Eip2537TransitionTimestamp = 20,
+                Eip7954TransitionTimestamp = 30,
                 MaxCodeSize = 1
             },
             EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
@@ -854,32 +855,11 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.GetSpec((100, 19)).IsEip2537Enabled, Is.False);
             Assert.That(provider.GetSpec((100, 20)).IsEip2537Enabled, Is.True);
             Assert.That(provider.GetSpec((100, 21)).IsEip2537Enabled, Is.True);
-        }
-    }
-
-    [Test]
-    public void Eip7954_sets_MaxCodeSize_from_chainspec()
-    {
-        ChainSpec chainSpec = new()
-        {
-            Parameters = new ChainParameters
-            {
-                MaxCodeSizeTransitionTimestamp = 5,
-                MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170,
-                Eip7954TransitionTimestamp = 10
-            },
-            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
-        };
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(provider.GetSpec((100, 9)).IsEip7954Enabled, Is.False);
-            Assert.That(provider.GetSpec((100, 9)).MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip170));
-            Assert.That(provider.GetSpec((100, 10)).IsEip7954Enabled, Is.True);
-            Assert.That(provider.GetSpec((100, 10)).MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
-            Assert.That(provider.GetSpec((100, 10)).MaxInitCodeSize, Is.EqualTo(2L * CodeSizeConstants.MaxCodeSizeEip7954));
+            Assert.That(provider.GetSpec((100, 29)).IsEip7954Enabled, Is.False);
+            Assert.That(provider.GetSpec((100, 29)).MaxCodeSize, Is.EqualTo(1));
+            Assert.That(provider.GetSpec((100, 30)).IsEip7954Enabled, Is.True);
+            Assert.That(provider.GetSpec((100, 30)).MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
+            Assert.That(provider.GetSpec((100, 30)).MaxInitCodeSize, Is.EqualTo(2L * CodeSizeConstants.MaxCodeSizeEip7954));
         }
     }
 
