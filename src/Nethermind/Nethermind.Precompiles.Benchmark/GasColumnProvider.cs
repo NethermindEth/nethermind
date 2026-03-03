@@ -30,11 +30,7 @@ public class GasColumnProvider : IColumnProvider
     /// <summary>
     /// Converts gas consumed and execution time into MGas/s throughput.
     /// </summary>
-    internal static double CalculateMGasThroughput(long gas, double nanoseconds)
-    {
-        double opThroughput = 1_000_000_000.0 / nanoseconds;
-        return gas * opThroughput / 1_000_000.0;
-    }
+    internal static double CalculateMGasThroughput(long gas, double nanoseconds) => gas * 1000.0 / nanoseconds;
 
     /// <summary>
     /// Computes the MGas/s throughput for a given Benchmark Statistics.
