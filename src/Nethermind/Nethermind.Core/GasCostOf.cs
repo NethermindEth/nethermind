@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Evm
+namespace Nethermind.Core
 {
     public static class GasCostOf
     {
+        public const long Free = 0;
         public const long Base = 2;
         public const long VeryLow = 3;
         public const long Low = 5;

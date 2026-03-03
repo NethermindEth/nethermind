@@ -24,12 +24,15 @@ public class Witness : IDisposable
         State.Dispose();
         Keys.Dispose();
         Headers.Dispose();
+
+        GC.SuppressFinalize(this);
     }
 }
 
 public static class WitnessExtensions
 {
-    private static readonly HeaderDecoder _decoder = new();
+    private static readonly IRlpValueDecoder<BlockHeader> _decoder =
+        Rlp.GetValueDecoder<BlockHeader>() ?? new HeaderDecoder();
 
     extension(Witness witness)
     {
@@ -59,15 +62,18 @@ public static class WitnessExtensions
 
         public ArrayPoolList<BlockHeader> DecodeHeaders()
         {
-            IOwnedReadOnlyList<byte[]> witnessHeaders = witness.Headers;
-            ArrayPoolList<BlockHeader> headers = new(witnessHeaders.Count);
-            foreach (byte[] encodedHeader in witnessHeaders)
+            IOwnedReadOnlyList<byte[]> headers = witness.Headers;
+            ArrayPoolList<BlockHeader> decodedHeaders = new(headers.Count, headers.Count);
+
+            for (int i = 0; i < headers.Count; i++)
             {
-                Rlp.ValueDecoderContext stream = new(encodedHeader);
-                headers.Add(_decoder.Decode(ref stream) ?? throw new ArgumentException());
+                Rlp.ValueDecoderContext stream = new(headers[i]);
+
+                decodedHeaders[i] = _decoder.Decode(ref stream)
+                    ?? throw new InvalidOperationException($"No header decoded at index {i}");
             }
 
-            return headers;
+            return decodedHeaders;
         }
     }
 }
