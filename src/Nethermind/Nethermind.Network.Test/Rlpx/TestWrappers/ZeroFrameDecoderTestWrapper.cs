@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
@@ -42,5 +43,18 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
 
             return null;
         }
+    }
+
+    /// <summary>
+    /// A cipher that ignores input and always returns predetermined bytes on decrypt.
+    /// Used to control what ReadFrameSize sees after MAC authentication passes.
+    /// </summary>
+    internal class OverrideDecryptCipher(byte[] decryptOutput) : IFrameCipher
+    {
+        public void Encrypt(byte[] input, int offset, int length, byte[] output, int outputOffset) =>
+            Array.Copy(input, offset, output, outputOffset, length);
+
+        public void Decrypt(byte[] input, int offset, int length, byte[] output, int outputOffset) =>
+            Array.Copy(decryptOutput, 0, output, outputOffset, length);
     }
 }

@@ -109,9 +109,20 @@ namespace Nethermind.Network.Rlpx
             _frameSize = (_frameSize << 8) + (_decryptedBytes[1] & 0xFF);
             _frameSize = (_frameSize << 8) + (_decryptedBytes[2] & 0xFF);
 
+            ValidateFrameSize(_frameSize);
+
             int paddingSize = Frame.CalculatePadding(_frameSize);
             _frameSize += paddingSize;
             _remainingPayloadBlocks = _frameSize / Frame.BlockSize;
+        }
+
+        internal static void ValidateFrameSize(int frameSize)
+        {
+            if (frameSize > SnappyParameters.MaxSnappyLength)
+            {
+                throw new CorruptedFrameException(
+                    $"Frame size {frameSize} exceeds maximum allowed size");
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

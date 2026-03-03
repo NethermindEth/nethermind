@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using DotNetty.Buffers;
+using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -136,5 +138,50 @@ public class ZeroNettyFrameDecoderTests
         }
 
         return result;
+    }
+
+    private static IEnumerable<TestCaseData> ReadFrameSize_ValidSources()
+    {
+        yield return new TestCaseData(33).SetName("Small_frame_size");
+        yield return new TestCaseData(Frame.DefaultMaxFrameSize).SetName("Default_max_frame_size");
+        yield return new TestCaseData(0xFFFF).SetName("Two_byte_max_frame_size");
+        yield return new TestCaseData(0xFFFFFF).SetName("Max_three_byte_frame_size");
+    }
+
+    [TestCaseSource(nameof(ReadFrameSize_ValidSources))]
+    public void ReadFrameSize_accepts_valid_size_through_decoder(int frameSize)
+    {
+        // Use matching A/B secrets so encoder MAC (B egress) == decoder MAC (A ingress)
+        var (A, B) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor encoderMac = new(TestItem.IgnoredPublicKey, B);
+        using FrameMacProcessor decoderMac = new(TestItem.IgnoredPublicKey, A);
+
+        // Build the plaintext header that ReadFrameSize will see after decryption
+        byte[] desiredPlaintext = new byte[Frame.HeaderSize];
+        desiredPlaintext[0] = (byte)(frameSize >> 16);
+        desiredPlaintext[1] = (byte)(frameSize >> 8);
+        desiredPlaintext[2] = (byte)frameSize;
+        desiredPlaintext[3] = 0xC2; // RLP list with two items
+        desiredPlaintext[4] = 0x80; // RLP empty (protocol-id = 0)
+        desiredPlaintext[5] = 0x80; // RLP empty (context-id = 0)
+
+        // Use OverrideDecryptCipher so MAC is checked on the raw bytes
+        // but ReadFrameSize sees our controlled plaintext
+        OverrideDecryptCipher cipher = new(desiredPlaintext);
+
+        // Any 16 bytes work as the "encrypted" header for MAC purposes
+        byte[] encryptedHeader = new byte[Frame.BlockSize];
+        byte[] macBytes = new byte[Frame.MacSize];
+        encoderMac.AddMac(encryptedHeader, 0, 16, macBytes, 0, true);
+
+        ZeroFrameDecoderTestWrapper decoder = new(cipher, decoderMac);
+        IByteBuffer input = Unpooled.Buffer(32);
+        input.WriteBytes(encryptedHeader);
+        input.WriteBytes(macBytes);
+
+        // ReadFrameSize should accept the size without throwing.
+        // Decode returns null because we only provided header+MAC, not payload.
+        Assert.DoesNotThrow(() => decoder.Decode(input));
+        input.Release();
     }
 }
