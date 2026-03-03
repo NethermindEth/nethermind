@@ -38,7 +38,7 @@ namespace Nethermind.Db.Test
         public void Setup()
         {
             Directory.CreateDirectory(DbPath);
-            _rocksdbConfigFactory = new RocksDbConfigFactory(_dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+            _rocksdbConfigFactory = new RocksDbConfigFactory(_dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance);
         }
 
         [TearDown]
@@ -146,7 +146,7 @@ namespace Nethermind.Db.Test
 
             Action act = () =>
             {
-                var configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+                var configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance);
                 using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
             };
 
@@ -165,7 +165,7 @@ namespace Nethermind.Db.Test
         public void UseSharedCacheIfNoCacheIsSpecified(bool explicitCache)
         {
             if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
-            long sharedCacheSize = 10.KiB();
+            long sharedCacheSize = 10.KiB;
 
             using HyperClockCacheWrapper cache = new HyperClockCacheWrapper((ulong)sharedCacheSize);
             _dbConfig.BlocksDbRocksDbOptions = "block_based_table_factory.block_size=512;block_based_table_factory.prepopulate_block_cache=kFlushOnly;";
@@ -202,7 +202,7 @@ namespace Nethermind.Db.Test
         {
             _dbConfig.BlocksDbRocksDbOptions = "block_based_table_factory.block_size=512;block_based_table_factory.prepopulate_block_cache=kFlushOnly;";
 
-            long cacheSize = 10.KiB();
+            long cacheSize = 10.KiB;
             using HyperClockCacheWrapper cache = new HyperClockCacheWrapper((ulong)cacheSize);
 
             IRocksDbConfigFactory rocksDbConfigFactory = Substitute.For<IRocksDbConfigFactory>();
@@ -321,7 +321,7 @@ namespace Nethermind.Db.Test
         [SetUp]
         public void Setup()
         {
-            RocksDbConfigFactory rocksdbConfigFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+            RocksDbConfigFactory rocksdbConfigFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance);
 
             if (Directory.Exists(DbPath))
             {

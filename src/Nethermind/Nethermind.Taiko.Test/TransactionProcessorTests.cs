@@ -33,7 +33,7 @@ public class TransactionProcessorTests
     private IDisposable _worldStateCloser;
     private readonly Address SelfDestructAddress = new("0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3");
 
-    private static readonly UInt256 AccountBalance = 1.Ether();
+    private static readonly UInt256 AccountBalance = 1.Ether;
 
     [SetUp]
     public void Setup()
@@ -177,7 +177,7 @@ public class TransactionProcessorTests
         _spec.IsOntakeEnabled = isOntakeEnabled;
         byte defaultBaseFeeSharingPct = 25;
 
-        _stateProvider!.CreateAccount(TestItem.AddressB, 100.Ether());
+        _stateProvider!.CreateAccount(TestItem.AddressB, 100.Ether);
 
         byte[] byteCode = Prepare.EvmCode
             .PushData(SelfDestructAddress)

@@ -195,8 +195,8 @@ namespace Nethermind.TxPool.Test
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithChainId(TestBlockchainIds.ChainId)
-                .WithMaxFeePerGas(10.GWei())
-                .WithMaxPriorityFeePerGas(5.GWei())
+                .WithMaxFeePerGas(10.GWei)
+                .WithMaxPriorityFeePerGas(5.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.WithGasLimit(10000000).TestObject));
@@ -281,7 +281,7 @@ namespace Nethermind.TxPool.Test
             // LatestPendingNonce=0, when account does not exist
             _ = _txPool.GetLatestPendingNonce(TestItem.AddressA);
 
-            _stateProvider.CreateAccount(TestItem.AddressA, 10.Ether());
+            _stateProvider.CreateAccount(TestItem.AddressA, 10.Ether);
 
             // LatestPendingNonce=0, for a new account
             UInt256 latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
@@ -387,13 +387,13 @@ namespace Nethermind.TxPool.Test
             ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), static r => new OverridableReleaseSpec(r) { Eip1559TransitionBlock = 1 });
             BlocksConfig blocksConfig = new()
             {
-                MinGasPrice = 1.GWei()
+                MinGasPrice = 1.GWei
             };
             IIncomingTxFilter incomingTxFilter = new TxFilterAdapter(_blockTree, new MinGasPriceTxFilter(blocksConfig), LimboLogs.Instance, specProvider);
             _txPool = CreatePool(specProvider: specProvider, incomingTxFilter: incomingTxFilter);
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(Transaction.BaseTxGasCost)
-                .WithGasPrice(2.GWei())
+                .WithGasPrice(2.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
@@ -884,7 +884,7 @@ namespace Nethermind.TxPool.Test
                 transactions[i] = Build.A.Transaction
                     .WithNonce((UInt256)i)
                     .WithGasLimit(GasCostOf.Transaction)
-                    .WithGasPrice(10.GWei())
+                    .WithGasPrice(10.GWei)
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                     .TestObject;
                 _txPool.SubmitTx(transactions[i], TxHandlingOptions.PersistentBroadcast);
@@ -912,7 +912,7 @@ namespace Nethermind.TxPool.Test
             Transaction transactionA = Build.A.Transaction
                 .WithNonce(0)
                 .WithGasLimit(GasCostOf.Transaction)
-                .WithGasPrice(10.GWei())
+                .WithGasPrice(10.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
             EnsureSenderBalance(transactionA);
@@ -921,7 +921,7 @@ namespace Nethermind.TxPool.Test
             Transaction transactionB = Build.A.Transaction
                 .WithNonce(0)
                 .WithGasLimit(GasCostOf.Transaction)
-                .WithGasPrice(10.GWei())
+                .WithGasPrice(10.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB)
                 .TestObject;
             EnsureSenderBalance(transactionB);
@@ -974,14 +974,14 @@ namespace Nethermind.TxPool.Test
 
             foreach (PrivateKey privateKey in TestItem.PrivateKeys)
             {
-                EnsureSenderBalance(privateKey.Address, 10.Ether());
+                EnsureSenderBalance(privateKey.Address, 10.Ether);
             }
 
             Parallel.ForEach(TestItem.PrivateKeys, k =>
             {
                 for (uint i = 0; i < 100; i++)
                 {
-                    Transaction tx = GetTransaction(i, GasCostOf.Transaction, 10.GWei(), TestItem.AddressA, [], k);
+                    Transaction tx = GetTransaction(i, GasCostOf.Transaction, 10.GWei, TestItem.AddressA, [], k);
                     _txPool.SubmitTx(tx, TxHandlingOptions.None);
                 }
             });
@@ -1220,8 +1220,8 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
-                .WithMaxPriorityFeePerGas(10.GWei())
-                .WithMaxFeePerGas(5.GWei())
+                .WithMaxPriorityFeePerGas(10.GWei)
+                .WithMaxFeePerGas(5.GWei)
                 .WithType(TxType.EIP1559)
                 .TestObject;
             EnsureSenderBalance(tx);
@@ -1785,7 +1785,7 @@ namespace Nethermind.TxPool.Test
             // setup full tx pool
             foreach (Transaction transaction in transactions)
             {
-                transaction.GasPrice = 10.GWei();
+                transaction.GasPrice = 10.GWei;
                 _txPool.SubmitTx(transaction, TxHandlingOptions.None);
             }
 
@@ -1796,8 +1796,8 @@ namespace Nethermind.TxPool.Test
                 .WithType(txType)
                 .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .WithAuthorizationCodeIfAuthorizationListTx()
-                .WithMaxFeePerGas(9.GWei())
-                .WithMaxPriorityFeePerGas(9.GWei())
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
                 .WithGasLimit(txType != TxType.SetCode ? GasCostOf.Transaction : GasCostOf.Transaction + GasCostOf.NewAccount)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -1826,8 +1826,8 @@ namespace Nethermind.TxPool.Test
 
             Transaction testTx = Build.A.Transaction
                 .WithNonce(0)
-                .WithMaxFeePerGas(9.GWei())
-                .WithMaxPriorityFeePerGas(9.GWei())
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
                 .WithGasLimit(100_000)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -1863,8 +1863,8 @@ namespace Nethermind.TxPool.Test
             Transaction firstTx = Build.A.Transaction
                 .WithNonce((UInt256)firstNonce)
                 .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(9.GWei())
-                .WithMaxPriorityFeePerGas(9.GWei())
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
@@ -1875,8 +1875,8 @@ namespace Nethermind.TxPool.Test
             Transaction secondTx = Build.A.Transaction
                 .WithNonce((UInt256)secondNonce)
                 .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(9.GWei())
-                .WithMaxPriorityFeePerGas(9.GWei())
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
@@ -1912,8 +1912,8 @@ namespace Nethermind.TxPool.Test
             Transaction firstTx = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.SetCode)
-                .WithMaxFeePerGas(9.GWei())
-                .WithMaxPriorityFeePerGas(9.GWei())
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
                 .WithGasLimit(100_000)
                 .WithAuthorizationCode(ecdsa.Sign(signer, specProvider.ChainId, TestItem.AddressC, 0))
                 .WithTo(TestItem.AddressB)
@@ -1925,8 +1925,8 @@ namespace Nethermind.TxPool.Test
             Transaction secondTx = Build.A.Transaction
                 .WithNonce((UInt256)secondNonce)
                 .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(12.GWei())
-                .WithMaxPriorityFeePerGas(12.GWei())
+                .WithMaxFeePerGas(12.GWei)
+                .WithMaxPriorityFeePerGas(12.GWei)
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
@@ -1963,8 +1963,8 @@ namespace Nethermind.TxPool.Test
             Transaction firstTx = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(9.GWei())
-                .WithMaxPriorityFeePerGas(9.GWei())
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
@@ -1975,8 +1975,8 @@ namespace Nethermind.TxPool.Test
             Transaction secondTx = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.SetCode)
-                .WithMaxFeePerGas(9.GWei())
-                .WithMaxPriorityFeePerGas(9.GWei())
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
                 .WithGasLimit(100_000)
                 .WithAuthorizationCode(ecdsa.Sign(signer, specProvider.ChainId, TestItem.AddressC, 0))
                 .WithTo(TestItem.AddressB)
@@ -2022,8 +2022,8 @@ namespace Nethermind.TxPool.Test
             Transaction poolFillerTx = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(15.GWei())
-                .WithMaxPriorityFeePerGas(15.GWei())
+                .WithMaxFeePerGas(15.GWei)
+                .WithMaxPriorityFeePerGas(15.GWei)
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyC).TestObject;
@@ -2035,8 +2035,8 @@ namespace Nethermind.TxPool.Test
             Transaction firstTx = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.SetCode)
-                .WithMaxFeePerGas((isLocalDelegation ? 10 : 20).GWei())
-                .WithMaxPriorityFeePerGas((isLocalDelegation ? 10 : 20).GWei())
+                .WithMaxFeePerGas((isLocalDelegation ? 10 : 20).GWei)
+                .WithMaxPriorityFeePerGas((isLocalDelegation ? 10 : 20).GWei)
                 .WithGasLimit(100_000)
                 .WithAuthorizationCode(ecdsa.Sign(signer, specProvider.ChainId, TestItem.AddressC, 0))
                 .WithTo(TestItem.AddressB)
@@ -2049,8 +2049,8 @@ namespace Nethermind.TxPool.Test
             Transaction secondTx = Build.A.Transaction
                 .WithNonce(1) // nonce is 1 otherwise it would always be accepted
                 .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(25.GWei())
-                .WithMaxPriorityFeePerGas(25.GWei())
+                .WithMaxFeePerGas(25.GWei)
+                .WithMaxPriorityFeePerGas(25.GWei)
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
@@ -2113,8 +2113,8 @@ namespace Nethermind.TxPool.Test
             Transaction firstSetcodeTx = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.SetCode)
-                .WithMaxFeePerGas(9.GWei())
-                .WithMaxPriorityFeePerGas(9.GWei())
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
                 .WithGasLimit(100_000)
                 .WithAuthorizationCode(ecdsa.Sign(signer, specProvider.ChainId, TestItem.AddressC, 0))
                 .WithTo(TestItem.AddressB)
@@ -2126,8 +2126,8 @@ namespace Nethermind.TxPool.Test
             Transaction replacementTx = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(12.GWei())
-                .WithMaxPriorityFeePerGas(12.GWei())
+                .WithMaxFeePerGas(12.GWei)
+                .WithMaxPriorityFeePerGas(12.GWei)
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, sponsor).TestObject;
@@ -2139,8 +2139,8 @@ namespace Nethermind.TxPool.Test
             Transaction thirdTx = Build.A.Transaction
                 .WithNonce(1)
                 .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(9.GWei())
-                .WithMaxPriorityFeePerGas(9.GWei())
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
@@ -2173,8 +2173,8 @@ namespace Nethermind.TxPool.Test
             Transaction setCodeTx = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.SetCode)
-                .WithMaxFeePerGas((20).GWei())
-                .WithMaxPriorityFeePerGas((20).GWei())
+                .WithMaxFeePerGas((20).GWei)
+                .WithMaxPriorityFeePerGas((20).GWei)
                 .WithGasLimit(100_000)
                 .WithAuthorizationCode(authTuple)
                 .WithTo(TestItem.AddressB)
@@ -2188,7 +2188,7 @@ namespace Nethermind.TxPool.Test
             foreach (byte type in ((byte[])Enum.GetValues(typeof(TxType))))
             {
                 UInt256 feeCap;
-                1.GWei().Multiply((UInt256)type, out feeCap);
+                1.GWei.Multiply((UInt256)type, out feeCap);
                 TransactionBuilder<Transaction> builder = Build.A.Transaction
                 .WithNonce(0)
                 .WithType((TxType)type)
@@ -2470,8 +2470,8 @@ namespace Nethermind.TxPool.Test
         private Transaction GetTx(PrivateKey sender)
         {
             return Build.A.Transaction
-                .WithMaxFeePerGas(1.GWei())
-                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(UInt256.Zero)
                 .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
         }

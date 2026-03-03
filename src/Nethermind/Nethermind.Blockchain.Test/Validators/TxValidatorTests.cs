@@ -179,8 +179,8 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction
             .WithType(txType)
             .WithChainId(TestBlockchainIds.ChainId)
-            .WithMaxPriorityFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
-            .WithMaxFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
+            .WithMaxPriorityFeePerGas(txType == TxType.EIP1559 ? 10.GWei : 5.GWei)
+            .WithMaxFeePerGas(txType == TxType.EIP1559 ? 10.GWei : 5.GWei)
             .WithAccessList(txType is TxType.AccessList or TxType.EIP1559
                 ? AccessList.Empty
                 : null)

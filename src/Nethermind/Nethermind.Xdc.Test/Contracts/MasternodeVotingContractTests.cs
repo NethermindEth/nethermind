@@ -49,7 +49,7 @@ internal class MasternodeVotingContractTests
         BlockHeader genesis;
         using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
         {
-            stateProvider.CreateAccount(sender.Address, 1.Ether());
+            stateProvider.CreateAccount(sender.Address, 1.Ether);
             byte[] code = XdcContractData.XDCValidatorBin();
             stateProvider.CreateAccountIfNotExists(codeSource, 0);
             stateProvider.InsertCode(codeSource, ValueKeccak.Compute(code), code, Shanghai.Instance);
@@ -88,7 +88,7 @@ internal class MasternodeVotingContractTests
         foreach (Address candidate in candidates)
         {
             UInt256 stake = masterVoting.GetCandidateStake(genesis, candidate);
-            stake.Should().Be(10_000_000.Ether());
+            stake.Should().Be(10_000_000.Ether);
         }
     }
 

@@ -30,7 +30,7 @@ public class ChainSpecLoaderTest
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/gnosis.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
+        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
         Assert.That(chainSpec.NetworkId, Is.EqualTo(100), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("GnosisChain"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
@@ -55,7 +55,7 @@ public class ChainSpecLoaderTest
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/chiado.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
+        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
         Assert.That(chainSpec.NetworkId, Is.EqualTo(10200), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("chiado"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");

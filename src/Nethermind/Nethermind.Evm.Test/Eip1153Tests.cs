@@ -157,7 +157,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Store 8 at index 1 and call contract from above
@@ -205,7 +205,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -251,7 +251,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -296,7 +296,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .StoreDataInTransientStorage(1, 9)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -342,7 +342,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.REVERT)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -390,7 +390,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.REVERT)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -475,7 +475,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .StoreDataInTransientStorage(1, 10)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -506,7 +506,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract (1 if successful)
@@ -554,7 +554,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .StoreDataInTransientStorage(1, 9)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -642,7 +642,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .StoreDataInTransientStorage(1, 10) // This will fail
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -668,7 +668,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .StoreDataInTransientStorage(1, 8)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -702,7 +702,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -804,7 +804,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
