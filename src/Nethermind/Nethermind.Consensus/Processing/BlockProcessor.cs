@@ -377,14 +377,14 @@ public partial class BlockProcessor
             _balBuilder.TracingEnabled = true;
             _balBuilder.IsGenesis = suggested.IsGenesis;
 
-            if (_lastLoadedBal != suggested.Hash)
-            {
-                _balBuilder.LoadSuggestedBlockAccessList(suggested.BlockAccessList, suggested.GasUsed);
-            }
-            _lastLoadedBal = suggested.Hash;
-
             if (_balBuilder.ParallelExecutionEnabled)
             {
+                if (_lastLoadedBal != suggested.Hash)
+                {
+                    _balBuilder.LoadSuggestedBlockAccessList(suggested.BlockAccessList, suggested.GasUsed);
+                }
+                _lastLoadedBal = suggested.Hash;
+
                 _balBuilder.SetupGeneratedAccessLists(_logManager, suggested.Transactions.Length);
             }
             else
