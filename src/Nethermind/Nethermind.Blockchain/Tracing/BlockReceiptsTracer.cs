@@ -76,29 +76,38 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     {
         Transaction transaction = CurrentTx!;
         Block block = Block;
-        bool isContractCreation = transaction.IsContractCreation;
 
         TxReceipt txReceipt = new()
         {
-            // 0x10-0x48: Reference fields in order
             BlockHash = block.Hash,
             TxHash = transaction.Hash,
             Sender = transaction.SenderAddress,
-            ContractAddress = isContractCreation ? recipient : null,
-            Recipient = isContractCreation ? null : recipient,
-            PostTransactionState = stateRoot,
             Logs = logEntries,
-
-            // 0x58-0x68: Long fields
             BlockNumber = block.Number,
             GasUsed = spentGas,
             GasUsedTotal = block.GasUsed,
-
-            // 0x70-0x75: Small fields
             Index = _currentIndex,
             TxType = transaction.Type,
             StatusCode = statusCode
         };
+
+        // new zeros the object, so null writes are redundant.
+        // Only write recipient to the relevant field — the other stays null.
+        if (transaction.IsContractCreation)
+        {
+            txReceipt.ContractAddress = recipient;
+        }
+        else
+        {
+            txReceipt.Recipient = recipient;
+        }
+
+        // stateRoot is null post-EIP-658; skip the write barrier
+        if (stateRoot is not null)
+        {
+            txReceipt.PostTransactionState = stateRoot;
+        }
+
         return txReceipt;
     }
 
@@ -215,14 +224,13 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     public void Restore(int snapshot)
     {
-        int numToRemove = _txReceipts.Count - snapshot;
-
-        for (int i = 0; i < numToRemove; i++)
+        int count = _txReceipts.Count;
+        if (snapshot < count)
         {
-            _txReceipts.RemoveAt(_txReceipts.Count - 1);
+            _txReceipts.RemoveRange(snapshot, count - snapshot);
         }
 
-        Block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
+        Block.Header.GasUsed = snapshot > 0 ? _txReceipts[snapshot - 1].GasUsedTotal : 0;
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
@@ -259,13 +267,13 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void EndBlockTrace()
     {
         _otherTracer.EndBlockTrace();
-        if (_txReceipts.Count > 0)
+        ReadOnlySpan<TxReceipt> receipts = CollectionsMarshal.AsSpan(_txReceipts);
+        if (receipts.Length > 0)
         {
             Bloom blockBloom = new();
             Block.Header.Bloom = blockBloom;
-            for (int index = 0; index < _txReceipts.Count; index++)
+            foreach (TxReceipt receipt in receipts)
             {
-                TxReceipt? receipt = _txReceipts[index];
                 blockBloom.Accumulate(receipt.Bloom!);
             }
         }
