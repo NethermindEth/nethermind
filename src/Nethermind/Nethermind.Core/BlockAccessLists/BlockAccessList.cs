@@ -132,6 +132,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             Type = ChangeType.CodeChange,
             PreviousValue = oldCodeChange,
             PreTxCode = before
+            // N.B. don't need PreTxCode as SELFDESTRUCT cannot be first code change of tx
         });
 
         if (changedDuringTx)
@@ -474,7 +475,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             }
         }
 
-        // storage only changed within this transaction
+        // code only changed within this transaction
         foreach (Change change in _changes)
         {
             if (change.Type == ChangeType.CodeChange && change.Address == address && change.PreviousValue is null)
