@@ -171,7 +171,7 @@ public class TaikoPayloadPreparationService(
     {
         if (_payloadStorage.TryRemove(payloadId, out Task<IBlockProductionContext?>? blockContext))
             return new(blockContext);
-            // return ValueTask.FromResult<IBlockProductionContext?>(blockContext);
+        // return ValueTask.FromResult<IBlockProductionContext?>(blockContext);
 
         return ValueTask.FromResult<IBlockProductionContext?>(null);
     }
