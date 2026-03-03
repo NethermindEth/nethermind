@@ -656,7 +656,7 @@ public class StorageProviderTests(bool useFlat)
             worldState.Set(new StorageCell(TestItem.AddressA, 1), Bytes.FromHexString("bbbb"));
             worldState.Commit(SpuriousDragon.Instance);
 
-            // Delete but no clear stroage
+            // Delete but no clear storage
             worldState.DeleteAccount(TestItem.AddressA);
             worldState.Commit(SpuriousDragon.Instance);
 
