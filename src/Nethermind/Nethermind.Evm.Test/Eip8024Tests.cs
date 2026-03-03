@@ -18,7 +18,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
 {
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
-    protected override ISpecProvider SpecProvider => new TestSpecProvider(new Osaka() { IsEip8024Enabled = true });
+    protected override ISpecProvider SpecProvider => new TestSpecProvider(new Osaka { IsEip8024Enabled = true });
 
     private static Prepare PushNValues(int count)
     {
