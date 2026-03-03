@@ -467,5 +467,10 @@ namespace Nethermind.Core.Specs
         /// EIP-7843: SLOTNUM opcode
         /// </summary>
         public bool IsEip7843Enabled { get; }
+
+        /// <summary>
+        /// EIP-7954: Increase Maximum Contract Size
+        /// </summary>
+        public bool IsEip7954Enabled { get; }
     }
 }
