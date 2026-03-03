@@ -239,14 +239,14 @@ public sealed class BlobFieldsTxValidator : ITxValidator
 
         ulong txBlobGas = BlobGasCalculator.CalculateBlobGas(txBlobCount);
 
-        ulong maxBlobGasPerBlock = spec.GetMaxBlobGasPerBlock();
+        ulong maxBlobGasPerBlock = spec.GasCosts.MaxBlobGasPerBlock;
 
         if (txBlobGas > maxBlobGasPerBlock)
         {
             return BlockErrorMessages.BlobGasUsedAboveBlockLimit(maxBlobGasPerBlock, txBlobCount, txBlobGas);
         }
 
-        ulong maxBlobGasPerTx = spec.GetMaxBlobGasPerTx();
+        ulong maxBlobGasPerTx = spec.GasCosts.MaxBlobGasPerTx;
 
         return txBlobGas > maxBlobGasPerTx ? TxErrorMessages.BlobTxGasLimitExceeded(txBlobGas, maxBlobGasPerTx) : ValidationResult.Success;
     }
