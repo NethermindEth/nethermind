@@ -3,7 +3,6 @@
 
 using BenchmarkDotNet.Mathematics;
 using NUnit.Framework;
-using Perfolizer.Mathematics.Common;
 
 namespace Nethermind.Precompiles.Benchmark.Test;
 
