@@ -202,8 +202,9 @@ internal static partial class EvmInstructions
     /// and marks the executing account for destruction.
     /// </summary>
     [SkipLocalsInit]
-    private static EvmExceptionType InstructionSelfDestruct<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    private static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TEip8037 : struct, IFlag
     {
         // Increment metrics for self-destruct operations.
         Metrics.IncrementSelfDestructs();
@@ -257,16 +258,32 @@ internal static partial class EvmInstructions
         // For certain specs, charge gas if transferring to a dead account.
         if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
         {
-            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
-                goto OutOfGas;
+            if (TEip8037.IsActive)
+            {
+                if (!TGasPolicy.ConsumeNewAccountCreation(ref gas))
+                    goto OutOfGas;
+            }
+            else
+            {
+                if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
+                    goto OutOfGas;
+            }
         }
 
         // If account creation rules apply, ensure gas is charged for new accounts.
         bool inheritorAccountExists = state.AccountExists(inheritor);
         if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
         {
-            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
-                goto OutOfGas;
+            if (TEip8037.IsActive)
+            {
+                if (!TGasPolicy.ConsumeNewAccountCreation(ref gas))
+                    goto OutOfGas;
+            }
+            else
+            {
+                if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
+                    goto OutOfGas;
+            }
         }
 
         // Create or update the inheritor account with the transferred balance.

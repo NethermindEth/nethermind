@@ -8,6 +8,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -16,6 +18,9 @@ public class Eip7954Tests : VirtualMachineTestsBase
 {
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
+
+    // Disable EIP-8037 to keep gas costs stable; this test validates code size limits, not state gas.
+    private static readonly OverridableReleaseSpec _specWithoutEip8037 = new(Amsterdam.Instance) { IsEip8037Enabled = false };
 
     [Test]
     public void MaxCodeSize_and_MaxInitCodeSize_are_correct()
@@ -66,7 +71,7 @@ public class Eip7954Tests : VirtualMachineTestsBase
         transaction.To = null;
         transaction.Data = initCode;
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, _specWithoutEip8037), tracer);
         return tracer;
     }
 }

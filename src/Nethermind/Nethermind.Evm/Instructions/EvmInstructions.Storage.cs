@@ -439,10 +439,11 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSStoreMetered<TGasPolicy, TTracingInst, TUseNetGasStipendFix>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    internal static EvmExceptionType InstructionSStoreMetered<TGasPolicy, TTracingInst, TUseNetGasStipendFix, TEip8037>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TUseNetGasStipendFix : struct, IFlag
+        where TEip8037 : struct, IFlag
     {
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
@@ -503,12 +504,21 @@ internal static partial class EvmInstructions
             {
                 if (currentIsZero)
                 {
-                    if (!TGasPolicy.ConsumeStorageWrite(ref gas, isSlotCreation: true, spec))
-                        goto OutOfGas;
+                    if (TEip8037.IsActive)
+                    {
+                        if (!TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.SSetState) ||
+                            !TGasPolicy.UpdateGas(ref gas, GasCostOf.SSetRegular))
+                            goto OutOfGas;
+                    }
+                    else
+                    {
+                        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.SSet))
+                            goto OutOfGas;
+                    }
                 }
                 else
                 {
-                    if (!TGasPolicy.ConsumeStorageWrite(ref gas, isSlotCreation: false, spec))
+                    if (!TGasPolicy.UpdateGas(ref gas, spec.GetSStoreResetCost()))
                         goto OutOfGas;
 
                     if (newIsZero)
@@ -548,7 +558,9 @@ internal static partial class EvmInstructions
                 if (newSameAsOriginal)
                 {
                     long refundFromReversal = originalIsZero
-                        ? spec.GetSetReversalRefund()
+                        ? TEip8037.IsActive
+                            ? RefundOf.SSetStateReversedEip8037 + RefundOf.SSetRegularReversedEip8037
+                            : spec.GetSetReversalRefund()
                         : spec.GetClearReversalRefund();
 
                     vmState.Refund += refundFromReversal;

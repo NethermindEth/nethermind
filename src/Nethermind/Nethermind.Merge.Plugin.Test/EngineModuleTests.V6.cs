@@ -22,12 +22,18 @@ using Nethermind.TxPool;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test;
 using System;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Test;
+using Nethermind.Crypto;
+using Nethermind.Specs.Test;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
+    // Amsterdam with EIP-8037 disabled — used by original NewPayloadV5 tests with hardcoded hashes
+    private static readonly OverridableReleaseSpec AmsterdamWithoutEip8037 = new(Amsterdam.Instance) { IsEip8037Enabled = false };
 
     [TestCase(
         "0xb54389c226c76c61de0a8ebea2fe74cb0119295d34b8c01d0897901867c41c63",
@@ -194,13 +200,20 @@ public partial class EngineModuleTests
     [TestCase(
         "0x0981253ff1b66ee40650f7fa7efe53f772bc11bd4fef3a3574cf91495a1533dd",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-        "0x42a80ba6d5783c392ffcc6b3c15d7ef06be8ae71c2ff5f42377acdec67a5766c")]
-    public virtual async Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
-        => await NewPayloadV5(
-            blockHash,
-            receiptsRoot,
-            stateRoot,
-            null);
+        "0x42a80ba6d5783c392ffcc6b3c15d7ef06be8ae71c2ff5f42377acdec67a5766c",
+        false)]
+    [TestCase(
+        "0xc7ca0c8c9d0b29e9c432d34bcc6b0dd5adef6732ed94096465847ade2da72aae",
+        "0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2",
+        "0xfad798172a2bbd423c90a023d345c7a7812e067918edb7630c2388736f197f29",
+        true)]
+    public virtual async Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot, bool eip8037Enabled)
+    {
+        if (eip8037Enabled)
+            await NewPayloadV5Eip8037(blockHash, receiptsRoot, stateRoot);
+        else
+            await NewPayloadV5(blockHash, receiptsRoot, stateRoot);
+    }
 
     [TestCase(
         "0x43b3722358b0a8b570fdfd846a5b836ad2fae3f7f58b3ac3519858472a997214",
@@ -211,7 +224,7 @@ public partial class EngineModuleTests
     public virtual async Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? auraWithdrawalContractAddress)
     {
         using MergeTestBlockchain chain =
-            await CreateBlockchain(Amsterdam.Instance);
+            await CreateBlockchain(AmsterdamWithoutEip8037);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         const ulong timestamp = 1000000;
@@ -279,50 +292,82 @@ public partial class EngineModuleTests
     [TestCase(
         "0x2753a5a3fe321381e637a7c0d7673b61555a366bdf75359616b0035f9b405fab",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_incorrect_changes_early(string blockHash, string receiptsRoot, string stateRoot)
-        => await NewPayloadV5(
-            blockHash,
-            receiptsRoot,
-            stateRoot,
-            "InvalidBlockLevelAccessList: Suggested block-level access list contained incorrect changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 3.",
-            withIncorrectChange: true);
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b",
+        false)]
+    [TestCase(
+        "0xc7ca0c8c9d0b29e9c432d34bcc6b0dd5adef6732ed94096465847ade2da72aae",
+        "0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2",
+        "0xfad798172a2bbd423c90a023d345c7a7812e067918edb7630c2388736f197f29",
+        true)]
+    public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_incorrect_changes_early(string blockHash, string receiptsRoot, string stateRoot, bool eip8037Enabled)
+    {
+        if (eip8037Enabled)
+            await NewPayloadV5Eip8037(blockHash, receiptsRoot, stateRoot, "incorrect changes", withIncorrectChange: true);
+        else
+            await NewPayloadV5(blockHash, receiptsRoot, stateRoot,
+                "InvalidBlockLevelAccessList: Suggested block-level access list contained incorrect changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 3.",
+                withIncorrectChange: true);
+    }
 
     [TestCase(
         "0x9f19c60fe32bb002e4b959abddd1ebfd396ddae2e65e9ff87b1c4a0715ade9ad",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_missing_changes_early(string blockHash, string receiptsRoot, string stateRoot)
-        => await NewPayloadV5(
-            blockHash,
-            receiptsRoot,
-            stateRoot,
-            "InvalidBlockLevelAccessList: Suggested block-level access list missing account changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 2.",
-            withMissingChange: true);
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b",
+        false)]
+    [TestCase(
+        "0xc7ca0c8c9d0b29e9c432d34bcc6b0dd5adef6732ed94096465847ade2da72aae",
+        "0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2",
+        "0xfad798172a2bbd423c90a023d345c7a7812e067918edb7630c2388736f197f29",
+        true)]
+    public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_missing_changes_early(string blockHash, string receiptsRoot, string stateRoot, bool eip8037Enabled)
+    {
+        if (eip8037Enabled)
+            await NewPayloadV5Eip8037(blockHash, receiptsRoot, stateRoot, "missing account changes", withMissingChange: true);
+        else
+            await NewPayloadV5(blockHash, receiptsRoot, stateRoot,
+                "InvalidBlockLevelAccessList: Suggested block-level access list missing account changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 2.",
+                withMissingChange: true);
+    }
 
     [TestCase(
         "0x383a5a61b956150bc79762844dc40395c9f85e9caae8930a0de2b9e687902eae",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_surplus_changes_early(string blockHash, string receiptsRoot, string stateRoot)
-        => await NewPayloadV5(
-            blockHash,
-            receiptsRoot,
-            stateRoot,
-            "InvalidBlockLevelAccessList: Suggested block-level access list contained surplus changes for 0x65942aaf2c32a1aca4f14e82e94fce91960893a2 at index 2.",
-            withSurplusChange: true);
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b",
+        false)]
+    [TestCase(
+        "0xc7ca0c8c9d0b29e9c432d34bcc6b0dd5adef6732ed94096465847ade2da72aae",
+        "0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2",
+        "0xfad798172a2bbd423c90a023d345c7a7812e067918edb7630c2388736f197f29",
+        true)]
+    public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_surplus_changes_early(string blockHash, string receiptsRoot, string stateRoot, bool eip8037Enabled)
+    {
+        if (eip8037Enabled)
+            await NewPayloadV5Eip8037(blockHash, receiptsRoot, stateRoot, "surplus changes", withSurplusChange: true);
+        else
+            await NewPayloadV5(blockHash, receiptsRoot, stateRoot,
+                "InvalidBlockLevelAccessList: Suggested block-level access list contained surplus changes for 0x65942aaf2c32a1aca4f14e82e94fce91960893a2 at index 2.",
+                withSurplusChange: true);
+    }
 
     [TestCase(
         "0x66478724575325c99be695cc33d2698b6c87bdc7fe4ee0a54813de367f2bf037",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_surplus_reads_early(string blockHash, string receiptsRoot, string stateRoot)
-        => await NewPayloadV5(
-            blockHash,
-            receiptsRoot,
-            stateRoot,
-            "InvalidBlockLevelAccessList: Suggested block-level access list contained invalid storage reads.",
-            withSurplusReads: true);
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b",
+        false)]
+    [TestCase(
+        "0xc7ca0c8c9d0b29e9c432d34bcc6b0dd5adef6732ed94096465847ade2da72aae",
+        "0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2",
+        "0xfad798172a2bbd423c90a023d345c7a7812e067918edb7630c2388736f197f29",
+        true)]
+    public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_surplus_reads_early(string blockHash, string receiptsRoot, string stateRoot, bool eip8037Enabled)
+    {
+        if (eip8037Enabled)
+            await NewPayloadV5Eip8037(blockHash, receiptsRoot, stateRoot, "invalid storage reads", withSurplusReads: true);
+        else
+            await NewPayloadV5(blockHash, receiptsRoot, stateRoot,
+                "InvalidBlockLevelAccessList: Suggested block-level access list contained invalid storage reads.",
+                withSurplusReads: true);
+    }
 
     [Test]
     [TestCase(null)]
@@ -490,7 +535,7 @@ public partial class EngineModuleTests
         string? auraWithdrawalContractAddress = null)
     {
         using MergeTestBlockchain chain =
-            await CreateBlockchain(Amsterdam.Instance);
+            await CreateBlockchain(AmsterdamWithoutEip8037);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         const long gasUsed = 167340;
@@ -500,53 +545,7 @@ public partial class EngineModuleTests
         const ulong timestamp = 1000000;
         Hash256 parentHash = new(chain.BlockTree.HeadHash);
 
-        Transaction tx = Build.A.Transaction
-            .WithTo(TestItem.AddressB)
-            .WithSenderAddress(TestItem.AddressA)
-            .WithValue(0)
-            .WithGasPrice(gasPrice)
-            .WithGasLimit(gasLimit)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        Transaction tx2 = Build.A.Transaction
-            .WithTo(null)
-            .WithSenderAddress(TestItem.AddressA)
-            .WithValue(0)
-            .WithNonce(1)
-            .WithGasPrice(gasPrice)
-            .WithGasLimit(gasLimit)
-            .WithCode(Eip2935TestConstants.InitCode)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        // Store followed by revert should undo storage change
-        byte[] code = Prepare.EvmCode
-            .PushData(1)
-            .PushData(1)
-            .SSTORE()
-            .Op(Instruction.PUSH0)
-            .Op(Instruction.PUSH0)
-            .REVERT()
-            .Done;
-        Transaction tx3 = Build.A.Transaction
-            .WithTo(null)
-            .WithSenderAddress(TestItem.AddressA)
-            .WithValue(0)
-            .WithNonce(2)
-            .WithGasPrice(gasPrice)
-            .WithGasLimit(gasLimit)
-            .WithCode(code)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        Withdrawal withdrawal = new()
-        {
-            Index = 0,
-            ValidatorIndex = 0,
-            Address = TestItem.AddressD,
-            AmountInGwei = 1
-        };
+        (Transaction tx, Transaction tx2, Transaction tx3, Withdrawal withdrawal) = BuildTestTransactionsAndWithdrawal(gasPrice, gasLimit);
 
         Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);
         Address newContractAddress2 = ContractAddress.From(TestItem.AddressA, 2);
@@ -691,5 +690,199 @@ public partial class EngineModuleTests
                 })));
             }
         }
+    }
+
+    protected async Task NewPayloadV5Eip8037(
+        string expectedBlockHash,
+        string expectedReceiptsRoot,
+        string expectedStateRoot,
+        string? expectedError = null,
+        bool withIncorrectChange = false,
+        bool withSurplusChange = false,
+        bool withMissingChange = false,
+        bool withSurplusReads = false)
+    {
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(Amsterdam.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        const ulong gasPrice = 2;
+        const long gasLimit = 100000;
+        const ulong timestamp = 1000000;
+        const ulong slotNumber = 1;
+
+        (Transaction tx, Transaction tx2, Transaction tx3, Withdrawal withdrawal) = BuildTestTransactionsAndWithdrawal(gasPrice, gasLimit);
+
+        chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
+        chain.TxPool.SubmitTx(tx2, TxHandlingOptions.None);
+        chain.TxPool.SubmitTx(tx3, TxHandlingOptions.None);
+
+        Hash256 parentHash = chain.BlockTree.HeadHash;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = timestamp,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = TestItem.AddressE,
+            ParentBeaconBlockRoot = Keccak.Zero,
+            Withdrawals = [withdrawal],
+            SlotNumber = slotNumber
+        };
+
+        ForkchoiceStateV1 fcuState = new(parentHash, parentHash, parentHash);
+        Task blockImprovementWait = chain.WaitForImprovedBlock(parentHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await rpc.engine_forkchoiceUpdatedV4(fcuState, payloadAttributes);
+        Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
+        await blockImprovementWait;
+
+        byte[] payloadId = Bytes.FromHexString(fcuResponse.Data.PayloadId!);
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(payloadId);
+        Assert.That(payloadResult.Data, Is.Not.Null);
+        ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
+
+        Assert.That(payload.BlockHash.ToString(), Is.EqualTo(expectedBlockHash), "Engine-built block hash mismatch");
+        Assert.That(payload.ReceiptsRoot.ToString(), Is.EqualTo(expectedReceiptsRoot), "Engine-built receipts root mismatch");
+        Assert.That(payload.StateRoot.ToString(), Is.EqualTo(expectedStateRoot), "Engine-built state root mismatch");
+
+        if (expectedError is null)
+        {
+            ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV5(payload, [], Keccak.Zero, []);
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.LatestValidHash, Is.EqualTo(payload.BlockHash));
+            return;
+        }
+
+        // Set ExecutionRequests so TryGetBlock() computes RequestsHash (matching engine_newPayloadV5 handler)
+        payload.ExecutionRequests = payloadResult.Data!.ExecutionRequests;
+        BlockDecodingResult blockResult = payload.TryGetBlock();
+        Block block = blockResult.Block!;
+        BlockAccessList validBal = block.BlockAccessList!;
+
+        SortedDictionary<Address, AccountChanges> modifiedAccounts = new();
+        Address senderAddress = TestItem.AddressA;
+
+        foreach (AccountChanges ac in validBal.AccountChanges)
+        {
+            if (withMissingChange && ac.Address == senderAddress)
+                continue;
+            modifiedAccounts[ac.Address] = CloneAccountChanges(ac);
+        }
+
+        if (withIncorrectChange)
+        {
+            modifiedAccounts[senderAddress] = CloneAccountChanges(
+                validBal.GetAccountChanges(senderAddress)!,
+                bc => bc.BlockAccessIndex == 1 ? new BalanceChange(1, bc.PostBalance + 1) : bc);
+        }
+
+        if (withSurplusChange)
+        {
+            SortedList<ushort, NonceChange> fakeNonce = new() { { 1, new NonceChange(1, 5) } };
+            modifiedAccounts[TestItem.AddressF] = new AccountChanges(
+                TestItem.AddressF, new(), new SortedSet<StorageRead>(), new(), fakeNonce, new());
+        }
+
+        if (withSurplusReads)
+        {
+            AccountChanges entry = modifiedAccounts[senderAddress];
+            for (ulong i = 1_000_000; i < 1_000_100; i++)
+                entry.AddStorageRead(new UInt256(i));
+        }
+
+        BlockAccessList modifiedBal = new(modifiedAccounts);
+        byte[] modifiedBalRlp = Rlp.Encode(modifiedBal).Bytes;
+        block.BlockAccessList = modifiedBal;
+        block.EncodedBlockAccessList = modifiedBalRlp;
+        block.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(modifiedBalRlp).Bytes);
+        block.Header.Hash = block.Header.CalculateHash();
+
+        ExecutionPayloadV4 modifiedPayload = ExecutionPayloadV4.Create(block);
+
+        ResultWrapper<PayloadStatusV1> errorResult = await rpc.engine_newPayloadV5(modifiedPayload, [], Keccak.Zero, []);
+        Assert.That(errorResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+        Assert.That(errorResult.Data.ValidationError, Does.Contain(expectedError));
+    }
+
+    private static (Transaction tx, Transaction tx2, Transaction tx3, Withdrawal withdrawal) BuildTestTransactionsAndWithdrawal(ulong gasPrice, long gasLimit)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        Transaction tx2 = Build.A.Transaction
+            .WithTo(null)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithNonce(1)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .WithCode(Eip2935TestConstants.InitCode)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        // Store followed by revert should undo storage change
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(1)
+            .SSTORE()
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.PUSH0)
+            .REVERT()
+            .Done;
+        Transaction tx3 = Build.A.Transaction
+            .WithTo(null)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithNonce(2)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .WithCode(code)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        Withdrawal withdrawal = new()
+        {
+            Index = 0,
+            ValidatorIndex = 0,
+            Address = TestItem.AddressD,
+            AmountInGwei = 1
+        };
+
+        return (tx, tx2, tx3, withdrawal);
+    }
+
+    private static AccountChanges CloneAccountChanges(AccountChanges ac, Func<BalanceChange, BalanceChange>? balanceModifier = null)
+    {
+        SortedList<UInt256, SlotChanges> storageChanges = new();
+        foreach (SlotChanges sc in ac.StorageChanges)
+        {
+            SortedList<ushort, StorageChange> changes = new();
+            foreach (KeyValuePair<ushort, StorageChange> kvp in sc.Changes)
+                changes.Add(kvp.Key, kvp.Value);
+            storageChanges.Add(sc.Slot, new SlotChanges(sc.Slot, changes));
+        }
+
+        SortedSet<StorageRead> storageReads = new(ac.StorageReads);
+
+        SortedList<ushort, BalanceChange> balanceChanges = new();
+        foreach (BalanceChange bc in ac.BalanceChanges)
+        {
+            BalanceChange modified = balanceModifier?.Invoke(bc) ?? bc;
+            balanceChanges.Add(modified.BlockAccessIndex, modified);
+        }
+
+        SortedList<ushort, NonceChange> nonceChanges = new();
+        foreach (NonceChange nc in ac.NonceChanges)
+            nonceChanges.Add(nc.BlockAccessIndex, nc);
+
+        SortedList<ushort, CodeChange> codeChanges = new();
+        foreach (CodeChange cc in ac.CodeChanges)
+            codeChanges.Add(cc.BlockAccessIndex, cc);
+
+        return new AccountChanges(ac.Address, storageChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
     }
 }

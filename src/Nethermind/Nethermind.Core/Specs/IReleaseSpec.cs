@@ -459,6 +459,12 @@ namespace Nethermind.Core.Specs
         bool BlockLevelAccessListsEnabled => IsEip7928Enabled;
 
         /// <summary>
+        /// EIP-8037: Cost Per State Byte / State Size Limit.
+        /// Two-dimensional gas metering for state growth control.
+        /// </summary>
+        public bool IsEip8037Enabled { get; }
+
+        /// <summary>
         /// EIP-7708: ETH transfers and burns emit a log
         /// </summary>
         public bool IsEip7708Enabled { get; }

@@ -262,12 +262,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Restore the previous state from the stack and mark it as a continuation.
                     _currentState = _stateStack.Pop();
                     _currentState.IsContinuation = true;
-                    // Refund the remaining gas from the completed call frame.
-                    TGasPolicy.Refund(ref _currentState.Gas, in previousState.Gas);
                     bool previousStateSucceeded = true;
 
                     if (!callResult.ShouldRevert)
                     {
+                        // Refund the remaining gas from the completed call frame (success path).
+                        TGasPolicy.Refund(ref _currentState.Gas, in previousState.Gas);
                         long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
 
                         // Process contract creation calls differently from regular calls.
@@ -305,6 +305,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     }
                     else
                     {
+                        // On revert, return remaining regular gas and restore all state gas to parent reservoir.
+                        TGasPolicy.UpdateGasUp(ref _currentState.Gas, TGasPolicy.GetRemainingGas(in previousState.Gas));
+                        TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in previousState.Gas);
                         // Revert state changes for the previous call frame when a revert condition is signaled.
                         HandleRevert(previousState, callResult, ref previousCallOutput);
                     }
@@ -414,20 +417,36 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
         bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
-        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, bytecodeResultArray?.Length ?? 0);
-        if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
+        if (!CodeDepositHandler.CalculateCost(spec, bytecodeResultArray.Length, out long regularDepositCost, out long stateDepositCost))
         {
-            // 4 - set state[new_address].code to the updated deploy container
-            // push new_address onto the stack (already done before the ifs)
-            _codeInfoRepository.InsertCode(bytecodeResultArray, callCodeOwner, spec);
-            TGasPolicy.Consume(ref _currentState.Gas, codeDepositGasCost);
+            invalidCode = true;
+        }
 
-            if (_txTracer.IsTracingActions)
+        // EIP-8037: CreateState is already charged at CREATE/CREATE2 dispatch, so don't charge NewAccountState again at code deposit.
+        long totalStateCost = stateDepositCost;
+        long availableGasForState = gasAvailableForCodeDeposit + TGasPolicy.GetStateReservoir(in previousState.Gas);
+        bool hasEnoughGasForDeposit = gasAvailableForCodeDeposit >= regularDepositCost && availableGasForState >= totalStateCost;
+        bool chargedCodeDeposit = false;
+        if (hasEnoughGasForDeposit && !invalidCode)
+        {
+            TGasPolicy gasAfterCodeDeposit = _currentState.Gas;
+            chargedCodeDeposit = TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, totalStateCost, regularDepositCost);
+            if (chargedCodeDeposit)
             {
-                _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, bytecodeResultArray);
+                _currentState.Gas = gasAfterCodeDeposit;
+
+                // 4 - set state[new_address].code to the updated deploy container
+                // push new_address onto the stack (already done before the ifs)
+                _codeInfoRepository.InsertCode(bytecodeResultArray, callCodeOwner, spec);
+                if (_txTracer.IsTracingActions)
+                {
+                    _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - regularDepositCost, callCodeOwner, bytecodeResultArray);
+                }
             }
         }
-        else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+
+        bool outOfGasOnCodeDeposit = !hasEnoughGasForDeposit || (!invalidCode && !chargedCodeDeposit);
+        if (!chargedCodeDeposit && (spec.FailOnOutOfGasCodeDeposit || invalidCode) && (invalidCode || outOfGasOnCodeDeposit))
         {
             TGasPolicy.Consume(ref _currentState.Gas, gasAvailableForCodeDeposit);
             _worldState.Restore(previousState.Snapshot);
@@ -444,7 +463,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
-        else if (_txTracer.IsTracingActions)
+        else if (!chargedCodeDeposit && _txTracer.IsTracingActions)
         {
             _txTracer.ReportActionEnd(0L, callCodeOwner, bytecodeResultArray);
         }
@@ -482,29 +501,44 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required to deposit the contract code using legacy cost rules.
-        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+        if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length, out long regularDepositCost, out long stateDepositCost))
+        {
+            regularDepositCost = long.MaxValue;
+            stateDepositCost = long.MaxValue;
+        }
 
         // Validate the code against legacy rules; mark it invalid if it fails these checks.
         bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, callResult.Output.Bytes);
+        // EIP-8037: CreateState is already charged at CREATE/CREATE2 dispatch, so don't charge NewAccountState again at code deposit.
+        long totalStateCost = stateDepositCost;
+        long availableGasForState = gasAvailableForCodeDeposit + TGasPolicy.GetStateReservoir(in previousState.Gas);
+        bool hasEnoughGasForDeposit = gasAvailableForCodeDeposit >= regularDepositCost && availableGasForState >= totalStateCost;
+        bool chargedCodeDeposit = false;
 
         // Check if there is sufficient gas and the code is valid.
-        if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
+        if (hasEnoughGasForDeposit && !invalidCode)
         {
-            // Deposit the contract code into the repository.
-            ReadOnlyMemory<byte> code = callResult.Output.Bytes;
-            _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
-
-            // Deduct the gas cost for the code deposit from the current state's available gas.
-            TGasPolicy.Consume(ref _currentState.Gas, codeDepositGasCost);
-
-            // If tracing is enabled, report the successful code deposit operation.
-            if (isTracing)
+            TGasPolicy gasAfterCodeDeposit = _currentState.Gas;
+            chargedCodeDeposit = TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, totalStateCost, regularDepositCost);
+            if (chargedCodeDeposit)
             {
-                _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+                _currentState.Gas = gasAfterCodeDeposit;
+
+                // Deposit the contract code into the repository.
+                ReadOnlyMemory<byte> code = callResult.Output.Bytes;
+                _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
+
+                // If tracing is enabled, report the successful code deposit operation.
+                if (isTracing)
+                {
+                    _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - regularDepositCost, callCodeOwner, callResult.Output.Bytes);
+                }
             }
         }
+
+        bool outOfGasOnCodeDeposit = !hasEnoughGasForDeposit || (!invalidCode && !chargedCodeDeposit);
         // If the code deposit should fail due to out-of-gas or invalid code conditions...
-        else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+        if (!chargedCodeDeposit && (spec.FailOnOutOfGasCodeDeposit || invalidCode) && (invalidCode || outOfGasOnCodeDeposit))
         {
             // Consume all remaining gas allocated for the code deposit.
             TGasPolicy.Consume(ref _currentState.Gas, gasAvailableForCodeDeposit);
@@ -532,9 +566,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
         // In scenarios where the code deposit does not strictly mandate a failure,
         // report the end of the action if tracing is enabled.
-        else if (isTracing)
+        else if (!chargedCodeDeposit && isTracing)
         {
-            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - regularDepositCost, callCodeOwner, callResult.Output.Bytes);
         }
     }
 
@@ -673,10 +707,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;
 
-        // Dispose of the current failing state and restore the previous call frame from the stack.
-        _currentState.Dispose();
+        // Restore state gas from the failed child before disposing it.
+        VmState<TGasPolicy> childState = _currentState;
         _currentState = _stateStack.Pop();
+        TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in childState.Gas);
         _currentState.IsContinuation = true;
+        childState.Dispose();
 
         shouldExit = false;
         return default;
@@ -759,10 +795,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;
 
-        // Clean up the current failing state and pop the parent call frame from the state stack.
-        _currentState.Dispose();
+        // Restore state gas from the failed child before disposing it.
+        VmState<TGasPolicy> childState = _currentState;
         _currentState = _stateStack.Pop();
+        TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in childState.Gas);
         _currentState.IsContinuation = true;
+        childState.Dispose();
 
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
         shouldExit = false;
@@ -1329,6 +1367,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Set the exception type to OutOfGas if gas has been exhausted.
         exceptionType = EvmExceptionType.OutOfGas;
     ReturnFailure:
+        // EIP-8037: write gas back to state on failure so RestoreChildStateGas
+        // can read accumulated StateGasUsed/StateGasSpill from the child frame.
+        _currentState.Gas = gas;
         // Return a failure CallResult based on the remaining gas and the exception type.
         return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
 

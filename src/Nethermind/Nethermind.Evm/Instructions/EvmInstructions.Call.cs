@@ -89,13 +89,14 @@ internal static partial class EvmInstructions
     /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
         ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
+        where TEip8037 : struct, IFlag
     {
         // Increment global call metrics.
         Metrics.IncrementCalls();
@@ -179,11 +180,25 @@ internal static partial class EvmInstructions
         // Charge additional gas if the target account is new or considered empty.
         if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
         {
-            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
+            if (TEip8037.IsActive)
+            {
+                if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
+            }
+            else
+            {
+                if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount)) goto OutOfGas;
+            }
         }
         else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target))
         {
-            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
+            if (TEip8037.IsActive)
+            {
+                if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
+            }
+            else
+            {
+                if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount)) goto OutOfGas;
+            }
         }
 
         // Retrieve code information for the call and schedule background analysis if needed.
@@ -289,7 +304,7 @@ internal static partial class EvmInstructions
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-            gas: TGasPolicy.FromLong(gasLimitUl),
+            gas: TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
             outputDestination: outputOffset.ToLong(),
             outputLength: outputLength.ToLong(),
             executionType: TOpCall.ExecutionType,

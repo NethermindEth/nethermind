@@ -86,8 +86,13 @@ public abstract class BlockchainTestBase
 
         bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
 
+        // Post-merge pyspec blockchain_test_from_state_test fixtures expect genesis to be processed
+        // under the target fork rules (e.g. Amsterdam genesis has BlockAccessListHash set).
+        // Use the target network for genesis when the genesis header has BlockAccessListHash.
+        bool genesisUsesTargetFork = test.GenesisBlockHeader?.BlockAccessListHash is not null;
+
         List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
-        isEngineTest ?
+        isEngineTest || genesisUsesTargetFork ?
         [((ForkActivation)0, test.Network)] :
         [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 

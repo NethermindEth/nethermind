@@ -87,8 +87,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     [TestCase(
         "0x14d7d22cfaa851f3b79a790d6f961f0cc4da2e714cd15b16bce8468f25152911",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-        "0x3e98244425fbc5413150a01fd823bece9ae66ef182f11597f0abdfd251d9aa16")]
-    public override Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
+        "0x3e98244425fbc5413150a01fd823bece9ae66ef182f11597f0abdfd251d9aa16",
+        false)]
+    public override Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot, bool eip8037Enabled)
         => NewPayloadV5(
             blockHash,
             receiptsRoot,
@@ -107,8 +108,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     [TestCase(
         "0x5ab84199bdbe0d5806de6bffbbd52cf31ede2248f842395aa9a850a45ad9f4db",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    public override Task NewPayloadV5_rejects_invalid_BAL_with_incorrect_changes_early(string blockHash, string receiptsRoot, string stateRoot)
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b",
+        false)]
+    public override Task NewPayloadV5_rejects_invalid_BAL_with_incorrect_changes_early(string blockHash, string receiptsRoot, string stateRoot, bool eip8037Enabled)
         => NewPayloadV5(
             blockHash,
             receiptsRoot,
@@ -120,8 +122,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     [TestCase(
         "0x56f188e232e95462ad7235ca53b336f5f73cc208992d307033210c085ea6f959",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    public override Task NewPayloadV5_rejects_invalid_BAL_with_missing_changes_early(string blockHash, string receiptsRoot, string stateRoot)
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b",
+        false)]
+    public override Task NewPayloadV5_rejects_invalid_BAL_with_missing_changes_early(string blockHash, string receiptsRoot, string stateRoot, bool eip8037Enabled)
         => NewPayloadV5(
             blockHash,
             receiptsRoot,
@@ -133,8 +136,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     [TestCase(
         "0x1625b8215c5d6ab493105efb8cc20b7409d4957ca46d98996c6cc01e50b69ab3",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    public override Task NewPayloadV5_rejects_invalid_BAL_with_surplus_changes_early(string blockHash, string receiptsRoot, string stateRoot)
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b",
+        false)]
+    public override Task NewPayloadV5_rejects_invalid_BAL_with_surplus_changes_early(string blockHash, string receiptsRoot, string stateRoot, bool eip8037Enabled)
         => NewPayloadV5(
             blockHash,
             receiptsRoot,
@@ -146,8 +150,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     [TestCase(
         "0x91e03d0f1b756f6577cab73c9f910f9b18fbe45ac27bb346ada0fa912a71dac8",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    public override Task NewPayloadV5_rejects_invalid_BAL_with_surplus_reads_early(string blockHash, string receiptsRoot, string stateRoot)
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b",
+        false)]
+    public override Task NewPayloadV5_rejects_invalid_BAL_with_surplus_reads_early(string blockHash, string receiptsRoot, string stateRoot, bool eip8037Enabled)
         => NewPayloadV5(
             blockHash,
             receiptsRoot,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.EvmObjectFormat;
 
@@ -10,10 +11,54 @@ namespace Nethermind.Evm
     public static class CodeDepositHandler
     {
         private const byte InvalidStartingCodeByte = 0xEF;
+
         public static long CalculateCost(IReleaseSpec spec, int byteCodeLength) =>
-            spec.LimitCodeSize && byteCodeLength > spec.MaxCodeSize
-                ? long.MaxValue
-                : GasCostOf.CodeDeposit * byteCodeLength;
+            spec.IsEip8037Enabled
+                ? CalculateCost<OnFlag>(spec, byteCodeLength)
+                : CalculateCost<OffFlag>(spec, byteCodeLength);
+
+        public static bool CalculateCost(IReleaseSpec spec, int byteCodeLength, out long regularCost, out long stateCost)
+        {
+            return spec.IsEip8037Enabled
+                ? CalculateCost<OnFlag>(spec, byteCodeLength, out regularCost, out stateCost)
+                : CalculateCost<OffFlag>(spec, byteCodeLength, out regularCost, out stateCost);
+        }
+
+        public static long CalculateCost<TEip8037>(IReleaseSpec spec, int byteCodeLength)
+            where TEip8037 : struct, IFlag =>
+            CalculateCost<TEip8037>(spec, byteCodeLength, out long regularCost, out long stateCost)
+                ? regularCost + stateCost
+                : long.MaxValue;
+
+        public static bool CalculateCost<TEip8037>(IReleaseSpec spec, int byteCodeLength, out long regularCost, out long stateCost)
+            where TEip8037 : struct, IFlag
+        {
+            if (spec.LimitCodeSize && byteCodeLength > spec.MaxCodeSize)
+            {
+                regularCost = long.MaxValue;
+                stateCost = 0;
+                return false;
+            }
+
+            if (TEip8037.IsActive)
+            {
+                long words = EvmCalculations.Div32Ceiling((ulong)byteCodeLength, out bool outOfGas);
+                if (outOfGas)
+                {
+                    regularCost = long.MaxValue;
+                    stateCost = long.MaxValue;
+                    return false;
+                }
+
+                regularCost = GasCostOf.CodeDepositRegularPerWord * words;
+                stateCost = GasCostOf.CodeDepositState * byteCodeLength;
+                return true;
+            }
+
+            regularCost = GasCostOf.CodeDeposit * byteCodeLength;
+            stateCost = 0;
+            return true;
+        }
 
         public static bool CodeIsInvalid(IReleaseSpec spec, ReadOnlyMemory<byte> code, int fromVersion)
             => !CodeIsValid(spec, code, fromVersion);

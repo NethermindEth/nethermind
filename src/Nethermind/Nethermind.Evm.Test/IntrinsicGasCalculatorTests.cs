@@ -11,7 +11,9 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -225,6 +227,33 @@ namespace Nethermind.Evm.Test
                 .TestObject;
 
             Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance), Throws.InstanceOf<InvalidDataException>());
+        }
+
+        [Test]
+        public void Eip8037_policy_intrinsic_gas_splits_authorization_cost()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithAuthorizationCode(
+                    new AuthorizationTuple(
+                        1,
+                        TestItem.AddressF,
+                        0,
+                        0,
+                        UInt256.One,
+                        UInt256.One))
+                .TestObject;
+
+            ReleaseSpec spec = Prague.Instance switch
+            {
+                ReleaseSpec releaseSpec => releaseSpec.Clone(),
+                _ => throw new InvalidOperationException("Expected Prague spec to be ReleaseSpec.")
+            };
+            spec.IsEip8037Enabled = true;
+
+            IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec);
+
+            Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular));
+            Assert.That(intrinsicGas.Standard.StateReservoir, Is.EqualTo(GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState));
         }
     }
 }
