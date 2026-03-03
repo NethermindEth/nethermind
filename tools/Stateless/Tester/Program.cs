@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.IO;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -10,9 +12,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Stateless.Execution;
-using System;
-using System.IO;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Nethermind.Stateless.Tester;
 
