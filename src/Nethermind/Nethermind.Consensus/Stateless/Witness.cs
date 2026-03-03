@@ -24,6 +24,8 @@ public class Witness : IDisposable
         State.Dispose();
         Keys.Dispose();
         Headers.Dispose();
+
+        GC.SuppressFinalize(this);
     }
 }
 
