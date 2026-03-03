@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -78,7 +78,7 @@ public class DataCopyGasTests : VirtualMachineTestsBase
         result.GasSpent.Should().Be(GetBaseGas(instruction) + 2 * GasCostOf.Memory);
     }
 
-    private byte[] BuildCopyCode(Instruction instruction, int length)
+    private static byte[] BuildCopyCode(Instruction instruction, int length)
     {
         Prepare prepare = Prepare.EvmCode
             .PushData(length)
@@ -91,7 +91,7 @@ public class DataCopyGasTests : VirtualMachineTestsBase
         return prepare.Op(instruction).Done;
     }
 
-    private long GetBaseGas(Instruction instruction) => instruction == Instruction.EXTCODECOPY
+    private static long GetBaseGas(Instruction instruction) => instruction == Instruction.EXTCODECOPY
         ? GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.ExtCodeEip150
         : GasCostOf.Transaction + 3 * GasCostOf.VeryLow + GasCostOf.VeryLow;
 }
