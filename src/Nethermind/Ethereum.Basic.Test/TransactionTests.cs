@@ -20,11 +20,6 @@ namespace Ethereum.Basic.Test;
 [Parallelizable(ParallelScope.All)]
 public class TransactionTests
 {
-    // Group order for secp256k1 defined as `n` in the "Standards for Efficient Cryptography", SEC 2, 2.4.1
-    // https://www.secg.org/sec2-v2.pdf
-    private static readonly BigInteger n = new(
-        System.Convert.FromHexString("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"), true, true);
-
     [OneTimeSetUp]
     public void SetUp() => Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
 
@@ -57,12 +52,12 @@ public class TransactionTests
 
         BigInteger expectedS = decodedSigned.Signature.S.Span.ToUnsignedBigInteger();
         BigInteger actualS = decodedUnsigned.Signature.S.Span.ToUnsignedBigInteger();
-        BigInteger otherS = n - actualS;
+        BigInteger otherS = (BigInteger)Secp256K1Curve.N - actualS;
 
         Assert.That(otherS == expectedS || actualS == expectedS, "S is wrong");
 
         ulong vToCompare = decodedUnsigned.Signature.V;
-        if (otherS == decodedSigned.Signature.S.Span.ToUnsignedBigInteger())
+        if (otherS == expectedS)
         {
             vToCompare = vToCompare == 27ul ? 28ul : 27ul;
         }
