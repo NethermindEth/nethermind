@@ -16,11 +16,9 @@ public class ChainParametersTests
     [Test]
     public void ChainParameters_should_have_same_properties_as_chainSpecParamsJson()
     {
-        string[] chainParametersExceptions = {
-            "Registrar"
-        };
+        string[] chainParametersExceptions = [];
         string[] chainSpecParamsJsonExceptions = {
-            "ChainId", "EnsRegistrar", "NetworkId"
+            "ChainId", "NetworkId"
         };
         IEnumerable<string> chainParametersProperties = typeof(ChainParameters).GetProperties()
             .Where(x => !chainParametersExceptions.Contains(x.Name))
