@@ -1,0 +1,92 @@
+name: Test stateless execution
+
+on:
+  merge_group:
+    types: [checks_requested]
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: Upload binaries
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  test-zisk:
+    name: Test on Zisk
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Prepare input
+        working-directory: tools/Stateless/Tester
+        run: dotnet run -c release --project Tester.csproj -- ../ZiskGuest/bin/input.bin
+
+      - name: Build Nethermind
+        working-directory: tools/Stateless
+        run: make build-zisk
+
+      - name: Test Nethermind
+        working-directory: tools/Stateless/ZiskGuest
+        run: |
+          docker build -t zisk .
+          block_hash=$(docker run --rm zisk ziskemu -e /n/nethermind -i /n/input.bin)
+          if [[ "${block_hash%%$'\n'*}" != "2528a96c" ]]; then
+            echo "::error::Unexpected block hash: ${block_hash%%$'\n'*}"
+            exit 1
+          fi
+      - name: Upload guest binary
+        if: github.event.inputs.upload == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nethermind-zisk
+          path: tools/Stateless/ZiskGuest/bin/nethermind
+          if-no-files-found: error
+
+  test-qemu:
+    name: Test on QEMU
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build Nethermind
+        working-directory: tools/Stateless
+        run: make build-tester
+
+      - name: Test Nethermind
+        working-directory: tools/Stateless/Tester
+        run: |
+          docker build --platform linux/amd64 -t zkevm .
+          block_hash=$(docker run --rm zkevm)
+          if [[ "${block_hash:2:8}" != "2528a96c" ]]; then
+            echo "::error::Unexpected block hash: $block_hash"
+            exit 1
+          fi
+      - name: Upload guest binary
+        if: github.event.inputs.upload == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nethermind-zkevm
+          path: tools/Stateless/Tester/bin/nethermind
+          if-no-files-found: error
