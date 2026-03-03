@@ -152,7 +152,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
         ReadOnlySpan<ChangeKey> keys = _changeKeys.AsSpan(0, _changeCount);
         ReadOnlySpan<StorageValue> values = _changeValues.AsSpan(0, _changeCount);
-        Address[] addresses = _changeAddresses;
         if (keys[currentPosition].IsNull)
         {
             throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(PartialStorageProviderBase)}");
@@ -176,7 +175,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 continue;
             }
 
-            Address address = addresses[pos];
+            Address address = key.Address;
             StorageCell storageCell = new(address, in key.Index);
             InternalStorageKey ikey = new(in storageCell);
             if (!_committedThisRound.Add(ikey))
@@ -386,9 +385,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         entry.Round = _commitRound;
         stack.Push(_changeCount);
         EnsureChangeCapacity();
-        _changeKeys[_changeCount] = new ChangeKey(cell.Index, ChangeType.JustCache);
+        _changeKeys[_changeCount] = new ChangeKey(cell.Address, cell.Index, ChangeType.JustCache);
         _changeValues[_changeCount] = value;
-        _changeAddresses[_changeCount] = cell.Address;
         _changeCount++;
     }
 

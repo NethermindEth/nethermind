@@ -28,11 +28,9 @@ namespace Nethermind.State
         protected readonly ILogger _logger;
         protected ChangeKey[] _changeKeys = new ChangeKey[1_024];
         protected StorageValue[] _changeValues = new StorageValue[1_024];
-        protected Address[] _changeAddresses = new Address[1_024];
         protected int _changeCount;
         private readonly List<ChangeKey> _keptKeyCache = new();
         private readonly List<StorageValue> _keptValueCache = new();
-        private readonly List<Address> _keptAddressCache = new();
 
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
@@ -105,12 +103,11 @@ namespace Nethermind.State
 
             Span<ChangeKey> keys = _changeKeys.AsSpan(0, _changeCount);
             ReadOnlySpan<StorageValue> values = _changeValues.AsSpan(0, _changeCount);
-            Address[] addresses = _changeAddresses;
             for (int i = 0; i < currentPosition - snapshot; i++)
             {
                 int pos = currentPosition - i;
                 ref readonly ChangeKey changeKey = ref keys[pos];
-                StorageCell cell = new(addresses[pos], in changeKey.Index);
+                StorageCell cell = new(changeKey.Address, in changeKey.Index);
                 InternalStorageKey ikey = new(in cell);
                 int stackIdx = _intraBlockCache[ikey];
                 StackList<int> stack = _stackPool[stackIdx]!;
@@ -126,7 +123,6 @@ namespace Nethermind.State
 
                         _keptKeyCache.Add(changeKey);
                         _keptValueCache.Add(values[pos]);
-                        _keptAddressCache.Add(addresses[pos]);
                         keys[actualPosition] = default;
                         continue;
                     }
@@ -151,14 +147,12 @@ namespace Nethermind.State
             _changeCount = snapshot + 1;
             ReadOnlySpan<ChangeKey> keptKeys = CollectionsMarshal.AsSpan(_keptKeyCache);
             ReadOnlySpan<StorageValue> keptValues = CollectionsMarshal.AsSpan(_keptValueCache);
-            ReadOnlySpan<Address> keptAddresses = CollectionsMarshal.AsSpan(_keptAddressCache);
             for (int i = 0; i < keptKeys.Length; i++)
             {
                 EnsureChangeCapacity();
                 _changeKeys[_changeCount] = keptKeys[i];
                 _changeValues[_changeCount] = keptValues[i];
-                _changeAddresses[_changeCount] = keptAddresses[i];
-                StorageCell keptCell = new(keptAddresses[i], in keptKeys[i].Index);
+                StorageCell keptCell = new(keptKeys[i].Address, in keptKeys[i].Index);
                 InternalStorageKey ikeyKept = new(in keptCell);
                 _stackPool[_intraBlockCache[ikeyKept]]!.Push(_changeCount);
                 _changeCount++;
@@ -166,7 +160,6 @@ namespace Nethermind.State
 
             _keptKeyCache.Clear();
             _keptValueCache.Clear();
-            _keptAddressCache.Clear();
 
             while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
             {
@@ -258,9 +251,8 @@ namespace Nethermind.State
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changeCount);
             EnsureChangeCapacity();
-            _changeKeys[_changeCount] = new ChangeKey(cell.Index, ChangeType.Update);
+            _changeKeys[_changeCount] = new ChangeKey(cell.Address, cell.Index, ChangeType.Update);
             _changeValues[_changeCount] = value;
-            _changeAddresses[_changeCount] = cell.Address;
             _changeCount++;
         }
 
@@ -357,7 +349,6 @@ namespace Nethermind.State
             int newCap = _changeKeys.Length * 2;
             Array.Resize(ref _changeKeys, newCap);
             Array.Resize(ref _changeValues, newCap);
-            Array.Resize(ref _changeAddresses, newCap);
         }
 
         /// <summary>
@@ -385,11 +376,11 @@ namespace Nethermind.State
         }
 
         /// <summary>
-        /// Used for tracking each change to storage (key portion only; values and addresses stored separately).
-        /// Reference-free: Address is stored in _changeAddresses parallel array.
+        /// Used for tracking each change to storage.
         /// </summary>
-        protected readonly struct ChangeKey(UInt256 index, ChangeType changeType)
+        protected readonly struct ChangeKey(Address address, UInt256 index, ChangeType changeType)
         {
+            public readonly Address Address = address;
             public readonly UInt256 Index = index;
             public readonly ChangeType ChangeType = changeType;
 
@@ -451,10 +442,13 @@ namespace Nethermind.State
             [MethodImpl(MethodImplOptions.NoInlining)]
             private int ComputeHash()
             {
-                // Hash all 52 contiguous bytes (addrLo 16 + addrHi 4 + index 32) in a single call
-                ReadOnlySpan<byte> bytes = MemoryMarshal.CreateReadOnlySpan(
-                    ref Unsafe.As<Vector128<byte>, byte>(ref Unsafe.AsRef(in _addrLo)), 52);
-                return bytes.FastHash();
+                // Two independent 2-round FastHash calls have better ILP than one 4-round call
+                ReadOnlySpan<byte> indexBytes = MemoryMarshal.CreateReadOnlySpan(
+                    ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in _index)), 32);
+                int hash = indexBytes.FastHash();
+                ReadOnlySpan<byte> addrBytes = MemoryMarshal.CreateReadOnlySpan(
+                    ref Unsafe.As<Vector128<byte>, byte>(ref Unsafe.AsRef(in _addrLo)), 20);
+                return (hash * 397) ^ addrBytes.FastHash();
             }
 
             public override int GetHashCode() => _hash;
