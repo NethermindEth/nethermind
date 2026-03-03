@@ -19,7 +19,7 @@ public class BlockAccessListDecoderTests
     [TestCaseSource(nameof(BlockAccessListTestSource))]
     public void Can_decode_then_encode(string rlp, BlockAccessList expected)
     {
-        BlockAccessList bal = Rlp.Decode<BlockAccessList>(Bytes.FromHexString(rlp).AsRlpStream());
+        BlockAccessList bal = Rlp.Decode<BlockAccessList>(Bytes.FromHexString(rlp));
 
         Assert.That(bal, Is.EqualTo(expected));
 
@@ -337,7 +337,7 @@ public class BlockAccessListDecoderTests
 
         Assert.That(
             () => Rlp.Decode<SlotChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage changes were in incorrect order."));
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage changes were in incorrect order. index=1, lastIndex=2"));
     }
 
     private static IEnumerable<TestCaseData> BlockAccessListTestSource

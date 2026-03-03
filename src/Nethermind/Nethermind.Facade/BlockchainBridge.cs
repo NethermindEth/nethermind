@@ -37,6 +37,7 @@ using Nethermind.State.OverridableEnv;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.Facade
 {
@@ -44,6 +45,7 @@ namespace Nethermind.Facade
     public class BlockchainBridge(
         IOverridableEnv<BlockchainBridge.BlockProcessingComponents> processingEnv,
         Lazy<ISimulateReadOnlyBlocksProcessingEnv> lazySimulateProcessingEnv,
+        Lazy<IWitnessGeneratingBlockProcessingEnvFactory> witnessGeneratingBlockProcessingEnvFactory,
         IBlockTree blockTree,
         IStateReader stateReader,
         ITxPool txPool,
@@ -409,7 +411,7 @@ namespace Nethermind.Facade
             stateReader.RunTreeVisitor(treeVisitor, baseBlock);
         }
 
-        public bool HasStateForBlock(BlockHeader baseBlock)
+        public bool HasStateForBlock(BlockHeader? baseBlock)
         {
             return stateReader.HasStateForBlock(baseBlock);
         }
@@ -442,6 +444,14 @@ namespace Nethermind.Facade
             };
 
             return error;
+        }
+
+        public Witness GenerateExecutionWitness(BlockHeader parent, Block block)
+        {
+            RecoverTxSenders(block);
+            using IWitnessGeneratingBlockProcessingEnvScope scope = witnessGeneratingBlockProcessingEnvFactory.Value.CreateScope();
+            IExistingBlockWitnessCollector witnessCollector = scope.Env.CreateExistingBlockWitnessCollector();
+            return witnessCollector.GetWitnessForExistingBlock(parent, block);
         }
 
         public record BlockProcessingComponents(

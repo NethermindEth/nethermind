@@ -24,6 +24,7 @@ using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
 using Nethermind.Facade.Simulate;
+using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -644,5 +645,27 @@ public class DebugRpcModule(
 
         error = default!;
         return block;
+    }
+
+    public ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter)
+    {
+        Block? block = blockFinder.FindBlock(blockParameter);
+        if (block is null)
+        {
+            return ResultWrapper<Witness>.Fail($"Unable to find block {blockParameter}", ErrorCodes.ResourceNotFound);
+        }
+        else if (block.Number == 0)
+        {
+            // Cannot generate witness for genesis block as the block itself does not contain any transaction
+            // responsible for the state setup. It is the weak subjectivity starting point to trust.
+            return ResultWrapper<Witness>.Fail($"Cannot generate witness for genesis block", ErrorCodes.InvalidInput);
+        }
+
+        BlockHeader? parent = blockFinder.FindHeader(block.ParentHash!);
+        if (parent is null)
+        {
+            return ResultWrapper<Witness>.Fail($"Unable to find parent for block {blockParameter}", ErrorCodes.ResourceNotFound);
+        }
+        return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(parent, block));
     }
 }

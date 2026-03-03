@@ -72,5 +72,32 @@ namespace Nethermind.Core.Test.Json
             Assert.Throws<JsonException>(
                 static () => JsonSerializer.Deserialize<ulong?>("-1", options));
         }
+
+        [TestCase(0UL, "\"0x0\"")]
+        [TestCase(1UL, "\"0x1\"")]
+        [TestCase(15UL, "\"0xf\"")]
+        [TestCase(16UL, "\"0x10\"")]
+        [TestCase(255UL, "\"0xff\"")]
+        [TestCase(0xabcdefUL, "\"0xabcdef\"")]
+        [TestCase(0xffffffffUL, "\"0xffffffff\"")]
+        [TestCase(0x100000000UL, "\"0x100000000\"")]
+        [TestCase(ulong.MaxValue, "\"0xffffffffffffffff\"")]
+        public void Writes_correct_hex(ulong value, string expected)
+        {
+            string result = JsonSerializer.Serialize((ulong?)value, options);
+            Assert.That(result, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Writes_hex_roundtrip_all_nibble_counts()
+        {
+            for (int nibbles = 1; nibbles <= 16; nibbles++)
+            {
+                ulong value = 1UL << ((nibbles - 1) * 4);
+                string json = JsonSerializer.Serialize((ulong?)value, options);
+                ulong? deserialized = JsonSerializer.Deserialize<ulong?>(json, options);
+                Assert.That(deserialized, Is.EqualTo(value), $"Roundtrip failed for nibbles={nibbles}, value=0x{value:x}");
+            }
+        }
     }
 }

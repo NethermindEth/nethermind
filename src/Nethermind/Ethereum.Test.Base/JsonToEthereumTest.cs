@@ -418,9 +418,8 @@ namespace Ethereum.Test.Base
             {
                 testsInFile = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                Console.WriteLine(e);
                 Dictionary<string, HalfBlockchainTestJson> half =
                     _serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json);
                 testsInFile = [];
@@ -453,12 +452,11 @@ namespace Ethereum.Test.Base
         private static IReleaseSpec LoadSpec(string name, Dictionary<string, BlobScheduleEntryJson>? blobSchedule)
         {
             IReleaseSpec spec = SpecNameParser.Parse(name);
-            if (blobSchedule is null)
+            if (blobSchedule is null || !blobSchedule.TryGetValue(name, out BlobScheduleEntryJson? blobCount))
             {
                 return spec;
             }
 
-            BlobScheduleEntryJson blobCount = blobSchedule[name];
             return new OverridableReleaseSpec(spec)
             {
                 MaxBlobCount = System.Convert.ToUInt64(blobCount.Max, 16),

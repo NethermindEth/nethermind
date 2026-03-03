@@ -1,4 +1,3 @@
-
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -6,40 +5,25 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using Nethermind.Core.Collections;
-using System.Text.Json.Serialization;
-using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public class SlotChanges(UInt256 slot, SortedList<int, StorageChange> changes) : IEquatable<SlotChanges>
+public record SlotChanges(UInt256 Slot, SortedList<int, StorageChange> Changes)
 {
-    [JsonConverter(typeof(UInt256Converter))]
-    public UInt256 Slot { get; init; } = slot;
-    public SortedList<int, StorageChange> Changes { get; init; } = changes;
+    public SlotChanges(UInt256 slot) : this(slot, []) { }
 
-    public SlotChanges(UInt256 slot) : this(slot, [])
-    {
-    }
-
-    public bool Equals(SlotChanges? other) =>
+    public virtual bool Equals(SlotChanges? other) =>
         other is not null &&
         Slot.Equals(other.Slot) &&
         Changes.SequenceEqual(other.Changes);
 
-    public override bool Equals(object? obj) =>
-        obj is SlotChanges other && Equals(other);
-
     public override int GetHashCode() =>
         HashCode.Combine(Slot, Changes);
 
-    public static bool operator ==(SlotChanges left, SlotChanges right) =>
-        left.Equals(right);
+    public override string ToString() => $"{Slot}:[{string.Join(", ", Changes.Values)}]";
 
-    public static bool operator !=(SlotChanges left, SlotChanges right) =>
-        !(left == right);
 
     public void Merge(SlotChanges other)
     {
@@ -52,7 +36,7 @@ public class SlotChanges(UInt256 slot, SortedList<int, StorageChange> changes) :
     public void AddStorageChange(StorageChange storageChange)
         => Changes.Add(storageChange.BlockAccessIndex, storageChange);
 
-    public bool PopStorageChange(int index, [NotNullWhen(true)] out StorageChange? storageChange)
+    public bool TryPopStorageChange(int index, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         storageChange = null;
 

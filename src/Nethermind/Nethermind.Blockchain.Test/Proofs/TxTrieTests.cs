@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
@@ -97,6 +98,26 @@ public class TxTrieTests(bool useEip2718)
         Hash256 encodedRoot = TxTrie.CalculateRoot(encodedTransactions);
 
         Assert.That(encodedRoot, Is.EqualTo(decodedRoot));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Parallel_and_non_parallel_root_hashing_produce_same_root()
+    {
+        const int txCount = 100;
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < txCount; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithNonce((UInt256)(i + 1)).Signed().TestObject;
+        }
+
+        using TrackingCappedArrayPool pool = new();
+        TxTrie txTrie = new(transactions, canBuildProof: false, pool);
+        Hash256 parallelRoot = txTrie.RootHash;
+
+        txTrie.UpdateRootHash(canBeParallel: false);
+        Hash256 nonParallelRoot = txTrie.RootHash;
+
+        Assert.That(nonParallelRoot, Is.EqualTo(parallelRoot));
     }
 
     private static void VerifyProof(byte[][] proof, Hash256 txRoot)

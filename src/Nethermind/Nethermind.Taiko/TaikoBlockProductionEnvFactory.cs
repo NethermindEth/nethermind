@@ -11,7 +11,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Taiko;
 
-public class TaikoBlockProductionEnvFactory(ILifetimeScope rootLifetime, IWorldStateManager worldStateManager, IBlockProducerTxSourceFactory txSourceFactory, IBlocksConfig blocksConfig) : BlockProducerEnvFactory(rootLifetime, worldStateManager, txSourceFactory, blocksConfig)
+public class TaikoBlockProductionEnvFactory(ILifetimeScope rootLifetime, IWorldStateManager worldStateManager, IBlockProducerTxSourceFactory txSourceFactory) : BlockProducerEnvFactory(rootLifetime, worldStateManager, txSourceFactory)
 {
     protected override ContainerBuilder ConfigureBuilder(ContainerBuilder builder) =>
         // Taiko does not seems to use `BlockProductionTransactionsExecutor`

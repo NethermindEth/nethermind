@@ -618,6 +618,118 @@ public class SyncPeerPoolTests
         result.Should().BeNull();
     }
 
+    [Test]
+    public async Task Waiter_wakes_on_signal_after_free()
+    {
+        await using Context ctx = new();
+        await SetupPeers(ctx, 1);
+
+        // Allocate the only peer
+        SyncPeerAllocation first = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 1000);
+        first.HasPeer.Should().BeTrue();
+
+        // Start a second allocation that must wait (only 1 peer, already allocated)
+        Task<SyncPeerAllocation> secondTask = ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 2000);
+
+        // Free the first — this signals peers changed and wakes the waiter
+        ctx.Pool.Free(first);
+
+        SyncPeerAllocation second = await secondTask;
+        second.HasPeer.Should().BeTrue();
+    }
+
+    [Test]
+    public async Task Cancellation_while_waiting_returns_failed_allocation()
+    {
+        await using Context ctx = new();
+        ctx.Pool.Start();
+
+        // No peers added — allocation will wait until cancelled
+        using CancellationTokenSource cts = new();
+        cts.CancelAfter(100);
+
+        SyncPeerAllocation result = await ctx.Pool.Allocate(
+            new BySpeedStrategy(TransferSpeedType.Headers, true),
+            AllocationContexts.All,
+            5000,
+            cts.Token);
+
+        result.HasPeer.Should().BeFalse();
+    }
+
+    [Test]
+    public async Task Dispose_while_waiting_does_not_hang()
+    {
+        Context ctx = new();
+        ctx.Pool.Start();
+
+        // No peers — allocation will block
+        Task<SyncPeerAllocation> allocTask = ctx.Pool.Allocate(
+            new BySpeedStrategy(TransferSpeedType.Headers, true),
+            AllocationContexts.All,
+            10000);
+
+        await Task.Delay(50);
+        await ctx.DisposeAsync();
+
+        // Must complete (not hang) and return failed
+        SyncPeerAllocation result = await allocTask.WaitAsync(TimeSpan.FromSeconds(2));
+        result.HasPeer.Should().BeFalse();
+    }
+
+    [Test]
+    public async Task Concurrent_allocations_capped_by_available_peers()
+    {
+        await using Context ctx = new();
+        await SetupPeers(ctx, 3);
+
+        // Request 5 allocations with only 3 peers
+        Task<SyncPeerAllocation>[] tasks = new Task<SyncPeerAllocation>[5];
+        for (int i = 0; i < tasks.Length; i++)
+        {
+            tasks[i] = ctx.Pool.Allocate(
+                new BySpeedStrategy(TransferSpeedType.Headers, true),
+                AllocationContexts.All,
+                100);
+        }
+
+        await Task.WhenAll(tasks);
+
+        int successful = 0;
+        for (int i = 0; i < tasks.Length; i++)
+        {
+            if (tasks[i].Result.HasPeer) successful++;
+        }
+
+        successful.Should().Be(3);
+    }
+
+    [Test]
+    public async Task All_waiters_wake_when_peers_freed()
+    {
+        await using Context ctx = new();
+        await SetupPeers(ctx, 2);
+
+        // Allocate both peers — pool exhausted
+        SyncPeerAllocation a1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 1000);
+        SyncPeerAllocation a2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 1000);
+        a1.HasPeer.Should().BeTrue();
+        a2.HasPeer.Should().BeTrue();
+
+        // Start 2 waiters — both blocked, no peers available
+        Task<SyncPeerAllocation> w1 = ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 3000);
+        Task<SyncPeerAllocation> w2 = ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 3000);
+
+        // Free both peers — both waiters must wake
+        ctx.Pool.Free(a1);
+        ctx.Pool.Free(a2);
+
+        SyncPeerAllocation r1 = await w1;
+        SyncPeerAllocation r2 = await w2;
+        r1.HasPeer.Should().BeTrue();
+        r2.HasPeer.Should().BeTrue();
+    }
+
     private async Task<SimpleSyncPeerMock[]> SetupPeers(Context ctx, int count)
     {
         SimpleSyncPeerMock[] peers = new SimpleSyncPeerMock[count];

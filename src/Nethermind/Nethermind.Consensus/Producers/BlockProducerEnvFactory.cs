@@ -18,8 +18,8 @@ namespace Nethermind.Consensus.Producers
     public class BlockProducerEnvFactory(
         ILifetimeScope rootLifetime,
         IWorldStateManager worldStateManager,
-        IBlockProducerTxSourceFactory txSourceFactory,
-        IBlocksConfig blocksConfig
+        IBlockProducerTxSourceFactory txSourceFactory
+        // IBlocksConfig blocksConfig
     ) : IBlockProducerEnvFactory
     {
         protected virtual ContainerBuilder ConfigureBuilder(ContainerBuilder builder) => builder
@@ -34,10 +34,7 @@ namespace Nethermind.Consensus.Producers
 
         public IBlockProducerEnv Create()
         {
-            // IWorldState worldState = new ParallelWorldState(worldStateManager.CreateResettableWorldState(), blocksConfig.ParallelExecution);
-            IWorldStateScopeProvider worldState = blocksConfig.ParallelExecution ?
-                new ParallelWorldStateScopeProvider(worldStateManager.CreateResettableWorldState()) :
-                worldStateManager.CreateResettableWorldState();
+            IWorldStateScopeProvider worldState = worldStateManager.CreateResettableWorldState();
             ILifetimeScope lifetimeScope = rootLifetime.BeginLifetimeScope(builder =>
                 ConfigureBuilder(builder)
                     .AddScoped(worldState));

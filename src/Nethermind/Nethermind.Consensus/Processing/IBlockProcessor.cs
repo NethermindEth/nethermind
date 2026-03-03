@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
@@ -19,6 +20,14 @@ namespace Nethermind.Consensus.Processing
     /// </summary>
     public interface IBlockProcessor
     {
+        /// <summary>
+        /// Raised after all transactions in a block have been executed,
+        /// before blooms, receipts root, and state root are computed.
+        /// Subscribers can use this to cancel background work (e.g. prewarmer)
+        /// so the thread pool is free for the parallel post-tx computations.
+        /// </summary>
+        event Action? TransactionsExecuted;
+
         public Task<(Block Block, TxReceipt[] Receipts)> ProcessOne(
             Block suggestedBlock,
             ProcessingOptions options,

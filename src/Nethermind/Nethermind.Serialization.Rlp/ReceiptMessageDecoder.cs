@@ -16,23 +16,14 @@ namespace Nethermind.Serialization.Rlp
     {
         private readonly bool _skipStateAndStatus;
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
         public ReceiptMessageDecoder(bool skipStateAndStatus = false)
         {
             _skipStateAndStatus = skipStateAndStatus;
         }
-        protected override TxReceipt DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            Span<byte> span = rlpStream.PeekNextItem();
-            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(span);
-            TxReceipt response = Decode(ref ctx, rlpBehaviors);
-            rlpStream.SkipItem();
-
-            return response;
-        }
-
         protected override TxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (ctx.IsNextItemNull())
+            if (ctx.IsNextItemEmptyList())
             {
                 ctx.ReadByte();
                 return null;
@@ -154,7 +145,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence.Bytes;
+                return Rlp.OfEmptyList.Bytes;
             }
 
             int length = GetLength(item, rlpBehaviors);
