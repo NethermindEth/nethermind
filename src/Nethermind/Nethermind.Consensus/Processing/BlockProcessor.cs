@@ -84,6 +84,8 @@ public partial class BlockProcessor
         _stateProvider = new(stateProvider);
     }
 
+    public event Action? TransactionsExecuted;
+
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
@@ -152,6 +154,10 @@ public partial class BlockProcessor
             throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
         }
 
+        // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
+        // to free the thread pool for blooms, receipts root, state root parallel work below
+        TransactionsExecuted?.Invoke();
+
         _stateProvider.Commit(spec, commitRoots: false);
 
         CalculateBlooms(receipts);
@@ -162,12 +168,12 @@ public partial class BlockProcessor
         }
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
-        // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
-        // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
+        // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
         _stateProvider.Commit(spec, commitRoots: false);
 
         _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);

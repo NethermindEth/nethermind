@@ -31,7 +31,7 @@ public class ReceiptMessageDecoder69Tests
         decoder.Encode(rlpStream, receipt, RlpBehaviors.Eip658Receipts);
         byte[] encoded = rlpStream.Data!.ToArray();
 
-        TxReceipt? decoded = decoder.Decode(encoded.AsRlpStream(), RlpBehaviors.Eip658Receipts);
+        TxReceipt? decoded = decoder.Decode(encoded, RlpBehaviors.Eip658Receipts);
 
         decoded.Should().NotBeNull();
         decoded!.TxType.Should().Be(receipt.TxType);

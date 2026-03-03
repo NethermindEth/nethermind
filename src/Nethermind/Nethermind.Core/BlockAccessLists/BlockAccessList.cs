@@ -3,13 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Data;
-using System.Diagnostics;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text.Json;
+using System.Text;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -56,6 +52,13 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     {
         _changes.Clear();
         Index++;
+    }
+
+    public void RollbackCurrentIndex()
+    {
+        Restore(0);
+        _changes.Clear();
+        Index--;
     }
 
     public void Clear()
@@ -237,7 +240,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(key);
 
         bool changedDuringTx = HasStorageChangedDuringTx(accountChanges.Address, key, before, after);
-        slotChanges.PopStorageChange(Index, out StorageChange? oldStorageChange);
+        slotChanges.TryPopStorageChange(Index, out StorageChange? oldStorageChange);
 
         _changes.Push(new()
         {
@@ -305,7 +308,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     StorageChange? previousStorage = change.PreviousValue is null ? null : (StorageChange)change.PreviousValue;
                     SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(change.Slot!.Value);
 
-                    slotChanges.PopStorageChange(Index, out _);
+                    slotChanges.TryPopStorageChange(Index, out _);
                     if (previousStorage is not null)
                     {
                         slotChanges.Changes.Add(previousStorage.Value.BlockAccessIndex, previousStorage.Value);
@@ -318,7 +321,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
     }
 
-    public IEnumerable<(Address, BalanceChange?, NonceChange?, CodeChange?, IEnumerable<SlotChanges>, int)> GetChangesAtIndex(ushort index)
+    public IEnumerable<ChangeAtIndex> GetChangesAtIndex(ushort index)
     {
         foreach (AccountChanges accountChanges in AccountChanges)
         {
@@ -327,19 +330,27 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                 accountChanges.Address == Eip7251Constants.ConsolidationRequestPredeployAddress;
 
             yield return
-            (
-                accountChanges.Address,
-                accountChanges.BalanceChangeAtIndex(index),
-                accountChanges.NonceChangeAtIndex(index),
-                accountChanges.CodeChangeAtIndex(index),
-                accountChanges.SlotChangesAtIndex(index),
-                isPostExecutionSystemContract ? 0 : accountChanges.StorageReads.Count
-            );
+                new(
+                    accountChanges.Address,
+                    accountChanges.BalanceChangeAtIndex(index),
+                    accountChanges.NonceChangeAtIndex(index),
+                    accountChanges.CodeChangeAtIndex(index),
+                    accountChanges.SlotChangesAtIndex(index),
+                    isPostExecutionSystemContract ? 0 : accountChanges.StorageReads.Count
+                );
         }
     }
 
-    public override string? ToString()
-        => JsonSerializer.Serialize(this);
+    public override string ToString()
+    {
+        StringBuilder sb = new();
+        sb.AppendLine($"BlockAccessList (Index={Index}, Accounts={_accountChanges.Count})");
+        foreach (AccountChanges ac in _accountChanges.Values)
+        {
+            sb.AppendLine($"  {ac}");
+        }
+        return sb.ToString();
+    }
 
     // for testing
     internal void AddAccountChanges(params AccountChanges[] accountChanges)
@@ -495,3 +506,5 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         public ushort BlockAccessIndex { get; init; }
     }
 }
+
+public record struct ChangeAtIndex(Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads);

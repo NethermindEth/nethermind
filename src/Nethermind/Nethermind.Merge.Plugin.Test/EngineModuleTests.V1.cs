@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -668,7 +669,19 @@ public partial class EngineModuleTests
         Block blockTreeHead = chain.BlockTree.Head!;
         Block block = Build.A.Block.WithNumber(blockTreeHead.Number + 1).WithParent(blockTreeHead).WithNonce(0).WithDifficulty(0).TestObject;
 
-        chain.ThrottleBlockProcessor(200);
+        chain.ThrottleBlockProcessor(1000);
+        ManualResetEventSlim processingStarted = new(false);
+        ((TestBranchProcessorInterceptor)chain.BranchProcessor).ProcessingStarted = processingStarted;
+
+        // Directly enqueue a block to occupy the processor (bypasses the RPC semaphore),
+        // ensuring subsequent blocks route through the recovery queue (slow path)
+        Block occupyBlock = Build.A.Block.WithNumber(blockTreeHead.Number + 1).WithParent(blockTreeHead)
+            .WithNonce(0).WithDifficulty(0).WithStateRoot(blockTreeHead.StateRoot!).TestObject;
+        occupyBlock.Header.TotalDifficulty = blockTreeHead.TotalDifficulty;
+        _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
+            occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
+        processingStarted.Wait(TimeSpan.FromSeconds(5));
+
         ResultWrapper<PayloadStatusV1> newPayloadV1 =
             await rpc.engine_newPayloadV1(ExecutionPayload.Create(block));
         newPayloadV1.Data.Status.Should().Be("SYNCING");
@@ -749,6 +762,18 @@ public partial class EngineModuleTests
             .TestObject;
 
         chain.ThrottleBlockProcessor(1000); // throttle the block processor enough so that the block processing queue is never empty
+        ManualResetEventSlim processingStarted = new(false);
+        ((TestBranchProcessorInterceptor)chain.BranchProcessor).ProcessingStarted = processingStarted;
+
+        // Directly enqueue a block to occupy the processor (bypasses the RPC semaphore),
+        // ensuring subsequent blocks route through the recovery queue (slow path)
+        Block occupyBlock = Build.A.Block.WithNumber(head.Number + 1).WithParent(head)
+            .WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+        occupyBlock.Header.TotalDifficulty = head.TotalDifficulty;
+        _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
+            occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
+        processingStarted.Wait(TimeSpan.FromSeconds(5));
+
         (await rpc.engine_newPayloadV1(ExecutionPayload.Create(block))).Data.Status.Should().Be(PayloadStatus.Syncing);
         (await rpc.engine_newPayloadV1(ExecutionPayload.Create(block))).Data.Status.Should().BeOneOf(PayloadStatus.Syncing);
     }

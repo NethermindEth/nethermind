@@ -9,7 +9,7 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Network.P2P.Messages
 {
     /// <summary>
-    /// This is probably used in NDM
+    /// Serializes P2P capability negotiation messages.
     /// </summary>
     public class AddCapabilityMessageSerializer : IZeroMessageSerializer<AddCapabilityMessage>
     {
@@ -26,12 +26,14 @@ namespace Nethermind.Network.P2P.Messages
             stream.Encode(msg.Capability.Version);
         }
 
-        public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer)
+        public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private static AddCapabilityMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
-            NettyRlpStream context = new(byteBuffer);
-            context.ReadSequenceLength();
-            string protocolCode = context.DecodeString(RlpLimit);
-            byte version = context.DecodeByte();
+            ctx.ReadSequenceLength();
+            string protocolCode = ctx.DecodeString(RlpLimit);
+            byte version = ctx.DecodeByte();
 
             return new AddCapabilityMessage(new Capability(protocolCode, version));
         }

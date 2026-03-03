@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecoder<SlotChanges>
+public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncoder<SlotChanges>
 {
     private static SlotChangesDecoder? _instance = null;
     public static SlotChangesDecoder Instance => _instance ??= new();
@@ -31,8 +31,7 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
             ushort index = s.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
-                Console.WriteLine($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
-                throw new RlpException("Storage changes were in incorrect order.");
+                throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
             }
             lastIndex = index;
             return index;
@@ -49,16 +48,6 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
 
     public int GetLength(SlotChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-
-    public SlotChanges Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new(span);
-        SlotChanges res = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return res;
-    }
 
     public void Encode(RlpStream stream, SlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

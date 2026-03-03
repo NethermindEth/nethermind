@@ -3,20 +3,19 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStreamDecoder<AccountChanges>
+public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStreamEncoder<AccountChanges>
 {
     private static AccountChangesDecoder? _instance = null;
     public static AccountChangesDecoder Instance => _instance ??= new();
 
     private static readonly RlpLimit _slotsLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
+    private static readonly RlpLimit _storageLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
     private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
     public AccountChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
@@ -40,7 +39,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             slotChangesList.Add(slot, slotChange);
         }
 
-        StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance, true, default, _slotsLimit);
+        StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance, true, default, _storageLimit);
         SortedSet<StorageRead> storageReadsList = [];
         StorageRead? lastRead = null;
         foreach (StorageRead storageRead in storageReads)
@@ -97,21 +96,16 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             codeChangesList.Add(index, codeChange);
         }
 
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        {
+            ctx.Check(check);
+        }
+
         return new(address, slotChangesList, storageReadsList, balanceChangesList, nonceChangesList, codeChangesList);
     }
 
     public int GetLength(AccountChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-
-    public AccountChanges Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new(span);
-        AccountChanges res = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return res;
-    }
 
     public void Encode(RlpStream stream, AccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -124,7 +118,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         stream.EncodeArray([.. item.CodeChanges], rlpBehaviors);
     }
 
-    private static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors)
+    public static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors)
     {
         int slotChangesLen = 0;
         foreach (SlotChanges slotChanges in item.StorageChanges)

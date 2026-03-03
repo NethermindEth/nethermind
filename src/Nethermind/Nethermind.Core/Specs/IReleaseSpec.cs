@@ -199,10 +199,10 @@ namespace Nethermind.Core.Specs
         bool IsEip2930Enabled { get; }
 
         /// <summary>
-        /// Should EIP158 be ignored for this account.
+        /// Account for which EIP-158 state clearing should be ignored.
         /// </summary>
-        /// <remarks>This is needed for SystemUser account compatibility with Parity.</remarks>
-        bool IsEip158IgnoredAccount(Address address);
+        /// <remarks>This is needed for SystemUser account compatibility with Parity on AuRa chains.</remarks>
+        Address? Eip158IgnoredAccount => null;
 
         /// <summary>
         /// BaseFee opcode
@@ -459,7 +459,7 @@ namespace Nethermind.Core.Specs
         bool BlockLevelAccessListsEnabled => IsEip7928Enabled;
 
         /// <summary>
-        /// EIP-7708: ETH transfers and burns emit a log
+        /// EIP-7708: ETH transfers emit a log
         /// </summary>
         public bool IsEip7708Enabled { get; }
 

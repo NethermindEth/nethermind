@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -30,5 +31,32 @@ public class ChainLevelInfoRepositoryTests
         using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(new ArrayPoolListRef<long>(2, 1, 10));
         levels[0].Should().BeEquivalentTo(level1);
         levels[1].Should().BeEquivalentTo(level10);
+    }
+
+    [Test]
+    public void TestClearCache_removes_cached_levels()
+    {
+        MemDb db = new MemDb();
+        ChainLevelInfoRepository repository = new ChainLevelInfoRepository(db);
+
+        ChainLevelInfo level1 = new ChainLevelInfo(false, new BlockInfo(TestItem.KeccakA, 0));
+
+        {
+            using var _ = repository.StartBatch();
+            repository.PersistLevel(1, level1);
+        }
+
+        // Load level to populate cache
+        ChainLevelInfo loaded = repository.LoadLevel(1);
+        loaded.Should().BeEquivalentTo(level1);
+
+        // Clear DB but level should still be in cache
+        db.Clear();
+        loaded = repository.LoadLevel(1);
+        loaded.Should().BeEquivalentTo(level1);
+
+        // Clear cache - level should no longer be retrievable
+        (repository as IClearableCache)?.ClearCache();
+        repository.LoadLevel(1).Should().BeNull();
     }
 }

@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -194,6 +195,23 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     public CodeChange? CodeChangeAtIndex(ushort index)
         => _codeChanges.TryGetValue(index, out CodeChange codeChange) ? codeChange : null;
+
+    public override string ToString()
+    {
+        StringBuilder sb = new();
+        sb.Append(Address);
+        if (BalanceChanges.Count > 0)
+            sb.Append($" balance=[{string.Join(", ", BalanceChanges)}]");
+        if (NonceChanges.Count > 0)
+            sb.Append($" nonce=[{string.Join(", ", NonceChanges)}]");
+        if (CodeChanges.Count > 0)
+            sb.Append($" code=[{string.Join(", ", CodeChanges)}]");
+        if (StorageChanges.Count > 0)
+            sb.Append($" storage=[{string.Join(", ", StorageChanges)}]");
+        if (StorageReads.Count > 0)
+            sb.Append($" reads=[{string.Join(", ", StorageReads)}]");
+        return sb.ToString();
+    }
 
     private static bool PopChange<T>(SortedList<ushort, T> changes, ushort index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
     {

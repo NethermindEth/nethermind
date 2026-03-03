@@ -26,6 +26,7 @@ using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Core.Specs;
+using Nethermind.State;
 
 namespace Nethermind.Facade.Test;
 
@@ -37,6 +38,7 @@ public class BlockchainBridgeTests
     private ITransactionProcessor _transactionProcessor;
     private ManualTimestamper _timestamper;
     private ISpecProvider _specProvider;
+    private IStateReader _stateReader;
     private IContainer _container;
 
     [SetUp]
@@ -46,6 +48,9 @@ public class BlockchainBridgeTests
         _blockTree = Substitute.For<IBlockTree>();
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
+        _stateReader = Substitute.For<IStateReader>();
+
+        _stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
@@ -55,6 +60,7 @@ public class BlockchainBridgeTests
             .AddSingleton(Substitute.For<ILogFinder>())
             .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
             .AddScoped(_transactionProcessor)
+            .AddSingleton(_stateReader)
             .Build();
 
         _specProvider = _container.Resolve<ISpecProvider>();
@@ -679,6 +685,26 @@ public class BlockchainBridgeTests
         }
 
         testFactory.Received().Create();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_true_when_stateReader_returns_true()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        _stateReader.HasStateForBlock(header).Returns(true);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_false_when_stateReader_returns_false()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(250).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        _stateReader.HasStateForBlock(header).Returns(false);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
     }
 
     [Test]
