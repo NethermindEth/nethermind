@@ -177,22 +177,10 @@ Wrong EVM behaviour produces invalid blocks, causing chain desync and validators
 - Missing validation on data received from untrusted sources (peers, RPC callers)
 - P2P message handlers that process externally-supplied sizes or counts without an upper bound — Ethereum's devp2p has no built-in rate limiting, so unbounded `GetBlockHeaders` ranges or oversized transaction batches are a DoS vector
 
-### C# / .NET robustness
-
-- `async void` — exceptions are silently swallowed; use `async Task`
-- `.Result` or `.Wait()` on a `Task` inside an `async` method — deadlock or thread-pool starvation risk; use `await` instead
-- Missing `await` on an async call where fire-and-forget is not the documented intent
-- Async method performing I/O or network calls without accepting a `CancellationToken` — uncooperative with graceful shutdown
-- `IDisposable` / `IAsyncDisposable` object (especially `IDb`, streams, channels) not wrapped in `using` — resource leak
-- Shared mutable state (caches, peer tables, chain state) modified from multiple threads without synchronisation
-- `NullReferenceException` risk when processing untrusted external input without a null check or guard
-- Exception silently swallowed in an empty `catch` block — lost diagnostics
-
 ### Performance
 
 Nethermind is the fastest Ethereum execution client. Guard regressions in hot paths.
 
-- Unnecessary heap allocation inside block processing or EVM execution loops (prefer `Span<T>`, `stackalloc`, `ArrayPool<T>`)
 - `byte[]` passed through a hot call stack where `ReadOnlySpan<byte>` or `Memory<byte>` would avoid copies
 - Blocking I/O call inside an `async` path — ties up thread-pool threads
 - Database reads inside a tight loop without batching via `IBatch` or caching — amplifies I/O significantly

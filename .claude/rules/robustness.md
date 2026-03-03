@@ -14,6 +14,10 @@ Patterns that cause silent failures, resource leaks, or deadlocks in production.
 - `IDisposable` / `IAsyncDisposable` objects (especially `IDb`, streams, channels) must be wrapped in `using` — otherwise they leak.
 - Never swallow exceptions in an empty `catch` block — at minimum log the exception. Silent failures are the hardest to diagnose on a running node.
 
+## Thread safety
+
+- Shared mutable state (caches, peer tables, chain state) modified from multiple threads must use proper synchronisation — unsynchronised access causes data races and subtle corruption.
+
 ## Safety
 
 - `unsafe` blocks must have a comment justifying the safety invariant — reviewers cannot verify correctness without it.
