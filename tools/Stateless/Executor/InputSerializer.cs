@@ -36,14 +36,16 @@ public static class InputSerializer
         blockDecoder.Encode(rlpStream, block, RlpBehaviors.None);
         offset += blockLen;
 
-        Debug.Assert(rlpStream.Position == offset, "Unexpected block RLP length");
+        if (rlpStream.Position != offset)
+            throw new InvalidDataException("Unexpected block RLP length");
 
         WriteJaggedArray(witness.Codes, codesLen, output, ref offset);
         WriteJaggedArray(witness.Headers, headersLen, output, ref offset);
         WriteJaggedArray(witness.Keys, keysLen, output, ref offset);
         WriteJaggedArray(witness.State, stateLen, output, ref offset);
 
-        Debug.Assert(offset == outputLen, "Invalid input length");
+        if (offset != outputLen)
+            throw new InvalidDataException("Invalid output length");
 
         return output;
     }
@@ -67,7 +69,8 @@ public static class InputSerializer
         IOwnedReadOnlyList<byte[]> keys = ReadJaggedArray(input, ref offset);
         IOwnedReadOnlyList<byte[]> state = ReadJaggedArray(input, ref offset);
 
-        Debug.Assert(offset == input.Length, "Invalid input length");
+        if (offset != input.Length)
+            throw new InvalidDataException("Invalid input or section length");
 
         Witness witness = new()
         {
