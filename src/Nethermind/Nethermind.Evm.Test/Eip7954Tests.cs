@@ -27,14 +27,14 @@ public class Eip7954Tests : VirtualMachineTestsBase
     [TestCase(true, 55000, ExpectedResult = false, TestName = "InitCode_between_old_and_new_limit_accepted")]
     [TestCase(false, 55000, ExpectedResult = true, TestName = "InitCode_above_old_limit_rejected_before_eip7954")]
     [TestCase(true, 2 * CodeSizeConstants.MaxCodeSizeEip7954 + 1, ExpectedResult = true, TestName = "InitCode_exceeding_new_limit_rejected")]
-    public bool InitCode_size_validation(bool eip7954Enabled, long initCodeSize) =>
+    public bool InitCode_size_validation(bool eip7954Enabled, int initCodeSize) =>
         ExecuteRawCreateTransaction(eip7954Enabled ? Timestamp : MainnetSpecProvider.ShanghaiBlockTimestamp, initCodeSize) == TransactionResult.TransactionSizeOverMaxInitCodeSize;
 
     [TestCase(30000, ExpectedResult = StatusCode.Success, TestName = "Code_deposit_between_old_and_new_limit_succeeds")]
     [TestCase(CodeSizeConstants.MaxCodeSizeEip7954 + 1, ExpectedResult = StatusCode.Failure, TestName = "Code_deposit_above_new_limit_fails")]
     public byte Code_deposit_size_validation(int deployedCodeSize) => ExecuteDeployTransaction(Timestamp, deployedCodeSize).StatusCode;
 
-    private TransactionResult ExecuteRawCreateTransaction(ulong timestamp, long initCodeSize)
+    private TransactionResult ExecuteRawCreateTransaction(ulong timestamp, int initCodeSize)
     {
         byte[] initCode = new byte[initCodeSize];
 
