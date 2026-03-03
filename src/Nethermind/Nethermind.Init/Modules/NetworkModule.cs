@@ -21,6 +21,7 @@ using V66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using V68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
+using V71 = Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using NodeData = Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using Snap = Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 
@@ -124,6 +125,14 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // V70
             .AddMessageSerializer<V70.GetReceiptsMessage70, V70.GetReceiptsMessageSerializer70>()
             .AddMessageSerializer<V70.ReceiptsMessage70, V70.ReceiptsMessageSerializer70>()
+
+            // V71
+            .AddMessageSerializer<V71.GetBlockAccessListsMessage, V71.GetBlockAccessListsMessageSerializer>()
+            .AddMessageSerializer<V71.BlockAccessListsMessage, V71.BlockAccessListsMessageSerializer>()
+            .AddSingleton<IZeroInnerMessageSerializer<V71.GetBlockAccessListsMessage>, V71.GetBlockAccessListsMessageSerializer>() // For v71 66 variant
+            .AddSingleton<IZeroInnerMessageSerializer<V71.BlockAccessListsMessage>, V71.BlockAccessListsMessageSerializer>() // For v71 66 variant
+            .AddMessageSerializer<V71.GetBlockAccessListsMessage66, V71.GetBlockAccessListsMessageSerializer66>()
+            .AddMessageSerializer<V71.BlockAccessListsMessage66, V71.BlockAccessListsMessageSerializer66>()
 
             ;
     }

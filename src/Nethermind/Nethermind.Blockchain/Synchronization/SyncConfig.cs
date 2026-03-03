@@ -33,8 +33,10 @@ namespace Nethermind.Blockchain.Synchronization
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;
+        public bool DownloadAccessListsInFastSync { get; set; } = true;
         public long AncientBodiesBarrier { get; set; }
         public long AncientReceiptsBarrier { get; set; }
+        public long AncientAccessListsBarrier { get; set; }
         public string PivotTotalDifficulty { get; set; }
         private long _pivotNumber = 0;
         public long PivotNumber

@@ -19,6 +19,8 @@ namespace Nethermind.Synchronization.Reporting
 
         ProgressLogger FastBlocksReceipts { get; }
 
+        ProgressLogger FastBlocksAccessLists { get; }
+
         ProgressLogger BeaconHeaders { get; }
 
     }

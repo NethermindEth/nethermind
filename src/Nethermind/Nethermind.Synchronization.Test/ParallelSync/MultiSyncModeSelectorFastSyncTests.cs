@@ -311,6 +311,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         [TestCase(FastBlocksState.FinishedHeaders)]
         [TestCase(FastBlocksState.FinishedBodies)]
         [TestCase(FastBlocksState.FinishedReceipts)]
+        [TestCase(FastBlocksState.FinishedAccessLists)]
         public void Just_after_finishing_state_sync_and_fast_blocks(FastBlocksState fastBlocksState)
         {
             Scenario.GoesLikeThis(_needToWaitForHeaders)
@@ -323,6 +324,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         [TestCase(FastBlocksState.None)]
         [TestCase(FastBlocksState.FinishedHeaders)]
         [TestCase(FastBlocksState.FinishedBodies)]
+        [TestCase(FastBlocksState.FinishedReceipts)]
         public void Just_after_finishing_state_sync_but_not_fast_blocks(FastBlocksState fastBlocksState)
         {
             Scenario.GoesLikeThis(_needToWaitForHeaders)
@@ -366,6 +368,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         [TestCase(FastBlocksState.FinishedHeaders)]
         [TestCase(FastBlocksState.FinishedBodies)]
         [TestCase(FastBlocksState.FinishedReceipts)]
+        [TestCase(FastBlocksState.FinishedAccessLists)]
         public void When_just_started_full_sync_with_fast_blocks(FastBlocksState fastBlocksState)
         {
             Scenario.GoesLikeThis(_needToWaitForHeaders)
@@ -575,7 +578,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncProgressResolver.FindBestFullBlock().Returns(Scenario.ChainHead.Number);
             syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - 32);
             syncProgressResolver.FindBestProcessedBlock().Returns(0);
-            syncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
+            syncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedAccessLists);
             syncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
 
             List<ISyncPeer> syncPeers = new();

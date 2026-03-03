@@ -23,6 +23,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncFeed<HeadersSyncBatch?> _headersSyncFeed;
         private readonly ISyncFeed<BodiesSyncBatch?> _bodiesSyncFeed;
         private readonly ISyncFeed<ReceiptsSyncBatch?> _receiptsSyncFeed;
+        private readonly ISyncFeed<AccessListsSyncBatch?> _accessListsSyncFeed;
         private readonly ISyncFeed<SnapSyncBatch?> _snapSyncFeed;
 
         public SyncProgressResolver(
@@ -32,6 +33,7 @@ namespace Nethermind.Synchronization.ParallelSync
             [KeyFilter(nameof(HeadersSyncFeed))] ISyncFeed<HeadersSyncBatch?> headersSyncFeed,
             ISyncFeed<BodiesSyncBatch?> bodiesSyncFeed,
             ISyncFeed<ReceiptsSyncBatch?> receiptsSyncFeed,
+            ISyncFeed<AccessListsSyncBatch?> accessListsSyncFeed,
             ISyncFeed<SnapSyncBatch?> snapSyncFeed)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -41,6 +43,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _headersSyncFeed = headersSyncFeed;
             _bodiesSyncFeed = bodiesSyncFeed;
             _receiptsSyncFeed = receiptsSyncFeed;
+            _accessListsSyncFeed = accessListsSyncFeed;
             _snapSyncFeed = snapSyncFeed;
         }
 
@@ -83,6 +86,8 @@ namespace Nethermind.Synchronization.ParallelSync
         public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || !_syncConfig.DownloadBodiesInFastSync || _bodiesSyncFeed.IsFinished;
 
         public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || !_syncConfig.DownloadReceiptsInFastSync || _receiptsSyncFeed.IsFinished;
+
+        public bool IsFastBlocksAccessListsFinished() => !IsFastBlocks() || !_syncConfig.DownloadAccessListsInFastSync || _accessListsSyncFeed.IsFinished;
 
         public bool IsSnapGetRangesFinished() => _snapSyncFeed?.IsFinished ?? true;
 

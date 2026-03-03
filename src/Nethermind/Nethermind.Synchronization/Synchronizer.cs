@@ -43,6 +43,7 @@ namespace Nethermind.Synchronization
         [KeyFilter(nameof(HeadersSyncFeed))] SyncFeedComponent<HeadersSyncBatch> fastHeaderComponent,
         SyncFeedComponent<BodiesSyncBatch> oldBodiesComponent,
         SyncFeedComponent<ReceiptsSyncBatch> oldReceiptsComponent,
+        SyncFeedComponent<AccessListsSyncBatch> oldAccessListsComponent,
 #pragma warning disable CS9113 // Parameter is unread. But it need to be instantiated to function
         SyncDbTuner syncDbTuner,
         MallocTrimmer mallocTrimmer,
@@ -104,7 +105,7 @@ namespace Nethermind.Synchronization
 
         private void GCOnFeedFinished(object? sender, SyncModeChangedEventArgs e)
         {
-            if (e.WasModeFinished(SyncMode.StateNodes) || e.WasModeFinished(SyncMode.FastReceipts) || e.WasModeFinished(SyncMode.FastBlocks))
+            if (e.WasModeFinished(SyncMode.StateNodes) || e.WasModeFinished(SyncMode.FastReceipts) || e.WasModeFinished(SyncMode.FastAccessLists) || e.WasModeFinished(SyncMode.FastBlocks))
             {
                 GC.Collect(2, GCCollectionMode.Aggressive, true, true);
             }
@@ -218,6 +219,21 @@ namespace Nethermind.Synchronization
                         }
                     });
                 }
+
+                if (syncConfig.DownloadAccessListsInFastSync)
+                {
+                    Task accessListsTask = oldAccessListsComponent.Dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+                    {
+                        if (t.IsFaulted)
+                        {
+                            if (_logger.IsError) _logger.Error("Fast access lists sync failed", t.Exception);
+                        }
+                        else
+                        {
+                            if (_logger.IsInfo) _logger.Info("Fast blocks access lists task completed.");
+                        }
+                    });
+                }
             }
         }
 
@@ -253,7 +269,8 @@ namespace Nethermind.Synchronization
                     snapSyncComponent.Feed.FeedTask,
                     fastHeaderComponent.Feed.FeedTask,
                     oldBodiesComponent.Feed.FeedTask,
-                    oldReceiptsComponent.Feed.FeedTask));
+                    oldReceiptsComponent.Feed.FeedTask,
+                    oldAccessListsComponent.Feed.FeedTask));
 
             if (completedFirst == timeout)
             {
@@ -272,6 +289,7 @@ namespace Nethermind.Synchronization
             WireFeedWithModeSelector(fastHeaderComponent.Feed);
             WireFeedWithModeSelector(oldBodiesComponent.Feed);
             WireFeedWithModeSelector(oldReceiptsComponent.Feed);
+            WireFeedWithModeSelector(oldAccessListsComponent.Feed);
         }
 
         public void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed)
@@ -339,6 +357,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         ConfigureStateSyncComponent(builder);
         ConfigureSnapComponent(builder);
         ConfigureReceiptSyncComponent(builder);
+        ConfigureAccessListsSyncComponent(builder);
         ConfigureBodiesSyncComponent(builder);
 
         builder
@@ -432,6 +451,18 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             !syncConfig.DownloadReceiptsInFastSync)
         {
             serviceCollection.AddSingleton<ISyncFeed<ReceiptsSyncBatch>, NoopSyncFeed<ReceiptsSyncBatch>>();
+        }
+    }
+
+    private void ConfigureAccessListsSyncComponent(ContainerBuilder serviceCollection)
+    {
+        ConfigureSingletonSyncFeed<AccessListsSyncBatch, AccessListsSyncFeed, AccessListsSyncDispatcher, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
+
+        if (!syncConfig.FastSync || !syncConfig.DownloadHeadersInFastSync ||
+            !syncConfig.DownloadBodiesInFastSync ||
+            !syncConfig.DownloadAccessListsInFastSync)
+        {
+            serviceCollection.AddSingleton<ISyncFeed<AccessListsSyncBatch>, NoopSyncFeed<AccessListsSyncBatch>>();
         }
     }
 

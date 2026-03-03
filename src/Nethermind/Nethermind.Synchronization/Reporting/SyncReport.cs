@@ -43,6 +43,7 @@ namespace Nethermind.Synchronization.Reporting
             FastBlocksHeaders = new("Old Headers", logManager);
             FastBlocksBodies = new("Old Bodies ", logManager);
             FastBlocksReceipts = new("Old Receipts", logManager);
+            FastBlocksAccessLists = new("Old AccessLists", logManager);
             FullSyncBlocksDownloaded = new("Downloaded", logManager);
             BeaconHeaders = new("Beacon Headers", logManager);
 
@@ -118,6 +119,8 @@ namespace Nethermind.Synchronization.Reporting
 
         public ProgressLogger FastBlocksReceipts { get; init; }
 
+        public ProgressLogger FastBlocksAccessLists { get; init; }
+
         public ProgressLogger FullSyncBlocksDownloaded { get; init; }
 
         public ProgressLogger BeaconHeaders { get; init; }
@@ -137,7 +140,7 @@ namespace Nethermind.Synchronization.Reporting
             SyncMode currentSyncMode = _currentMode;
             if (_logger.IsDebug) WriteSyncConfigReport();
 
-            if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded)
+            if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded && FastBlocksAccessLists.HasEnded)
             {
                 _reportedFastBlocksSummary = true;
                 WriteFastBlocksReport(currentSyncMode);
@@ -202,6 +205,7 @@ namespace Nethermind.Synchronization.Reporting
             Metrics.FastHeaders = FastBlocksHeaders.CurrentValue;
             Metrics.FastBodies = FastBlocksBodies.CurrentValue;
             Metrics.FastReceipts = FastBlocksReceipts.CurrentValue;
+            Metrics.FastAccessLists = FastBlocksAccessLists.CurrentValue;
         }
 
         private void WriteSyncConfigReport()
@@ -279,6 +283,11 @@ namespace Nethermind.Synchronization.Reporting
             if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts && FastBlocksReceipts.HasStarted)
             {
                 FastBlocksReceipts.LogProgress();
+            }
+
+            if ((currentSyncMode & SyncMode.FastAccessLists) == SyncMode.FastAccessLists && FastBlocksAccessLists.HasStarted)
+            {
+                FastBlocksAccessLists.LogProgress();
             }
         }
 

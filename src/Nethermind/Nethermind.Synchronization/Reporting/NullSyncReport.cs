@@ -24,6 +24,7 @@ namespace Nethermind.Synchronization.Reporting
         public ProgressLogger FastBlocksHeaders { get; } = new("", LimboLogs.Instance);
         public ProgressLogger FastBlocksBodies { get; } = new("", LimboLogs.Instance);
         public ProgressLogger FastBlocksReceipts { get; } = new("", LimboLogs.Instance);
+        public ProgressLogger FastBlocksAccessLists { get; } = new("", LimboLogs.Instance);
         public ProgressLogger BeaconHeaders { get; } = new("", LimboLogs.Instance);
     }
 }

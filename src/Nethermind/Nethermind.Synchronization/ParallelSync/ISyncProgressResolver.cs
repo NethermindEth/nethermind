@@ -20,6 +20,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         bool IsFastBlocksReceiptsFinished();
 
+        bool IsFastBlocksAccessListsFinished();
+
         bool IsLoadingBlocksFromDb();
 
         long FindBestProcessedBlock();

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -276,6 +277,7 @@ public class HistoryPrunerTests
         Assert.DoesNotThrow(() => new HistoryPruner(
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
+            Substitute.For<IBlockAccessListStore>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IChainLevelInfoRepository>(),
             dbProvider,
@@ -304,6 +306,7 @@ public class HistoryPrunerTests
         Assert.Throws<HistoryPruner.HistoryPrunerException>(() => new HistoryPruner(
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
+            Substitute.For<IBlockAccessListStore>(),
             specProvider,
             Substitute.For<IChainLevelInfoRepository>(),
             dbProvider,

@@ -16,6 +16,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 FastBlocksState.None => SyncMode.FastHeaders,
                 FastBlocksState.FinishedHeaders => isFullSync ? SyncMode.FastBodies : SyncMode.None,
                 FastBlocksState.FinishedBodies => isFullSync ? SyncMode.FastReceipts : SyncMode.None,
+                FastBlocksState.FinishedReceipts => isFullSync ? SyncMode.FastAccessLists : SyncMode.None,
                 _ => SyncMode.None,
             };
         }
@@ -39,6 +40,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 _syncProgressResolver.IsFastBlocksHeadersFinished().Returns(returns >= FastBlocksState.FinishedHeaders);
                 _syncProgressResolver.IsFastBlocksBodiesFinished().Returns(returns >= FastBlocksState.FinishedBodies);
                 _syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(returns >= FastBlocksState.FinishedReceipts);
+                _syncProgressResolver.IsFastBlocksAccessListsFinished().Returns(returns >= FastBlocksState.FinishedAccessLists);
             }
         }
     }

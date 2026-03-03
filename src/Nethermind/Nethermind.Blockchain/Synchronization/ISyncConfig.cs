@@ -41,6 +41,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Whether to download receipts in the Fast sync mode. This slows down the process by a few hours but allows to interact with dApps that perform extensive historical logs searches.", DefaultValue = "true")]
     bool DownloadReceiptsInFastSync { get; set; }
 
+    [ConfigItem(Description = "Whether to download block access lists in the Fast sync mode.", DefaultValue = "true")]
+    bool DownloadAccessListsInFastSync { get; set; }
+
     [ConfigItem(Description = "The total difficulty of the pivot block for the Fast sync mode.", DefaultValue = "null")]
     string PivotTotalDifficulty { get; }
 
@@ -83,6 +86,20 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
     public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+
+    [ConfigItem(Description = $$"""
+        The earliest block access list downloaded with fast sync when `{{nameof(DownloadAccessListsInFastSync)}}` is set to `true`. The actual value is determined as follows:
+
+        ```
+        max{ 1, min{ PivotNumber, max{ AncientBodiesBarrier, AncientAccessListsBarrier } } }
+        ```
+
+        """,
+        DefaultValue = "0")]
+    public long AncientAccessListsBarrier { get; set; }
+
+    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
+    public long AncientAccessListsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientAccessListsBarrier)));
 
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }

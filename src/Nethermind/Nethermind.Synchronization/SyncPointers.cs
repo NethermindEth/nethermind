@@ -15,6 +15,7 @@ public class SyncPointers : ISyncPointers
 {
     private readonly IDb _blocksDb;
     private readonly IDb _defaultReceiptDbColumn;
+    private readonly IDb _blockAccessListsDb;
 
     private static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
 
@@ -45,16 +46,39 @@ public class SyncPointers : ISyncPointers
         }
     }
 
+    private long? _lowestInsertedAccessListBlock;
 
-    public SyncPointers([KeyFilter(DbNames.Blocks)] IDb blocksDb, IColumnsDb<ReceiptsColumns> receiptsDb, IReceiptConfig receiptConfig)
+    public long? LowestInsertedAccessListBlockNumber
+    {
+        get => _lowestInsertedAccessListBlock;
+        set
+        {
+            _lowestInsertedAccessListBlock = value;
+            if (value.HasValue)
+            {
+                _blockAccessListsDb.Set(Keccak.Zero, Rlp.Encode(value.Value).Bytes);
+            }
+        }
+    }
+
+
+    public SyncPointers(
+        [KeyFilter(DbNames.Blocks)] IDb blocksDb,
+        IColumnsDb<ReceiptsColumns> receiptsDb,
+        [KeyFilter(DbNames.BlockAccessLists)] IDb blockAccessListsDb,
+        IReceiptConfig receiptConfig)
     {
         _blocksDb = blocksDb;
         _defaultReceiptDbColumn = receiptsDb.GetColumnDb(ReceiptsColumns.Default);
+        _blockAccessListsDb = blockAccessListsDb;
 
         LowestInsertedBodyNumber = _blocksDb[LowestInsertedBodyNumberDbEntryAddress]?.AsRlpValueContext().DecodeLong();
 
         byte[] lowestBytes = _defaultReceiptDbColumn.Get(Keccak.Zero);
         _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new Rlp.ValueDecoderContext(lowestBytes).DecodeLong();
+
+        byte[] lowestBalBytes = _blockAccessListsDb.Get(Keccak.Zero);
+        _lowestInsertedAccessListBlock = lowestBalBytes is null ? (long?)null : new Rlp.ValueDecoderContext(lowestBalBytes).DecodeLong();
 
         // When not storing receipt, set the lowest inserted receipt to 0 so that old receipt will finish immediately
         if (!receiptConfig.StoreReceipts)

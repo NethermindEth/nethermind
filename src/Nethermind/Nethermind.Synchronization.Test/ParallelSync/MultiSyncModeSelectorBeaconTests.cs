@@ -280,6 +280,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
     [TestCase(FastBlocksState.FinishedHeaders)]
     [TestCase(FastBlocksState.FinishedBodies)]
     [TestCase(FastBlocksState.FinishedReceipts)]
+    [TestCase(FastBlocksState.FinishedAccessLists)]
     public void Just_after_finishing_state_sync_and_fast_blocks(FastBlocksState fastBlocksState)
     {
         Scenario.GoesLikeThis(_needToWaitForHeaders)
@@ -293,6 +294,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
     [TestCase(FastBlocksState.None)]
     [TestCase(FastBlocksState.FinishedHeaders)]
     [TestCase(FastBlocksState.FinishedBodies)]
+    [TestCase(FastBlocksState.FinishedReceipts)]
     public void Just_after_finishing_state_sync_but_not_fast_blocks(FastBlocksState fastBlocksState)
     {
         Scenario.GoesLikeThis(_needToWaitForHeaders)
@@ -352,6 +354,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
     [TestCase(FastBlocksState.FinishedHeaders)]
     [TestCase(FastBlocksState.FinishedBodies)]
     [TestCase(FastBlocksState.FinishedReceipts)]
+    [TestCase(FastBlocksState.FinishedAccessLists)]
     public void When_just_started_full_sync_with_fast_blocks(FastBlocksState fastBlocksState)
     {
         Scenario.GoesLikeThis(_needToWaitForHeaders)

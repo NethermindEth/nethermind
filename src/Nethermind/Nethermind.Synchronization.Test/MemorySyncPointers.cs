@@ -7,4 +7,5 @@ public class MemorySyncPointers : ISyncPointers
 {
     public long? LowestInsertedBodyNumber { get; set; }
     public long? LowestInsertedReceiptBlockNumber { get; set; }
+    public long? LowestInsertedAccessListBlockNumber { get; set; }
 }

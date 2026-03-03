@@ -31,6 +31,9 @@ public class BlockAccessListStore(
     public byte[]? GetRlp(Hash256 blockHash)
         => balDb.Get(blockHash);
 
+    public bool HasBlock(Hash256 blockHash)
+        => balDb.KeyExists(blockHash);
+
     public BlockAccessList? Get(Hash256 blockHash)
     {
         ReadOnlySpan<byte> rlp = balDb.GetSpan(blockHash);
