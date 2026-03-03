@@ -6,6 +6,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -34,11 +35,15 @@ public static class StatelessExecutor
     {
         processedBlock = null;
         BlockHeader? baseBlock = null;
+        using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
 
-        foreach (BlockHeader header in witness.DecodeHeaders())
+        foreach (BlockHeader header in headers)
         {
             if (header.Hash == suggestedBlock.Header.ParentHash)
-                baseBlock = header; // no break?
+            {
+                baseBlock = header;
+                break;
+            }
         }
 
         if (baseBlock is null)
