@@ -10,6 +10,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.Sync;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.SnapSync;
@@ -49,15 +50,11 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
 
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries)
     {
-        // Write flat entries directly — no need to decode from trie nodes later
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
         for (int i = 0; i < entries.Count; i++)
         {
             PathWithAccount account = entries[i];
-            Account accountValue = account.Account;
-            _writeBatch.SetAccountRaw(account.Path.ToCommitment(), accountValue);
-
-            Rlp rlp = accountValue.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(accountValue);
+            Rlp rlp = account.Account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account.Account);
             bulkEntries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp.Bytes));
             Interlocked.Add(ref Nethermind.Synchronization.Metrics.SnapStateSynced, rlp.Bytes.Length);
         }
@@ -79,8 +76,7 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
     }
 
     /// <summary>
-    /// Trie store adapter that writes trie nodes to IPersistence.IWriteBatch.
-    /// Flat entries are written directly in BulkSetAndUpdateRootHash, so the committer only writes trie nodes.
+    /// Trie store adapter that writes trie nodes AND flat entries to IPersistence.IWriteBatch.
     /// Uses IPersistenceReader for IsPersisted queries during snap sync.
     /// </summary>
     private class PersistenceTrieStoreAdapter(
@@ -94,13 +90,18 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
             reader.TryLoadStateRlp(path, flags);
 
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-            new StateCommitter(writeBatch);
+            new StateCommitter(writeBatch, reader);
 
-        private sealed class StateCommitter(IPersistence.IWriteBatch writeBatch) : ICommitter
+        private sealed class StateCommitter(IPersistence.IWriteBatch writeBatch, IPersistence.IPersistenceReader reader) : ICommitter
         {
             public TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
+                if (reader.TryLoadStateRlp(path, ReadFlags.None) != null)
+                {
+                    throw new Exception($"Double state rlp write. {path}");
+                }
                 writeBatch.SetStateTrieNode(path, node);
+                FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, node);
                 return node;
             }
 

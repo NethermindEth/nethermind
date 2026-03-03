@@ -11,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.Sync;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.SnapSync;
@@ -52,14 +53,10 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
 
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries)
     {
-        // Write flat entries directly — no need to decode from trie nodes later
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
         for (int i = 0; i < entries.Count; i++)
         {
             PathWithStorageSlot slot = entries[i];
-            Rlp.ValueDecoderContext ctx = ((ReadOnlySpan<byte>)slot.SlotRlpValue).AsRlpValueContext();
-            _writeBatch.SetStorageRaw(_addressHash, slot.Path.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
-
             bulkEntries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
             Interlocked.Add(ref Nethermind.Synchronization.Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
         }
@@ -81,8 +78,7 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
     }
 
     /// <summary>
-    /// Storage trie store adapter that writes trie nodes to IPersistence.IWriteBatch.
-    /// Flat entries are written directly in BulkSetAndUpdateRootHash, so the committer only writes trie nodes.
+    /// Storage trie store adapter that writes trie nodes AND flat storage entries to IPersistence.IWriteBatch.
     /// Uses IPersistenceReader for IsPersisted queries during snap sync.
     /// </summary>
     private class PersistenceStorageTrieStoreAdapter(
@@ -96,13 +92,18 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
             reader.TryLoadStorageRlp(addressHash, path, flags);
 
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-            new StorageCommitter(writeBatch, addressHash);
+            new StorageCommitter(writeBatch, reader, addressHash);
 
-        private sealed class StorageCommitter(IPersistence.IWriteBatch writeBatch, Hash256 address) : ICommitter
+        private sealed class StorageCommitter(IPersistence.IWriteBatch writeBatch, IPersistence.IPersistenceReader reader, Hash256 address) : ICommitter
         {
             public TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
+                if (reader.TryLoadStorageRlp(address, path, ReadFlags.None) != null)
+                {
+                    throw new Exception($"Double storage rlp write. {address} {path}");
+                }
                 writeBatch.SetStorageTrieNode(address, path, node);
+                FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
                 return node;
             }
 
