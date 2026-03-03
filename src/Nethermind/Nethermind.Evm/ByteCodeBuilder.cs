@@ -410,6 +410,8 @@ namespace Nethermind.Evm
 
         public Prepare For(int count, Action<Prepare, int> action)
         {
+            ArgumentNullException.ThrowIfNull(action);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(count, 0);
             for (int i = 0; i < count; i++)
             {
                 action(this, i);

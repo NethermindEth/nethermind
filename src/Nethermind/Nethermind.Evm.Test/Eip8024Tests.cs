@@ -167,5 +167,5 @@ public class Eip8024Tests : VirtualMachineTestsBase
 
 internal static class PrepareExtensions
 {
-    public static Prepare Dup1Chain(this Prepare prepare, int count) => prepare.For(count, static (p, i) => p.Op(Instruction.DUP1));
+    public static Prepare Dup1Chain(this Prepare prepare, int count) => prepare.For(count, static (p, _) => p.Op(Instruction.DUP1));
 }
