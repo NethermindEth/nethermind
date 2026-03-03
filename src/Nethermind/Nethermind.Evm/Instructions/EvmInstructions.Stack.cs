@@ -635,9 +635,13 @@ internal static partial class EvmInstructions
 
     /// <summary>
     /// Reads and decodes an immediate for EIP-8024 DUPN/SWAPN instructions.
-    /// Handles bounds checking, reading the immediate, and advancing the program counter.
-    /// Disallowed range: 0x5b-0x7f (91-127) to avoid JUMPDEST/PUSH patterns.
     /// </summary>
+    /// <remarks>
+    /// Handles bounds checking, reading the immediate, and advancing the program counter.
+    /// Branchless formula: n = (x + 145) % 256.
+    /// Valid range: 0-90 (n=145-235) and 128-255 (n=17-144).
+    /// Disallowed range: 0x5b-0x7f (91-127) to avoid JUMPDEST/PUSH patterns.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryDecodeSingle<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref int programCounter, out int depth)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -650,8 +654,7 @@ internal static partial class EvmInstructions
         }
 
         byte imm = code[programCounter];
-        int mask = (90 - imm) >> 31;
-        depth = imm + 17 + (mask & -37);
+        depth = (imm + 145) & 0xFF;
 
         if ((uint)(imm - 0x5B) <= 0x24)
             return false;
@@ -662,10 +665,13 @@ internal static partial class EvmInstructions
 
     /// <summary>
     /// Reads and decodes an immediate for EIP-8024 EXCHANGE instruction.
-    /// Handles bounds checking, reading the immediate, and advancing the program counter.
-    /// Disallowed range: 0x50-0x7f (80-127) to avoid PUSH opcode patterns.
-    /// Returns stack indices ready for direct use with stack.Exchange.
     /// </summary>
+    /// <remarks>
+    /// Handles bounds checking, reading the immediate, and advancing the program counter.
+    /// Branchless formula: k = x ^ 143 (XOR with 0x8F).
+    /// Valid range: 0-81 (k mapped via XOR) and 128-255. Invalid range: 82-127.
+    /// Returns stack indices ready for direct use with stack.Exchange.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryDecodePair<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref int programCounter, out int n, out int m)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -679,8 +685,7 @@ internal static partial class EvmInstructions
 
         byte imm = code[programCounter];
 
-        // k = imm if imm <= 79, imm - 48 if imm >= 128
-        int k = imm - (~((imm - 0x80) >> 31) & 48);
+        int k = imm ^ 0x8F;
         int q = k >> 4;
         int r = k & 0x0F;
 
@@ -692,7 +697,7 @@ internal static partial class EvmInstructions
         n = ((q & mask) | (r & ~mask)) + 2;
         m = (((r + 1) & mask) | ((29 - q) & ~mask)) + 1;
 
-        if ((uint)(imm - 0x50) <= 0x2F)
+        if ((uint)(imm - 0x52) <= 0x2D)
             return false;
 
         programCounter++;
