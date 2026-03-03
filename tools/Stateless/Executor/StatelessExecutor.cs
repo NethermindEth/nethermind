@@ -18,16 +18,20 @@ public static class StatelessExecutor
 {
     public static bool TryExecute(ReadOnlySpan<byte> data, out Block? processedBlock)
     {
-        (Block suggestedBlock, Witness witness, uint chainId) = InputSerializer.Deserialize(data);
+        Witness witness;
+        (Block suggestedBlock, witness, uint chainId) = InputSerializer.Deserialize(data);
 
-        ISpecProvider specProvider = GetSpecProvider(chainId);
-        //IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-        //EthereumEcdsa ecdsa = new(chainId);
+        using (witness)
+        {
+            ISpecProvider specProvider = GetSpecProvider(chainId);
+            //IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
+            //EthereumEcdsa ecdsa = new(chainId);
 
-        //foreach (Transaction tx in suggestedBlock.Transactions)
-        //    tx.SenderAddress ??= ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+            //foreach (Transaction tx in suggestedBlock.Transactions)
+            //    tx.SenderAddress ??= ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
-        return TryExecute(suggestedBlock, witness, specProvider, out processedBlock);
+            return TryExecute(suggestedBlock, witness, specProvider, out processedBlock);
+        }
     }
 
     public static bool TryExecute(
