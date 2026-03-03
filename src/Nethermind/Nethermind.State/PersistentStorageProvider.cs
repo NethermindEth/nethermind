@@ -349,7 +349,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     public void ClearStorageMap()
     {
-        _storages.Clear();
+        _storages.ResetAndClear();
     }
 
     private PerContractState GetOrCreateStorage(Address address)
@@ -421,10 +421,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         state.Clear();
     }
 
-    private sealed class DefaultableDictionary()
+    private sealed class DefaultableDictionary(int capacity)
     {
         private bool _missingAreDefault;
-        private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new();
+        private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(capacity);
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
         public int Capacity => _dictionary.Capacity;
@@ -472,9 +472,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private sealed class PerContractState : IReturnable
     {
+        internal const int MaxItemSize = 239;
         private IWorldStateScopeProvider.IStorageTree? _backend;
 
-        private readonly DefaultableDictionary BlockChange = new();
+        private readonly DefaultableDictionary BlockChange = new(MaxItemSize);
         private bool _wasWritten = false;
         private PersistentStorageProvider _provider;
         private Address _address;
@@ -648,8 +649,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             public static void Return(PerContractState item)
             {
-                const int MaxItemSize = 512;
-                const int MaxPooledCount = 2048;
+                const int MaxPooledCount = 8192;
 
                 if (item.BlockChange.Capacity > MaxItemSize)
                     return;

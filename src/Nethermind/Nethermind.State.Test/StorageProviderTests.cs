@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Reflection;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -269,6 +270,34 @@ public class StorageProviderTests
             byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();
 
             Assert.That(valueAfter, Is.EqualTo(_values[1]));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void CommitTree_returns_per_contract_state_to_pool()
+    {
+        Context ctx = new(setInitialState: false);
+        WorldState storageProvider = BuildStorageProvider(ctx);
+
+        int originalPoolCount = GetPerContractStatePoolCount();
+        try
+        {
+            SetPerContractStatePoolCount(0);
+
+            using (storageProvider.BeginScope(IWorldState.PreGenesis))
+            {
+                storageProvider.CreateAccount(ctx.Address1, 0);
+                storageProvider.Set(new StorageCell(ctx.Address1, 1), [1]);
+                storageProvider.Commit(Frontier.Instance);
+                storageProvider.CommitTree(0);
+            }
+
+            GetPerContractStatePoolCount().Should().BeGreaterThan(0);
+        }
+        finally
+        {
+            SetPerContractStatePoolCount(originalPoolCount);
         }
     }
 
@@ -1187,6 +1216,20 @@ public class StorageProviderTests
         public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
             => ChangedCells[storageCell] = (before, after);
         public void ReportStorageRead(in StorageCell storageCell) => ReadCells.Add(storageCell);
+    }
+
+    private static int GetPerContractStatePoolCount() => (int)GetPerContractStatePoolCountField().GetValue(null)!;
+
+    private static void SetPerContractStatePoolCount(int value) => GetPerContractStatePoolCountField().SetValue(null, value);
+
+    private static FieldInfo GetPerContractStatePoolCountField()
+    {
+        Type perContractStateType = typeof(PersistentStorageProvider).GetNestedType("PerContractState", BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("Could not find PerContractState type.");
+        Type poolType = perContractStateType.GetNestedType("Pool", BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("Could not find PerContractState.Pool type.");
+        return poolType.GetField("_poolCount", BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("Could not find PerContractState.Pool._poolCount field.");
     }
 
     private class Context
