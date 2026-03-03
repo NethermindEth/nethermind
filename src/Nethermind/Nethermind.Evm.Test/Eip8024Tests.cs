@@ -31,7 +31,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         // SWAPN valid: 20 items, depth=17, swap top (20) with 18th from top (3)
         yield return new TestCaseData(PushNValues(20).Op(Instruction.SWAPN).Data(0x80).MSTORE(0).Return(32, 0).Done, 3).SetName("SwapN_ValidImmediate");
 
-        // Exchange valid: 5 items, (n=2,m=3) swaps positions 3 and 4, top unchanged
+        // Exchange valid: 5 items, (n=3,m=4) swaps 1-based stack positions 3 and 4, top unchanged
         yield return new TestCaseData(PushNValues(5).Op(Instruction.EXCHANGE).Data(0x9d).MSTORE(0).Return(32, 0).Done, 5).SetName("Exchange_ValidImmediate");
 
         // Exchange edge cases: newly valid 0x50 (was disallowed in old range 80-127)
@@ -40,13 +40,13 @@ public class Eip8024Tests : VirtualMachineTestsBase
         // Exchange edge cases: newly valid 0x51
         yield return new TestCaseData(PushNValues(16).Op(Instruction.EXCHANGE).Data(0x51).MSTORE(0).Return(32, 0).Done, 16).SetName("Exchange_NewlyValid_0x51");
 
-        // Exchange high range: 0x2f -> k=0xa0, (n=1,m=19), needs 20 items
+        // Exchange high range: 0x2f -> k=0xa0, (n=2,m=20) 1-indexed, needs 20 items
         yield return new TestCaseData(PushNValues(20).Op(Instruction.EXCHANGE).Data(0x2f).MSTORE(0).Return(32, 0).Done, 20).SetName("Exchange_HighRange_0x2f");
 
-        // Exchange edge: 0xC0 -> k=0x4f=79, (n=5,m=16), needs 17 items
+        // Exchange edge: 0xC0 -> k=0x4f=79, (n=6,m=17) 1-indexed, needs 17 items
         yield return new TestCaseData(PushNValues(17).Op(Instruction.EXCHANGE).Data(0xC0).MSTORE(0).Return(32, 0).Done, 17).SetName("Exchange_EdgeCase_0xC0");
 
-        // Exchange edge: 0xDF -> k=0x50=80, (n=1,m=24), needs 25 items
+        // Exchange edge: 0xDF -> k=0x50=80, (n=2,m=25) 1-indexed, needs 25 items
         yield return new TestCaseData(PushNValues(25).Op(Instruction.EXCHANGE).Data(0xDF).MSTORE(0).Return(32, 0).Done, 25).SetName("Exchange_EdgeCase_0xDF");
 
         // EIP test vector: PUSH1 1, PUSH1 0, DUP1 x15, DUPN 0x80 -> duplicates bottom item (1)
@@ -88,7 +88,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         yield return new TestCaseData(PushZeros(234).Op(Instruction.DUPN).Data(0x5a).Done).SetName("DupN_MaxDepth_235");
         yield return new TestCaseData(PushZeros(234).Op(Instruction.SWAPN).Data(0x5a).Done).SetName("SwapN_MaxDepth_235");
 
-        // Exchange max depth: immediate 0x8f -> (n=1,m=29), needs 30 items, only 29
+        // Exchange max depth: immediate 0x8f -> (n=2,m=30) 1-indexed, needs 30 items, only 29
         yield return new TestCaseData(PushZeros(29).Op(Instruction.EXCHANGE).Data(0x8f).Done).SetName("Exchange_MaxDepth_30");
 
         // EIP test vector: SWAPN with disallowed immediate 0x5b
