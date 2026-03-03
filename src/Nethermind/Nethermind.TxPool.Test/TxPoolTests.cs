@@ -221,8 +221,9 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx.SenderAddress, tx.Value);
 
             Block block = Build.A.Block.WithGasLimit(10000000).TestObject;
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
             Task waitTask = Wait.ForEventCondition<Block>(
-                default,
+                cts.Token,
                 e => txPool.TxPoolHeadChanged += e,
                 e => txPool.TxPoolHeadChanged -= e,
                 _ => true);
