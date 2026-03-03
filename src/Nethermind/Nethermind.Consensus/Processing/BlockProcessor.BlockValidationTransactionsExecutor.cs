@@ -84,7 +84,7 @@ namespace Nethermind.Consensus.Processing
                                 long gasRemaining = block.Header.GasLimit - totalGas;
                                 bool validateStorageReads = j == chunkEnd - 1;
                                 Console.WriteLine($"[parallel] validating block access list at index {j + 1} (storage read check: {validateStorageReads})");
-                                // _balBuilder?.ValidateBlockAccessList((ushort)(j + 1), gasRemaining, validateStorageReads);
+                                _balBuilder?.ValidateBlockAccessList((ushort)(j + 1), gasRemaining, validateStorageReads);
                             }
 
                             if (totalGas > block.Header.GasLimit)
