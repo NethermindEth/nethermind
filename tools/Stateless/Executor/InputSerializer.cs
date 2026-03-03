@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Stateless.Execution;
@@ -147,11 +146,9 @@ public static class InputSerializer
         if (value.Count == 0)
             return;
 
-        var valueLen = value.Count;
+        WriteInt32(value.Count, destination, ref offset);
 
-        WriteInt32(valueLen, destination, ref offset);
-
-        for (var i = 0; i < valueLen; i++)
+        for (var i = 0; i < value.Count; i++)
         {
             var len = value[i].Length;
 
