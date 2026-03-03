@@ -44,35 +44,6 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
-    protected override QuorumCertificate DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        if (sequenceLength == 0)
-            return null;
-        int endPosition = rlpStream.Position + sequenceLength;
-        BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(rlpStream, rlpBehaviors);
-
-        byte[][]? signatureBytes = rlpStream.DecodeByteArrays();
-        if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
-            throw new RlpException("One or more invalid signature lengths in quorum certificate.");
-        Signature[]? signatures = null;
-        if (signatureBytes is not null)
-        {
-            signatures = new Signature[signatureBytes.Length];
-            for (int i = 0; i < signatures.Length; i++)
-            {
-                signatures[i] = new Signature(signatureBytes[i].AsSpan(0, 64), signatureBytes[i][64]);
-            }
-        }
-
-        ulong gap = rlpStream.DecodeULong();
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            rlpStream.Check(endPosition);
-        }
-        return new QuorumCertificate(blockInfo, signatures, gap);
-    }
-
     public Rlp Encode(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

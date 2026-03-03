@@ -33,11 +33,12 @@ public class FindNodeMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessa
     public FindNodeMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
-        NettyRlpStream rlpStream = new(Data);
-        rlpStream.ReadSequenceLength();
-        byte[] searchedNodeId = rlpStream.DecodeByteArray();
-        long expirationTime = rlpStream.DecodeLong();
+        Rlp.ValueDecoderContext ctx = Data.AsRlpContext();
+        ctx.ReadSequenceLength();
+        byte[] searchedNodeId = ctx.DecodeByteArray();
+        long expirationTime = ctx.DecodeLong();
 
+        Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
         FindNodeMsg findNodeMsg = new(FarPublicKey, expirationTime, searchedNodeId);
         return findNodeMsg;
     }
