@@ -182,7 +182,7 @@ internal class VotesManager(
 
         if (FilterVote(vote))
         {
-            //TODO: Broadcast Vote
+
             return HandleVote(vote);
         }
         return Task.CompletedTask;
