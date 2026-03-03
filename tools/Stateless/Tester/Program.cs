@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.IO;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -12,6 +10,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Stateless.Execution;
+using System;
+using System.IO;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Nethermind.Stateless.Tester;
 
@@ -32,11 +33,15 @@ class Program
 #else
         // If a command line option is specified, treat it as a location
         // where the input data for the Zisk guest should be written
-        if (args.Length == 1)
+        if (args.Length == 1 && !string.IsNullOrWhiteSpace(args[0]))
         {
             byte[] data = InputSerializer.Serialize(suggestedBlock, witness, (uint)specProvider.ChainId);
+            string? dir = Path.GetDirectoryName(args[0]);
 
-            File.WriteAllBytes(Path.Join(args[0], "input.bin"), data);
+            if (dir is not null)
+                Directory.CreateDirectory(dir);
+
+            File.WriteAllBytes(args[0], data);
         }
 
         // Otherwise, this is a testing playground

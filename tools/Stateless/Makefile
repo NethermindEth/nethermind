@@ -106,14 +106,14 @@ build-zisk: build-dotnet-zisk build-docker-bflat
 		rm -f $(ZISK_DIR)/Program
 
 run-tester: build-tester
-	docker build --platform linux/amd64 -t zkvm-tester $(TESTER_DIR)
-	docker run --rm -it zkvm-tester
+	docker build --platform linux/amd64 -t nethermind-zkevm $(TESTER_DIR)
+	docker run --rm -it nethermind-zkevm
 
 run-zisk: build-zisk
 	[ -f "$(ZISK_DIR)/bin/input.bin" ] || \
-		dotnet run -c release --project $(TESTER_DIR)/Tester.csproj -- $(ZISK_DIR)/bin
-	docker build --platform linux/amd64 -t zisk $(ZISK_DIR)
-	docker run --rm -it -e RUST_BACKTRACE=full zisk ziskemu -e /n/nethermind -i /n/input.bin
+		dotnet run -c release --project $(TESTER_DIR)/Tester.csproj -- $(ZISK_DIR)/bin/input.bin
+	docker build --platform linux/amd64 -t nethermind-zisk $(ZISK_DIR)
+	docker run --rm -it -e RUST_BACKTRACE=full nethermind-zisk ziskemu -e /n/nethermind -i /n/input.bin
 
 clean:
 	rm -rf \
