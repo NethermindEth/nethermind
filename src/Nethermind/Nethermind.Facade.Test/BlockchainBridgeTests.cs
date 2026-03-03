@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
@@ -10,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -280,6 +282,51 @@ public class BlockchainBridgeTests
         _transactionProcessor.Received().CallAndRestore(
             Arg.Is<Transaction>(static tx => tx.MaxFeePerBlobGas == 1),
             Arg.Any<ITxTracer>());
+    }
+
+    private static IEnumerable<TestCaseData> BlobBaseFeeTestCases()
+    {
+        string[] methods = [nameof(IBlockchainBridge.Call), nameof(IBlockchainBridge.EstimateGas), nameof(IBlockchainBridge.CreateAccessList)];
+        ulong[] excessBlobGasValues = [0, 100];
+
+        foreach (string method in methods)
+            foreach (ulong excessBlobGas in excessBlobGasValues)
+                yield return new TestCaseData(method, excessBlobGas)
+                    .SetDescription($"{method} with ExcessBlobGas={excessBlobGas}");
+    }
+
+    [TestCaseSource(nameof(BlobBaseFeeTestCases))]
+    public void BlobBaseFee_is_set_for_non_blob_transaction(string method, ulong excessBlobGas)
+    {
+        _timestamper.UtcNow = DateTime.MaxValue;
+        BlockHeader header = Build.A.BlockHeader
+            .WithBeneficiary(TestItem.AddressB)
+            .WithExcessBlobGas(excessBlobGas)
+            .WithBlobGasUsed(0)
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(ulong.MaxValue)
+            .TestObject;
+        Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
+
+        IReleaseSpec spec = _specProvider.GetSpec(header);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 expectedBlobBaseFee);
+        ValueHash256 expectedBlobBaseFeeHash = expectedBlobBaseFee.ToValueHash();
+
+        switch (method)
+        {
+            case nameof(IBlockchainBridge.Call):
+                _blockchainBridge.Call(header, tx);
+                break;
+            case nameof(IBlockchainBridge.EstimateGas):
+                _blockchainBridge.EstimateGas(header, tx, 1);
+                break;
+            case nameof(IBlockchainBridge.CreateAccessList):
+                _blockchainBridge.CreateAccessList(header, tx, default, false);
+                break;
+        }
+
+        _transactionProcessor.Received().SetBlockExecutionContext(
+            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.BlobBaseFee == expectedBlobBaseFeeHash));
     }
 
     [Test]
