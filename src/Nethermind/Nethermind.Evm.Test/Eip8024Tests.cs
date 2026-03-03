@@ -20,26 +20,8 @@ public class Eip8024Tests : VirtualMachineTestsBase
     protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
     protected override ISpecProvider SpecProvider => new TestSpecProvider(new Osaka { IsEip8024Enabled = true });
 
-    private static Prepare PushNValues(int count)
-    {
-        Prepare prepare = Prepare.EvmCode;
-        for (int i = 1; i <= count; i++) prepare.PushData(i);
-        return prepare;
-    }
-
-    private static Prepare PushZeros(int count)
-    {
-        Prepare prepare = Prepare.EvmCode;
-        for (int i = 0; i < count; i++) prepare.PushData(0);
-        return prepare;
-    }
-
-    private static Prepare Dup1Chain(int dup1Count)
-    {
-        Prepare prepare = Prepare.EvmCode.PushData(1).PushData(0);
-        for (int i = 0; i < dup1Count; i++) prepare.Op(Instruction.DUP1);
-        return prepare;
-    }
+    private static Prepare PushNValues(int count) => Prepare.EvmCode.For(count, static (p, i) => p.PushData(i + 1));
+    private static Prepare PushZeros(int count) => Prepare.EvmCode.For(count, static (p, _) => p.PushData(0));
 
     private static IEnumerable<TestCaseData> SuccessTestCases()
     {
@@ -68,10 +50,10 @@ public class Eip8024Tests : VirtualMachineTestsBase
         yield return new TestCaseData(PushNValues(25).Op(Instruction.EXCHANGE).Data(0xDF).MSTORE(0).Return(32, 0).Done, 25).SetName("Exchange_EdgeCase_0xDF");
 
         // EIP test vector: PUSH1 1, PUSH1 0, DUP1 x15, DUPN 0x80 -> duplicates bottom item (1)
-        yield return new TestCaseData(Dup1Chain(15).Op(Instruction.DUPN).Data(0x80).MSTORE(0).Return(32, 0).Done, 1).SetName("EipTestVector_DupN_18Items");
+        yield return new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).Dup1Chain(15).Op(Instruction.DUPN).Data(0x80).MSTORE(0).Return(32, 0).Done, 1).SetName("EipTestVector_DupN_18Items");
 
         // EIP test vector: PUSH1 1, PUSH1 0, DUP1 x15, PUSH1 2, SWAPN 0x80 -> swap top (2) with bottom (1)
-        yield return new TestCaseData(Dup1Chain(15).PushData(2).Op(Instruction.SWAPN).Data(0x80).MSTORE(0).Return(32, 0).Done, 1).SetName("EipTestVector_SwapN_18Items");
+        yield return new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).Dup1Chain(15).PushData(2).Op(Instruction.SWAPN).Data(0x80).MSTORE(0).Return(32, 0).Done, 1).SetName("EipTestVector_SwapN_18Items");
 
         // EIP test vector: PUSH1 0, PUSH1 1, PUSH1 2, EXCHANGE 0x8e -> swaps positions 1,2, top stays 2
         yield return new TestCaseData(Prepare.EvmCode.PushData(0).PushData(1).PushData(2).Op(Instruction.EXCHANGE).Data(0x8e).MSTORE(0).Return(32, 0).Done, 2).SetName("EipTestVector_Exchange_3Items");
@@ -112,8 +94,8 @@ public class Eip8024Tests : VirtualMachineTestsBase
         // EIP test vector: SWAPN with disallowed immediate 0x5b
         yield return new TestCaseData(new byte[] { 0xe7, 0x5b }).SetName("EipTestVector_InvalidSwapn");
 
-        // EIP test vector: 16 items (PUSH0 + DUP1 x15), DUPN depth=17 -> underflow
-        yield return new TestCaseData(Dup1Chain(15).Op(Instruction.DUPN).Data(0x80).Op(Instruction.STOP).Done).SetName("EipTestVector_DupN_StackUnderflow");
+        // EIP test vector: 16 items (PUSH1 0 + DUP1 x15), DUPN depth=17 -> underflow
+        yield return new TestCaseData(PushZeros(1).Dup1Chain(15).Op(Instruction.DUPN).Data(0x80).Op(Instruction.STOP).Done).SetName("EipTestVector_DupN_StackUnderflow");
     }
 
     [TestCaseSource(nameof(FailureTestCases))]
@@ -181,4 +163,9 @@ public class Eip8024Tests : VirtualMachineTestsBase
             result.StatusCode.Should().Be(StatusCode.Failure);
         }
     }
+}
+
+internal static class PrepareExtensions
+{
+    public static Prepare Dup1Chain(this Prepare prepare, int count) => prepare.For(count, static (p, i) => p.Op(Instruction.DUP1));
 }

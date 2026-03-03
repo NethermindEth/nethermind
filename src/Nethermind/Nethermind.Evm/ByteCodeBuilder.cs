@@ -407,5 +407,15 @@ namespace Nethermind.Evm
             Op(Instruction.RETURN);
             return this;
         }
+
+        public Prepare For(int count, Action<Prepare, int> action)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                action(this, i);
+            }
+
+            return this;
+        }
     }
 }
