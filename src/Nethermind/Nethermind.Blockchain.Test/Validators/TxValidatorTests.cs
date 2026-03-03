@@ -57,28 +57,18 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void R_equal_to_n_minus_one_is_valid()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(0, ExpectedResult = false, TestName = "R equal to N is not valid")]
+    [TestCase(1, ExpectedResult = true, TestName = "R equal to N minus one is valid")]
+    public bool R_boundary_values(int subtractFromN)
     {
-        UInt256 r = Secp256K1Curve.NMinusOne;
+        UInt256 r = Secp256K1Curve.N - (UInt256)subtractFromN;
         UInt256 s = UInt256.One;
         Signature signature = new(r, s, (ulong)CalculateV());
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeTrue();
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void R_equal_to_n_is_not_valid()
-    {
-        UInt256 r = Secp256K1Curve.N;
-        UInt256 s = UInt256.One;
-        Signature signature = new(r, s, (ulong)CalculateV());
-        Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
-
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
+        return txValidator.IsWellFormed(tx, MuirGlacier.Instance);
     }
 
     private static byte CalculateV() => (byte)EthereumEcdsaExtensions.CalculateV(TestBlockchainIds.ChainId);
