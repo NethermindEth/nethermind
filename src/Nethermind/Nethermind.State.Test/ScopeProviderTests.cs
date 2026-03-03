@@ -19,7 +19,7 @@ namespace Nethermind.Store.Test;
 [TestFixture(false)]
 [TestFixture(true)]
 [Parallelizable(ParallelScope.All)]
-public class TrieStoreScopeProviderTests(bool useFlat)
+public class ScopeProviderTests(bool useFlat)
 {
     private class Context : IDisposable
     {
