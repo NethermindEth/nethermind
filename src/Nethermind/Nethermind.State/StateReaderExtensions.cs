@@ -6,7 +6,6 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -52,6 +51,7 @@ namespace Nethermind.State
                 MaxDegreeOfParallelism = Environment.ProcessorCount,
                 FullScanMemoryBudget = 16.GiB(), // Gonna guess that if you are running this, you have a decent setup.
             });
+            collector.Finish();
             return collector.Stats;
         }
 

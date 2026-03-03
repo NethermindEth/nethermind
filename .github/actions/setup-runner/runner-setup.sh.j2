@@ -1,0 +1,75 @@
+#!/bin/bash
+set -e
+
+# GitHub Actions Runner Setup Script (Part 1 - Machine Setup)
+# This script is generated from a Jinja2 template and sets up a self-hosted GitHub Actions runner
+# This part runs on the remote machine and prepares it for runner configuration
+
+# Determine script directory (where Stackscript is typically created)
+SCRIPT_DIR="${HOME}"
+LOG_FILE="${SCRIPT_DIR}/runner-setup-$(date +%Y%m%d-%H%M%S).log"
+
+# Redirect all output (stdout and stderr) to both console and log file
+exec > >(tee -a "${LOG_FILE}") 2>&1
+
+echo "========================================="
+echo "GitHub Actions Runner Setup (Machine Preparation)"
+echo "Started at: $(date)"
+echo "Log file: ${LOG_FILE}"
+echo "========================================="
+
+# Display environment for debugging
+echo "Environment information:"
+echo "  HOME: ${HOME}"
+echo "  USER: ${USER}"
+echo "  PWD: $(pwd)"
+echo "  Hostname: $(hostname)"
+echo "  Script directory: ${SCRIPT_DIR}"
+echo "  Log file: ${LOG_FILE}"
+echo ""
+
+# Check if running as root
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Error: This script must be run as root"
+  exit 1
+fi
+
+# Install dependencies
+echo "Installing dependencies..."
+
+# Preparing Git-LFS
+curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash
+
+apt-get update
+apt-get install -y curl jq git-lfs
+
+# Create runner directory
+GH_RUNNER_DIR="/root/actions-runner"
+echo "Creating runner directory: ${GH_RUNNER_DIR}"
+mkdir -p "${GH_RUNNER_DIR}"
+cd "${GH_RUNNER_DIR}"
+
+# Download the latest runner package
+echo "Downloading GitHub Actions runner..."
+RUNNER_VERSION=$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r '.tag_name' | sed 's/v//')
+echo "Latest runner version: ${RUNNER_VERSION}"
+
+curl -o actions-runner-linux-x64.tar.gz -L "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
+
+# Verify download
+if [ ! -f "actions-runner-linux-x64.tar.gz" ]; then
+  echo "Error: Failed to download runner package"
+  exit 1
+fi
+
+# Extract the installer
+echo "Extracting runner package..."
+tar xzf ./actions-runner-linux-x64.tar.gz
+
+echo ""
+echo "========================================="
+echo "Machine Preparation Complete"
+echo "Ready for runner registration via SSH"
+echo "Log file saved to: ${LOG_FILE}"
+echo "========================================="
+echo ""

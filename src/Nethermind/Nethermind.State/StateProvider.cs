@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -56,7 +55,7 @@ namespace Nethermind.State
         public StateProvider(
             ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public void RecalculateStateRoot()
@@ -244,13 +243,11 @@ namespace Nethermind.State
 
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
-            _needsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, true);
         }
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
-            _needsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, false);
         }
 
@@ -771,7 +768,7 @@ namespace Nethermind.State
 
         private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
         {
-            if (isZero && releaseSpec.IsEip158IgnoredAccount(address)) return;
+            if (isZero && address == releaseSpec.Eip158IgnoredAccount) return;
             Push(address, account, ChangeType.Touch);
         }
 

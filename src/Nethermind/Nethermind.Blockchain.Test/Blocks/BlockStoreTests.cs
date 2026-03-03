@@ -6,6 +6,7 @@ using FluentAssertions;
 using FluentAssertions.Equivalency;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -15,6 +16,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
 
+[Parallelizable(ParallelScope.All)]
 public class BlockStoreTests
 {
     private readonly Func<EquivalencyAssertionOptions<Block>, EquivalencyAssertionOptions<Block>> _ignoreEncodedSize = options => options.Excluding(b => b.EncodedSize);
@@ -117,5 +119,29 @@ public class BlockStoreTests
             block.Transactions[i].Data = Array.Empty<byte>();
             retrieved.GetNextTransaction().Should().BeEquivalentTo(block.Transactions[i]);
         }
+    }
+
+    [Test]
+    public void Test_ClearCache_removes_cached_blocks()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        store.Insert(block);
+
+        // Populate cache
+        Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
+        retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
+
+        // Clear the DB but block should still be in cache
+        db.Clear();
+        retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
+        retrieved.Should().NotBeNull();
+
+        // Clear the cache - now block should not be retrievable
+        (store as IClearableCache)?.ClearCache();
+        retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
+        retrieved.Should().BeNull();
     }
 }

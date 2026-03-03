@@ -18,7 +18,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -256,7 +255,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void IsInvalidContractSender_AccountHasCode_ReturnsTrue()
         {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
             IDbProvider dbProvider = TestMemDbProvider.Init();
@@ -275,7 +274,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void IsInvalidContractSender_AccountHasNoCode_ReturnsFalse()
         {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
             IDbProvider dbProvider = TestMemDbProvider.Init();
@@ -293,7 +292,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void IsInvalidContractSender_AccountHasDelegatedCode_ReturnsFalse()
         {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
             IDbProvider dbProvider = TestMemDbProvider.Init();
@@ -313,7 +312,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void IsInvalidContractSender_AccountHasCodeButDelegateReturnsTrue_ReturnsFalse()
         {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
             IDbProvider dbProvider = TestMemDbProvider.Init();
@@ -333,7 +332,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void IsInvalidContractSender_AccountHasDelegatedCodeBut7702IsNotEnabled_ReturnsTrue()
         {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(true);
             IDbProvider dbProvider = TestMemDbProvider.Init();
             (IWorldState sut, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
@@ -352,7 +351,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void IsInvalidContractSender_AccountHasDelegatedCodeBut3807IsNotEnabled_ReturnsFalse()
         {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip7702Enabled.Returns(true);
             IDbProvider dbProvider = TestMemDbProvider.Init();
             (IWorldState sut, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);

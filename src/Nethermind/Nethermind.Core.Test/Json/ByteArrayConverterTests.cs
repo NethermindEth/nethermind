@@ -296,6 +296,71 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         }
     }
 
+    [TestCase(new byte[] { 0xab, 0xcd }, true, true, "\"0xabcd\"")]
+    [TestCase(new byte[] { 0xab, 0xcd }, false, true, "\"0xabcd\"")]
+    [TestCase(new byte[] { 0x00, 0xab }, true, true, "\"0xab\"")]
+    [TestCase(new byte[] { 0x00, 0xab }, false, true, "\"0x00ab\"")]
+    [TestCase(new byte[] { 0x00, 0x00 }, true, true, "\"0x0\"")]
+    [TestCase(new byte[] { 0x00, 0x00 }, false, true, "\"0x0000\"")]
+    [TestCase(new byte[] { 0xab }, true, false, "\"ab\"")]
+    [TestCase(new byte[] { 0xab }, false, false, "\"ab\"")]
+    [TestCase(new byte[] { 0x0a }, true, true, "\"0xa\"")]
+    [TestCase(new byte[] { 0x0a }, false, true, "\"0x0a\"")]
+    public void Write_OutputFormat(byte[] input, bool skipLeadingZeros, bool addHexPrefix, string expected)
+    {
+        using System.IO.MemoryStream ms = new();
+        using Utf8JsonWriter writer = new(ms);
+        ByteArrayConverter.Convert(writer, input, skipLeadingZeros, addHexPrefix);
+        writer.Flush();
+        Encoding.UTF8.GetString(ms.ToArray()).Should().Be(expected);
+    }
+
+    [Test]
+    public void Write_LargeOutput_UsesArrayPool()
+    {
+        // 200 bytes = 400 hex chars + "0x" prefix + quotes > 256 byte InlineArray threshold
+        byte[] input = new byte[200];
+        for (int i = 0; i < input.Length; i++) input[i] = (byte)(i & 0xFF);
+
+        using System.IO.MemoryStream ms = new();
+        using Utf8JsonWriter writer = new(ms);
+        ByteArrayConverter.Convert(writer, input, skipLeadingZeros: false);
+        writer.Flush();
+        string output = Encoding.UTF8.GetString(ms.ToArray());
+        output.Should().StartWith("\"0x");
+        output.Should().EndWith("\"");
+        output.Length.Should().Be(404); // 400 hex + 2 prefix + 2 quotes
+    }
+
+    [Test]
+    public void WriteAsPropertyName_Format()
+    {
+        ByteArrayConverter converter = new();
+        using System.IO.MemoryStream ms = new();
+        using Utf8JsonWriter writer = new(ms);
+        writer.WriteStartObject();
+        converter.WriteAsPropertyName(writer, new byte[] { 0xab, 0xcd }, JsonSerializerOptions.Default);
+        writer.WriteNumberValue(1);
+        writer.WriteEndObject();
+        writer.Flush();
+        Encoding.UTF8.GetString(ms.ToArray()).Should().Be("{\"0xabcd\":1}");
+    }
+
+    [Test]
+    public void WriteAsPropertyName_AllZeros()
+    {
+        ByteArrayConverter converter = new();
+        using System.IO.MemoryStream ms = new();
+        using Utf8JsonWriter writer = new(ms);
+        writer.WriteStartObject();
+        converter.WriteAsPropertyName(writer, new byte[] { 0x00, 0x00 }, JsonSerializerOptions.Default);
+        writer.WriteNumberValue(1);
+        writer.WriteEndObject();
+        writer.Flush();
+        // skipLeadingZeros: false preserves all zeros
+        Encoding.UTF8.GetString(ms.ToArray()).Should().Be("{\"0x0000\":1}");
+    }
+
     [Test]
     public void Test_DictionaryKey()
     {

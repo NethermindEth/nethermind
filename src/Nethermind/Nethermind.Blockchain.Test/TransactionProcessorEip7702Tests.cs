@@ -7,13 +7,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
@@ -23,11 +21,12 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core.Test;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 internal class TransactionProcessorEip7702Tests
 {
     private ISpecProvider _specProvider;
@@ -392,7 +391,7 @@ internal class TransactionProcessorEip7702Tests
         //Tx should only be charged for warm state read
         Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction
             + GasCostOf.NewAccount
-            + Prague.Instance.GetBalanceCost()
+            + Prague.Instance.GasCosts.BalanceCost
             + GasCostOf.WarmStateRead
             + GasCostOf.VeryLow));
     }

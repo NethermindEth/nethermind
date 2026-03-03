@@ -21,9 +21,12 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
+using Nethermind.Core.Specs;
+using Nethermind.State;
 
 namespace Nethermind.Facade.Test;
 
@@ -34,6 +37,8 @@ public class BlockchainBridgeTests
     private IReceiptStorage _receiptStorage;
     private ITransactionProcessor _transactionProcessor;
     private ManualTimestamper _timestamper;
+    private ISpecProvider _specProvider;
+    private IStateReader _stateReader;
     private IContainer _container;
 
     [SetUp]
@@ -43,6 +48,9 @@ public class BlockchainBridgeTests
         _blockTree = Substitute.For<IBlockTree>();
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
+        _stateReader = Substitute.For<IStateReader>();
+
+        _stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
@@ -52,8 +60,10 @@ public class BlockchainBridgeTests
             .AddSingleton(Substitute.For<ILogFinder>())
             .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
             .AddScoped(_transactionProcessor)
+            .AddSingleton(_stateReader)
             .Build();
 
+        _specProvider = _container.Resolve<ISpecProvider>();
         _blockchainBridge = _container.Resolve<IBlockchainBridge>();
         return Task.CompletedTask;
     }
@@ -67,14 +77,16 @@ public class BlockchainBridgeTests
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()
     {
-        _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null, null));
+        _blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result).Should().BeFalse();
+        result.Should().BeNull();
     }
 
     [Test]
     public void get_transaction_returns_null_when_block_not_found()
     {
         _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-        _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null, null));
+        _blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result).Should().BeFalse();
+        result.Should().BeNull();
     }
 
     [Test]
@@ -100,9 +112,16 @@ public class BlockchainBridgeTests
             _receiptStorage.FindBlockHash(receipt.TxHash!).Returns(TestItem.KeccakB);
         }
         _receiptStorage.Get(block).Returns(receipts);
-        var expectation = (receipts[index], Build.A.Transaction.WithNonce((UInt256)index).WithHash(TestItem.Keccaks[index]).TestObject, UInt256.Zero);
-        var result = _blockchainBridge.GetTransaction(transactions[index].Hash!);
-        result.Should().BeEquivalentTo(expectation);
+        _blockchainBridge.TryGetTransaction(transactions[index].Hash!, out TransactionLookupResult? result).Should().BeTrue();
+        result!.Value.Transaction.Should().BeEquivalentTo(Build.A.Transaction.WithNonce((UInt256)index).WithHash(TestItem.Keccaks[index]).TestObject);
+        result.Value.ExtraData.Should().BeEquivalentTo(new TransactionForRpcContext(
+            chainId: _specProvider.ChainId,
+            blockHash: block.Hash,
+            blockNumber: block.Number,
+            txIndex: receipts[index].Index,
+            blockTimestamp: block.Timestamp,
+            baseFee: UInt256.Zero,
+            receipt: receipts[index]));
     }
 
     [Test]
@@ -666,5 +685,25 @@ public class BlockchainBridgeTests
         }
 
         testFactory.Received().Create();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_true_when_stateReader_returns_true()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        _stateReader.HasStateForBlock(header).Returns(true);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_false_when_stateReader_returns_false()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(250).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        _stateReader.HasStateForBlock(header).Returns(false);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
     }
 }

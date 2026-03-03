@@ -76,7 +76,7 @@ public interface INetworkConfig : IConfig
     uint MaxNettyArenaCount { get; set; }
 
     [ConfigItem(DefaultValue = "", Description = "A comma-separated enode list to be used as boot nodes.")]
-    string Bootnodes { get; set; }
+    NetworkNode[] Bootnodes { get; set; }
 
     [ConfigItem(DefaultValue = "false", Description = "Whether to enable automatic port forwarding via UPnP.")]
     bool EnableUPnP { get; set; }

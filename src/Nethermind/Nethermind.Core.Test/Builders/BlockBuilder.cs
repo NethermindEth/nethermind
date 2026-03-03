@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
@@ -98,7 +97,7 @@ namespace Nethermind.Core.Test.Builders
             }
 
             BlockBuilder result = WithTransactions(txs);
-            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, Rlp.GetStreamDecoder<TxReceipt>()!);
+            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, Rlp.GetStreamEncoder<TxReceipt>()!);
             TestObjectInternal.Header.ReceiptsRoot = receiptHash;
             return result;
         }

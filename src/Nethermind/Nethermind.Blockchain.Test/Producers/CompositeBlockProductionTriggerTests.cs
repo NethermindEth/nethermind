@@ -7,6 +7,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers;
 
+[Parallelizable(ParallelScope.All)]
 public class CompositeBlockProductionTriggerTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]

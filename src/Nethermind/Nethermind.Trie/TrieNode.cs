@@ -32,11 +32,7 @@ namespace Nethermind.Trie
 #endif
 
         private static readonly object _nullNode = new();
-        private static readonly TrieNodeDecoder _nodeDecoder = new();
         private static readonly AccountDecoder _accountDecoder = new();
-
-        private static readonly Action<TrieNode, Hash256?, TreePath> _markPersisted = static (tn, _, _) =>
-            tn.IsPersisted = true;
 
         private const byte _dirtyMask = 0b001;
         private const byte _persistedMask = 0b010;
@@ -595,6 +591,29 @@ namespace Nethermind.Trie
             }
         }
 
+        public byte[]? GetInlineNodeRlp(int i)
+        {
+            SpanSource rlp = _rlp;
+            if (rlp.IsNull)
+            {
+                return null;
+            }
+
+            ValueRlpStream rlpStream = new(rlp);
+            SeekChild(ref rlpStream, i);
+
+            int prefixValue = rlpStream.PeekByte();
+            if (prefixValue < 192)
+            {
+                return null;
+            }
+            else
+            {
+                int length = rlpStream.PeekNextRlpLength();
+                return rlpStream.Read(length).ToArray();
+            }
+        }
+
         public bool GetChildHashAsValueKeccak(int i, out ValueHash256 keccak)
         {
             Unsafe.SkipInit(out keccak);
@@ -707,7 +726,7 @@ namespace Nethermind.Trie
             return childNode;
         }
 
-        public TrieNode? GetChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int childIndex)
+        public TrieNode? GetChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int childIndex, bool keepChildRef = false)
         {
             /* extensions store value before the child while branches store children before the value
              * so just to treat them in the same way we update index on extensions
@@ -739,7 +758,7 @@ namespace Nethermind.Trie
             // Don't unresolve nodes with path length <= 4; there should be relatively few and they should fit
             // in RAM, but they are hit quite a lot, and don't have very good data locality.
             // That said, in practice, it does nothing notable, except for significantly improving benchmark score.
-            if (child?.IsPersisted == true && childPath.Length > 4 && childPath.Length % 2 == 0)
+            if (child?.IsPersisted == true && !keepChildRef && childPath.Length > 4 && childPath.Length % 2 == 0)
             {
                 UnresolveChild(childIndex);
             }
@@ -1256,12 +1275,6 @@ namespace Nethermind.Trie
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                 data = childOrRef = child;
 
-                                if (IsPersisted && !child.IsPersisted)
-                                {
-                                    child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
-                                        NullLogger.Instance);
-                                }
-
                                 break;
                             }
                         default:
@@ -1447,12 +1460,6 @@ namespace Nethermind.Trie
 
                                     TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                     data = childOrRef = child;
-
-                                    if (node.IsPersisted && !child.IsPersisted)
-                                    {
-                                        child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
-                                            NullLogger.Instance);
-                                    }
 
                                     break;
                                 }

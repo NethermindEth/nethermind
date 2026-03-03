@@ -117,7 +117,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     }
 
     [TestCase("mainnet archive", 4096000000)]
-    [TestCase("mainnet ^archive", 2048000000)]
+    [TestCase("mainnet ^archive", 1024000000)]
     [TestCase("volta archive", 768000000)]
     [TestCase("volta ^archive", 768000000)]
     [TestCase("gnosis archive", 1024000000)]

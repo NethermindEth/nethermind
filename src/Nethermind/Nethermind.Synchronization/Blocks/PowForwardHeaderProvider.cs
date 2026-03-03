@@ -175,6 +175,12 @@ public class PowForwardHeaderProvider(
                 syncPeerPool.ReportWeakPeer(bestPeer, AllocationContexts.ForwardHeader);
                 return null;
             }
+            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+            {
+                // Request was cancelled due to timeout in protocol handler, not because the sync was cancelled
+                syncPeerPool.ReportWeakPeer(bestPeer, AllocationContexts.ForwardHeader);
+                return null;
+            }
             catch (EthSyncException e)
             {
                 if (_logger.IsDebug) _logger.Debug($"Failed to download forward header from {bestPeer}, {e}");

@@ -28,10 +28,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
-using Nethermind.Api;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Modules;
-using Nethermind.State;
 
 namespace Nethermind.Clique.Test;
 

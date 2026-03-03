@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -12,7 +11,8 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test;
 
 [TestFixture]
-[Parallelizable(ParallelScope.Self)]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class ReorgDepthFinalizedStateProviderTests
 {
     private IBlockTree _blockTree = null!;

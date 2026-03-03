@@ -11,12 +11,11 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using NSubstitute;
@@ -48,17 +47,14 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
-        public void DecorateReleaseSpecWithAuraReleaseSpec()
+        public void ApplyToReleaseSpec_sets_Eip158IgnoredAccount()
         {
-            ChainSpec chainSpec = new();
-            chainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters());
-            using IContainer container = new ContainerBuilder()
-                .AddModule(new TestNethermindModule())
-                .AddModule(new AuRaModule(chainSpec))
-                .Build();
+            AuRaChainSpecEngineParameters parameters = new();
+            ReleaseSpec spec = new();
 
-            container.Resolve<ISpecProvider>().GetSpec(Build.A.BlockHeader.WithNumber(10).TestObject)
-                .Should().BeOfType<AuRaReleaseSpecDecorator>();
+            parameters.ApplyToReleaseSpec(spec, 0, null);
+
+            spec.Eip158IgnoredAccount.Should().Be(Address.SystemUser);
         }
 
     }

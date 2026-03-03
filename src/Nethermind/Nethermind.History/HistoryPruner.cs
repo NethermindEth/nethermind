@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -544,7 +543,7 @@ public class HistoryPruner : IHistoryPruner
         }
         else
         {
-            UpdateDeletePointer(val.AsRlpStream().DecodeLong());
+            UpdateDeletePointer(val.AsRlpValueContext().DecodeLong());
             _lastSavedDeletePointer = _deletePointer;
             _hasLoadedDeletePointer = true;
         }

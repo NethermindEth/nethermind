@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
@@ -53,7 +52,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddSingleton<IMasternodeVotingContract, XdcTestDepositContract>()
 
             // add missing components
-            .AddSingleton<IPenaltyHandler, RandomPenaltyHandler>()
+            .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<IForensicsProcessor, TrustyForensics>()
 
             // Environments

@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -132,7 +131,7 @@ public class Eth69ProtocolHandlerTests
     }
 
     [Test] // From Eth63ProtocolHandlerTests
-    public void Should_not_send_receipts_message_larger_than_2MB()
+    public void Should_not_exceed_soft_message_size_limit_for_receipts()
     {
         const int count = 512;
         using var msg = new GetReceiptsMessage66(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
@@ -141,7 +140,7 @@ public class Eth69ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth63MessageCode.GetReceipts);
 
-        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage69>(r => r.EthMessage.TxReceipts.Count == 14));
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage69>(r => r.EthMessage.TxReceipts.Count == 64));
     }
 
     [Test]

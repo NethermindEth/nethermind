@@ -40,7 +40,7 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
 
         if (_logger.IsInfo) _logger.Info($"Static node added: {enode}");
 
-        Node node = new(networkNode);
+        Node node = new(networkNode, isStatic: true);
         NodeAdded?.Invoke(this, new NodeEventArgs(node));
 
         if (updateFile)

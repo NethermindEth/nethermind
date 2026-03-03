@@ -47,28 +47,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             stream.Encode(message.Bytes);
         }
 
-        public GetTrieNodesMessage Deserialize(IByteBuffer byteBuffer)
+        public GetTrieNodesMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private static GetTrieNodesMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             GetTrieNodesMessage message = new();
-            NettyRlpStream stream = new(byteBuffer);
+            ctx.ReadSequenceLength();
 
-            stream.ReadSequenceLength();
-
-            message.RequestId = stream.DecodeLong();
-            message.RootHash = stream.DecodeKeccak();
+            message.RequestId = ctx.DecodeLong();
+            message.RootHash = ctx.DecodeKeccak();
             PathGroup defaultValue = _defaultPathGroup;
-            message.Paths = stream.DecodeArrayPoolList(DecodeGroup, defaultElement: defaultValue);
+            message.Paths = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
+                new PathGroup
+                {
+                    Group = c.DecodeArray(static (ref Rlp.ValueDecoderContext inner) => inner.DecodeByteArray(), defaultElement: [])
+                }, defaultElement: defaultValue);
 
-            message.Bytes = stream.DecodeLong();
+            message.Bytes = ctx.DecodeLong();
 
             return message;
         }
-
-        private PathGroup DecodeGroup(RlpStream stream) =>
-            new()
-            {
-                Group = stream.DecodeArray(s => stream.DecodeByteArray(), defaultElement: [])
-            };
 
         private static (int contentLength, int allPathsLength, int[] pathsLengths) CalculateLengths(GetTrieNodesMessage message)
         {

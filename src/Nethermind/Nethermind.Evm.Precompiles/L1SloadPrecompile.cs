@@ -2,13 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
-using Nethermind.Logging;
 
 namespace Nethermind.Evm.Precompiles;
 

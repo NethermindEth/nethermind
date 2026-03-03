@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Network
@@ -14,5 +13,6 @@ namespace Nethermind.Network
         IReadOnlyCollection<Peer> ConnectedPeers { get; }
         int MaxActivePeers { get; }
         int ActivePeersCount { get; }
+        int ConnectedPeersCount { get; }
     }
 }

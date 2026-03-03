@@ -3,14 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Configuration;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -43,7 +40,6 @@ using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Init.Modules;
 
 namespace Nethermind.Core.Test.Blockchain;
@@ -327,7 +323,7 @@ public class TestBlockchain : IDisposable
             // Eip2935
             if (specProvider.GenesisSpec.IsBlockHashInStateAvailable)
             {
-                state.CreateAccount(specProvider.GenesisSpec.Eip2935ContractAddress, 1);
+                state.CreateAccount(specProvider.GenesisSpec.Eip2935ContractAddress!, 1);
             }
 
             state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
@@ -464,6 +460,11 @@ public class TestBlockchain : IDisposable
     public async Task AddBlockMayMissTx(params Transaction[] transactions)
     {
         await TestUtil.AddBlockAndWaitForHead(true, CreateCancellationSource().Token, transactions);
+    }
+
+    public async Task AddBlockMayHaveExtraTx(params Transaction[] transactions)
+    {
+        await TestUtil.AddBlockMayHaveExtraTx(true, CreateCancellationSource().Token, transactions);
     }
 
     public async Task AddBlockThroughPoW(params Transaction[] transactions)

@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using NUnit.Framework;
 using Nethermind.Evm.Precompiles.Bls;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Specs;
 
 namespace Nethermind.Evm.Test;

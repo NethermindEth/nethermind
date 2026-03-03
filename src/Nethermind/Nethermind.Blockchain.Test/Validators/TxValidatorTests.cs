@@ -15,6 +15,7 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -26,12 +27,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
+[Parallelizable(ParallelScope.All)]
 public class TxValidatorTests
 {
-    [SetUp]
-    public void Setup()
-    {
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Curve_is_correct()
@@ -58,6 +56,20 @@ public class TxValidatorTests
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
+    }
+
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(0, ExpectedResult = false, TestName = "R equal to N is not valid")]
+    [TestCase(1, ExpectedResult = true, TestName = "R equal to N minus one is valid")]
+    public bool R_boundary_values(int subtractFromN)
+    {
+        UInt256 r = Secp256K1Curve.N - (UInt256)subtractFromN;
+        UInt256 s = UInt256.One;
+        Signature signature = new(r, s, (ulong)CalculateV());
+        Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        return txValidator.IsWellFormed(tx, MuirGlacier.Instance);
     }
 
     private static byte CalculateV() => (byte)EthereumEcdsaExtensions.CalculateV(TestBlockchainIds.ChainId);
@@ -130,7 +142,7 @@ public class TxValidatorTests
         Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
         releaseSpec.IsEip155Enabled.Returns(false);
         releaseSpec.ValidateChainId.Returns(validateChainId);
 

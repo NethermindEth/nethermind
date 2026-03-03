@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Frozen;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -198,10 +199,10 @@ namespace Nethermind.Core.Specs
         bool IsEip2930Enabled { get; }
 
         /// <summary>
-        /// Should EIP158 be ignored for this account.
+        /// Account for which EIP-158 state clearing should be ignored.
         /// </summary>
-        /// <remarks>This is needed for SystemUser account compatibility with Parity.</remarks>
-        bool IsEip158IgnoredAccount(Address address);
+        /// <remarks>This is needed for SystemUser account compatibility with Parity on AuRa chains.</remarks>
+        Address? Eip158IgnoredAccount => null;
 
         /// <summary>
         /// BaseFee opcode
@@ -272,20 +273,23 @@ namespace Nethermind.Core.Specs
         /// EIP-6110: Supply validator deposits on chain
         /// </summary>
         bool IsEip6110Enabled { get; }
-        Address DepositContractAddress { get; }
+        [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
+        Address? DepositContractAddress { get; }
 
         /// <summary>
         /// Execution layer triggerable exits
         /// </summary>
         bool IsEip7002Enabled { get; }
-        Address Eip7002ContractAddress { get; }
+        [MemberNotNullWhen(true, nameof(Eip7002ContractAddress))]
+        Address? Eip7002ContractAddress { get; }
 
 
         /// <summary>
         /// EIP-7251: triggered consolidations
         /// </summary>
         bool IsEip7251Enabled { get; }
-        Address Eip7251ContractAddress { get; }
+        [MemberNotNullWhen(true, nameof(IsEip7251Enabled))]
+        Address? Eip7251ContractAddress { get; }
 
 
         /// <summary>
@@ -297,7 +301,8 @@ namespace Nethermind.Core.Specs
         /// Fetch blockHashes from the state for BLOCKHASH opCode
         /// </summary>
         bool IsEip7709Enabled { get; }
-        Address Eip2935ContractAddress { get; }
+        [MemberNotNullWhen(true, nameof(Eip2935ContractAddress))]
+        Address? Eip2935ContractAddress { get; }
 
         /// <summary>
         /// EIP-2935 ring buffer size for historical block hash storage.
@@ -441,5 +446,12 @@ namespace Nethermind.Core.Specs
         /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
         /// </summary>
         public bool IsRip7728Enabled { get; }
+
+        /// <summary>
+        /// Precomputed gas cost and refund constants derived from this spec.
+        /// Values are cached per spec instance (singletons per fork) to avoid
+        /// repeated interface dispatch on the EVM opcode hot path.
+        /// </summary>
+        SpecGasCosts GasCosts { get; }
     }
 }

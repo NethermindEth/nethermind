@@ -15,9 +15,12 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Core.Test;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockValidatorTests
 {
     private static BlockValidator _blockValidator = null!;
@@ -85,7 +88,7 @@ public class BlockValidatorTests
     public void ValidateBodyAgainstHeader_BlockIsValid_ReturnsTrue()
     {
         Block block = Build.A.Block
-            .WithTransactions(1, Substitute.For<IReleaseSpec>())
+            .WithTransactions(1, ReleaseSpecSubstitute.Create())
             .WithWithdrawals(1)
             .TestObject;
 
@@ -99,7 +102,7 @@ public class BlockValidatorTests
     public void ValidateBodyAgainstHeader_BlockHasInvalidTxRoot_ReturnsFalse()
     {
         Block block = Build.A.Block
-            .WithTransactions(1, Substitute.For<IReleaseSpec>())
+            .WithTransactions(1, ReleaseSpecSubstitute.Create())
             .WithWithdrawals(1)
             .TestObject;
         block.Header.TxRoot = Keccak.OfAnEmptyString;
@@ -114,7 +117,7 @@ public class BlockValidatorTests
     public void ValidateBodyAgainstHeader_BlockHasInvalidUnclesRoot_ReturnsFalse()
     {
         Block block = Build.A.Block
-            .WithTransactions(1, Substitute.For<IReleaseSpec>())
+            .WithTransactions(1, ReleaseSpecSubstitute.Create())
             .WithWithdrawals(1)
             .TestObject;
         block.Header.UnclesHash = Keccak.OfAnEmptyString;
@@ -128,7 +131,7 @@ public class BlockValidatorTests
     public void ValidateBodyAgainstHeader_BlockHasInvalidWithdrawalsRoot_ReturnsFalse()
     {
         Block block = Build.A.Block
-            .WithTransactions(1, Substitute.For<IReleaseSpec>())
+            .WithTransactions(1, ReleaseSpecSubstitute.Create())
             .WithWithdrawals(1)
             .TestObject;
         block.Header.WithdrawalsRoot = Keccak.OfAnEmptyString;

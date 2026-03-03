@@ -52,6 +52,15 @@ internal static class ArrayPoolListCore<T>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ClearTail(T[] array, int newCount, int oldCount)
+    {
+        if (RuntimeHelpers.IsReferenceOrContainsReferences<T>() && newCount < oldCount)
+        {
+            Array.Clear(array, newCount, oldCount - newCount);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Add(
         ArrayPool<T> pool,
         ref T[] array,
@@ -108,9 +117,9 @@ internal static class ArrayPoolListCore<T>
             ClearToCount(oldArray, oldCount);
             pool.Return(oldArray);
         }
-        else if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+        else
         {
-            Array.Clear(array, newCount, oldCount - newCount);
+            ClearTail(array, newCount, oldCount);
         }
 
         [DoesNotReturn]
@@ -192,7 +201,7 @@ internal static class ArrayPoolListCore<T>
             int start = index + 1;
             if (start < count)
             {
-                array.AsMemory(start, count - index).CopyTo(array.AsMemory(index));
+                array.AsMemory(start, count - start).CopyTo(array.AsMemory(index));
             }
 
             count--;
@@ -228,6 +237,7 @@ internal static class ArrayPoolListCore<T>
     public static void Truncate(int newLength, T[] array, ref int count)
     {
         GuardIndex(newLength, count, shouldThrow: true, allowEqualToCount: true);
+        ClearTail(array, newLength, count);
         count = newLength;
     }
 

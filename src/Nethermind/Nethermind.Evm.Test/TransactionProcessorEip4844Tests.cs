@@ -18,7 +18,6 @@ using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 
@@ -108,7 +107,7 @@ internal class TransactionProcessorEip4844Tests
         yield return new TestCaseData(1.Ether(), (int)Cancun.Instance.MaxBlobCount, 1ul, 0ul, 0ul)
         {
             TestName = "Blob gas consumed for max blobs",
-            ExpectedResult = (UInt256)(GasCostOf.Transaction + Cancun.Instance.GetMaxBlobGasPerBlock()),
+            ExpectedResult = (UInt256)(GasCostOf.Transaction + Cancun.Instance.GasCosts.MaxBlobGasPerBlock),
         };
         yield return new TestCaseData(1.Ether(), 1, 10ul, 0ul, 0ul)
         {

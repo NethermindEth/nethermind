@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using Ethereum.Test.Base;
 using FluentAssertions;
 using NUnit.Framework;

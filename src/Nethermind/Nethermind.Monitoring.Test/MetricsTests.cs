@@ -8,6 +8,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -50,6 +52,9 @@ public class MetricsTests
         [System.ComponentModel.Description("A test description")]
         [DetailedMetric]
         public static long DetailedMetric { get; set; }
+
+        [DetailedMetricOnFlag]
+        public static bool DetailedMetricsEnabled { get; set; }
     }
 
     public enum SomeEnum
@@ -131,6 +136,7 @@ public class MetricsTests
         Dictionary<string, MetricsController.IMetricUpdater> updater = metricsController._individualUpdater;
         string metricName = "TestMetrics.DetailedMetric";
         Assert.That(updater.ContainsKey(metricName), Is.EqualTo(enableDetailedMetric));
+        Assert.That(TestMetrics.DetailedMetricsEnabled, Is.EqualTo(enableDetailedMetric));
     }
 
     [Test]
@@ -173,6 +179,45 @@ public class MetricsTests
     }
 
     [Test]
+    public void UpdateAllMetrics_does_not_throw_when_registration_is_concurrent()
+    {
+        MetricsConfig metricsConfig = new() { Enabled = true };
+        MetricsController metricsController = new(metricsConfig);
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(2));
+        CancellationToken ct = cts.Token;
+
+        // Continuously call UpdateAllMetrics on one thread while registering metrics on another
+        Task updater = Task.Run(() =>
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                metricsController.UpdateAllMetrics();
+            }
+        });
+
+        Task registrar = Task.Run(() =>
+        {
+            Type[] types =
+            [
+                typeof(TestMetrics),
+                typeof(Blockchain.Metrics),
+                typeof(Evm.Metrics),
+                typeof(Network.Metrics),
+                typeof(Db.Metrics),
+            ];
+
+            for (int i = 0; !ct.IsCancellationRequested; i++)
+            {
+                metricsController.RegisterMetrics(types[i % types.Length]);
+                metricsController.AddMetricsUpdateAction(() => { });
+            }
+        });
+
+        Assert.DoesNotThrowAsync(() => Task.WhenAll(updater, registrar));
+    }
+
+    [Test]
     public void All_config_items_have_descriptions()
     {
         ValidateMetricsDescriptions();
@@ -202,13 +247,14 @@ public class MetricsTests
                 PropertyInfo[] properties = metricsType.GetProperties(BindingFlags.Static | BindingFlags.Public);
                 foreach (PropertyInfo property in properties)
                 {
+                    if (property.GetCustomAttribute<DetailedMetricOnFlagAttribute>() is not null) continue;
                     try
                     {
                         verifier(property);
                     }
-                    catch (Exception e)
+                    catch (AssertionException e)
                     {
-                        throw new Exception(property.Name, e);
+                        throw new AssertionException($"{property.Name}: {e.Message}", e);
                     }
                 }
             }
