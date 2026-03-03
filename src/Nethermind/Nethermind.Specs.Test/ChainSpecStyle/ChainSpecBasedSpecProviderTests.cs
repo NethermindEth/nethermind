@@ -800,7 +800,7 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
-    public void Eip150_and_Eip2537_fork_by_block_number()
+    public void Max_code_size_forks_by_block_number()
     {
         ChainSpec chainSpec = new()
         {
@@ -829,7 +829,7 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
-    public void Eip150_and_Eip2537_fork_by_timestamp()
+    public void Max_code_size_forks_by_timestamp()
     {
         ChainSpec chainSpec = new()
         {
