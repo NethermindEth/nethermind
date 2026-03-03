@@ -1,12 +1,18 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Snap;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -17,7 +23,7 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// ISnapTree adapter for flat snap sync (storage).
 /// Owns reader (for IsPersisted) and writeBatch (for commits), disposing them on Dispose.
 /// </summary>
-public class FlatSnapStorageTree : ISnapTree
+public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
 {
     private readonly IPersistence.IPersistenceReader _reader;
     private readonly IPersistence.IWriteBatch _writeBatch;
@@ -44,9 +50,21 @@ public class FlatSnapStorageTree : ISnapTree
         return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
     }
 
-    public void BulkSetAndUpdateRootHash(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries)
+    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries)
     {
-        _tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
+        // Write flat entries directly — no need to decode from trie nodes later
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            PathWithStorageSlot slot = entries[i];
+            Rlp.ValueDecoderContext ctx = ((ReadOnlySpan<byte>)slot.SlotRlpValue).AsRlpValueContext();
+            _writeBatch.SetStorageRaw(_addressHash, slot.Path.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
+
+            bulkEntries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
+            Interlocked.Add(ref Nethermind.Synchronization.Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
+        }
+
+        _tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
         _tree.UpdateRootHash();
     }
 
@@ -63,7 +81,8 @@ public class FlatSnapStorageTree : ISnapTree
     }
 
     /// <summary>
-    /// Storage trie store adapter that writes trie nodes AND flat storage entries to IPersistence.IWriteBatch.
+    /// Storage trie store adapter that writes trie nodes to IPersistence.IWriteBatch.
+    /// Flat entries are written directly in BulkSetAndUpdateRootHash, so the committer only writes trie nodes.
     /// Uses IPersistenceReader for IsPersisted queries during snap sync.
     /// </summary>
     private class PersistenceStorageTrieStoreAdapter(
@@ -84,7 +103,6 @@ public class FlatSnapStorageTree : ISnapTree
             public TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
                 writeBatch.SetStorageTrieNode(address, path, node);
-                FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
                 return node;
             }
 

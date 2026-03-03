@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.State.Flat.Sync.Snap;
@@ -20,7 +21,7 @@ public class FlatSnapTrieFactory(IPersistence persistence, ILogManager logManage
 
     private bool _initialized = false;
 
-    public ISnapTree CreateStateTree()
+    public ISnapTree<PathWithAccount> CreateStateTree()
     {
         EnsureDatabaseCleared();
 
@@ -29,7 +30,7 @@ public class FlatSnapTrieFactory(IPersistence persistence, ILogManager logManage
         return new FlatSnapStateTree(reader, writeBatch, logManager);
     }
 
-    public ISnapTree CreateStorageTree(in ValueHash256 accountPath)
+    public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath)
     {
         EnsureDatabaseCleared();
 

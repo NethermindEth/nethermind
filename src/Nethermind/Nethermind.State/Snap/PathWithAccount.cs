@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Snap
 {
-    public class PathWithAccount
+    public class PathWithAccount : ISnapEntry
     {
         public PathWithAccount() { }
 

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
-using Nethermind.Core.Collections;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.State.Snap;
 using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.SnapSync;
@@ -12,12 +12,12 @@ namespace Nethermind.Synchronization.SnapSync;
 /// <summary>
 /// Base interface for snap sync tree operations used in FillBoundaryTree.
 /// </summary>
-public interface ISnapTree : IDisposable
+public interface ISnapTree<TEntry> : IDisposable where TEntry : ISnapEntry
 {
     Hash256 RootHash { get; }
 
     void SetRootFromProof(TrieNode root);
     bool IsPersisted(in TreePath path, in ValueHash256 keccak);
-    void BulkSetAndUpdateRootHash(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries);
+    void BulkSetAndUpdateRootHash(IReadOnlyList<TEntry> entries);
     void Commit(ValueHash256 upperBound);
 }
