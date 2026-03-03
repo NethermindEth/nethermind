@@ -521,4 +521,16 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     }
 }
 
-public record struct ChangeAtIndex(Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads);
+public record struct ChangeAtIndex(Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads)
+{
+    public override string ToString()
+    {
+        int slotChangeCount = 0;
+        foreach (SlotChanges _ in SlotChanges)
+        {
+            slotChangeCount++;
+        }
+
+        return $"{nameof(ChangeAtIndex)}({Address}, Balance={BalanceChange?.PostBalance}, Nonce={NonceChange?.NewNonce}, Code={CodeChange is not null}, Slots={slotChangeCount}, Reads={Reads})";
+    }
+}
