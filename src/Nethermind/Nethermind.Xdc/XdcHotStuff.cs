@@ -455,6 +455,7 @@ namespace Nethermind.Xdc
         public async Task StopAsync()
         {
             Task? task;
+            CancellationTokenSource? cts;
 
             lock (_lockObject)
             {
@@ -463,6 +464,7 @@ namespace Nethermind.Xdc
                     return;
                 }
 
+                cts = _cancellationTokenSource;
                 task = _runTask;
                 _cancellationTokenSource = null;
                 _runTask = null;
@@ -470,9 +472,8 @@ namespace Nethermind.Xdc
 
             _logger.Debug("Stopping XdcHotStuff consensus runner...");
 
-            // Signal cancellation
-            _cancellationTokenSource?.Cancel();
-            // Wait for task completion
+            cts.Cancel();
+
             if (task != null)
             {
                 try
@@ -485,7 +486,7 @@ namespace Nethermind.Xdc
                 }
             }
 
-            _cancellationTokenSource?.Dispose();
+            cts.Dispose();
             _logger.Info("XdcHotStuff consensus runner stopped");
         }
 
