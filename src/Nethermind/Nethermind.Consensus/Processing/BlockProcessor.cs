@@ -138,8 +138,7 @@ public partial class BlockProcessor(
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
-            // Get the accounts that have been changed
-            block.AccountChanges = ((IWorldState)_stateProvider).GetAccountChanges();
+            SetAccountChanges(block);
         }
 
         if (ShouldComputeStateRoot(header))
@@ -167,6 +166,10 @@ public partial class BlockProcessor(
                 return receipts;
             });
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void SetAccountChanges(Block block)
+        => block.AccountChanges = _stateProvider.GetAccountChanges();
 
     private void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {

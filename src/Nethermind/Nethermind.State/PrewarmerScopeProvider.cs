@@ -113,16 +113,15 @@ public class PrewarmerScopeProvider(
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (populatePreBlockCache)
             {
-                long priorReads = Metrics.ThreadLocalStateTreeReads;
-                Account? account = preBlockCache.GetOrAdd(address, GetFromBaseTree);
-
-                if (Metrics.ThreadLocalStateTreeReads == priorReads)
+                if (preBlockCache.TryGetValue(addressAsKey, out Account? account))
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
                     Metrics.IncrementStateTreeCacheHits();
                 }
                 else
                 {
+                    account = GetFromBaseTree(addressAsKey);
+                    preBlockCache.Set(in addressAsKey, account);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
                 }
                 return account;
@@ -171,18 +170,15 @@ public class PrewarmerScopeProvider(
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (populatePreBlockCache)
             {
-                long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
-
-                byte[] value = preBlockCache.GetOrAdd(storageCell, LoadFromTreeStorage);
-
-                if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
+                if (preBlockCache.TryGetValue(storageCell, out byte[] value))
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
-                    // Read from Concurrent Cache
                     Db.Metrics.IncrementStorageTreeCache();
                 }
                 else
                 {
+                    value = LoadFromTreeStorage(storageCell);
+                    preBlockCache.Set(in storageCell, value);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
                 }
                 return value;
