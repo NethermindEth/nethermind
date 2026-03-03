@@ -56,7 +56,7 @@ public class DebugRpcModule(
         return ResultWrapper<int>.Success(debugBridge.DeleteChainSlice(startNumber, force));
     }
 
-    public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
+    public async Task<ResultWrapper<GethLikeTxTrace>> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
         Hash256? blockHash = debugBridge.GetTransactionBlockHash(transactionHash);
         if (blockHash is null)
@@ -72,7 +72,7 @@ public class DebugRpcModule(
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
+        GethLikeTxTrace? transactionTrace = await debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash}", ErrorCodes.ResourceNotFound);
@@ -82,7 +82,7 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
+    public async Task<ResultWrapper<GethLikeTxTrace>> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         blockParameter ??= BlockParameter.Latest;
 
@@ -107,7 +107,7 @@ public class DebugRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        GethLikeTxTrace transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
+        GethLikeTxTrace transactionTrace = await debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {tx.Hash}", ErrorCodes.ResourceNotFound);
@@ -117,7 +117,7 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
+    public async Task<ResultWrapper<GethLikeTxTrace>> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
         var header = TryGetHeader<GethLikeTxTrace>(blockhash, out var headerError);
         if (headerError is not null)
@@ -127,7 +127,7 @@ public class DebugRpcModule(
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
-        var transactionTrace = debugBridge.GetTransactionTrace(blockhash, index, cancellationToken, options);
+        var transactionTrace = await debugBridge.GetTransactionTrace(blockhash, index, cancellationToken, options);
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockhash}", ErrorCodes.ResourceNotFound);
@@ -137,7 +137,7 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
+    public async Task<ResultWrapper<GethLikeTxTrace>> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
     {
         var header = TryGetHeader<GethLikeTxTrace>(blockParameter, out var headerError);
         if (headerError is not null)
@@ -153,7 +153,7 @@ public class DebugRpcModule(
             throw new InvalidDataException("Block number value incorrect");
         }
 
-        var transactionTrace = debugBridge.GetTransactionTrace(blockNo.Value, index, cancellationToken, options);
+        var transactionTrace = await debugBridge.GetTransactionTrace(blockNo.Value, index, cancellationToken, options);
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorCodes.ResourceNotFound);
@@ -163,7 +163,7 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, GethTraceOptions options = null)
+    public async Task<ResultWrapper<GethLikeTxTrace>> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, GethTraceOptions options = null)
     {
         var block = TryGetBlock<GethLikeTxTrace>(new Rlp(blockRlp), out var blockError);
         if (blockError is not null)
@@ -173,7 +173,7 @@ public class DebugRpcModule(
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
-        var transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, options);
+        var transactionTrace = await debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, options);
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transactionTrace hash {transactionHash}", ErrorCodes.ResourceNotFound);
@@ -182,7 +182,7 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
+    public async Task<ResultWrapper<GethLikeTxTrace>> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
     {
         var block = TryGetBlock<GethLikeTxTrace>(new Rlp(blockRlp), out var blockError);
         if (blockError is not null)
@@ -192,7 +192,7 @@ public class DebugRpcModule(
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
-        var blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, options);
+        var blockTrace = await debugBridge.GetBlockTrace(block, cancellationToken, options);
         var transactionTrace = blockTrace?.ElementAtOrDefault(txIndex);
         if (transactionTrace is null)
         {
@@ -211,7 +211,7 @@ public class DebugRpcModule(
         return Task.FromResult(ResultWrapper<bool>.Success(true));
     }
 
-    public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
+    public async Task<ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
     {
         var block = TryGetBlock<IReadOnlyCollection<GethLikeTxTrace>>(new Rlp(blockRlp), out var blockError);
         if (blockError is not null)
@@ -223,7 +223,7 @@ public class DebugRpcModule(
         CancellationToken cancellationToken = timeout.Token;
         try
         {
-            var blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, options);
+            var blockTrace = await debugBridge.GetBlockTrace(block, cancellationToken, options);
 
             if (blockTrace is null)
                 return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for RLP {blockRlp.ToHexString()}", ErrorCodes.ResourceNotFound);
@@ -242,7 +242,7 @@ public class DebugRpcModule(
         }
     }
 
-    public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
+    public async Task<ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
     {
         var header = TryGetHeader<IReadOnlyCollection<GethLikeTxTrace>>(blockNumber, out var headerError);
         if (headerError is not null)
@@ -253,7 +253,7 @@ public class DebugRpcModule(
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(blockNumber, cancellationToken, options);
+        IReadOnlyCollection<GethLikeTxTrace>? blockTrace = await debugBridge.GetBlockTrace(blockNumber, cancellationToken, options);
 
         try
         {
@@ -270,7 +270,7 @@ public class DebugRpcModule(
         }
     }
 
-    public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
+    public async Task<ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
     {
         var header = TryGetHeader<IReadOnlyCollection<GethLikeTxTrace>>(blockHash, out var headerError);
         if (headerError is not null)
@@ -280,7 +280,7 @@ public class DebugRpcModule(
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
-        IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(new BlockParameter(blockHash), cancellationToken, options);
+        IReadOnlyCollection<GethLikeTxTrace>? blockTrace = await debugBridge.GetBlockTrace(new BlockParameter(blockHash), cancellationToken, options);
 
         try
         {
@@ -426,24 +426,24 @@ public class DebugRpcModule(
         return ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());
     }
 
-    public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
+    public async Task<ResultWrapper<IEnumerable<string>>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        IEnumerable<string>? files = debugBridge.TraceBlockToFile(blockHash, cancellationToken, options);
+        IEnumerable<string>? files = await debugBridge.TraceBlockToFile(blockHash, cancellationToken, options);
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_standardTraceBlockToFile)} request {blockHash}, result: {files}");
 
         return ResultWrapper<IEnumerable<string>>.Success(files);
     }
 
-    public ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
+    public async Task<ResultWrapper<IEnumerable<string>>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
         using CancellationTokenSource cancellationTokenSource = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-        IEnumerable<string>? files = debugBridge.TraceBadBlockToFile(blockHash, cancellationToken, options);
+        IEnumerable<string>? files = await debugBridge.TraceBadBlockToFile(blockHash, cancellationToken, options);
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_standardTraceBadBlockToFile)} request {blockHash}, result: {files}");
 
@@ -459,30 +459,30 @@ public class DebugRpcModule(
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         jsonRpcConfig.BuildTimeoutCancellationToken();
 
-    public ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
+    public Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         return new SimulateTxExecutor<GethLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
             .Execute(payload, blockParameter);
     }
 
-    public ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
+    public Task<ResultWrapper<IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         if (bundles is null)
-            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail("Bundles array cannot be null", ErrorCodes.InvalidParams);
+            return ResultWrapper<IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>>>.Fail("Bundles array cannot be null", ErrorCodes.InvalidParams);
 
         if (bundles.Length == 0)
-            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(Array.Empty<GethLikeTxTrace[]>());
+            return ResultWrapper<IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>>>.Success(AsyncEnumerable.Empty<IAsyncEnumerable<GethLikeTxTrace>>());
 
         for (int i = 0; i < bundles.Length; i++)
         {
             if (bundles[i]?.Transactions is null)
-                return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail($"Bundle at index {i} has null transactions", ErrorCodes.InvalidParams);
+                return ResultWrapper<IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>>>.Fail($"Bundle at index {i} has null transactions", ErrorCodes.InvalidParams);
         }
 
         blockParameter ??= BlockParameter.Latest;
 
-        BlockHeader header = TryGetHeader(blockParameter, out ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>? headerError);
+        BlockHeader header = TryGetHeader(blockParameter, out ResultWrapper<IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>>>? headerError);
         if (headerError is not null)
         {
             return headerError;
@@ -493,14 +493,14 @@ public class DebugRpcModule(
             : TraceCallMany(bundles, blockParameter, options, header);
     }
 
-    private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallMany(TransactionBundle[] bundles, BlockParameter blockParameter, GethTraceOptions? options, BlockHeader header)
+    private Task<ResultWrapper<IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>>>> TraceCallMany(TransactionBundle[] bundles, BlockParameter blockParameter, GethTraceOptions? options, BlockHeader header)
     {
         PrepareTransactions(bundles, header);
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = debugBridge
+        IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>> bundleTraces = debugBridge
             .GetBundleTraces(bundles, blockParameter, cancellationToken, options);
 
         if (_logger.IsTrace)
@@ -509,10 +509,10 @@ public class DebugRpcModule(
             _logger.Trace($"{nameof(debug_traceCallMany)} completed: {bundles.Length} bundles, {totalTransactions} transactions via simple path");
         }
 
-        return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
+        return ResultWrapper<IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
     }
 
-    private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
+    private async Task<ResultWrapper<IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
         PrepareTransactions(bundles, header);
         var simulatePayload = new SimulatePayload<TransactionForRpc>
@@ -530,7 +530,7 @@ public class DebugRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> simulationResult =
-            new SimulateTxExecutor<GethLikeTxTrace>(
+            await new SimulateTxExecutor<GethLikeTxTrace>(
                 blockchainBridge,
                 blockFinder,
                 jsonRpcConfig,
@@ -542,12 +542,12 @@ public class DebugRpcModule(
         {
             string errorMessage = simulationResult.Result ? $"Simulation failed with error code {simulationResult.ErrorCode}." : simulationResult.Result.ToString();
             if (_logger.IsWarn) _logger.Warn($"debug_traceCallMany simulation failed: Code={simulationResult.ErrorCode}, Details={errorMessage}");
-            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(errorMessage, simulationResult.ErrorCode);
+            return ResultWrapper<IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>>>.Fail(errorMessage, simulationResult.ErrorCode);
         }
 
-        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data.Select(blockResult => blockResult.Traces);
+        IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data.Select(blockResult => blockResult.Traces.ToAsyncEnumerable()).ToAsyncEnumerable();
 
-        return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
+        return ResultWrapper<IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
     }
 
     private void PrepareTransactions(TransactionBundle[] bundles, BlockHeader header)

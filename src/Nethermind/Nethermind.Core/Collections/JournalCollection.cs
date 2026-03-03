@@ -20,7 +20,7 @@ namespace Nethermind.Core.Collections
         private readonly List<T> _list = new();
         public int TakeSnapshot() => Count - 1;
 
-        public void Restore(int snapshot)
+        public void Restore(int snapshot, int? blockAccessIndex = null)
         {
             if (snapshot >= Count)
             {

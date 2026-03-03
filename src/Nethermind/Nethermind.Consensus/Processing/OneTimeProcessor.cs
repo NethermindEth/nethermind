@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Processing
             return _processor.StopAsync(processRemainingBlocks);
         }
 
-        public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)
+        public Task<Block?> Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)
         {
             lock (_lock)
             {

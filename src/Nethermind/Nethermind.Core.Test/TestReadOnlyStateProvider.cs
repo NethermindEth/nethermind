@@ -12,16 +12,16 @@ namespace Nethermind.Core.Test;
 
 public class TestReadOnlyStateProvider : IReadOnlyStateProvider
 {
-    private Dictionary<Address, AccountStruct> _accounts = new();
-    private Dictionary<ValueHash256, byte[]> _codes = new();
+    private readonly Dictionary<Address, AccountStruct> _accounts = [];
+    private readonly Dictionary<ValueHash256, byte[]> _codes = [];
 
-    public bool TryGetAccount(Address address, out AccountStruct account)
+    public bool TryGetAccount(Address address, out AccountStruct account, int? _ = null)
     {
         return _accounts.TryGetValue(address, out account);
     }
 
     public Hash256 StateRoot => throw new NotImplementedException();
-    public byte[]? GetCode(Address address)
+    public byte[]? GetCode(Address address, int? _ = null)
     {
         if (TryGetAccount(address, out AccountStruct account)) return _codes[account.CodeHash];
         return null;
@@ -32,17 +32,17 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
         return _codes[codeHash];
     }
 
-    public bool IsContract(Address address)
+    public bool IsContract(Address address, int? _ = null)
     {
         return TryGetAccount(address, out AccountStruct account) && account.IsContract;
     }
 
-    public bool AccountExists(Address address)
+    public bool AccountExists(Address address, int? _ = null)
     {
         return TryGetAccount(address, out AccountStruct _);
     }
 
-    public bool IsDeadAccount(Address address)
+    public bool IsDeadAccount(Address address, int? _ = null)
     {
         return !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;
     }
@@ -53,7 +53,7 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
     }
 
 
-    public void InsertCode(Address address, Memory<byte> code, IReleaseSpec spec)
+    public void InsertCode(Address address, Memory<byte> code, IReleaseSpec spec, int? _ = null)
     {
         InsertCode(code.ToArray(), address);
     }

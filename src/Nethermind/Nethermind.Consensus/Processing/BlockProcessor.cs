@@ -4,7 +4,9 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -15,6 +17,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -48,6 +51,7 @@ public partial class BlockProcessor
     private readonly ILogManager _logManager;
     private readonly IWithdrawalProcessor _withdrawalProcessor;
     private readonly IExecutionRequestsProcessor _executionRequestsProcessor;
+    private Hash256 _lastLoadedBal = Hash256.Zero;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -86,7 +90,7 @@ public partial class BlockProcessor
 
     public event Action? TransactionsExecuted;
 
-    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
+    public async Task<(Block Block, TxReceipt[] Receipts)> ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
@@ -94,12 +98,13 @@ public partial class BlockProcessor
         {
             _balBuilder.TracingEnabled = true;
             _balBuilder.GeneratedBlockAccessList.Clear();
-            _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
+            // _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
+            SetupBlockAccessLists(spec, suggestedBlock);
         }
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
+        TxReceipt[] receipts = await ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -125,7 +130,7 @@ public partial class BlockProcessor
     protected bool ShouldComputeStateRoot(BlockHeader header) =>
         !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
 
-    protected virtual TxReceipt[] ProcessBlock(
+    protected virtual async Task<TxReceipt[]> ProcessBlock(
         Block block,
         IBlockTracer blockTracer,
         ProcessingOptions options,
@@ -136,8 +141,10 @@ public partial class BlockProcessor
         BlockHeader header = block.Header;
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
+        // need one receipts / block tracer per thread & combine
         ReceiptsTracer.StartNewBlockTrace(block);
 
+        bool shouldComputeStateRoot = ShouldComputeStateRoot(header);
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
         StoreBeaconRoot(block, spec);
@@ -188,12 +195,13 @@ public partial class BlockProcessor
             block.AccountChanges = _stateProvider.GetAccountChanges();
         }
 
-        if (ShouldComputeStateRoot(header))
+        if (shouldComputeStateRoot)
         {
             _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
         }
 
+        // move everything inside some bal generator class?
         if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
         {
             if (block.IsGenesis)
@@ -202,9 +210,14 @@ public partial class BlockProcessor
             }
             else
             {
+                _balBuilder.GenerateBlockAccessList();
                 block.GeneratedBlockAccessList = _balBuilder.GeneratedBlockAccessList;
                 block.EncodedBlockAccessList = Rlp.Encode(_balBuilder.GeneratedBlockAccessList).Bytes;
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
+
+
+                // string y = $"Generated block access list:\n{block.GeneratedBlockAccessList}";
+                // Console.WriteLine(y);
             }
         }
 
@@ -352,6 +365,31 @@ public partial class BlockProcessor
                 UInt256 balance = _stateProvider.GetBalance(daoAccount);
                 _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
                 _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
+            }
+        }
+    }
+
+    // private void SetupBlockAccessLists(IReleaseSpec spec, BlockAccessList? suggestedBal, int txCount, bool isGenesis)
+    private void SetupBlockAccessLists(IReleaseSpec spec, Block suggested)
+    {
+        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+        {
+            _balBuilder.TracingEnabled = true;
+            _balBuilder.IsGenesis = suggested.IsGenesis;
+
+            if (_lastLoadedBal != suggested.Hash)
+            {
+                _balBuilder.LoadSuggestedBlockAccessList(suggested.BlockAccessList, suggested.GasUsed);
+            }
+            _lastLoadedBal = suggested.Hash;
+
+            if (_balBuilder.ParallelExecutionEnabled)
+            {
+                _balBuilder.SetupGeneratedAccessLists(_logManager, suggested.Transactions.Length);
+            }
+            else
+            {
+                _balBuilder.GeneratedBlockAccessList = new();
             }
         }
     }
