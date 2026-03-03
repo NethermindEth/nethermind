@@ -479,6 +479,36 @@ public class SeqlockCacheTests
     }
 
     [Test]
+    public void Value_type_can_be_cached()
+    {
+        SeqlockCache<StorageCell, StorageValue> cache = new();
+        StorageCell key = CreateKey(1);
+        StorageValue expected = new StorageValue(CreateValue(1));
+
+        cache.Set(in key, expected);
+        bool found = cache.TryGetValue(in key, out StorageValue value);
+
+        found.Should().BeTrue();
+        value.Should().Be(expected);
+    }
+
+    [Test]
+    public void Value_type_GetOrAdd_calls_factory_on_miss()
+    {
+        SeqlockCache<StorageCell, StorageValue> cache = new();
+        StorageCell key = CreateKey(1);
+        StorageValue expected = new StorageValue(CreateValue(1));
+
+        StorageValue result = cache.GetOrAdd(in key, (in StorageCell _) => expected);
+
+        result.Should().Be(expected);
+
+        bool found = cache.TryGetValue(in key, out StorageValue cached);
+        found.Should().BeTrue();
+        cached.Should().Be(expected);
+    }
+
+    [Test]
     public void Concurrent_set_alternating_values_is_safe()
     {
         // Tests concurrent writes with different values interleaved with same-value writes.

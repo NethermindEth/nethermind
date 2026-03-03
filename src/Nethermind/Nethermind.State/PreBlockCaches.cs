@@ -19,7 +19,7 @@ public class PreBlockCaches
 
     private readonly Func<CacheType>[] _clearCaches;
 
-    private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new();
+    private readonly SeqlockCache<StorageCell, StorageValue> _storageCache = new();
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
     private readonly SeqlockCache<NodeKey, byte[]?> _rlpCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
@@ -34,7 +34,7 @@ public class PreBlockCaches
         ];
     }
 
-    public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
+    public SeqlockCache<StorageCell, StorageValue> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
     public SeqlockCache<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;

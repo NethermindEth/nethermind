@@ -44,7 +44,7 @@ public class PrewarmerScopeProvider(
     {
         private readonly IWorldStateScopeProvider.IScope baseScope;
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache;
-        private readonly SeqlockCache<StorageCell, byte[]> storageCache;
+        private readonly SeqlockCache<StorageCell, StorageValue> storageCache;
         private readonly bool populatePreBlockCache;
         private readonly SeqlockCache<AddressAsKey, Account>.ValueFactory _getFromBaseTree;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
@@ -165,17 +165,17 @@ public class PrewarmerScopeProvider(
     private sealed class StorageTreeWrapper : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree;
-        private readonly SeqlockCache<StorageCell, byte[]> preBlockCache;
+        private readonly SeqlockCache<StorageCell, StorageValue> preBlockCache;
         private readonly Address address;
         private readonly bool populatePreBlockCache;
-        private readonly SeqlockCache<StorageCell, byte[]>.ValueFactory _loadFromTreeStorage;
+        private readonly SeqlockCache<StorageCell, StorageValue>.ValueFactory _loadFromTreeStorage;
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
 
         public StorageTreeWrapper(
             IWorldStateScopeProvider.IStorageTree baseStorageTree,
-            SeqlockCache<StorageCell, byte[]> preBlockCache,
+            SeqlockCache<StorageCell, StorageValue> preBlockCache,
             Address address,
             bool populatePreBlockCache)
         {
@@ -184,7 +184,7 @@ public class PrewarmerScopeProvider(
             this.address = address;
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
-            _loadFromTreeStorage = LoadFromTreeStorageBytes;
+            _loadFromTreeStorage = LoadFromTreeStorage;
         }
 
         public Hash256 RootHash => baseStorageTree.RootHash;
@@ -197,7 +197,7 @@ public class PrewarmerScopeProvider(
             {
                 long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
 
-                byte[] value = preBlockCache.GetOrAdd(in storageCell, _loadFromTreeStorage);
+                StorageValue value = preBlockCache.GetOrAdd(in storageCell, _loadFromTreeStorage);
 
                 if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
                 {
@@ -209,16 +209,16 @@ public class PrewarmerScopeProvider(
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
                 }
-                return StorageValue.FromSpanWithoutLeadingZero(value);
+                return value;
             }
             else
             {
-                if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
+                if (preBlockCache.TryGetValue(in storageCell, out StorageValue value))
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
-                    baseStorageTree.HintGet(in index, value);
+                    baseStorageTree.HintGet(in index, null);
                     Db.Metrics.IncrementStorageTreeCache();
-                    return StorageValue.FromSpanWithoutLeadingZero(value);
+                    return value;
                 }
                 else
                 {
@@ -238,13 +238,6 @@ public class PrewarmerScopeProvider(
             return !storageCell.IsHash
                 ? baseStorageTree.Get(storageCell.Index)
                 : baseStorageTree.Get(storageCell.Hash);
-        }
-
-        private byte[] LoadFromTreeStorageBytes(in StorageCell storageCell)
-        {
-            // Store full 32-byte padded value so FromSpanWithoutLeadingZero always hits the
-            // fast inline path (length == 32, single ReadUnaligned) on every cache hit.
-            return LoadFromTreeStorage(in storageCell).AsReadOnlySpan.ToArray();
         }
 
         public StorageValue Get(in ValueHash256 hash) =>

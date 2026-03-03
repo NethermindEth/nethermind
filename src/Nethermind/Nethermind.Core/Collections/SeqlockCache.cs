@@ -36,10 +36,9 @@ namespace Nethermind.Core.Collections;
 /// Array layout: [way0_set0..way0_set16383, way1_set0..way1_set16383] (split, not interleaved).
 /// </summary>
 /// <typeparam name="TKey">The key type (struct implementing IHash64bit)</typeparam>
-/// <typeparam name="TValue">The value type (reference type, nullable allowed)</typeparam>
+/// <typeparam name="TValue">The value type (reference or value type)</typeparam>
 public sealed class SeqlockCache<TKey, TValue>
     where TKey : struct, IHash64bit<TKey>
-    where TValue : class?
 {
     /// <summary>
     /// Number of sets. Must be a power of 2 for mask operations.
@@ -275,7 +274,8 @@ public sealed class SeqlockCache<TKey, TValue>
             long h0_2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h0 == h0_2 && k0.Equals(in key))
             {
-                if (ReferenceEquals(v0, value)) return; // fast-path: same key+value, no-op
+                if (RuntimeHelpers.IsReferenceOrContainsReferences<TValue>()
+                    && ReferenceEquals(v0, value)) return; // fast-path: same ref, no-op (elided for value types)
                 WriteEntry(ref e0, h0_2, in key, value, tagToStore);
                 return;
             }
@@ -294,7 +294,8 @@ public sealed class SeqlockCache<TKey, TValue>
             long h1_2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (h1 == h1_2 && k1.Equals(in key))
             {
-                if (ReferenceEquals(v1, value)) return; // fast-path: same key+value, no-op
+                if (RuntimeHelpers.IsReferenceOrContainsReferences<TValue>()
+                    && ReferenceEquals(v1, value)) return; // fast-path: same ref, no-op (elided for value types)
                 WriteEntry(ref e1, h1_2, in key, value, tagToStore);
                 return;
             }
