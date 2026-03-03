@@ -255,6 +255,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     (AddressAsKey key, Hash256 storageRoot) = entry;
                     if (!_dirtyAccounts.TryGetValue(key, out Account? account)) account = scope.Get(key);
                     if (account == null && storageRoot == Keccak.EmptyTreeHash) continue;
+                    if (account == null)
+                    {
+                        using var wb = CreateStorageWriteBatch(entry.Item1, 0);
+                        wb.Clear();
+                        continue;
+                    }
                     account ??= ThrowNullAccount(key);
                     account = account!.WithChangedStorageRoot(storageRoot);
                     _dirtyAccounts[key] = account;

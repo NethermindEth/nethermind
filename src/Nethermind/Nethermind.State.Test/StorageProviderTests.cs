@@ -475,7 +475,7 @@ public class StorageProviderTests(bool useFlat)
             provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
 
             provider.Commit(Frontier.Instance);
-            provider.CommitTree(0);
+            provider.CommitTree(baseBlock.Number + 1);
 
             baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
         }
@@ -493,7 +493,7 @@ public class StorageProviderTests(bool useFlat)
             provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
 
             provider.Commit(Frontier.Instance);
-            provider.CommitTree(0);
+            provider.CommitTree(baseBlock.Number + 1);
 
             baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
         }
@@ -630,6 +630,44 @@ public class StorageProviderTests(bool useFlat)
         worldState.Commit(SpuriousDragon.Instance);
 
         worldState.AccountExists(TestItem.AddressA).Should().BeFalse();
+    }
+
+    [Test]
+    public void StorageClearSelfDestruct()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        IWorldState worldState = ctx.StateProvider;
+
+        Hash256 stateRoot = null;
+
+        using (IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            // Set something
+            worldState.CreateAccount(TestItem.AddressA, 10);
+            worldState.Set(new StorageCell(TestItem.AddressA, 1), Bytes.FromHexString("aaaa"));
+            worldState.Commit(SpuriousDragon.Instance);
+            worldState.CommitTree(0);
+            stateRoot = worldState.StateRoot;
+        }
+
+        using (IDisposable _ = worldState.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject))
+        {
+            // Set storage to a different value
+            worldState.Set(new StorageCell(TestItem.AddressA, 1), Bytes.FromHexString("bbbb"));
+            worldState.Commit(SpuriousDragon.Instance);
+
+            // Delete but no clear stroage
+            worldState.DeleteAccount(TestItem.AddressA);
+            worldState.Commit(SpuriousDragon.Instance);
+
+            worldState.CommitTree(1);
+            stateRoot = worldState.StateRoot;
+        }
+
+        using (IDisposable _ = worldState.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressA, 1)).IsZero(), Is.True);
+        }
     }
 
     [TestCase(2)]
