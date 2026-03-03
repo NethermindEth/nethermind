@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -15,17 +16,16 @@ namespace Nethermind.Core.Crypto
     [DebuggerDisplay("{ToString()}")]
     public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>
     {
-        // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
-        // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
-        // the performance of the network as a whole.
-        private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+        public static GenericEqualityComparer<ValueHash256> EqualityComparer { get; } = new();
 
         private readonly Vector256<byte> _bytes;
 
         public const int MemorySize = 32;
         public static int Length => MemorySize;
 
+        [JsonIgnore]
         public Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
+        [JsonIgnore]
         public ReadOnlySpan<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
 
         public static implicit operator ValueHash256?(Hash256? keccak) => keccak?.ValueHash256;
@@ -60,7 +60,7 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(Hash256? other) => _bytes.Equals(other?.ValueHash256._bytes ?? default);
 
-        public override int GetHashCode() => GetChainedHashCode(s_instanceRandom);
+        public override int GetHashCode() => GetChainedHashCode(SpanExtensions.InstanceRandom);
 
         public int GetChainedHashCode(uint previousHash) => Bytes.FastHash() ^ (int)previousHash;
 
@@ -129,6 +129,7 @@ namespace Nethermind.Core.Crypto
 
         public ref readonly ValueHash256 ValueHash256 => ref _hash256;
 
+        [JsonIgnore]
         public Span<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _hash256), 1));
 
         public Hash256(string hexString)

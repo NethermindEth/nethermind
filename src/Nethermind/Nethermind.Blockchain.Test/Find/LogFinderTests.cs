@@ -19,13 +19,17 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
+using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Find;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Internal;
 
 namespace Nethermind.Blockchain.Test.Find;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class LogFinderTests
 {
     private IBlockTree _blockTree = null!;
@@ -45,19 +49,19 @@ public class LogFinderTests
     [TearDown]
     public void TearDown() => _bloomStorage?.Dispose();
 
-    private void SetUp(bool allowReceiptIterator)
+    private void SetUp(bool allowReceiptIterator, int chainLength = 5)
     {
         var specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip155Enabled.Returns(true);
         _receiptStorage = new InMemoryReceiptStorage(allowReceiptIterator);
         _rawBlockTree = Build.A.BlockTree()
             .WithTransactions(_receiptStorage, LogsForBlockBuilder)
-            .OfChainLength(out _headTestBlock, 5)
+            .OfChainLength(out _headTestBlock, chainLength)
             .TestObject;
         _blockTree = _rawBlockTree;
         _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
-        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+        _logFinder = CreateLogFinder();
     }
 
     private void SetupHeadWithNoTransaction()
@@ -129,15 +133,8 @@ public class LogFinderTests
         SetUp(allowReceiptIterator);
         LogFilter logFilter = AllBlockFilter().Build();
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
-        logs.Length.Should().Be(5);
         var indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
-        // indexes[0].Should().Be(0);
-        // indexes[1].Should().Be(1);
-        // indexes[2].Should().Be(0);
-        // indexes[3].Should().Be(1);
-        // indexes[4].Should().Be(2);
-        // BeEquivalentTo does not check the ordering!!! :O
-        indexes.Should().BeEquivalentTo(new[] { 0, 1, 0, 1, 2 });
+        Assert.That(indexes, Is.EqualTo([0, 1, 0, 1, 2]));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -145,7 +142,7 @@ public class LogFinderTests
     {
         StoreTreeBlooms(withBloomDb);
         _receiptStorage = NullReceiptStorage.Instance;
-        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+        _logFinder = CreateLogFinder();
 
         var logFilter = AllBlockFilter().Build();
 
@@ -158,7 +155,7 @@ public class LogFinderTests
     public void when_receipts_are_missing_and_header_has_no_receipt_root_do_not_throw_exception_()
     {
         _receiptStorage = NullReceiptStorage.Instance;
-        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+        _logFinder = CreateLogFinder();
 
         SetupHeadWithNoTransaction();
 
@@ -174,7 +171,7 @@ public class LogFinderTests
     {
         StoreTreeBlooms(withBloomDb);
         var blockFinder = Substitute.For<IBlockFinder>();
-        _logFinder = new LogFinder(blockFinder, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+        _logFinder = CreateLogFinder(blockFinder);
         var logFilter = AllBlockFilter().Build();
         var action = new Func<IEnumerable<FilterLog>>(() => _logFinder.FindLogs(logFilter));
         action.Should().Throw<ResourceNotFoundException>();
@@ -277,13 +274,12 @@ public class LogFinderTests
     public void filter_by_blocks_with_limit([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
     {
         StoreTreeBlooms(withBloomDb);
-        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, 2);
+        _logFinder = CreateLogFinder();
         var filter = FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build();
         var logs = _logFinder.FindLogs(filter).ToArray();
 
         logs.Length.Should().Be(3);
     }
-
 
     public static IEnumerable ComplexFilterTestsData
     {
@@ -316,6 +312,7 @@ public class LogFinderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    [NonParallelizable]
     public async Task Throw_log_finder_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
     {
         var timeout = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
@@ -323,22 +320,120 @@ public class LogFinderTests
         CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         StoreTreeBlooms(true);
-        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+        _logFinder = CreateLogFinder();
         var logFilter = AllBlockFilter().Build();
         var logs = _logFinder.FindLogs(logFilter, cancellationToken);
 
         await Task.Delay(timeout * waitTime);
 
-        Func<FilterLog[]> action = () => logs.ToArray();
+        TestDelegate action = () => _ = logs.ToArray();
 
         if (waitTime > 1)
         {
-            action.Should().Throw<AggregateException>().WithInnerException<OperationCanceledException>();
+            Assert.That(action, Throws
+                .Exception.InstanceOf<OperationCanceledException>()
+                .Or.InnerException.InstanceOf<OperationCanceledException>() // PLINQ can wrap into AggregateException
+            );
         }
         else
         {
-            action.Should().NotThrow();
+            Assert.DoesNotThrow(action);
         }
+    }
+
+    [TestCase("Empty index",
+        1, 2,
+        null, null,
+        null, null
+    )]
+    [TestCase("No intersection, left",
+        1, 2,
+        4, 6,
+        null, null
+    )]
+    [TestCase("No intersection, adjacent left",
+        1, 3,
+        4, 6,
+        null, null
+    )]
+    [TestCase("1 block intersection, left",
+        1, 4,
+        4, 6,
+        4, 4
+    )]
+    [TestCase("Partial intersection, left",
+        1, 5,
+        4, 6,
+        4, 5
+    )]
+    [TestCase("Full containment, border right",
+        1, 6,
+        4, 6,
+        4, 6
+    )]
+    [TestCase("Full containment",
+        1, 9,
+        4, 6,
+        4, 6
+    )]
+    [TestCase("Full containment, border left",
+        4, 9,
+        4, 6,
+        4, 6
+    )]
+    [TestCase("Partial intersection, right",
+        5, 9,
+        4, 6,
+        5, 6
+    )]
+    [TestCase("1 block intersection, right",
+        6, 9,
+        4, 6,
+        6, 6
+    )]
+    [TestCase("No intersection, adjacent right",
+        7, 9,
+        4, 6,
+        null, null
+    )]
+    [TestCase("No intersection, right",
+        8, 9,
+        4, 6,
+        null, null
+    )]
+    public void query_intersected_range_from_log_index(string name,
+        int from, int to,
+        int? indexFrom, int? indexTo,
+        int? exFrom, int? exTo
+    )
+    {
+        SetUp(true, chainLength: 10);
+
+        var logIndexStorage = Substitute.For<ILogIndexStorage>();
+        logIndexStorage.Enabled.Returns(true);
+        logIndexStorage.MinBlockNumber.Returns(indexFrom);
+        logIndexStorage.MaxBlockNumber.Returns(indexTo);
+        logIndexStorage.GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => Array.Empty<int>().Cast<int>().GetEnumerator());
+
+        Address address = TestItem.AddressA;
+        BlockHeader fromHeader = Build.A.BlockHeader.WithNumber(from).TestObject;
+        BlockHeader toHeader = Build.A.BlockHeader.WithNumber(to).TestObject;
+        LogFilter filter = FilterBuilder.New()
+            .FromBlock(from).ToBlock(to)
+            .WithAddress(address)
+            .Build();
+
+        var logFinder = new IndexedLogFinder(
+            _blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery,
+            logIndexStorage, minBlocksToUseIndex: 1
+        );
+        _ = logFinder.FindLogs(filter, fromHeader, toHeader).ToArray();
+
+        if (exTo is not null && exFrom is not null)
+            logIndexStorage.Received(1).GetEnumerator(address, exFrom.Value, exTo.Value);
+        else
+            logIndexStorage.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
     }
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
@@ -354,4 +449,6 @@ public class LogFinderTests
         }
     }
 
+    private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null) =>
+        new(blockFinder ?? _blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
 }

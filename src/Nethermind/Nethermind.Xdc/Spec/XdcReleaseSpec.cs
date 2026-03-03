@@ -27,14 +27,30 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public double ProtectorReward { get; set; }          // Block reward per protector - unit Ether
     public double ObserverReward { get; set; }           // Block reward per observer - unit Ether
     public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
-    public int LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; } = new List<V2ConfigParams>();
 
     public Address[] GenesisMasterNodes { get; set; }
+    public long MergeSignRange { get; set; }
+    public HashSet<Address> BlackListedAddresses { get; set; }
+    public Address BlockSignerContract { get; set; }
+    public Address RandomizeSMCBinary { get; set; }
+    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
+    public Address XDCXLendingAddressBinary { get; set; }
+    public Address XDCXAddressBinary { get; set; }
+    public Address TradingStateAddressBinary { get; set; }
+    public long TIP2019Block { get; set; }
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
-    public Address BlockSignerContract { get; set; }
+    public bool IsTipUpgradePenaltyEnabled { get; set; }
+    public bool IsTipTrc21FeeEnabled { get; set; }
+    public bool IsBlackListingEnabled { get; set; }
+    public bool IsTIP2019 { get; set; }
+    public bool IsTIPXDCXMiner { get; set; }
+    public bool IsDynamicGasLimitBlock { get; set; }
+    public ulong RangeReturnSigner { get; set; }
 
     public void ApplyV2Config(ulong round)
     {
@@ -98,13 +114,28 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public double ProtectorReward { get; set; }      // Block reward per protector - unit Ether
     public double ObserverReward { get; set; }       // Block reward per observer - unit Ether
     public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
-    public int LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public ulong RangeReturnSigner { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }
-    Address[] GenesisMasterNodes { get; set; }
-    Address FoundationWallet { get; set; }
-    Address MasternodeVotingContract { get; set; }
-    Address BlockSignerContract { get; set; }
+    public Address[] GenesisMasterNodes { get; set; }
+    public long MergeSignRange { get; set; }
 
+    public Address BlockSignerContract { get; set; }
+    public Address RandomizeSMCBinary { get; set; }
+    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
+    public Address XDCXLendingAddressBinary { get; set; }
+    public Address XDCXAddressBinary { get; set; }
+    public Address TradingStateAddressBinary { get; set; }
+    public HashSet<Address> BlackListedAddresses { get; set; }
+    public Address FoundationWallet { get; set; }
+    public Address MasternodeVotingContract { get; set; }
+    public bool IsTipTrc21FeeEnabled { get; set; }
+    public bool IsBlackListingEnabled { get; set; }
+    public bool IsTIP2019 { get; set; }
+    public bool IsTIPXDCXMiner { get; set; }
+    public bool IsTipUpgradePenaltyEnabled { get; set; }
+    public bool IsDynamicGasLimitBlock { get; set; }
     public void ApplyV2Config(ulong round);
 }

@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Facade.Proxy.Models.Simulate;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 

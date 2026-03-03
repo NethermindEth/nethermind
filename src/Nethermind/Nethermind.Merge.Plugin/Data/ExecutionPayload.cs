@@ -137,6 +137,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
     public virtual BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
     {
+        byte[][] encodedTransactions = Transactions;
         TransactionDecodingResult transactions = TryGetTransactions();
         if (transactions.Error is not null)
         {
@@ -164,11 +165,15 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = TxTrie.CalculateRoot(transactions.Transactions),
+            TxRoot = TxTrie.CalculateRoot(encodedTransactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
-        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals));
+        Block block = new(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals)
+        {
+            EncodedTransactions = encodedTransactions
+        };
+        return new BlockDecodingResult(block);
     }
 
     protected virtual Hash256? BuildWithdrawalsRoot()
@@ -186,7 +191,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     {
         if (_transactions is not null) return new TransactionDecodingResult(_transactions);
 
-        IRlpStreamDecoder<Transaction>? rlpDecoder = Rlp.GetStreamDecoder<Transaction>();
+        IRlpValueDecoder<Transaction>? rlpDecoder = Rlp.GetValueDecoder<Transaction>();
         if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
 
         int i = 0;
@@ -197,7 +202,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
             for (i = 0; i < transactions.Length; i++)
             {
-                transactions[i] = Rlp.Decode(txData[i].AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping);
+                Rlp.ValueDecoderContext ctx = new(txData[i]);
+                transactions[i] = rlpDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
             }
 
             return new TransactionDecodingResult(_transactions = transactions);

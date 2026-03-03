@@ -9,7 +9,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks.Config;
 
-public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConfig, IHardwareInfo hardwareInfo, ILogManager logManager) : IRocksDbConfigFactory
+public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConfig, IHardwareInfo hardwareInfo, ILogManager logManager, bool validateConfig = true) : IRocksDbConfigFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<IRocksDbConfigFactory>();
     private bool _maxOpenFilesInitialized;
@@ -46,7 +46,7 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
             }
         }
 
-        IRocksDbConfig rocksDbConfig = new PerTableDbConfig(dbConfig, databaseName, columnName);
+        IRocksDbConfig rocksDbConfig = new PerTableDbConfig(dbConfig, databaseName, columnName, validateConfig);
         if (databaseName.StartsWith("State"))
         {
             if (!pruningConfig.Mode.IsMemory())

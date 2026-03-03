@@ -25,6 +25,8 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 internal class TransactionProcessorEip7702Tests
 {
     private ISpecProvider _specProvider;
@@ -389,7 +391,7 @@ internal class TransactionProcessorEip7702Tests
         //Tx should only be charged for warm state read
         Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction
             + GasCostOf.NewAccount
-            + Prague.Instance.GetBalanceCost()
+            + Prague.Instance.GasCosts.BalanceCost
             + GasCostOf.WarmStateRead
             + GasCostOf.VeryLow));
     }

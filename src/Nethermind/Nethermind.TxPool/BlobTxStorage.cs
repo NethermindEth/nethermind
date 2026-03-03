@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -17,7 +18,9 @@ namespace Nethermind.TxPool;
 
 public class BlobTxStorage : IBlobTxStorage
 {
+    private const int MaxPooledKeys = 128;
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
+    private readonly ConcurrentQueue<byte[]> _keyPool = new();
     private readonly IDb _fullBlobTxsDb;
     private readonly IDb _lightBlobTxsDb;
     private readonly IDb _processedBlobTxsDb;
@@ -43,6 +46,35 @@ public class BlobTxStorage : IBlobTxStorage
 
         byte[]? txBytes = _fullBlobTxsDb.Get(txHashPrefixed);
         return TryDecodeFullTx(txBytes, sender, out transaction);
+    }
+
+    public int TryGetMany(TxLookupKey[] keys, int count, Transaction?[] results)
+    {
+        if (count == 0) return 0;
+
+        // Outer array must be exact-size for the IDb indexer (uses keys.Length).
+        // Inner byte[64] keys are pooled via ConcurrentQueue to avoid per-call allocations.
+        byte[][] dbKeys = new byte[count][];
+        for (int i = 0; i < dbKeys.Length; i++)
+        {
+            byte[] key = RentKey();
+            GetHashPrefixedByTimestamp(keys[i].Timestamp, keys[i].Hash, key);
+            dbKeys[i] = key;
+        }
+
+        KeyValuePair<byte[], byte[]?>[] dbResults = _fullBlobTxsDb[dbKeys];
+
+        int found = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (TryDecodeFullTx(dbResults[i].Value, keys[i].Sender, out results[i]))
+                found++;
+        }
+
+        for (int i = 0; i < count; i++)
+            ReturnKey(dbKeys[i]);
+
+        return found;
     }
 
     public IEnumerable<LightTransaction> GetAll()
@@ -95,8 +127,8 @@ public class BlobTxStorage : IBlobTxStorage
 
         if (bytes is not null)
         {
-            RlpStream rlpStream = new(bytes);
-            blockBlobTransactions = _txDecoder.DecodeArray(rlpStream, RlpBehaviors.InMempoolForm);
+            Rlp.ValueDecoderContext ctx = new(bytes);
+            blockBlobTransactions = _txDecoder.DecodeArray(ref ctx, RlpBehaviors.InMempoolForm);
             return true;
         }
 
@@ -111,8 +143,7 @@ public class BlobTxStorage : IBlobTxStorage
     {
         if (txBytes is not null)
         {
-            RlpStream rlpStream = new(txBytes);
-            transaction = Rlp.Decode<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
+            transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm);
             transaction.SenderAddress = sender;
             return true;
         }
@@ -131,6 +162,14 @@ public class BlobTxStorage : IBlobTxStorage
 
         lightTx = default;
         return false;
+    }
+
+    private byte[] RentKey() => _keyPool.TryDequeue(out byte[]? key) ? key : new byte[64];
+
+    private void ReturnKey(byte[] key)
+    {
+        if (_keyPool.Count < MaxPooledKeys)
+            _keyPool.Enqueue(key);
     }
 
     private static void GetHashPrefixedByTimestamp(UInt256 timestamp, ValueHash256 hash, Span<byte> txHashPrefixed)

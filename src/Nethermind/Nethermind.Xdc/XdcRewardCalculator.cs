@@ -4,14 +4,12 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Contracts;
 
@@ -29,13 +27,9 @@ namespace Nethermind.Xdc
         IEpochSwitchManager epochSwitchManager,
         ISpecProvider specProvider,
         IBlockTree blockTree,
-        IMasternodeVotingContract masternodeVotingContract) : IRewardCalculator
+        IMasternodeVotingContract masternodeVotingContract,
+        ISigningTxCache signingTxCache) : IRewardCalculator
     {
-        private LruCache<Hash256, Transaction[]> _signingTxsCache = new(9000, "XDC Signing Txs Cache");
-        private const long BlocksPerYear = 15768000;
-        // XDC rule: signing transactions are sampled/merged every N blocks (N=15 on XDC).
-        // Only block numbers that are multiples of MergeSignRange are considered when tallying signers.
-        private const long MergeSignRange = 15;
         private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
 
         /// <summary>
@@ -62,7 +56,7 @@ namespace Nethermind.Xdc
             if (number == spec.SwitchBlock + 1) return Array.Empty<BlockReward>();
 
             Address foundationWalletAddr = spec.FoundationWallet;
-            if (foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
+            if (foundationWalletAddr == default || foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
 
             var (signers, count) = GetSigningTxCount(number, xdcHeader, spec);
 
@@ -90,6 +84,7 @@ namespace Nethermind.Xdc
             var blockNumberToHash = new Dictionary<long, Hash256>();
             var hashToSigningAddress = new Dictionary<Hash256, HashSet<Address>>();
             var masternodes = new HashSet<Address>();
+            var mergeSignRange = spec.MergeSignRange;
 
             XdcBlockHeader h = header;
             for (long i = number - 1; i >= 0; i--)
@@ -114,13 +109,7 @@ namespace Nethermind.Xdc
                 }
 
                 blockNumberToHash[i] = h.Hash;
-                if (!_signingTxsCache.TryGet(h.Hash, out Transaction[] signingTxs))
-                {
-                    Block? block = blockTree.FindBlock(i);
-                    if (block == null) throw new InvalidOperationException($"Block with number {i} not found");
-                    Transaction[] txs = block.Transactions;
-                    signingTxs = CacheSigningTxs(h.Hash!, txs, spec);
-                }
+                Transaction[] signingTxs = signingTxCache.GetSigningTransactions(h.Hash, i, spec);
 
                 foreach (Transaction tx in signingTxs)
                 {
@@ -134,8 +123,8 @@ namespace Nethermind.Xdc
 
             // Only blocks at heights that are multiples of MergeSignRange are considered.
             // Calculate start >= startBlockNumber so that start % MergeSignRange == 0
-            long start = ((startBlockNumber + MergeSignRange - 1) / MergeSignRange) * MergeSignRange;
-            for (long i = start; i < endBlockNumber; i += MergeSignRange)
+            long start = ((startBlockNumber + mergeSignRange - 1) / mergeSignRange) * mergeSignRange;
+            for (long i = start; i < endBlockNumber; i += mergeSignRange)
             {
                 if (!blockNumberToHash.TryGetValue(i, out var blockHash)) continue;
                 if (!hashToSigningAddress.TryGetValue(blockHash, out var addresses)) continue;
@@ -150,40 +139,11 @@ namespace Nethermind.Xdc
             return (signers, signingCount);
         }
 
-        private Transaction[] CacheSigningTxs(Hash256 hash, Transaction[] txs, IXdcReleaseSpec spec)
-        {
-            Transaction[] signingTxs = txs.Where(t => IsSigningTransaction(t, spec)).ToArray();
-            _signingTxsCache.Set(hash, signingTxs);
-            return signingTxs;
-        }
-
-        // Signing transaction ABI (Solidity):
-        // function sign(uint256 _blockNumber, bytes32 _blockHash)
-        // Calldata = 4-byte selector + 32-byte big-endian uint + 32-byte bytes32 = 68 bytes total.
-        private bool IsSigningTransaction(Transaction tx, IXdcReleaseSpec spec)
-        {
-            if (tx.To is null || tx.To != spec.BlockSignerContract) return false;
-            if (tx.Data.Length != 68) return false;
-
-            return ExtractSelectorFromSigningTxData(tx.Data) == "0xe341eaa4";
-        }
-
-        private String ExtractSelectorFromSigningTxData(ReadOnlyMemory<byte> data)
-        {
-            ReadOnlySpan<byte> span = data.Span;
-            if (span.Length != 68)
-                throw new ArgumentException("Signing tx calldata must be exactly 68 bytes (4 + 32 + 32).", nameof(data));
-
-            // 0..3: selector
-            ReadOnlySpan<byte> selBytes = span.Slice(0, 4);
-            return "0x" + Convert.ToHexString(selBytes).ToLowerInvariant();
-        }
-
         private Hash256 ExtractBlockHashFromSigningTxData(ReadOnlyMemory<byte> data)
         {
             ReadOnlySpan<byte> span = data.Span;
-            if (span.Length != 68)
-                throw new ArgumentException("Signing tx calldata must be exactly 68 bytes (4 + 32 + 32).", nameof(data));
+            if (span.Length != XdcConstants.SignTransactionDataLength)
+                throw new ArgumentException($"Signing tx calldata must be exactly {XdcConstants.SignTransactionDataLength} bytes.", nameof(data));
 
             // 36..67: bytes32 blockHash
             ReadOnlySpan<byte> hashBytes = span.Slice(36, 32);
@@ -206,9 +166,9 @@ namespace Nethermind.Xdc
         /// Calculates a proportional reward based on the number of signatures.
         /// Uses UInt256 arithmetic to maintain precision with large Wei values.
         ///
-        /// Formula: (signatureCount / totalSignatures) * totalReward
+        /// Formula: (totalReward / totalSignatures) * signatureCount
         /// </summary>
-        private UInt256 CalculateProportionalReward(
+        internal UInt256 CalculateProportionalReward(
             long signatureCount,
             long totalSignatures,
             UInt256 totalReward)
@@ -222,15 +182,14 @@ namespace Nethermind.Xdc
             var signatures = (UInt256)signatureCount;
             var total = (UInt256)totalSignatures;
 
-            // Calculate: (signatures * totalReward) / total
-            // Order of operations matters to maintain precision
-            UInt256 numerator = signatures * totalReward;
-            UInt256 reward = numerator / total;
+
+            UInt256 portion = totalReward / total;
+            UInt256 reward = portion * signatures;
 
             return reward;
         }
 
-        private (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
+        internal (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
             Address masternodeAddress, UInt256 reward, XdcBlockHeader header)
         {
             Address owner = masternodeVotingContract.GetCandidateOwner(header, masternodeAddress);
