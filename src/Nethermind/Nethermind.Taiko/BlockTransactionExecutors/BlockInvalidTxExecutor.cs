@@ -45,7 +45,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
                 continue;
             }
 
-            using ITxTracer _ = receiptsTracer.StartNewTxTrace(tx);
+            receiptsTracer.StartNewTxTrace(tx);
 
             try
             {

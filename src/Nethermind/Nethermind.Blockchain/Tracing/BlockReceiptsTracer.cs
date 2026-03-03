@@ -233,6 +233,12 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         Block = block;
         _currentIndex = 0;
         _txReceipts.Clear();
+        int capacity = _txReceipts.Capacity;
+        int txCount = block.Transactions.Length;
+        if (capacity < txCount)
+        {
+            _txReceipts.Capacity = txCount;
+        }
 
         _otherTracer.StartNewBlockTrace(block);
     }
@@ -270,10 +276,5 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     {
         ArgumentNullException.ThrowIfNull(blockTracer);
         _otherTracer = blockTracer;
-    }
-
-    public void Dispose()
-    {
-        _currentTxTracer.Dispose();
     }
 }

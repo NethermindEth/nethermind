@@ -499,12 +499,4 @@ public class CompositeTxTracer : ITxTracer
             }
         }
     }
-
-    public void Dispose()
-    {
-        for (int index = 0; index < _txTracers.Count; index++)
-        {
-            _txTracers[index].Dispose();
-        }
-    }
 }

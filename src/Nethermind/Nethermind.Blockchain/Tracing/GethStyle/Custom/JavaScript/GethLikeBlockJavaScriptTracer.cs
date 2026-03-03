@@ -59,7 +59,18 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
 
     protected override bool ShouldTraceTx(Transaction? tx) => base.ShouldTraceTx(tx) && tx is not null;
 
-    protected override GethLikeTxTrace OnEnd(GethLikeJavaScriptTxTracer txTracer) => txTracer.BuildResult();
+    protected override GethLikeTxTrace OnEnd(GethLikeJavaScriptTxTracer txTracer)
+    {
+        try
+        {
+            return txTracer.BuildResult();
+        }
+        finally
+        {
+            txTracer.Dispose();
+        }
+    }
+
     public void Dispose()
     {
         List<IDisposable>? list = Interlocked.Exchange(ref _engines, null);

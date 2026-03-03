@@ -15,7 +15,7 @@ using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
-public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
+public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, IDisposable
 {
     private readonly dynamic _tracer;
     private readonly Log _log = new();
@@ -250,10 +250,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         return result;
     }
 
-    public override void Dispose()
+    public void Dispose()
     {
-        base.Dispose();
-
         if (!_resultConstructed)
         {
             _blockTracer.Dispose();
