@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
