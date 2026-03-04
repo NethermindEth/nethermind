@@ -256,7 +256,6 @@ public class JsonRpcServiceTests
 
             (false, Build.A.Block.WithWithdrawals(null).TestObject)
         };
-    
     [Test]
     public async Task Unhandled_exception_returns_InternalError()
     {
