@@ -40,7 +40,7 @@ internal class XdcTransactionProcessorTests
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(_spec);
         _specProvider.GenesisSpec.Returns(_spec);
 
-        _stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
+        _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_spec);

@@ -54,7 +54,7 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(NotDelegationCodeCases))]
     public void TryGetDelegation_CodeIsNotDelegation_ReturnsFalse(byte[] code)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using var _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0, 0, -1);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
@@ -77,7 +77,7 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void TryGetDelegation_CodeTryGetDelegation_ReturnsTrue(byte[] code)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using var _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0, 0, -1);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
@@ -89,7 +89,7 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void TryGetDelegation_CodeTryGetDelegation_CorrectDelegationAddressIsSet(byte[] code)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0, 0, -1);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
@@ -134,7 +134,7 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void GetCachedCodeInfo_CodeTryGetDelegation_ReturnsCodeOfDelegation(byte[] code)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0, 0, -1);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
@@ -151,7 +151,7 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(NotDelegationCodeCases))]
     public void GetCachedCodeInfo_CodeIsNotDelegation_ReturnsCodeOfAddress(byte[] code)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0, 0, -1);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);

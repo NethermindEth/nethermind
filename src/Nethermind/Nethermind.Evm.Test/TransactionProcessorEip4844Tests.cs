@@ -34,7 +34,7 @@ internal class TransactionProcessorEip4844Tests
     public void Setup()
     {
         _specProvider = new TestSpecProvider(Cancun.Instance);
-        _stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
+        _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);

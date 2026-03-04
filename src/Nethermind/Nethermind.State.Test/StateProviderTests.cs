@@ -30,7 +30,7 @@ public class StateProviderTests
     [Test]
     public void Eip_158_zero_value_transfer_deletes()
     {
-        IWorldState frontierProvider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState frontierProvider = TestWorldStateFactory.CreateForTest();
         BlockHeader baseBlock;
         using (var _ = frontierProvider.BeginScope(IWorldState.PreGenesis))
         {
@@ -52,7 +52,7 @@ public class StateProviderTests
     [Test]
     public void Eip_158_touch_zero_value_system_account_is_not_deleted()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         var systemUser = Address.SystemUser;
 
@@ -86,7 +86,7 @@ public class StateProviderTests
     [Test]
     public void Is_empty_account()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
@@ -97,7 +97,7 @@ public class StateProviderTests
     [Test]
     public void Returns_empty_byte_code_for_non_existing_accounts()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         byte[] code = provider.GetCode(TestItem.AddressA);
         code.Should().BeEmpty();
@@ -106,7 +106,7 @@ public class StateProviderTests
     [Test]
     public void Restore_update_restore()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -133,7 +133,7 @@ public class StateProviderTests
     [Test]
     public void Keep_in_cache()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
@@ -152,7 +152,7 @@ public class StateProviderTests
     {
         byte[] code = [1];
 
-        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 1);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -187,7 +187,7 @@ public class StateProviderTests
     {
         ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
 
-        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
 
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
 
@@ -206,7 +206,7 @@ public class StateProviderTests
     [Test]
     public void Does_not_allow_calling_stateroot_after_scope()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
 
         Action action = () => { _ = provider.StateRoot; };
         {

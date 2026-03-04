@@ -1274,7 +1274,7 @@ namespace Nethermind.Evm.Test.Tracing
             public TestEnvironment()
             {
                 _specProvider = MainnetSpecProvider.Instance;
-                _stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
+                _stateProvider = TestWorldStateFactory.CreateForTest();
                 _closer = _stateProvider.BeginScope(IWorldState.PreGenesis);
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether(), 0, -1);
                 _stateProvider.Commit(_specProvider.GenesisSpec);

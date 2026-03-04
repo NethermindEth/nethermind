@@ -509,7 +509,7 @@ namespace Nethermind.Blockchain.Test
 
         private static IReadOnlyList<Transaction> SelectTransactions(ProperTransactionsSelectedTestCase testCase)
         {
-            IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             Hash256 SetAccountStates(IEnumerable<Address> missingAddresses)
