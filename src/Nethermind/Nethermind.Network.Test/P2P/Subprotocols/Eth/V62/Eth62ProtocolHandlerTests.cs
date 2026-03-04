@@ -306,7 +306,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Throws_if_adding_new_block_fails()
+        public void Disconnects_peer_if_adding_new_block_fails()
         {
             using NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = Build.A.Block.WithParent(_genesisBlock).TestObject;
@@ -317,10 +317,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(newBlockMessage);
             getBlockHeadersPacket.ReadByte();
 
-            _syncManager.WhenForAnyArgs(w => w.AddNewBlock(null, _handler)).Do(ci => throw new Exception());
-            Assert.Throws<Exception>(
-                () => _handler.HandleMessage(
-                    new ZeroPacket(getBlockHeadersPacket) { PacketType = Eth62MessageCode.NewBlock }));
+            _syncManager.WhenForAnyArgs(w => w.AddNewBlock(null!, _handler)).Do(_ => throw new Exception());
+            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = Eth62MessageCode.NewBlock });
+
+            _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, Arg.Any<string>());
         }
 
         [Test]
