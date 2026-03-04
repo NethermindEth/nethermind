@@ -2,7 +2,7 @@
 name: review
 description: Deep code review for an Ethereum execution client. Checks consensus correctness, security, robustness, performance, DI patterns, breaking changes, and observability. Use when asked to "review", "check this PR", "look for bugs", "audit", or "review my changes".
 allowed-tools:
-  [Bash(git diff*), Bash(git merge-base*), Bash(git log*), Read, Grep, Glob]
+  [Bash(git diff*), Bash(git merge-base*), Bash(git log*), Bash(git status*), Read, Grep, Glob]
 ---
 
 # Code review
@@ -35,6 +35,12 @@ All recon calls are independent — emit them in a single parallel batch.
 1. **Warn the user:** "origin/master appears stale (local `<short-sha>` vs remote `<short-sha>`) — the local diff shows N files but the true diff is likely smaller."
 2. **Ask before fetching:** offer to run `git fetch origin master` to update the ref. Do not fetch silently.
 3. **If the user declines or network is unavailable:** proceed with the local diff but note the staleness risk in the scope report.
+
+**Step 1b: Check for untracked files.** Run `git status --short` and look for `??` entries. If any untracked files exist, warn the user at the top of the scope report:
+
+> **Warning:** The following files are untracked and will NOT be included in this review:
+> _(list untracked files)_
+> If these should be reviewed, stage them first with `git add`.
 
 **Step 2: Filter the file list.** From the file list, remove:
 
