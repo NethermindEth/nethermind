@@ -11,7 +11,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
-using Nethermind.State.Flat.Sync;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.SnapSync;
@@ -28,16 +27,18 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
 {
     private readonly IPersistence.IPersistenceReader _reader;
     private readonly IPersistence.IWriteBatch _writeBatch;
+    private readonly bool _enableDoubleWriteCheck;
     private readonly StorageTree _tree;
     private readonly Hash256 _addressHash;
     private readonly SnapUpperBoundAdapter _adapter;
 
-    public FlatSnapStorageTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, Hash256 addressHash, ILogManager logManager)
+    public FlatSnapStorageTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, Hash256 addressHash, bool enableDoubleWriteCheck, ILogManager logManager)
     {
         _reader = reader;
         _writeBatch = writeBatch;
+        _enableDoubleWriteCheck = enableDoubleWriteCheck;
         _addressHash = addressHash;
-        _adapter = new SnapUpperBoundAdapter(new PersistenceStorageTrieStoreAdapter(reader, writeBatch, addressHash));
+        _adapter = new SnapUpperBoundAdapter(new PersistenceStorageTrieStoreAdapter(reader, writeBatch, addressHash, enableDoubleWriteCheck));
         _tree = new StorageTree(_adapter, logManager);
     }
 
@@ -51,25 +52,37 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
         return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
     }
 
-    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries)
+    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries, ValueHash256 upperBound)
     {
+        _adapter.UpperBound = upperBound;
+
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
         for (int i = 0; i < entries.Count; i++)
         {
             PathWithStorageSlot slot = entries[i];
             bulkEntries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
             Interlocked.Add(ref Nethermind.Synchronization.Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
+
+            if (slot.Path <= upperBound)
+            {
+                Hash256 pathHash = slot.Path.ToCommitment();
+                if (_enableDoubleWriteCheck)
+                {
+                    SlotValue existing = default;
+                    if (_reader.TryGetStorageRaw(_addressHash, pathHash, ref existing))
+                        throw new Exception($"Double storage flat write. {_addressHash} {slot.Path}");
+                }
+                Rlp.ValueDecoderContext ctx = ((ReadOnlySpan<byte>)slot.SlotRlpValue).AsRlpValueContext();
+                _writeBatch.SetStorageRaw(_addressHash, pathHash, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
+            }
         }
 
         _tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
         _tree.UpdateRootHash();
     }
 
-    public void Commit(ValueHash256 upperBound)
-    {
-        _adapter.UpperBound = upperBound;
+    public void Commit() =>
         _tree.Commit(writeFlags: WriteFlags.DisableWAL);
-    }
 
     public void Dispose()
     {
@@ -84,7 +97,8 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
     private class PersistenceStorageTrieStoreAdapter(
         IPersistence.IPersistenceReader reader,
         IPersistence.IWriteBatch writeBatch,
-        Hash256 addressHash) : AbstractMinimalTrieStore
+        Hash256 addressHash,
+        bool enableDoubleWriteCheck) : AbstractMinimalTrieStore
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
 
@@ -92,18 +106,17 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
             reader.TryLoadStorageRlp(addressHash, path, flags);
 
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-            new StorageCommitter(writeBatch, reader, addressHash);
+            new StorageCommitter(writeBatch, reader, addressHash, enableDoubleWriteCheck);
 
-        private sealed class StorageCommitter(IPersistence.IWriteBatch writeBatch, IPersistence.IPersistenceReader reader, Hash256 address) : ICommitter
+        private sealed class StorageCommitter(IPersistence.IWriteBatch writeBatch, IPersistence.IPersistenceReader reader, Hash256 address, bool enableDoubleWriteCheck) : ICommitter
         {
             public TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
-                if (reader.TryLoadStorageRlp(address, path, ReadFlags.None) != null)
+                if (enableDoubleWriteCheck && reader.TryLoadStorageRlp(address, path, ReadFlags.None) != null)
                 {
                     throw new Exception($"Double storage rlp write. {address} {path}");
                 }
                 writeBatch.SetStorageTrieNode(address, path, node);
-                FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
                 return node;
             }
 

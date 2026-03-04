@@ -28,7 +28,7 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public class FlatTrieVerifier
 {
-    private const int StorageChannelCapacity = 4;
+    private const int StorageChannelCapacity = 1;
     private const int FlatKeyLength = 20;
     private const int PartitionCount = 8;
 

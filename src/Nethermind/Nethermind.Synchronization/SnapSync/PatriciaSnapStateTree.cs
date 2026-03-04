@@ -22,8 +22,10 @@ public class PatriciaSnapStateTree(StateTree tree, SnapUpperBoundAdapter adapter
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
         nodeStorage.KeyExists(null, path, keccak);
 
-    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries)
+    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries, ValueHash256 upperBound)
     {
+        adapter.UpperBound = upperBound;
+
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
         for (int i = 0; i < entries.Count; i++)
         {
@@ -38,11 +40,8 @@ public class PatriciaSnapStateTree(StateTree tree, SnapUpperBoundAdapter adapter
         tree.UpdateRootHash();
     }
 
-    public void Commit(ValueHash256 upperBound)
-    {
-        adapter.UpperBound = upperBound;
+    public void Commit() =>
         tree.Commit(skipRoot: true, WriteFlags.DisableWAL);
-    }
 
     public void Dispose() { } // No-op - Patricia doesn't own resources
 }

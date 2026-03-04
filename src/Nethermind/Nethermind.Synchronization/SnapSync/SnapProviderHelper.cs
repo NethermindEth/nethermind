@@ -100,13 +100,6 @@ namespace Nethermind.Synchronization.SnapSync
             if (result != AddRangeResult.OK)
                 return (result, true, false);
 
-            tree.BulkSetAndUpdateRootHash(entries);
-
-            if (tree.RootHash.ValueHash256 != expectedRootHash)
-                return (AddRangeResult.DifferentRootHash, true, false);
-
-            StitchBoundaries(sortedBoundaryList, tree, startingHash);
-
             // The upper bound is used to prevent proof nodes that covers next range from being persisted, except if
             // this is the last range. This prevent double node writes per path which break flat. It also prevent leaf o
             // that is after the range from being persisted, which prevent double write again.
@@ -119,7 +112,15 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 if (!moreChildrenToRight) upperBound = ValueKeccak.MaxValue;
             }
-            tree.Commit(upperBound);
+
+            tree.BulkSetAndUpdateRootHash(entries, upperBound);
+
+            if (tree.RootHash.ValueHash256 != expectedRootHash)
+                return (AddRangeResult.DifferentRootHash, true, false);
+
+            StitchBoundaries(sortedBoundaryList, tree, startingHash);
+
+            tree.Commit();
 
             bool isRootPersisted = sortedBoundaryList is not { Count: > 0 } || sortedBoundaryList[0].Item1.IsPersisted;
             return (AddRangeResult.OK, moreChildrenToRight, isRootPersisted);
