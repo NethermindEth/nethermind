@@ -7,6 +7,7 @@ using Nethermind.Evm.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using System.Diagnostics;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.Test;
 

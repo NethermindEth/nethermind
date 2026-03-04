@@ -741,7 +741,7 @@ public class TxBroadcasterTests
         // Arrange
         IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
         mockChainHeadInfoProvider.CurrentProofVersion.Returns(proofVersion);
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.IsEip7594Enabled.Returns(versionMatches ? proofVersion == ProofVersion.V1 : proofVersion == ProofVersion.V0);
 
         SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
