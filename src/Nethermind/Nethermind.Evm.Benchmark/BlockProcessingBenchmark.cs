@@ -580,7 +580,7 @@ public class BlockProcessingBenchmark
                 .WithTo(Erc20Address)
                 .WithData(calldata)
                 .WithGasLimit(100_000)
-                .WithGasPrice(2.GWei())
+                .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
         }
@@ -601,7 +601,7 @@ public class BlockProcessingBenchmark
                 .WithTo(SwapAddress)
                 .WithData(calldata)
                 .WithGasLimit(200_000)
-                .WithGasPrice(2.GWei())
+                .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
         }

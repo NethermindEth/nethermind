@@ -74,7 +74,7 @@ public static class ProfileRunner
         BlockHeader header = Build.A.BlockHeader
             .WithNumber(1)
             .WithGasLimit(30_000_000)
-            .WithBaseFee(1.GWei())
+            .WithBaseFee(1.GWei)
             .WithTimestamp(1)
             .TestObject;
 
@@ -92,7 +92,7 @@ public static class ProfileRunner
                     .WithTo(swapAddress)
                     .WithData(calldata)
                     .WithGasLimit(200_000)
-                    .WithGasPrice(2.GWei())
+                    .WithGasPrice(2.GWei)
                     .SignedAndResolved(senderKey)
                     .TestObject;
             }
@@ -110,7 +110,7 @@ public static class ProfileRunner
                     .WithTo(erc20Address)
                     .WithData(calldata)
                     .WithGasLimit(100_000)
-                    .WithGasPrice(2.GWei())
+                    .WithGasPrice(2.GWei)
                     .SignedAndResolved(senderKey)
                     .TestObject;
             }
@@ -168,7 +168,7 @@ public static class ProfileRunner
 
         using (stateProvider.BeginScope(IWorldState.PreGenesis))
         {
-            stateProvider.CreateAccount(sender, 1_000_000.Ether());
+            stateProvider.CreateAccount(sender, 1_000_000.Ether);
             stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
 
             stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, UInt256.Zero);
