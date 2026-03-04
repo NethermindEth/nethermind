@@ -213,6 +213,7 @@ public static class BaseTriePersistence
             }
         }
 
+        [SkipLocalsInit]
         public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath)
         {
             // State trie nodes are stored across 3 columns based on path length:
@@ -220,10 +221,14 @@ public static class BaseTriePersistence
             // - StateNodes: path length 6-15 (8 byte keys)
             // - FallbackNodes: path length 16+ (34 byte keys with 0x00 prefix)
 
+            // Allocate two buffers at the largest key size and slice for each column
+            Span<byte> firstKeyBuf = stackalloc byte[FullStateNodesKeyLength];
+            Span<byte> lastKeyBuf = stackalloc byte[FullStateNodesKeyLength + 1];
+
             // Delete from StateNodesTop (path length 0-5)
             {
-                Span<byte> firstKey = stackalloc byte[StateNodesTopPathLength];
-                Span<byte> lastKey = stackalloc byte[StateNodesTopPathLength + 1];
+                Span<byte> firstKey = firstKeyBuf[..StateNodesTopPathLength];
+                Span<byte> lastKey = lastKeyBuf[..(StateNodesTopPathLength + 1)];
                 EncodeStateTopNodeKey(firstKey, fromPath);
                 EncodeStateTopNodeKey(lastKey[..StateNodesTopPathLength], toPath);
                 lastKey[StateNodesTopPathLength] = 0; // Exclusive upper bound
@@ -238,8 +243,8 @@ public static class BaseTriePersistence
 
             // Delete from StateNodes (path length 6-15)
             {
-                Span<byte> firstKey = stackalloc byte[ShortenedPathLength];
-                Span<byte> lastKey = stackalloc byte[ShortenedPathLength + 1];
+                Span<byte> firstKey = firstKeyBuf[..ShortenedPathLength];
+                Span<byte> lastKey = lastKeyBuf[..(ShortenedPathLength + 1)];
                 EncodeShortenedStateNodeKey(firstKey, fromPath);
                 EncodeShortenedStateNodeKey(lastKey[..ShortenedPathLength], toPath);
                 lastKey[ShortenedPathLength] = 0; // Exclusive upper bound
@@ -254,13 +259,11 @@ public static class BaseTriePersistence
 
             // Delete from FallbackNodes (path length 16+, prefix 0x00)
             {
-                Span<byte> firstKey = stackalloc byte[FullStateNodesKeyLength];
-                Span<byte> lastKey = stackalloc byte[FullStateNodesKeyLength + 1];
-                EncodeFullStateNodeKey(firstKey, fromPath);
-                EncodeFullStateNodeKey(lastKey[..FullStateNodesKeyLength], toPath);
-                lastKey[FullStateNodesKeyLength] = 0; // Exclusive upper bound
+                EncodeFullStateNodeKey(firstKeyBuf, fromPath);
+                EncodeFullStateNodeKey(lastKeyBuf[..FullStateNodesKeyLength], toPath);
+                lastKeyBuf[FullStateNodesKeyLength] = 0; // Exclusive upper bound
 
-                using ISortedView view = fallbackNodesSnap.GetViewBetween(firstKey, lastKey);
+                using ISortedView view = fallbackNodesSnap.GetViewBetween(firstKeyBuf, lastKeyBuf);
                 while (view.MoveNext())
                 {
                     if (view.CurrentKey.Length != FullStateNodesKeyLength) continue;
@@ -270,6 +273,7 @@ public static class BaseTriePersistence
             }
         }
 
+        [SkipLocalsInit]
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath)
         {
             // Storage trie nodes are stored across 2 columns based on path length:
@@ -278,10 +282,14 @@ public static class BaseTriePersistence
 
             Hash256 address = new Hash256(addressHash);
 
+            // Allocate two buffers at the largest key size and slice for each column
+            Span<byte> firstKeyBuf = stackalloc byte[FullStorageNodesKeyLength];
+            Span<byte> lastKeyBuf = stackalloc byte[FullStorageNodesKeyLength + 1];
+
             // Delete from StorageNodes (path length 0-15)
             {
-                Span<byte> firstKey = stackalloc byte[ShortenedStorageNodesKeyLength];
-                Span<byte> lastKey = stackalloc byte[ShortenedStorageNodesKeyLength + 1];
+                Span<byte> firstKey = firstKeyBuf[..ShortenedStorageNodesKeyLength];
+                Span<byte> lastKey = lastKeyBuf[..(ShortenedStorageNodesKeyLength + 1)];
                 EncodeShortenedStorageNodeKey(firstKey, address, fromPath);
                 EncodeShortenedStorageNodeKey(lastKey[..ShortenedStorageNodesKeyLength], address, toPath);
                 lastKey[ShortenedStorageNodesKeyLength] = 0; // Exclusive upper bound
@@ -300,13 +308,11 @@ public static class BaseTriePersistence
 
             // Delete from FallbackNodes (path length 16+, prefix 0x01)
             {
-                Span<byte> firstKey = stackalloc byte[FullStorageNodesKeyLength];
-                Span<byte> lastKey = stackalloc byte[FullStorageNodesKeyLength + 1];
-                EncodeFullStorageNodeKey(firstKey, address, fromPath);
-                EncodeFullStorageNodeKey(lastKey[..FullStorageNodesKeyLength], address, toPath);
-                lastKey[FullStorageNodesKeyLength] = 0; // Exclusive upper bound
+                EncodeFullStorageNodeKey(firstKeyBuf, address, fromPath);
+                EncodeFullStorageNodeKey(lastKeyBuf[..FullStorageNodesKeyLength], address, toPath);
+                lastKeyBuf[FullStorageNodesKeyLength] = 0; // Exclusive upper bound
 
-                using ISortedView view = fallbackNodesSnap.GetViewBetween(firstKey, lastKey);
+                using ISortedView view = fallbackNodesSnap.GetViewBetween(firstKeyBuf, lastKeyBuf);
                 while (view.MoveNext())
                 {
                     if (view.CurrentKey.Length != FullStorageNodesKeyLength) continue;
