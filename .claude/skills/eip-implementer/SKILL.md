@@ -23,13 +23,14 @@ EIP-XXXX Implementation:
 
 ### Step 1 — Fetch and Summarize the EIP
 
-Fetch the EIP using `WebFetch`:
+Fetch the EIP spec using `WebFetch`:
 
 ```
-URL: https://eips.ethereum.org/EIPS/eip-{number}
+Primary:  https://raw.githubusercontent.com/ethereum/EIPs/refs/heads/master/EIPS/eip-{number}.md
+Fallback: https://eips.ethereum.org/EIPS/eip-{number}
 ```
 
-If WebFetch fails, ask the user for the EIP number or a direct link.
+The raw GitHub URL returns full markdown with formulas and pseudocode intact. The eips.ethereum.org fallback renders HTML that WebFetch may not fully capture. If both fail, ask the user for a direct link.
 
 Extract and present:
 - **EIP number + title**
@@ -57,6 +58,9 @@ Based on the key specification changes from Step 1, determine the primary change
 | New opcode | "Adding a new opcode" in reference doc |
 | New precompile | "Adding a new precompile" in reference doc |
 | New transaction type | "Adding a new transaction type" in reference doc |
+| Gas cost or accounting change | "Gas cost / accounting changes" in reference doc (high blast radius — 20+ files) |
+| Receipt format change | "Receipt format changes" in reference doc (consensus-critical) |
+| New header field | "New header field" in reference doc |
 | New RPC method | "Adding new JSON-RPC methods" in reference doc |
 | Consensus/fork rule only | "Adding an EIP flag to a fork" in reference doc |
 
@@ -107,7 +111,7 @@ Build, run relevant tests, and format. If build or tests fail → fix → repeat
 
 ## Edge cases
 
-- **WebFetch failure**: Ask the user for the EIP number or a direct URL to the spec
+- **WebFetch failure**: Try the fallback URL, then ask the user for a direct link
 - **Partially implemented EIP**: Step 2 checks for this — if found, adapt the plan to build on existing work
 
 ## Common mistakes
@@ -115,7 +119,7 @@ Build, run relevant tests, and format. If build or tests fail → fix → repeat
 | Mistake | Fix |
 |---------|-----|
 | Writing code before user approves plan | Always wait for explicit confirmation after Step 4 |
-| Forgetting ChainSpec support | EIP flags need 4 ChainSpec files, not just IReleaseSpec — see reference doc |
+| Forgetting flag registration files | EIP flags need 9 files across 5 layers, not just IReleaseSpec — see reference doc |
 | Skipping build verification | Always run Step 6 before claiming implementation is complete |
 
 ## References
