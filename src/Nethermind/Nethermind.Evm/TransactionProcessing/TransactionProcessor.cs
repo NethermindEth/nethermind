@@ -164,7 +164,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
-
+        
         public int BlockAccessIndex => VirtualMachine.TxExecutionContext.BlockAccessIndex;
 
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
