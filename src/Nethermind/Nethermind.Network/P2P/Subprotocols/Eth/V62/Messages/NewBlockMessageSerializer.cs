@@ -22,11 +22,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             rlpStream.Encode(message.TotalDifficulty);
         }
 
-        public NewBlockMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            return Deserialize(rlpStream);
-        }
+        public NewBlockMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
 
         public int GetLength(NewBlockMessage message, out int contentLength)
         {
@@ -36,12 +33,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private NewBlockMessage Deserialize(RlpStream rlpStream)
+        private NewBlockMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             NewBlockMessage message = new();
-            rlpStream.ReadSequenceLength();
-            message.Block = _blockDecoder.Decode(rlpStream);
-            message.TotalDifficulty = rlpStream.DecodeUInt256();
+            ctx.ReadSequenceLength();
+            message.Block = _blockDecoder.Decode(ref ctx);
+            message.TotalDifficulty = ctx.DecodeUInt256();
             return message;
         }
     }

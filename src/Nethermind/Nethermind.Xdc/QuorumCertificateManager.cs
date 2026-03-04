@@ -172,11 +172,11 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         ulong qcRound = qc.ProposedBlockInfo.Round;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(certificateTarget, qcRound);
-        double CertificateThreshold = spec.CertificateThreshold;
-        double required = Math.Ceiling(epochSwitchInfo.Masternodes.Length * CertificateThreshold);
+        double certificateThreshold = spec.CertificateThreshold;
+        double required = Math.Ceiling(epochSwitchInfo.Masternodes.Length * certificateThreshold);
         if ((qcRound > 0) && (uniqueSignatures.Length < required))
         {
-            error = $"Number of votes ({uniqueSignatures.Length}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {CertificateThreshold}";
+            error = $"Number of votes ({uniqueSignatures.Length}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {certificateThreshold}";
             return false;
         }
 

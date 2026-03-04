@@ -16,7 +16,6 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Types;
 using System;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.P2P;
 
@@ -40,6 +39,7 @@ internal class XdcProtocolHandler(
     private ClockKeyCache<ValueHash256> _notifiedVotes = new(MemoryAllowance.MemPoolSize / 2);
     private ClockKeyCache<ValueHash256> _notifiedTimeouts = new(MemoryAllowance.MemPoolSize / 2);
 
+    // cspell:disable-next-line
     public override string Name => "xdpos2";
 
     public override byte ProtocolVersion => 100;
@@ -94,7 +94,7 @@ internal class XdcProtocolHandler(
 
     private void Handle(VoteMsg voteMsg)
     {
-        _votesManager.OnReceiveVote(voteMsg.Vote);
+        _ = _votesManager.OnReceiveVote(voteMsg.Vote);
     }
     private void Handle(TimeoutMsg timeoutMsg)
     {
@@ -132,35 +132,25 @@ internal class XdcProtocolHandler(
 
     private bool ShouldNotifyVote(Vote vote)
     {
+        if (vote.IsMyVote)
+            return true;
+
         if (_notifiedVotes.Contains(vote.Hash))
             return false;
+
         _notifiedVotes.Set(vote.Hash);
         return true;
     }
 
     private bool ShouldNotifyTimeout(Timeout timeout)
     {
+        if (timeout.IsMyVote)
+            return true;
+
         if (_notifiedTimeouts.Contains(timeout.Hash))
             return false;
+
         _notifiedTimeouts.Set(timeout.Hash);
         return true;
-    }
-
-    protected override void Handle(NewBlockMessage msg)
-    {
-        // XDC-only: run AddNewBlock on thread pool to avoid DotNetty event loop self-deadlock in TrieStoreScopeProvider.Commit (Task.WaitAll + ExecutorTaskScheduler).
-        msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
-        _ = Task.Run(() =>
-        {
-            try
-            {
-                SyncServer.AddNewBlock(msg.Block, this);
-            }
-            catch (Exception e)
-            {
-                if (Logger.IsDebug) Logger.Debug($"Handling {msg} from {Node:c} failed: " + e.Message);
-                throw;
-            }
-        });
     }
 }

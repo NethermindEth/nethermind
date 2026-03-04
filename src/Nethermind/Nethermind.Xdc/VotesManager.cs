@@ -63,7 +63,7 @@ internal class VotesManager(
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
         long gapNumber = epochSwitchNumber == 0 ? 0 : Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
 
-        var vote = new Vote(blockInfo, (ulong)gapNumber);
+        var vote = new Vote(blockInfo, (ulong)gapNumber, isMyVote: true);
         // Sets signature and signer for the vote
         Sign(vote);
 
@@ -182,7 +182,7 @@ internal class VotesManager(
 
         if (FilterVote(vote))
         {
-            //TODO: Broadcast Vote
+
             return HandleVote(vote);
         }
         return Task.CompletedTask;

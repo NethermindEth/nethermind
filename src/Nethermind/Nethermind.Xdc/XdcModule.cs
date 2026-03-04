@@ -30,6 +30,10 @@ using Nethermind.Xdc.Spec;
 using Nethermind.TxPool;
 
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.TxPool;
+using Nethermind.Xdc.Contracts;
+using Nethermind.Xdc.P2P;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
 
 namespace Nethermind.Xdc;

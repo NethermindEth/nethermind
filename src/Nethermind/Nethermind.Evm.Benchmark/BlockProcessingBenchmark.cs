@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using Autofac;
 using BenchmarkDotNet.Attributes;
@@ -43,8 +44,16 @@ namespace Nethermind.Evm.Benchmark;
 /// <see cref="BlockCachePreWarmer"/> — to match the live client's block processing
 /// path. Pre-warming triggers for blocks with 3+ transactions.
 ///
-/// Uses <c>[IterationSetup]</c> (with <c>InvocationCount=1/UnrollFactor=1</c>) to
-/// recreate world state before each measured invocation.
+/// A single world state and branch processor are built once in <see cref="GlobalSetup"/>.
+/// <see cref="BranchProcessor.Process"/> manages its own scope internally, so each
+/// iteration opens a fresh scope at the genesis root and disposes it on exit —
+/// exactly as the runtime does.
+///
+/// Each benchmark method loops <see cref="N"/> times with
+/// <c>OperationsPerInvoke = N</c> so BDN divides the total time by N.
+/// This keeps iteration time well above the 100 ms minimum, eliminating
+/// MinIterationTime warnings and reducing coefficient of variation caused
+/// by OS scheduling noise on sub-millisecond measurements.
 ///
 /// Scenarios:
 /// - EmptyBlock, SingleTransfer, Transfers_50, Transfers_200
@@ -57,17 +66,33 @@ namespace Nethermind.Evm.Benchmark;
 public class BlockProcessingBenchmark
 {
     /// <summary>
-    /// [IterationSetup] rebuilds world state once per iteration.
-    /// InvocationCount=1/UnrollFactor=1 ensures each invocation starts from a fresh state.
+    /// Repetitions per BDN invocation. Used for low per-op benchmarks
+    /// (EmptyBlock ~21 us, SingleTransfer ~46 us, ContractDeploy_10 ~400 us)
+    /// where higher rep counts amortize OS scheduling noise and prewarmer
+    /// thread contention, keeping iteration time above BDN's 100 ms minimum.
+    /// </summary>
+    private const int N_LARGE = 5000;
+
+    private const int N_SMALL = 200;
+
+    private const int N_MEDIUM = 500;
+
+    /// <summary>
+    /// 20 data points per benchmark (2 launches x 10 iterations, 2 warmup each).
+    /// GcForce ensures a GC collection between iterations to reduce allocation noise.
     /// </summary>
     private class BlockProcessingConfig : ManualConfig
     {
         public BlockProcessingConfig()
         {
-            AddJob(Job.MediumRun
+            AddJob(Job.Default
                 .WithToolchain(InProcessNoEmitToolchain.Instance)
                 .WithInvocationCount(1)
-                .WithUnrollFactor(1));
+                .WithUnrollFactor(1)
+                .WithLaunchCount(2)
+                .WithWarmupCount(2)
+                .WithIterationCount(5)
+                .WithGcForce(true));
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
             AddColumn(StatisticColumn.Median);
@@ -103,8 +128,7 @@ public class BlockProcessingBenchmark
     // DI container — built once, shared across all iterations
     private IContainer _container = null!;
 
-    // Per-iteration state
-    private IWorldState _stateProvider = null!;
+    // Single processing scope, branch processor and parent header — shared across all iterations
     private ILifetimeScope _processingScope = null!;
     private IBranchProcessor _branchProcessor = null!;
     private BlockHeader _parentHeader = null!;
@@ -125,6 +149,12 @@ public class BlockProcessingBenchmark
     [GlobalSetup]
     public void GlobalSetup()
     {
+        // Pin to a single core to reduce OS scheduler jitter
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+        {
+            Process.GetCurrentProcess().ProcessorAffinity = new IntPtr(1);
+        }
+
         _sender = _senderKey.Address;
 
         _header = Build.A.BlockHeader
@@ -162,28 +192,13 @@ public class BlockProcessingBenchmark
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Osaka.Instance))
             .Build();
-    }
 
-    [GlobalCleanup]
-    public void GlobalCleanup()
-    {
-        _container.Dispose();
-    }
-
-    [IterationSetup]
-    public void IterationSetup()
-    {
-        // Fresh world state backed by a per-iteration db and trie store.
-        // WorldStateManager is needed so the pre-warmer can create isolated
-        // read-only snapshots via CreateResettableWorldState().
+        // Single world state — BranchProcessor.Process() manages scope internally,
+        // matching the live client's block processing path.
         IDbProvider dbProvider = TestMemDbProvider.Init();
         IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
         IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
 
-        // Create processing scope with per-iteration state infrastructure.
-        // IWorldState is registered as scoped by BlockProcessingModule, so each
-        // child scope (including pre-warmer envs) gets its own WorldState instance
-        // backed by its own IWorldStateScopeProvider — avoiding nested scope errors.
         IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();
         IMainProcessingModule[] mainProcessingModules = _container.Resolve<IMainProcessingModule[]>();
         _processingScope = _container.BeginLifetimeScope(b =>
@@ -194,29 +209,26 @@ public class BlockProcessingBenchmark
             b.AddModule(mainProcessingModules);
         });
 
-        // Resolve scoped WorldState and set up initial accounts
-        _stateProvider = _processingScope.Resolve<IWorldState>();
+        IWorldState stateProvider = _processingScope.Resolve<IWorldState>();
 
-        using (_stateProvider.BeginScope(IWorldState.PreGenesis))
+        using (stateProvider.BeginScope(IWorldState.PreGenesis))
         {
-            _stateProvider.CreateAccount(_sender, 1_000_000.Ether());
+            stateProvider.CreateAccount(_sender, 1_000_000.Ether());
 
-            // Deploy contract for ContractCall benchmarks
-            _stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
-            _stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
+            stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
+            stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
 
-            // Deploy system contract stubs required by Osaka execution requests
-            _stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, UInt256.Zero);
-            _stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, StopCode, Spec);
-            _stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, UInt256.Zero);
-            _stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, StopCode, Spec);
+            stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, UInt256.Zero);
+            stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, StopCode, Spec);
+            stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, UInt256.Zero);
+            stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, StopCode, Spec);
 
-            _stateProvider.Commit(Spec);
-            _stateProvider.CommitTree(0);
+            stateProvider.Commit(Spec);
+            stateProvider.CommitTree(0);
 
             _parentHeader = Build.A.BlockHeader
                 .WithNumber(0)
-                .WithStateRoot(_stateProvider.StateRoot)
+                .WithStateRoot(stateProvider.StateRoot)
                 .WithGasLimit(30_000_000)
                 .TestObject;
         }
@@ -224,59 +236,104 @@ public class BlockProcessingBenchmark
         _branchProcessor = _processingScope.Resolve<IBranchProcessor>();
     }
 
-    [IterationCleanup]
-    public void IterationCleanup()
+    [GlobalCleanup]
+    public void GlobalCleanup()
     {
-        _processingScope?.Dispose();
-        _processingScope = null!;
+        _processingScope.Dispose();
+        _container.Dispose();
     }
 
     // ── Benchmarks ────────────────────────────────────────────────────────
 
-    [Benchmark]
+    [Benchmark(OperationsPerInvoke = N_LARGE)]
     public Block[] EmptyBlock()
-        => _branchProcessor.Process(_parentHeader, [_emptyBlock],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_LARGE; i++)
+            result = _branchProcessor.Process(_parentHeader, [_emptyBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
 
-    [Benchmark]
+    [Benchmark(OperationsPerInvoke = N_LARGE)]
     public Block[] SingleTransfer()
-        => _branchProcessor.Process(_parentHeader, [_singleTransferBlock],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_LARGE; i++)
+            result = _branchProcessor.Process(_parentHeader, [_singleTransferBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
 
-    [Benchmark]
+    [Benchmark(OperationsPerInvoke = N_MEDIUM)]
     public Block[] Transfers_50()
-        => _branchProcessor.Process(_parentHeader, [_transfers50Block],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_MEDIUM; i++)
+            result = _branchProcessor.Process(_parentHeader, [_transfers50Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
 
-    [Benchmark(Baseline = true)]
+    [Benchmark(Baseline = true, OperationsPerInvoke = N_SMALL)]
     public Block[] Transfers_200()
-        => _branchProcessor.Process(_parentHeader, [_transfers200Block],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_transfers200Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
 
-    [Benchmark]
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] Eip1559_200()
-        => _branchProcessor.Process(_parentHeader, [_eip1559_200Block],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_eip1559_200Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
 
-    [Benchmark]
+    [Benchmark(OperationsPerInvoke = N_MEDIUM)]
     public Block[] AccessList_50()
-        => _branchProcessor.Process(_parentHeader, [_accessList50Block],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_MEDIUM; i++)
+            result = _branchProcessor.Process(_parentHeader, [_accessList50Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
 
-    [Benchmark]
+    [Benchmark(OperationsPerInvoke = N_LARGE)]
     public Block[] ContractDeploy_10()
-        => _branchProcessor.Process(_parentHeader, [_contractDeploy10Block],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_LARGE; i++)
+            result = _branchProcessor.Process(_parentHeader, [_contractDeploy10Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
 
-    [Benchmark]
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] ContractCall_200()
-        => _branchProcessor.Process(_parentHeader, [_contractCall200Block],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_contractCall200Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
 
-    [Benchmark]
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] MixedBlock()
-        => _branchProcessor.Process(_parentHeader, [_mixedBlock],
-            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_mixedBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
 
     // ── Block builder ─────────────────────────────────────────────────────
 

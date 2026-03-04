@@ -119,7 +119,6 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
 
         if (tx.RequiresSpecialHandling(spec))
-        {
             return ExecuteSpecialTransaction(tx, tracer, opts);
 
         }

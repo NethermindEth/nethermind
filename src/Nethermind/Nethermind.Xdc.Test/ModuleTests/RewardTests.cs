@@ -188,7 +188,6 @@ public class RewardTests
             masternodeVotingContract,
             signingTxCache,
             Substitute.For<ITransactionProcessor>()
-            signingTxCache
         );
 
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;

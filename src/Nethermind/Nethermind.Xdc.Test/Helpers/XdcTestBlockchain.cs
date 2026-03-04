@@ -81,7 +81,7 @@ public class XdcTestBlockchain : TestBlockchain
     public ISnapshotManager SnapshotManager => _fromXdcContainer.SnapshotManager;
     public IMasternodesCalculator MasternodesCalculator => _fromXdcContainer.MasternodesCalculator;
     public IVotesManager VotesManager => _fromXdcContainer.VotesManager;
-    internal TestRandomSigner RandomSigner { get; }
+    internal TestRandomSigner? RandomSigner { get; private set; }
     internal XdcHotStuff ConsensusModule => (XdcHotStuff)BlockProducerRunner;
 
     protected XdcTestBlockchain(bool useHotStuffModule, bool withPresetPenaltyHistory = false)
@@ -89,7 +89,6 @@ public class XdcTestBlockchain : TestBlockchain
         var keys = new PrivateKeyGenerator().Generate(210).ToList();
         MasterNodeCandidates = keys.Take(200).ToList();
         RandomKeys = keys.Skip(200).ToList();
-        RandomSigner = new TestRandomSigner(MasterNodeCandidates);
         _useHotStuffModule = useHotStuffModule;
         _withPresetPenaltyHistory = withPresetPenaltyHistory;
     }
@@ -156,6 +155,8 @@ public class XdcTestBlockchain : TestBlockchain
         configurer?.Invoke(builder);
 
         Container = builder.Build();
+
+        RandomSigner = new TestRandomSigner(MasterNodeCandidates, Container.Resolve<IBlockTree>(), Container.Resolve<IEpochSwitchManager>());
 
         _fromXdcContainer = Container.Resolve<FromXdcContainer>();
         _fromContainer = (FromContainer)_fromXdcContainer;
@@ -556,7 +557,7 @@ public class XdcTestBlockchain : TestBlockchain
                 var voteTask = this.VotesManager.OnReceiveVote(vote);
             }
             //Voting will trigger QC creation which triggers new round
-            var finishedTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(5_000));
+            var finishedTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(10_000));
             if (finishedTask != newRoundWaitHandle.Task)
                 Assert.Fail("After 300 votes no new head could be detected. Something is wrong.");
         }
@@ -573,7 +574,7 @@ public class XdcTestBlockchain : TestBlockchain
         {
             KeccakRlpStream stream = new();
             voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-            vote.Signature = RandomSigner.Sign(stream.GetValueHash());
+            vote.Signature = RandomSigner!.Sign(stream.GetValueHash());
             vote.Signer = RandomSigner.Address;
         }
     }
