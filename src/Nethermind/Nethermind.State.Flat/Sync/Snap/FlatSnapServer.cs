@@ -67,8 +67,7 @@ public class FlatSnapServer(
                         try
                         {
                             byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), stateId.StateRoot.ToCommitment());
-                            if (rlp is not null)
-                                response.Add(rlp);
+                            response.Add(rlp!);
                         }
                         catch (MissingTrieNodeException)
                         {

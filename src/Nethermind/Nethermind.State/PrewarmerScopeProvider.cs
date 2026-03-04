@@ -66,7 +66,7 @@ public class PrewarmerScopeProvider(
 
         public void Dispose()
         {
-            if (_measureMetric)
+            if (_measureMetric && _writeBatchTime != 0)
             {
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
             }
