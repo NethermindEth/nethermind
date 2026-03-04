@@ -490,7 +490,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
 
             // Deduct the gas cost for the code deposit from the current state's available gas.
-            // Uses ConsumeCodeDeposit for multi-gas implementations that track state growth separately.
             TGasPolicy.ConsumeCodeDeposit(ref _currentState.Gas, codeDepositGasCost);
 
             // If tracing is enabled, report the successful code deposit operation.
