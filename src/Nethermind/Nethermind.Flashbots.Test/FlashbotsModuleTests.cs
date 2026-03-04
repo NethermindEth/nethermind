@@ -69,8 +69,8 @@ public partial class FlashbotsModuleTests
         BlockHeader currentHeader = chain.BlockTree.Head.Header;
         IWorldState State = chain.MainWorldState;
         using var _ = State.BeginScope(IWorldState.PreGenesis);
-        State.CreateAccount(TestKeysAndAddress.TestAddr, TestKeysAndAddress.TestBalance);
-        UInt256 nonce = State.GetNonce(TestKeysAndAddress.TestAddr);
+        State.CreateAccount(TestKeysAndAddress.TestAddr, TestKeysAndAddress.TestBalance, 0, -1);
+        UInt256 nonce = State.GetNonce(TestKeysAndAddress.TestAddr, -1);
 
         Withdrawal[] withdrawals = [
             Build.A.Withdrawal.WithIndex(0).WithValidatorIndex(1).WithAmount(100).WithRecipient(TestKeysAndAddress.TestAddr).TestObject,

@@ -17,7 +17,10 @@ public static class TestWorldStateFactory
     public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null, bool parallel = false)
     {
         PruningConfig pruningConfig = new PruningConfig();
-        BlocksConfig blocksConfig = new BlocksConfig();
+        BlocksConfig blocksConfig = new BlocksConfig()
+        {
+            ParallelExecution = parallel
+        };
         TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
         dbProvider ??= TestMemDbProvider.Init();
         logManager ??= LimboLogs.Instance;
@@ -30,7 +33,7 @@ public static class TestWorldStateFactory
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
         IWorldState innerWorldState = new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
-        return parallel ? new ParallelWorldState(innerWorldState, blocksConfig) : innerWorldState;
+        return new ParallelWorldState(innerWorldState, blocksConfig);
     }
 
     public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)
