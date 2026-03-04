@@ -57,7 +57,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
         return (Address)result[0]!;
     }
 
-    public Address GetCandidateOwnerDuringProcessing(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
+    public Address GetCandidateOwner(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
     {
         byte[] result = base.CallCore(transactionProcessor, blockHeader, "getCandidateOwner", GenerateTransaction<Transaction>(ContractAddress, "getCandidateOwner", Address.SystemUser, candidate), true);
         if (result.Length != 32)
