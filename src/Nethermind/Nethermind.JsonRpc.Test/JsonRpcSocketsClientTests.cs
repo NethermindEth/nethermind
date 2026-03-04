@@ -459,6 +459,7 @@ public class JsonRpcSocketsClientTests
             }
             catch (ObjectDisposedException) { }
             catch (IOException) { }
+            catch (OperationCanceledException) { }
         }
 
         private static IJsonRpcProcessor CreateCapturingProcessor(Action<ReadOnlySequence<byte>> onRequest)
