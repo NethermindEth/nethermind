@@ -15,13 +15,14 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using Nethermind.TxPool;
 using Nethermind.Logging;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Api.Steps;
 using Nethermind.Synchronization;
@@ -37,6 +38,9 @@ public class XdcModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
+
+        // Register custom RocksDb config factory that handles XdcSnapshots without validation
+        builder.AddDecorator<IRocksDbConfigFactory, XdcRocksDbConfigFactory>();
 
         builder
             .AddStep(typeof(InitializeBlockchainXdc))
