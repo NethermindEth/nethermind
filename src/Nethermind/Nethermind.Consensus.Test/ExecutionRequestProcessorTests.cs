@@ -66,7 +66,7 @@ public class ExecutionProcessorTests
     public void Setup()
     {
         _specProvider = MainnetSpecProvider.Instance;
-        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         _stateProvider.CreateAccount(eip7002Account, AccountBalance);
         _stateProvider.CreateAccount(eip7251Account, AccountBalance);

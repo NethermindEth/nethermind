@@ -46,15 +46,16 @@ public class StatelessBlockProcessingEnv(
         using ArrayPoolList<BlockHeader> readOnlyCollection = witness.DecodeHeaders();
         StatelessBlockTree statelessBlockTree = new(readOnlyCollection);
         ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, statelessBlockTree);
-        IBlockProcessor.IBlockTransactionsExecutor txExecutor =
-            null; // todo: fix
-                  // new BlockProcessor.BlockValidationTransactionsExecutor(
-                  //     stateProvider,
-                  //     new BlobBaseFeeCalculator(),
-                  //     HoodiSpecProvider.Instance,
-                  //     Substitute.For<IVirtualMachine>(),
-                  //     Substitute.For<ICodeInfoRepository>(),
-                  //     LimboLogs.Instance),
+        BlockhashProvider blockhashProvider = new(statelessBlockTree, WorldState, logManager);
+        ICodeInfoRepository codeInfoRepository = new EthereumCodeInfoRepository(WorldState);
+        IBlockProcessor.IBlockTransactionsExecutor txExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(
+            WorldState,
+            new ExecuteTransactionProcessorAdapter(txProcessor),
+            BlobBaseFeeCalculator.Instance,
+            specProvider,
+            blockhashProvider,
+            codeInfoRepository,
+            logManager);
 
         IHeaderValidator headerValidator = new HeaderValidator(statelessBlockTree, sealValidator, specProvider, logManager);
         IBlockValidator blockValidator = new BlockValidator(new TxValidator(specProvider.ChainId), headerValidator,

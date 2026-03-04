@@ -207,12 +207,12 @@ namespace Ethereum.Test.Base
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
                     stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
-                        storageItem.Value.WithoutLeadingZeros().ToArray());
+                        storageItem.Value.WithoutLeadingZeros().ToArray(), -1);
                 }
 
-                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
+                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, 0, -1);
                 stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
-                stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
+                stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce, -1);
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);

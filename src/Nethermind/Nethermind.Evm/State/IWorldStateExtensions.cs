@@ -12,10 +12,10 @@ namespace Nethermind.Evm.State;
 public static class WorldStateExtensions
 {
     public static void InsertCode(this IWorldState worldState, Address address, ReadOnlyMemory<byte> code,
-        IReleaseSpec spec, bool isGenesis = false) // used?
+        IReleaseSpec spec, bool isGenesis = false)
     {
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
-        worldState.InsertCode(address, codeHash, code, spec, isGenesis, -1); //tmp
+        worldState.InsertCode(address, codeHash, code, spec, isGenesis, -1); // used for setting prestate in tests, so use -1 index
     }
 
     public static void Commit(this IWorldState worldState, IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)

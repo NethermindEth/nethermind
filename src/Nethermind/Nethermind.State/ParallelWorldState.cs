@@ -891,7 +891,6 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
                     AdvanceSuggested();
                     continue;
                 }
-                Console.WriteLine($"[tmp] ran out of generated changes.\nsuggested head: {suggestedHead.Value}");
                 throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
             }
 
@@ -914,7 +913,6 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
                     AdvanceSuggested();
                     continue;
                 }
-                Console.WriteLine($"[tmp] found extra suggested account change.\nsuggestedHead: {suggestedHead.Value}\ngeneratedHead: {generatedHead.Value}");
                 throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
             }
             else
