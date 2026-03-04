@@ -185,8 +185,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     {
                         NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
                         ReportIn(newBlockMsg, size);
-                        Task task = Handle(newBlockMsg);
-                        task.GetAwaiter().GetResult();
+                        Handle(newBlockMsg).GetAwaiter().GetResult();
                     }
                     break;
             }
