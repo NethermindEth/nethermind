@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Db;
 
@@ -8,15 +9,27 @@ namespace Nethermind.State.Flat.Persistence;
 
 internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
 {
-    private const int ColumnCount = 7; // Number of FlatDbColumns values
+    private const int ColumnCount = (int)FlatDbColumns.FallbackNodes + 1;
     private const long MinWriteBufferSize = 16L * 1024 * 1024;   // 16 MB floor
     private const long MaxWriteBufferSize = 256L * 1024 * 1024;  // 256 MB cap
 
     private bool _syncBufferSet;
 
-    private readonly long[] _lastWriteBufferSize = new long[ColumnCount];
-    private readonly CountingWriteBatch?[] _activeCounters = new CountingWriteBatch?[ColumnCount];
+    private WriteBufferSizeBuffer _lastWriteBufferSize;
+    private ActiveCounterBuffer _activeCounters;
     private int _activeCounterCount;
+
+    [InlineArray(ColumnCount)]
+    private struct WriteBufferSizeBuffer
+    {
+        private long _element0;
+    }
+
+    [InlineArray(ColumnCount)]
+    private struct ActiveCounterBuffer
+    {
+        private CountingWriteBatch? _element0;
+    }
 
     public IWriteBatch Wrap(IColumnsWriteBatch<FlatDbColumns> batch, FlatDbColumns column, WriteFlags flags)
     {
