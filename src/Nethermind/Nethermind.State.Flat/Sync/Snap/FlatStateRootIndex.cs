@@ -71,7 +71,12 @@ public class FlatStateRootIndex : IFlatStateRootIndex, IDisposable
 
         _availableStateRoots = newStateRootSet;
         stateRoots.Reverse();
-        _stateRootQueue = new Queue<Hash256>(stateRoots.Select(x => x.stateRoot));
+        Queue<Hash256> queue = new(stateRoots.Count);
+        for (int i = 0; i < stateRoots.Count; i++)
+        {
+            queue.Enqueue(stateRoots[i].stateRoot);
+        }
+        _stateRootQueue = queue;
         _lastQueuedStateRoot = newHead.StateRoot;
     }
 

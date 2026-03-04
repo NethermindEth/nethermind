@@ -33,7 +33,7 @@ internal static class FlatEntryWriter
             {
                 path.AppendMut(node.Key);
                 Account account = AccountDecoder.Instance.Decode(node.Value.Span)!;
-                writeBatch.SetAccountRaw(path.Path.ToCommitment(), account);
+                writeBatch.SetAccountRaw(path.Path, account);
             }
             finally
             {
@@ -48,7 +48,7 @@ internal static class FlatEntryWriter
             while (enumerator.MoveNext())
             {
                 Account account = AccountDecoder.Instance.Decode(enumerator.CurrentValue)!;
-                writeBatch.SetAccountRaw(enumerator.CurrentPath.ToCommitment(), account);
+                writeBatch.SetAccountRaw(enumerator.CurrentPath, account);
             }
         }
         else if (node.IsExtension)
@@ -76,7 +76,7 @@ internal static class FlatEntryWriter
             {
                 path.AppendMut(node.Key);
                 Rlp.ValueDecoderContext ctx = ((ReadOnlySpan<byte>)node.Value.Span).AsRlpValueContext();
-                writeBatch.SetStorageRaw(address, path.Path.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
+                writeBatch.SetStorageRaw(address, path.Path, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
             }
             finally
             {
@@ -91,7 +91,7 @@ internal static class FlatEntryWriter
             while (enumerator.MoveNext())
             {
                 Rlp.ValueDecoderContext ctx = enumerator.CurrentValue.AsRlpValueContext();
-                writeBatch.SetStorageRaw(address, enumerator.CurrentPath.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
+                writeBatch.SetStorageRaw(address, enumerator.CurrentPath, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
             }
         }
         else if (node.IsExtension)

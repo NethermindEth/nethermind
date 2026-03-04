@@ -197,10 +197,10 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             _flatWriteBatch.SetStorage(fakeAddrHash, fakeSlotHash, value);
         }
 
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value) =>
+        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
             throw new InvalidOperationException("Raw operations not available in preimage mode");
 
-        public void SetAccountRaw(Hash256 addrHash, Account account) =>
+        public void SetAccountRaw(in ValueHash256 addrHash, Account account) =>
             throw new InvalidOperationException("Raw operations not available in preimage mode");
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
@@ -245,7 +245,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             return TryGetSlotRaw(fakeHash, fakeSlotHash, ref outValue);
         }
 
-        public byte[] GetAccountRaw(Hash256 addrHash) =>
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             throw new InvalidOperationException("Raw operation not available in preimage mode");
 
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue) =>

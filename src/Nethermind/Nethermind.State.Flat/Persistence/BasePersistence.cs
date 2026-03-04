@@ -65,7 +65,7 @@ public static class BasePersistence
     {
         public Account? GetAccount(Address address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
-        public byte[]? GetAccountRaw(Hash256 addrHash);
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash);
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
@@ -80,9 +80,9 @@ public static class BasePersistence
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
 
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value);
+        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value);
 
-        public void SetAccountRaw(Hash256 addrHash, Account account);
+        public void SetAccountRaw(in ValueHash256 addrHash, Account account);
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
 
@@ -134,10 +134,10 @@ public static class BasePersistence
             _flatWriteBatch.SetStorage(addr.ToAccountPath, hashBuffer, value);
         }
 
-        public void SetStorageRaw(Hash256? addrHash, Hash256 slotHash, in SlotValue? value) =>
+        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
             _flatWriteBatch.SetStorage(addrHash, slotHash, value);
 
-        public void SetAccountRaw(Hash256 addrHash, Account account)
+        public void SetAccountRaw(in ValueHash256 addrHash, Account account)
         {
             using NettyRlpStream stream = _accountDecoder.EncodeToNewNettyStream(account);
             _flatWriteBatch.SetAccount(addrHash, stream.AsSpan());
@@ -181,10 +181,10 @@ public static class BasePersistence
             return TryGetSlotRaw(address.ToAccountPath, slotHash, ref outValue);
         }
 
-        public byte[]? GetAccountRaw(Hash256 addrHash)
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash)
         {
             Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
-            int responseSize = _flatReader.GetAccount(addrHash.ValueHash256, valueBuffer);
+            int responseSize = _flatReader.GetAccount(addrHash, valueBuffer);
             return responseSize == 0 ? null : valueBuffer[..responseSize].ToArray();
         }
 
@@ -228,10 +228,10 @@ public static class BasePersistence
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStorageRlp(address, path, flags);
 
-        public byte[]? GetAccountRaw(Hash256 addrHash) =>
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             _flatReader.GetAccountRaw(addrHash);
 
-        public bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value) =>
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) =>
             _flatReader.TryGetSlotRaw(addrHash, slotHash, ref value);
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
@@ -274,10 +274,10 @@ public static class BasePersistence
         public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) =>
             _trieWriteBatch.SetStorageTrieNode(address, path, tnValue);
 
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value) =>
+        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
             _flatWriter.SetStorageRaw(addrHash, slotHash, value);
 
-        public void SetAccountRaw(Hash256 addrHash, Account account) =>
+        public void SetAccountRaw(in ValueHash256 addrHash, Account account) =>
             _flatWriter.SetAccountRaw(addrHash, account);
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>

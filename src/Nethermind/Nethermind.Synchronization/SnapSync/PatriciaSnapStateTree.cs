@@ -25,14 +25,16 @@ public class PatriciaSnapStateTree(StateTree tree, SnapUpperBoundAdapter adapter
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
+        long totalBytes = 0;
         for (int i = 0; i < entries.Count; i++)
         {
             PathWithAccount account = entries[i];
             Account accountValue = account.Account;
             Rlp rlp = accountValue.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(accountValue);
             bulkEntries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp.Bytes));
-            Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
+            totalBytes += rlp.Bytes.Length;
         }
+        Interlocked.Add(ref Metrics.SnapStateSynced, totalBytes);
 
         tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
         tree.UpdateRootHash();
