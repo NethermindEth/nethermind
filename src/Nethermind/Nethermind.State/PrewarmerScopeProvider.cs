@@ -137,7 +137,7 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                if (preBlockCache.TryGetValue(addressAsKey, out Account? account))
+                if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
                     baseScope.HintGet(address, account);
@@ -145,7 +145,7 @@ public class PrewarmerScopeProvider(
                 }
                 else
                 {
-                    account = GetFromBaseTree(addressAsKey);
+                    account = GetFromBaseTree(in addressAsKey);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
                 }
                 return account;
@@ -219,7 +219,7 @@ public class PrewarmerScopeProvider(
                 }
                 else
                 {
-                    value = LoadFromTreeStorage(storageCell);
+                    value = LoadFromTreeStorage(in storageCell);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
                 }
                 return value;

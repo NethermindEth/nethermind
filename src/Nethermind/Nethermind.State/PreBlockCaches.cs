@@ -58,7 +58,7 @@ public class PreBlockCaches : IPreBlockCachesInner
         return newValue;
     }
 
-    public bool TryGetValue(AddressAsKey key, out Account? account)
+    public bool TryGetValue(in AddressAsKey key, out Account? account)
     {
         return _stateCache.TryGetValue(key, out account);
     }
@@ -129,7 +129,7 @@ public interface IPreBlockCachesInner
 
     //accounts
     Account? GetOrAdd(in AddressAsKey key, InFactory<AddressAsKey, Account> factory);
-    bool TryGetValue(AddressAsKey key, out Account? account);
+    bool TryGetValue(in AddressAsKey key, out Account? account);
 
     //storage slots
     byte[]? GetOrAdd(in StorageCell key, InFactory<StorageCell, byte[]> factory);
