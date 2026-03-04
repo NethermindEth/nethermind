@@ -14,7 +14,7 @@ namespace Nethermind.Core.Test;
 
 public static class TestWorldStateFactory
 {
-    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null, bool parallel = true)
+    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null, bool parallel = false)
     {
         PruningConfig pruningConfig = new PruningConfig();
         BlocksConfig blocksConfig = new BlocksConfig();

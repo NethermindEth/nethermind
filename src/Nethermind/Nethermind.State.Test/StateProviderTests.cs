@@ -86,7 +86,7 @@ public class StateProviderTests
     [Test]
     public void Is_empty_account()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
@@ -97,7 +97,7 @@ public class StateProviderTests
     [Test]
     public void Returns_empty_byte_code_for_non_existing_accounts()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         byte[] code = provider.GetCode(TestItem.AddressA);
         code.Should().BeEmpty();
@@ -106,7 +106,7 @@ public class StateProviderTests
     [Test]
     public void Restore_update_restore()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -133,7 +133,7 @@ public class StateProviderTests
     [Test]
     public void Keep_in_cache()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
@@ -152,7 +152,7 @@ public class StateProviderTests
     {
         byte[] code = [1];
 
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 1);
         provider.AddToBalance(_address1, 1, Frontier.Instance);

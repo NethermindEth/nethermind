@@ -330,7 +330,6 @@ public class AccountChanges : IEquatable<AccountChanges>
         return slots;
     }
 
-    // add to codechanges when generating?
     public ValueHash256 GetCodeHash(int blockAccessIndex) =>
         ValueKeccak.Compute(GetCode(blockAccessIndex));
 
