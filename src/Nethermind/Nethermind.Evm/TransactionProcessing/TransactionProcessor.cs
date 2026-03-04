@@ -758,7 +758,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.DeleteAccount(toBeDestroyed);
 
                         if (tracer.IsTracingRefunds)
-                            tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
+                            tracer.ReportRefund(spec.GasCosts.DestroyRefund);
                     }
 
                     statusCode = StatusCode.Success;
@@ -928,7 +928,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 long totalToRefund = codeInsertRefund;
                 if (!substate.ShouldRevert)
-                    totalToRefund += substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled);
+                    totalToRefund += substate.Refund + substate.DestroyList.Count * spec.GasCosts.DestroyRefund;
                 long actualRefund = CalculateClaimableRefund(spentGas, totalToRefund, spec);
 
                 if (Logger.IsTrace)
