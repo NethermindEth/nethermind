@@ -58,6 +58,7 @@ public static class Migrator
             manager.StoreSnapshot(snapshot);
             count++;
 
+            Console.WriteLine($"Saving snapshot at {snapshot.BlockNumber} ({snapshot.HeaderHash})");
             snapshot = source.Reader.GetLatestSnapshot(snapshot.BlockNumber - 1);
         }
 
