@@ -243,7 +243,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     {
         ReadOnlySpan<byte> data = transaction.Data.Span;
         int totalZeros = data.CountZeros();
-        return totalZeros + (data.Length - totalZeros) * spec.GetTxDataNonZeroMultiplier();
+        return totalZeros + (data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
     public static long AccessListCost(Transaction transaction, IReleaseSpec spec)
