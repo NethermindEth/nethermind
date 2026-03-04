@@ -85,7 +85,7 @@ internal class XdcTransactionProcessorTests
         _stateProvider!.CreateAccount(beneficiaryAddress, AccountBalance);
         _stateProvider.CreateAccount(ownerAddress, UInt256.Zero);
 
-        _masternodeVotingContract.GetCandidateOwner(Arg.Any<XdcTransactionProcessor>(), Arg.Any<XdcBlockHeader>(), beneficiaryAddress)
+        _masternodeVotingContract.GetCandidateOwner(Arg.Any<IWorldState>(), beneficiaryAddress)
             .Returns(ownerAddress);
 
         Transaction tx = Build.A.Transaction
