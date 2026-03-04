@@ -8,6 +8,7 @@ using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Nethermind.Config;
 
 namespace Nethermind.Core.Test;
 
@@ -16,10 +17,11 @@ public static class TestWorldStateFactory
     public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null, bool parallel = true)
     {
         PruningConfig pruningConfig = new PruningConfig();
+        BlocksConfig blocksConfig = new BlocksConfig();
         TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
         dbProvider ??= TestMemDbProvider.Init();
         logManager ??= LimboLogs.Instance;
-        TrieStore trieStore = new TrieStore(
+        TrieStore trieStore = new(
             new NodeStorage(dbProvider.StateDb),
             No.Pruning,
             Persist.EveryBlock,
@@ -28,7 +30,7 @@ public static class TestWorldStateFactory
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
         IWorldState innerWorldState = new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
-        return parallel ? new ParallelWorldState(innerWorldState, true) : innerWorldState;
+        return parallel ? new ParallelWorldState(innerWorldState, blocksConfig) : innerWorldState;
     }
 
     public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)

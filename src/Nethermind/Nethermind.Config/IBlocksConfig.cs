@@ -63,8 +63,13 @@ public interface IBlocksConfig : IConfig
 
     [ConfigItem(
         Description = "Parallelize transaction execution with Block access lists.",
-        DefaultValue = "false")]
+        DefaultValue = "true")]
     bool ParallelExecution { get; set; }
+
+    [ConfigItem(
+        Description = "Use db batch read with parallel execution.",
+        DefaultValue = "true")]
+    bool ParallelExecutionBatchRead { get; set; }
 
     byte[] GetExtraDataBytes();
 

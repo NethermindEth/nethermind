@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -18,11 +19,11 @@ using Nethermind.Logging;
 
 namespace Nethermind.State;
 
-public class ParallelWorldState(IWorldState innerWorldState, bool enableParallelExecution) : WrappedWorldState(innerWorldState), IBlockAccessListBuilder, IPreBlockCaches
+public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig blocksConfig) : WrappedWorldState(innerWorldState), IBlockAccessListBuilder, IPreBlockCaches
 {
     public bool TracingEnabled { get; set; } = false;
     public bool IsGenesis { get; set; } = true;
-    public bool ParallelExecutionEnabled => TracingEnabled && enableParallelExecution && !IsGenesis && _suggestedBlockAccessList is not null;
+    public bool ParallelExecutionEnabled => TracingEnabled && blocksConfig.ParallelExecution && !IsGenesis && _suggestedBlockAccessList is not null;
 
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     private BlockAccessList? _suggestedBlockAccessList;
@@ -79,7 +80,6 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
             accountChanges.AddBalanceChange(new(-1, account.Balance));
             accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
             accountChanges.AddCodeChange(new(-1, _innerWorldState.GetCode(accountChanges.Address)));
-            // accountChanges.CodeHash = account.CodeHash;
 
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
