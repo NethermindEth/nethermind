@@ -66,7 +66,7 @@ public abstract class VirtualMachineTestsBase
 
         _stateDb = new MemDb();
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        TestState = TestWorldStateFactory.CreateForTest(dbProvider, logManager);
+        TestState = TestWorldStateFactory.CreateForTest(dbProvider, logManager, true);
         _worldStateCloser = TestState.BeginScope(IWorldState.PreGenesis);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
