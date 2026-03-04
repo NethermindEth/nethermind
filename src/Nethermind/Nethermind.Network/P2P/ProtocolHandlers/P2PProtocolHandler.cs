@@ -95,7 +95,7 @@ public class P2PProtocolHandler(
         {
             Session.InitiateDisconnect(
                 DisconnectReason.MessageLimitsBreached,
-                $"P2P message too large: {size} bytes, max {BaseProtocolMaxMsgSize}");
+                $"P2P message too large: {size} bytes, max {BaseProtocolMaxMsgSize} bytes");
             return;
         }
 
