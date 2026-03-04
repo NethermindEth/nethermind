@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.Forks;
@@ -18,6 +19,8 @@ public class Amsterdam : BPO5
         IsEip7708Enabled = true;
         IsEip8024Enabled = true;
         IsEip7843Enabled = true;
+        IsEip7954Enabled = true;
+        MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
         Released = false;
     }
 

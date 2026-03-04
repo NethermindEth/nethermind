@@ -123,7 +123,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip7928Enabled { get; set; } = spec.IsEip7928Enabled;
         public bool IsEip7708Enabled { get; set; } = spec.IsEip7708Enabled;
         public bool IsEip7778Enabled { get; set; } = spec.IsEip7778Enabled;
-        public bool IsEip7843Enabled => spec.IsEip7843Enabled;
+        public bool IsEip7843Enabled { get; set; } = spec.IsEip7843Enabled;
+        public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     }
 }
