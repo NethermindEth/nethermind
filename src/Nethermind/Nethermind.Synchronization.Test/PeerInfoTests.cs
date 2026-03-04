@@ -153,7 +153,7 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public void WakeUp_does_not_set_unsleeping_context()
+        public void WakeUp_does_not_put_awake_context_to_sleep()
         {
             DateTime t0 = DateTime.UtcNow;
             PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
