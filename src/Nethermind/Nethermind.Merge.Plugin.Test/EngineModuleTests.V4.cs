@@ -176,8 +176,8 @@ public partial class EngineModuleTests
         Transaction invalidSetCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(0)
-          .WithMaxFeePerGas(9.GWei())
-          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithMaxFeePerGas(9.GWei)
+          .WithMaxPriorityFeePerGas(9.GWei)
           .WithGasLimit(100_000)
           .WithAuthorizationCode(new JsonRpc.Test.Modules.Eth.EthRpcModuleTests.AllowNullAuthorizationTuple(0, null, 0, new Signature(new byte[65])))
           .WithTo(TestItem.AddressA)

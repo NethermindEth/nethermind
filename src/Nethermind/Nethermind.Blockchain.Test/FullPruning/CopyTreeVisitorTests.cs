@@ -39,7 +39,7 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
         VisitingOptions visitingOptions = new()
         {
             MaxDegreeOfParallelism = maxDegreeOfParallelism,
-            FullScanMemoryBudget = fullPruningMemoryBudgetMb.MiB(),
+            FullScanMemoryBudget = fullPruningMemoryBudgetMb.MiB,
         };
 
         IPruningContext ctx = StartPruning(trieDb, clonedDb);
