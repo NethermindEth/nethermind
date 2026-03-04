@@ -30,7 +30,7 @@ internal class XdcTransactionProcessorTests
     private IMasternodeVotingContract _masternodeVotingContract;
     private TestXdcTransactionProcessor? _transactionProcessor;
 
-    private static readonly UInt256 AccountBalance = 1.Ether();
+    private static readonly UInt256 AccountBalance = 1.Ether;
 
     [SetUp]
     public void Setup()

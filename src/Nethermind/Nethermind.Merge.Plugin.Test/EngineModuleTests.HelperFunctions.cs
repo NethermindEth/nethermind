@@ -46,7 +46,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             Transaction[] transactions = BuildTransactions(chain, executePayloadRequest.ParentHash, from, to, count, value, out AccountStruct accountFrom, out parentHeader);
             executePayloadRequest.SetTransactions(transactions);
-            UInt256 totalValue = ((int)(count * value)).GWei();
+            UInt256 totalValue = ((int)(count * value)).GWei;
             return (accountFrom.Balance - totalValue, chain.StateReader.GetBalance(parentHeader, to) + totalValue);
         }
 
@@ -71,8 +71,8 @@ namespace Nethermind.Merge.Plugin.Test
                     .WithNonce(senderAccount.Nonce + index)
                     .WithTimestamp(timestamper.UnixTime.Seconds)
                     .WithTo(to)
-                    .WithValue(value.GWei())
-                    .WithGasPrice(1.GWei())
+                    .WithValue(value.GWei)
+                    .WithGasPrice(1.GWei)
                     .WithChainId(specProvider.ChainId)
                     .WithSenderAddress(from.Address);
 
@@ -86,7 +86,7 @@ namespace Nethermind.Merge.Plugin.Test
                 }
 
                 return builder
-                    .WithMaxFeePerGasIfSupports1559(1.GWei())
+                    .WithMaxFeePerGasIfSupports1559(1.GWei)
                     .SignedAndResolved(from).TestObject;
             }
 

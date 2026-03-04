@@ -52,7 +52,7 @@ public class Eth70ProtocolHandlerTests
     [SetUp]
     public void Setup()
     {
-        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)9.MB();
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)9.MB;
         NetworkDiagTracer.IsEnabled = true;
 
         _session = Substitute.For<ISession>();
@@ -115,7 +115,7 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Should_mark_last_block_incomplete_when_truncated()
     {
-        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)1.MB();
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)1.MB;
 
         const int receiptCount = 20000;
         using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
@@ -562,7 +562,7 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Should_not_split_small_block_when_hitting_limit_single_block()
     {
-        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)10.MB();
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)10.MB;
 
         TxReceipt[] smallBlockReceipts =
         [

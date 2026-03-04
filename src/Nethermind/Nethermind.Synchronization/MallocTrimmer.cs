@@ -60,7 +60,7 @@ public class MallocTrimmer
         // does not go down, but RSS and GC load does.
         long startTime = Stopwatch.GetTimestamp();
         if (_logger.IsDebug) _logger.Debug("Trimming malloc heaps");
-        bool wasReleased = _mallocHelper.MallocTrim((uint)1.MiB());
+        bool wasReleased = _mallocHelper.MallocTrim((uint)1.MiB);
         if (_logger.IsDebug) _logger.Debug($"Trimming malloc heap took {Stopwatch.GetElapsedTime(startTime)}. wasReleased: {wasReleased}");
     }
 }
