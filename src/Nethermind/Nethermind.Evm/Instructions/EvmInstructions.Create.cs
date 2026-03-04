@@ -105,7 +105,8 @@ internal static partial class EvmInstructions
         }
 
         // EIP-3860: Limit the maximum size of the initialization code.
-        if (spec.IsEip3860Enabled)
+        bool isEip3860 = spec.IsEip3860Enabled;
+        if (isEip3860)
         {
             if (initCodeLength > spec.MaxInitCodeSize)
                 goto OutOfGas;
@@ -115,7 +116,7 @@ internal static partial class EvmInstructions
         // Calculate the gas cost for the creation, including fixed cost and per-word cost for init code.
         // Also include an extra cost for CREATE2 if applicable.
         long gasCost = GasCostOf.Create +
-                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
+                       (isEip3860 ? GasCostOf.InitCodeWord * EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
                        (typeof(TOpCreate) == typeof(OpCreate2)
                            ? GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas)
                            : 0);

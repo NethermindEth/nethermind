@@ -1149,7 +1149,7 @@ namespace Nethermind.Trie.Test
         {
             PruningContext ctx = PruningContext.InMemory
                 .WithMaxDepth(2)
-                .WithPersistedMemoryLimit(100.MiB())
+                .WithPersistedMemoryLimit(100.MiB)
                 .TurnOnPrune()
                 .TurnOffAlwaysPrunePersistedNode();
 
@@ -1171,7 +1171,7 @@ namespace Nethermind.Trie.Test
         {
             PruningContext ctx = PruningContext.InMemoryWithPastKeyTracking
                 .WithMaxDepth(2)
-                .WithPersistedMemoryLimit(100.MiB())
+                .WithPersistedMemoryLimit(100.MiB)
                 .TurnOnPrune()
                 .TurnOffAlwaysPrunePersistedNode();
 
@@ -1199,7 +1199,7 @@ namespace Nethermind.Trie.Test
         {
             PruningContext ctx = PruningContext.InMemory
                 .WithMaxDepth(2)
-                .WithPersistedMemoryLimit(200.KiB())
+                .WithPersistedMemoryLimit(200.KiB)
                 .WithPrunePersistedNodeParameter(1, 0.1)
                 .TurnOnPrune()
                 .TurnOffAlwaysPrunePersistedNode();
@@ -1213,9 +1213,9 @@ namespace Nethermind.Trie.Test
 
                 if (thresholdReached)
                 {
-                    ctx.AssertThatTotalMemoryUsedIsNoLessThan((long)(200.KiB() * 0.1));
+                    ctx.AssertThatTotalMemoryUsedIsNoLessThan((long)(200.KiB * 0.1));
                 }
-                else if (ctx.TotalMemoryUsage > 190.KiB())
+                else if (ctx.TotalMemoryUsage > 190.KiB)
                 {
                     thresholdReached = true;
                 }
@@ -1366,7 +1366,7 @@ namespace Nethermind.Trie.Test
                     cfg.DirtyNodeShardBit = 12; // More shard, deliberately make it slow
                 })
                 .WithMaxDepth(128)
-                .WithPersistedMemoryLimit(50.KiB())
+                .WithPersistedMemoryLimit(50.KiB)
                 .WithPrunePersistedNodeParameter(1, 0.01)
                 .TurnOffPrune();
 

@@ -97,7 +97,7 @@ public class TestBlockchain : IDisposable
 
     public static readonly DateTime InitialTimestamp = new(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc);
 
-    public static readonly UInt256 InitialValue = 1000.Ether();
+    public static readonly UInt256 InitialValue = 1000.Ether;
 
     public CancellationToken CancellationToken => CreateCancellationSource().Token;
 
@@ -526,8 +526,8 @@ public class TestBlockchain : IDisposable
             .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)
             .WithNonce(nonce + index)
-            .WithMaxFeePerGas(20.GWei())
-            .WithMaxPriorityFeePerGas(5.GWei())
+            .WithMaxFeePerGas(20.GWei)
+            .WithMaxPriorityFeePerGas(5.GWei)
             .WithType(TxType.EIP1559)
             .WithValue(ether)
             .WithChainId(MainnetSpecProvider.Instance.ChainId)

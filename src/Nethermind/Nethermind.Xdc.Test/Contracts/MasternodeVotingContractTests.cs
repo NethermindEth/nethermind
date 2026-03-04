@@ -27,7 +27,6 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using static Nethermind.Consensus.Processing.AutoReadOnlyTxProcessingEnvFactory;
 
 namespace Nethermind.Xdc.Test;
@@ -49,7 +48,7 @@ internal class MasternodeVotingContractTests
         BlockHeader genesis;
         using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
         {
-            stateProvider.CreateAccount(sender.Address, 1.Ether());
+            stateProvider.CreateAccount(sender.Address, 1.Ether);
             byte[] code = XdcContractData.XDCValidatorBin();
             stateProvider.CreateAccountIfNotExists(codeSource, 0);
             stateProvider.InsertCode(codeSource, ValueKeccak.Compute(code), code, Shanghai.Instance);
@@ -76,9 +75,6 @@ internal class MasternodeVotingContractTests
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
 
         readOnlyTxProcessingEnvFactory.Create().Returns(autoReadOnlyTxProcessingEnv);
-        //EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
-        //EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-        //EthereumTransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
         MasternodeVotingContract masterVoting = new(new AbiEncoder(), codeSource, readOnlyTxProcessingEnvFactory);
 
@@ -88,7 +84,7 @@ internal class MasternodeVotingContractTests
         foreach (Address candidate in candidates)
         {
             UInt256 stake = masterVoting.GetCandidateStake(genesis, candidate);
-            stake.Should().Be(10_000_000.Ether());
+            stake.Should().Be(10_000_000.Ether);
         }
     }
 

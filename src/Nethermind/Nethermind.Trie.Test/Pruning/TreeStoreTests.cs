@@ -378,7 +378,7 @@ namespace Nethermind.Trie.Test.Pruning
             NodeStorage storage = new NodeStorage(memDb);
 
             using TrieStore fullTrieStore = CreateTrieStore(
-                pruningStrategy: new MemoryLimit(16.MB()).WhenLastPersistedBlockIsTooOld(4, 0),
+                pruningStrategy: new MemoryLimit(16.MB).WhenLastPersistedBlockIsTooOld(4, 0),
                 kvStore: memDb,
                 persistenceStrategy: new ConstantInterval(4),
                 new PruningConfig()
@@ -410,7 +410,7 @@ namespace Nethermind.Trie.Test.Pruning
             MemDb memDb = new();
             NodeStorage storage = new NodeStorage(memDb);
 
-            using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new MemoryLimit(16.MB()));
+            using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new MemoryLimit(16.MB));
 
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(0, a))
             {
@@ -498,7 +498,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new MemoryLimit(16.MB()).WhenLastPersistedBlockIsTooOld(4, 0),
+                pruningStrategy: new MemoryLimit(16.MB).WhenLastPersistedBlockIsTooOld(4, 0),
                 persistenceStrategy: new ConstantInterval(4),
                 pruningConfig: new PruningConfig()
                 {
@@ -540,7 +540,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new MemoryLimit(16.MB()),
+                pruningStrategy: new MemoryLimit(16.MB),
                 persistenceStrategy: new ConstantInterval(4));
 
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(0, null)) { }
@@ -590,7 +590,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new MemoryLimit(16.MB()).WhenLastPersistedBlockIsTooOld(4, 0),
+                pruningStrategy: new MemoryLimit(16.MB).WhenLastPersistedBlockIsTooOld(4, 0),
                 persistenceStrategy: new ConstantInterval(4),
                 pruningConfig: new PruningConfig()
                 {
@@ -647,7 +647,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new MemoryLimit(16.MB()),
+                pruningStrategy: new MemoryLimit(16.MB),
                 persistenceStrategy: new ConstantInterval(4));
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
@@ -721,7 +721,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new MemoryLimit(16.MB()).WhenLastPersistedBlockIsTooOld(4, 0),
+                pruningStrategy: new MemoryLimit(16.MB).WhenLastPersistedBlockIsTooOld(4, 0),
                 persistenceStrategy: new ConstantInterval(4),
                 pruningConfig: new PruningConfig()
                 {
@@ -780,7 +780,7 @@ namespace Nethermind.Trie.Test.Pruning
             MemDb memDb = new();
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new MemoryLimit(10.MB()),
+                pruningStrategy: new MemoryLimit(10.MB),
                 persistenceStrategy: new ConstantInterval(10));
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
