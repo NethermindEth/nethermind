@@ -39,6 +39,7 @@ internal class XdcProtocolHandler(
     private ClockKeyCache<ValueHash256> _notifiedVotes = new(MemoryAllowance.MemPoolSize / 2);
     private ClockKeyCache<ValueHash256> _notifiedTimeouts = new(MemoryAllowance.MemPoolSize / 2);
 
+    // cspell:disable-next-line
     public override string Name => "xdpos2";
 
     public override byte ProtocolVersion => 100;
@@ -93,7 +94,7 @@ internal class XdcProtocolHandler(
 
     private void Handle(VoteMsg voteMsg)
     {
-        _votesManager.OnReceiveVote(voteMsg.Vote);
+        _ = _votesManager.OnReceiveVote(voteMsg.Vote);
     }
     private void Handle(TimeoutMsg timeoutMsg)
     {
@@ -131,16 +132,24 @@ internal class XdcProtocolHandler(
 
     private bool ShouldNotifyVote(Vote vote)
     {
+        if (vote.IsMyVote)
+            return true;
+
         if (_notifiedVotes.Contains(vote.Hash))
             return false;
+
         _notifiedVotes.Set(vote.Hash);
         return true;
     }
 
     private bool ShouldNotifyTimeout(Timeout timeout)
     {
+        if (timeout.IsMyVote)
+            return true;
+
         if (_notifiedTimeouts.Contains(timeout.Hash))
             return false;
+
         _notifiedTimeouts.Set(timeout.Hash);
         return true;
     }

@@ -8,7 +8,6 @@ using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
 using Nethermind.Xdc.Spec;
-using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.TxPool;
 

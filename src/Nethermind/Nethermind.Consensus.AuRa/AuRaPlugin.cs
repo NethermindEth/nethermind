@@ -130,7 +130,7 @@ namespace Nethermind.Consensus.AuRa
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
 
-            if (Rlp.GetStreamDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
+            if (Rlp.GetStreamEncoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
         }
 
         /// <summary>

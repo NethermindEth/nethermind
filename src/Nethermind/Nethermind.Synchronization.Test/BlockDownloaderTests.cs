@@ -1325,7 +1325,7 @@ public partial class BlockDownloaderTests
 
                 _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                     ? Keccak.EmptyTreeHash
-                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamDecoder<TxReceipt>()!);
+                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamEncoder<TxReceipt>()!);
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());
