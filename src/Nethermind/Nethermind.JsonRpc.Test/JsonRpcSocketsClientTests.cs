@@ -773,7 +773,7 @@ public class JsonRpcSocketsClientTests
             Socket socket = new(endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
             await socket.ConnectAsync(endPoint);
             IpcSocketMessageStream stream = new(socket);
-            return new TestClient<IpcSocketMessageStream>(stream, owner: socket);
+            return new TestClient<IpcSocketMessageStream>(stream);
         }
 
         public static async Task<TestClient<WebSocketMessageStream>> ConnectWsAsync(long? maxBatchResponseBodySize = null)
