@@ -27,6 +27,15 @@ All recon calls are independent — emit them in a single parallel batch.
 - `git merge-base HEAD origin/master` (or the PR's target branch)
 - `git log --oneline --merges <base>..HEAD` (detect merge commits)
 - `git diff <base> HEAD --name-only` (full file list — always cheap)
+- `git status --short` (detect untracked files)
+
+**Untracked file warning.** If `git status --short` output contains any `??` entries, emit a warning **before** proceeding to Step 2:
+
+> **Warning:** The following files are untracked and will NOT be included in this review:
+> _(list untracked files)_
+> If these should be reviewed, stage them first with `git add`.
+
+This warning is mandatory — do not skip it even if the untracked files appear unrelated.
 
 **Never diff against `master` directly.** `git diff master` compares against the current master tip, which includes commits merged after the branch diverged. Always use the merge base.
 
@@ -35,12 +44,6 @@ All recon calls are independent — emit them in a single parallel batch.
 1. **Warn the user:** "origin/master appears stale (local `<short-sha>` vs remote `<short-sha>`) — the local diff shows N files but the true diff is likely smaller."
 2. **Ask before fetching:** offer to run `git fetch origin master` to update the ref. Do not fetch silently.
 3. **If the user declines or network is unavailable:** proceed with the local diff but note the staleness risk in the scope report.
-
-**Step 1b: Check for untracked files.** Run `git status --short` and look for `??` entries. If any untracked files exist, warn the user at the top of the scope report:
-
-> **Warning:** The following files are untracked and will NOT be included in this review:
-> _(list untracked files)_
-> If these should be reviewed, stage them first with `git add`.
 
 **Step 2: Filter the file list.** From the file list, remove:
 
