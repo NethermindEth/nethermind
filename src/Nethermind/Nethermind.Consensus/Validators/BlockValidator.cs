@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
@@ -418,12 +419,34 @@ public class BlockValidator(
 
                 return false;
             }
+
+            if (!ValidateBlockLevelAccessListSize(block, ref error))
+            {
+                return false;
+            }
         }
 
         error = null;
 
         return true;
 
+    }
+
+    private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
+    {
+        BlockAccessList bal = block.BlockAccessList!;
+        long blockGasLimit = block.Header.GasLimit;
+        long maxBalItems = blockGasLimit / Eip7928Constants.BalItemCost;
+        int balItems = bal.ItemCount;
+
+        if (balItems > maxBalItems)
+        {
+            error = BlockErrorMessages.BlockLevelAccessListExceededSizeLimit(balItems, maxBalItems);
+            if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+            return false;
+        }
+
+        return true;
     }
 
     private bool ValidateTxRootMatchesTxs(Block block, bool validateHashes, [NotNullWhen(false)] ref string? errorMessage)

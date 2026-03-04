@@ -14,6 +14,11 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 {
     [JsonIgnore]
     public int Index = 0;
+
+    /// storage keys across all accounts + addresses
+    [JsonIgnore]
+    public int ItemCount { get; set; }
+
     public IEnumerable<AccountChanges> AccountChanges => _accountChanges.Values;
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
