@@ -63,6 +63,7 @@ namespace Nethermind.Network.P2P.Messages
             HelloMessage helloMessage = new();
             helloMessage.P2PVersion = ctx.DecodeByte();
             helloMessage.ClientId = ctx.DecodeString();
+
             helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
             {
                 c.ReadSequenceLength();
@@ -73,7 +74,7 @@ namespace Nethermind.Network.P2P.Messages
                 }
                 int version = c.DecodeByte();
                 return new Capability(protocolCode, version);
-            });
+            }, limit: RlpLimit.L64);
 
             helloMessage.ListenPort = ctx.DecodeInt();
 

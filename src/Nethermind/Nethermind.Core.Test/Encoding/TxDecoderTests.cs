@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test.Encoding
                 .WithChainId(0)
                 .SignedAndResolved(), "EIP 1559");
             yield return (Build.A.Transaction
-                .WithMaxFeePerGas(2.GWei())
+                .WithMaxFeePerGas(2.GWei)
                 .WithType(TxType.EIP1559)
                 .WithGasPrice(0)
                 .WithChainId(1559)
