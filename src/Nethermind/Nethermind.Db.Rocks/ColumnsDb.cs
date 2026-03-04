@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using FastEnumUtility;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
@@ -178,6 +180,40 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public IReadOnlyKeyValueStore GetColumn(T key)
         {
             return _columnDbs[key];
+        }
+
+        public void Dispose()
+        {
+            snapshot.Dispose();
+        }
+    }
+
+    IColumnDbSnapshot<T> IColumnsDb<T>.CreateSnapshot()
+    {
+        Snapshot snapshot = _db.CreateSnapshot();
+        return new ColumnDbSnapshot(this, snapshot);
+    }
+
+    private class ColumnDbSnapshot(
+        ColumnsDb<T> columnsDb,
+        Snapshot snapshot
+    ) : IColumnDbSnapshot<T>
+    {
+        public IReadOnlyKeyValueStore GetColumn(T key)
+        {
+            ReadOptions options = new ReadOptions();
+            options.SetSnapshot(snapshot);
+
+            ReadOptions cachedOptions = new ReadOptions();
+            cachedOptions.SetSnapshot(snapshot);
+            cachedOptions.SetReadTier(1);
+
+            return new DbOnTheRocks.DbSnapshot(
+                columnsDb,
+                options,
+                cachedOptions,
+                columnsDb._columnDbs[key]._columnFamily,
+                snapshot);
         }
 
         public void Dispose()

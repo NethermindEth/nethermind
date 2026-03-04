@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core;
 
 namespace Nethermind.Db
 {
@@ -41,7 +43,7 @@ namespace Nethermind.Db
 
         public IColumnDbSnapshot<TKey> CreateSnapshot()
         {
-            throw new NotSupportedException("Snapshot not supported");
+            throw new Exception("Snapshot not supported");
         }
 
         public void Dispose() { }

@@ -1,24 +1,94 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Config;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db;
 
-public class FlatDbConfig : IFlatDbConfig
+public interface IFlatDbConfig: IConfig
+{
+    [ConfigItem(Description = "Enabled", DefaultValue = "false")]
+    bool Enabled { get; set; }
+
+    [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
+    bool ImportFromPruningTrieState { get; set; }
+
+    [ConfigItem(Description = "Pruning boundary", DefaultValue = "256")]
+    int PruningBoundary { get; set; }
+
+    [ConfigItem(Description = "Compact size", DefaultValue = "16")]
+    int CompactSize { get; set; }
+
+    [ConfigItem(Description = "Compact interval", DefaultValue = "4")]
+    int CompactInterval { get; set; }
+
+    [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
+    int MaxInFlightCompactJob { get; set; }
+
+    [ConfigItem(Description = "Read with try", DefaultValue = "false")]
+    bool ReadWithTrie { get; set; }
+
+    [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
+    bool VerifyWithTrie { get; set; }
+
+    [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
+    bool InlineCompaction { get; set; }
+
+    [ConfigItem(Description = "Trie cache memory target", DefaultValue = "false")]
+    long TrieCacheMemoryTarget { get; set; }
+
+    [ConfigItem(Description = "Disable trie warmer", DefaultValue = "false")]
+    bool DisableTrieWarmer { get; set; }
+
+    [ConfigItem(Description = "Use preimage", DefaultValue = "false")]
+    FlatLayout Layout { get; set; }
+
+    [ConfigItem(Description = "Block cache size budget", DefaultValue = "1000000000")]
+    long BlockCacheSizeBudget { get; set; }
+
+    [ConfigItem(Description = "Import to flat on state sync finished", DefaultValue = "false")]
+    bool ImportOnStateSyncFinished { get; set; }
+
+    [ConfigItem(Description = "Generate preimage", DefaultValue = "false")]
+    bool GeneratePreimage { get; set; }
+
+    [ConfigItem(Description = "Max pruning boundary", DefaultValue = "false")]
+    int MaxPruningBoundary { get; set; }
+
+    [ConfigItem(Description = "Use flat bloom", DefaultValue = "false")]
+    bool EnableFlatBloom { get; set; }
+}
+
+public enum FlatLayout
+{
+    FlatSeparateTopStorage,
+    Flat,
+    FlatInTrie,
+    PreimageFlat,
+    LMDBFlat,
+    FlatTruncatedLeaf,
+}
+
+public class FlatDbConfig: IFlatDbConfig
 {
     public bool Enabled { get; set; } = false;
-    public bool EnablePreimageRecording { get; set; } = false;
     public bool ImportFromPruningTrieState { get; set; } = false;
-    public bool InlineCompaction { get; set; } = false;
-    public bool VerifyWithTrie { get; set; } = false;
-    public FlatLayout Layout { get; set; } = FlatLayout.Flat;
+    public int PruningBoundary { get; set; } = 128;
     public int CompactSize { get; set; } = 32;
+    public int CompactInterval { get; set; } = 4;
     public int MaxInFlightCompactJob { get; set; } = 32;
-    public int MaxReorgDepth { get; set; } = 256;
-    public int MinCompactSize { get; set; } = 2;
-    public int MinReorgDepth { get; set; } = 128;
-    public int TrieWarmerWorkerCount { get; set; } = -1;
-    public long BlockCacheSizeBudget { get; set; } = 1.GiB;
-    public long TrieCacheMemoryBudget { get; set; } = 512.MiB;
+    public bool ReadWithTrie { get; set; } = false;
+    public bool VerifyWithTrie { get; set; } = false;
+    public bool InlineCompaction { get; set; } = false;
+
+    // 1 GB is enough for 10% dirty load. 512 MB is pretty good at around 20%. Without it, then the diff layers on its own have around 35% dirty load.
+    public long TrieCacheMemoryTarget { get; set; } = 512.MiB();
+    public bool DisableTrieWarmer { get; set; } = false;
+    public FlatLayout Layout { get; set; } = FlatLayout.Flat;
+    public long BlockCacheSizeBudget { get; set; } = 1.GiB();
+    public bool ImportOnStateSyncFinished { get; set; } = false;
+    public bool GeneratePreimage { get; set; } = false;
+    public int MaxPruningBoundary { get; set; } = 1024;
+    public bool EnableFlatBloom { get; set; } = false;
 }

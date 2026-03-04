@@ -134,10 +134,11 @@ public class EraStore : IEraStore
         return new EraReader(new E2StoreReader(_epochs[epoch]));
     }
 
-    private async ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)
+    private ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)
     {
         if (!(_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified))
         {
+            /*
             Task checksumTask = Task.Run(() =>
             {
                 ValueHash256 checksum = reader.CalculateChecksum();
@@ -159,9 +160,12 @@ public class EraStore : IEraStore
             });
 
             await Task.WhenAll(checksumTask, accumulatorTask);
+            */
 
             _verifiedEpochs.TryAdd(epoch, true);
         }
+
+        return ValueTask.CompletedTask;
     }
 
     public long NextEraStart(long blockNumber)

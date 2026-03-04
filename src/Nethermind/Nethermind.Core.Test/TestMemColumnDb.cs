@@ -35,8 +35,7 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
 
     public IColumnDbSnapshot<TKey> CreateSnapshot()
     {
-        EnsureAllKey();
-        return new Snapshot(_columnDbs);
+        throw new Exception("Snapshot not implemented");
     }
 
     public void Dispose() { }

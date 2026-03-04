@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State;
@@ -15,17 +16,19 @@ public class FullStateFinder : IFullStateFinder
     // TODO: we can search 1024 back and confirm 128 deep header and start using it as Max(0, confirmed)
     // then we will never have to look 128 back again
     // note that we will be doing that every second or so
-    private const int MaxLookupBack = 128;
+    private readonly long _maxLookupBack = 128;
     private readonly IStateReader _stateReader;
     private readonly IBlockTree _blockTree;
     private long _lastKnownState = 0;
 
     public FullStateFinder(
         IBlockTree blockTree,
-        IStateReader stateReader)
+        IStateReader stateReader,
+        ISyncConfig syncConfig)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        _maxLookupBack = syncConfig.MaxLookupBack;
     }
 
     private bool IsFullySynced(BlockHeader block)
@@ -78,7 +81,7 @@ public class FullStateFinder : IFullStateFinder
     private long SearchForFullState(BlockHeader startHeader)
     {
         long bestFullState = 0;
-        long maxLookupBack = MaxLookupBack;
+        long maxLookupBack = _maxLookupBack;
         if (_lastKnownState != 0)
         {
             maxLookupBack = long.Max(maxLookupBack, startHeader.Number - _lastKnownState + 1);

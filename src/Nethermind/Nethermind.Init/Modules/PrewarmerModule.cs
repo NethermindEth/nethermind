@@ -50,11 +50,13 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 .AddDecorator<IWorldStateScopeProvider>((ctx, worldStateScopeProvider) =>
                 {
                     if (worldStateScopeProvider is PrewarmerScopeProvider) return worldStateScopeProvider; // Inner world state
-                    return new PrewarmerScopeProvider(
+                    var worldState = new PrewarmerScopeProvider(
                         worldStateScopeProvider,
+                        null,
                         ctx.Resolve<PreBlockCaches>(),
                         populatePreBlockCache: false
                     );
+                    return worldState;
                 })
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
                 {

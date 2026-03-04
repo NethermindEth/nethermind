@@ -141,6 +141,10 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             _storages.Clear();
         }
 
+        public void HintSet(Address address)
+        {
+        }
+
         internal StorageTree LookupStorageTree(Address address)
         {
             if (_storages.TryGetValue(address, out var storageTree))

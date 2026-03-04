@@ -236,8 +236,14 @@ namespace Nethermind.Trie
             else if (node.NodeType == NodeType.Extension)
             {
                 int previousPathLength = node.AppendChildPath(ref path, 0);
-                if (node.TryGetDirtyChild(0, out TrieNode? extensionChild))
+                if (node.IsChildDirty(0))
                 {
+                    TrieNode extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                    if (extensionChild is null)
+                    {
+                        ThrowInvalidExtension();
+                    }
+
                     TrieNode newExtensionChild = Commit(committer, ref path, extensionChild, maxLevelForConcurrentCommit);
                     if (!ReferenceEquals(newExtensionChild, extensionChild))
                     {
@@ -246,13 +252,13 @@ namespace Nethermind.Trie
                 }
                 else if (_logger.IsTrace)
                 {
-                    extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                    TrieNode extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
                     if (extensionChild is null)
                     {
                         ThrowInvalidExtension();
                     }
 
-                    TraceExtensionSkip(extensionChild);
+                    if (_logger.IsTrace) TraceExtensionSkip(extensionChild);
                 }
                 path.TruncateMut(previousPathLength);
             }
@@ -372,7 +378,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public void WarmUpPath(ReadOnlySpan<byte> rawKey)
+        public void WarmUpPath(ReadOnlySpan<byte> rawKey, bool warmUpPotentialNewNode)
         {
             byte[]? array = null;
             try
@@ -388,7 +394,7 @@ namespace Nethermind.Trie
                 TreePath emptyPath = TreePath.Empty;
                 TrieNode root = RootRef;
 
-                DoWarmUpPath(nibbles, ref emptyPath, root);
+                DoWarmUpPath(nibbles, ref emptyPath, root, warmUpPotentialNewNode);
             }
             catch (TrieException e)
             {
@@ -926,7 +932,8 @@ namespace Nethermind.Trie
             }
         }
 
-        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node)
+        // Dedicated warm up code
+        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool warmUpPotentialNewNode)
         {
             int originalPathLength = path.Length;
 
@@ -940,8 +947,7 @@ namespace Nethermind.Trie
                         return;
                     }
 
-                    // Call FindCachedOrUnknown on some path.
-                    if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
+                    if (node.IsSealed && node.Keccak is not null) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
                     node.ResolveNode(TrieStore, path);
 
                     if (node.IsLeaf || node.IsExtension)
@@ -951,7 +957,7 @@ namespace Nethermind.Trie
                         {
                             if (node.IsLeaf)
                             {
-                                // Done
+                                // Um..... leaf cannot have child
                                 return;
                             }
 
@@ -969,6 +975,40 @@ namespace Nethermind.Trie
                     }
 
                     int nextNib = remainingKey[0];
+
+                    if (warmUpPotentialNewNode)
+                    {
+                        // When a node (this path) is deleted and its parent is a branch with only one other child, it
+                        // will get replaced to an extension, in which case, the other only child need to be loaded.
+                        // Node: this will fail to consider if multiple child was deleted though...
+                        int nodeIdxToWarmup = -1;
+                        for (int i = 0; i < TrieNode.BranchesCount; i++)
+                        {
+                            if (i == nextNib) continue;
+
+                            if (!node.IsChildNull(i))
+                            {
+                                if (nodeIdxToWarmup != -1)
+                                {
+                                    // So more than one non null node that is not part of this path.
+                                    nodeIdxToWarmup = -1;
+                                    break;
+                                }
+                                else
+                                {
+                                    nodeIdxToWarmup = i;
+                                }
+                            }
+                        }
+
+                        if (nodeIdxToWarmup != -1)
+                        {
+                            path.AppendMut(nodeIdxToWarmup);
+                            TrieNode? theOtherOnlyChild = node.GetChildWithChildPath(TrieStore, ref path, nodeIdxToWarmup, keepChildRef: true);
+                            theOtherOnlyChild?.ResolveNode(TrieStore, path);
+                            path.TruncateOne();
+                        }
+                    }
 
                     path.AppendMut(nextNib);
                     TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nextNib, keepChildRef: true);

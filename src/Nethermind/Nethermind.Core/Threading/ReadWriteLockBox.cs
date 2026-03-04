@@ -10,50 +10,42 @@ namespace Nethermind.Core.Threading;
 /// Rust style wrapper of locked item. Make it a bit easier to know which object this lock is protecting.
 /// </summary>
 /// <typeparam name="T"></typeparam>
-public readonly struct ReadWriteLockBox<T>(T item)
+public class ReadWriteLockBox<T>
 {
-    private readonly ReaderWriterLockSlim _lock = new();
+    private readonly ReaderWriterLockSlim _lock;
+    private readonly T _item;
 
-    public Lock EnterReadLock(out T item1)
+    public ReadWriteLockBox(T item)
     {
-        item1 = item;
-        return new Lock(_lock, true);
+        _item = item;
+        _lock = new ReaderWriterLockSlim();
     }
 
-    public Lock EnterWriteLock(out T item1)
+    public LockExitor EnterReadLock(out T item)
     {
-        item1 = item;
-        return new Lock(_lock, false);
+        item = _item;
+        _lock.EnterReadLock();
+        return new LockExitor(_lock, true);
     }
 
-    public readonly ref struct Lock : IDisposable
+    public LockExitor EnterWriteLock(out T item)
     {
-        private readonly ReaderWriterLockSlim _rwLock;
-        private readonly bool _read;
+        item = _item;
+        _lock.EnterWriteLock();
+        return new LockExitor(_lock, false);
+    }
 
-        public Lock(ReaderWriterLockSlim rwLock, bool read)
-        {
-            _rwLock = rwLock;
-            _read = read;
-            if (_read)
-            {
-                _rwLock.EnterReadLock();
-            }
-            else
-            {
-                _rwLock.EnterWriteLock();
-            }
-        }
-
+    public ref struct LockExitor(ReaderWriterLockSlim @lock, bool read) : IDisposable
+    {
         public void Dispose()
         {
-            if (_read)
+            if (read)
             {
-                _rwLock.ExitReadLock();
+                @lock.ExitReadLock();
             }
             else
             {
-                _rwLock.ExitWriteLock();
+                @lock.ExitWriteLock();
             }
         }
     }

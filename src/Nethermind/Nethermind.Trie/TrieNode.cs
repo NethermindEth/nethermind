@@ -24,7 +24,7 @@ namespace Nethermind.Trie
 {
     public sealed partial class TrieNode
     {
-        internal const int BranchesCount = 16;
+        public const int BranchesCount = 16;
 #if DEBUG
         private static int _idCounter;
 
@@ -343,6 +343,12 @@ namespace Nethermind.Trie
                 throw new TrieNodeException($"Error when decoding node {Keccak}", path,
                     Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
             }
+        }
+
+        public void SetRlp(byte[] fullRlp)
+        {
+            _rlp = new SpanSource(fullRlp);
+            IsPersisted = true;
         }
 
         /// <summary>

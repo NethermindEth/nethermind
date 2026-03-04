@@ -714,7 +714,7 @@ public class StorageProviderTests
 
             if (preBlockCaches is not null)
             {
-                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache: true);
+                scopeProvider = new PrewarmerScopeProvider(scopeProvider, null, preBlockCaches, populatePreBlockCache: true);
             }
 
             if (trackWrittenData)
@@ -803,6 +803,11 @@ public class StorageProviderTests
             public void Commit(long blockNumber)
             {
                 baseScope.Commit(blockNumber);
+            }
+
+            public void HintSet(Address address)
+            {
+
             }
         }
 

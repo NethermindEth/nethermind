@@ -27,4 +27,10 @@ namespace Nethermind.Db
     {
         IReadOnlyKeyValueStore GetColumn(TKey key);
     }
+
+
+    public interface IColumnDbSnapshot<in TKey> : IDisposable
+    {
+        IReadOnlyKeyValueStore GetColumn(TKey key);
+    }
 }

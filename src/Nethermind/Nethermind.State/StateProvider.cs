@@ -773,7 +773,9 @@ namespace Nethermind.State
         }
 
         private void PushDelete(Address address)
-            => Push(address, null, ChangeType.Delete);
+        {
+            Push(address, null, ChangeType.Delete);
+        }
 
         private void Push(Address address, Account? touchedAccount, ChangeType changeType)
         {

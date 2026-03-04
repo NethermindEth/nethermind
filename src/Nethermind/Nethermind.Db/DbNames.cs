@@ -23,5 +23,12 @@ namespace Nethermind.Db
         public const string PeersDb = "peers";
         public const string LogIndex = "logIndex";
         public const string Preimage = "preimage";
+
+        public const string FlatMetadata = "flatMetadata";
+        public const string FlatAccount = "flatAccount";
+        public const string FlatStorage = "flatStorage";
+        public const string FlatStateNodes = "flatStateNodes";
+        public const string FlatStateTopNodes = "flatStateTopNodes";
+        public const string FlatStorageNodes = "flatStorageNodes";
     }
 }
