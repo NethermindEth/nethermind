@@ -151,6 +151,8 @@ public partial class BlockProcessor
         _blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
+        _balBuilder.MergeIntermediateBalsUpTo(0);
+
         TxReceipt[] receipts;
         try
         {

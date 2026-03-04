@@ -71,8 +71,6 @@ namespace Nethermind.Consensus.Processing
                         gasResults[i] = new TaskCompletionSource<long>();
                     }
 
-                    _balBuilder?.MergeIntermediateBalsUpTo(0);
-
                     const int GasValidationChunkSize = 8;
                     Task validatorTask = Task.Run(() =>
                     {

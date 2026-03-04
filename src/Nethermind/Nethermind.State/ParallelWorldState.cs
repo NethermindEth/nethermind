@@ -148,6 +148,11 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public void MergeIntermediateBalsUpTo(ushort index)
     {
+        if (!ParallelExecutionEnabled)
+        {
+            return;
+        }
+
         if (index == 0)
         {
             GeneratedBlockAccessList = _intermediateBlockAccessLists[0];
