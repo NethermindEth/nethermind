@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Threading;
@@ -14,179 +13,104 @@ namespace Nethermind.Sockets;
 public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMessageBorderPreservingStream
 {
     private const byte Delimiter = (byte)'\n';
+    private static readonly SearchValues<byte> Whitespace = SearchValues.Create(" \n\r\t"u8);
 
     private byte[] _bufferedData = [];
-    private int _bufferedDataLength = 0;
+    private int _bufferedDataLength;
 
     public async ValueTask<ReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default)
     {
         if (!Socket.Connected)
             return default;
 
-        if (_bufferedDataLength > 0)
-        {
-            if (_bufferedDataLength > buffer.Count)
-                throw new NotSupportedException($"Passed {nameof(buffer)} should be larger than internal one");
+        int read = RestoreBufferedData(buffer);
 
+        // Find message boundary — try buffered data first to avoid blocking on socket
+        (int contentLength, int consumed) = FindMessageEnd(GetFullBufferSpan(buffer, read), buffer.Offset);
+        if (consumed == 0)
+        {
+            read += await Socket.ReceiveAsync(buffer[read..], SocketFlags.None, cancellationToken);
+            (contentLength, consumed) = FindMessageEnd(GetFullBufferSpan(buffer, read), buffer.Offset);
+        }
+
+        if (consumed > 0)
+        {
+            SaveOverflow(buffer, consumed, read);
+            return new() { Read = contentLength, EndOfMessage = true };
+        }
+
+        _bufferedDataLength = 0;
+        return new() { Closed = read == 0, Read = read, EndOfMessage = false };
+
+        int RestoreBufferedData(ArraySegment<byte> buf) => _bufferedDataLength switch
+        {
+            <= 0 => 0,
+            _ when _bufferedDataLength > buf.Count => throw new NotSupportedException($"Passed {nameof(buf)} should be larger than internal one"),
+            _ => Copy(buf)
+        };
+
+        int Copy(ArraySegment<byte> buf)
+        {
+            Buffer.BlockCopy(_bufferedData, 0, buf.Array!, buf.Offset, _bufferedDataLength);
+            return _bufferedDataLength;
+        }
+
+        void SaveOverflow(ArraySegment<byte> buf, int start, int end)
+        {
+            int overflow = Math.Max(0, end - start);
+            _bufferedDataLength = overflow;
+
+            if (overflow > 0)
+            {
+                EnsureBufferedDataCapacity(overflow);
+                buf[start..end].CopyTo(_bufferedData);
+            }
+        }
+
+        static Span<byte> GetFullBufferSpan(ArraySegment<byte> buffer, int read) => buffer.Array.AsSpan(0, buffer.Offset + read);
+    }
+
+    private static (int ContentLength, int Consumed) FindMessageEnd(ReadOnlySpan<byte> data, int offset) =>
+        offset >= data.Length
+            ? default
+            : data[offset..].IndexOf(Delimiter) switch
+            {
+                // Fast path: newline delimiter (only search new data)
+                var i and >= 0 => (i, i + 1),
+                // Slow path: complete JSON object/array (parse full accumulated data)
+                _ when TryGetCompleteJsonLength(data, out int jsonLength) => (jsonLength - offset, jsonLength - offset),
+                _ => default
+            };
+
+    private static bool TryGetCompleteJsonLength(ReadOnlySpan<byte> span, out int messageLength)
+    {
+        int offset = GetStartingOffset(span);
+        ReadOnlySpan<byte> json = span[offset..];
+        if (StartsWithObject(json))
+        {
+            Utf8JsonReader reader = new(json, isFinalBlock: false, default);
             try
             {
-                Buffer.BlockCopy(_bufferedData, 0, buffer.Array!, buffer.Offset, _bufferedDataLength);
-            }
-            catch { }
-        }
-
-        int delimiter = buffer[.._bufferedDataLength].AsSpan().IndexOf(Delimiter);
-        int read;
-        if (delimiter == -1)
-        {
-            if (_bufferedDataLength > 0 && TryGetCompleteJsonMessageLength(buffer[.._bufferedDataLength], out _))
-            {
-                read = _bufferedDataLength;
-            }
-            else
-            {
-                read = _bufferedDataLength + await Socket.ReceiveAsync(buffer[_bufferedDataLength..], SocketFlags.None, cancellationToken);
-                delimiter = ((IList<byte>)buffer[..read]).IndexOf(Delimiter);
-            }
-        }
-        else
-        {
-            read = _bufferedDataLength;
-        }
-
-        bool endOfMessage;
-
-        if (delimiter != -1 && (delimiter + 1) < read)
-        {
-            _bufferedDataLength = read - delimiter - 1;
-            EnsureBufferedDataCapacity(_bufferedDataLength);
-
-            endOfMessage = true;
-            buffer[(delimiter + 1)..read].CopyTo(_bufferedData);
-            read = delimiter + 1;
-        }
-        else
-        {
-            if (delimiter != -1)
-            {
-                endOfMessage = true;
-                _bufferedDataLength = 0;
-            }
-            else
-            {
-                int parsedBufferOffset = buffer.Offset;
-                int parsedBufferLength = parsedBufferOffset + read;
-                ArraySegment<byte> parseBuffer = buffer;
-                if (parsedBufferOffset != 0)
+                if (reader.Read() && reader.TrySkip())
                 {
-                    parseBuffer = new ArraySegment<byte>(buffer.Array!, 0, parsedBufferLength);
-                }
-
-                if (TryGetCompleteJsonMessageLength(parseBuffer[..parsedBufferLength], out int messageLength))
-                {
-                    int remainingLength = parsedBufferLength - messageLength;
-                    if (remainingLength > 0)
-                    {
-                        _bufferedDataLength = remainingLength;
-                        EnsureBufferedDataCapacity(_bufferedDataLength);
-                        parseBuffer[messageLength..parsedBufferLength].CopyTo(_bufferedData);
-                    }
-                    else
-                    {
-                        _bufferedDataLength = 0;
-                    }
-
-                    endOfMessage = true;
-                    read = messageLength - parsedBufferOffset;
-                }
-                else
-                {
-                    endOfMessage = false;
-                    _bufferedDataLength = 0;
+                    messageLength = offset + (int)reader.BytesConsumed;
+                    return true;
                 }
             }
+            catch (JsonException) { }
         }
 
-        return new()
+        messageLength = 0;
+        return false;
+
+        static int GetStartingOffset(ReadOnlySpan<byte> span)
         {
-            Closed = read == 0,
-            Read = read > 0 && buffer[read - 1] == Delimiter ? read - 1 : read,
-            EndOfMessage = endOfMessage
-        };
+            int i = span.IndexOfAnyExcept(Whitespace);
+            return i < 0 ? span.Length : i;
+        }
+
+        static bool StartsWithObject(ReadOnlySpan<byte> span) => !span.IsEmpty && span[0] is (byte)'{' or (byte)'[';
     }
-
-    private static bool TryGetCompleteJsonMessageLength(ArraySegment<byte> buffer, out int messageLength)
-    {
-        ReadOnlySpan<byte> span = buffer.AsSpan();
-        int leadingWhitespaceLength = 0;
-        while (leadingWhitespaceLength < span.Length && IsJsonWhitespace(span[leadingWhitespaceLength]))
-        {
-            leadingWhitespaceLength++;
-        }
-
-        if (leadingWhitespaceLength == span.Length)
-        {
-            messageLength = 0;
-            return false;
-        }
-
-        ReadOnlySpan<byte> jsonSpan = span[leadingWhitespaceLength..];
-        byte firstToken = jsonSpan[0];
-        if (firstToken != (byte)'{' && firstToken != (byte)'[')
-        {
-            messageLength = 0;
-            return false;
-        }
-
-        Utf8JsonReader jsonReader = new(jsonSpan, isFinalBlock: false, default);
-
-        try
-        {
-            if (!jsonReader.Read())
-            {
-                messageLength = 0;
-                return false;
-            }
-
-            if (jsonReader.TokenType is not JsonTokenType.StartObject and not JsonTokenType.StartArray)
-            {
-                messageLength = 0;
-                return false;
-            }
-
-            int depth = 1;
-            while (depth > 0)
-            {
-                if (!jsonReader.Read())
-                {
-                    messageLength = 0;
-                    return false;
-                }
-
-                if (jsonReader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray)
-                {
-                    depth++;
-                }
-                else if (jsonReader.TokenType is JsonTokenType.EndObject or JsonTokenType.EndArray)
-                {
-                    depth--;
-                }
-            }
-
-            messageLength = leadingWhitespaceLength + (int)jsonReader.BytesConsumed;
-            return true;
-        }
-        catch (JsonException)
-        {
-            // Incomplete JSON can throw here (for example truncated strings),
-            // so keep buffering until we can parse a full value.
-            messageLength = 0;
-            return false;
-        }
-    }
-
-    private static bool IsJsonWhitespace(byte value) =>
-        value == (byte)' ' || value == (byte)'\n' || value == (byte)'\r' || value == (byte)'\t';
 
     private void EnsureBufferedDataCapacity(int requiredLength)
     {
@@ -207,6 +131,7 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         {
             ArrayPool<byte>.Shared.Return(_bufferedData);
         }
+
         base.Dispose(disposing);
     }
 
