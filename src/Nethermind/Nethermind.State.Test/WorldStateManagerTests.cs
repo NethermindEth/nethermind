@@ -99,7 +99,7 @@ public class WorldStateManagerTests
 
             using (worldState.BeginScope(IWorldState.PreGenesis))
             {
-                worldState.CreateAccount(TestItem.AddressA, 1, 2);
+                worldState.CreateAccount(TestItem.AddressA, 1, 2, -1);
                 worldState.Commit(Cancun.Instance);
                 worldState.CommitTree(1);
                 stateRoot = worldState.StateRoot;
@@ -114,7 +114,7 @@ public class WorldStateManagerTests
 
                 using (worldState.BeginScope(baseBlock))
                 {
-                    worldState.IncrementNonce(TestItem.AddressA, 1);
+                    worldState.IncrementNonce(TestItem.AddressA, 1, -1);
                     worldState.Commit(Cancun.Instance);
                     worldState.CommitTree(i);
                     stateRoot = worldState.StateRoot;

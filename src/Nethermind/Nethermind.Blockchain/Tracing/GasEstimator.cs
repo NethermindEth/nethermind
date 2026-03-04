@@ -48,7 +48,7 @@ public class GasEstimator(
         tx.SenderAddress ??= Address.Zero; // If sender is not specified, use zero address.
 
         // Calculate and return additional gas required in case of insufficient funds.
-        UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress);
+        UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress, -1);
         if (tx.ValueRef != UInt256.Zero && tx.ValueRef > senderBalance && !tx.IsSystem())
         {
             long additionalGas = gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);

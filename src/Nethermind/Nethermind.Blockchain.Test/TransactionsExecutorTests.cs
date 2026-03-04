@@ -263,7 +263,7 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(EIP3860TestCases))]
         public void Proper_transactions_selected(TransactionSelectorTests.ProperTransactionsSelectedTestCase testCase)
         {
-            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
             using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
@@ -275,9 +275,9 @@ namespace Nethermind.Blockchain.Test
                 .Do(info =>
                 {
                     Transaction tx = info.Arg<Transaction>();
-                    stateProvider.IncrementNonce(tx.SenderAddress!);
+                    stateProvider.IncrementNonce(tx.SenderAddress!, -1);
                     stateProvider.SubtractFromBalance(tx.SenderAddress!,
-                        tx.Value + ((UInt256)tx.GasLimit * tx.GasPrice), spec);
+                        tx.Value + ((UInt256)tx.GasLimit * tx.GasPrice), spec, -1);
                 });
 
             IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -303,10 +303,10 @@ namespace Nethermind.Blockchain.Test
                 foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates
                     .Where(v => !missingAddressesSet.Contains(v.Key)))
                 {
-                    stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
+                    stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, 0, -1);
                     for (int i = 0; i < accountState.Value.Nonce; i++)
                     {
-                        stateProvider.IncrementNonce(accountState.Key);
+                        stateProvider.IncrementNonce(accountState.Key, -1);
                     }
                 }
 

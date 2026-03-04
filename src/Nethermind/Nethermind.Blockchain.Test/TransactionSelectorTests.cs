@@ -509,7 +509,7 @@ namespace Nethermind.Blockchain.Test
 
         private static IReadOnlyList<Transaction> SelectTransactions(ProperTransactionsSelectedTestCase testCase)
         {
-            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             Hash256 SetAccountStates(IEnumerable<Address> missingAddresses)
@@ -521,10 +521,10 @@ namespace Nethermind.Blockchain.Test
                 foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates
                              .Where(v => !missingAddressesSet.Contains(v.Key)))
                 {
-                    stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
+                    stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, 0, -1);
                     for (int i = 0; i < accountState.Value.Nonce; i++)
                     {
-                        stateProvider.IncrementNonce(accountState.Key);
+                        stateProvider.IncrementNonce(accountState.Key, -1);
                     }
                 }
 

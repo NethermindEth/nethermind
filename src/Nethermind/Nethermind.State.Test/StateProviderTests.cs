@@ -30,7 +30,7 @@ public class StateProviderTests
     [Test]
     public void Eip_158_zero_value_transfer_deletes()
     {
-        IWorldState frontierProvider = TestWorldStateFactory.CreateForTest();
+        IWorldState frontierProvider = TestWorldStateFactory.CreateForTest(parallel: false);
         BlockHeader baseBlock;
         using (var _ = frontierProvider.BeginScope(IWorldState.PreGenesis))
         {
