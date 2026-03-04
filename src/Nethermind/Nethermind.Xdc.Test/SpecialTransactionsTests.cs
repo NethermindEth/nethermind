@@ -634,6 +634,46 @@ internal class SpecialTransactionsTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task SignTx_From_NonEpochCandidate_Fails_Validation(bool enableEip1559)
+    {
+        int epochLength = 10;
+        XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
+        blockChain.ChangeReleaseSpec((spec) =>
+        {
+            spec.IsEip1559Enabled = enableEip1559;
+            spec.EpochLength = epochLength;
+        });
+
+        XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
+        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
+
+        Address address = TestItem.AddressA;
+        PrivateKey privateKey = TestItem.PrivateKeyA;
+
+        Assert.That(spec.GenesisMasterNodes.Contains(address), Is.False);
+
+        Transaction tx = SignTransactionManager.CreateTxSign(
+            (UInt256)head.Number,
+            head.Hash!,
+            blockChain.TxPool.GetLatestPendingNonce(address),
+            spec.BlockSignerContract,
+            address);
+
+        Signer signer = new(
+            blockChain.SpecProvider.ChainId,
+            privateKey,
+            NullLogManager.Instance
+        );
+        await signer.Sign(tx);
+
+        AcceptTxResult result = blockChain.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+        Assert.That(result.ToString(), Does.Contain("Special transaction sender is not an epoch candidate"));
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public async Task SignTx_Increments_Nonce_And_Emits_Log_And_Consume_NoGas(bool enableEip1559)
