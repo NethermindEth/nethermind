@@ -16,21 +16,19 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - When fixing a bug, always add a regression test
 - Do not alter [src/bench_precompiles](./src/bench_precompiles/) or [src/tests](./src/tests/)
 
-> **Detailed conventions** live in `## Codebase Rules` below — coding style, DI patterns, test infrastructure, performance, robustness, package management, and `.github` workflow rules.
-
 ---
 
 ## Codebase Rules
 
-Detailed rules live in [`.agents/rules/`](./.agents/rules/). Read the relevant files before writing, reviewing, planning, or debugging code in the corresponding domain.
+Detailed rules live in [`.agents/rules/`](./.agents/rules/). **You MUST read the relevant files before writing, reviewing, planning, or debugging any code.**
 
-- [coding-style.md](./.agents/rules/coding-style.md) — C# conventions, formatting, naming, and style
-- [di-patterns.md](./.agents/rules/di-patterns.md) — Autofac DI modules, WorldState architecture, test modules, DSL reference
-- [test-infrastructure.md](./.agents/rules/test-infrastructure.md) — TestBlockchain, benchmarks, DI anti-patterns, test guidelines
-- [robustness.md](./.agents/rules/robustness.md) — Async pitfalls, resource management, thread safety, unsafe blocks
-- [performance.md](./.agents/rules/performance.md) — Hot-path patterns: ref structs, Span, SIMD, function pointers
-- [package-management.md](./.agents/rules/package-management.md) — Central Package Management (CPM) and NuGet dependency rules
-- [github-workflows.md](./.agents/rules/github-workflows.md) — GitHub Actions conventions, CODEOWNERS, PR template
+- [coding-style.md](./.agents/rules/coding-style.md) — Almost always. Load for any task requiring C#-specific reasoning. Covers syntax, coding patterns, documentation, and code quality.
+- [di-patterns.md](./.agents/rules/di-patterns.md) — Core dependency injection patterns. Load when working with DI registration, service wiring, or component architecture. Covers Autofac modules, WorldState architecture, lifetimes, and the custom DSL.
+- [test-infrastructure.md](./.agents/rules/test-infrastructure.md) — Load when working with tests, benchmarks, or designing components that need to be testable. Covers TestBlockchain, benchmark setup, DI anti-patterns, and test guidelines.
+- [robustness.md](./.agents/rules/robustness.md) — Almost always. Load for any task requiring C#-specific reasoning. Covers async pitfalls, resource management, thread safety, input validation, and unsafe blocks.
+- [performance.md](./.agents/rules/performance.md) — Load when working on hot paths in the codebase. Covers ref structs, Span, SIMD, function pointers, and zero-allocation patterns.
+- [package-management.md](./.agents/rules/package-management.md) — Load when working with NuGet dependencies. Covers Central Package Management (CPM) rules.
+- [github-workflows.md](./.agents/rules/github-workflows.md) — Load when working with GitHub Actions, CODEOWNERS, or PR templates. Covers workflow conventions and automation patterns.
 
 ---
 
@@ -118,6 +116,7 @@ See [global.json](./global.json) for the required .NET SDK version.
 ## Reproducible Benchmark Workflow Guidance
 
 This repository contains a dedicated workflow for reproducible payload benchmarks:
+
 - Workflow file: [`.github/workflows/run-expb-reproducible-benchmarks.yml`](./.github/workflows/run-expb-reproducible-benchmarks.yml)
 - Main execution runner label: `reproducible-benchmarks`
 

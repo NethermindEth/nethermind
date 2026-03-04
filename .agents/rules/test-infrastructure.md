@@ -71,4 +71,3 @@ The rule: **if production modules already wire a component, use them — don't c
 - Add tests to existing test files rather than creating new ones
 - When adding similar tests, write one test with test cases (`[TestCase(...)]`)
 - Check if previous tests can be reused with a new test case
-- Bug fixes always need a regression test that fails without the fix
