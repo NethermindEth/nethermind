@@ -99,9 +99,10 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         XdcBlockHeader parentHeader = (XdcBlockHeader)_blockTree.FindHeader(proposedBlockHeader.ParentHash);
 
-        if (parentHeader.ExtraConsensusData is null)
+        if (parentHeader?.ExtraConsensusData is null)
         {
-            error = $"Block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} does not have required consensus data! Chain might be corrupt!";
+            var blockStr = parentHeader?.ToString(BlockHeader.Format.FullHashAndNumber) ?? proposedBlockHeader.ParentHash.ToString();
+            error = $"Block {blockStr} does not have required consensus data! Chain might be corrupt!";
             return false;
         }
 
@@ -113,10 +114,10 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         XdcBlockHeader grandParentHeader = (XdcBlockHeader)_blockTree.FindHeader(parentHeader.ParentHash);
 
-        if (grandParentHeader.ExtraConsensusData is null)
+        if (grandParentHeader?.ExtraConsensusData is null)
         {
-
-            error = $"QC grand parent ({grandParentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}) does not have a QC.";
+            var blockStr = grandParentHeader?.ToString(BlockHeader.Format.FullHashAndNumber) ?? parentHeader.ParentHash.ToString();
+            error = $"QC grand parent ({blockStr}) does not have a QC.";
             return false;
         }
 
