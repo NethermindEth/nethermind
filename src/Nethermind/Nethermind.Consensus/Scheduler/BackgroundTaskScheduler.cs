@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
@@ -21,8 +22,8 @@ namespace Nethermind.Consensus.Scheduler;
 /// - Task closure will have the CancellationToken which will be canceled if block processing happens while the task is running.
 /// - The Task has a default timeout, which is counted from the time it is queued. If timed out because too many other background
 ///    tasks before it, for example, the cancellation token passed to it will be canceled.
-/// - Task will still run when block processing is happening, and it's timed out this is so that it can handle its cancellation.
-/// - Task will not run if block processing is happening, and it still has some time left.
+/// - Tasks execute continuously regardless of block processing status. During block processing, the CancellationToken
+///   is cancelled, allowing tasks to check and exit quickly. Tasks are not held back or re-queued.
 ///   It is up to the task to determine what happens if canceled, maybe it will reschedule for later or resume later, but
 ///   preferably, stop execution immediately. Don't hang BTW. Other background tasks need to be canceled too.
 /// - A failure at this level is considered unexpected and loud. Exception should be handled at handler level.
@@ -42,7 +43,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private long _queueCount;
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
-    private volatile TaskCompletionSource? _blockProcessingDoneSignal;
+    private int _pendingActivities;
     private bool _disposed = false;
 
     public BackgroundTaskScheduler(IBranchProcessor branchProcessor, IChainHeadInfoProvider headInfo, int concurrency, int capacity, ILogManager logManager)
@@ -86,10 +87,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         // as there are potentially no gaps between blocks
         if (!_headInfo.IsSyncing)
         {
-            // Signal that block processing is in progress so the Throttle path in StartChannel
-            // can async-wait instead of busy-polling
-            _blockProcessingDoneSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            // On block processing, we cancel the block process cts, causing the current task to get canceled.
+            // On block processing, cancel the block process CTS so running tasks can exit quickly
             _blockProcessorCancellationTokenSource.Cancel();
         }
     }
@@ -100,72 +98,42 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         using CancellationTokenSource oldTokenSource = Interlocked.Exchange(
             ref _blockProcessorCancellationTokenSource,
             new CancellationTokenSource());
-
-        // Signal that block processing is done so the Throttle path can resume
-        Interlocked.Exchange(ref _blockProcessingDoneSignal, null)?.TrySetResult();
     }
 
     private async Task StartChannel()
     {
         while (await _taskQueue.Reader.WaitToReadAsync(_mainCancellationTokenSource.Token))
         {
-            // Create fresh CancellationTokenSource for current block processing
-            CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(
-                        _blockProcessorCancellationTokenSource.Token,
-                        _mainCancellationTokenSource.Token);
-            try
+            while (_taskQueue.Reader.TryRead(out IActivity activity))
             {
-                CancellationToken token = cts.Token;
-                while (_taskQueue.Reader.TryRead(out IActivity activity))
-                {
-                    Interlocked.Decrement(ref _queueCount);
-                    if (token.IsCancellationRequested)
-                    {
-                        // In case of a task supposed to run when a block is being processed, if there is some time left
-                        // from its deadline, we re-queue it. We do this in case there is some task in the queue that already
-                        // reached deadline during block processing, in which case, it will need to execute to handle
-                        // its cancellation.
-                        if (DateTimeOffset.UtcNow < activity.Deadline)
-                        {
-                            Interlocked.Increment(ref _queueCount);
-                            await _taskQueue.Writer.WriteAsync(activity);
-                            UpdateQueueCount();
-                            // Re-queued, throttle to prevent infinite loop.
-                            // The tasks are in priority order, so we know next is the same deadline or longer,
-                            // And we want to exit the inner loop to refresh CancellationToken
-                            goto Throttle;
-                        }
-                    }
+                Interlocked.Decrement(ref _queueCount);
+                UpdateQueueCount();
+                Interlocked.Increment(ref _pendingActivities);
+                _ = RunActivity(activity);
+            }
+        }
+    }
 
-                    UpdateQueueCount();
-                    await activity.Do(token);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"Error processing background task {e}.");
-            }
-            finally
-            {
-                cts.Dispose();
-            }
-
-            continue;
-
-        Throttle:
-            // Wait for block processing to complete, with periodic wake-ups to drain newly expired tasks
-            TaskCompletionSource? signal = _blockProcessingDoneSignal;
-            if (signal is not null)
-            {
-                await Task.WhenAny(signal.Task, Task.Delay(millisecondsDelay: 1));
-            }
-            else
-            {
-                await Task.Delay(millisecondsDelay: 1);
-            }
+    private async Task RunActivity(IActivity activity)
+    {
+        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(
+            _blockProcessorCancellationTokenSource.Token,
+            _mainCancellationTokenSource.Token);
+        try
+        {
+            await activity.Do(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error($"Error processing background task {e}.");
+        }
+        finally
+        {
+            cts.Dispose();
+            Interlocked.Decrement(ref _pendingActivities);
         }
     }
 
@@ -180,16 +148,22 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
         Evm.Metrics.IncrementTotalBackgroundTasksQueued();
 
-        if (Interlocked.Increment(ref _queueCount) <= _capacity)
+        long count = Interlocked.Increment(ref _queueCount);
+
+        // Soft limit: warn when above configured capacity but still accept.
+        // With fire-and-forget dispatch, queue drains rapidly so this is rarely hit.
+        if (count > _capacity)
         {
-            if (_taskQueue.Writer.TryWrite(activity))
-            {
-                UpdateQueueCount();
-                return true;
-            }
+            if (_logger.IsWarn) _logger.Warn($"Background task queue above capacity (Count: {count}, Capacity: {_capacity}).");
         }
 
-        if (_logger.IsWarn) _logger.Warn($"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task.");
+        if (_taskQueue.Writer.TryWrite(activity))
+        {
+            UpdateQueueCount();
+            return true;
+        }
+
+        // Channel completed (scheduler disposing) — reject
         Interlocked.Decrement(ref _queueCount);
         request.TryDispose();
         return false;
@@ -207,6 +181,14 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _taskQueue.Writer.Complete();
         await _mainCancellationTokenSource.CancelAsync();
         await Task.WhenAll(_tasksExecutors);
+
+        // Wait for fire-and-forget activities to complete (they have cancelled tokens)
+        Stopwatch sw = Stopwatch.StartNew();
+        while (Volatile.Read(ref _pendingActivities) > 0 && sw.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            await Task.Delay(10);
+        }
+
         _mainCancellationTokenSource.Dispose();
         _scheduler.Dispose();
     }

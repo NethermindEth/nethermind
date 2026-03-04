@@ -99,26 +99,44 @@ public class BackgroundTaskSchedulerTests
 
     [Test]
     [Retry(3)]
-    public async Task Test_task_that_is_scheduled_during_block_processing_will_continue_after()
+    public async Task Test_task_scheduled_during_block_processing_gets_cancelled_token()
     {
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
         _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
 
-        int executionCount = 0;
+        int cancelledCount = 0;
+        int normalCount = 0;
         for (int i = 0; i < 5; i++)
         {
             scheduler.TryScheduleTask(1, (_, token) =>
             {
-                executionCount++;
+                if (token.IsCancellationRequested)
+                    Interlocked.Increment(ref cancelledCount);
+                else
+                    Interlocked.Increment(ref normalCount);
                 return Task.CompletedTask;
             });
         }
 
-        await Task.Delay(10);
-        executionCount.Should().Be(0);
+        // Tasks execute immediately with cancelled token during block processing
+        Assert.That(() => Volatile.Read(ref cancelledCount), Is.EqualTo(5).After(2000, 10));
+        normalCount.Should().Be(0);
 
+        // After block processing, new tasks execute normally
         _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
-        Assert.That(() => executionCount, Is.EqualTo(5).After(1000, 10));
+
+        int postBlockCount = 0;
+        for (int i = 0; i < 3; i++)
+        {
+            scheduler.TryScheduleTask(1, (_, token) =>
+            {
+                if (!token.IsCancellationRequested)
+                    Interlocked.Increment(ref postBlockCount);
+                return Task.CompletedTask;
+            });
+        }
+
+        Assert.That(() => Volatile.Read(ref postBlockCount), Is.EqualTo(3).After(2000, 10));
     }
 
     [Test]
@@ -270,8 +288,40 @@ public class BackgroundTaskSchedulerTests
             }, TimeSpan.FromMilliseconds(5)).Should().BeTrue($"Phase 3: short-lived task {i} should be accepted");
         }
 
-        // Long-lived tasks (will survive until block processing ends)
+        // Long-lived tasks (during block processing, they get cancelled tokens too)
         int longLivedCount = capacity / 4;
+        int phase3LongCancelledCount = 0;
+        for (int i = 0; i < longLivedCount; i++)
+        {
+            scheduler.TryScheduleTask(1, (_, token) =>
+            {
+                if (token.IsCancellationRequested)
+                    Interlocked.Increment(ref phase3LongCancelledCount);
+                else
+                    Interlocked.Increment(ref phase3ExecutedCount);
+                return Task.CompletedTask;
+            }, TimeSpan.FromSeconds(30)).Should().BeTrue($"Phase 3: long-lived task {i} should be accepted");
+        }
+
+        // Wait for short-lived tasks to be drained with cancelled tokens
+        Assert.That(
+            () => Volatile.Read(ref phase3CancelledCount),
+            Is.EqualTo(shortLivedCount).After(5000, 10),
+            "short-lived tasks should drain with cancelled tokens during block processing");
+
+        // Long-lived tasks also execute during block processing with cancelled tokens
+        Assert.That(
+            () => Volatile.Read(ref phase3LongCancelledCount),
+            Is.EqualTo(longLivedCount).After(5000, 10),
+            "long-lived tasks should execute with cancelled tokens during block processing");
+
+        Volatile.Read(ref phase3ExecutedCount).Should().Be(0,
+            "no tasks should execute with uncancelled token during block processing");
+
+        // End block processing — verify normal operation with new tasks
+        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+
+        Interlocked.Exchange(ref phase3ExecutedCount, 0);
         for (int i = 0; i < longLivedCount; i++)
         {
             scheduler.TryScheduleTask(1, (_, token) =>
@@ -279,26 +329,13 @@ public class BackgroundTaskSchedulerTests
                 if (!token.IsCancellationRequested)
                     Interlocked.Increment(ref phase3ExecutedCount);
                 return Task.CompletedTask;
-            }, TimeSpan.FromSeconds(30)).Should().BeTrue($"Phase 3: long-lived task {i} should be accepted");
+            }, TimeSpan.FromSeconds(30));
         }
-
-        // Wait for short-lived tasks to expire and drain
-        Assert.That(
-            () => Volatile.Read(ref phase3CancelledCount),
-            Is.EqualTo(shortLivedCount).After(5000, 10),
-            "short-lived tasks should drain with cancelled tokens during block processing");
-
-        // Long-lived tasks should not have executed yet (still waiting for block processing to end)
-        Volatile.Read(ref phase3ExecutedCount).Should().Be(0,
-            "long-lived tasks should wait during block processing");
-
-        // End block processing — long-lived tasks should now execute
-        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
 
         Assert.That(
             () => Volatile.Read(ref phase3ExecutedCount),
             Is.EqualTo(longLivedCount).After(5000, 10),
-            "long-lived tasks should execute after block processing ends");
+            "new tasks scheduled after block processing ends should execute normally");
 
         // --- Phase 4: Verify queue is fully operational with one more fill-and-drain ---
         Interlocked.Exchange(ref executedCount, 0);
