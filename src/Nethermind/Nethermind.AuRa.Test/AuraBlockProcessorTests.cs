@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -38,13 +37,13 @@ namespace Nethermind.AuRa.Test
     public class AuraBlockProcessorTests
     {
         [Test]
-        public async Task Prepared_block_contains_author_field()
+        public void Prepared_block_contains_author_field()
         {
             BranchProcessor processor = CreateProcessor().Processor;
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
-            Block[] processedBlocks = await processor.Process(
+            Block[] processedBlocks = processor.Process(
                 null,
                 new List<Block> { block },
                 ProcessingOptions.None,
@@ -84,7 +83,7 @@ namespace Nethermind.AuRa.Test
                 .SignedAndResolved().WithChainId(105).WithGasPrice(0).WithValue(0).WithGasLimit(gasLimit + 1).TestObject;
             Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx })
                 .WithGasLimit(gasLimit).TestObject;
-            Assert.DoesNotThrow(async () => await processor.Process(
+            Assert.DoesNotThrow(() => processor.Process(
                 null,
                 new List<Block> { block },
                 ProcessingOptions.None,
@@ -92,9 +91,9 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
-        public async Task Should_rewrite_contracts([Values] bool isPostMerge)
+        public void Should_rewrite_contracts([Values] bool isPostMerge)
         {
-            static async Task<BlockHeader> Process(BranchProcessor auRaBlockProcessor, BlockHeader parent, IBlockTree blockTree, bool isPostMerge)
+            static BlockHeader Process(BranchProcessor auRaBlockProcessor, BlockHeader parent, IBlockTree blockTree, bool isPostMerge)
             {
                 BlockHeader header = Build.A.BlockHeader
                     .WithAuthor(TestItem.AddressD)
@@ -103,11 +102,11 @@ namespace Nethermind.AuRa.Test
                     .WithTotalDifficulty(0).TestObject;
                 header.IsPostMerge = isPostMerge;
                 Block block = Build.A.Block.WithHeader(header).TestObject;
-                BlockHeader res = (await auRaBlockProcessor.Process(
+                BlockHeader res = auRaBlockProcessor.Process(
                     parent,
                     new List<Block> { block },
                     ProcessingOptions.None,
-                    NullBlockTracer.Instance))[0].Header;
+                    NullBlockTracer.Instance)[0].Header;
                 blockTree.Insert(res);
                 return res;
             }
@@ -157,7 +156,7 @@ namespace Nethermind.AuRa.Test
             }
 
             BlockHeader currentBlock = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateRoot).TestObject;
-            currentBlock = await Process(processor, currentBlock, blockTree, isPostMerge);
+            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
             {
@@ -167,7 +166,7 @@ namespace Nethermind.AuRa.Test
                 stateProvider.GetCode(TestItem.AddressD).Should().BeEquivalentTo(Array.Empty<byte>());
             }
 
-            currentBlock = await Process(processor, currentBlock, blockTree, isPostMerge);
+            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
             {
@@ -177,7 +176,7 @@ namespace Nethermind.AuRa.Test
                 stateProvider.GetCode(TestItem.AddressD).Should().BeEquivalentTo(Bytes.FromHexString("0x321"));
             }
 
-            currentBlock = await Process(processor, currentBlock, blockTree, isPostMerge);
+            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
             {
@@ -197,14 +196,7 @@ namespace Nethermind.AuRa.Test
                 GnosisSpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(
-                    stateProvider,
-                    new ExecuteTransactionProcessorAdapter(transactionProcessor),
-                    new BlobBaseFeeCalculator(),
-                    HoodiSpecProvider.Instance,
-                    Substitute.For<IBlockhashProvider>(),
-                    Substitute.For<ICodeInfoRepository>(),
-                    LimboLogs.Instance),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),

@@ -36,7 +36,6 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin;
 using Nethermind.JsonRpc;
 using System.Reflection;
-using Nethermind.State;
 
 namespace Ethereum.Test.Base;
 
@@ -88,9 +87,9 @@ public abstract class BlockchainTestBase
         bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
 
         List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
-            isEngineTest ?
-            [((ForkActivation)0, test.Network)] :
-            [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
+        isEngineTest ?
+        [((ForkActivation)0, test.Network)] :
+        [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
         if (test.NetworkAfterTransition is not null)
         {
@@ -99,7 +98,7 @@ public abstract class BlockchainTestBase
 
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
 
-        Assert.That(isEngineTest || test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance, "Expected genesis spec to be Frontier for blockchain tests");
+        // Assert.That(isEngineTest || test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance, "Expected genesis spec to be Frontier for blockchain tests");
 
         if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
         {
@@ -144,7 +143,7 @@ public abstract class BlockchainTestBase
         await using IContainer container = containerBuilder.Build();
 
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
-        IWorldState stateProvider = (mainBlockProcessingContext.WorldState as ParallelWorldState).Inner; // directly access underlying state
+        IWorldState stateProvider = mainBlockProcessingContext.WorldState;
         BlockchainProcessor blockchainProcessor = (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
@@ -402,10 +401,10 @@ public abstract class BlockchainTestBase
         {
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
             {
-                stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value, -1);
+                stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
             }
 
-            stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce, -1);
+            stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
             stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
         }
 

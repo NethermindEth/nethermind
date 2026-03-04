@@ -6,7 +6,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.State;
@@ -24,9 +23,9 @@ internal class TestBranchProcessor : IBranchProcessor
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing { add { } remove { } }
     public event EventHandler<BlockEventArgs>? BlockProcessing { add { } remove { } }
 
-    public Task<Block[]> Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks,
+    public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks,
         ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token = default)
-        => Task.FromResult<Block[]>([]);
+        => [];
 
     public void RaiseBlockProcessed(BlockProcessedEventArgs args)
         => BlockProcessed?.Invoke(this, args);

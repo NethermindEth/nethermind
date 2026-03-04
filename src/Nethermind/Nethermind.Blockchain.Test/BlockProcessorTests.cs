@@ -50,14 +50,7 @@ public class BlockProcessorTests
         BlockProcessor processor = new(HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             rewardCalculator ?? NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(
-                    stateProvider,
-                    new ExecuteTransactionProcessorAdapter(transactionProcessor),
-                    new BlobBaseFeeCalculator(),
-                    HoodiSpecProvider.Instance,
-                    Substitute.For<IBlockhashProvider>(),
-                    Substitute.For<ICodeInfoRepository>(),
-                    LimboLogs.Instance),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -78,13 +71,13 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task Prepared_block_contains_author_field()
+    public void Prepared_block_contains_author_field()
     {
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch();
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
-        Block[] processedBlocks = await branchProcessor.Process(
+        Block[] processedBlocks = branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.None,
@@ -101,13 +94,13 @@ public class BlockProcessorTests
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
-        Assert.Throws<OperationCanceledException>(async () => await branchProcessor.Process(
+        Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.None,
             AlwaysCancelBlockTracer.Instance));
 
-        Assert.Throws<OperationCanceledException>(async () => await branchProcessor.Process(
+        Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.None,
@@ -214,14 +207,14 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task BranchProcessor_no_prewarmer_still_processes_successfully()
+    public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: null);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).WithTransactions(3, MuirGlacier.Instance).TestObject;
 
-        Block[] processedBlocks = await branchProcessor.Process(
+        Block[] processedBlocks = branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.NoValidation,

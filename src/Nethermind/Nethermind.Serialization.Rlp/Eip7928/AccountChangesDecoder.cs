@@ -53,11 +53,11 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         }
 
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance, true, default, _txLimit);
-        int? lastIndex = null;
-        SortedList<int, BalanceChange> balanceChangesList = new(balanceChanges.Length);
+        ushort? lastIndex = null;
+        SortedList<ushort, BalanceChange> balanceChangesList = new(balanceChanges.Length);
         foreach (BalanceChange balanceChange in balanceChanges)
         {
-            int index = balanceChange.BlockAccessIndex;
+            ushort index = balanceChange.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
                 Console.WriteLine($"Balance changes were in incorrect order. index={index}, lastIndex={lastIndex}");
@@ -69,10 +69,10 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         lastIndex = null;
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<int, NonceChange> nonceChangesList = new(nonceChanges.Length);
+        SortedList<ushort, NonceChange> nonceChangesList = new(nonceChanges.Length);
         foreach (NonceChange nonceChange in nonceChanges)
         {
-            int index = nonceChange.BlockAccessIndex;
+            ushort index = nonceChange.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException("Nonce changes were in incorrect order.");
@@ -84,10 +84,10 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance, true, default, _txLimit);
 
         lastIndex = null;
-        SortedList<int, CodeChange> codeChangesList = new(codeChanges.Length);
+        SortedList<ushort, CodeChange> codeChangesList = new(codeChanges.Length);
         foreach (CodeChange codeChange in codeChanges)
         {
-            int index = codeChange.BlockAccessIndex;
+            ushort index = codeChange.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException("Code changes were in incorrect order.");

@@ -535,7 +535,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         Assert.That(block.Header.GasUsed, Is.GreaterThan(0));
 
         // Restore to snapshot 0
-        tracer.Restore(snapshot, 0);
+        tracer.Restore(snapshot);
 
         // Verify everything is cleared
         Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0), "Receipts should be empty after restore to 0");
@@ -596,7 +596,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         Assert.That(block.Header.GasUsed, Is.GreaterThan(blockGasAfterTx1));
 
         // Restore to snapshot after tx1
-        tracer.Restore(snapshotAfterTx1, 0);
+        tracer.Restore(snapshotAfterTx1);
 
         // Verify state is restored to after tx1
         Assert.That(tracer.TxReceipts.Length, Is.EqualTo(1), "Should have 1 receipt after restore");
@@ -649,12 +649,12 @@ public class Eip7778Tests : VirtualMachineTestsBase
         Assert.That(tracer.TxReceipts.Length, Is.EqualTo(2));
 
         // First restore: back to after tx1
-        tracer.Restore(snapshot1, 0);
+        tracer.Restore(snapshot1);
         Assert.That(tracer.TxReceipts.Length, Is.EqualTo(1));
         Assert.That(block.Header.GasUsed, Is.EqualTo(gasAfterTx1));
 
         // Second restore: back to empty
-        tracer.Restore(snapshot0, 0);
+        tracer.Restore(snapshot0);
         Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
         Assert.That(block.Header.GasUsed, Is.EqualTo(0));
     }

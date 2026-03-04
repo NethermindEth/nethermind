@@ -8,7 +8,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly record struct CodeChange(int BlockAccessIndex, [property: JsonConverter(typeof(ByteArrayConverter))] byte[] NewCode) : IIndexedChange
+public readonly record struct CodeChange(ushort BlockAccessIndex, [property: JsonConverter(typeof(ByteArrayConverter))] byte[] NewCode) : IIndexedChange
 {
     public bool Equals(CodeChange other) =>
         BlockAccessIndex == other.BlockAccessIndex &&

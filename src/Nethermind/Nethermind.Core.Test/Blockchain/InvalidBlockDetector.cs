@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
@@ -31,12 +30,12 @@ public class InvalidBlockDetector
             remove => baseBlockProcessor.TransactionsExecuted -= value;
         }
 
-        public async Task<(Block Block, TxReceipt[] Receipts)> ProcessOne(Block suggestedBlock, ProcessingOptions options,
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
             IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
         {
             try
             {
-                return await baseBlockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                return baseBlockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
             }
             catch (InvalidBlockException)
             {

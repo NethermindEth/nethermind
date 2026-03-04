@@ -13,7 +13,6 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Specs.Forks;
-using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -41,7 +40,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return tx;
             }
 
-            protected override Task<ResultWrapper<TResult>> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
+            protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 BlockHeader clonedHeader = header.Clone();
                 if (NoBaseFee)
@@ -51,7 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ExecuteTx(clonedHeader, tx, stateOverride, token);
             }
 
-            public override Task<ResultWrapper<TResult>> Execute(
+            public override ResultWrapper<TResult> Execute(
                 TransactionForRpc transactionCall,
                 BlockParameter? blockParameter,
                 Dictionary<Address, AccountOverride>? stateOverride = null,
@@ -75,7 +74,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
-            public Task<ResultWrapper<TResult>> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null)
+            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null)
                 => Execute(transactionCall, blockParameter, stateOverride);
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);

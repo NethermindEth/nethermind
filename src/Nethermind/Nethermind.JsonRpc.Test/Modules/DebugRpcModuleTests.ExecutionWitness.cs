@@ -258,7 +258,7 @@ public partial class DebugRpcModuleTests
         await blockchain.AddBlock(callTx);
     }
 
-    private static async void CheckStatelessProcessing(TestRpcBlockchain blockchain, Witness witness, Block expectedBlock)
+    private static void CheckStatelessProcessing(TestRpcBlockchain blockchain, Witness witness, Block expectedBlock)
     {
         BlockHeader? parent = blockchain.BlockTree.FindHeader(expectedBlock.Header.ParentHash!, BlockTreeLookupOptions.RequireCanonical);
         parent.Should().NotBeNull();
@@ -270,7 +270,7 @@ public partial class DebugRpcModuleTests
             blockchain.LogManager);
 
         using var scope = statelessEnv.WorldState.BeginScope(parent!);
-        (Block processed, _) = await statelessEnv.BlockProcessor.ProcessOne(
+        (Block processed, _) = statelessEnv.BlockProcessor.ProcessOne(
             expectedBlock,
             ProcessingOptions.ReadOnlyChain,
             NullBlockTracer.Instance,

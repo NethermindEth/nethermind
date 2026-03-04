@@ -34,7 +34,6 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Consensus.Stateless;
@@ -168,7 +167,7 @@ namespace Nethermind.Facade
             };
         }
 
-        public Task<SimulateOutput<TTrace>> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken)
+        public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken)
         {
             using SimulateReadOnlyBlocksProcessingScope env = lazySimulateProcessingEnv.Value.Begin(header);
             env.SimulateRequestState.Validate = payload.Validation;

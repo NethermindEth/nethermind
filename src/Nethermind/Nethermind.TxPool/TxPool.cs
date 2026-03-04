@@ -1040,7 +1040,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            public bool TryGetAccount(Address address, out AccountStruct account, int? _ = null)
+            public bool TryGetAccount(Address address, out AccountStruct account)
             {
                 var cache = _caches[GetCacheIndex(address)];
                 if (!cache.TryGet(new AddressAsKey(address), out account))

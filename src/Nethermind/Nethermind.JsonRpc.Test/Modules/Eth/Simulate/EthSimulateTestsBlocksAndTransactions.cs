@@ -183,7 +183,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = await executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
         Assert.That((bool)result.Result, Is.EqualTo(true), result.Result.ToString());
         Assert.That(data, Has.Count.EqualTo(7));
@@ -224,7 +224,7 @@ public class EthSimulateTestsBlocksAndTransactions
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            await executor.Execute(payload, BlockParameter.Latest);
+            executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
 
         Assert.That(data.Count, Is.EqualTo(9));
@@ -266,7 +266,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            await executor.Execute(payload, BlockParameter.Latest);
+            executor.Execute(payload, BlockParameter.Latest);
         Assert.That(result.Result!.Error!.Contains("insufficient sender balance"), Is.True);
     }
 
@@ -316,7 +316,7 @@ public class EthSimulateTestsBlocksAndTransactions
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(spec);
         spec.IsEip7708Enabled = eip7708;
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
-        var result = await chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         var logs = result.Data.First().Calls.First().Logs.ToArray();
         Assert.That(logs.Length, Is.EqualTo(1));
         Assert.That(logs.First().Address == (eip7708 ? TransferLog.Sender : TransferLog.Erc20Sender));

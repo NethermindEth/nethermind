@@ -47,7 +47,7 @@ public class BranchProcessor(
         _stateProvider.CommitTree(block.Number);
     }
 
-    public async Task<Block[]> Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
+    public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
 
@@ -133,7 +133,7 @@ public class BranchProcessor(
                     }
                 }
 
-                (Block processedBlock, TxReceipt[] receipts) = await blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);

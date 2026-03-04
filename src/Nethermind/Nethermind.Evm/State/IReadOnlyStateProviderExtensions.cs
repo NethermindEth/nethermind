@@ -22,10 +22,9 @@ namespace Nethermind.Evm.State
             this IReadOnlyStateProvider stateProvider,
             IReleaseSpec spec,
             Address sender,
-            Func<Address, bool>? isDelegatedCode = null,
-            int? blockAccessIndex = null) =>
+            Func<Address, bool>? isDelegatedCode = null) =>
             spec.IsEip3607Enabled
-            && stateProvider.HasCode(sender, blockAccessIndex)
+            && stateProvider.HasCode(sender)
             && (!spec.IsEip7702Enabled
                 || (!isDelegatedCode?.Invoke(sender) ?? !Eip7702Constants.IsDelegatedCode(stateProvider.GetCode(sender))));
 
@@ -42,11 +41,10 @@ namespace Nethermind.Evm.State
             this IWorldState stateProvider,
             IReleaseSpec spec,
             Address sender,
-            Func<Address, bool>? isDelegatedCode = null,
-            int? blockAccessIndex = null)
+            Func<Address, bool>? isDelegatedCode = null)
         {
             return spec.IsEip3607Enabled
-            && stateProvider.IsContract(sender, blockAccessIndex)
+            && stateProvider.IsContract(sender)
             && (!spec.IsEip7702Enabled
                 || (!isDelegatedCode?.Invoke(sender) ?? !Eip7702Constants.IsDelegatedCode(stateProvider.GetCode(sender))));
         }

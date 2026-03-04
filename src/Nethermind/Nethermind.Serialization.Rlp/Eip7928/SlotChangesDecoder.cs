@@ -25,10 +25,10 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
         UInt256 slot = ctx.DecodeUInt256();
         StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
 
-        int? lastIndex = null;
-        SortedList<int, StorageChange> changesList = new(changes.ToDictionary(s =>
+        ushort? lastIndex = null;
+        SortedList<ushort, StorageChange> changesList = new(changes.ToDictionary(s =>
         {
-            int index = s.BlockAccessIndex;
+            ushort index = s.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");

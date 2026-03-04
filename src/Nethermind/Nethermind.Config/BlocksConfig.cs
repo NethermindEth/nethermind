@@ -68,8 +68,6 @@ namespace Nethermind.Config
 
         public int GenesisTimeoutMs { get; set; } = 40_000;
 
-        public bool ParallelExecution { get; set; } = true; // tmp
-
         public string ExtraData
         {
             get
