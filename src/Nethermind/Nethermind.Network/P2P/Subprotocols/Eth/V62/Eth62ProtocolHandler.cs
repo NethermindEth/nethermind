@@ -187,7 +187,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         ReportIn(newBlockMsg, size);
                         Task task = Handle(newBlockMsg);
                         task.GetAwaiter().GetResult();
-                    }   
+                    }
                     break;
             }
         }
@@ -310,13 +310,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
+        // Task.Run avoids BackgroundTaskScheduler's 2-thread limit (default config) 
+        // and deadlock risk when AddNewBlock spawns nested tasks.
         private Task Handle(NewBlockMessage msg) => Task.Run(() =>
             {
                 msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
                 SyncServer.AddNewBlock(msg.Block, this);
             }
         );
-            
+
         protected virtual void NotifyOfStatus(BlockHeader head)
         {
             StatusMessage statusMessage = new()
