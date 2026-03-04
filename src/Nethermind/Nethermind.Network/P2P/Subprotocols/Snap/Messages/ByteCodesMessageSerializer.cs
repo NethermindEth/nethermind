@@ -24,14 +24,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
         }
 
-        public ByteCodesMessage Deserialize(IByteBuffer byteBuffer)
+        public ByteCodesMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private static ByteCodesMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
-            NettyRlpStream rlpStream = new(byteBuffer);
+            ctx.ReadSequenceLength();
 
-            rlpStream.ReadSequenceLength();
-
-            long requestId = rlpStream.DecodeLong();
-            IOwnedReadOnlyList<byte[]> result = rlpStream.DecodeArrayPoolList(static stream => stream.DecodeByteArray());
+            long requestId = ctx.DecodeLong();
+            IOwnedReadOnlyList<byte[]> result = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray());
 
             return new ByteCodesMessage(result) { RequestId = requestId };
         }

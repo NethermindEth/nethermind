@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         : IProofRpcModule
     {
         private readonly HeaderDecoder _headerDecoder = new();
-        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>();
+        private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>();
 
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
@@ -211,7 +211,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index)
         {
-            return ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptDecoder);
+            return ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptEncoder);
         }
     }
 }

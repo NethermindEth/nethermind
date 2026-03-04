@@ -21,7 +21,7 @@ namespace Nethermind.Core.Extensions
         // one node, they will not be the same on another node or across a restart so hash collision cannot be used to degrade
         // the performance of the network as a whole.
         public static readonly uint InstanceRandom =
-#if ZKVM
+#if ZK_EVM
             2098026241U;
 #else
             (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);

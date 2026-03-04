@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Core;
@@ -82,7 +83,7 @@ public class ReceiptsMessageSerializerTests
         var decoder = new ReceiptMessageDecoder(skipStateAndStatus: true);
         byte[] encoded = decoder.EncodeNew(receipt);
 
-        var decoded = decoder.Decode(new RlpStream(encoded));
+        var decoded = decoder.Decode((ReadOnlySpan<byte>)encoded);
 
         var expectedDecoded = new TxReceipt
         {
@@ -131,7 +132,7 @@ public class ReceiptsMessageSerializerTests
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
         IByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out int _) + 1);
-        buffer.WriteByte(Rlp.OfEmptySequence[0]);
+        buffer.WriteByte(Rlp.OfEmptyList[0]);
         buffer.ReadByte();
 
         serializer.Serialize(buffer, message);

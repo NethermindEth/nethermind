@@ -38,23 +38,6 @@ public sealed class XdcSubnetHeaderDecoder : BaseXdcHeaderDecoder<XdcSubnetBlock
         header.Penalties = decoderContext.DecodeByteArray();
     }
 
-    protected override void DecodeHeaderSpecificFields(RlpStream rlpStream, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors, int headerCheck)
-    {
-        if (!IsForSealing(rlpBehaviors))
-        {
-            header.Validator = rlpStream.DecodeByteArray();
-        }
-
-        header.Validators = rlpStream.DecodeByteArray();
-
-        if (!IsForSealing(rlpBehaviors))
-        {
-            header.NextValidators = rlpStream.DecodeByteArray();
-        }
-
-        header.Penalties = rlpStream.DecodeByteArray();
-    }
-
     protected override void EncodeHeaderSpecificFields(RlpStream rlpStream, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)
     {
         if (!IsForSealing(rlpBehaviors))

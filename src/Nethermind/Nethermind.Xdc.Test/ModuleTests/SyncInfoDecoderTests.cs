@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using System.Collections;
@@ -71,7 +71,8 @@ public class SyncInfoDecoderTests
 
         if (useRlpStream)
         {
-            decoded = decoder.Decode(stream);
+            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+            decoded = decoder.Decode(ref decoderContext);
         }
         else
         {
@@ -103,9 +104,9 @@ public class SyncInfoDecoderTests
         decoder.Encode(stream, syncInfo);
         stream.Position = 0;
 
-        // Decode with RlpStream
-        SyncInfo decodedStream = decoder.Decode(stream);
-        stream.Position = 0;
+        // Decode with ValueDecoderContext
+        Rlp.ValueDecoderContext streamCtx = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+        SyncInfo decodedStream = decoder.Decode(ref streamCtx);
 
         // Decode with ValueDecoderContext
         Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
@@ -148,16 +149,14 @@ public class SyncInfoDecoderTests
 
         Rlp encoded = decoder.Encode(null!);
 
-        Assert.That(encoded, Is.EqualTo(Rlp.OfEmptySequence));
+        Assert.That(encoded, Is.EqualTo(Rlp.OfEmptyList));
     }
 
     [Test]
     public void Decode_Null_ReturnsNull()
     {
         var decoder = new SyncInfoDecoder();
-        var stream = new RlpStream(Rlp.OfEmptySequence.Bytes);
-
-        SyncInfo decoded = decoder.Decode(stream);
+        SyncInfo decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes);
 
         Assert.That(decoded, Is.Null);
     }
@@ -166,7 +165,7 @@ public class SyncInfoDecoderTests
     public void Decode_EmptyByteArray_ValueDecoderContext_ReturnsNull()
     {
         var decoder = new SyncInfoDecoder();
-        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(Rlp.OfEmptySequence.Bytes);
+        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(Rlp.OfEmptyList.Bytes);
 
         SyncInfo decoded = decoder.Decode(ref decoderContext);
 

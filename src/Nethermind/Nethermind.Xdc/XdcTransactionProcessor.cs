@@ -68,7 +68,9 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         if (owner is null || owner == Address.Zero)
             return;
 
-        UInt256 fee = tx.GasPrice * (ulong)spentGas;
+        UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
+        UInt256 fee = effectiveGasPrice * (ulong)spentGas;
+
         WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
 
         if (tracer.IsTracingFees)
@@ -79,7 +81,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
         out UInt256 blobBaseFee)
     {
-        if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec))
+        if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec) || tx.IsSpecialTransaction((XdcReleaseSpec)spec))
         {
             premiumPerGas = 0;
             senderReservedGasPayment = 0;
@@ -118,11 +120,9 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
 
         if (tx.RequiresSpecialHandling(spec))
-        {
             return ExecuteSpecialTransaction(tx, tracer, opts);
-        }
 
-        _cachedCoinbaseOwner = _masternodeVotingContract.GetCandidateOwnerDuringProcessing(this, header, header.GasBeneficiary!);
+        _cachedCoinbaseOwner = _masternodeVotingContract.GetCandidateOwner(this, header, header.GasBeneficiary!);
 
         return base.Execute(tx, tracer, opts);
     }
