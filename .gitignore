@@ -441,8 +441,6 @@ FodyWeavers.xsd
 
 # AI
 .claude/*
-!.claude/rules
-!.claude/rules/**
 !.claude/skills
 !.claude/skills/**
 .gemini/
