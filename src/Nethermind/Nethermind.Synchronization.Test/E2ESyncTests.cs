@@ -537,7 +537,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     .WithCode(InitCode)
                     .WithNonce(currentNonce++)
                     .WithGasLimit(gasLimit)
-                    .WithGasPrice(10.GWei())
+                    .WithGasPrice(10.GWei)
                     .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject;
 
                 // Calculate deployed address and track it
@@ -553,7 +553,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     .WithData([])
                     .WithNonce(currentNonce++)
                     .WithGasLimit(gasLimit)
-                    .WithGasPrice(10.GWei())
+                    .WithGasPrice(10.GWei)
                     .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject;
             }
 

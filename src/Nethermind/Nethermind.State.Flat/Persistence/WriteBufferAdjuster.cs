@@ -9,7 +9,7 @@ namespace Nethermind.State.Flat.Persistence;
 
 internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
 {
-    private const int ColumnCount = (int)FlatDbColumns.FallbackNodes + 1;
+    internal const int ColumnCount = 7;
     private const long MinWriteBufferSize = 16L * 1024 * 1024;   // 16 MB floor
     private const long MaxWriteBufferSize = 256L * 1024 * 1024;  // 256 MB cap
 
