@@ -104,7 +104,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
             if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges.Last().BlockAccessIndex != -1)
             {
                 _innerWorldState.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                UInt256 oldBalance = GetBalanceInternal(accountChanges.Address, 0);
+                UInt256 oldBalance = accountChanges.GetBalance(0);
                 UInt256 newBalance = accountChanges.BalanceChanges.Last().PostBalance;
                 if (newBalance > oldBalance)
                 {
