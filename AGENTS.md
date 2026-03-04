@@ -22,7 +22,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 
 ## Codebase Rules
 
-Detailed rules live in [`.agents/rules/`](./.agents/rules/). Read the relevant files before working in that area.
+Detailed rules live in [`.agents/rules/`](./.agents/rules/). Read the relevant files before writing, reviewing, planning, or debugging code in the corresponding domain.
 
 - [coding-style.md](./.agents/rules/coding-style.md) — C# conventions, formatting, naming, and style
 - [di-patterns.md](./.agents/rules/di-patterns.md) — Autofac DI modules, WorldState architecture, test modules, DSL reference
