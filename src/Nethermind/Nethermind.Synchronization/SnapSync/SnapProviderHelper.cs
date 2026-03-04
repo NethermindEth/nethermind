@@ -193,7 +193,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                         moreChildrenToRight |= childPath.Path > limitHash;
 
-                        if (dict.TryGetValue(childKeccak, out TrieNode child))
+                        if (childPath.CompareTo(leftBoundaryPath.Truncate(childPath.Length)) >= 0 && dict.TryGetValue(childKeccak, out TrieNode child))
                         {
                             node.SetChild(0, child);
 
@@ -277,9 +277,10 @@ namespace Nethermind.Synchronization.SnapSync
                                 TreePath wholePath = childPath.Append(child.Key);
                                 if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) > 0 || rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) < 0)
                                 {
-                                    node.SetChild(ci, child);
-                                    proofNodesToProcess.Push((child, childPath));
-                                    sortedBoundaryList.Add((child, childPath));
+                                    // Leaf are range proof, proof that the range covers the requested path.
+                                    // But we dont persist them as it should be persisted by the range itself through
+                                    // other range.
+                                    node.NodeData[ci] = child.Keccak;
                                 }
                             }
                         }
