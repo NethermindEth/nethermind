@@ -104,10 +104,7 @@ After all code changes, add or update tests as planned.
 
 ### Step 6 — Verify
 
-1. Build: `dotnet build src/Nethermind/Nethermind.slnx`
-2. Run relevant tests: `dotnet test --project path/to/.csproj -c release -- --filter FullyQualifiedName~TestName`
-3. Format: `dotnet format whitespace src/Nethermind/ --folder`
-4. If build or tests fail → fix → repeat from step 1
+Build, run relevant tests, and format. If build or tests fail → fix → repeat.
 
 ## Edge cases
 
