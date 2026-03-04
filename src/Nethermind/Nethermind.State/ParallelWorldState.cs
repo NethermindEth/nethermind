@@ -707,9 +707,9 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
         }
     }
 
-    private ValueHash256 GetCodeHashInternal(Address address, int blockAccessIndex)
+    private ValueHash256 GetCodeHashInternal(Address address, int? blockAccessIndex)
         => ParallelExecutionEnabled ?
-                ValueKeccak.Compute(GetCodeInternal(address, blockAccessIndex)) :
+                ValueKeccak.Compute(GetCodeInternal(address, blockAccessIndex.Value)) :
                 _innerWorldState.GetCodeHash(address);
 
     private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell, int? blockAccessIndex)
