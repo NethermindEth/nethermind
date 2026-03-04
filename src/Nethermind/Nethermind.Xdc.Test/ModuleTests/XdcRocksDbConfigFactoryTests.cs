@@ -21,7 +21,6 @@ namespace Nethermind.Xdc.Test.ModuleTests
         [Test]
         public void BaseFactory_Throws_When_ConfigMissingForSnapshot()
         {
-            // Arrange
             IDbConfig dbConfig = new DbConfig();
             var pruning = Substitute.For<IPruningConfig>();
             var hw = Substitute.For<IHardwareInfo>();
@@ -29,17 +28,14 @@ namespace Nethermind.Xdc.Test.ModuleTests
             // construct base factory with validation enabled
             var baseFactory = new RocksDbConfigFactory(dbConfig, pruning, hw, logManager, validateConfig: true);
 
-            // Act
             Action act = () => baseFactory.GetForDatabase(SnapshotDbName, null);
 
-            // Assert
             act.Should().Throw<InvalidConfigurationException>();
         }
 
         [Test]
         public void CustomFactory_DoesNotThrow_And_Returns_ConfigForSnapshot()
         {
-            // Arrange
             IDbConfig dbConfig = new DbConfig();
             var pruning = Substitute.For<IPruningConfig>();
             var hw = Substitute.For<IHardwareInfo>();
@@ -47,10 +43,8 @@ namespace Nethermind.Xdc.Test.ModuleTests
             var baseFactory = new RocksDbConfigFactory(dbConfig, pruning, hw, logManager, validateConfig: true);
             var custom = new XdcRocksDbConfigFactory(baseFactory, dbConfig);
 
-            // Act
             IRocksDbConfig config = custom.GetForDatabase(SnapshotDbName, null);
 
-            // Assert
             config.Should().NotBeNull();
             config.RocksDbOptions.Should().NotBeNull();
         }

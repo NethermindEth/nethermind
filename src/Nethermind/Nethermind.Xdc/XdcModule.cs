@@ -16,6 +16,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
