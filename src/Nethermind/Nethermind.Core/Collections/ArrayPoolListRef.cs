@@ -19,7 +19,7 @@ public ref struct ArrayPoolListRef<T>
     {
         if (capacity != 0)
         {
-            _array = ArrayPool<T>.Shared.Rent(capacity);
+            _array = SafeArrayPool<T>.Shared.Rent(capacity);
             _array.AsSpan(0, startingCount).Clear();
         }
         else
@@ -33,9 +33,9 @@ public ref struct ArrayPoolListRef<T>
 
     public readonly int Count => _count;
     public readonly int Capacity => _capacity;
-    public void Add(T item) => ArrayPoolListCore<T>.Add(ArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, item);
+    public void Add(T item) => ArrayPoolListCore<T>.Add(SafeArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, item);
     public void AddRange(params T[] items) => AddRange(items.AsSpan());
-    public void AddRange(params ReadOnlySpan<T> items) => ArrayPoolListCore<T>.AddRange(ArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, items);
+    public void AddRange(params ReadOnlySpan<T> items) => ArrayPoolListCore<T>.AddRange(SafeArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, items);
 
     public void AddRange(params IEnumerable<T> items)
     {
@@ -59,12 +59,12 @@ public ref struct ArrayPoolListRef<T>
         }
     }
 
-    public void Insert(int index, T item) => ArrayPoolListCore<T>.Insert(ArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, index, item);
+    public void Insert(int index, T item) => ArrayPoolListCore<T>.Insert(SafeArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, index, item);
     public bool Remove(T item) => ArrayPoolListCore<T>.Remove(_array, ref _count, item);
     public T? RemoveLast() => ArrayPoolListCore<T>.RemoveLast(_array, ref _count);
     public void RemoveAt(int index) => ArrayPoolListCore<T>.RemoveAt(_array, ref _count, index, shouldThrow: true);
     public void Clear() => ArrayPoolListCore<T>.Clear(_array, ref _count);
-    public void ReduceCount(int newCount) => ArrayPoolListCore<T>.ReduceCount(ArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, newCount);
+    public void ReduceCount(int newCount) => ArrayPoolListCore<T>.ReduceCount(SafeArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, newCount);
     public void Truncate(int newLength) => ArrayPoolListCore<T>.Truncate(newLength, _array, ref _count);
     public readonly void Sort(Comparison<T> comparison) => ArrayPoolListCore<T>.Sort(_array, _count, comparison);
     public readonly void Reverse() => ArrayPoolListCore<T>.Reverse(_array, _count);
@@ -79,7 +79,7 @@ public ref struct ArrayPoolListRef<T>
         set => ArrayPoolListCore<T>.Set(_array, index, _count, value);
     }
 
-    public void Dispose() => ArrayPoolListCore<T>.Dispose(ArrayPool<T>.Shared, ref _array, ref _count, ref _capacity);
+    public void Dispose() => ArrayPoolListCore<T>.Dispose(SafeArrayPool<T>.Shared, ref _array, ref _count, ref _capacity);
     public readonly PooledArrayEnumerator<T> GetEnumerator() => new(_array, _count);
     public readonly bool Contains(T item) => ArrayPoolListCore<T>.Contains(_array, item, _count);
     public readonly int IndexOf(T item) => ArrayPoolListCore<T>.IndexOf(_array, _count, item);

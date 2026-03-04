@@ -136,8 +136,8 @@ namespace Nethermind.Network.Rlpx
                     .ChildOption(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
                     .ChildOption(ChannelOption.TcpNodelay, true)
                     .ChildOption(ChannelOption.SoKeepalive, true)
-                    .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB())
-                    .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
+                    .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB)
+                    .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
                     .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<IChannel>(ch =>
                     {
@@ -194,8 +194,8 @@ namespace Nethermind.Network.Rlpx
                 .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
                 .Option(ChannelOption.TcpNodelay, true)
                 .Option(ChannelOption.SoKeepalive, true)
-                .Option(ChannelOption.WriteBufferHighWaterMark, (int)3.MB())
-                .Option(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
+                .Option(ChannelOption.WriteBufferHighWaterMark, (int)3.MB)
+                .Option(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
                 .Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default)
                 .Option(ChannelOption.ConnectTimeout, _connectTimeout);
             clientBootstrap.Handler(new ActionChannelInitializer<IChannel>(ch =>

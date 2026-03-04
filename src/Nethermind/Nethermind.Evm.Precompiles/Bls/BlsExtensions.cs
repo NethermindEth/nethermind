@@ -76,7 +76,7 @@ internal static class BlsExtensions
             }
 
             p.Decode(fp0, fp1, fp2, fp3);
-            return p.OnCurve() ? Result.Success : Errors.G1PointSubgroup;
+            return p.OnCurve() ? Result.Success : Errors.G2PointSubgroup;
         }
 
         return result;
@@ -153,7 +153,7 @@ internal static class BlsExtensions
         G2 p = new(pointBuffer.Span[(dest * G2.Sz)..]);
         Result result = p.TryDecodeRaw(rawPoint.Span);
         return result
-            ? BlsConst.DisableSubgroupChecks || p.InGroup() ? Result.Success : Errors.G1PointSubgroup
+            ? BlsConst.DisableSubgroupChecks || p.InGroup() ? Result.Success : Errors.G2PointSubgroup
             : result;
     }
 

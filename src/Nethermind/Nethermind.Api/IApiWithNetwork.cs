@@ -22,7 +22,7 @@ namespace Nethermind.Api
         IGossipPolicy GossipPolicy { get; set; }
         IPeerManager? PeerManager { get; }
         IProtocolsManager? ProtocolsManager { get; set; }
-        IProtocolValidator? ProtocolValidator { get; set; }
+        IProtocolValidator ProtocolValidator { get; }
         IRlpxHost RlpxPeer { get; }
 
         [SkipServiceCollection]

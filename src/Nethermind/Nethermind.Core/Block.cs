@@ -126,6 +126,13 @@ public class Block
     [JsonIgnore]
     public int? EncodedSize { get; set; }
 
+    /// <summary>
+    /// Pre-encoded transaction bytes in SkipTypedWrapping format (as received from CL).
+    /// Used to avoid re-encoding transactions when storing blocks.
+    /// </summary>
+    [JsonIgnore]
+    public byte[][]? EncodedTransactions { get; set; }
+
     public override string ToString() => ToString(Format.Short);
 
     public string ToString(Format format) => format switch

@@ -55,7 +55,7 @@ namespace Nethermind.State
         public StateProvider(
             ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public void RecalculateStateRoot()
@@ -768,7 +768,7 @@ namespace Nethermind.State
 
         private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
         {
-            if (isZero && releaseSpec.IsEip158IgnoredAccount(address)) return;
+            if (isZero && address == releaseSpec.Eip158IgnoredAccount) return;
             Push(address, account, ChangeType.Touch);
         }
 
