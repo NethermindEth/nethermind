@@ -44,7 +44,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
             if (accountChange.SelfDestructed)
             {
-                worldState.DeleteAccount(address);
+                worldState.DeleteAccount(address, -1);
             }
 
             bool hasAccountChange = accountChange.Balance is not null
@@ -53,13 +53,13 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                                     || accountChange.ChangedSlots?.Count > 0;
             if (!hasAccountChange) continue;
 
-            if (worldState.TryGetAccount(address, out AccountStruct account))
+            if (worldState.TryGetAccount(address, out AccountStruct account, -1))
             {
                 // IWorldState does not actually have set nonce or set balance.
                 // Set, its either this or changing `IWorldState` which is somewhat risky.
                 if (accountChange.Nonce is not null)
                 {
-                    worldState.SetNonce(address, accountChange.Nonce.Value);
+                    worldState.SetNonce(address, accountChange.Nonce.Value, -1);
                 }
 
                 if (accountChange.Balance is not null)
@@ -67,26 +67,26 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                     UInt256 originalBalance = account.Balance;
                     if (accountChange.Balance.Value > originalBalance)
                     {
-                        worldState.AddToBalance(address, accountChange.Balance.Value - originalBalance, releaseSpec);
+                        worldState.AddToBalance(address, accountChange.Balance.Value - originalBalance, releaseSpec, -1);
                     }
                     else if (accountChange.Balance.Value == originalBalance)
                     {
                     }
                     else
                     {
-                        worldState.SubtractFromBalance(address, originalBalance - accountChange.Balance.Value, releaseSpec);
+                        worldState.SubtractFromBalance(address, originalBalance - accountChange.Balance.Value, releaseSpec, -1);
                     }
                 }
             }
             else
             {
-                worldState.CreateAccountIfNotExists(address, accountChange.Balance ?? 0, accountChange.Nonce ?? 0);
+                worldState.CreateAccountIfNotExists(address, accountChange.Balance ?? 0, accountChange.Nonce ?? 0, -1);
             }
 
             if (accountChange.CodeHash is not null)
             {
                 // Note, this also set CodeDb, but since this is a read only world state, it should do nothing.
-                worldState.InsertCode(address, accountChange.CodeHash, Array.Empty<byte>(), releaseSpec, false);
+                worldState.InsertCode(address, accountChange.CodeHash, Array.Empty<byte>(), releaseSpec, false, -1);
             }
 
             if (accountChange.ChangedSlots is not null)
@@ -94,7 +94,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
                 {
                     ReadOnlySpan<byte> bytes = changedSlot.Value.ToBigEndian().WithoutLeadingZeros();
-                    worldState.Set(new StorageCell(address, changedSlot.Key), bytes.ToArray());
+                    worldState.Set(new StorageCell(address, changedSlot.Key), bytes.ToArray(), -1);
                 }
             }
         }

@@ -43,7 +43,7 @@ public class TransactionProcessorTests
         _specProvider = new TestSpecProvider(_spec);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
 
-        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);

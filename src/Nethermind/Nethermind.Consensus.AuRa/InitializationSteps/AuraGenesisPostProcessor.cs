@@ -19,7 +19,7 @@ public class AuraGenesisPostProcessor(ChainSpec chainSpec, IWorldState worldStat
         bool hasConstructorAllocation = chainSpec.Allocations.Values.Any(static a => a.Constructor is not null);
         if (hasConstructorAllocation)
         {
-            worldState.CreateAccount(Address.Zero, UInt256.Zero);
+            worldState.CreateAccount(Address.Zero, UInt256.Zero, 0, -1);
             worldState.Commit(Homestead.Instance);
         }
     }

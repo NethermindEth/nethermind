@@ -187,7 +187,7 @@ public class StateProviderTests
     {
         ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
 
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
 
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
 
@@ -206,7 +206,7 @@ public class StateProviderTests
     [Test]
     public void Does_not_allow_calling_stateroot_after_scope()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
 
         Action action = () => { _ = provider.StateRoot; };
         {
