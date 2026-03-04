@@ -128,66 +128,85 @@ public class InitDatabaseSnapshot : InitDatabase
     private async Task DownloadSnapshotTo(
         string snapshotUrl, string snapshotFileName, CancellationToken cancellationToken)
     {
-        FileInfo snapshotFileInfo = new(snapshotFileName);
-        if (_logger.IsInfo)
-            _logger.Info($"Downloading snapshot from {snapshotUrl} to file {snapshotFileInfo.FullName}");
+        FileInfo snapshotFile = new(snapshotFileName);
+        long existingSize = snapshotFile.Exists ? snapshotFile.Length : 0;
 
-        if (snapshotFileInfo.Exists)
+        if (_logger.IsInfo)
+            _logger.Info($"Downloading snapshot from {snapshotUrl} to {snapshotFile.FullName}");
+
+        if (existingSize > 0)
         {
             if (_logger.IsWarn)
-                _logger.Warn($"The snapshot file already exists. Resuming download. To interrupt press Ctrl^C");
-            // Wait few seconds if user want's to stop download
+                _logger.Warn("Snapshot file already exists. Resuming download. To interrupt press Ctrl^C");
             await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
         }
 
         using HttpClient httpClient = new();
-
         HttpRequestMessage request = new(HttpMethod.Get, snapshotUrl);
-        if (snapshotFileInfo.Exists)
-            request.Headers.Range = new RangeHeaderValue(snapshotFileInfo.Length, null);
+        if (existingSize > 0)
+            request.Headers.Range = new RangeHeaderValue(existingSize, null);
 
         using HttpResponseMessage response =
             (await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
             .EnsureSuccessStatusCode();
 
-        FileMode snapshotFileMode = FileMode.Create;
-        if (snapshotFileInfo.Exists && response.StatusCode == HttpStatusCode.PartialContent)
+        (FileMode fileMode, long bytesToSkip, long? totalSize) = response.StatusCode switch
         {
-            snapshotFileMode = FileMode.Append;
-        }
-        else if (response.StatusCode == HttpStatusCode.OK)
-        {
-            if (snapshotFileInfo.Exists && _logger.IsWarn)
-                _logger.Warn("Download couldn't be resumed. Starting from the beginning.");
-        }
-        else
-        {
-            throw new IOException($"Unexpected status code: {response.StatusCode}");
-        }
+            // Server honoured our Range request — append remaining bytes.
+            HttpStatusCode.PartialContent =>
+                (FileMode.Append, 0L, existingSize + response.Content.Headers.ContentLength),
+
+            // Server returned the full file. If we had a partial file, skip the already-downloaded
+            // portion in the stream and append; otherwise start fresh.
+            HttpStatusCode.OK when existingSize > 0 =>
+                (FileMode.Append, existingSize, response.Content.Headers.ContentLength),
+
+            HttpStatusCode.OK =>
+                (FileMode.Create, 0L, response.Content.Headers.ContentLength),
+
+            _ => throw new IOException($"Unexpected HTTP status: {response.StatusCode}")
+        };
+
+        if (bytesToSkip > 0 && _logger.IsWarn)
+            _logger.Warn($"Server does not support range requests. Consuming {bytesToSkip} already-downloaded bytes to resume.");
 
         await using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using FileStream snapshotFileStream = new(
-            snapshotFileName, snapshotFileMode, FileAccess.Write, FileShare.None, BufferSize, true);
-
-        long totalBytesRead = snapshotFileStream.Length;
-        long? totalBytesToRead = totalBytesRead + response.Content.Headers.ContentLength;
+        await using FileStream fileStream = new(snapshotFileName, fileMode, FileAccess.Write, FileShare.None, BufferSize, true);
 
         using ProgressTracker progressTracker = new(
-            _api.LogManager, _api.TimerFactory, TimeSpan.FromSeconds(5), totalBytesRead, totalBytesToRead);
+            _api.LogManager, _api.TimerFactory, TimeSpan.FromSeconds(5), existingSize, totalSize);
 
-        byte[] buffer = new byte[BufferSize];
-        while (true)
-        {
-            int bytesRead = await contentStream.ReadAsync(buffer, cancellationToken);
-            if (bytesRead == 0)
-                break;
-            await snapshotFileStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+        if (bytesToSkip > 0)
+            await SkipAsync(contentStream, bytesToSkip, cancellationToken);
 
-            progressTracker.AddProgress(bytesRead);
-        }
+        await CopyAsync(contentStream, fileStream, progressTracker, cancellationToken);
 
         if (_logger.IsInfo)
             _logger.Info($"Snapshot downloaded to {snapshotFileName}.");
+    }
+
+    private static async Task SkipAsync(Stream stream, long bytesToSkip, CancellationToken cancellationToken)
+    {
+        byte[] buffer = new byte[BufferSize];
+        long remaining = bytesToSkip;
+        while (remaining > 0)
+        {
+            int read = await stream.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, remaining)), cancellationToken);
+            if (read == 0)
+                throw new IOException($"Stream ended prematurely while skipping: {remaining} of {bytesToSkip} bytes remaining.");
+            remaining -= read;
+        }
+    }
+
+    private static async Task CopyAsync(Stream source, FileStream destination, ProgressTracker progressTracker, CancellationToken cancellationToken)
+    {
+        byte[] buffer = new byte[BufferSize];
+        int bytesRead;
+        while ((bytesRead = await source.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+            progressTracker.AddProgress(bytesRead);
+        }
     }
 
     private async Task<bool> VerifyChecksum(
