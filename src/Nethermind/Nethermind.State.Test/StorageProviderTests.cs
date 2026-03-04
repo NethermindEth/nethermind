@@ -433,7 +433,7 @@ public class StorageProviderTests
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
         StorageCell nonAccessedStorageCell = new StorageCell(TestItem.AddressA, 2);
-        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
+        preBlockCaches.AddOrUpdate(accessedStorageCell, [1, 2, 3], (_, _) => [1, 2, 3]);
         provider.Get(accessedStorageCell);
         provider.Commit(Paris.Instance);
         provider.ClearStorage(TestItem.AddressA);
@@ -602,7 +602,7 @@ public class StorageProviderTests
         PreBlockCaches preBlockCaches = new PreBlockCaches();
         Context ctx = new(preBlockCaches);
         StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
-        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
+        preBlockCaches.AddOrUpdate(accessedStorageCell, [1, 2, 3], (_, _) => [1, 2, 3]);
 
         WorldState provider = BuildStorageProvider(ctx);
         provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo([1, 2, 3]);
@@ -714,7 +714,7 @@ public class StorageProviderTests
 
             if (preBlockCaches is not null)
             {
-                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache: true);
+                scopeProvider = new PrewarmerScopeProvider(scopeProvider, new PreBlockCachesWrapper(), populatePreBlockCache: true);
             }
 
             if (trackWrittenData)

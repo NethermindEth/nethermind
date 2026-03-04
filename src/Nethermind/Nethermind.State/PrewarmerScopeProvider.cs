@@ -33,37 +33,30 @@ public class PrewarmerGetTimeLabels(bool isPrewarmer)
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     IPreBlockCachesWrapper preBlockCachesWrapper,
-    bool populatePreBlockCache = true,
-    ILogManager? logManager = null
-) : IWorldStateScopeProvider, IPreBlockCaches
+    bool populatePreBlockCache = true
+) : IWorldStateScopeProvider
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCachesWrapper, populatePreBlockCache, logManager);
-
-    public IPreBlockCachesInner? Caches => null;
-    public bool IsWarmWorldState => !populatePreBlockCache;
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCachesWrapper, populatePreBlockCache);
 
     private sealed class ScopeWrapper : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope;
         private readonly IPreBlockCachesInner preBlockCache;
         private readonly bool populatePreBlockCache;
-        //private readonly SeqlockCache<AddressAsKey, Account>.ValueFactory _getFromBaseTree;
         private readonly InFactory<AddressAsKey, Account> _getFromBaseTree;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
-        private readonly ILogManager _logManager;
 
-        public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, IPreBlockCachesWrapper preBlockCachesWrapper, bool populatePreBlockCache, ILogManager logManager)
+        public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, IPreBlockCachesWrapper preBlockCachesWrapper, bool populatePreBlockCache)
         {
             this.baseScope = baseScope;
             preBlockCache = preBlockCachesWrapper.CreateNext();
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
             _getFromBaseTree = GetFromBaseTree;
-            _logManager = logManager;
         }
 
         public void Dispose() => baseScope.Dispose();
@@ -76,8 +69,7 @@ public class PrewarmerScopeProvider(
                 baseScope.CreateStorageTree(address),
                 preBlockCache,
                 address,
-                populatePreBlockCache,
-                _logManager?.GetClassLogger<StorageTreeWrapper>());
+                populatePreBlockCache);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
@@ -125,8 +117,6 @@ public class PrewarmerScopeProvider(
 
         public Account? Get(Address address)
         {
-            ILogger logger = _logManager.GetClassLogger<PrewarmerScopeProvider>();
-
             AddressAsKey addressAsKey = address;
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (populatePreBlockCache)
@@ -176,26 +166,23 @@ public class PrewarmerScopeProvider(
         private readonly IPreBlockCachesInner preBlockCache;
         private readonly Address address;
         private readonly bool populatePreBlockCache;
-        //private readonly SeqlockCache<StorageCell, byte[]>.ValueFactory _loadFromTreeStorage;
+        private readonly InFactory<StorageCell, byte[]> _loadFromTreeStorage;
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
-        private readonly ILogger? _logger;
 
         public StorageTreeWrapper(
             IWorldStateScopeProvider.IStorageTree baseStorageTree,
             IPreBlockCachesInner preBlockCache,
             Address address,
-            bool populatePreBlockCache,
-            ILogger? logger)
+            bool populatePreBlockCache)
         {
             this.baseStorageTree = baseStorageTree;
             this.preBlockCache = preBlockCache;
             this.address = address;
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
-            //_loadFromTreeStorage = LoadFromTreeStorage;
-            _logger = logger;
+            _loadFromTreeStorage = LoadFromTreeStorage;
         }
 
         public Hash256 RootHash => baseStorageTree.RootHash;
@@ -208,7 +195,7 @@ public class PrewarmerScopeProvider(
             {
                 long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
 
-                byte[] value = preBlockCache.GetOrAdd(storageCell, LoadFromTreeStorage);
+                byte[] value = preBlockCache.GetOrAdd(in storageCell, _loadFromTreeStorage);
 
                 if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
                 {
