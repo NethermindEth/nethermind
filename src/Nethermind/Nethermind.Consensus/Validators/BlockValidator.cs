@@ -435,13 +435,11 @@ public class BlockValidator(
     private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
     {
         BlockAccessList bal = block.BlockAccessList!;
-        long blockGasLimit = block.Header.GasLimit;
-        long maxBalItems = blockGasLimit / Eip7928Constants.BalItemCost;
-        int balItems = bal.ItemCount;
+        long maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
 
-        if (balItems > maxBalItems)
+        if (bal.ItemCount > maxBalItems)
         {
-            error = BlockErrorMessages.BlockLevelAccessListExceededSizeLimit(balItems, maxBalItems);
+            error = BlockErrorMessages.BlockLevelAccessListExceededSizeLimit(bal.ItemCount, maxBalItems);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
         }
