@@ -168,7 +168,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (ParallelExecutionEnabled)
@@ -192,7 +192,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         bool res;
@@ -220,26 +220,26 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override ReadOnlySpan<byte> Get(in StorageCell storageCell, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
         {
             GetGeneratingBlockAccessList(blockAccessIndex).AddStorageRead(storageCell);
         }
-        return GetInternal(storageCell, blockAccessIndex.Value);
+        return GetInternal(storageCell, blockAccessIndex);
     }
 
     public override byte[] GetOriginal(in StorageCell storageCell, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
         {
             GetGeneratingBlockAccessList(blockAccessIndex).AddStorageRead(storageCell);
         }
-        return GetOriginalInternal(storageCell, blockAccessIndex.Value);
+        return GetOriginalInternal(storageCell, blockAccessIndex);
     }
 
     public override void IncrementNonce(Address address, UInt256 delta, int? blockAccessIndex = null)
@@ -247,7 +247,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (ParallelExecutionEnabled)
@@ -267,7 +267,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void SetNonce(Address address, in UInt256 nonce, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (!ParallelExecutionEnabled)
@@ -283,7 +283,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -296,7 +296,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void Set(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -312,55 +312,55 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override UInt256 GetBalance(Address address, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
         {
             AddAccountRead(address, blockAccessIndex.Value);
         }
-        return GetBalanceInternal(address, blockAccessIndex.Value);
+        return GetBalanceInternal(address, blockAccessIndex);
     }
 
     public override UInt256 GetNonce(Address address, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
         {
             AddAccountRead(address, blockAccessIndex.Value);
         }
-        return GetNonceInternal(address, blockAccessIndex.Value);
+        return GetNonceInternal(address, blockAccessIndex);
     }
 
     public override ValueHash256 GetCodeHash(Address address, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
         {
             AddAccountRead(address, blockAccessIndex.Value);
         }
-        return GetCodeHashInternal(address, blockAccessIndex.Value);
+        return GetCodeHashInternal(address, blockAccessIndex);
     }
 
     public override byte[]? GetCode(Address address, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
         {
             AddAccountRead(address, blockAccessIndex);
         }
-        return GetCodeInternal(address, blockAccessIndex.Value);
+        return GetCodeInternal(address, blockAccessIndex);
     }
 
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (address == Address.SystemUser && balanceChange.IsZero)
@@ -382,7 +382,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void DeleteAccount(Address address, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -397,7 +397,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -420,10 +420,10 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
-        if (!AccountExistsInternal(address, blockAccessIndex.Value))
+        if (!AccountExistsInternal(address, blockAccessIndex))
         {
             CreateAccount(address, balance, nonce, blockAccessIndex);
         }
@@ -431,7 +431,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override bool TryGetAccount(Address address, out AccountStruct account, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -452,7 +452,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public void AddAccountRead(Address address, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -463,7 +463,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void Restore(Snapshot snapshot, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -478,7 +478,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override Snapshot TakeSnapshot(bool newTransactionStart = false, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         int blockAccessListSnapshot = GetGeneratingBlockAccessList(blockAccessIndex).TakeSnapshot();
@@ -488,53 +488,53 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override bool AccountExists(Address address, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
         {
             AddAccountRead(address, blockAccessIndex.Value);
         }
-        return AccountExistsInternal(address, blockAccessIndex.Value);
+        return AccountExistsInternal(address, blockAccessIndex);
     }
 
     public override bool IsContract(Address address, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
         {
             AddAccountRead(address, blockAccessIndex.Value);
         }
-        return IsContractInternal(address, blockAccessIndex.Value);
+        return IsContractInternal(address, blockAccessIndex);
     }
 
     public override bool IsStorageEmpty(Address address, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         // don't need to add read, already added in IsNonZeroAccount
 
-        return IsStorageEmptyInternal(address, blockAccessIndex.Value);
+        return IsStorageEmptyInternal(address, blockAccessIndex);
     }
 
     public override bool IsDeadAccount(Address address, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
         {
             AddAccountRead(address, blockAccessIndex.Value);
         }
-        return IsDeadAccountInternal(address, blockAccessIndex.Value);
+        return IsDeadAccountInternal(address, blockAccessIndex);
     }
 
     public override void ClearStorage(Address address, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -586,7 +586,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         return ParallelExecutionEnabled ?
@@ -596,7 +596,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void SetTransientState(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (ParallelExecutionEnabled)
@@ -611,7 +611,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void ResetTransient(int? blockAccessIndex = null)
     {
-        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
+        if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (ParallelExecutionEnabled)
@@ -629,7 +629,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
             _intermediateBlockAccessLists[int.Min(blockAccessIndex!.Value, _intermediateBlockAccessLists.Length - 1)] :
             GeneratedBlockAccessList;
 
-    private UInt256 GetBalanceInternal(Address address, int blockAccessIndex)
+    private UInt256 GetBalanceInternal(Address address, int? blockAccessIndex)
     {
         if (ParallelExecutionEnabled)
         {
@@ -644,7 +644,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
             if (accountChanges is not null)
             {
-                return accountChanges.GetBalance(blockAccessIndex);
+                return accountChanges.GetBalance(blockAccessIndex.Value);
             }
 
             throw new InvalidBlockLevelAccessListException($"Balance access for {address} not in block access list.");
@@ -655,7 +655,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
         }
     }
 
-    private UInt256 GetNonceInternal(Address address, int blockAccessIndex)
+    private UInt256 GetNonceInternal(Address address, int? blockAccessIndex)
     {
         if (ParallelExecutionEnabled)
         {
@@ -670,7 +670,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
             if (accountChanges is not null)
             {
-                return accountChanges.GetNonce(blockAccessIndex);
+                return accountChanges.GetNonce(blockAccessIndex.Value);
             }
 
             throw new InvalidBlockLevelAccessListException($"Nonce access for {address} not in block access list.");
@@ -681,7 +681,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
         }
     }
 
-    private byte[]? GetCodeInternal(Address address, int blockAccessIndex)
+    private byte[]? GetCodeInternal(Address address, int? blockAccessIndex)
     {
         if (ParallelExecutionEnabled)
         {
@@ -696,7 +696,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
             if (accountChanges is not null)
             {
-                return accountChanges.GetCode(blockAccessIndex);
+                return accountChanges.GetCode(blockAccessIndex.Value);
             }
 
             throw new InvalidBlockLevelAccessListException($"Code access for {address} not in block access list.");
@@ -712,7 +712,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
                 ValueKeccak.Compute(GetCodeInternal(address, blockAccessIndex)) :
                 _innerWorldState.GetCodeHash(address);
 
-    private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell, int blockAccessIndex)
+    private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell, int? blockAccessIndex)
     {
         if (ParallelExecutionEnabled)
         {
@@ -730,7 +730,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
             if (slotChanges is not null)
             {
-                return slotChanges.Get(blockAccessIndex);
+                return slotChanges.Get(blockAccessIndex.Value);
             }
 
             throw new InvalidBlockLevelAccessListException($"Storage access for {storageCell.Address} not in block access list.");
@@ -741,7 +741,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
         }
     }
 
-    private byte[] GetOriginalInternal(in StorageCell storageCell, int blockAccessIndex)
+    private byte[] GetOriginalInternal(in StorageCell storageCell, int? blockAccessIndex)
     {
         if (ParallelExecutionEnabled)
         {
@@ -750,7 +750,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
             if (slotChanges is not null)
             {
-                return slotChanges.Get(blockAccessIndex);
+                return slotChanges.Get(blockAccessIndex.Value);
             }
 
             throw new InvalidBlockLevelAccessListException($"Storage access for {storageCell.Address} not in block access list.");
@@ -761,7 +761,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
         }
     }
 
-    private bool AccountExistsInternal(Address address, int blockAccessIndex)
+    private bool AccountExistsInternal(Address address, int? blockAccessIndex)
     {
         if (ParallelExecutionEnabled)
         {
@@ -777,7 +777,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
             if (accountChanges is not null)
             {
                 // check if existed before current tx
-                return accountChanges.AccountExists(blockAccessIndex);
+                return accountChanges.AccountExists(blockAccessIndex.Value);
             }
 
             throw new InvalidBlockLevelAccessListException($"Account existence check for {address} not in block access list.");
@@ -788,21 +788,21 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
         }
     }
 
-    private bool IsDeadAccountInternal(Address address, int blockAccessIndex)
+    private bool IsDeadAccountInternal(Address address, int? blockAccessIndex)
         => ParallelExecutionEnabled ?
                 !AccountExistsInternal(address, blockAccessIndex) ||
                 (
-                    GetBalanceInternal(address, blockAccessIndex) == 0 &&
-                    GetNonceInternal(address, blockAccessIndex) == 0 &&
-                    GetCodeHashInternal(address, blockAccessIndex) == Keccak.OfAnEmptyString) :
+                    GetBalanceInternal(address, blockAccessIndex.Value) == 0 &&
+                    GetNonceInternal(address, blockAccessIndex.Value) == 0 &&
+                    GetCodeHashInternal(address, blockAccessIndex.Value) == Keccak.OfAnEmptyString) :
                 _innerWorldState.IsDeadAccount(address);
 
-    private bool IsContractInternal(Address address, int blockAccessIndex)
+    private bool IsContractInternal(Address address, int? blockAccessIndex)
         => ParallelExecutionEnabled ?
-                GetCodeHashInternal(address, blockAccessIndex) != Keccak.OfAnEmptyString :
+                GetCodeHashInternal(address, blockAccessIndex.Value) != Keccak.OfAnEmptyString :
                 _innerWorldState.IsContract(address);
 
-    private bool IsStorageEmptyInternal(Address address, int blockAccessIndex)
+    private bool IsStorageEmptyInternal(Address address, int? blockAccessIndex)
     {
         if (ParallelExecutionEnabled)
         {
@@ -820,7 +820,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
             accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
             if (accountChanges is not null)
             {
-                HashSet<UInt256> allSlots = accountChanges.GetAllSlots(blockAccessIndex);
+                HashSet<UInt256> allSlots = accountChanges.GetAllSlots(blockAccessIndex.Value);
                 return allSlots.SetEquals(zeroedSlots);
             }
 
