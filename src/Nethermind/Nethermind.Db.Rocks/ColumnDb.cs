@@ -135,6 +135,14 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     // Maybe it should be column-specific metric?
     public IDbMeta.DbMetric GatherMetric() => _mainDb.GatherMetric();
 
+    public void SetWriteBuffer(long sizeBytes)
+    {
+        string[] keys = ["write_buffer_size", "max_bytes_for_level_base"];
+        string[] values = [sizeBytes.ToString(), (sizeBytes * 4).ToString()];
+        Native.Instance.rocksdb_set_options_cf(
+            _rocksDb.Handle, _columnFamily.Handle, keys.Length, keys, values);
+    }
+
     public byte[]? FirstKey
     {
         get

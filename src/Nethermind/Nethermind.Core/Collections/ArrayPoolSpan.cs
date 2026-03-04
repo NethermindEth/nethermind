@@ -13,7 +13,7 @@ public readonly struct ArrayPoolSpan<T>(ArrayPool<T> arrayPool, int length) : ID
 {
     private readonly T[] _array = arrayPool.Rent(length);
     private readonly int _length = length;
-    public ArrayPoolSpan(int length) : this(ArrayPool<T>.Shared, length) { }
+    public ArrayPoolSpan(int length) : this(SafeArrayPool<T>.Shared, length) { }
 
     public readonly int Length => _length;
     public readonly ref T this[int index]

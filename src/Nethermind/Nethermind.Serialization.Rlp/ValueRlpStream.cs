@@ -305,14 +305,14 @@ public ref struct ValueRlpStream(SpanSource data)
             return span.Slice(prefix, 1);
         }
 
-        if (prefix == 128)
+        if (prefix == Rlp.EmptyByteArrayByte)
         {
             return default;
         }
 
         if (prefix <= 183)
         {
-            int length = prefix - 128;
+            int length = prefix - Rlp.EmptyByteArrayByte;
             ReadOnlySpan<byte> buffer = Read(length);
             if (buffer.Length == 1 && buffer[0] < 128)
             {

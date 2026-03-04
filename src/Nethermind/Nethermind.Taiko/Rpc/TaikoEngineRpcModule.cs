@@ -55,7 +55,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ITxPool txPool,
         IBlockFinder blockFinder,
         IShareableTxProcessorSource txProcessorSource,
-        IRlpStreamDecoder<Transaction> txDecoder,
+        IRlpStreamEncoder<Transaction> txDecoder,
         IL1OriginStore l1OriginStore,
         ISurgeConfig surgeConfig) :
             EngineRpcModule(getPayloadHandlerV1,
@@ -270,7 +270,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return [.. Batches];
     }
 
-    struct Batch(ulong maxBytes, int transactionsListCapacity, IRlpStreamDecoder<Transaction> txDecoder) : IDisposable
+    struct Batch(ulong maxBytes, int transactionsListCapacity, IRlpStreamEncoder<Transaction> txDecoder) : IDisposable
     {
         private readonly ulong _maxBytes = maxBytes;
         private ulong _length;
@@ -295,7 +295,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         public readonly ulong GetCompressedTxsLength()
         {
             int contentLength = Transactions.Sum(GetTxLength);
-            byte[] data = ArrayPool<byte>.Shared.Rent(contentLength);
+            byte[] data = ArrayPool<byte>.Shared.Rent(Rlp.LengthOfSequence(contentLength));
 
             try
             {
@@ -370,8 +370,13 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return ResultWrapper<UInt256>.Success(batchId);
     }
 
-    public ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, int[] signature)
+    public ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, byte[] signature)
     {
+        if (signature.Length != L1OriginDecoder.SignatureLength)
+        {
+            return ResultWrapper<L1Origin>.Fail($"signature must be exactly {L1OriginDecoder.SignatureLength} bytes, got {signature.Length}");
+        }
+
         L1Origin? l1Origin = l1OriginStore.ReadL1Origin(blockId);
         if (l1Origin is null)
         {

@@ -296,7 +296,7 @@ internal static partial class EvmInstructions
         {
             int expSize = 32 - leadingZeros;
             // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-            TGasPolicy.Consume(ref gas, vm.Spec.GetExpByteCost() * expSize);
+            TGasPolicy.Consume(ref gas, vm.Spec.GasCosts.ExpByteCost * expSize);
 
             if (a.IsZero)
             {
