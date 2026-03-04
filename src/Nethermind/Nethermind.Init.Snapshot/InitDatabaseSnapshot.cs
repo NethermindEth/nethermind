@@ -80,7 +80,7 @@ public class InitDatabaseSnapshot : InitDatabase
                     await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
                     break;
                 }
-                catch (IOException e)
+                catch (Exception e) when (e is IOException or HttpRequestException)
                 {
                     if (_logger.IsError)
                         _logger.Error($"Snapshot download failed. Retrying in 5 seconds. Error: {e}");
@@ -129,6 +129,7 @@ public class InitDatabaseSnapshot : InitDatabase
         string snapshotUrl, string snapshotFileName, CancellationToken cancellationToken)
     {
         FileInfo snapshotFile = new(snapshotFileName);
+        snapshotFile.Refresh(); // ensure we read current size, not a stale cached value
         long existingSize = snapshotFile.Exists ? snapshotFile.Length : 0;
 
         if (_logger.IsInfo)
@@ -144,6 +145,9 @@ public class InitDatabaseSnapshot : InitDatabase
         // HttpClient must outlive the response stream — do not dispose before CopyAsync finishes.
         using HttpClient httpClient = new(new HttpClientHandler { AllowAutoRedirect = false });
         using HttpResponseMessage response = await SendWithRangeAsync(httpClient, snapshotUrl, existingSize, cancellationToken);
+
+        if (_logger.IsInfo)
+            _logger.Info($"Server response: {response.StatusCode}, ETag: {response.Headers.ETag}, Last-Modified: {response.Content.Headers.LastModified}");
 
         (FileMode fileMode, long bytesToSkip, long? totalSize) = response.StatusCode switch
         {
