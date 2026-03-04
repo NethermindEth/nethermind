@@ -35,8 +35,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// Consume gas for code deposit. For standard Ethereum, this is equivalent to Consume.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ConsumeCodeDeposit(ref EthereumGasPolicy gas, int codeLength)
-        => Consume(ref gas, GasCostOf.CodeDeposit * codeLength);
+    public static void ConsumeCodeDeposit(ref EthereumGasPolicy gas, long cost)
+        => Consume(ref gas, cost);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Refund(ref EthereumGasPolicy gas, in EthereumGasPolicy childGas) =>

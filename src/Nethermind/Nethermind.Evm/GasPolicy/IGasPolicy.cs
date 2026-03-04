@@ -51,11 +51,10 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     /// <summary>
     /// Consume gas for code deposit during CREATE/CREATE2.
-    /// Cost is calculated internally as GasCostOf.CodeDeposit * codeLength.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
-    /// <param name="codeLength">The length of the deployed code in bytes.</param>
-    static abstract void ConsumeCodeDeposit(ref TSelf gas, int codeLength);
+    /// <param name="cost">The gas cost (GasCostOf.CodeDeposit * codeLength).</param>
+    static abstract void ConsumeCodeDeposit(ref TSelf gas, long cost);
 
     /// <summary>
     /// Refund gas from a child call frame.

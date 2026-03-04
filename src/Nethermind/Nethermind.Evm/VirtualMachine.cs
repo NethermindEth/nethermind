@@ -412,7 +412,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // 4 - set state[new_address].code to the updated deploy container
             // push new_address onto the stack (already done before the ifs)
             _codeInfoRepository.InsertCode(bytecodeResultArray, callCodeOwner, spec);
-            TGasPolicy.ConsumeCodeDeposit(ref _currentState.Gas, bytecodeResultArray?.Length ?? 0);
+            TGasPolicy.ConsumeCodeDeposit(ref _currentState.Gas, codeDepositGasCost);
 
             if (_txTracer.IsTracingActions)
             {
@@ -491,7 +491,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
             // Deduct the gas cost for the code deposit from the current state's available gas.
             // Uses ConsumeCodeDeposit for multi-gas implementations that track state growth separately.
-            TGasPolicy.ConsumeCodeDeposit(ref _currentState.Gas, callResult.Output.Bytes.Length);
+            TGasPolicy.ConsumeCodeDeposit(ref _currentState.Gas, codeDepositGasCost);
 
             // If tracing is enabled, report the successful code deposit operation.
             if (isTracing)
