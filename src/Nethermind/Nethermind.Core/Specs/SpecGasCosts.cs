@@ -67,7 +67,7 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
         bool netIstanbul = spec.UseIstanbulNetGasMetering;  // EIP-2200
         bool netConstantinople = spec.UseConstantinopleNetGasMetering;  // EIP-1283
 
-        ClearReversalRefund =
+        long clearReversalRefund = ClearReversalRefund =
             hotCold ? RefundOf.SResetReversedHotCold
             : netIstanbul ? RefundOf.SResetReversedEip2200
             : netConstantinople ? RefundOf.SResetReversedEip1283
@@ -137,7 +137,7 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             : RefundOf.DestroyBeforeEip3529;
 
         int hashCode1 = HashCode.Combine(SLoadCost, BalanceCost, ExtCodeCost, ExtCodeHashCost, CallCost, ExpByteCost, sStoreResetCost, netMeteredSStoreCost);
-        int hashCode2 = HashCode.Combine(TxDataNonZeroMultiplier, ClearReversalRefund, setReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock, DestroyRefund);
+        int hashCode2 = HashCode.Combine(TxDataNonZeroMultiplier, clearReversalRefund, setReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock, DestroyRefund);
         _hashCode = HashCode.Combine(hashCode1, hashCode2);
     }
 

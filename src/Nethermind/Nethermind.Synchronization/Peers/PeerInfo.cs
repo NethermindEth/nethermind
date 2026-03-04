@@ -95,7 +95,7 @@ namespace Nethermind.Synchronization.Peers
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Free(AllocationContexts contexts)
         {
-            AllocatedContexts ^= contexts;
+            AllocatedContexts &= ~contexts;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -123,7 +123,7 @@ namespace Nethermind.Synchronization.Peers
         [MethodImpl(MethodImplOptions.Synchronized)]
         private void WakeUp(AllocationContexts allocationContexts)
         {
-            SleepingContexts ^= allocationContexts;
+            SleepingContexts &= ~allocationContexts;
 
             foreach (KeyValuePair<AllocationContexts, int> allocationIndex in AllocationIndexes)
             {

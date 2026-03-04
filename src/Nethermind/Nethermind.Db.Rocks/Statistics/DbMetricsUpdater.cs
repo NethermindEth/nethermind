@@ -121,9 +121,9 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
                     {
                         4 => m.Groups[++i].Value switch
                         {
-                            "KB" => 1.KiB(),
-                            "MB" => 1.MiB(),
-                            "GB" => 1.GiB(),
+                            "KB" => 1.KiB,
+                            "MB" => 1.MiB,
+                            "GB" => 1.GiB,
                             _ => 1
                         },
                         _ => 1
