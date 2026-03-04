@@ -21,7 +21,6 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
 {
     private readonly IMasternodeVotingContract _masternodeVotingContract;
 
-    private Address? _cachedCoinbaseOwner;
     public XdcTransactionProcessor(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
@@ -120,13 +119,6 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
 
         if (tx.RequiresSpecialHandling(spec))
             return ExecuteSpecialTransaction(tx, tracer, opts);
-
-        }
-
-        if (spec.IsTipTrc21FeeEnabled && !tx.IsSpecialTransaction(spec))
-        {
-            _cachedCoinbaseOwner = _masternodeVotingContract.GetCandidateOwner(this, header, header.GasBeneficiary!);
-        }
 
         return base.Execute(tx, tracer, opts);
     }
