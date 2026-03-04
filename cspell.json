@@ -156,6 +156,7 @@
     "cmovz",
     "codecopy",
     "codehash",
+    "CODEOWNERS",
     "codesection",
     "codesize",
     "coef",
