@@ -47,7 +47,7 @@ public class JsonRpcSocketsClientTests
             JsonRpcSuccessResponse bigObject = RandomSuccessResponse(200_000);
             Task<int> sendJsonRpcResult = Task.Run(async () =>
             {
-                await using TestClient<IpcSocketMessageStream> ipc = await TestClient.ConnectTcpAsync(ipEndPoint);
+                using TestClient<IpcSocketMessageStream> ipc = await TestClient.ConnectTcpAsync(ipEndPoint);
                 using JsonRpcResult result = JsonRpcResult.Single(bigObject, default);
 
                 return await ipc.Client.SendJsonRpcResult(result);
@@ -106,7 +106,7 @@ public class JsonRpcSocketsClientTests
 
             Task<int> sendMessages = Task.Run(async () =>
             {
-                await using TestClient<IpcSocketMessageStream> ipc = await TestClient.ConnectTcpAsync(ipEndPoint);
+                using TestClient<IpcSocketMessageStream> ipc = await TestClient.ConnectTcpAsync(ipEndPoint);
                 int disposeCount = 0;
 
                 for (int i = 0; i < messageCount; i++)
@@ -406,7 +406,7 @@ public class JsonRpcSocketsClientTests
             Task.Run(async () =>
             {
                 Socket socket = await listener.AcceptAsync(token);
-                await using TestClient<IpcSocketMessageStream> tc = new(new IpcSocketMessageStream(socket), jsonRpcProcessor: processor, concurrency: concurrency);
+                using TestClient<IpcSocketMessageStream> tc = new(new IpcSocketMessageStream(socket), jsonRpcProcessor: processor, concurrency: concurrency);
                 await tc.Client.ReceiveLoopAsync(token);
             });
 
@@ -480,7 +480,7 @@ public class JsonRpcSocketsClientTests
 
             Task<int> sendMessages = Task.Run(async () =>
             {
-                await using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync();
+                using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync();
                 using JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(1_000), default);
 
                 for (int i = 0; i < messageCount; i++)
@@ -513,7 +513,7 @@ public class JsonRpcSocketsClientTests
 
             Task sendCollection = Task.Run(async () =>
             {
-                await using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync();
+                using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync();
                 using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
                 await ws.Client.SendJsonRpcResult(result);
                 await Task.Delay(100);
@@ -539,7 +539,7 @@ public class JsonRpcSocketsClientTests
 
             Task<int> sendCollection = Task.Run(async () =>
             {
-                await using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync(maxBatchResponseBodySize: maxByteCount);
+                using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync(maxBatchResponseBodySize: maxByteCount);
                 using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
                 int sent = await ws.Client.SendJsonRpcResult(result);
                 await Task.Delay(100);
@@ -557,7 +557,7 @@ public class JsonRpcSocketsClientTests
         public async Task Can_serialize_collection()
         {
             MemoryMessageStream stream = new();
-            await using TestClient<MemoryMessageStream> tc = new(stream, RpcEndpoint.Ws, maxBatchResponseBodySize: 10_000);
+            using TestClient<MemoryMessageStream> tc = new(stream, RpcEndpoint.Ws, maxBatchResponseBodySize: 10_000);
             using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
             await tc.Client.SendJsonRpcResult(result);
             stream.Seek(0, SeekOrigin.Begin);
@@ -704,7 +704,7 @@ public class JsonRpcSocketsClientTests
         long? maxBatchResponseBodySize = null,
         int concurrency = 1,
         IDisposable? owner = null)
-        : IAsyncDisposable
+        : IDisposable
         where TStream : Stream, IMessageBorderPreservingStream
     {
         public JsonRpcSocketsClient<TStream> Client { get; } = new(
@@ -718,10 +718,9 @@ public class JsonRpcSocketsClientTests
             concurrency: concurrency
         );
 
-        public async ValueTask DisposeAsync()
+        public void Dispose()
         {
             Client.Dispose();
-            await stream.DisposeAsync();
             owner?.Dispose();
         }
     }
