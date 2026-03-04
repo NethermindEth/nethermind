@@ -232,7 +232,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override byte[] GetOriginal(in StorageCell storageCell, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -312,7 +312,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override UInt256 GetBalance(Address address, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -324,7 +324,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override UInt256 GetNonce(Address address, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -348,7 +348,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override byte[]? GetCode(Address address, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -463,7 +463,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void Restore(Snapshot snapshot, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -488,7 +488,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override bool AccountExists(Address address, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -522,7 +522,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override bool IsDeadAccount(Address address, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
