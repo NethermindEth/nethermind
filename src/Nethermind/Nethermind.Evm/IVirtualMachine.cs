@@ -13,6 +13,10 @@ public interface IVirtualMachine<TGasPolicy>
 {
     TransactionSubstate ExecuteTransaction<TTracingInst>(VmState<TGasPolicy> state, IWorldState worldState, ITxTracer txTracer)
         where TTracingInst : struct, IFlag;
+
+    TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> state, IWorldState worldState, ITxTracer txTracer)
+        => ExecuteTransaction<OffFlag>(state, worldState, txTracer);
+
     ref readonly BlockExecutionContext BlockExecutionContext { get; }
     ref readonly TxExecutionContext TxExecutionContext { get; }
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);

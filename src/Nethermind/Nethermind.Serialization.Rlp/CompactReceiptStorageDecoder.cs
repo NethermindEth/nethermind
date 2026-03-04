@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using static Nethermind.Serialization.Rlp.Rlp;
 
 #pragma warning disable 618
@@ -16,60 +18,15 @@ namespace Nethermind.Serialization.Rlp
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(CompactReceiptStorageDecoder))]
         public CompactReceiptStorageDecoder()
         {
-        }
-
-        protected override TxReceipt? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (rlpStream.IsNextItemNull())
-            {
-                rlpStream.ReadByte();
-                return null;
-            }
-
-            TxReceipt txReceipt = new();
-            rlpStream.ReadSequenceLength();
-
-            byte[] firstItem = rlpStream.DecodeByteArray();
-            if (firstItem.Length == 1)
-            {
-                txReceipt.StatusCode = firstItem[0];
-            }
-            else
-            {
-                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-            }
-
-            txReceipt.Sender = rlpStream.DecodeAddress();
-            txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
-
-            int sequenceLength = rlpStream.ReadSequenceLength();
-            int lastCheck = sequenceLength + rlpStream.Position;
-            using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
-
-            while (rlpStream.Position < lastCheck)
-            {
-                logEntries.Add(CompactLogEntryDecoder.Decode(rlpStream, RlpBehaviors.AllowExtraBytes));
-            }
-
-            txReceipt.Logs = logEntries.ToArray();
-
-            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-            if (!allowExtraBytes)
-            {
-                rlpStream.Check(lastCheck);
-            }
-
-            txReceipt.Bloom = new Bloom(txReceipt.Logs);
-
-            return txReceipt;
         }
 
         protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyList())
             {
                 decoderContext.ReadByte();
                 return null;
@@ -120,7 +77,7 @@ namespace Nethermind.Serialization.Rlp
             // Note: This method runs at 2.5 million times/sec on my machine
             item = new TxReceiptStructRef();
 
-            if (decoderContext.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyList())
             {
                 decoderContext.ReadByte();
                 return;
