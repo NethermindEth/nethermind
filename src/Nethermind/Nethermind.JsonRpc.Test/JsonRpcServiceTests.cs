@@ -3,9 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO.Abstractions;
 using System.Text.Json;
-
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -23,10 +21,10 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.JsonRpc.Test;
 
@@ -62,7 +60,7 @@ public class JsonRpcServiceTests
 
     private JsonRpcResponse TestRequestWithPool<T>(IRpcModulePool<T> pool, string method, params object?[]? parameters) where T : IRpcModule
     {
-        RpcModuleProvider moduleProvider = new(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
+        RpcModuleProvider moduleProvider = new(new RealFileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(pool);
         _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
         JsonRpcRequest request = RpcTest.BuildJsonRequest(method, parameters);

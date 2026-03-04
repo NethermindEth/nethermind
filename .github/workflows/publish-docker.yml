@@ -2,7 +2,7 @@ name: Publish Docker image
 
 on:
   push:
-    branches: [master, release/*, paprika]
+    branches: [master, release/*, performance]
     paths: [src/Nethermind/**]
 
   workflow_dispatch:

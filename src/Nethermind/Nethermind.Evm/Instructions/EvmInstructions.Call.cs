@@ -171,7 +171,7 @@ internal static partial class EvmInstructions
         }
 
         // Update gas: call cost and memory expansion for input and output.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GetCallCost()) ||
+        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;

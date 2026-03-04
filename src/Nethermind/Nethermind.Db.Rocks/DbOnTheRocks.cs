@@ -27,6 +27,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
 using RocksDbSharp;
+using Testably.Abstractions;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
@@ -112,7 +113,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _logger = logManager.GetClassLogger();
         _settings = dbSettings;
         Name = _settings.DbName;
-        _fileSystem = fileSystem ?? new FileSystem();
+        _fileSystem = fileSystem ?? new RealFileSystem();
         _rocksDbNative = rocksDbNative ?? Native.Instance;
         _rocksDbConfigFactory = rocksDbConfigFactory;
         _perTableDbConfig = rocksDbConfigFactory.GetForDatabase(Name, null);
@@ -221,7 +222,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             CreateMarkerIfCorrupt(x);
             throw;
         }
-
     }
 
     private void WarmupFile(string basePath, RocksDb db)
@@ -438,7 +438,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return 0;
     }
 
-    [GeneratedRegex("(?<optionName>[^; ]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
+    [GeneratedRegex("(?<optionName>[A-Za-z0-9_\\.]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractDbOptionsRegex();
 
     public static IDictionary<string, string> ExtractOptions(string dbOptions)
@@ -532,7 +532,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             Marshal.FreeHGlobal(optsPtr);
         }
 
-        if (dbConfig.WriteBufferSize is not null)
+        if (dbConfig.WriteBufferSize > 0)
         {
             _writeBufferSize = dbConfig.WriteBufferSize.Value;
             options.SetWriteBufferSize(dbConfig.WriteBufferSize.Value);
@@ -1096,7 +1096,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
     {
-        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
 
         Iterator iterator = CreateIterator(ordered);
         return GetAllKeysCore(iterator);
@@ -1484,8 +1484,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public void Dispose()
     {
-        if (_isDisposing) return;
-        _isDisposing = true;
+        if (Interlocked.CompareExchange(ref _isDisposing, true, false)) return;
 
         if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
 
