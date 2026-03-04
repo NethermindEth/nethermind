@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
@@ -43,7 +42,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private long _queueCount;
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
-    private int _pendingActivities;
     private bool _disposed = false;
 
     public BackgroundTaskScheduler(IBranchProcessor branchProcessor, IChainHeadInfoProvider headInfo, int concurrency, int capacity, ILogManager logManager)
@@ -108,32 +106,29 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             {
                 Interlocked.Decrement(ref _queueCount);
                 UpdateQueueCount();
-                Interlocked.Increment(ref _pendingActivities);
-                _ = RunActivity(activity);
-            }
-        }
-    }
 
-    private async Task RunActivity(IActivity activity)
-    {
-        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(
-            _blockProcessorCancellationTokenSource.Token,
-            _mainCancellationTokenSource.Token);
-        try
-        {
-            await activity.Do(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsError) _logger.Error($"Error processing background task {e}.");
-        }
-        finally
-        {
-            cts.Dispose();
-            Interlocked.Decrement(ref _pendingActivities);
+                // Link to both block-processing and main cancellation tokens.
+                // Tasks execute sequentially per worker to maintain concurrency limit
+                // and keep work on BelowNormal priority threads.
+                CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(
+                    _blockProcessorCancellationTokenSource.Token,
+                    _mainCancellationTokenSource.Token);
+                try
+                {
+                    await activity.Do(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"Error processing background task {e}.");
+                }
+                finally
+                {
+                    cts.Dispose();
+                }
+            }
         }
     }
 
@@ -151,7 +146,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         long count = Interlocked.Increment(ref _queueCount);
 
         // Soft limit: warn when above configured capacity but still accept.
-        // With fire-and-forget dispatch, queue drains rapidly so this is rarely hit.
         if (count > _capacity)
         {
             if (_logger.IsWarn) _logger.Warn($"Background task queue above capacity (Count: {count}, Capacity: {_capacity}).");
@@ -181,13 +175,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _taskQueue.Writer.Complete();
         await _mainCancellationTokenSource.CancelAsync();
         await Task.WhenAll(_tasksExecutors);
-
-        // Wait for fire-and-forget activities to complete (they have cancelled tokens)
-        Stopwatch sw = Stopwatch.StartNew();
-        while (Volatile.Read(ref _pendingActivities) > 0 && sw.Elapsed < TimeSpan.FromSeconds(5))
-        {
-            await Task.Delay(10);
-        }
 
         _mainCancellationTokenSource.Dispose();
         _scheduler.Dispose();
