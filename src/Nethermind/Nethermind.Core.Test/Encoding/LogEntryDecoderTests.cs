@@ -61,7 +61,8 @@ public class LogEntryDecoderTests
         LogEntryDecoder decoder = LogEntryDecoder.Instance;
 
         Rlp encoded = decoder.Encode(logEntry);
-        LogEntry deserialized = decoder.Decode(new RlpStream(encoded.Bytes))!;
+        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+        LogEntry deserialized = decoder.Decode(ref ctx)!;
 
         Assert.That(deserialized.Data, Is.EqualTo(logEntry.Data), "data");
         Assert.That(deserialized.Address, Is.EqualTo(logEntry.Address), "address");

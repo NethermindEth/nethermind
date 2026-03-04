@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -19,7 +19,7 @@ namespace Nethermind.Evm;
 public readonly ref struct TransactionSubstate
 {
     private readonly ILogger _logger;
-    private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>();
+    private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>(Address.EqualityComparer);
     private static readonly IToArrayCollection<LogEntry> _emptyLogs = new JournalCollection<LogEntry>();
 
     private const string SomeError = "error";
@@ -50,22 +50,26 @@ public readonly ref struct TransactionSubstate
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
-    public (ICodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
+    public string? SubstateError { get; }
+    public EvmExceptionType EvmExceptionType { get; }
+    public (CodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
     public IToArrayCollection<LogEntry> Logs => _logs ?? _emptyLogs;
     public IHashSetEnumerableCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
 
-    public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected)
+    public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
         Error = isTracerConnected ? exceptionType.ToString() : SomeError;
+        SubstateError = substateError;
+        EvmExceptionType = exceptionType;
         Refund = 0;
         _destroyList = _emptyDestroyList;
         _logs = _emptyLogs;
         ShouldRevert = false;
     }
 
-    public static TransactionSubstate FailedInitCode => new TransactionSubstate("Eip 7698: Invalid CreateTx InitCode");
+    public static TransactionSubstate FailedInitCode => new("Eip 7698: Invalid CreateTx InitCode");
 
     private TransactionSubstate(string errorCode)
     {
@@ -76,12 +80,13 @@ public readonly ref struct TransactionSubstate
         ShouldRevert = true;
     }
 
-    public TransactionSubstate((ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
+    public TransactionSubstate((CodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
         long refund,
         IHashSetEnumerableCollection<Address> destroyList,
         IToArrayCollection<LogEntry> logs,
         bool shouldRevert,
         bool isTracerConnected,
+        EvmExceptionType evmExceptionType = default,
         ILogger logger = default)
     {
         _logger = logger;
@@ -90,6 +95,7 @@ public readonly ref struct TransactionSubstate
         _destroyList = destroyList;
         _logs = logs;
         ShouldRevert = shouldRevert;
+        EvmExceptionType = evmExceptionType;
 
         if (!ShouldRevert)
         {

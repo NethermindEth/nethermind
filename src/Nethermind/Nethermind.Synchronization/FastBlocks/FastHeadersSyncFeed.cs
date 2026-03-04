@@ -18,7 +18,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
@@ -225,7 +224,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private UInt256 TryGetPivotTotalDifficulty(Hash256 headerHash)
         {
-            if (_pivotNumber == LongConverter.FromString(_syncConfig.PivotNumber))
+            if (_pivotNumber == _syncConfig.PivotNumber)
                 return _syncConfig.PivotTotalDifficultyParsed; // Pivot is the same as in config
 
             // Got from header

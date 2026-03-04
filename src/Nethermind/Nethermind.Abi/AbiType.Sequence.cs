@@ -75,7 +75,7 @@ namespace Nethermind.Abi
             return encodedParts;
         }
 
-        internal static (object[], int) DecodeSequence(int length, IEnumerable<AbiType> types, byte[] data, bool packed, int startPosition)
+        public static (object[], int) DecodeSequence(int length, IEnumerable<AbiType> types, byte[] data, bool packed, int startPosition)
         {
             (Array array, int position) = DecodeSequence(typeof(object), length, types, data, packed, startPosition);
             return ((object[])array, position);
@@ -87,24 +87,32 @@ namespace Nethermind.Abi
             int position = startPosition;
             int dynamicPosition = 0;
             using IEnumerator<AbiType> typesEnumerator = types.GetEnumerator();
-            object? item;
             for (int i = 0; i < length; i++)
             {
                 typesEnumerator.MoveNext();
                 AbiType type = typesEnumerator.Current;
 
-                if (type.IsDynamic)
+                try
                 {
-                    (UInt256 offset, int nextPosition) = UInt256.DecodeUInt(data, position, packed);
-                    (item, dynamicPosition) = type.Decode(data, startPosition + (int)offset, packed);
-                    position = nextPosition;
-                }
-                else
-                {
-                    (item, position) = type.Decode(data, position, packed);
-                }
+                    object? item;
 
-                sequence.SetValue(item, i);
+                    if (type.IsDynamic)
+                    {
+                        (UInt256 offset, int nextPosition) = UInt256.DecodeUInt(data, position, packed);
+                        (item, dynamicPosition) = type.Decode(data, startPosition + (int)offset, packed);
+                        position = nextPosition;
+                    }
+                    else
+                    {
+                        (item, position) = type.Decode(data, position, packed);
+                    }
+
+                    sequence.SetValue(item, i);
+                }
+                catch (Exception e) when (e is OverflowException or ArgumentException)
+                {
+                    throw new AbiException($"Failed to decode ABI sequence at element {i} for type {type}", e);
+                }
             }
 
             return (sequence, Math.Max(position, dynamicPosition));

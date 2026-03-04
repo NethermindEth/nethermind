@@ -11,7 +11,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -24,7 +23,7 @@ public class TaikoPayloadPreparationService(
     IWorldState worldState,
     IL1OriginStore l1OriginStore,
     ILogManager logManager,
-    IRlpStreamDecoder<Transaction> txDecoder) : IPayloadPreparationService
+    IRlpValueDecoder<Transaction> txDecoder) : IPayloadPreparationService
 {
     private const int _emptyBlockProcessingTimeout = 2000;
     private readonly SemaphoreSlim _worldStateLock = new(1);
@@ -59,6 +58,12 @@ public class TaikoPayloadPreparationService(
                 if (!l1Origin.IsPreconfBlock)
                 {
                     l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
+
+                    // Write the batch to block mapping if the batch ID is given.
+                    if (attrs.BlockMetadata?.BatchID is not null)
+                    {
+                        l1OriginStore.WriteBatchToLastBlockID(attrs.BlockMetadata.BatchID.Value, l1Origin.BlockId);
+                    }
                 }
 
                 // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
@@ -67,6 +72,21 @@ public class TaikoPayloadPreparationService(
             (payloadId, existing) =>
             {
                 if (_logger.IsInfo) _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
+
+                // Write L1Origin and HeadL1Origin even if the payload is already in the cache.
+                L1Origin l1Origin = attrs.L1Origin ?? throw new InvalidOperationException("L1Origin is required");
+                l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
+
+                if (!l1Origin.IsPreconfBlock)
+                {
+                    l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
+
+                    if (attrs.BlockMetadata?.BatchID is not null)
+                    {
+                        l1OriginStore.WriteBatchToLastBlockID(attrs.BlockMetadata.BatchID.Value, l1Origin.BlockId);
+                    }
+                }
+
                 return existing;
             });
 
@@ -118,22 +138,23 @@ public class TaikoPayloadPreparationService(
 
     private Transaction[] BuildTransactions(TaikoPayloadAttributes payloadAttributes)
     {
-        RlpStream rlpStream = new(payloadAttributes.BlockMetadata!.TxList!);
+        Rlp.ValueDecoderContext ctx = new(payloadAttributes.BlockMetadata!.TxList!);
 
-        int transactionsSequenceLength = rlpStream.ReadSequenceLength();
-        int transactionsCheck = rlpStream.Position + transactionsSequenceLength;
+        int transactionsSequenceLength = ctx.ReadSequenceLength();
+        int transactionsCheck = ctx.Position + transactionsSequenceLength;
 
-        int txCount = rlpStream.PeekNumberOfItemsRemaining(transactionsCheck);
+        int txCount = ctx.PeekNumberOfItemsRemaining(transactionsCheck);
+        ctx.GuardLimit(txCount);
 
         Transaction[] transactions = new Transaction[txCount];
         int txIndex = 0;
 
-        while (rlpStream.Position < transactionsCheck)
+        while (ctx.Position < transactionsCheck)
         {
-            transactions[txIndex++] = txDecoder.Decode(rlpStream)!;
+            transactions[txIndex++] = txDecoder.Decode(ref ctx)!;
         }
 
-        rlpStream.Check(transactionsCheck);
+        ctx.Check(transactionsCheck);
 
         return transactions;
     }

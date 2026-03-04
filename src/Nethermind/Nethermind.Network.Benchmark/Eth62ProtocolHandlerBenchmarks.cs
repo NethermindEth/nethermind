@@ -15,8 +15,6 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -25,10 +23,8 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
-using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 
@@ -56,13 +52,12 @@ namespace Nethermind.Network.Benchmarks
             NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
             var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
             var tree = Build.A.BlockTree().TestObject;
-            WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-            IWorldState stateProvider = worldStateManager.GlobalWorldState;
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             var specProvider = MainnetSpecProvider.Instance;
             TxPool.TxPool txPool = new TxPool.TxPool(
                 ecdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider, new EthereumCodeInfoRepository()),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(TestBlockchainIds.ChainId),
                 LimboLogs.Instance,

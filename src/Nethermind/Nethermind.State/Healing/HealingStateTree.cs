@@ -13,18 +13,14 @@ namespace Nethermind.State.Healing;
 
 public sealed class HealingStateTree : StateTree
 {
-    private IPathRecovery? _recovery;
+    private Lazy<IPathRecovery> _recovery;
     private readonly INodeStorage _nodeStorage;
 
     [DebuggerStepThrough]
-    public HealingStateTree(ITrieStore? store, INodeStorage nodeStorage, ILogManager? logManager)
+    public HealingStateTree(ITrieStore? store, INodeStorage nodeStorage, Lazy<IPathRecovery> recovery, ILogManager? logManager)
         : base(store.GetTrieStore(null), logManager)
     {
         _nodeStorage = nodeStorage;
-    }
-
-    public void InitializeNetwork(IPathRecovery recovery)
-    {
         _recovery = recovery;
     }
 
@@ -70,7 +66,7 @@ public sealed class HealingStateTree : StateTree
     {
         if (_recovery is not null)
         {
-            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Recover(RootHash, null, missingNodePath, hash, fullPath).GetAwaiter().GetResult();
+            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Value.Recover(RootHash, null, missingNodePath, hash, fullPath).GetAwaiter().GetResult();
             if (rlps is not null)
             {
                 foreach ((TreePath, byte[]) kv in rlps)

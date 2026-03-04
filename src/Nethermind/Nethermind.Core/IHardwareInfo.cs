@@ -9,4 +9,5 @@ public interface IHardwareInfo
 {
     public static readonly long StateDbLargerMemoryThreshold = 20.GiB();
     long AvailableMemoryBytes { get; }
+    int? MaxOpenFilesLimit { get; }
 }

@@ -24,11 +24,6 @@ namespace Nethermind.HealthChecks
         private ILogger _logger;
         private IMergeConfig _mergeConfig;
 
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
-
         public string Name => "HealthChecks";
 
         public string Description => "Endpoints that takes care of node`s health";

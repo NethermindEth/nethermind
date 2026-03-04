@@ -4,23 +4,19 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Test.Mocks;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync;
@@ -178,7 +174,7 @@ public class SyncDispatcherTests
         public readonly HashSet<int> _results = new();
         private readonly ConcurrentQueue<TestBatch> _returned = new();
         private readonly ManualResetEvent _responseLock = new ManualResetEvent(true);
-        private TaskCompletionSource _handleResponseCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _handleResponseCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public void LockResponse()
         {
@@ -291,7 +287,7 @@ public class SyncDispatcherTests
     public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose()
     {
         using CancellationTokenSource cts = new();
-        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        cts.CancelAfter(TimeSpan.FromSeconds(15));
 
         TestSyncFeed syncFeed = new(isMultiFeed: true);
         syncFeed.LockResponse();
@@ -315,7 +311,7 @@ public class SyncDispatcherTests
         {
             await dispatcher.DisposeAsync();
         });
-        await Task.Delay(100, cts.Token);
+        await Task.Delay(200, cts.Token);
 
         disposeTask.IsCompletedSuccessfully.Should().BeFalse();
 

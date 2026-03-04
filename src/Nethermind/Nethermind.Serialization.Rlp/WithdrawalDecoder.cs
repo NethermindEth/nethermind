@@ -2,37 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
-public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder<Withdrawal>
+public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
 {
-    public Withdrawal? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(WithdrawalDecoder))]
+    public WithdrawalDecoder() { }
+
+    protected override Withdrawal? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (rlpStream.IsNextItemNull())
-        {
-            rlpStream.ReadByte();
-
-            return null;
-        }
-
-        rlpStream.ReadSequenceLength();
-
-        return new()
-        {
-            Index = rlpStream.DecodeULong(),
-            ValidatorIndex = rlpStream.DecodeULong(),
-            Address = rlpStream.DecodeAddress(),
-            AmountInGwei = rlpStream.DecodeULong()
-        };
-    }
-
-    public Withdrawal? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
-
             return null;
         }
 
@@ -47,7 +30,7 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
         };
     }
 
-    public void Encode(RlpStream stream, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -79,5 +62,5 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
         Rlp.LengthOfAddressRlp +
         Rlp.LengthOf(item.AmountInGwei);
 
-    public int GetLength(Withdrawal item, RlpBehaviors _) => Rlp.LengthOfSequence(GetContentLength(item));
+    public override int GetLength(Withdrawal item, RlpBehaviors _) => Rlp.LengthOfSequence(GetContentLength(item));
 }

@@ -14,8 +14,8 @@ namespace Nethermind.Merge.Plugin
         public static long NewPayloadExecutionTime { get; set; }
 
         [GaugeMetric]
-        [Description("ForkchoiceUpded request execution time")]
-        public static long ForkchoiceUpdedExecutionTime { get; set; }
+        [Description("ForkchoiceUpdated request execution time")]
+        public static long ForkchoiceUpdatedExecutionTime { get; set; }
 
         [CounterMetric]
         [Description("Number of GetPayload Requests")]

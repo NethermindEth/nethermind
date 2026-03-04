@@ -51,7 +51,7 @@ public class ChainLevelHelper : IChainLevelHelper
 
     public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0)
     {
-        long? startingPoint = GetStartingPoint();
+        (long? startingPoint, Hash256? startingPointBlockHash) = GetStartingPoint();
         if (startingPoint is null)
         {
             if (_logger.IsTrace)
@@ -68,7 +68,10 @@ public class ChainLevelHelper : IChainLevelHelper
         while (i < effectiveMax)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(startingPoint!.Value);
-            BlockInfo? beaconMainChainBlock = level?.BeaconMainChainBlock;
+
+            BlockInfo? beaconMainChainBlock = startingPointBlockHash is not null ? level?.FindBlockInfo(startingPointBlockHash) : level?.BeaconMainChainBlock;
+            startingPointBlockHash = null;
+
             if (level is null || beaconMainChainBlock is null)
             {
                 OnMissingBeaconHeader(startingPoint.Value);
@@ -98,7 +101,8 @@ public class ChainLevelHelper : IChainLevelHelper
 
             if (headers.Count > 0 && headers[^1].Hash != newHeader.ParentHash)
             {
-                if (_logger.IsDebug) _logger.Debug($"ChainLevelHelper - header {startingPoint} is not canonical descendent of header before it. Hash: {newHeader.Hash}, Expected parent: {newHeader.ParentHash}, Actual parent: {headers[^1].ParentHash}. Could be a concurrent reorg.");
+                if (_logger.IsDebug) _logger.Debug($"ChainLevelHelper - header {startingPoint} is not canonical descendent of header before it. Hash: {newHeader.Hash}, Expected parent: {newHeader.ParentHash}, Actual parent: {headers[^1].Hash}. Could be a concurrent reorg.");
+
                 break;
             }
 
@@ -153,7 +157,7 @@ public class ChainLevelHelper : IChainLevelHelper
     /// block that was processed where we should continue processing.
     /// </summary>
     /// <returns></returns>
-    private long? GetStartingPoint()
+    private (long?, Hash256?) GetStartingPoint()
     {
         long startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? long.MaxValue);
         bool shouldContinue;
@@ -164,14 +168,14 @@ public class ChainLevelHelper : IChainLevelHelper
         if (beaconMainChainBlock is null)
         {
             OnMissingBeaconHeader(startingPoint);
-            return null;
+            return default;
         }
 
         if (!beaconMainChainBlock.IsBeaconInfo)
         {
-            return startingPoint;
+            return (startingPoint, beaconMainChainBlock.BlockHash);
         }
-
+        BlockInfo? parentBlockInfo = null;
         Hash256 currentHash = beaconMainChainBlock.BlockHash;
         // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
         do
@@ -180,14 +184,14 @@ public class ChainLevelHelper : IChainLevelHelper
             if (header is null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Header for number {startingPoint} was not found");
-                return null;
+                return default;
             }
 
-            BlockInfo? parentBlockInfo = (_blockTree.GetInfo(header.Number - 1, header.ParentHash!)).Info;
+            parentBlockInfo = (_blockTree.GetInfo(header.Number - 1, header.ParentHash!)).Info;
             if (parentBlockInfo is null)
             {
                 OnMissingBeaconHeader(header.Number);
-                return null;
+                return default;
             }
 
             shouldContinue = parentBlockInfo.IsBeaconInfo;
@@ -206,7 +210,7 @@ public class ChainLevelHelper : IChainLevelHelper
             }
         } while (shouldContinue);
 
-        return startingPoint;
+        return (startingPoint, parentBlockInfo.BlockHash);
     }
 
     private BlockInfo? GetBeaconMainChainBlockInfo(long startingPoint)

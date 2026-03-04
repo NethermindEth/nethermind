@@ -10,7 +10,6 @@ namespace Nethermind.Consensus.Producers
 {
     public interface IManualBlockProductionTrigger : IBlockProductionTrigger
     {
-        // TODO: too many parameters
         public Task<Block?> BuildBlock(
             BlockHeader? parentHeader = null,
             CancellationToken? cancellationToken = null,

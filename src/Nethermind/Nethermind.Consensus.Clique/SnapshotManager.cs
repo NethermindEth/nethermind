@@ -53,7 +53,8 @@ namespace Nethermind.Consensus.Clique
         {
             if (header.Author is not null) return header.Author;
             if (header.Number == 0) return Address.Zero;
-            if (_signatures.Get(header.Hash) is not null) return _signatures.Get(header.Hash);
+            Address? cached = _signatures.Get(header.Hash);
+            if (cached is not null) return cached;
 
             int extraSeal = 65;
 
@@ -248,7 +249,7 @@ namespace Nethermind.Consensus.Clique
             byte[]? bytes = _blocksDb.Get(key);
             if (bytes is null) return null;
 
-            return _decoder.Decode(bytes.AsRlpStream());
+            return _decoder.Decode(bytes);
         }
 
         private void Store(Snapshot snapshot)

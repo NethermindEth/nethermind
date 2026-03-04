@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Network.Contract.Messages;
 
 namespace Nethermind.TxPool
 {
@@ -38,6 +39,7 @@ namespace Nethermind.TxPool
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
         bool ContainsTx(Hash256 hash, TxType txType);
+        AnnounceResult NotifyAboutTx(Hash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Hash256? hash);
         Transaction? GetBestTx();
@@ -51,7 +53,8 @@ namespace Nethermind.TxPool
         bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[][]? cellProofs);
-        int GetBlobCounts(byte[][] blobVersionedHashes);
+        int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
+            byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs);
         UInt256 GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;
@@ -60,5 +63,11 @@ namespace Nethermind.TxPool
         public bool AcceptTxWhenNotSynced { get; set; }
         bool SupportsBlobs { get; }
         long PendingTransactionsAdded { get; }
+
+        /// <summary>
+        /// Resets txpool state by clearing all caches (hash cache, account cache) 
+        /// and removing all pending transactions. Used for integration testing after chain reorgs.
+        /// </summary>
+        void ResetTxPoolState();
     }
 }

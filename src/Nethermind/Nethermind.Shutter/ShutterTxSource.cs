@@ -43,7 +43,7 @@ public class ShutterTxSource(
         {
             (buildingSlot, _) = slotTime.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000);
         }
-        catch (SlotTime.SlotCalulationException e)
+        catch (SlotTime.SlotCalculationException e)
         {
             if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not calculate Shutter building slot: {e}");
             return [];

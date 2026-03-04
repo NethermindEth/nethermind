@@ -73,7 +73,7 @@ public class PowForwardHeaderProvider(
             IOwnedReadOnlyList<BlockHeader?>? headers = AssembleResponseFromLastResponseBatch();
             if (headers is not null)
             {
-                if (_logger.IsTrace) _logger.Trace($"PoW header info from last response from {headers[0].ToString(BlockHeader.Format.Short)} to {headers[1].ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsTrace) _logger.Trace($"PoW header info from last response from {headers[0].ToString(BlockHeader.Format.Short)} to {headers[^1].ToString(BlockHeader.Format.Short)}");
                 return headers;
             }
 
@@ -116,7 +116,7 @@ public class PowForwardHeaderProvider(
         }
 
         LastResponseBatch = newResponse;
-        return LastResponseBatch;
+        return newResponse.ToPooledList(newResponse.Count);
     }
 
     private void OnNewBestPeer(PeerInfo newBestPeer)
@@ -160,7 +160,7 @@ public class PowForwardHeaderProvider(
                     await RequestHeaders(bestPeer, cancellation, _currentNumber, headersToRequest);
                 if (headers.Count < 2)
                 {
-                    // Peer dont have new header
+                    // Peer doesn't have a new header
                     headers.Dispose();
                     return null;
                 }
@@ -172,6 +172,12 @@ public class PowForwardHeaderProvider(
             }
             catch (TimeoutException)
             {
+                syncPeerPool.ReportWeakPeer(bestPeer, AllocationContexts.ForwardHeader);
+                return null;
+            }
+            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+            {
+                // Request was cancelled due to timeout in protocol handler, not because the sync was cancelled
                 syncPeerPool.ReportWeakPeer(bestPeer, AllocationContexts.ForwardHeader);
                 return null;
             }
@@ -220,11 +226,11 @@ public class PowForwardHeaderProvider(
         headers = FilterPosHeader(headers);
 
         ValidateSeals(headers, cancellation);
-        ValidateBatchConsistencyAndSetParents(peer, headers);
+        ValidateBatchConsistency(peer, headers);
         return headers;
     }
 
-    private void ValidateBatchConsistencyAndSetParents(PeerInfo bestPeer, IReadOnlyList<BlockHeader?> headers)
+    private void ValidateBatchConsistency(PeerInfo bestPeer, IReadOnlyList<BlockHeader?> headers)
     {
         // in the past (version 1.11) and possibly now too Parity was sending non canonical blocks in responses
         // so we need to confirm that the blocks form a valid subchain
@@ -239,11 +245,6 @@ public class PowForwardHeaderProvider(
             if (headers[i] is null)
             {
                 break;
-            }
-
-            if (i != 1) // because we will never set TotalDifficulty on the first block?
-            {
-                headers[i].MaybeParent = new WeakReference<BlockHeader>(headers[i - 1]);
             }
         }
     }

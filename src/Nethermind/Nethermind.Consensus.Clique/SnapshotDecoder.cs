@@ -9,28 +9,28 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Clique
 {
-    internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>
+    internal sealed class SnapshotDecoder : RlpValueDecoder<Snapshot>
     {
-        public Snapshot Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Snapshot DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            rlpStream.ReadSequenceLength();
+            decoderContext.ReadSequenceLength();
 
             // Block number
-            long number = (long)rlpStream.DecodeUInt256();
+            long number = (long)decoderContext.DecodeUInt256();
             // Hash
-            Hash256 hash = rlpStream.DecodeKeccak();
+            Hash256 hash = decoderContext.DecodeKeccak();
             // Signers
-            SortedList<Address, long> signers = DecodeSigners(rlpStream);
+            SortedList<Address, long> signers = DecodeSigners(ref decoderContext);
             // Votes
-            List<Vote> votes = DecodeVotes(rlpStream);
+            List<Vote> votes = DecodeVotes(ref decoderContext);
             // Tally
-            Dictionary<Address, Tally> tally = DecodeTally(rlpStream);
+            Dictionary<Address, Tally> tally = DecodeTally(ref decoderContext);
             Snapshot snapshot = new(number, hash, signers, tally) { Votes = votes };
 
             return snapshot;
         }
 
-        public void Encode(RlpStream stream, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream stream, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             (int contentLength, int signersLength, int votesLength, int tallyLength) =
                 GetContentLength(item, rlpBehaviors);
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.Clique
 
         }
 
-        public int GetLength(Snapshot item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(Snapshot item, RlpBehaviors rlpBehaviors)
         {
             (int contentLength, int _, int _, int _) = GetContentLength(item, rlpBehaviors);
             return Rlp.LengthOfSequence(contentLength);
@@ -65,48 +65,51 @@ namespace Nethermind.Consensus.Clique
             return (contentLength, signersLength, votesLength, tallyLength);
         }
 
-        private static SortedList<Address, long> DecodeSigners(RlpStream rlpStream)
+        private static SortedList<Address, long> DecodeSigners(ref Rlp.ValueDecoderContext decoderContext)
         {
-            rlpStream.ReadSequenceLength();
-            SortedList<Address, long> signers = new SortedList<Address, long>(AddressComparer.Instance);
-            int length = rlpStream.DecodeInt();
+            decoderContext.ReadSequenceLength();
+            int length = decoderContext.DecodeInt();
+            decoderContext.GuardLimit(length);
+            SortedList<Address, long> signers = new(AddressComparer.Instance);
             for (int i = 0; i < length; i++)
             {
-                Address signer = rlpStream.DecodeAddress();
-                long signedAt = (long)rlpStream.DecodeUInt256();
+                Address signer = decoderContext.DecodeAddress();
+                long signedAt = (long)decoderContext.DecodeUInt256();
                 signers.Add(signer, signedAt);
             }
 
             return signers;
         }
 
-        private static List<Vote> DecodeVotes(RlpStream rlpStream)
+        private static List<Vote> DecodeVotes(ref Rlp.ValueDecoderContext decoderContext)
         {
-            rlpStream.ReadSequenceLength();
-            List<Vote> votes = new List<Vote>();
-            int length = rlpStream.DecodeInt();
+            decoderContext.ReadSequenceLength();
+            int length = decoderContext.DecodeInt();
+            decoderContext.GuardLimit(length);
+            List<Vote> votes = new(length);
             for (int i = 0; i < length; i++)
             {
-                Address signer = rlpStream.DecodeAddress();
-                long block = (long)rlpStream.DecodeUInt256();
-                Address address = rlpStream.DecodeAddress();
-                bool authorize = rlpStream.DecodeBool();
+                Address signer = decoderContext.DecodeAddress();
+                long block = (long)decoderContext.DecodeUInt256();
+                Address address = decoderContext.DecodeAddress();
+                bool authorize = decoderContext.DecodeBool();
                 Vote vote = new Vote(signer, block, address, authorize);
                 votes.Add(vote);
             }
             return votes;
         }
 
-        private static Dictionary<Address, Tally> DecodeTally(RlpStream rlpStream)
+        private static Dictionary<Address, Tally> DecodeTally(ref Rlp.ValueDecoderContext decoderContext)
         {
-            rlpStream.ReadSequenceLength();
-            Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
-            int length = rlpStream.DecodeInt();
+            decoderContext.ReadSequenceLength();
+            int length = decoderContext.DecodeInt();
+            decoderContext.GuardLimit(length);
+            Dictionary<Address, Tally> tally = new(length);
             for (int i = 0; i < length; i++)
             {
-                Address address = rlpStream.DecodeAddress();
-                int votes = rlpStream.DecodeInt();
-                bool authorize = rlpStream.DecodeBool();
+                Address address = decoderContext.DecodeAddress();
+                int votes = decoderContext.DecodeInt();
+                bool authorize = decoderContext.DecodeBool();
                 Tally tallyItem = new Tally(authorize);
                 tallyItem.Votes = votes;
                 tally[address] = tallyItem;

@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading.Tasks;
 using Autofac.Core;
 
 namespace Nethermind.Api.Extensions;
 
-public interface INethermindPlugin : IAsyncDisposable
+public interface INethermindPlugin
 {
     string Name { get; }
 

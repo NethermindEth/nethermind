@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO.Abstractions;
 using Ethereum.Test.Base;
 using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
@@ -10,44 +9,40 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.Blockchain;
+using Testably.Abstractions;
 
 namespace Evm.T8n;
 
 public static class T8nExecutor
 {
-    private static ILogManager _logManager = LimboLogs.Instance;
+    private static readonly ILogManager _logManager = LimboLogs.Instance;
 
     public static T8nExecutionResult Execute(T8nCommandArguments arguments)
     {
         T8nTest test = T8nInputProcessor.ProcessInputAndConvertToT8nTest(arguments);
 
-        KzgPolynomialCommitments.InitializeAsync();
+        KzgPolynomialCommitments.InitializeAsync().Wait();
 
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState stateProvider = worldStateManager.GlobalWorldState;
-        EthereumCodeInfoRepository codeInfoRepository = new();
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
-        IVirtualMachine virtualMachine = new VirtualMachine(
+        IVirtualMachine virtualMachine = new EthereumVirtualMachine(
             blockhashProvider,
             test.SpecProvider,
             _logManager);
-        TransactionProcessor transactionProcessor = new(
+        EthereumTransactionProcessor transactionProcessor = new(
+            BlobBaseFeeCalculator.Instance,
             test.SpecProvider,
             stateProvider,
             virtualMachine,
@@ -69,7 +64,7 @@ public static class T8nExecutor
         compositeBlockTracer.Add(storageTxTracer);
         if (test.IsTraceEnabled)
         {
-            compositeBlockTracer.Add(new GethLikeBlockFileTracer(block, test.GethTraceOptions, new FileSystem()));
+            compositeBlockTracer.Add(new GethLikeBlockFileTracer(block, test.GethTraceOptions, new RealFileSystem()));
         }
 
         BlockReceiptsTracer blockReceiptsTracer = new();
@@ -108,7 +103,7 @@ public static class T8nExecutor
 
             transactionExecutionReport.ValidTransactions.Add(transaction);
 
-            if (transactionResult.Success)
+            if (transactionResult.TransactionExecuted)
             {
                 transactionExecutionReport.SuccessfulTransactions.Add(transaction);
                 blockReceiptsTracer.LastReceipt.PostTransactionState = null;
@@ -116,9 +111,9 @@ public static class T8nExecutor
                 blockReceiptsTracer.LastReceipt.BlockNumber = 0;
                 transactionExecutionReport.SuccessfulTransactionReceipts.Add(blockReceiptsTracer.LastReceipt);
             }
-            else if (transactionResult.Error is not null && transaction.SenderAddress is not null)
+            else if (!transactionResult.TransactionExecuted && transaction.SenderAddress is not null)
             {
-                var error = GethErrorMappings.GetErrorMapping(transactionResult.Error,
+                var error = GethErrorMappings.GetErrorMapping(transactionResult.ErrorDescription,
                     transaction.SenderAddress.ToString(true),
                     transaction.Nonce, stateProvider.GetNonce(transaction.SenderAddress));
 
@@ -138,17 +133,8 @@ public static class T8nExecutor
             blockReceiptsTracer, test.SpecProvider, transactionExecutionReport);
     }
 
-    private static IBlockhashProvider ConstructBlockHashProvider(T8nTest test)
-    {
-        var t8NBlockHashProvider = new T8nBlockHashProvider();
-
-        foreach (KeyValuePair<string, Hash256> blockHash in test.BlockHashes)
-        {
-            t8NBlockHashProvider.Insert(blockHash.Value, long.Parse(blockHash.Key));
-        }
-
-        return t8NBlockHashProvider;
-    }
+    private static IBlockhashProvider ConstructBlockHashProvider(T8nTest test) =>
+        new T8nBlockHashProvider(test.BlockHashes.ToDictionary(kvp => long.Parse(kvp.Key), kvp => kvp.Value));
 
     private static void ApplyRewards(Block block, IWorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
     {

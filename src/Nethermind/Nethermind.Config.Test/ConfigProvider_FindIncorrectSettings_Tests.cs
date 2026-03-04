@@ -61,7 +61,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
             { "NETHERMIND_CLI_SWITCH_LOCAL", "http://localhost:80" },
             { "NETHERMIND_CONFIG", "test2.json" },
             { "NETHERMIND_XYZ", "xyz" },    // not existing, should get error
-            { "QWER", "qwerty" }    // not Nethermind setting, no error
+            { "QWERTY", "qwerty" }    // not Nethermind setting, no error
         });
         EnvConfigSource? envSource = new(_env);
 
@@ -176,7 +176,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         Assert.Multiple(() =>
         {
             Assert.That(isSet, Is.False);
-            Assert.That(((ValueTuple<bool, object>)value).Item2, Is.False);
+            Assert.That(value, Is.False);
         });
 
         (isSet, value) = envSource.GetValue(typeof(bool), "BloomConfig", "Migration");
@@ -184,7 +184,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         Assert.Multiple(() =>
         {
             Assert.That(isSet, Is.False);
-            Assert.That(((ValueTuple<bool, object>)value).Item2, Is.False);
+            Assert.That(value, Is.False);
         });
     }
 }

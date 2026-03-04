@@ -23,7 +23,7 @@ public class AccountCollector : RangeQueryVisitor.ILeafValueCollector
             return 32 + 1;
         }
 
-        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(value.Span);
+        Rlp.ValueDecoderContext ctx = new(value.Span);
         Account accnt = AccountDecoder.Instance.Decode(ref ctx);
         Accounts.Add(new PathWithAccount(path, accnt));
         return 32 + AccountDecoder.Slim.GetLength(accnt);

@@ -40,10 +40,10 @@ public class ZeroNettyFrameEncodeDecodeTests
 
     private async Task RunStreamTests(FrameCipher frameCipher, FrameMacProcessor macProcessor, FrameCipher frameCipher2, FrameMacProcessor macProcessor2)
     {
-        ZeroPacketSplitter splitter = new(LimboLogs.Instance);
-        ZeroFrameEncoder encoder = new(frameCipher, macProcessor, LimboLogs.Instance);
+        ZeroPacketSplitter splitter = new();
+        ZeroFrameEncoder encoder = new(frameCipher, macProcessor);
 
-        ZeroFrameDecoder decoder = new(frameCipher2, macProcessor2, LimboLogs.Instance);
+        ZeroFrameDecoder decoder = new(frameCipher2, macProcessor2);
         ZeroFrameMerger frameMerger = new(LimboLogs.Instance);
 
         IByteBuffer reDecoded = null;
@@ -54,7 +54,8 @@ public class ZeroNettyFrameEncodeDecodeTests
             {
                 ZeroPacket packet = (ZeroPacket)info[0];
                 NettyRlpStream rlpStream = new NettyRlpStream(packet.Content);
-                byte[] bytes = rlpStream.DecodeByteArray();
+                Rlp.ValueDecoderContext ctx = new(rlpStream.AsSpan());
+                byte[] bytes = ctx.DecodeByteArray();
                 reDecoded.WriteBytes(bytes);
             }));
 
@@ -85,9 +86,9 @@ public class ZeroNettyFrameEncodeDecodeTests
         pipeWrite.When((it) => it.WriteAsync(Arg.Any<object>()))
             .Do((info =>
             {
-                if (info[0] is IReferenceCounted refc)
+                if (info[0] is IReferenceCounted refCount)
                 {
-                    refc.Retain();
+                    refCount.Retain();
                 }
                 channelHandler.WriteAsync(nextContext, info[0]).Wait();
             }));
@@ -101,9 +102,9 @@ public class ZeroNettyFrameEncodeDecodeTests
         pipeWrite.When((it) => it.WriteAsync(Arg.Any<object>()))
             .Do((info =>
             {
-                if (info[0] is IReferenceCounted refc)
+                if (info[0] is IReferenceCounted refCount)
                 {
-                    refc.Retain();
+                    refCount.Retain();
                 }
                 channelHandler.ChannelRead(nextContext, info[0]);
             }));

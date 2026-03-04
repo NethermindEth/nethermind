@@ -93,6 +93,26 @@ public abstract class AbiParameterConverterBase<T> : JsonConverter<T> where T : 
 
     private AbiType GetParameterType(string type, JsonElement? components)
     {
+        if (type.Contains('['))
+        {
+            int lastBracket = type.LastIndexOf('[');
+            string innerType = type[..lastBracket];
+            string bracketPart = type[lastBracket..];
+
+            // Recursively parse the inner type
+            AbiType elementType = GetParameterType(innerType, components);
+
+            // Parse array suffix: [] for dynamic, [N] for fixed
+            if (bracketPart == "[]")
+                return new AbiArray(elementType);
+
+            if (!bracketPart.StartsWith('[') || !bracketPart.EndsWith(']'))
+                throw new ArgumentException($"Invalid contract ABI json. Unknown array type {type}.");
+            string sizeStr = bracketPart[1..^1];
+            return int.TryParse(sizeStr, out int size) ? new AbiFixedLengthArray(elementType, size)
+                : throw new ArgumentException($"Invalid contract ABI json. Unknown array type {type}.");
+        }
+
         var match = AbiParameterConverterStatics.TypeExpression.Match(type);
         if (match.Success)
         {

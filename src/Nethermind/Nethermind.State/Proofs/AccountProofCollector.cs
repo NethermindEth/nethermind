@@ -82,7 +82,7 @@ namespace Nethermind.State.Proofs
                     _accountProof.StorageProofs[i] = new StorageProof
                     {
                         // we don't know the key (index)
-                        Key = storageKeys?[i],
+                        Key = storageKeys?[i].ToHexString(true, true),
                         Value = Bytes.ZeroByte
                     };
 
@@ -112,13 +112,13 @@ namespace Nethermind.State.Proofs
         {
         }
 
-        public AccountProofCollector(Address address, params byte[][] storageKeys)
+        public AccountProofCollector(Address? address, params byte[][] storageKeys)
             : this(Keccak.Compute(address?.Bytes ?? Address.Zero.Bytes).Bytes, storageKeys)
         {
             _accountProof.Address = _address = address ?? throw new ArgumentNullException(nameof(address));
         }
 
-        public AccountProofCollector(Address address, UInt256[] storageKeys)
+        public AccountProofCollector(Address? address, IEnumerable<UInt256> storageKeys)
             : this(address, storageKeys.Select(ToKey).ToArray())
         {
         }
@@ -128,11 +128,14 @@ namespace Nethermind.State.Proofs
             _accountProof.Proof = _accountProofItems.ToArray();
             for (int i = 0; i < _storageProofItems.Length; i++)
             {
-                _accountProof.StorageProofs[i].Proof = _storageProofItems[i].ToArray();
+                _accountProof.StorageProofs![i].Proof = _storageProofItems[i].ToArray();
             }
 
             return _accountProof;
         }
+
+        public (IReadOnlyList<byte[]> AccountProof, IReadOnlyList<byte[]>[] StorageProof) GetRawResult()
+            => (_accountProofItems, _storageProofItems);
 
         public bool IsFullDbScan => false;
 
@@ -165,9 +168,12 @@ namespace Nethermind.State.Proofs
                 foreach (int storageIndex in _storageNodeInfos[node.Keccak].StorageIndices)
                 {
                     Nibble childIndex = _fullStoragePaths[storageIndex][_pathTraversalIndex];
-                    Hash256 childHash = node.GetChildHash((byte)childIndex);
-                    if (childHash is not null)
+                    byte[] child = node.GetChildHashOrInlineValue((byte)childIndex);
+
+                    if (child?.Length == Hash256.Size)
                     {
+                        // If the length is 32 it's the hash of the child
+                        Hash256 childHash = new(child);
                         ref StorageNodeInfo? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageNodeInfos, childHash, out bool exists);
                         if (!exists)
                         {
@@ -182,6 +188,11 @@ namespace Nethermind.State.Proofs
 
                         value.StorageIndices.Add(storageIndex);
                         _nodeToVisitFilter.Add(childHash);
+                    }
+                    else if (child is not null)
+                    {
+                        // Child is an inline node
+                        _accountProof.StorageProofs[storageIndex].Value = child;
                     }
                 }
             }
@@ -253,13 +264,14 @@ namespace Nethermind.State.Proofs
                     bool isPathMatched = IsPathMatched(node, thisStoragePath);
                     if (isPathMatched)
                     {
-                        _accountProof.StorageProofs[storageIndex].Value = new RlpStream(node.Value.ToArray()).DecodeByteArray();
+                        _accountProof.StorageProofs[storageIndex].Value = new Rlp.ValueDecoderContext(node.Value.ToArray()).DecodeByteArray();
                     }
                 }
             }
             else
             {
-                Account account = _accountDecoder.Decode(new RlpStream(node.Value.ToArray()));
+                Rlp.ValueDecoderContext ctx = new(node.Value.ToArray());
+                Account account = _accountDecoder.Decode(ref ctx);
                 bool isPathMatched = IsPathMatched(node, _fullAccountPath);
                 if (isPathMatched)
                 {

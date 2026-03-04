@@ -1,36 +1,28 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
     [Rlp.Decoder(RlpDecoderKey.Default)]
     [Rlp.Decoder(RlpDecoderKey.Trie)]
-    public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
+    public sealed class ReceiptMessageDecoder : RlpValueDecoder<TxReceipt>
     {
         private readonly bool _skipStateAndStatus;
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
         public ReceiptMessageDecoder(bool skipStateAndStatus = false)
         {
             _skipStateAndStatus = skipStateAndStatus;
         }
-        public TxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override TxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            Span<byte> span = rlpStream.PeekNextItem();
-            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(span);
-            TxReceipt response = Decode(ref ctx, rlpBehaviors);
-            rlpStream.SkipItem();
-
-            return response;
-        }
-
-        public TxReceipt Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (ctx.IsNextItemNull())
+            if (ctx.IsNextItemEmptyList())
             {
                 ctx.ReadByte();
                 return null;
@@ -71,6 +63,11 @@ namespace Nethermind.Serialization.Rlp
                 entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
             }
             txReceipt.Logs = entries;
+
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                ctx.Check(lastCheck);
+            }
 
             return txReceipt;
         }
@@ -115,7 +112,7 @@ namespace Nethermind.Serialization.Rlp
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.LengthOfSequence(Total);
@@ -133,7 +130,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence.Bytes;
+                return Rlp.OfEmptyList.Bytes;
             }
 
             int length = GetLength(item, rlpBehaviors);
@@ -142,7 +139,7 @@ namespace Nethermind.Serialization.Rlp
             return stream.Data.ToArray();
         }
 
-        public void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

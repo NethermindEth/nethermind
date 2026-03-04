@@ -10,15 +10,12 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,10 +23,10 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -39,7 +36,6 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
-using Nethermind.Evm.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -47,6 +43,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.History;
+using Nethermind.Init.Modules;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -167,16 +164,16 @@ public abstract partial class BaseEngineModuleTests
         {
             if (parentHash == null)
             {
-                return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, b => true);
+                return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(CreateCancellationSource().Token, b => true);
             }
-            return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, b => b.Header.ParentHash == parentHash);
+            return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(CreateCancellationSource().Token, b => b.Header.ParentHash == parentHash);
         }
 
         public IBeaconPivot BeaconPivot => Container.Resolve<IBeaconPivot>();
 
         public BeaconSync BeaconSync => Container.Resolve<BeaconSync>();
 
-        public IWithdrawalProcessor WithdrawalProcessor => ((AutoMainProcessingContext)MainProcessingContext).LifetimeScope.Resolve<IWithdrawalProcessor>();
+        public IWithdrawalProcessor WithdrawalProcessor => ((MainProcessingContext)MainProcessingContext).LifetimeScope.Resolve<IWithdrawalProcessor>();
 
         public ISyncPeerPool SyncPeerPool => Container.Resolve<ISyncPeerPool>();
 
@@ -199,7 +196,6 @@ public abstract partial class BaseEngineModuleTests
 
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
-            GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig();
             if (MergeConfig.TerminalTotalDifficulty is null) MergeConfig.TerminalTotalDifficulty = "0";
         }
@@ -243,6 +239,10 @@ public abstract partial class BaseEngineModuleTests
                 .AddSingleton<ISyncProgressResolver>(Substitute.For<ISyncProgressResolver>())
                 .AddSingleton<ISyncModeSelector>(new StaticSelector(SyncMode.All))
                 .AddSingleton<IPeerRefresher>(Substitute.For<IPeerRefresher>())
+                .WithGenesisPostProcessor((block, worldState) =>
+                {
+                    block.Header.Timestamp = 1UL;
+                })
                 .Intercept<IInitConfig>((initConfig) => initConfig.DisableGcOnNewPayload = false);
 
         protected override IBlockProducer CreateTestBlockProducer()

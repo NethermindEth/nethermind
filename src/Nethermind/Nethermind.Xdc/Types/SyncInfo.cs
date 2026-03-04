@@ -1,0 +1,10 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+namespace Nethermind.Xdc.Types;
+
+public class SyncInfo(QuorumCertificate highestQuorumCert, TimeoutCertificate highestTimeoutCert)
+{
+    public QuorumCertificate HighestQuorumCert { get; set; } = highestQuorumCert;
+    public TimeoutCertificate HighestTimeoutCert { get; set; } = highestTimeoutCert;
+}

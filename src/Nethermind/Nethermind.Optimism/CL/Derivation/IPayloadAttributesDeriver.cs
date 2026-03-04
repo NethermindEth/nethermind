@@ -3,7 +3,6 @@
 
 using Nethermind.JsonRpc.Data;
 using Nethermind.Optimism.CL.Decoding;
-using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism.CL.Derivation;

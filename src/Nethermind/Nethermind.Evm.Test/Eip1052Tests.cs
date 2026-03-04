@@ -59,7 +59,7 @@ public class Eip1052Tests : VirtualMachineTestsBase
     public void Non_existing_precompile_returns_0()
     {
         Address precompileAddress = Sha256Precompile.Address;
-        Assert.That(precompileAddress.IsPrecompile(Spec), Is.True);
+        Assert.That(Spec.IsPrecompile(precompileAddress), Is.True);
 
         byte[] code = Prepare.EvmCode
             .PushData(precompileAddress)
@@ -76,7 +76,7 @@ public class Eip1052Tests : VirtualMachineTestsBase
     public void Existing_precompile_returns_empty_data_hash()
     {
         Address precompileAddress = Sha256Precompile.Address;
-        Assert.That(precompileAddress.IsPrecompile(Spec), Is.True);
+        Assert.That(Spec.IsPrecompile(precompileAddress), Is.True);
 
         TestState.CreateAccount(precompileAddress, 1.Wei());
 

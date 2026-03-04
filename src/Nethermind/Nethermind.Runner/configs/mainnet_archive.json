@@ -18,7 +18,7 @@
     "NodeName": "Mainnet Archive"
   },
   "Blocks": {
-    "TargetBlockGasLimit": 45000000
+    "TargetBlockGasLimit": 60000000
   },
   "Receipt": {
     "TxLookupLimit": 0

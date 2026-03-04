@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -17,8 +15,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -30,8 +26,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
-
-using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -50,7 +44,7 @@ public partial class BlockProcessor(
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider);
+    protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
 
     /// <summary>
@@ -59,11 +53,7 @@ public partial class BlockProcessor(
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
-    public event EventHandler<TxProcessedEventArgs> TransactionProcessed
-    {
-        add { blockTransactionsExecutor.TransactionProcessed += value; }
-        remove { blockTransactionsExecutor.TransactionProcessed -= value; }
-    }
+    public event Action? TransactionsExecuted;
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
@@ -94,7 +84,7 @@ public partial class BlockProcessor(
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
     }
 
-    private bool ShouldComputeStateRoot(BlockHeader header) =>
+    protected bool ShouldComputeStateRoot(BlockHeader header) =>
         !header.IsGenesis || !specProvider.GenesisStateUnavailable;
 
     protected virtual TxReceipt[] ProcessBlock(
@@ -117,6 +107,10 @@ public partial class BlockProcessor(
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
+        // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
+        // to free the thread pool for blooms, receipts root, state root parallel work below
+        TransactionsExecuted?.Invoke();
+
         _stateProvider.Commit(spec, commitRoots: false);
 
         CalculateBlooms(receipts);
@@ -127,12 +121,12 @@ public partial class BlockProcessor(
         }
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
-        // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
-        // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
+        // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
         _stateProvider.Commit(spec, commitRoots: false);
 
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
@@ -191,7 +185,7 @@ public partial class BlockProcessor(
         receiptStorage.Insert(block, txReceipts, spec, false);
     }
 
-    private Block PrepareBlockForProcessing(Block suggestedBlock)
+    protected virtual Block PrepareBlockForProcessing(Block suggestedBlock)
     {
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
         BlockHeader bh = suggestedBlock.Header;

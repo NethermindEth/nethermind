@@ -4,39 +4,41 @@
 using System.Threading;
 using Autofac;
 using FluentAssertions;
-using Nethermind.Api;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers;
 
+[Parallelizable(ParallelScope.All)]
 public class DevBlockProducerTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Test()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
+            .AddModule(new TestNethermindModule(Cancun.Instance))
             .AddSingleton<IBlockValidator>(Always.Valid)
             .AddSingleton<IBlockProducerTxSourceFactory, EmptyTxSourceFactory>()
             .AddScoped<IBlockProducerFactory, TestBlockProcessingModule.AutoBlockProducerFactory<DevBlockProducer>>()
             .Build();
 
         IBlockTree blockTree = container.Resolve<IBlockTree>();
+        AutoResetEvent autoResetEvent = new(false);
+        blockTree.NewHeadBlock += (_, _) => autoResetEvent.Set();
+
         IManualBlockProductionTrigger trigger = container.Resolve<IManualBlockProductionTrigger>();
 
         container.Resolve<IMainProcessingContext>().BlockchainProcessor.Start();
         container.Resolve<IBlockProducerRunner>().Start();
 
-        AutoResetEvent autoResetEvent = new(false);
-
-        blockTree.NewHeadBlock += (_, _) => autoResetEvent.Set();
         blockTree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
         autoResetEvent.WaitOne(1000).Should().BeTrue("genesis");

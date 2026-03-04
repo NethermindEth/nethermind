@@ -2,13 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -145,15 +142,15 @@ public class L1SloadPrecompileTests
     [Test]
     public void IsPrecompile_Active_With_Rip7728()
     {
-        var enabledSpec = new ReleaseSpec { IsRip7728Enabled = true };
-        var disabledSpec = new ReleaseSpec { IsRip7728Enabled = false };
+        IReleaseSpec enabledSpec = new ReleaseSpec { IsRip7728Enabled = true };
+        IReleaseSpec disabledSpec = new ReleaseSpec { IsRip7728Enabled = false };
 
         Address? precompileAddress = L1SloadPrecompile.Address;
 
-        Assert.That(precompileAddress.IsPrecompile(enabledSpec), Is.True,
+        Assert.That(enabledSpec.IsPrecompile(precompileAddress), Is.True,
             "L1SloadPrecompile address should be identified as precompile when RIP-7728 is enabled");
 
-        Assert.That(precompileAddress.IsPrecompile(disabledSpec), Is.False,
+        Assert.That(disabledSpec.IsPrecompile(precompileAddress), Is.False,
             "L1SloadPrecompile address should not be identified as precompile when RIP-7728 is disabled");
     }
 

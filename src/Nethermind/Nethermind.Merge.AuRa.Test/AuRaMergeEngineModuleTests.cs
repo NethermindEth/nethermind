@@ -11,11 +11,13 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Merge.AuRa.Contracts;
@@ -82,7 +84,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http(string blockHash, string parentHash)
         => base.forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http(blockHash, parentHash);
 
-    [Ignore("Withdrawals are not withdrawan due to lack of Aura contract in tests")]
+    [Ignore("Withdrawals are not withdrawn due to lack of Aura contract in tests")]
     public override Task Can_apply_withdrawals_correctly((Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input)
     {
         return base.Can_apply_withdrawals_correctly(input);
@@ -109,6 +111,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                         provider.SealEngine = SealEngineType;
                     return specProvider;
                 })
+                .WithGenesisPostProcessor((block, state) =>
+                {
+                    block.Header.AuRaStep = 0;
+                    block.Header.AuRaSignature = new byte[65];
+                })
 
                 // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
                 // as normally, test blockchain don't use INethermindApi at all. Note: This test does not
@@ -126,10 +133,13 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IMergeConfig>((blockProducer,
                     mergeConfig) => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot)))
 
+                // AuRa was never configured correctly in test.
+                .AddScoped<IBlockProcessor, BlockProcessor>()
+
                 .AddDecorator<AuRaNethermindApi>((ctx, api) =>
                 {
                     // Yes getting from `TestBlockchain` itself, since steps are not run
-                    // and some of these are not from DI. you know... chicken and egg, but dont forgot about rooster.
+                    // and some of these are not from DI. you know... chicken and egg, but don't forget about the rooster.
                     api.TxPool = TxPool;
                     api.TransactionComparerProvider = TransactionComparerProvider;
                     api.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();

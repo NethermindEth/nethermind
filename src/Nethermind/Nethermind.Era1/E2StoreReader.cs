@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using CommunityToolkit.HighPerformance;
-using DotNetty.Buffers;
 using Microsoft.IO;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Core.Collections;
@@ -43,7 +41,7 @@ public class E2StoreReader : IDisposable
         Entry entry = ReadEntry(position, expectedType);
 
         int length = (int)entry.Length;
-        using ArrayPoolList<byte> buffer = new ArrayPoolList<byte>(length, length);
+        using ArrayPoolListRef<byte> buffer = new(length, length);
         RandomAccess.Read(_file, buffer.AsSpan(), position + HeaderSize);
         value = decoder(buffer.AsMemory());
         return (long)(entry.Length + HeaderSize);
@@ -75,7 +73,7 @@ public class E2StoreReader : IDisposable
 
     private async Task<T> ReadEntryValueAsSnappy<T>(long offset, ulong length, Func<Memory<byte>, T> decoder, CancellationToken cancellation = default)
     {
-        using ArrayPoolList<byte> inputBuffer = new ArrayPoolList<byte>((int)length, (int)length);
+        using ArrayPoolList<byte> inputBuffer = new((int)length, (int)length);
         RandomAccess.Read(_file, inputBuffer.AsSpan(), offset);
         Stream inputStream = inputBuffer.AsMemory().AsStream();
 

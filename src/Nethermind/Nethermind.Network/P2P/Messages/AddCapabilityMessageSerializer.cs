@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Messages
 {
     /// <summary>
-    /// This is probably used in NDM
+    /// Serializes P2P capability negotiation messages.
     /// </summary>
     public class AddCapabilityMessageSerializer : IZeroMessageSerializer<AddCapabilityMessage>
     {
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<Capability>((int)1.KiB(), nameof(Capability.ProtocolCode));
+
         public void Serialize(IByteBuffer byteBuffer, AddCapabilityMessage msg)
         {
             int totalLength = GetLength(msg, out int contentLength);
@@ -23,12 +26,14 @@ namespace Nethermind.Network.P2P.Messages
             stream.Encode(msg.Capability.Version);
         }
 
-        public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer)
+        public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private static AddCapabilityMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
-            NettyRlpStream context = new(byteBuffer);
-            context.ReadSequenceLength();
-            string protocolCode = context.DecodeString();
-            byte version = context.DecodeByte();
+            ctx.ReadSequenceLength();
+            string protocolCode = ctx.DecodeString(RlpLimit);
+            byte version = ctx.DecodeByte();
 
             return new AddCapabilityMessage(new Capability(protocolCode, version));
         }

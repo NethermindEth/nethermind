@@ -12,7 +12,7 @@ namespace Nethermind.State.Proofs;
 /// </summary>
 public class StorageProof
 {
-    public byte[]? Key { get; set; }
+    public string? Key { get; set; }
     public byte[][]? Proof { get; set; }
 
     [JsonConverter(typeof(ProofStorageValueConverter))]

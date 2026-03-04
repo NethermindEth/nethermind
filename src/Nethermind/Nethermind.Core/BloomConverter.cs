@@ -24,6 +24,6 @@ public class BloomConverter : JsonConverter<Bloom>
         Bloom bloom,
         JsonSerializerOptions options)
     {
-        ByteArrayConverter.Convert(writer, bloom.Bytes, skipLeadingZeros: false);
+        ByteArrayConverter.Convert(writer, bloom.ReadOnlyBytes, skipLeadingZeros: false);
     }
 }

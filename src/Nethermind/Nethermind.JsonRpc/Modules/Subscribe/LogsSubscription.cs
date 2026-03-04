@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public LogsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
             IReceiptMonitor receiptCanonicalityMonitor,
-            IFilterStore? store,
+            FilterStore? store,
             IBlockTree? blockTree,
             ILogManager? logManager,
             Filter? filter = null)
@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptCanonicalityMonitor = receiptCanonicalityMonitor ?? throw new ArgumentNullException(nameof(receiptCanonicalityMonitor));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            IFilterStore filterStore = store ?? throw new ArgumentNullException(nameof(store));
+            FilterStore filterStore = store ?? throw new ArgumentNullException(nameof(store));
 
             if (filter is not null)
             {
@@ -110,6 +110,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                                     logIndex,
                                     receipt,
                                     receiptLog,
+                                    blockHeader.Timestamp,
                                     removed);
                             }
 

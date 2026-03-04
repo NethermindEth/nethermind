@@ -13,15 +13,19 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Optimism;
 
 public class OptimismBlockProcessor : BlockProcessor
 {
+    private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly Create2DeployerContractRewriter? _contractRewriter;
+    private readonly ICostHelper _costHelper;
 
     public OptimismBlockProcessor(
         ISpecProvider specProvider,
@@ -36,7 +40,8 @@ public class OptimismBlockProcessor : BlockProcessor
         IOptimismSpecHelper opSpecHelper,
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor withdrawalProcessor,
-        IExecutionRequestsProcessor executionRequestsProcessor)
+        IExecutionRequestsProcessor executionRequestsProcessor,
+        ICostHelper costHelper)
         : base(
             specProvider,
             blockValidator,
@@ -51,13 +56,31 @@ public class OptimismBlockProcessor : BlockProcessor
             executionRequestsProcessor)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
+        _opSpecHelper = opSpecHelper;
         _contractRewriter = contractRewriter;
+        _costHelper = costHelper;
         ReceiptsTracer = new OptimismBlockReceiptTracer(opSpecHelper, stateProvider);
     }
 
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
     {
         _contractRewriter?.RewriteContract(block.Header, _stateProvider);
-        return base.ProcessBlock(block, blockTracer, options, spec, token);
+        TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, spec, token);
+
+        if (_opSpecHelper.IsJovian(block.Header))
+        {
+            UInt256 daFootprintBig = _costHelper.ComputeDaFootprint(block);
+            var (daFootprint, hasOverflow) = daFootprintBig.UlongWithOverflow;
+            if (hasOverflow || daFootprint > long.MaxValue)
+                throw new InvalidOperationException($"DA Footprint overflow ({daFootprintBig}) at block {block.Header.Number}");
+
+            if (block.Header.BlobGasUsed != daFootprint)
+            {
+                block.Header.BlobGasUsed = daFootprint;
+                block.Header.Hash = block.Header.CalculateHash();
+            }
+        }
+
+        return receipts;
     }
 }

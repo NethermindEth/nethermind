@@ -17,6 +17,8 @@ using Nethermind.Stats.Model;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using System.Text.Json;
 using Nethermind.State;
+using Nethermind.Network.Contract.P2P;
+
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
@@ -81,12 +83,12 @@ public class AdminRpcModule : IAdminRpcModule
 
     private void UpdateEthProtocolInfo()
     {
-        _nodeInfo.Protocols["eth"].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
-        _nodeInfo.Protocols["eth"].NewtorkId = _blockTree.NetworkId;
-        _nodeInfo.Protocols["eth"].ChainId = _blockTree.ChainId;
-        _nodeInfo.Protocols["eth"].HeadHash = _blockTree.HeadHash;
-        _nodeInfo.Protocols["eth"].GenesisHash = _blockTree.GenesisHash;
-        _nodeInfo.Protocols["eth"].Config = _parameters;
+        _nodeInfo.Protocols[Protocol.Eth].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
+        _nodeInfo.Protocols[Protocol.Eth].NetworkId = _blockTree.NetworkId;
+        _nodeInfo.Protocols[Protocol.Eth].ChainId = _blockTree.ChainId;
+        _nodeInfo.Protocols[Protocol.Eth].HeadHash = _blockTree.HeadHash;
+        _nodeInfo.Protocols[Protocol.Eth].GenesisHash = _blockTree.GenesisHash;
+        _nodeInfo.Protocols[Protocol.Eth].Config = _parameters;
     }
 
     public async Task<ResultWrapper<string>> admin_addPeer(string enode, bool addToStaticNodes = false)

@@ -30,7 +30,7 @@ public class RegisterRpcModules(
     IBlockTree blockTree,
     ISpecProvider specProvider,
     IReceiptMonitor receiptMonitor,
-    IFilterStore filterStore,
+    FilterStore filterStore,
     ITxPool txPool,
     IEthSyncingInfo ethSyncingInfo,
     IPeerPool peerPool,

@@ -6,14 +6,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using CkzgLib;
+using FastEnumUtility;
 using FluentAssertions;
-using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -25,18 +27,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
+[Parallelizable(ParallelScope.All)]
 public class TxValidatorTests
 {
-    [SetUp]
-    public void Setup()
-    {
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Curve_is_correct()
     {
-        BigInteger N =
-            BigInteger.Parse("115792089237316195423570985008687907852837564279074904382605163141518161494337");
+        BigInteger N = BigInteger.Parse("115792089237316195423570985008687907852837564279074904382605163141518161494337");
         BigInteger HalfN = N / 2;
 
         Secp256K1Curve.N.Convert(out BigInteger n);
@@ -58,6 +56,20 @@ public class TxValidatorTests
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
+    }
+
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(0, ExpectedResult = false, TestName = "R equal to N is not valid")]
+    [TestCase(1, ExpectedResult = true, TestName = "R equal to N minus one is valid")]
+    public bool R_boundary_values(int subtractFromN)
+    {
+        UInt256 r = Secp256K1Curve.N - (UInt256)subtractFromN;
+        UInt256 s = UInt256.One;
+        Signature signature = new(r, s, (ulong)CalculateV());
+        Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        return txValidator.IsWellFormed(tx, MuirGlacier.Instance);
     }
 
     private static byte CalculateV() => (byte)EthereumEcdsaExtensions.CalculateV(TestBlockchainIds.ChainId);
@@ -130,7 +142,7 @@ public class TxValidatorTests
         Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
         releaseSpec.IsEip155Enabled.Returns(false);
         releaseSpec.ValidateChainId.Returns(validateChainId);
 
@@ -644,6 +656,45 @@ public class TxValidatorTests
         }
     }
 
+    [Test]
+    public void IsWellFormed_Nonce_Under_Limit([Values(TxType.AccessList, TxType.Legacy)] TxType txType)
+    {
+        ValidationResult result = IsWellFormed_Nonce_Limit(ulong.MaxValue - 1, txType);
+        Assert.That(result.AsBool, Is.True);
+    }
+
+    public static IEnumerable<TxType> TxTypes = FastEnum.GetValues<TxType>().Where(t => t != TxType.DepositTx);
+
+    [Test]
+    public void IsWellFormed_Nonce_Over_Limit([ValueSource(nameof(TxTypes))] TxType txType)
+    {
+        ValidationResult result = IsWellFormed_Nonce_Limit(ulong.MaxValue, txType);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.NonceTooHigh));
+        }
+    }
+
+    private static ValidationResult IsWellFormed_Nonce_Limit(ulong nonce, TxType txType)
+    {
+        TransactionBuilder<Transaction> builder = Build.A.Transaction
+            .WithType(txType)
+            .WithNonce(nonce)
+            .WithChainId(TestBlockchainIds.ChainId);
+        if (txType == TxType.Blob)
+        {
+            builder.WithMaxFeePerBlobGas(UInt256.One)
+                .WithBlobVersionedHashes([[0]]);
+        }
+        Transaction tx = builder.SignedAndResolved().TestObject;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        IReleaseSpec releaseSpec = Osaka.Instance;
+        return txValidator.IsWellFormed(tx, releaseSpec);
+    }
+
     private static byte[] MakeArray(int count, params byte[] elements) =>
         elements.Take(Math.Min(count, elements.Length))
             .Concat(new byte[Math.Max(0, count - elements.Length)])
@@ -810,6 +861,20 @@ public class TxValidatorTests
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Proofs count does not match hashes count",
+                ExpectedResult = false
+            };
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
+             .With(static tx => tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Blobs = [], Commitments = [], Proofs = [] })
+             .SignedAndResolved().TestObject)
+            {
+                TestName = "Blobs count does not match network wrapper items counts, empty blobs",
+                ExpectedResult = false
+            };
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject(2)
+               .With(static tx => tx.BlobVersionedHashes = [.. tx.BlobVersionedHashes!.Take(1)])
+               .SignedAndResolved().TestObject)
+            {
+                TestName = "Blobs count does not match network wrapper items counts, less hashes",
                 ExpectedResult = false
             };
             yield return new TestCaseData(Cancun.Instance, MakeTestObject()

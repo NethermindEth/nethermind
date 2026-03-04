@@ -9,3 +9,39 @@
 /Dockerfile* @nethermindeth/core-devops @rubo
 /LICENSE* @rubo @LukaszRozmej @MarekM25
 *.md @rubo @LukaszRozmej @MarekM25
+
+/src/Nethermind/Ethereum.Test.Base/ @flcl42
+/src/Nethermind/Nethermind.Abi @LukaszRozmej
+/src/Nethermind/Nethermind.Blockchain @LukaszRozmej @MarekM25 @flcl42
+/src/Nethermind/Nethermind.Consensus @LukaszRozmej @MarekM25 @flcl42
+/src/Nethermind/Nethermind.Crypto @LukaszRozmej @Marchhill
+/src/Nethermind/Nethermind.Db.Rocks @LukaszRozmej @asdacap @damian-orzechowski
+/src/Nethermind/Nethermind.Era1 @ak88 @Marchhill @smartprogrammer93
+/src/Nethermind/Nethermind.Evm.Precompiles @LukaszRozmej @benaadams @rubo @Marchhill
+/src/Nethermind/Nethermind.Evm @LukaszRozmej @benaadams @Demuirgos 
+/src/Nethermind/Nethermind.ExternalSigner.Plugin @ak88
+/src/Nethermind/Nethermind.History @LukaszRozmej @Marchhill
+/src/Nethermind/Nethermind.Hive @flcl42 @marcindsobczak 
+/src/Nethermind/Nethermind.Init @LukaszRozmej @asdacap
+/src/Nethermind/Nethermind.JsonRpc.TraceStore @LukaszRozmej
+/src/Nethermind/Nethermind.JsonRpc @LukaszRozmej @benaadams @smartprogrammer93 
+/src/Nethermind/Nethermind.Merge.Plugin @LukaszRozmej @MarekM25 @flcl42 @benaadams @Marchhill
+/src/Nethermind/Nethermind.Merkleization @ak88 @Marchhill @smartprogrammer93 @flcl42
+/src/Nethermind/Nethermind.Network.Discovery @LukaszRozmej @flcl42 @asdacap
+/src/Nethermind/Nethermind.Network @LukaszRozmej @flcl42 @asdacap @marcindsobczak
+/src/Nethermind/Nethermind.Optimism @emlautarom1 @deffrian
+/src/Nethermind/Nethermind.Runner @LukaszRozmej @flcl42
+/src/Nethermind/Nethermind.Serialization.Json @LukaszRozmej @benaadams
+/src/Nethermind/Nethermind.Serialization.Rlp @LukaszRozmej @Marchhill
+/src/Nethermind/Nethermind.Serialization.Ssz @flcl42 @ak88 @Marchhill
+/src/Nethermind/Nethermind.Serialization.SszGenerator @flcl42 @ak88 @Marchhill
+/src/Nethermind/Nethermind.Shutter @Marchhill
+/src/Nethermind/Nethermind.Sockets @LukaszRozmej @benaadams
+/src/Nethermind/Nethermind.Specs @smartprogrammer93
+/src/Nethermind/Nethermind.State @LukaszRozmej @benaadams @asdacap @flcl42 @damian-orzechowski @tanishqjasoria 
+/src/Nethermind/Nethermind.Synchronization @LukaszRozmej @benaadams @asdacap @flcl42 @marcindsobczak
+/src/Nethermind/Nethermind.Taiko @smartprogrammer93 @dipkakwani
+/src/Nethermind/Nethermind.Trie @LukaszRozmej @benaadams @asdacap @flcl42 @damian-orzechowski @tanishqjasoria
+/src/Nethermind/Nethermind.TxPool @LukaszRozmej @benaadams @flcl42 @marcindsobczak
+/src/Nethermind/Nethermind.UI @benaadams
+/src/Nethermind/Nethermind.Xdc @ak88 @Demuirgos @cicr99

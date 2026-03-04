@@ -52,7 +52,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
             finally
             {
-                Metrics.ForkchoiceUpdedExecutionTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
+                Metrics.ForkchoiceUpdatedExecutionTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
                 _locker.Release();
             }
         }
@@ -72,7 +72,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         if (!executionPayload.ValidateFork(_specProvider))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
-            return ResultWrapper<PayloadStatusV1>.Fail("unsupported fork", version < EngineApiVersions.Shanghai ? ErrorCodes.InvalidParams : MergeErrorCodes.UnsupportedFork);
+            return ResultWrapper<PayloadStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, version < EngineApiVersions.Shanghai ? ErrorCodes.InvalidParams : MergeErrorCodes.UnsupportedFork);
         }
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
@@ -90,8 +90,15 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                using IDisposable region = _gcKeeper.TryStartNoGCRegion();
-                return await _newPayloadV1Handler.HandleAsync(executionPayload);
+                Task<IDisposable> regionTask = _gcKeeper.TryStartNoGCRegionAsync();
+                try
+                {
+                    return await _newPayloadV1Handler.HandleAsync(executionPayload);
+                }
+                finally
+                {
+                    (await regionTask).Dispose();
+                }
             }
             catch (BlockchainException exception)
             {

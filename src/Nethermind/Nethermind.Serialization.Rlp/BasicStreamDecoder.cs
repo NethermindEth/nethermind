@@ -6,110 +6,74 @@ namespace Nethermind.Serialization.Rlp;
 // If any of these is triggered in prod, then something went wrong, coz these are fairly slow path. These are only
 // useful for easy tests.
 
-public class ByteStreamDecoder : IRlpStreamDecoder<byte>
+public sealed class ByteStreamDecoder : RlpValueDecoder<byte>
 {
-    public int GetLength(byte item, RlpBehaviors rlpBehaviors)
-    {
-        return Rlp.LengthOf(item);
-    }
+    public override int GetLength(byte item, RlpBehaviors rlpBehaviors) =>
+        Rlp.LengthOf(item);
 
-    public byte Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return rlpStream.DecodeByte();
-    }
+    protected override byte DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        decoderContext.DecodeByte();
 
-    public void Encode(RlpStream stream, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
+    public override void Encode(RlpStream stream, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         stream.Encode(item);
-    }
 }
 
-public class ShortStreamDecoder : IRlpStreamDecoder<short>
+public sealed class ShortStreamDecoder : RlpValueDecoder<short>
 {
-    public int GetLength(short item, RlpBehaviors rlpBehaviors)
-    {
-        return Rlp.LengthOf(item);
-    }
+    public override int GetLength(short item, RlpBehaviors rlpBehaviors) =>
+        Rlp.LengthOf(item);
 
-    public short Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return (short)rlpStream.DecodeLong();
-    }
+    protected override short DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        (short)decoderContext.DecodeLong();
 
-    public void Encode(RlpStream stream, short item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
+    public override void Encode(RlpStream stream, short item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         stream.Encode(item);
-    }
 }
 
-public class UShortStreamDecoder : IRlpStreamDecoder<ushort>
+public sealed class UShortStreamDecoder : RlpValueDecoder<ushort>
 {
-    public int GetLength(ushort item, RlpBehaviors rlpBehaviors)
-    {
-        return Rlp.LengthOf((long)item);
-    }
+    public override int GetLength(ushort item, RlpBehaviors rlpBehaviors) =>
+        Rlp.LengthOf((long)item);
 
-    public ushort Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return (ushort)rlpStream.DecodeLong();
-    }
+    protected override ushort DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        (ushort)decoderContext.DecodeLong();
 
-    public void Encode(RlpStream stream, ushort item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
+    public override void Encode(RlpStream stream, ushort item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         stream.Encode(item);
-    }
 }
 
-public class IntStreamDecoder : IRlpStreamDecoder<int>
+public sealed class IntStreamDecoder : RlpValueDecoder<int>
 {
-    public int GetLength(int item, RlpBehaviors rlpBehaviors)
-    {
-        return Rlp.LengthOf(item);
-    }
+    public override int GetLength(int item, RlpBehaviors rlpBehaviors) =>
+        Rlp.LengthOf(item);
 
-    public int Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return rlpStream.DecodeInt();
-    }
+    protected override int DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        decoderContext.DecodeInt();
 
-    public void Encode(RlpStream stream, int item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
+    public override void Encode(RlpStream stream, int item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         stream.Encode(item);
-    }
 }
 
-public class UIntStreamDecoder : IRlpStreamDecoder<uint>
+public sealed class UIntStreamDecoder : RlpValueDecoder<uint>
 {
-    public int GetLength(uint item, RlpBehaviors rlpBehaviors)
-    {
-        return Rlp.LengthOf((long)item);
-    }
+    public override int GetLength(uint item, RlpBehaviors rlpBehaviors) =>
+        Rlp.LengthOf((long)item);
 
-    public uint Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return rlpStream.DecodeUInt();
-    }
+    protected override uint DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        (uint)decoderContext.DecodeInt();
 
-    public void Encode(RlpStream stream, uint item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
+    public override void Encode(RlpStream stream, uint item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         stream.Encode(item);
-    }
 }
 
-public class ULongStreamDecoder : IRlpStreamDecoder<ulong>
+public sealed class ULongStreamDecoder : RlpValueDecoder<ulong>
 {
-    public int GetLength(ulong item, RlpBehaviors rlpBehaviors)
-    {
-        return Rlp.LengthOf(item);
-    }
+    public override int GetLength(ulong item, RlpBehaviors rlpBehaviors) =>
+        Rlp.LengthOf(item);
 
-    public ulong Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return rlpStream.DecodeUInt();
-    }
+    protected override ulong DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        decoderContext.DecodeULong();
 
-    public void Encode(RlpStream stream, ulong item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
+    public override void Encode(RlpStream stream, ulong item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         stream.Encode(item);
-    }
 }

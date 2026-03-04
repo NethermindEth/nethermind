@@ -12,7 +12,7 @@ public sealed class FileSecretProvider : ISecretProvider
         _filePath = filePath;
     }
 
-    private bool IsHex(char c) =>
+    private static bool IsHex(char c) =>
         c is >= '0' and <= '9'
             or >= 'a' and <= 'f'
             or >= 'A' and <= 'F';

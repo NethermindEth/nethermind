@@ -8,7 +8,7 @@ namespace Nethermind.Core;
 /// <summary>
 /// Represents the <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters">EIP-4844</see> parameters.
 /// </summary>
-public class Eip4844Constants
+public static class Eip4844Constants
 {
     public const int MinBlobsPerTransaction = 1;
 
@@ -42,6 +42,7 @@ public class Eip4844Constants
     /// <remarks>Defaults to 1.</remarks>
     public static UInt256 MinBlobGasPrice { get; private set; } = 1;
 
+    public const byte BytesPerBlobVersionedHash = 32;
 
     // The parameter mutators are kept separate deliberately to ensure no accidental value changes.
     public static void OverrideIfAny(UInt256? minBlobGasPrice = null)

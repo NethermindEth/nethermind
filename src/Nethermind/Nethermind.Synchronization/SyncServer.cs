@@ -124,6 +124,8 @@ namespace Nethermind.Synchronization
             }
         }
 
+        public long LowestBlock => Math.Min(Head?.Number ?? 0, _blockTree.GetLowestBlock());
+
         public int GetPeerCount() => _pool.PeerCount;
 
         private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
@@ -194,7 +196,7 @@ namespace Nethermind.Synchronization
 
                     // Recalculate total difficulty as we don't trust total difficulty from gossip
                     block.Header.TotalDifficulty = parent.TotalDifficulty + block.Header.Difficulty;
-                    if (!_blockValidator.ValidateSuggestedBlock(block, out _))
+                    if (!_blockValidator.ValidateSuggestedBlock(block, parent.Header, out _))
                     {
                         ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
                     }
@@ -410,6 +412,8 @@ namespace Nethermind.Synchronization
 
         public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
 
+        public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
         public Hash256? FindHash(long number)
         {
             try
@@ -556,6 +560,7 @@ namespace Nethermind.Synchronization
         private void StopNotifyingPeersAboutBlockRangeUpdates()
         {
             _blockTree.NewHeadBlock -= OnNewRange;
+            _historyPruner.NewOldestBlock -= OnNewRange;
         }
 
         public void Dispose()

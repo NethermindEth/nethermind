@@ -4,11 +4,14 @@
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class GetBlockBodiesMessageSerializer : IZeroInnerMessageSerializer<GetBlockBodiesMessage>
     {
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<GetBlockBodiesMessage>(NethermindSyncLimits.MaxBodyFetch, nameof(GetBlockBodiesMessage.BlockHashes));
+
         public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message)
         {
             int length = GetLength(message, out int contentLength);
@@ -22,11 +25,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
         }
 
-        public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            return Deserialize(rlpStream);
-        }
+        public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
 
         public int GetLength(GetBlockBodiesMessage message, out int contentLength)
         {
@@ -39,9 +39,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public static GetBlockBodiesMessage Deserialize(RlpStream rlpStream)
+        public static GetBlockBodiesMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
-            Hash256[] hashes = rlpStream.DecodeArray(ctx => rlpStream.DecodeKeccak(), false);
+            Hash256[] hashes = ctx.DecodeArray(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), false, limit: RlpLimit);
             return new GetBlockBodiesMessage(hashes);
         }
     }

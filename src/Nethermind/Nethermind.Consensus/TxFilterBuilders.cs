@@ -3,7 +3,6 @@
 
 using Nethermind.Config;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus
 {

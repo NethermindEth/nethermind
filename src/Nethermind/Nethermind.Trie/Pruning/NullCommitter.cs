@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Trie.Pruning;
 
 public class NullCommitter : ICommitter, IBlockCommitter
@@ -16,5 +13,5 @@ public class NullCommitter : ICommitter, IBlockCommitter
 
     public void Dispose() { }
 
-    public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) { }
+    public TrieNode CommitNode(ref TreePath path, TrieNode node) => node;
 }

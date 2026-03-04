@@ -7,19 +7,13 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain
 {
-    public class FinalizeEventArgs : EventArgs
+    public class FinalizeEventArgs(BlockHeader finalizingBlock, IReadOnlyList<BlockHeader> finalizedBlocks)
+        : EventArgs
     {
         public FinalizeEventArgs(BlockHeader finalizingBlock, params BlockHeader[] finalizedBlocks)
             : this(finalizingBlock, (IReadOnlyList<BlockHeader>)finalizedBlocks) { }
 
-        public FinalizeEventArgs(BlockHeader finalizingBlock, IReadOnlyList<BlockHeader> finalizedBlocks)
-        {
-            FinalizingBlock = finalizingBlock;
-            FinalizedBlocks = finalizedBlocks;
-        }
-
-        public BlockHeader FinalizingBlock { get; }
-        public IReadOnlyList<BlockHeader> FinalizedBlocks { get; }
-
+        public BlockHeader FinalizingBlock { get; } = finalizingBlock;
+        public IReadOnlyList<BlockHeader> FinalizedBlocks { get; } = finalizedBlocks;
     }
 }

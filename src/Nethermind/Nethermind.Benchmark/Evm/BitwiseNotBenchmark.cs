@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -30,8 +31,8 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark(Baseline = true)]
         public void Current()
         {
-            ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
-            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(c);
+            ref var refA = ref MemoryMarshal.AsRef<ulong>(a.AsSpan());
+            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(c.AsSpan());
 
             refBuffer = ~refA;
             Unsafe.Add(ref refBuffer, 1) = ~Unsafe.Add(ref refA, 1);

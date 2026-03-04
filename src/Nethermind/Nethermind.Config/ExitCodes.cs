@@ -19,6 +19,8 @@ public static class ExitCodes
     public const int UnrecognizedOption = 106;
     public const int ForbiddenOptionValue = 107;
     public const int MissingChainspecEipConfiguration = 108;
+    public const int DbCorruption = 109;
+    public const int MissingPrecompile = 110;
 
     // Posix exit code
     // https://tldp.org/LDP/abs/html/exitcodes.html

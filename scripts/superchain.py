@@ -16,7 +16,7 @@ from urllib.request import urlopen
 from zipfile import ZipFile
 
 SUPERCHAIN_REPOSITORY = "https://github.com/ethereum-optimism/superchain-registry/archive/refs/heads/main.zip"
-IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet", "rehearsal-0-bn-0", "rehearsal-0-bn-1", "celo", "radius_testnet"]
+IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet", "rehearsal-0-bn-0", "rehearsal-0-bn-1", "celo", "radius_testnet", "silent-data-mainnet"]
 IGNORED_L1S = ["sepolia-dev-0"]
 
 
@@ -113,6 +113,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
                     "graniteTimestamp": fmap(hex, (lookup(config, ["hardforks", "granite_time"]))),
                     "holoceneTimestamp": fmap(hex, (lookup(config, ["hardforks", "holocene_time"]))),
                     "isthmusTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
+                    "jovianTimestamp": fmap(hex, (lookup(config, ["hardforks", "jovian_time"]))),
                     "canyonBaseFeeChangeDenominator": str(lookup(config, ["optimism", "eip1559_denominator_canyon"])),
                     "l1FeeRecipient": "0x420000000000000000000000000000000000001A",
                     "l1BlockAddress": "0x4200000000000000000000000000000000000015",
@@ -192,6 +193,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "eip2028Transition": "0x0",
             "eip2200Transition": "0x0",
             "eip2565Transition": "0x0",
+            "eip2718Transition": "0x0",
             "eip2929Transition": "0x0",
             "eip2930Transition": "0x0",
             "eip1559Transition": hex(lookup(config, ["genesis", "l2", "number"])),
@@ -215,6 +217,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "opGraniteTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "granite_time"]))),
             "opHoloceneTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "holocene_time"]))),
             "opIsthmusTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
+            "opJovianTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "jovian_time"]))),
             "eip7702TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
             "eip2537TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
             "eip2935TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
@@ -232,7 +235,6 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
                         "mixHash": lookup(genesis, ["mixHash"]),
                     }
                 },
-                "number": lookup(genesis, ["number"]),
                 "difficulty": lookup(genesis, ["difficulty"]),
                 "author": one_of(lookup(genesis, ["author"]), lookup(genesis, ["coinbase"])),
                 "timestamp": lookup(genesis, ["timestamp"]),
@@ -305,7 +307,7 @@ def to_nethermind_runner(chain_name, l1, chain):
         "Sync": {"FastSync": True, "SnapSync": True, "FastSyncCatchUpHeightDelta": "10000000000"},
         "Discovery": {"DiscoveryVersion": "V5"},
         "JsonRpc": {"Enabled": True, "Port": 8545, "EnginePort": 8551},
-        "Pruning": {"PruningBoundary": 192},
+        "Pruning": {"PruningBoundary": 256},
         "Blocks": {"SecondsPerSlot": lookup(chain, ["block_time"])},
         "Merge": {"Enabled": True},
         "Optimism": {"SequencerUrl": lookup(chain, ["sequencer_rpc"])},

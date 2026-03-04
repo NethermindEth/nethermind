@@ -8,11 +8,13 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
@@ -21,6 +23,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.JsonRpc.Modules.LogIndex;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Personal;
@@ -30,7 +33,6 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.JsonRpc.Modules.Web3;
-using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Sockets;
@@ -59,6 +61,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .RegisterSingletonJsonRpcModule<IWeb3RpcModule, Web3RpcModule>()
             .RegisterSingletonJsonRpcModule<IPersonalRpcModule, PersonalRpcModule>()
             .RegisterSingletonJsonRpcModule<IRpcRpcModule, RpcRpcModule>()
+            .RegisterSingletonJsonRpcModule<ILogIndexRpcModule, LogIndexRpcModule>()
 
             // Txpool rpc
             .RegisterSingletonJsonRpcModule<ITxPoolRpcModule, TxPoolRpcModule>()
@@ -80,8 +83,9 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddSingleton<IBlockchainBridgeFactory, BlockchainBridgeFactory>()
                 .AddScoped<IBlockchainBridge>((ctx) => ctx.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge())
                     .AddSingleton<IFeeHistoryOracle, FeeHistoryOracle>()
-                    .AddSingleton<IFilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout))
-                    .AddSingleton<IFilterManager, IFilterStore, IMainProcessingContext, ITxPool, ILogManager>((store, processingContext, txPool, logManager) => new FilterManager(store, processingContext.BranchProcessor, txPool, logManager))
+                    .AddSingleton<FilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout))
+                    .AddSingleton<FilterManager>()
+                    .AddSingleton<IWitnessGeneratingBlockProcessingEnvFactory, WitnessGeneratingBlockProcessingEnvFactory>()
                     .AddSingleton<ISimulateReadOnlyBlocksProcessingEnvFactory, SimulateReadOnlyBlocksProcessingEnvFactory>()
 
             // Proof

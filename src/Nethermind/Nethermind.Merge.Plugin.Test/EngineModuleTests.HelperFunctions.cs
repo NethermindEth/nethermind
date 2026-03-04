@@ -103,7 +103,7 @@ namespace Nethermind.Merge.Plugin.Test
             ExecutionPayload blockRequest = CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             Block? block = blockRequest.TryGetBlock().Block;
 
-            IWorldState globalWorldState = chain.WorldStateManager.GlobalWorldState;
+            IWorldState globalWorldState = chain.MainWorldState;
             using (globalWorldState.BeginScope(parent.TryGetBlock().Block!.Header))
             {
                 chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
@@ -131,11 +131,11 @@ namespace Nethermind.Merge.Plugin.Test
             ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             Block? block = blockRequestV3.TryGetBlock().Block;
 
-            IWorldState globalWorldState = chain.WorldStateManager.GlobalWorldState;
+            IWorldState globalWorldState = chain.MainWorldState;
             using (globalWorldState.BeginScope(parent.TryGetBlock().Block!.Header))
             {
-                var blockHashStore = new BlockhashStore(chain.SpecProvider, globalWorldState);
-                blockHashStore.ApplyBlockhashStateChanges(block!.Header);
+                var blockHashStore = new BlockhashStore(globalWorldState);
+                blockHashStore.ApplyBlockhashStateChanges(block!.Header, chain.SpecProvider.GetSpec(block.Header));
                 chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
                 globalWorldState.Commit(chain.SpecProvider.GenesisSpec);
@@ -154,15 +154,15 @@ namespace Nethermind.Merge.Plugin.Test
             ExecutionPayloadV3 blockRequestV4 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             Block? block = blockRequestV4.TryGetBlock().Block;
 
-            var beaconBlockRootHandler = new BeaconBlockRootHandler(chain.TxProcessor, chain.WorldStateManager.GlobalWorldState);
+            var beaconBlockRootHandler = new BeaconBlockRootHandler(chain.TxProcessor, chain.MainWorldState);
 
             IReleaseSpec spec = chain.SpecProvider.GetSpec(block!.Header);
             chain.TxProcessor.SetBlockExecutionContext(new BlockExecutionContext(block!.Header, spec));
             beaconBlockRootHandler.StoreBeaconRoot(block!, spec, NullTxTracer.Instance);
-            IWorldState globalWorldState = chain.WorldStateManager.GlobalWorldState;
+            IWorldState globalWorldState = chain.MainWorldState;
             Snapshot before = globalWorldState.TakeSnapshot();
-            var blockHashStore = new BlockhashStore(chain.SpecProvider, globalWorldState);
-            blockHashStore.ApplyBlockhashStateChanges(block!.Header);
+            var blockHashStore = new BlockhashStore(globalWorldState);
+            blockHashStore.ApplyBlockhashStateChanges(block.Header, chain.SpecProvider.GetSpec(block.Header));
 
             chain.TxProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, chain.SpecProvider.GenesisSpec));
             chain.MainExecutionRequestsProcessor.ProcessExecutionRequests(block!, globalWorldState, [], chain.SpecProvider.GenesisSpec);

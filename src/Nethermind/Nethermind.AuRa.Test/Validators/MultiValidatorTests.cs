@@ -140,7 +140,7 @@ namespace Nethermind.AuRa.Test.Validators
         }
 
         [Test]
-        public void doesnt_call_inner_validators_before_start_block()
+        public void does_not_call_inner_validators_before_start_block()
         {
             // Arrange
             _validator.Validators.Remove(0);

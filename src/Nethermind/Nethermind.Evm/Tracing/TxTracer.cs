@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
@@ -13,23 +12,25 @@ namespace Nethermind.Evm.Tracing;
 
 public abstract class TxTracer : ITxTracer
 {
-    [SuppressMessage("ReSharper", "VirtualMemberCallInConstructor")]
-    protected TxTracer()
+    private bool? _isTracing;
+
+    public bool IsTracing
     {
-        IsTracing = IsTracingReceipt
-                    || IsTracingActions
-                    || IsTracingOpLevelStorage
-                    || IsTracingMemory
-                    || IsTracingInstructions
-                    || IsTracingRefunds
-                    || IsTracingCode
-                    || IsTracingStack
-                    || IsTracingBlockHash
-                    || IsTracingAccess
-                    || IsTracingFees
-                    || IsTracingLogs;
+        get => _isTracing ??= IsTracingReceipt
+                              || IsTracingActions
+                              || IsTracingOpLevelStorage
+                              || IsTracingMemory
+                              || IsTracingInstructions
+                              || IsTracingRefunds
+                              || IsTracingCode
+                              || IsTracingStack
+                              || IsTracingBlockHash
+                              || IsTracingAccess
+                              || IsTracingFees
+                              || IsTracingLogs;
+        protected set => _isTracing = value;
     }
-    public bool IsTracing { get; protected set; }
+
     public virtual bool IsTracingState { get; protected set; }
     public virtual bool IsTracingReceipt { get; protected set; }
     public virtual bool IsTracingActions { get; protected set; }
@@ -64,6 +65,8 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
     public virtual void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
     public virtual void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
+    public virtual void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
+    public virtual void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
     public virtual void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) { }
     public virtual void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
     public virtual void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) { }
@@ -75,7 +78,7 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportGasUpdateForVmTrace(long refund, long gasAvailable) { }
     public virtual void ReportRefund(long refund) { }
     public virtual void ReportExtraGasPressure(long extraGasPressure) { }
-    public virtual void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells) { }
+    public virtual void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) { }
     public virtual void ReportFees(UInt256 fees, UInt256 burntFees) { }
     public virtual void Dispose() { }
 }

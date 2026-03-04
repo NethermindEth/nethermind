@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
@@ -38,30 +37,36 @@ public class OptimismBlockValidator(
     private const string NonNullWithdrawalsRootError =
         $"{nameof(BlockHeader.WithdrawalsRoot)} is not null";
 
-    public override bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? errorMessage)
+    public override bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? error)
     {
         if (!ValidateTxRootMatchesTxs(header, toBeValidated, out Hash256? txRoot))
         {
-            errorMessage = BlockErrorMessages.InvalidTxRoot(header.TxRoot!, txRoot);
+            error = BlockErrorMessages.InvalidTxRoot(header.TxRoot!, txRoot);
             return false;
         }
 
         if (!ValidateUnclesHashMatches(header, toBeValidated, out _))
         {
-            errorMessage = BlockErrorMessages.InvalidUnclesHash;
+            error = BlockErrorMessages.InvalidUnclesHash;
             return false;
         }
 
-        if (!ValidateWithdrawals(header, toBeValidated, out errorMessage))
+        if (!ValidateWithdrawals(header, toBeValidated, out error))
         {
             return false;
         }
 
-        errorMessage = null;
+        error = null;
         return true;
     }
 
-    protected override bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error) =>
+    protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error)
+    {
+        // Base implementation validates BlobGasUsed, but Blob transactions are disabled in Optimism since Ecotone
+        return specHelper.IsEcotone(block.Header) || base.ValidateEip4844Fields(block, spec, ref error);
+    }
+
+    protected override bool ValidateWithdrawals(Block block, IReleaseSpec spec, bool validateHashes, ref string? error) =>
         ValidateWithdrawals(block.Header, block.Body, out error);
 
     private bool ValidateWithdrawals(BlockHeader header, BlockBody body, out string? error)
@@ -75,7 +80,7 @@ public class OptimismBlockValidator(
                 return false;
             }
 
-            if (header.WithdrawalsRoot == null)
+            if (header.WithdrawalsRoot is null)
             {
                 error = MissingWithdrawalsRootError;
                 return false;
@@ -95,13 +100,10 @@ public class OptimismBlockValidator(
                 return false;
             }
         }
-        else
+        else if (header.WithdrawalsRoot is not null)
         {
-            if (header.WithdrawalsRoot != null)
-            {
-                error = NonNullWithdrawalsRootError;
-                return false;
-            }
+            error = NonNullWithdrawalsRootError;
+            return false;
         }
 
         error = null;

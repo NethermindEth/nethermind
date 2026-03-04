@@ -12,13 +12,17 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<NeighborsMsg>
+public class NeighborsMsgSerializer(
+    IEcdsa ecdsa,
+    [KeyFilter(IProtectedPrivateKey.NodeKey)]
+    IPrivateKeyGenerator nodeKey,
+    INodeIdResolver nodeIdResolver)
+    : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<NeighborsMsg>
 {
-    private static readonly Func<RlpStream, Node> _decodeItem = static ctx =>
+    private static readonly DecodeRlpValue<Node?> _decodeItem = static (ref Rlp.ValueDecoderContext ctx) =>
     {
         int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
-
         ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan();
         IPEndPoint address = GetAddress(ip, ctx.DecodeInt());
         if (count > 3)
@@ -29,12 +33,6 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
         ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan();
         return new Node(new PublicKey(id), address);
     };
-
-    public NeighborsMsgSerializer(IEcdsa ecdsa,
-        [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey,
-        INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
-    {
-    }
 
     public void Serialize(IByteBuffer byteBuffer, NeighborsMsg msg)
     {
@@ -55,7 +53,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
         }
         else
         {
-            stream.Encode(Rlp.OfEmptySequence);
+            stream.Encode(Rlp.OfEmptyList);
         }
 
         stream.Encode(msg.ExpirationTime);
@@ -68,18 +66,14 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
     {
         (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
 
-        NettyRlpStream rlp = new(Data);
-        rlp.ReadSequenceLength();
-        Node[] nodes = DeserializeNodes(rlp);
+        Rlp.ValueDecoderContext ctx = Data.AsRlpContext();
+        ctx.ReadSequenceLength();
+        Node[] nodes = ctx.DecodeArray(_decodeItem)!;
 
-        long expirationTime = rlp.DecodeLong();
+        long expirationTime = ctx.DecodeLong();
+        Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
         NeighborsMsg msg = new(FarPublicKey, expirationTime, nodes);
         return msg;
-    }
-
-    private static Node[] DeserializeNodes(RlpStream rlpStream)
-    {
-        return rlpStream.DecodeArray<Node>(_decodeItem);
     }
 
     private static int GetNodesLength(ArraySegment<Node> nodes, out int contentLength)
@@ -109,7 +103,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
         }
         else
         {
-            contentLength += Rlp.OfEmptySequence.Bytes.Length;
+            contentLength += Rlp.OfEmptyList.Bytes.Length;
         }
 
         contentLength += Rlp.LengthOf(msg.ExpirationTime);

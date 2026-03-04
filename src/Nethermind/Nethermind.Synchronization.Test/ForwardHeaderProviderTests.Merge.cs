@@ -8,7 +8,6 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;

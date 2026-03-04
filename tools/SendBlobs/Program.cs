@@ -11,6 +11,4 @@ SetupCli.SetupDistributeCommand(rootCommand);
 SetupCli.SetupReclaimCommand(rootCommand);
 SetupCli.SetupSendFileCommand(rootCommand);
 
-CommandLineConfiguration cli = new(rootCommand);
-
-return await cli.InvokeAsync(args);
+return await rootCommand.Parse(args).InvokeAsync();

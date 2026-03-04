@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Shutter.Contracts;
@@ -89,7 +88,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
 
             if (_logger.IsDebug) _logger.Debug($"Waiting for block in {slot} to get Shutter transactions.");
 
-            tcs = new();
+            tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             long offset = _time.GetCurrentOffsetMs(slot);
             long waitTime = (long)_blockWaitCutoff.TotalMilliseconds - offset;
@@ -125,31 +124,39 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public void Dispose()
     {
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
-        _blockWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask =>
+        lock (_syncObject)
         {
-            waitTask.Value.CancellationRegistration.Dispose();
-            waitTask.Value.TimeoutCancellationRegistration.Dispose();
-        }));
+            _blockWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask =>
+            {
+                waitTask.Value.CancellationRegistration.Dispose();
+                waitTask.Value.TimeoutCancellationRegistration.Dispose();
+            }));
+        }
     }
 
     private void CancelWaitForBlock(ulong slot, ulong taskId, bool timeout)
     {
-        if (_blockWaitTasks.TryGetValue(slot, out Dictionary<ulong, BlockWaitTask>? slotWaitTasks))
+        lock (_syncObject)
         {
-            if (slotWaitTasks.TryGetValue(taskId, out BlockWaitTask waitTask))
+            if (_blockWaitTasks.TryGetValue(slot, out Dictionary<ulong, BlockWaitTask>? slotWaitTasks))
             {
-                if (timeout)
+                if (slotWaitTasks.TryGetValue(taskId, out BlockWaitTask waitTask))
                 {
-                    waitTask.Tcs.TrySetResult(null);
+                    if (timeout)
+                    {
+                        waitTask.Tcs.TrySetResult(null);
+                    }
+                    else
+                    {
+                        waitTask.Tcs.SetException(new OperationCanceledException());
+                    }
+
+                    waitTask.CancellationRegistration.Dispose();
+                    waitTask.TimeoutCancellationRegistration.Dispose();
                 }
-                else
-                {
-                    waitTask.Tcs.SetException(new OperationCanceledException());
-                }
-                waitTask.CancellationRegistration.Dispose();
-                waitTask.TimeoutCancellationRegistration.Dispose();
+
+                slotWaitTasks.Remove(taskId);
             }
-            slotWaitTasks.Remove(taskId);
         }
     }
 

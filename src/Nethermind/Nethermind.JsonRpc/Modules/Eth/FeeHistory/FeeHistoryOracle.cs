@@ -113,8 +113,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 IReleaseSpec spec = _specProvider.GetSpec(b.Header);
                 BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, spec.BlobBaseFeeUpdateFraction, out feePerBlobGas);
 
-                var maxBlobGasPerBlob = spec.GetMaxBlobGasPerBlock();
-                return maxBlobGasPerBlob == 0 ? 0 : (b.BlobGasUsed ?? 0) / (double)maxBlobGasPerBlob;
+                ulong maxBlobGasPerBlock = spec.GasCosts.MaxBlobGasPerBlock;
+                return maxBlobGasPerBlock == 0 ? 0 : (b.BlobGasUsed ?? 0) / (double)maxBlobGasPerBlock;
             }
 
             BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block b)
@@ -204,8 +204,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             TryRunCleanup();
 
-            return ResultWrapper<FeeHistoryResults>.Success(new(oldestBlockNumber, baseFeePerGas,
-                gasUsedRatio, baseFeePerBlobGas, blobGasUsedRatio, rewards));
+            return ResultWrapper<FeeHistoryResults>.Success(new(oldestBlockNumber, baseFeePerGas, gasUsedRatio, baseFeePerBlobGas, blobGasUsedRatio, rewards));
         }
 
         private void TryRunCleanup()
@@ -258,7 +257,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             TxReceipt[] receipts = _receiptStorage.Get(block, false);
             Transaction[] txs = block.Transactions;
-            using ArrayPoolList<long> gasUsed = new(txs.Length, receipts.Length == block.Transactions.Length
+            using ArrayPoolListRef<long> gasUsed = new(txs.Length, receipts.Length == block.Transactions.Length
                 ? CalculateGasUsed(receipts)
                 // If no receipts available, approximate on GasLimit
                 // We could just go with null here too and just don't return percentiles

@@ -10,7 +10,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.Crypto
 {
-    [JsonConverter(typeof(PublicKeyConverter))]
+    [JsonConverter(typeof(PublicKeyHashedConverter))]
     public class PublicKey : IEquatable<PublicKey>
     {
         public const int PrefixedLengthInBytes = 65;
@@ -76,7 +76,7 @@ namespace Nethermind.Core.Crypto
 
         public static Address ComputeAddress(ReadOnlySpan<byte> publicKeyBytes)
         {
-            Span<byte> hash = ValueKeccak.Compute(publicKeyBytes).BytesAsSpan;
+            Span<byte> hash = KeccakCache.Compute(publicKeyBytes).BytesAsSpan;
             return new Address(hash[12..].ToArray());
         }
 

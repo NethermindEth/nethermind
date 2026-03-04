@@ -43,7 +43,7 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
             }
             catch (OperationCanceledException)
             {
-                if (_logger.IsError) _logger.Error($"Verify trie cancelled");
+                if (_logger.IsInfo) _logger.Info($"Verify trie cancelled");
             }
             catch (Exception e)
             {

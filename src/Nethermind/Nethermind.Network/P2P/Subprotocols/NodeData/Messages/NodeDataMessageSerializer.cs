@@ -4,11 +4,14 @@
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 
 public class NodeDataMessageSerializer : IZeroInnerMessageSerializer<NodeDataMessage>
 {
+    private static readonly RlpLimit RlpLimit = RlpLimit.For<NodeDataMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(NodeDataMessage.Data));
+
     public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
     {
         int length = GetLength(message, out int contentLength);
@@ -22,12 +25,11 @@ public class NodeDataMessageSerializer : IZeroInnerMessageSerializer<NodeDataMes
         }
     }
 
-    public NodeDataMessage Deserialize(IByteBuffer byteBuffer)
-    {
-        RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-        ArrayPoolList<byte[]>? result = rlpStream.DecodeArrayPoolList(static stream => stream.DecodeByteArray());
-        return new NodeDataMessage(result);
-    }
+    public NodeDataMessage Deserialize(IByteBuffer byteBuffer) =>
+        byteBuffer.DeserializeRlp(Deserialize);
+
+    private static NodeDataMessage Deserialize(ref Rlp.ValueDecoderContext ctx) =>
+        new(ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeByteArray(RlpLimit), limit: RlpLimit));
 
     public int GetLength(NodeDataMessage message, out int contentLength)
     {

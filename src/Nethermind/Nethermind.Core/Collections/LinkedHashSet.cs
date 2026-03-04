@@ -72,7 +72,7 @@ namespace Nethermind.Core.Collections
             T[] ts = new T[Count];
             CopyTo(ts, 0);
             HashSet<T> set = other.ToHashSet();
-            foreach (T t in this.ToArray())
+            foreach (T t in ts)
             {
                 if (!set.Contains(t))
                 {

@@ -54,7 +54,7 @@ namespace Nethermind.Trie
                 Debug.Assert(nodeRef is not null,
                     "Extension child is null when encoding.");
 
-                nodeRef.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
+                nodeRef.ResolveKey(tree, ref path, bufferPool: bufferPool);
                 path.TruncateMut(previousLength);
 
                 int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
@@ -137,7 +137,7 @@ namespace Nethermind.Trie
                 Metrics.TreeNodeRlpEncodings++;
 
                 const int valueRlpLength = 1;
-                int contentLength = valueRlpLength + (UseParallel(canBeParallel) ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool) : GetChildrenRlpLengthForBranch(tree, ref path, item, pool));
+                int contentLength = valueRlpLength + (UseParallel(canBeParallel, item) ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool) : GetChildrenRlpLengthForBranch(tree, ref path, item, pool));
                 int sequenceLength = Rlp.LengthOfSequence(contentLength);
                 SpanSource result = pool.SafeRentBuffer(sequenceLength);
                 Span<byte> resultSpan = result.Span;
@@ -148,7 +148,26 @@ namespace Nethermind.Trie
 
                 return result;
 
-                static bool UseParallel(bool canBeParallel) => Environment.ProcessorCount > 1 && canBeParallel;
+                static bool UseParallel(bool canBeParallel, TrieNode item)
+                {
+                    if (Environment.ProcessorCount <= 1 || !canBeParallel)
+                    {
+                        return false;
+                    }
+
+                    const int MinChildrenForParallel = 4;
+                    int nonNullChildren = 0;
+                    for (int i = 0; i < BranchesCount; i++)
+                    {
+                        object? data = item._nodeData[i];
+                        if (data is not null && !ReferenceEquals(data, _nullNode) && ++nonNullChildren >= MinChildrenForParallel)
+                        {
+                            return true;
+                        }
+                    }
+
+                    return false;
+                }
             }
 
             private static int GetChildrenRlpLengthForBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool)
@@ -188,7 +207,7 @@ namespace Nethermind.Trie
                             TreePath path = state.rootPath;
                             path.AppendMut(i);
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode.ResolveKey(state.tree, ref path, isRoot: false, bufferPool: state.bufferPool);
+                            childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool);
                             state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
 
@@ -220,7 +239,7 @@ namespace Nethermind.Trie
                     {
                         path.AppendMut(i);
                         TrieNode childNode = Unsafe.As<TrieNode>(data);
-                        childNode.ResolveKey(tree, ref path, isRoot: false, bufferPool: bufferPool);
+                        childNode.ResolveKey(tree, ref path, bufferPool: bufferPool);
                         path.TruncateOne();
                         totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                     }
@@ -256,7 +275,7 @@ namespace Nethermind.Trie
                             path.AppendMut(i);
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode.ResolveKey(state.tree, ref path, isRoot: false, bufferPool: state.bufferPool);
+                            childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool);
                             state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
 
@@ -299,7 +318,7 @@ namespace Nethermind.Trie
                             path.AppendMut(i);
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode.ResolveKey(tree, ref path, isRoot: false, bufferPool: bufferPool);
+                            childNode.ResolveKey(tree, ref path, bufferPool: bufferPool);
                             path.TruncateOne();
                             totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
@@ -343,7 +362,7 @@ namespace Nethermind.Trie
                         path.AppendMut(i);
                         Debug.Assert(data is TrieNode, "Data is not TrieNode");
                         TrieNode childNode = Unsafe.As<TrieNode>(data);
-                        childNode!.ResolveKey(tree, ref path, isRoot: false, bufferPool: bufferPool);
+                        childNode!.ResolveKey(tree, ref path, bufferPool: bufferPool);
                         path.TruncateOne();
 
                         hash = childNode.Keccak;
@@ -392,7 +411,7 @@ namespace Nethermind.Trie
                             path.AppendMut(i);
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode!.ResolveKey(tree, ref path, isRoot: false, bufferPool: bufferPool);
+                            childNode!.ResolveKey(tree, ref path, bufferPool: bufferPool);
                             path.TruncateOne();
 
                             hash = childNode.Keccak;

@@ -195,7 +195,7 @@ namespace Nethermind.Network
                     if (!_peerStorage.AnyPendingChange())
                     {
                         if (_logger.IsTrace) _logger.Trace("No changes in peer storage, skipping commit.");
-                        return;
+                        continue;
                     }
 
                     _peerStorage.Commit();

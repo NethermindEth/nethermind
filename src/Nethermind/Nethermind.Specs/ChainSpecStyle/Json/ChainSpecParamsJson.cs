@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -17,8 +16,7 @@ public class ChainSpecParamsJson
     public ulong? ChainId { get; set; }
     public ulong? NetworkId { get; set; }
 
-    [JsonPropertyName("registrar")]
-    public Address EnsRegistrar { get; set; }
+    public Address Registrar { get; set; }
 
     public long? GasLimitBoundDivisor { get; set; }
 
@@ -148,6 +146,7 @@ public class ChainSpecParamsJson
     public Address Eip4788ContractAddress { get; set; }
     public ulong? Eip2935TransitionTimestamp { get; set; }
     public Address Eip2935ContractAddress { get; set; }
+    public long? Eip2935RingBufferSize { get; set; }
     public UInt256? Eip4844BlobGasPriceUpdateFraction { get; set; }
     public UInt256? Eip4844MinBlobGasPrice { get; set; }
     public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }

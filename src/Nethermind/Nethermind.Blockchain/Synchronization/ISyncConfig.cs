@@ -1,13 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Config;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Synchronization;
 
@@ -48,13 +45,10 @@ public interface ISyncConfig : IConfig
     string PivotTotalDifficulty { get; }
 
     [ConfigItem(Description = "The number of the pivot block for the Fast sync mode.", DefaultValue = "0")]
-    string PivotNumber { get; set; }
+    long PivotNumber { get; set; }
 
     [ConfigItem(Description = "The hash of the pivot block for the Fast sync mode.", DefaultValue = "null")]
     string? PivotHash { get; set; }
-
-    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
-    private long PivotNumberParsed => LongConverter.FromString(PivotNumber);
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
     UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
@@ -74,7 +68,7 @@ public interface ISyncConfig : IConfig
     public long AncientBodiesBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, AncientBodiesBarrier));
+    public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier));
 
     [ConfigItem(Description = $$"""
         The earliest receipt downloaded with fast sync when `{{nameof(DownloadReceiptsInFastSync)}}` is set to `true`. The actual value is determined as follows:
@@ -88,12 +82,12 @@ public interface ISyncConfig : IConfig
     public long AncientReceiptsBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+    public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
 
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }
 
-    [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between between 1 and 256.", DefaultValue = "8")]
+    [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between 1 and 256.", DefaultValue = "8")]
     int SnapSyncAccountRangePartitionCount { get; set; }
 
     [ConfigItem(Description = "Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. If `true`, the pivot number must be same one used originally as it's used as a cut-off point.", DefaultValue = "false")]
@@ -137,6 +131,9 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ Whether to enable snap serving. WARNING: Very slow on hash db layout. Default is to enable on halfpath layout.", DefaultValue = "null", HiddenFromDocs = true)]
     bool? SnapServingEnabled { get; set; }
+
+    [ConfigItem(Description = "The maximum depth (in blocks) for serving snap sync requests. Higher values allow serving requests for older blocks, useful for networks with fast block times like Arbitrum.", DefaultValue = "128")]
+    int SnapServingMaxDepth { get; set; }
 
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
     int MultiSyncModeSelectorLoopTimerMs { get; set; }

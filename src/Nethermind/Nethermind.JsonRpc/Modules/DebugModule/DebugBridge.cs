@@ -21,6 +21,7 @@ using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -186,9 +187,9 @@ public class DebugBridge : IDebugBridge
 
     public object GetConfigValue(string category, string name) => _configProvider.GetRawValue(category, name);
 
-    public SyncReportSymmary GetCurrentSyncStage()
+    public SyncReportSummary GetCurrentSyncStage()
     {
-        return new SyncReportSymmary
+        return new SyncReportSummary
         {
             CurrentStage = _syncModeSelector.Current.ToString()
         };
@@ -209,4 +210,49 @@ public class DebugBridge : IDebugBridge
         _tracer.TraceBadBlockToFile(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
     public Hash256? GetTransactionBlockHash(Hash256 transactionHash) => _receiptStorage.FindBlockHash(transactionHash);
+
+    public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
+    {
+        foreach (TransactionBundle bundle in bundles)
+        {
+            yield return GetBundleTrace(bundle, blockParameter, cancellationToken, gethTraceOptions);
+        }
+    }
+
+    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
+    {
+        foreach (TransactionForRpc txForRpc in bundle.Transactions)
+        {
+            GethLikeTxTrace? trace;
+            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true);
+            if (txResult.IsError)
+            {
+                trace = CreateFailTrace(txForRpc.Gas);
+            }
+            else
+            {
+                Transaction tx = txResult.Data;
+
+                try
+                {
+                    trace = _tracer.Trace(
+                        blockParameter,
+                        tx,
+                        gethTraceOptions ?? GethTraceOptions.Default,
+                        cancellationToken);
+                }
+                catch (Exception)
+                {
+                    trace = CreateFailTrace(tx.GasLimit);
+                }
+            }
+
+            if (trace is not null)
+            {
+                yield return trace;
+            }
+        }
+
+        static GethLikeTxTrace? CreateFailTrace(long? gasLimit) => new() { Failed = true, Gas = gasLimit ?? 0, ReturnValue = [] };
+    }
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -44,7 +43,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
         if (!getPayloadResult.ValidateFork(specProvider))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
-            return ResultWrapper<TGetPayloadResult?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
+            return ResultWrapper<TGetPayloadResult?>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
         }
 
         if (_logger.IsInfo) _logger.Info($"GetPayloadV{apiVersion} result: {block.Header.ToString(BlockHeader.Format.Short)}.");

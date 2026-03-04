@@ -18,13 +18,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Evm.State;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -242,7 +237,7 @@ public class CensorshipDetectorTests
     {
         if (eip1559Enabled)
         {
-            _specProvider = Substitute.For<ISpecProvider>();
+            _specProvider = SpecProviderSubstitute.Create();
             _specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
         }
         else
@@ -262,8 +257,7 @@ public class CensorshipDetectorTests
             new ChainHeadInfoProvider(
                 new ChainHeadSpecProvider(_specProvider, _blockTree),
                 _blockTree,
-                _stateProvider,
-                new EthereumCodeInfoRepository()),
+                _stateProvider),
             new TxPoolConfig(),
             new TxValidator(_specProvider.ChainId),
             _logManager,

@@ -37,6 +37,7 @@ public class CompositeTxTracer : ITxTracer
             IsTracingStorage |= t.IsTracingStorage;
             IsTracingAccess |= t.IsTracingAccess;
             IsTracingFees |= t.IsTracingFees;
+            IsTracingLogs |= t.IsTracingLogs;
         }
     }
 
@@ -187,24 +188,12 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportOperationLogs(LogEntry log)
-    {
-        for (int index = 0; index < _txTracers.Count; index++)
-        {
-            ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingInstructions && innerTracer.IsTracingLogs)
-            {
-                innerTracer.ReportLog(log);
-            }
-        }
-    }
-
     public void ReportLog(LogEntry log)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingInstructions)
+            if (innerTracer.IsTracingLogs)
             {
                 innerTracer.ReportLog(log);
             }
@@ -324,7 +313,7 @@ public class CompositeTxTracer : ITxTracer
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingInstructions)
+            if (innerTracer.IsTracingStorage)
             {
                 innerTracer.ReportStorageChange(key, value);
             }
@@ -351,6 +340,30 @@ public class CompositeTxTracer : ITxTracer
             if (innerTracer.IsTracingOpLevelStorage)
             {
                 innerTracer.LoadOperationStorage(address, storageIndex, value);
+            }
+        }
+    }
+
+    public void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingOpLevelStorage)
+            {
+                innerTracer.SetOperationTransientStorage(address, storageIndex, newValue, currentValue);
+            }
+        }
+    }
+
+    public void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingOpLevelStorage)
+            {
+                innerTracer.LoadOperationTransientStorage(address, storageIndex, value);
             }
         }
     }
@@ -487,7 +500,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
+    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {

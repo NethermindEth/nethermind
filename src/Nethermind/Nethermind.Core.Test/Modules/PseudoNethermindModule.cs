@@ -2,21 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Timers;
-using Nethermind.Crypto;
-using Nethermind.Evm;
-using Nethermind.Evm.State;
+using Nethermind.Db;
 using Nethermind.Init.Modules;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
@@ -24,9 +19,12 @@ using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
+using NUnit.Framework;
 using Module = Autofac.Module;
 
 namespace Nethermind.Core.Test.Modules;
@@ -40,36 +38,51 @@ namespace Nethermind.Core.Test.Modules;
 /// <param name="spec"></param>
 public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvider, ILogManager logManager) : Module
 {
+    public static bool TestUseFlat = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
+
     protected override void Load(ContainerBuilder builder)
     {
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        if (TestUseFlat)
+        {
+            ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
+            if (syncConfig.FastSync || syncConfig.SnapSync)
+            {
+                Assert.Ignore("Flat does not work with fast sync or snap sync");
+            }
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
+        }
 
         base.Load(builder);
         builder
             .AddModule(new NethermindModule(spec, configProvider, logManager))
             .AddModule(new PseudoNetworkModule())
-            .AddModule(new BlockTreeModule())
             .AddModule(new TestBlockProcessingModule())
 
             // Environments
-            .AddSingleton<ITimerFactory, TimerFactory>()
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(
                 blockProcessingContext.BranchProcessor,
                 chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 logManager))
-            .AddSingleton<IFileSystem>(new FileSystem())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
-            .AddSingleton<ICryptoRandom>(new CryptoRandom())
-
             .AddSingleton<ISignerStore>(NullSigner.Instance)
             .AddSingleton<IKeyStore>(Substitute.For<IKeyStore>())
             .AddSingleton<IWallet, DevWallet>()
             .AddSingleton<ITxSender>(Substitute.For<ITxSender>())
+
+            // Flatdb (if used) need a more complete memcolumndb implementation with snapshots and sorted view.
+            .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new TestMemColumnsDb<FlatDbColumns>())
+            .AddDecorator<IFlatDbManager, FlatDbManagerTestCompat>()
+            .Intercept<IFlatDbConfig>((flatDbConfig) =>
+            {
+                // Dont want to make it very slow
+                flatDbConfig.TrieWarmerWorkerCount = 2;
+            })
 
             // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()

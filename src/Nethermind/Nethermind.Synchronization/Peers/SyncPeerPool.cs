@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -14,6 +15,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -56,10 +58,11 @@ namespace Nethermind.Synchronization.Peers
         private readonly CancellationTokenSource _refreshLoopCancellation = new();
         private Task? _refreshLoopTask;
 
-        private readonly ManualResetEvent _signals = new(true);
+        private volatile TaskCompletionSource _signal = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(DefaultUpgradeIntervalInMs);
         private Timer? _upgradeTimer;
 
+        [UseConstructorForDependencyInjection]
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
             IBetterPeerStrategy betterPeerStrategy,
@@ -240,7 +243,11 @@ namespace Nethermind.Synchronization.Peers
             }
 
             PeerInfo peerInfo = new(syncPeer);
-            _peers.TryAdd(syncPeer.Node.Id, peerInfo);
+            if (!_peers.TryAdd(syncPeer.Node.Id, peerInfo))
+            {
+                return;
+            }
+
             UpdatePeerCountMetric(peerInfo.PeerClientType, 1);
 
             if (syncPeer.IsPriority)
@@ -317,32 +324,43 @@ namespace Nethermind.Synchronization.Peers
             int timeoutMilliseconds = 0,
             CancellationToken cancellationToken = default)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return SyncPeerAllocation.FailedAllocation;
+            }
+
             int tryCount = 1;
-            DateTime startTime = DateTime.UtcNow;
+            long timeStamp = Stopwatch.GetTimestamp();
 
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _refreshLoopCancellation.Token);
 
             SyncPeerAllocation allocation = new(allocationContexts, _isAllocatedChecks);
             while (true)
             {
+                // Snapshot the signal task before attempting allocation so that any
+                // signal fired during or after TryAllocateOnce is already on this task.
+                Task signal = _signal.Task;
+
                 if (TryAllocateOnce(peerAllocationStrategy, allocationContexts, allocation))
                 {
                     return allocation;
                 }
 
+                long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(timeStamp).TotalMilliseconds;
                 bool timeoutReached = timeoutMilliseconds == 0
-                                      || (DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMilliseconds;
+                                      || elapsedMilliseconds < 0
+                                      || elapsedMilliseconds > timeoutMilliseconds;
                 if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
 
                 int waitTime = 10 * tryCount++;
-                waitTime = Math.Min(waitTime, timeoutMilliseconds);
+                waitTime = Math.Min(waitTime, timeoutMilliseconds - (int)elapsedMilliseconds);
 
-                if (waitTime > 0 && !_signals.SafeWaitHandle.IsClosed)
+                if (waitTime > 0)
                 {
-                    await _signals.WaitOneAsync(waitTime, cts.Token);
-                    if (!_signals.SafeWaitHandle.IsClosed)
+                    await Task.WhenAny(signal, Task.Delay(waitTime, cts.Token));
+                    if (cts.IsCancellationRequested)
                     {
-                        _signals.Reset(); // without this we have no delay
+                        return SyncPeerAllocation.FailedAllocation;
                     }
                 }
             }
@@ -428,7 +446,6 @@ namespace Nethermind.Synchronization.Peers
             }
 
             if (_logger.IsInfo) _logger.Info("Exiting sync peer refresh loop");
-            await Task.CompletedTask;
         }
 
         private void StartUpgradeTimer()
@@ -522,16 +539,19 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
 
-            worstPeer?.SyncPeer.Disconnect(DisconnectReason.DropWorstPeer, $"PEER REVIEW / {worstReason}");
+            if (worstPeer is null)
+            {
+                return 0;
+            }
+
+            worstPeer.SyncPeer.Disconnect(DisconnectReason.DropWorstPeer, $"PEER REVIEW / {worstReason}");
             return 1;
         }
 
         public void SignalPeersChanged()
         {
-            if (!_signals.SafeWaitHandle.IsClosed)
-            {
-                _signals.Set();
-            }
+            Interlocked.Exchange(ref _signal, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))
+                .TrySetResult();
         }
 
         private async Task ExecuteRefreshTask(RefreshTotalDiffTask refreshTotalDiffTask, CancellationToken token)
@@ -695,7 +715,6 @@ namespace Nethermind.Synchronization.Peers
             _peerRefreshQueue.Writer.TryComplete();
             _refreshLoopCancellation.Dispose();
             _refreshLoopTask?.Dispose();
-            _signals.Dispose();
             _upgradeTimer?.Dispose();
         }
     }

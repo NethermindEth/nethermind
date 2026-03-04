@@ -31,8 +31,6 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(nodeStorage, address, writeFlags);
 
-    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => nodeStorage.KeyExists(address, path, keccak);
-
     public class Committer(INodeStorage nodeStorage, Hash256? address, WriteFlags writeFlags) : ICommitter
     {
         INodeStorage.IWriteBatch _writeBatch = nodeStorage.StartWriteBatch();
@@ -42,21 +40,20 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
             _writeBatch.Dispose();
         }
 
-        public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo)
+        public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
-            if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
+            if (!node.IsBoundaryProofNode)
             {
-                TrieNode node = nodeCommitInfo.Node;
-
                 if (node.Keccak is null)
                 {
                     ThrowUnknownHash(node);
                 }
 
-                TrieNode currentNode = nodeCommitInfo.Node;
-                currentNode.IsPersisted = true;
-                _writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.Span, writeFlags);
+                node.IsPersisted = true;
+                _writeBatch.Set(address, path, node.Keccak, node.FullRlp.Span, writeFlags);
             }
+
+            return node;
         }
 
         [DoesNotReturn, StackTraceHidden]

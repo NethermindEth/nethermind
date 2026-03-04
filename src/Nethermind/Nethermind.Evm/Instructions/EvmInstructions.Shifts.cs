@@ -3,9 +3,11 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
+
 using Int256;
 
 internal static partial class EvmInstructions
@@ -37,22 +39,24 @@ internal static partial class EvmInstructions
     /// The operation pops the shift amount and the value to shift, unless the shift amount is 256 or more.
     /// In that case, the value operand is discarded and zero is pushed as the result.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpShift">The specific shift operation (e.g. left or right shift).</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gas">The gas state which is updated by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the operation completes successfully;
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if there are insufficient stack elements.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionShift<TOpShift, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionShift<TGasPolicy, TOpShift, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
     {
         // Deduct gas cost specific to the shift operation.
-        gasAvailable -= TOpShift.GasCost;
+        TGasPolicy.Consume(ref gas, TOpShift.GasCost);
 
         // Pop the shift amount from the stack.
         if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
@@ -84,20 +88,22 @@ internal static partial class EvmInstructions
     /// Pops a shift amount and a value from the stack, interprets the value as signed,
     /// and performs an arithmetic right shift.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <param name="vm">The virtual machine instance (unused in the operation logic).</param>
     /// <param name="stack">The EVM stack used for operands and result storage.</param>
-    /// <param name="gasAvailable">Reference to the available gas, reduced by the operation's cost.</param>
+    /// <param name="gas">The gas state which is updated by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if successful; otherwise, <see cref="EvmExceptionType.StackUnderflow"/>
     /// if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSar<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSar<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for the arithmetic shift operation.
-        gasAvailable -= GasCostOf.VeryLow;
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the shift amount and the value to be shifted.
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;

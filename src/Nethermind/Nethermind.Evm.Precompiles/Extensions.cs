@@ -73,7 +73,7 @@ public static class Extensions
 
         if (spec.IsBeaconBlockRootAvailable) systemContracts[Eip4788Constants.ContractAddressKey] = Eip4788Constants.BeaconRootsAddress;
         if (spec.ConsolidationRequestsEnabled) systemContracts[Eip7251Constants.ContractAddressKey] = Eip7251Constants.ConsolidationRequestPredeployAddress;
-        if (spec.DepositsEnabled) systemContracts[Eip6110Constants.ContractAddressKey] = spec.DepositContractAddress;
+        if (spec.DepositsEnabled) systemContracts[Eip6110Constants.ContractAddressKey] = spec.DepositContractAddress!;
         if (spec.IsEip2935Enabled) systemContracts[Eip2935Constants.ContractAddressKey] = Eip2935Constants.BlockHashHistoryAddress;
         if (spec.WithdrawalRequestsEnabled) systemContracts[Eip7002Constants.ContractAddressKey] = Eip7002Constants.WithdrawalRequestPredeployAddress;
 

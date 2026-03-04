@@ -16,7 +16,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -36,7 +35,7 @@ namespace Nethermind.Synchronization.Blocks
         private static readonly IPeerAllocationStrategy EstimatedAllocationStrategy =
             BlocksSyncPeerAllocationStrategyFactory.AllocationStrategy;
 
-        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>() ?? throw new InvalidOperationException();
+        private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>() ?? throw new InvalidOperationException();
 
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
@@ -162,6 +161,8 @@ namespace Nethermind.Synchronization.Blocks
                 if (cancellation.IsCancellationRequested) return null; // check before every heavy operation
                 if (headers is null || headers.Count <= 1) return null;
 
+                if (_logger.IsTrace) _logger.Trace($"Prepared request from block {headers[0].Number} to {headers[^1].Number}");
+
                 if (previousStartingHeaderNumber == headers[0].Number)
                 {
                     // When the block is suggested right between a `NewPayload` and `ForkChoiceUpdatedHandler` the block is not added because it was added already
@@ -169,6 +170,22 @@ namespace Nethermind.Synchronization.Blocks
                     if (_logger.IsDebug) _logger.Debug($"Forward header starting block number did not changed from {previousStartingHeaderNumber}.");
                     return null;
                 }
+
+                for (int i = 1; i < headers.Count; i++)
+                {
+                    if (headers[i].Number - 1 != headers[i - 1].Number)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Non consecutive header sequence from forward header provider. {headers[i].Number} vs {headers[i - 1].Number + 1}");
+                        return null;
+                    }
+
+                    if (headers[i].ParentHash != headers[i - 1].Hash)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Unexpected parent hash from forward header provider {headers[i].ParentHash} vs {headers[i - 1].Hash}");
+                        return null;
+                    }
+                }
+
                 previousStartingHeaderNumber = headers[0].Number;
 
                 (bool shouldProcess, bool downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[1].Number, originalShouldProcess, originalDownloadReceiptOpts);
@@ -195,10 +212,10 @@ namespace Nethermind.Synchronization.Blocks
                     BlockEntry entry = satisfiedEntry[blockIndex];
                     Block currentBlock = entry.Block!;
 
-                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out string? errorMessage))
+                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, entry.ParentHeader, out string? errorMessage))
                     {
                         PeerInfo peer = entry.PeerInfo;
-                        if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
+                        if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer}, {errorMessage}");
 
                         if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {currentBlock.Header.ToString(BlockHeader.Format.Short)}");
                         entry.RetryBlockRequest();
@@ -285,7 +302,6 @@ namespace Nethermind.Synchronization.Blocks
                 BlockEntry? entry;
                 while (!_downloadRequests.TryGetValue(blockHeader.Hash!, out entry))
                 {
-                    blockHeader.MaybeParent = new WeakReference<BlockHeader>(parentHeader);
                     _downloadRequests.TryAdd(blockHeader.Hash, new BlockEntry(parentHeader, blockHeader, null, null, null));
                 }
                 parentHeader = blockHeader;
@@ -366,7 +382,7 @@ namespace Nethermind.Synchronization.Blocks
             response.OwnedBodies?.Disown();
 
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
-            using ArrayPoolList<Block> blocks = new ArrayPoolList<Block>(response.BodiesRequests?.Count ?? 0);
+            using ArrayPoolListRef<Block> blocks = new(response.BodiesRequests?.Count ?? 0);
             int bodiesCount = 0;
             int receiptsCount = 0;
 
@@ -393,7 +409,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (!_blockValidator.ValidateBodyAgainstHeader(entry.Header, body, out string errorMessage))
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
+                    if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer}, {errorMessage}");
 
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {entry.Header.ToString(BlockHeader.Format.Short)}");
                     result = SyncResponseHandlingResult.LesserQuality;
@@ -480,7 +496,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (result == SyncResponseHandlingResult.OK)
             {
-                // Request and body does not have the same size so this hueristic is wrong.
+                // Request and body does not have the same size so this heuristic is wrong.
                 if (bodiesCount + receiptsCount == 0)
                 {
                     // Trigger sleep
@@ -495,7 +511,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private bool ValidateReceiptsRoot(Block block, TxReceipt[] blockReceipts)
         {
-            Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptDecoder);
+            Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptEncoder);
             return receiptsRoot == block.ReceiptsRoot;
         }
 

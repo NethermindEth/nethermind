@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 
 namespace Nethermind.Evm;
+
 public static class BitmapHelper
 {
     private static readonly byte[] _lookup =
@@ -47,7 +48,7 @@ public static class BitmapHelper
             bitVector.SetN(pc, _lookup[bitCount]);
             pc += bitCount;
         }
-        else
+        else if (bitCount == 1)
         {
             bitVector.Set1(pc);
             pc += bitCount;

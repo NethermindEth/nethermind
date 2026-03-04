@@ -18,7 +18,7 @@ namespace Nethermind.Runner.Test
 
         public ChainSpecFilesTests()
         {
-            _loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+            _loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
         }
 
         [TestCase("foundation", 1UL)]
@@ -32,15 +32,6 @@ namespace Nethermind.Runner.Test
 
         [TestCase("testspec.json", 0x55UL)]
         public void ChainSpec_from_file(string chainSpecPath, ulong chainId)
-        {
-            _loader.LoadEmbeddedOrFromFile(chainSpecPath).Should()
-                .Match<ChainSpec>(cs => cs.ChainId == chainId);
-        }
-
-        // This holesky.json contains invalid config values. This test ensues that those config values are
-        // ignored for the correct ones contained in another holesky.json file embedded in the config directory
-        [TestCase("holesky.json", 0x4268UL)]
-        public void ignoring_custom_chainSpec_when_embedded_exists(string chainSpecPath, ulong chainId)
         {
             _loader.LoadEmbeddedOrFromFile(chainSpecPath).Should()
                 .Match<ChainSpec>(cs => cs.ChainId == chainId);

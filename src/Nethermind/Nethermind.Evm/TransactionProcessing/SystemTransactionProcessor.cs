@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -11,7 +12,8 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
-public sealed class SystemTransactionProcessor : TransactionProcessorBase
+public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcessorBase<TGasPolicy>
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private readonly bool _isAura;
 
@@ -21,12 +23,14 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
     /// </summary>
     private const int OriginalValidate = 2 << 30;
 
-    public SystemTransactionProcessor(ISpecProvider? specProvider,
+    public SystemTransactionProcessor(
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+        ISpecProvider? specProvider,
         IWorldState? worldState,
-        IVirtualMachine? virtualMachine,
+        IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
-        : base(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+        : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
     {
         _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
     }
@@ -38,14 +42,25 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
             WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         }
 
-        return base.Execute(tx, tracer, (opts != ExecutionOptions.SkipValidation && !opts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
+        ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
+        return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
             ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }
 
-    protected override IReleaseSpec GetSpec(BlockHeader header) => SystemTransactionReleaseSpec.GetReleaseSpec(base.GetSpec(header), _isAura, header.IsGenesis);
+    protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
+        out UInt256 blobBaseFee)
+    {
+        premiumPerGas = 0;
+        senderReservedGasPayment = 0;
+        blobBaseFee = 0;
+        return TransactionResult.Ok;
+    }
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired, bool validate) => TransactionResult.Ok;
+    protected override IReleaseSpec GetSpec(BlockHeader header) => base.GetSpec(header).ForSystemTransaction(_isAura, header.IsGenesis);
+
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired) => TransactionResult.Ok;
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) => TransactionResult.Ok;
 
@@ -61,12 +76,15 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
         }
     }
 
-    protected override IntrinsicGas CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) => tx is SystemCall ? default : base.CalculateIntrinsicGas(tx, spec);
+    protected override IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
+        tx is SystemCall ? default : base.CalculateIntrinsicGas(tx, spec);
 
     protected override bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
     {
         Address? sender = tx.SenderAddress;
-        return (sender is null || (spec.IsEip158IgnoredAccount(sender) && !WorldState.AccountExists(sender)))
+        return (sender is null || (sender == spec.Eip158IgnoredAccount && !WorldState.AccountExists(sender)))
                && base.RecoverSenderIfNeeded(tx, spec, opts, in effectiveGasPrice);
     }
+
+    protected override void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec) { }
 }

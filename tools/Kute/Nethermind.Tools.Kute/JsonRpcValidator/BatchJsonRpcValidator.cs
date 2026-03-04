@@ -46,7 +46,7 @@ public sealed class BatchJsonRpcValidator : IJsonRpcValidator
                     foreach (var (req, res) in requests.Zip(responses))
                     {
                         if (req.Id != res.Id) return false;
-                        if (_singleValidator.IsInvalid(req!, res)) return false;
+                        if (_singleValidator.IsInvalid(req, res)) return false;
                     }
 
                     return true;

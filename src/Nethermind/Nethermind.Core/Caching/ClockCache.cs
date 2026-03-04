@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -10,15 +10,19 @@ using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 
-using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
-
 namespace Nethermind.Core.Caching;
 
-public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition = null) : ClockCacheBase<TKey>(maxCapacity)
+public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition = null, IEqualityComparer<TKey>? comparer = null) : ClockCacheBase<TKey>(maxCapacity)
     where TKey : struct, IEquatable<TKey>
 {
-    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? CollectionExtensions.LockPartitions, maxCapacity);
+#if ZK_EVM
+    private readonly int? _lockPartition = lockPartition;
+    private readonly Dictionary<TKey, LruCacheItem> _cacheMap = new(maxCapacity, comparer ?? throw new ArgumentNullException(nameof(comparer)));
+    private readonly MockLock _lock = new();
+#else
+    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? Collections.CollectionExtensions.LockPartitions, maxCapacity, GenericEqualityComparer.GetOptimized(comparer));
     private readonly McsLock _lock = new();
+#endif
 
     public TValue Get(TKey key)
     {
@@ -119,6 +123,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
                 {
                     ThrowInvalidOperationException();
                 }
+
                 _count--;
                 break;
             }
@@ -132,13 +137,19 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
         [DoesNotReturn]
         void ThrowInvalidOperationException()
         {
-            throw new InvalidOperationException($"{nameof(ClockCache<TKey, TValue>)} removing item {KeyToOffset[position]} at position {position} that doesn't exist");
+            throw new InvalidOperationException($"{nameof(ClockCache<,>)} removing item {KeyToOffset[position]} at position {position} that doesn't exist");
         }
     }
 
-    public bool Delete(TKey key)
+    public bool Delete(TKey key) => Delete(key, out _);
+
+    public bool Delete(TKey key, [NotNullWhen(true)] out TValue? value)
     {
-        if (MaxCapacity == 0) return false;
+        if (MaxCapacity == 0)
+        {
+            value = default;
+            return false;
+        }
 
         using var lockRelease = _lock.Acquire();
 
@@ -148,9 +159,11 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
             KeyToOffset[ov.Offset] = default;
             ClearAccessed(ov.Offset);
             FreeOffsets.Enqueue(ov.Offset);
-            return true;
+            value = ov.Value;
+            return ov.Value != null;
         }
 
+        value = default;
         return false;
     }
 

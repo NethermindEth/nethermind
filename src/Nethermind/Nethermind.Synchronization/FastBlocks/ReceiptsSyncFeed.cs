@@ -28,7 +28,6 @@ using Nethermind.History;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-
     public class ReceiptsSyncFeed : BarrierSyncFeed<ReceiptsSyncBatch?>
     {
         protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedReceiptBlockNumber;
@@ -329,7 +328,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 long? cutoff = historyPruner?.CutoffBlockNumber;
                 cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
                 bool shouldDownload = !hasReceipt && (cutoff is null || info.BlockNumber >= cutoff);
-                if (!shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
+                if (!shouldDownload) syncReport.FastBlocksReceipts.IncrementSkipped();
                 return shouldDownload;
             }
         }

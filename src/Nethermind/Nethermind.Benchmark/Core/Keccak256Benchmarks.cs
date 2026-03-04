@@ -17,7 +17,7 @@ namespace Nethermind.Benchmarks.Core
 
         private byte[][] _scenarios =
         {
-            new byte[]{},
+            Array.Empty<byte>(),
             new byte[]{1},
             new byte[100000],
             TestItem.AddressA.Bytes

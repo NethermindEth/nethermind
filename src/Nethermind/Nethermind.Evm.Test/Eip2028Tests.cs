@@ -23,8 +23,8 @@ namespace Nethermind.Evm.Test
             public void non_zero_transaction_data_cost_should_be_16()
             {
                 Transaction transaction = new Transaction { Data = new byte[] { 1 }, To = Address.Zero };
-                IntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-                cost.Should().Be(new IntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028,
+                EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+                cost.Should().Be(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028,
                     FloorGas: 0));
             }
 
@@ -32,8 +32,8 @@ namespace Nethermind.Evm.Test
             public void zero_transaction_data_cost_should_be_4()
             {
                 Transaction transaction = new Transaction { Data = new byte[] { 0 }, To = Address.Zero };
-                IntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-                cost.Should().Be(new IntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataZero,
+                EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+                cost.Should().Be(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataZero,
                     FloorGas: 0));
             }
         }
@@ -47,8 +47,8 @@ namespace Nethermind.Evm.Test
             public void non_zero_transaction_data_cost_should_be_68()
             {
                 Transaction transaction = new Transaction { Data = new byte[] { 1 }, To = Address.Zero };
-                IntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-                cost.Should().Be(new IntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataNonZero,
+                EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+                cost.Should().Be(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataNonZero,
                     FloorGas: 0));
             }
 
@@ -56,8 +56,8 @@ namespace Nethermind.Evm.Test
             public void zero_transaction_data_cost_should_be_4()
             {
                 Transaction transaction = new Transaction { Data = new byte[] { 0 }, To = Address.Zero };
-                IntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-                cost.Should().Be(new IntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataZero,
+                EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+                cost.Should().Be(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataZero,
                     FloorGas: 0));
             }
         }

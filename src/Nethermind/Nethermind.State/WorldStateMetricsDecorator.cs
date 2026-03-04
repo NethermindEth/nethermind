@@ -62,6 +62,10 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default) =>
         innerState.CreateAccountIfNotExists(address, in balance, in nonce);
+
+    public void CreateEmptyAccountIfDeleted(Address address) =>
+        innerState.CreateEmptyAccountIfDeleted(address);
+
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false) =>
         innerState.InsertCode(address, in codeHash, code, spec, isGenesis);
 
@@ -73,9 +77,6 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec) =>
         innerState.SubtractFromBalance(address, in balanceChange, spec);
-
-    public void UpdateStorageRoot(Address address, Hash256 storageRoot)
-        => innerState.UpdateStorageRoot(address, storageRoot);
 
     public void IncrementNonce(Address address, UInt256 delta) => innerState.IncrementNonce(address, delta);
 
@@ -124,6 +125,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => innerState.BeginScope(baseBlock);
     public bool IsInScope => innerState.IsInScope;
+    public IWorldStateScopeProvider ScopeProvider => innerState.ScopeProvider;
 
     public ref readonly UInt256 GetBalance(Address account) => ref innerState.GetBalance(account);
 
@@ -132,4 +134,10 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
     public ref readonly ValueHash256 GetCodeHash(Address address) => ref innerState.GetCodeHash(address);
 
     ValueHash256 IAccountStateProvider.GetCodeHash(Address address) => innerState.GetCodeHash(address);
+
+    UInt256 IAccountStateProvider.GetNonce(Address address) => innerState.GetNonce(address);
+
+    bool IAccountStateProvider.IsStorageEmpty(Address address) => innerState.IsStorageEmpty(address);
+
+    bool IAccountStateProvider.HasCode(Address address) => innerState.HasCode(address);
 }

@@ -28,16 +28,16 @@ internal class Program
         public static Option<bool> EofTest { get; } =
             new("--eofTest", "-e") { Description = "Set test as eofTest. if not, it will be by default assumed a state test." };
         public static Option<bool> TraceAlways { get; } =
-            new("--trace", "-t") { Description = "Set to always trace (by default traces are only generated for failing tests). [Only for State Test]" };
+            new("--trace", "-t") { Description = "Set to always trace (by default traces are only generated for failing tests)." };
 
         public static Option<bool> TraceNever { get; } =
             new("--neverTrace", "-n") { Description = "Set to never trace (by default traces are only generated for failing tests). [Only for State Test]" };
 
         public static Option<bool> ExcludeMemory { get; } =
-            new("--memory", "-m") { Description = "Exclude memory trace. [Only for State Test]" };
+            new("--memory", "-m") { Description = "Exclude memory trace." };
 
         public static Option<bool> ExcludeStack { get; } =
-            new("--stack", "-s") { Description = "Exclude stack trace. [Only for State Test]" };
+            new("--stack", "-s") { Description = "Exclude stack trace." };
 
         public static Option<bool> Wait { get; } =
             new("--wait", "-w") { Description = "Wait for input after the test run." };
@@ -71,9 +71,7 @@ internal class Program
         ];
         rootCommand.SetAction(Run);
 
-        CommandLineConfiguration configuration = new(rootCommand);
-
-        return await configuration.InvokeAsync(args);
+        return await rootCommand.Parse(args).InvokeAsync();
     }
 
     private static async Task<int> Run(ParseResult parseResult, CancellationToken cancellationToken)
@@ -96,16 +94,32 @@ internal class Program
         while (!string.IsNullOrWhiteSpace(input))
         {
             if (parseResult.GetValue(Options.BlockTest))
-                await RunBlockTest(input, source => new BlockchainTestsRunner(source, parseResult.GetValue(Options.Filter), chainId));
+            {
+                await RunBlockTest(input, source => new BlockchainTestsRunner(
+                    source,
+                    parseResult.GetValue(Options.Filter),
+                    chainId,
+                    parseResult.GetValue(Options.TraceAlways),
+                    !parseResult.GetValue(Options.ExcludeMemory),
+                    parseResult.GetValue(Options.ExcludeStack)));
+            }
             else if (parseResult.GetValue(Options.EofTest))
-                RunEofTest(input, source => new EofTestsRunner(source, parseResult.GetValue(Options.Filter)));
+            {
+                RunEofTest(input, source => new EofTestsRunner(
+                    source,
+                    parseResult.GetValue(Options.Filter)));
+            }
             else
-                RunStateTest(input, source => new StateTestsRunner(source, whenTrace,
+            {
+                RunStateTest(input, source => new StateTestsRunner(
+                    source,
+                    whenTrace,
                     !parseResult.GetValue(Options.ExcludeMemory),
                     !parseResult.GetValue(Options.ExcludeStack),
                     chainId,
                     parseResult.GetValue(Options.Filter),
                     parseResult.GetValue(Options.EnableWarmup)));
+            }
 
 
             if (!parseResult.GetValue(Options.Stdin))

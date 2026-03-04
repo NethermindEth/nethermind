@@ -12,8 +12,7 @@ namespace Nethermind.Network
     {
         void AddSupportedCapability(Capability capability);
         void RemoveSupportedCapability(Capability capability);
-        void SendNewCapability(Capability capability); // TODO: remove as unused?
-        void AddProtocol(string code, Func<ISession, IProtocolHandler> factory);
+        void AddProtocol(string code, Func<ISession, int, IProtocolHandler> factory);
         int GetHighestProtocolVersion(string protocol);
     }
 }

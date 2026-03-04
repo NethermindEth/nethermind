@@ -6,9 +6,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting.Internal;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Runner.Monitoring;
@@ -36,6 +36,6 @@ public static class DataFeedExtensions
 
         _dataFeed = new DataFeed(txPool, specProvider, receiptFinder, blockTree, syncPeerPool, mainProcessingContext, logManager, lifetime.ApplicationStopped);
 
-        endpoints.MapGet("/data/events", _dataFeed.ProcessingFeedAsync);
+        endpoints.MapGet("data/events", _dataFeed.ProcessingFeedAsync);
     }
 }

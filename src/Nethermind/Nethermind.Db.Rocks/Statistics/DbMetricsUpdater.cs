@@ -89,7 +89,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         if (!string.IsNullOrEmpty(compactionStatsString))
         {
             ExtractStatsPerLevel(compactionStatsString);
-            ExctractIntervalCompaction(compactionStatsString);
+            ExtractIntervalCompaction(compactionStatsString);
         }
         else
         {
@@ -137,7 +137,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
     /// Example line:
     /// Interval compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
     /// </summary>
-    private void ExctractIntervalCompaction(string compactionStatsDump)
+    private void ExtractIntervalCompaction(string compactionStatsDump)
     {
         if (!string.IsNullOrEmpty(compactionStatsDump))
         {
@@ -154,7 +154,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
             }
             else
             {
-                logger.Warn($"Cannot find 'Interval compaction' stats for {dbName} database in the compation stats dump:{Environment.NewLine}{compactionStatsDump}");
+                logger.Warn($"Cannot find 'Interval compaction' stats for {dbName} database in the compaction stats dump:{Environment.NewLine}{compactionStatsDump}");
             }
         }
     }

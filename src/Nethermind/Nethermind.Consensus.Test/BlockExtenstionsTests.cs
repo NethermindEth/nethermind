@@ -10,7 +10,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Consensus.Test
 {
-    public class BlockExtenstionsTests
+    public class BlockExtensionsTests
     {
         [Test]
         public void Is_by_nethermind_node()

@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -172,7 +172,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportExtraGasPressure(long extraGasPressure) =>
         _currentTxTracer.ReportExtraGasPressure(extraGasPressure);
 
-    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells) =>
+    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) =>
         _currentTxTracer.ReportAccess(accessedAddresses, accessedStorageCells);
 
     public void SetOperationStack(TraceStack stack) =>
@@ -199,7 +199,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     protected int _currentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = new();
     protected Transaction? CurrentTx;
-    public IReadOnlyList<TxReceipt> TxReceipts => _txReceipts;
+    public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
     public TxReceipt LastReceipt => _txReceipts[^1];
     public bool IsTracingRewards => _otherTracer.IsTracingRewards;
 
@@ -216,7 +216,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             _txReceipts.RemoveAt(_txReceipts.Count - 1);
         }
 
-        Block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts.Last().GasUsedTotal : 0;
+        Block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
@@ -224,11 +224,6 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     public void StartNewBlockTrace(Block block)
     {
-        if (_otherTracer is null)
-        {
-            throw new InvalidOperationException("other tracer not set in receipts tracer");
-        }
-
         Block = block;
         _currentIndex = 0;
         _txReceipts.Clear();
@@ -262,10 +257,12 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
                 blockBloom.Accumulate(receipt.Bloom!);
             }
         }
+        _otherTracer = NullBlockTracer.Instance;
     }
 
     public void SetOtherTracer(IBlockTracer blockTracer)
     {
+        ArgumentNullException.ThrowIfNull(blockTracer);
         _otherTracer = blockTracer;
     }
 

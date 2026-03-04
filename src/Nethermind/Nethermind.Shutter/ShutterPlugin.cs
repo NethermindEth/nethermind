@@ -21,7 +21,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network;
@@ -59,8 +58,6 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
         if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
         return consensusPlugin.InitBlockProducer();
     }
-
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public IModule? Module => new ShutterPluginModule();
 }

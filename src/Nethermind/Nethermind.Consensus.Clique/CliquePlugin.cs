@@ -117,8 +117,6 @@ namespace Nethermind.Consensus.Clique
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
 
-        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
-
         private INethermindApi? _nethermindApi;
 
         private ISnapshotManager? _snapshotManager;

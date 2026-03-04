@@ -6,15 +6,10 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.ExecutionRequests;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -28,6 +23,7 @@ public class BranchProcessor(
     ISpecProvider specProvider,
     IWorldState stateProvider,
     IBeaconBlockRootHandler beaconBlockRootHandler,
+    IBlockhashProvider blockhashProvider,
     ILogManager logManager,
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
@@ -45,12 +41,6 @@ public class BranchProcessor(
 
     public event EventHandler<BlockEventArgs>? BlockProcessing;
 
-    public event EventHandler<TxProcessedEventArgs> TransactionProcessed
-    {
-        add => blockProcessor.TransactionProcessed += value;
-        remove => blockProcessor.TransactionProcessed -= value;
-    }
-
     private void PreCommitBlock(BlockHeader block)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {block.ToString(BlockHeader.Format.Short)} state root {block.StateRoot}");
@@ -61,7 +51,6 @@ public class BranchProcessor(
     {
         if (suggestedBlocks.Count == 0) return [];
 
-        BlockHeader? previousBranchStateRoot = baseBlock;
         Block suggestedBlock = suggestedBlocks[0];
 
         IDisposable? worldStateCloser = null;
@@ -69,10 +58,10 @@ public class BranchProcessor(
         {
             if (baseBlock is null && suggestedBlock.IsGenesis)
             {
-                // Super special ultra mega - I dont wanna deal with this right now - special case where genesis is handled
-                // specially from outside where the state are added from `GenesisLoader` but not part of the block processor
-                // but it still pass through the blocktree suggest to blockchain processor event chain
-                // Meaning dont set state when handling genesis.
+                // Super special ultra mega – I don't want to deal with this right now – special case where genesis is handled
+                // externally, where the state is added via `GenesisLoader` but not processed by the block processor
+                // even though it still passes through the block tree suggest to blockchain processor event chain.
+                // Meaning don't set state when handling genesis.
             }
             else
             {
@@ -84,21 +73,31 @@ public class BranchProcessor(
             worldStateCloser = stateProvider.BeginScope(baseBlock);
         }
 
-        // Start prewarming as early as possible
-        WaitForCacheClear();
-        IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-        (CancellationTokenSource? prewarmCancellation, Task? preWarmTask)
-            = PreWarmTransactions(suggestedBlock, baseBlock, spec);
+        CancellationTokenSource? backgroundCancellation = new();
+        Task? preWarmTask = null;
 
-        BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+        // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
+        // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
+        // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
+        void CancelBackgroundWork() => backgroundCancellation?.Cancel();
+        blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
-        BlockHeader? preBlockBaseBlock = baseBlock;
-
-        bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-        int blocksCount = suggestedBlocks.Count;
-        Block[] processedBlocks = new Block[blocksCount];
         try
         {
+            // Start prewarming as early as possible
+            WaitForCacheClear();
+            IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
+            preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
+            Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+
+            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+
+            BlockHeader? preBlockBaseBlock = baseBlock;
+
+            bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+            int blocksCount = suggestedBlocks.Count;
+            Block[] processedBlocks = new Block[blocksCount];
+
             for (int i = 0; i < blocksCount; i++)
             {
                 WaitForCacheClear();
@@ -110,10 +109,9 @@ public class BranchProcessor(
                 }
                 // If prewarmCancellation is not null it means we are in first iteration of loop
                 // and started prewarming at method entry, so don't start it again
-                if (prewarmCancellation is null)
-                {
-                    (prewarmCancellation, preWarmTask) = PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec);
-                }
+                backgroundCancellation ??= new CancellationTokenSource();
+                preWarmTask ??= PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
+                prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)
                 {
@@ -125,16 +123,7 @@ public class BranchProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
-                Block processedBlock;
-                TxReceipt[] receipts;
-
-                if (prewarmCancellation is not null)
-                {
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
-                    // Block is processed, we can cancel the prewarm task
-                    CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
-                }
-                else
+                if (preWarmTask is null)
                 {
                     // Even though we skip prewarming we still need to ensure the caches are cleared
                     CacheType result = preWarmer?.ClearCaches() ?? default;
@@ -142,8 +131,12 @@ public class BranchProcessor(
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
+
+                (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+
+                // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
+                CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
 
                 processedBlocks[i] = processedBlock;
 
@@ -165,16 +158,17 @@ public class BranchProcessor(
                 if (isCommitPoint && notReadOnly)
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                    previousBranchStateRoot = suggestedBlock.Header;
+                    BlockHeader previousBranchStateRoot = suggestedBlock.Header;
 
-                    worldStateCloser.Dispose();
+                    worldStateCloser?.Dispose();
                     worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot);
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
                 // Make sure the prewarm task is finished before we reset the state
-                preWarmTask?.GetAwaiter().GetResult();
-                preWarmTask = null;
+                WaitAndClear(ref preWarmTask);
+                prefetchBlockhash = null;
+
                 _stateProvider.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
@@ -188,30 +182,32 @@ public class BranchProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
-            CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
+            CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
             QueueClearCaches(preWarmTask);
-            preWarmTask?.GetAwaiter().GetResult();
+            WaitAndClear(ref preWarmTask);
             throw;
         }
         finally
         {
+            blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
             worldStateCloser?.Dispose();
+        }
+
+        static void WaitAndClear(ref Task? task)
+        {
+            task?.GetAwaiter().GetResult();
+            task = null;
         }
     }
 
-    private (CancellationTokenSource prewarmCancellation, Task preWarmTask) PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec)
-    {
-        if (preWarmer is null || suggestedBlock.Transactions.Length < 3) return (null, null);
-
-        CancellationTokenSource prewarmCancellation = new();
-        Task preWarmTask = preWarmer.PreWarmCaches(suggestedBlock,
-            preBlockBaseBlock,
-            spec,
-            prewarmCancellation.Token,
-            beaconBlockRootHandler);
-
-        return (prewarmCancellation, preWarmTask);
-    }
+    private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
+        suggestedBlock.Transactions.Length < 3
+            ? null
+            : preWarmer?.PreWarmCaches(suggestedBlock,
+                preBlockBaseBlock,
+                spec,
+                token,
+                beaconBlockRootHandler);
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 

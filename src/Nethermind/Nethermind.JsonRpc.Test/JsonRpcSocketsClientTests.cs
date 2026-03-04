@@ -27,6 +27,7 @@ using NUnit.Framework;
 namespace Nethermind.JsonRpc.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.Children)]
 public class JsonRpcSocketsClientTests
 {
     public class UsingIpc

@@ -77,7 +77,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         int blockCount = (int)_fileReader.BlockCount;
         using ArrayPoolList<(Hash256, UInt256)> blockHashes = new(blockCount, blockCount);
 
-        ConcurrentQueue<long> blockNumbers = new ConcurrentQueue<long>(EnumerateBlockNumber());
+        ConcurrentQueue<long> blockNumbers = new(EnumerateBlockNumber());
 
         using ArrayPoolList<Task> workers = Enumerable.Range(0, verifyConcurrency).Select((_) => Task.Run(async () =>
         {
@@ -88,7 +88,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
                 if (!blockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body, out string? error))
                 {
-                    throw new EraVerificationException($"Mismatched block body againts header: {error}. Block number {blockNumber}.");
+                    throw new EraVerificationException($"Mismatched block body against header: {error}. Block number {blockNumber}.");
                 }
 
                 if (!blockValidator.ValidateOrphanedBlock(err.Block, out error))
@@ -110,7 +110,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         await Task.WhenAll(workers.AsSpan());
 
         using AccumulatorCalculator calculator = new();
-        foreach (var valueTuple in blockHashes.AsSpan())
+        foreach ((Hash256, UInt256) valueTuple in blockHashes.AsSpan())
         {
             calculator.Add(valueTuple.Item1, valueTuple.Item2);
         }
@@ -178,8 +178,8 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
             position,
             static (buffer) => new UInt256(buffer.Span, isBigEndian: false),
             EntryTypes.TotalDifficulty,
-            out UInt256 currentTotalDiffulty);
-        header.TotalDifficulty = currentTotalDiffulty;
+            out UInt256 currentTotalDifficulty);
+        header.TotalDifficulty = currentTotalDifficulty;
 
         Block block = new Block(header, body);
         return new EntryReadResult(block, receipts);

@@ -11,6 +11,7 @@ using Nethermind.Era1.Exceptions;
 using NonBlocking;
 
 namespace Nethermind.Era1;
+
 public class EraStore : IEraStore
 {
     private readonly char[] _eraSeparator = ['-'];
@@ -78,22 +79,22 @@ public class EraStore : IEraStore
         IFileSystem fileSystem,
         string networkName,
         int maxEraSize,
-        ISet<ValueHash256>? trustedAcccumulators,
+        ISet<ValueHash256>? trustedAccumulators,
         string directory,
         int verifyConcurrency = 0
     )
     {
         _specProvider = specProvider;
         _blockValidator = blockValidator;
-        _trustedAccumulators = trustedAcccumulators;
+        _trustedAccumulators = trustedAccumulators;
         _maxEraFile = maxEraSize;
         _maxOpenFile = Environment.ProcessorCount * 2;
-        if (_verifyConcurrency == 0) _verifyConcurrency = Environment.ProcessorCount;
         _verifyConcurrency = verifyConcurrency;
+        if (_verifyConcurrency == 0) _verifyConcurrency = Environment.ProcessorCount;
 
         // Geth behaviour seems to be to always read the checksum and fail when its missing.
         _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))
-            .Select(static (chk) => new ValueHash256(chk))
+            .Select(static (chk) => EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry(chk))
             .ToArray();
 
         bool hasEraFile = false;
@@ -150,7 +151,7 @@ public class EraStore : IEraStore
 
             Task accumulatorTask = Task.Run(async () =>
             {
-                var eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, cancellation);
+                ValueHash256 eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, cancellation);
                 if (_trustedAccumulators != null && !_trustedAccumulators.Contains(eraAccumulator))
                 {
                     throw new EraVerificationException($"Unable to verify epoch {epoch}. Accumulator {eraAccumulator} not trusted");

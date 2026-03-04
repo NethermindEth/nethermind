@@ -33,7 +33,7 @@ public interface IDebugBridge
     void UpdateHeadBlock(Hash256 blockHash);
     Task<bool> MigrateReceipts(long from, long to);
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
-    SyncReportSymmary GetCurrentSyncStage();
+    SyncReportSummary GetCurrentSyncStage();
     bool HaveNotSyncedHeadersYet();
     IEnumerable<string> TraceBlockToFile(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     IEnumerable<string> TraceBadBlockToFile(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
@@ -41,4 +41,5 @@ public interface IDebugBridge
     TxReceipt[]? GetReceiptsForBlock(BlockParameter param);
     Transaction? GetTransactionFromHash(Hash256 hash);
     Hash256? GetTransactionBlockHash(Hash256 transactionHash);
+    IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
 }

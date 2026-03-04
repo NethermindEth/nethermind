@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
 
@@ -187,4 +186,9 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "Preload rpc modules. Useful in rpc provider to reduce latency on first request.", DefaultValue = "false")]
     bool PreloadRpcModules { get; set; }
+
+    [ConfigItem(
+        Description = "Enable strict parsing rules for Block Params and Hashas in RPC requests. this will decrease compatibility but increase compliance with the spec.",
+        DefaultValue = "true")]
+    bool StrictHexFormat { get; set; }
 }

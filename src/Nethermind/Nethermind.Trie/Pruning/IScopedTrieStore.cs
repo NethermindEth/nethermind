@@ -15,14 +15,18 @@ public interface IScopedTrieStore : ITrieNodeResolver
 {
     // Begins a commit to update the trie store. The `ICommitter` provide `CommitNode` to add node into.
     ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
-
-    // Only used by snap provider, so ValueHash instead of Hash
-    bool IsPersisted(in TreePath path, in ValueHash256 keccak);
 }
 
 public interface ICommitter : IDisposable
 {
-    void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo);
+    /// <summary>
+    /// Commit a trienode to the triestore at path. Returns potentially another trienode that should be merged
+    /// with the patricia trie.
+    /// </summary>
+    /// <param name="path"></param>
+    /// <param name="node"></param>
+    /// <returns></returns>
+    TrieNode CommitNode(ref TreePath path, TrieNode node);
 
     bool TryRequestConcurrentQuota() => false;
     void ReturnConcurrencyQuota() { }

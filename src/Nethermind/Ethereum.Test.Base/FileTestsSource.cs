@@ -9,16 +9,10 @@ using Ethereum.Test.Base.Interfaces;
 
 namespace Ethereum.Test.Base
 {
-    public class FileTestsSource
+    public class FileTestsSource(string fileName, string? wildcard = null)
     {
-        private readonly string _fileName;
-        private readonly string? _wildcard;
-
-        public FileTestsSource(string fileName, string? wildcard = null)
-        {
-            _fileName = fileName ?? throw new ArgumentNullException(nameof(fileName));
-            _wildcard = wildcard;
-        }
+        private readonly string _fileName = fileName ?? throw new ArgumentNullException(nameof(fileName));
+        private readonly string? _wildcard = wildcard;
 
         public IEnumerable<EthereumTest> LoadTests(TestType testType)
         {

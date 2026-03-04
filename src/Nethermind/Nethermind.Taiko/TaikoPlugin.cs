@@ -36,6 +36,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Taiko.Config;
 using Nethermind.Taiko.Rpc;
+using Nethermind.Taiko.Tdx;
 using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
@@ -87,8 +88,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         L1SloadPrecompile.L1StorageProvider = storageProvider;
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
     public bool MustInitialize => true;
 
     // IConsensusPlugin
@@ -128,7 +127,7 @@ public class TaikoModule : Module
             .AddStep(typeof(InitializeBlockchainTaiko))
 
             // L1 origin store
-            .AddSingleton<IRlpStreamDecoder<L1Origin>, L1OriginDecoder>()
+            .AddSingleton<RlpValueDecoder<L1Origin>, L1OriginDecoder>()
             .AddDatabase(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())
             .AddSingleton<IL1OriginStore, L1OriginStore>()
 
@@ -149,11 +148,13 @@ public class TaikoModule : Module
 
             // Blok processing
             .AddSingleton<IBlockValidationModule, TaikoBlockValidationModule>()
+            .AddSingleton<IMainProcessingModule, TaikoMainBlockProcessingModule>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
 
-            .AddSingleton<IRlpStreamDecoder<Transaction>>((_) => Rlp.GetStreamDecoder<Transaction>()!)
-            .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, IRlpStreamDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)
+            .AddSingleton<IRlpStreamEncoder<Transaction>>((_) => Rlp.GetStreamEncoder<Transaction>()!)
+            .AddSingleton<IRlpValueDecoder<Transaction>>((_) => Rlp.GetValueDecoder<Transaction>()!)
+            .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, IRlpValueDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)
             .AddSingleton<IHealthHintService, IBlocksConfig>(blocksConfig =>
                 new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
 
@@ -197,10 +198,13 @@ public class TaikoModule : Module
             .RegisterSingletonJsonRpcModule<ITaikoEngineRpcModule, TaikoEngineRpcModule>()
                 .AddSingleton<IForkchoiceUpdatedHandler, TaikoForkchoiceUpdatedHandler>()
 
+            // TDX attestation (enabled with Surge.TdxEnabled) 
+            .AddModule(new TdxModule())
+
             // Need to set the rlp globally
             .OnBuild(ctx =>
             {
-                Rlp.RegisterDecoder(typeof(L1Origin), ctx.Resolve<IRlpStreamDecoder<L1Origin>>());
+                Rlp.RegisterDecoder(typeof(L1Origin), ctx.Resolve<RlpValueDecoder<L1Origin>>());
             })
             ;
     }
@@ -208,7 +212,7 @@ public class TaikoModule : Module
     private static IPayloadPreparationService CreatePayloadPreparationService(
         IBlockProducerEnvFactory blockProducerEnvFactory,
         L1OriginStore l1OriginStore,
-        IRlpStreamDecoder<Transaction> txDecoder,
+        IRlpValueDecoder<Transaction> txDecoder,
         ILogManager logManager)
     {
         IBlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
@@ -228,6 +232,14 @@ public class TaikoModule : Module
         protected override void Load(ContainerBuilder builder)
         {
             builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>();
+        }
+    }
+
+    private class TaikoMainBlockProcessingModule : Module, IMainProcessingModule
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
         }
     }
 

@@ -20,8 +20,6 @@ namespace Nethermind.Consensus.Ethash
         public const string NethDev = "NethDev";
         private INethermindApi? _nethermindApi;
 
-        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
-
         public string Name => NethDev;
 
         public string Description => $"{NethDev} (Spaceneth)";

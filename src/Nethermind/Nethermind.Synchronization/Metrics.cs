@@ -88,7 +88,7 @@ namespace Nethermind.Synchronization
         public static IMetricObserver SyncDispatcherPrepareRequestTimeMicros = NoopMetricObserver.Instance;
 
         [ExponentialPowerHistogramMetric(LabelNames = ["sync_type"], Start = 10, Factor = 10, Count = 5)]
-        [Description("Sinc dispatcher time in dispatch. High value indicate slow peer or internet.")]
+        [Description("Sync dispatcher time in dispatch. High value indicates a slow peer or internet.")]
         [DetailedMetric]
         public static IMetricObserver SyncDispatcherDispatchTimeMicros = NoopMetricObserver.Instance;
 

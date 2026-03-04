@@ -18,7 +18,6 @@ using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 
@@ -35,12 +34,11 @@ internal class TransactionProcessorEip4844Tests
     public void Setup()
     {
         _specProvider = new TestSpecProvider(Cancun.Instance);
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        _stateProvider = worldStateManager.GlobalWorldState;
+        _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
-        EthereumCodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
@@ -109,7 +107,7 @@ internal class TransactionProcessorEip4844Tests
         yield return new TestCaseData(1.Ether(), (int)Cancun.Instance.MaxBlobCount, 1ul, 0ul, 0ul)
         {
             TestName = "Blob gas consumed for max blobs",
-            ExpectedResult = (UInt256)(GasCostOf.Transaction + Cancun.Instance.GetMaxBlobGasPerBlock()),
+            ExpectedResult = (UInt256)(GasCostOf.Transaction + Cancun.Instance.GasCosts.MaxBlobGasPerBlock),
         };
         yield return new TestCaseData(1.Ether(), 1, 10ul, 0ul, 0ul)
         {

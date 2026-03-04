@@ -13,5 +13,6 @@ namespace Nethermind.Core
         public const string BeaconChain = nameof(BeaconChain);
         public const string Optimism = nameof(Optimism);
         public const string Taiko = nameof(Taiko);
+        public const string XDPoS = nameof(XDPoS);
     }
 }

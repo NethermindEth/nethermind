@@ -23,7 +23,7 @@ namespace Nethermind.Core.Test
 
         public IReleaseSpec GenesisSpec => specProvider.GenesisSpec;
 
-        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => specProvider.GetSpec(forkActivation);
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => specProvider.GetSpec(forkActivation);
 
         public long? DaoBlockNumber => specProvider.DaoBlockNumber;
 

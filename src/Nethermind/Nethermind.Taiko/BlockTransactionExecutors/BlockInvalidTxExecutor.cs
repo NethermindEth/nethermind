@@ -32,7 +32,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
 
         block.Transactions[0].IsAnchorTx = true;
 
-        using ArrayPoolList<Transaction> correctTransactions = new(block.Transactions.Length);
+        using ArrayPoolListRef<Transaction> correctTransactions = new(block.Transactions.Length);
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {
@@ -66,7 +66,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             // only end the trace if the transaction was successful
             // so that we don't increment the receipt index for failed transactions
             receiptsTracer.EndTxTrace();
-            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, tx, receiptsTracer.LastReceipt));
+            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, tx, block.Header, receiptsTracer.LastReceipt));
             correctTransactions.Add(tx);
         }
 

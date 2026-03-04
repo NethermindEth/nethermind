@@ -14,7 +14,6 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Logging;
 #pragma warning disable CS0162 // Unreachable code detected
 
@@ -127,7 +126,7 @@ public class Engine : IDisposable
     /// <summary>
     /// Checks if contract at given address is a precompile
     /// </summary>
-    private bool IsPrecompiled(object address) => address.ToAddress().IsPrecompile(_spec);
+    private bool IsPrecompiled(object address) => _spec.IsPrecompile(address.ToAddress());
 
     /// <summary>
     /// Returns a slice of input
