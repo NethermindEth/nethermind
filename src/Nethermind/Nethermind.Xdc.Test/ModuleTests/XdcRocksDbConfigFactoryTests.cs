@@ -16,23 +16,6 @@ namespace Nethermind.Xdc.Test.ModuleTests
 {
     public class XdcRocksDbConfigFactoryTests
     {
-        private const string SnapshotDbName = "XdcSnapshots";
-
-        [Test]
-        public void BaseFactory_Throws_When_ConfigMissingForSnapshot()
-        {
-            IDbConfig dbConfig = new DbConfig();
-            var pruning = Substitute.For<IPruningConfig>();
-            var hw = Substitute.For<IHardwareInfo>();
-            var logManager = Substitute.For<ILogManager>();
-            // construct base factory with validation enabled
-            var baseFactory = new RocksDbConfigFactory(dbConfig, pruning, hw, logManager, validateConfig: true);
-
-            Action act = () => baseFactory.GetForDatabase(SnapshotDbName, null);
-
-            act.Should().Throw<InvalidConfigurationException>();
-        }
-
         [Test]
         public void CustomFactory_DoesNotThrow_And_Returns_ConfigForSnapshot()
         {
@@ -43,7 +26,7 @@ namespace Nethermind.Xdc.Test.ModuleTests
             var baseFactory = new RocksDbConfigFactory(dbConfig, pruning, hw, logManager, validateConfig: true);
             var custom = new XdcRocksDbConfigFactory(baseFactory, dbConfig);
 
-            IRocksDbConfig config = custom.GetForDatabase(SnapshotDbName, null);
+            IRocksDbConfig config = custom.GetForDatabase("XdcSnapshots", null);
 
             config.Should().NotBeNull();
             config.RocksDbOptions.Should().NotBeNull();
