@@ -55,7 +55,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             if (_accountChanges.TryGetValue(otherAccountChange.Address, out AccountChanges? accountChange))
             {
-               accountChange.Merge(otherAccountChange);
+                accountChange.Merge(otherAccountChange);
             }
             else
             {
