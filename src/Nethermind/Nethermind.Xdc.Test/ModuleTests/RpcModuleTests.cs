@@ -56,15 +56,34 @@ public class RpcModuleTests
         return epochSwitchInfos.ToArray();
     }
 
-    private XdcReleaseSpec CreateDummyXdcReleaseSpec(
+    private IXdcReleaseSpec CreateDummyXdcReleaseSpec(
         int? switchEpoch = null,
         int? epochLength = null,
         long? switchBlock = null,
         int? maxMasternodes = null,
         double? certThreshold = null,
         int? timeoutPeriod = null,
-        int? minePeriod = null)
+        int? minePeriod = null,
+        int? configsCount = null)
     {
+        var v2Configs = new List<V2ConfigParams>();
+
+        int count = configsCount ?? 1;
+
+        for (int i = 0; i < count; i++)
+        {
+            v2Configs.Add(new V2ConfigParams
+            {
+                SwitchRound = 0,
+                MaxMasternodes = maxMasternodes ?? 108,
+                CertThreshold = certThreshold ?? 0.667,
+                TimeoutSyncThreshold = 3,
+                TimeoutPeriod = timeoutPeriod ?? 30000,
+                MinePeriod = minePeriod ?? 2
+            });
+        }
+
+
         var spec = new XdcReleaseSpec
         {
             // Epoch configuration
@@ -121,18 +140,7 @@ public class RpcModuleTests
             BlackListedAddresses = new HashSet<Address>(),
 
             // V2 configuration parameters
-            V2Configs = new List<V2ConfigParams>
-        {
-            new V2ConfigParams
-            {
-                SwitchRound = 0,
-                MaxMasternodes = maxMasternodes ?? 108,
-                CertThreshold = certThreshold ?? 0.667,
-                TimeoutSyncThreshold = 3,
-                TimeoutPeriod = timeoutPeriod ?? 30000,
-                MinePeriod = minePeriod ?? 2
-            }
-        }
+            V2Configs = v2Configs
         };
 
         return spec;
@@ -256,8 +264,8 @@ public class RpcModuleTests
         header.Number = headNumber;
         _blockTree.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
 
-        XdcReleaseSpec spec = new() { SwitchEpoch = switchEpoch };
-        _specProvider.GetXdcSpec(Arg.Any<XdcBlockHeader>(), Arg.Any<ulong>()).Returns(spec);
+        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: switchEpoch, configsCount: (int)epochNumber);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         // Act & Assert
         Assert.Throws<NotSupportedException>(() => _rpcModule.GetBlockInfoByEpochNum(epochNumber));
@@ -275,8 +283,8 @@ public class RpcModuleTests
         header.Number = headNumber;
         _blockTree.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
 
-        XdcReleaseSpec spec = new() { SwitchEpoch = switchEpoch };
-        _specProvider.GetXdcSpec(headNumber).Returns(spec);
+        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: switchEpoch, configsCount: (int)epochNumber);
+        _specProvider.GetSpec(new ForkActivation(header.Number, header.Timestamp)).Returns(spec);
 
         BlockRoundInfo blockRoundInfo = new(TestItem.KeccakA, 100, 500);
         _epochSwitchManager.GetBlockByEpochNumber(epochNumber).Returns(blockRoundInfo);
@@ -541,8 +549,8 @@ public class RpcModuleTests
 
         _blockTree.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
 
-        XdcReleaseSpec spec = new() { SwitchEpoch = 5, EpochLength = 10 };
-        _specProvider.GetXdcSpec(header).Returns(spec);
+        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
+        _specProvider.GetSpec(new ForkActivation(header.Number, header.Timestamp)).Returns(spec);
 
         Address[] masternodes = new[] { TestItem.AddressA, TestItem.AddressB };
         Address[] penalties = new[] { TestItem.AddressC };
@@ -582,8 +590,8 @@ public class RpcModuleTests
         _quorumCertificateManager.HighestKnownCertificate.Returns(qc);
         _blockTree.FindHeader(header.Hash!).Returns(header);
 
-        XdcReleaseSpec spec = new() { SwitchEpoch = 5, EpochLength = 10 };
-        _specProvider.GetXdcSpec(header).Returns(spec);
+        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
+        _specProvider.GetSpec(header).Returns(spec);
 
         Address[] masternodes = new[] { TestItem.AddressA };
         EpochSwitchInfo epochSwitchInfo = new(
@@ -694,8 +702,8 @@ public class RpcModuleTests
 
         _blockTree.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
 
-        XdcReleaseSpec spec = new();
-        _specProvider.GetXdcSpec(100).Returns(spec);
+        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
+        _specProvider.GetSpec(new ForkActivation(header.Number, header.Timestamp)).Returns(spec);
 
         Address[] expectedSigners = new[] { TestItem.AddressA, TestItem.AddressB };
         Nethermind.Xdc.Types.Snapshot snapshot = Substitute.For<Nethermind.Xdc.Types.Snapshot>();
@@ -721,8 +729,8 @@ public class RpcModuleTests
 
         _blockTree.FindHeader(50).Returns(header);
 
-        XdcReleaseSpec spec = CreateDummyXdcReleaseSpec();
-        _specProvider.GetXdcSpec(50).Returns(spec);
+        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
+        _specProvider.GetSpec(new ForkActivation(header.Number, header.Timestamp)).Returns(spec);
 
         Address[] expectedSigners = new[] { TestItem.AddressA };
         Nethermind.Xdc.Types.Snapshot snapshot = Substitute.For<Nethermind.Xdc.Types.Snapshot>();
