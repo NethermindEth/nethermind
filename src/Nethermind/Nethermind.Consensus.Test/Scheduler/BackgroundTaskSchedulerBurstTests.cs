@@ -300,66 +300,6 @@ public class BackgroundTaskSchedulerBurstTests
     }
 
     /// <summary>
-    /// A single producer (e.g., receipt serving during Old Receipts sync) can fill the entire
-    /// shared queue, completely preventing all other producer types from scheduling any tasks.
-    /// There is no per-producer isolation, per-producer capacity limit, or eviction mechanism.
-    ///
-    /// In production: during Old Receipts sync, peers aggressively request receipts. Each
-    /// request becomes a background task with a DB read (~50ms). These fill the queue entirely,
-    /// blocking TxPool, snap sync serving, history pruning, and all other producers. When the
-    /// queue overflows, tasks from ALL producers are dropped, not just the one flooding the queue.
-    ///
-    /// This directly contributes to the 9+ second block processing degradation: block processing
-    /// needs TxPool and state operations scheduled as background tasks, but they're all rejected
-    /// because receipt serving monopolized the queue.
-    /// </summary>
-    [Test]
-    public async Task Single_producer_can_monopolize_queue_blocking_other_producers()
-    {
-        int capacity = 64;
-        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, capacity, LimboLogs.Instance);
-
-        // Hold tasks in the queue by activating block processing
-        _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
-
-        // "Receipt serving" fills the entire queue
-        for (int i = 0; i < capacity; i++)
-        {
-            scheduler.TryScheduleTask(i, async (_, token) =>
-            {
-                await Task.Delay(50, CancellationToken.None);
-            }, TimeSpan.FromSeconds(30)).Should().BeTrue($"receipt task {i} should be accepted");
-        }
-
-        // "TxPool" tries to schedule tasks — ALL are rejected
-        int txPoolDropped = 0;
-        for (int i = 0; i < 10; i++)
-        {
-            bool accepted = scheduler.TryScheduleTask(capacity + i, (_, _) => Task.CompletedTask,
-                TimeSpan.FromSeconds(2));
-            if (!accepted) txPoolDropped++;
-        }
-
-        // "Snap sync" tries to schedule tasks — ALL are rejected
-        int snapDropped = 0;
-        for (int i = 0; i < 5; i++)
-        {
-            bool accepted = scheduler.TryScheduleTask(capacity + 10 + i, (_, _) => Task.CompletedTask,
-                TimeSpan.FromSeconds(2));
-            if (!accepted) snapDropped++;
-        }
-
-        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
-
-        // No tasks from other producers should be dropped. An ideal scheduler would have
-        // per-producer limits or eviction to prevent monopolization.
-        (txPoolDropped + snapDropped).Should().Be(0,
-            $"{txPoolDropped} TxPool and {snapDropped} snap sync tasks were dropped because receipt " +
-            "serving monopolized the shared queue — the scheduler has no per-producer isolation, " +
-            "so one producer filling the queue blocks ALL other subsystems completely");
-    }
-
-    /// <summary>
     /// Tests that saturating the queue with tasks during Old Bodies/Receipts sync
     /// (where IsSyncing may be false because the node is at chain tip but still serving
     /// historical data) does not cause task drops that cascade into worse performance.

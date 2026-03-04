@@ -145,10 +145,18 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
         long count = Interlocked.Increment(ref _queueCount);
 
-        // Soft limit: warn when above configured capacity but still accept.
+        // Hard cap: reject when at capacity
         if (count > _capacity)
         {
-            if (_logger.IsWarn) _logger.Warn($"Background task queue above capacity (Count: {count}, Capacity: {_capacity}).");
+            Interlocked.Decrement(ref _queueCount);
+            request.TryDispose();
+            return false;
+        }
+
+        // Warn at half capacity
+        if (count > _capacity / 2)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Background task queue above half capacity (Count: {count}, Capacity: {_capacity}).");
         }
 
         if (_taskQueue.Writer.TryWrite(activity))
