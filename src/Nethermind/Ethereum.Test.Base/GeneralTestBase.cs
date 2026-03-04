@@ -101,7 +101,7 @@ namespace Ethereum.Test.Base
             // Modern tests correctly create coinbase only after successful tx.
             if (test.IsLegacy && test.CurrentCoinbase is not null)
             {
-                stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero);
+                stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero, 0, -1);
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.RecalculateStateRoot();
             }

@@ -566,7 +566,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Trie_store_multi_threaded_scenario()
         {
-            IWorldState worldState = TestWorldStateFactory.CreateForTest();
+            IWorldState worldState = TestWorldStateFactory.CreateForTest(parallel: false);
             using var _ = worldState.BeginScope(IWorldState.PreGenesis);
             worldState.CreateAccount(TestItem.AddressA, 1000);
             worldState.CreateAccount(TestItem.AddressB, 1000);

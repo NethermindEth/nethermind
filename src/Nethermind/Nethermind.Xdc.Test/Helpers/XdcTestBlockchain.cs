@@ -376,29 +376,29 @@ public class XdcTestBlockchain : TestBlockchain
     {
         public Block Build()
         {
-            state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
-            state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
-            state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
+            state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue, 0, -1);
+            state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue, 0, -1);
+            state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue, 0, -1);
 
             foreach (PrivateKey candidate in masterNodeCandidates)
             {
-                state.CreateAccount(candidate.Address, testConfiguration.AccountInitialValue);
+                state.CreateAccount(candidate.Address, testConfiguration.AccountInitialValue, 0, -1);
             }
 
             IXdcReleaseSpec? finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
 
             var genesisSpec = specProvider.GenesisSpec as IXdcReleaseSpec;
 
-            state.CreateAccount(finalSpec.BlockSignerContract, 100_000);
-            state.CreateAccount(finalSpec.RandomizeSMCBinary, 100_000);
+            state.CreateAccount(finalSpec.BlockSignerContract, 100_000, 0, -1);
+            state.CreateAccount(finalSpec.RandomizeSMCBinary, 100_000, 0, -1);
 
             var dummyCode = Prepare.EvmCode
                 .STOP()
                 .Done;
             var dummyCodeHashcode = Keccak.Compute(dummyCode);
 
-            state.InsertCode(finalSpec.BlockSignerContract, dummyCodeHashcode, dummyCode, genesisSpec!, true);
-            state.InsertCode(finalSpec.RandomizeSMCBinary, dummyCodeHashcode, dummyCode, genesisSpec!, true);
+            state.InsertCode(finalSpec.BlockSignerContract, dummyCodeHashcode, dummyCode, genesisSpec!, true, -1);
+            state.InsertCode(finalSpec.RandomizeSMCBinary, dummyCodeHashcode, dummyCode, genesisSpec!, true, -1);
 
             XdcBlockHeaderBuilder xdcBlockHeaderBuilder = new();
 

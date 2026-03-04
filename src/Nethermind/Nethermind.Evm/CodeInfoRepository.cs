@@ -74,9 +74,10 @@ public class CodeInfoRepository : ICodeInfoRepository
         return _codeInfoLoader(codeSource, codeHash, vmSpec, blockAccessIndex);
     }
 
-    internal CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash, IReleaseSpec vmSpec, int? blockAccessIndex = null)
+    internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash, IReleaseSpec vmSpec, int? blockAccessIndex = null)
     {
-        byte[]? code = _balBuilder.ParallelExecutionEnabled ? worldState.GetCode(in codeHash) : worldState.GetCode(address, blockAccessIndex);
+        IBlockAccessListBuilder? balBuilder = worldState as IBlockAccessListBuilder;
+        byte[]? code = balBuilder is not null && balBuilder.ParallelExecutionEnabled ? worldState.GetCode(in codeHash) : worldState.GetCode(address, blockAccessIndex);
         if (code is null)
         {
             MissingCode(in codeHash);
