@@ -10,44 +10,6 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseEIP1559TxDecoder<T>(TxType.Blob, transactionFactory) where T : Transaction, new()
 {
-    public override Transaction? Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        int positionAfterNetworkWrapper = 0;
-        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
-        {
-            int networkWrapperLength = rlpStream.ReadSequenceLength();
-            positionAfterNetworkWrapper = rlpStream.Position + networkWrapperLength;
-            int rlpLength = rlpStream.PeekNextRlpLength();
-            transactionSequence = rlpStream.Peek(rlpLength);
-        }
-
-        Transaction? transaction = base.Decode(transactionSequence, rlpStream, rlpBehaviors | RlpBehaviors.ExcludeHashes);
-
-        if (transaction is not null)
-        {
-            if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
-            {
-                DecodeShardBlobNetworkWrapper(transaction, rlpStream);
-
-                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
-                {
-                    rlpStream.Check(positionAfterNetworkWrapper);
-                }
-
-                if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
-                {
-                    transaction.Hash = CalculateHashForNetworkPayloadForm(transactionSequence);
-                }
-            }
-            else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
-            {
-                CalculateHash(transaction!, transactionSequence);
-            }
-        }
-
-        return transaction;
-    }
-
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
         ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -119,13 +81,6 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         }
     }
 
-    protected override void DecodePayload(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        base.DecodePayload(transaction, rlpStream, rlpBehaviors);
-        transaction.MaxFeePerBlobGas = rlpStream.DecodeUInt256();
-        transaction.BlobVersionedHashes = rlpStream.DecodeByteArrays();
-    }
-
     protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -139,25 +94,6 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         base.EncodePayload(transaction, stream, rlpBehaviors);
         stream.Encode(transaction.MaxFeePerBlobGas!.Value);
         stream.Encode(transaction.BlobVersionedHashes!);
-    }
-
-    private static void DecodeShardBlobNetworkWrapper(Transaction transaction, RlpStream rlpStream)
-    {
-        ProofVersion version = ProofVersion.V0;
-        if (!rlpStream.IsSequenceNext())
-        {
-            version = (ProofVersion)rlpStream.ReadByte();
-            if (version > ProofVersion.V1)
-            {
-                throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}. Expected {0x01} and is {version}");
-            }
-        }
-
-        byte[][] blobs = rlpStream.DecodeByteArrays();
-        byte[][] commitments = rlpStream.DecodeByteArrays();
-        byte[][] proofs = rlpStream.DecodeByteArrays();
-
-        transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version);
     }
 
     private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)

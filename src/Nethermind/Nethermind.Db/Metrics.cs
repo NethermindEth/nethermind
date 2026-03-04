@@ -93,7 +93,7 @@ namespace Nethermind.Db
         [Description("Indicator if StateDb is being pruned.")]
         public static int StateDbPruning { get; set; }
 
-#if ZKVM
+#if ZK_EVM
         public static Dictionary<string, long> DbReads { get; } = new Dictionary<string, long>();
         public static Dictionary<string, long> DbWrites { get; } = new Dictionary<string, long>();
         public static Dictionary<string, long> DbSize { get; } = new Dictionary<string, long>();

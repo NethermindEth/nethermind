@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
@@ -12,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
@@ -19,6 +17,9 @@ using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
@@ -42,15 +43,16 @@ public class RewardTests
         });
 
         masternodeVotingContract
-            .GetCandidateOwner(Arg.Any<BlockHeader>(), Arg.Any<Address>())
-            .Returns(ci => ci.ArgAt<Address>(1));
+            .GetCandidateOwner(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>(), Arg.Any<Address>())
+            .Returns(ci => ci.ArgAt<Address>(2));
 
         var rewardCalculator = new XdcRewardCalculator(
             chain.EpochSwitchManager,
             chain.SpecProvider,
             chain.BlockTree,
             masternodeVotingContract,
-            signingTxCache
+            signingTxCache,
+            Substitute.For<ITransactionProcessor>()
         );
 
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -176,15 +178,16 @@ public class RewardTests
         var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
         var signingTxCache = new SigningTxCache(chain.BlockTree, chain.SpecProvider);
         masternodeVotingContract
-            .GetCandidateOwner(Arg.Any<BlockHeader>(), Arg.Any<Address>())
-            .Returns(ci => ci.ArgAt<Address>(1));
+            .GetCandidateOwner(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>(), Arg.Any<Address>())
+            .Returns(ci => ci.ArgAt<Address>(2));
 
         var rewardCalculator = new XdcRewardCalculator(
             chain.EpochSwitchManager,
             chain.SpecProvider,
             chain.BlockTree,
             masternodeVotingContract,
-            signingTxCache
+            signingTxCache,
+            Substitute.For<ITransactionProcessor>()
         );
 
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -353,11 +356,11 @@ public class RewardTests
             .Returns(ci => blocks[(long)ci.Args()[1]]);
 
         IMasternodeVotingContract votingContract = Substitute.For<IMasternodeVotingContract>();
-        votingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), Arg.Any<Address>())
-            .Returns(ci => ci.ArgAt<Address>(1));
+        votingContract.GetCandidateOwner(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>(), Arg.Any<Address>())
+            .Returns(ci => ci.ArgAt<Address>(2));
 
         var signingTxCache = new SigningTxCache(tree, specProvider);
-        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, signingTxCache);
+        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, signingTxCache, Substitute.For<ITransactionProcessor>());
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
         Assert.That(rewards, Has.Length.EqualTo(3));
@@ -388,7 +391,8 @@ public class RewardTests
             specProvider,
             blockTree,
             masternodeVotingContract,
-            signingTxCache
+            signingTxCache,
+            Substitute.For<ITransactionProcessor>()
             );
 
         var totalReward = UInt256.Parse("171000000000000000000");
@@ -402,7 +406,7 @@ public class RewardTests
         bool ok = Address.TryParse("0x68d1e2F85e4583BeCc610b47Dd1b857850a4025A", out Address? signer);
         Assert.That(ok, Is.True);
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        masternodeVotingContract.GetCandidateOwner(header, signer!).Returns(signer!);
+        masternodeVotingContract.GetCandidateOwner(Arg.Any<ITransactionProcessor>(), header, signer!).Returns(signer!);
         (BlockReward holderReward, UInt256 foundationWalletReward) = rewardCalculator.DistributeRewards(signer!, expectedReward, header);
 
         Assert.That(holderReward.Value, Is.EqualTo(expectedAmountOwner));
