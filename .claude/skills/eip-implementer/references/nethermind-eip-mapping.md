@@ -60,3 +60,46 @@ Frontier → Homestead → TangerineWhistle → SpuriousDragon
 ```
 
 Each fork class inherits from the previous and overrides properties to enable new EIPs.
+
+## Implementation Patterns
+
+### Adding an EIP flag to a fork
+
+Every EIP that needs a feature flag requires changes in **six** places:
+
+1. Add `bool IsEipXXXXEnabled { get; }` to `Nethermind.Core/Specs/IReleaseSpec.cs`
+2. Add `public bool IsEipXXXXEnabled { get; set; }` to `Nethermind.Specs/ReleaseSpec.cs`
+3. Set `IsEipXXXXEnabled = true` in the appropriate fork file under `Nethermind.Specs/Forks/`
+4. Update `MainnetSpecProvider.cs` if a new fork is introduced
+5. **ChainSpec support** — four files so networks loaded from a chain spec JSON can independently activate the EIP:
+   - `Nethermind.Specs/ChainSpecStyle/ChainParameters.cs` — add `public ulong? EipXXXXTransitionTimestamp { get; set; }`
+   - `Nethermind.Specs/ChainSpecStyle/Json/ChainSpecParamsJson.cs` — add `public ulong? EipXXXXTransitionTimestamp { get; set; }`
+   - `Nethermind.Specs/ChainSpecStyle/ChainSpecLoader.cs` — map JSON → parameters: `EipXXXXTransitionTimestamp = chainSpecJson.Params.EipXXXXTransitionTimestamp,`
+   - `Nethermind.Specs/ChainSpecStyle/ChainSpecBasedSpecProvider.cs` — activate the flag: `releaseSpec.IsEipXXXXEnabled = (chainSpec.Parameters.EipXXXXTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;`
+
+### Adding a new opcode
+
+1. Add enum value to `Nethermind.Evm/Instruction.cs`
+2. Implement handler in the appropriate `Nethermind.Evm/Instructions/EvmInstructions.*.cs` partial class
+3. Add gas cost constant to `Nethermind.Evm/GasCostOf.cs` if needed
+4. Update `InstructionExtensions.StackRequirements()` in `Instruction.cs`
+
+### Adding a new precompile
+
+1. Create class implementing `IPrecompile<T>` in `Nethermind.Evm.Precompiles/`
+2. Implement `Address`, `Name`, `BaseGasCost()`, `DataGasCost()`, `Run()`
+3. Add EIP flag to `IReleaseSpec` and set it in the fork
+4. Register in `ReleaseSpec.BuildPrecompilesCache()` and `Extensions.ListPrecompiles()`
+
+### Adding a new transaction type
+
+1. Add enum value to `Nethermind.Core/TxType.cs`
+2. Add new fields to `Nethermind.Core/Transaction.cs`
+3. Create decoder in `Nethermind.Serialization.Rlp/TxDecoders/` following existing decoder patterns
+4. Register in `TxDecoder.cs`
+
+### Adding new JSON-RPC methods
+
+1. Add method signatures to the module interface in `Nethermind.JsonRpc/Modules/`
+2. Implement in the corresponding module class
+3. Register in the module factory if needed
