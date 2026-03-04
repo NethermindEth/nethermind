@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Producers
         ILifetimeScope rootLifetime,
         IWorldStateManager worldStateManager,
         IBlockProducerTxSourceFactory txSourceFactory
-        // IBlocksConfig blocksConfig
+    // IBlocksConfig blocksConfig
     ) : IBlockProducerEnvFactory
     {
         protected virtual ContainerBuilder ConfigureBuilder(ContainerBuilder builder) => builder

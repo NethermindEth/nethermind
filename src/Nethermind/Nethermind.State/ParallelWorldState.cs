@@ -90,7 +90,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
             foreach (StorageRead storageRead in accountChanges.StorageReads)
             {
                 SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
-                StorageCell storageCell = new(accountChanges.Address,storageRead.Key);
+                StorageCell storageCell = new(accountChanges.Address, storageRead.Key);
                 slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
             }
         }
@@ -435,7 +435,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         {
             AddAccountRead(address, blockAccessIndex);
         }
-        
+
         if (ParallelExecutionEnabled)
         {
             account = GetAccountInternal(address, blockAccessIndex.Value) ?? AccountStruct.TotallyEmpty;
@@ -513,7 +513,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         // don't need to add read, already added in IsNonZeroAccount
-    
+
         return IsStorageEmptyInternal(address, blockAccessIndex.Value);
     }
 
@@ -580,22 +580,22 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         ParallelExecutionEnabled ?
             _suggestedBlockAccessList.AccountChanges.Where(a => a.AccountChanged).Select(a => new AddressAsKey(a.Address)).ToPooledList(_suggestedBlockAccessList.AccountChanges.Count()) :
             _innerWorldState.GetAccountChanges();
-    
+
     public override ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell, int? blockAccessIndex = null)
     {
         if (!blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
-        
+
         return ParallelExecutionEnabled ?
             _transientStorageProviders[blockAccessIndex.Value].Get(in storageCell) :
             _innerWorldState.GetTransientState(in storageCell);
     }
 
-    public override void SetTransientState(in StorageCell storageCell,  byte[] newValue, int? blockAccessIndex = null)
+    public override void SetTransientState(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null)
     {
         if (!blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
-        
+
         if (ParallelExecutionEnabled)
         {
             _transientStorageProviders[blockAccessIndex.Value].Set(in storageCell, newValue);
@@ -610,7 +610,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
     {
         if (!blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
-        
+
         if (ParallelExecutionEnabled)
         {
             _transientStorageProviders[blockAccessIndex.Value].Reset();
