@@ -54,9 +54,9 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(NotDelegationCodeCases))]
     public void TryGetDelegation_CodeIsNotDelegation_ReturnsFalse(byte[] code)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
         using var _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.CreateAccount(TestItem.AddressA, 0, 0, -1);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
@@ -77,9 +77,9 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void TryGetDelegation_CodeTryGetDelegation_ReturnsTrue(byte[] code)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
         using var _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.CreateAccount(TestItem.AddressA, 0, 0, -1);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
@@ -89,9 +89,9 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void TryGetDelegation_CodeTryGetDelegation_CorrectDelegationAddressIsSet(byte[] code)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
-        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.CreateAccount(TestItem.AddressA, 0, 0, -1);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
@@ -134,12 +134,12 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void GetCachedCodeInfo_CodeTryGetDelegation_ReturnsCodeOfDelegation(byte[] code)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
-        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.CreateAccount(TestItem.AddressA, 0, 0, -1);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
         Address delegationAddress = new Address(code.Slice(3, Address.Size));
-        stateProvider.CreateAccount(delegationAddress, 0);
+        stateProvider.CreateAccount(delegationAddress, 0, 0, -1);
         byte[] delegationCode = new byte[32];
         stateProvider.InsertCode(delegationAddress, delegationCode, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
@@ -151,9 +151,9 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(NotDelegationCodeCases))]
     public void GetCachedCodeInfo_CodeIsNotDelegation_ReturnsCodeOfAddress(byte[] code)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
-        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.CreateAccount(TestItem.AddressA, 0, 0, -1);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
 
         EthereumCodeInfoRepository sut = new(stateProvider);

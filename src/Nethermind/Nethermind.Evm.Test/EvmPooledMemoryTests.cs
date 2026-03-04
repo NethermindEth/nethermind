@@ -315,7 +315,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         long blocknr = 12965000;
         long gas = 34218;
         ulong ts = 123456;
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         EthereumVirtualMachine virtualMachine = new(
@@ -332,10 +332,10 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
         Hash256 stateRoot = null;
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
-        stateProvider.CreateAccount(to, 123);
+        stateProvider.CreateAccount(to, 123, 0, -1);
         stateProvider.InsertCode(to, input, specProvider.GenesisSpec);
 
-        stateProvider.CreateAccount(sender, 40000000);
+        stateProvider.CreateAccount(sender, 40000000, 0, -1);
         stateProvider.Commit(specProvider.GenesisSpec);
 
         stateProvider.CommitTree(0);

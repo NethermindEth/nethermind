@@ -55,9 +55,9 @@ public class TransactionProcessorTests
     [SetUp]
     public void Setup()
     {
-        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
         _stateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
-        _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
+        _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance, 0, -1);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
         _baseBlock = Build.A.BlockHeader.WithStateRoot(_stateProvider.StateRoot).TestObject;

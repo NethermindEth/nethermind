@@ -166,7 +166,7 @@ namespace Ethereum.Test.Base
                 // For legacy tests, coinbase was already created before tx execution.
                 if (!test.IsLegacy)
                 {
-                    stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero);
+                    stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero, 0, -1);
                 }
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.RecalculateStateRoot();

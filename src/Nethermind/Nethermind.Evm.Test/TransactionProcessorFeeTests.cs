@@ -38,9 +38,9 @@ public class TransactionProcessorFeeTests
         _spec = new(PragueGnosis.Instance);
         _specProvider = new TestSpecProvider(_spec);
 
-        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether(), 0, -1);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 

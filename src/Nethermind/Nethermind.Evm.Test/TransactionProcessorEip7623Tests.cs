@@ -32,7 +32,7 @@ public class TransactionProcessorEip7623Tests
     public void Setup()
     {
         _specProvider = new TestSpecProvider(Prague.Instance);
-        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _stateProvider = TestWorldStateFactory.CreateForTest(parallel: false);
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
@@ -51,7 +51,7 @@ public class TransactionProcessorEip7623Tests
 
     public void transaction_validation_intrinsic_below_floor(long gasLimit, bool executed)
     {
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether(), 0, -1);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -77,7 +77,7 @@ public class TransactionProcessorEip7623Tests
     [Test]
     public void balance_validation_intrinsic_below_floor()
     {
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether(), 0, -1);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
