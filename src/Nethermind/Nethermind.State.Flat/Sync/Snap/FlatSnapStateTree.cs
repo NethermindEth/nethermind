@@ -31,6 +31,7 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
     private readonly bool _enableDoubleWriteCheck;
     private SnapUpperBoundAdapter _adapter;
     private readonly StateTree _tree;
+    private IReadOnlyList<PathWithAccount>? _pendingEntries;
 
     public FlatSnapStateTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, bool enableDoubleWriteCheck, ILogManager logManager)
     {
@@ -51,9 +52,9 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
         return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
     }
 
-    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries, ValueHash256 upperBound)
+    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries)
     {
-        _adapter.UpperBound = upperBound;
+        _pendingEntries = entries;
 
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
         for (int i = 0; i < entries.Count; i++)
@@ -62,22 +63,33 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
             Rlp rlp = account.Account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account.Account);
             bulkEntries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp.Bytes));
             Interlocked.Add(ref Nethermind.Synchronization.Metrics.SnapStateSynced, rlp.Bytes.Length);
-
-            if (account.Path <= upperBound)
-            {
-                Hash256 pathHash = account.Path.ToCommitment();
-                if (_enableDoubleWriteCheck && _reader.GetAccountRaw(pathHash) is not null)
-                    throw new Exception($"Double account flat write. {account.Path}");
-                _writeBatch.SetAccountRaw(pathHash, account.Account);
-            }
         }
 
         _tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
         _tree.UpdateRootHash();
     }
 
-    public void Commit() =>
+    public void Commit(ValueHash256 upperBound)
+    {
+        _adapter.UpperBound = upperBound;
+
+        if (_pendingEntries is not null)
+        {
+            for (int i = 0; i < _pendingEntries.Count; i++)
+            {
+                PathWithAccount account = _pendingEntries[i];
+                if (account.Path <= upperBound)
+                {
+                    Hash256 pathHash = account.Path.ToCommitment();
+                    if (_enableDoubleWriteCheck && _reader.GetAccountRaw(pathHash) is not null)
+                        throw new Exception($"Double account flat write. {account.Path}");
+                    _writeBatch.SetAccountRaw(pathHash, account.Account);
+                }
+            }
+        }
+
         _tree.Commit(true, WriteFlags.DisableWAL);
+    }
 
     public void Dispose()
     {

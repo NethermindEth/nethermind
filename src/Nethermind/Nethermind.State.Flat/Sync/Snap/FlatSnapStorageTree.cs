@@ -31,6 +31,7 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
     private readonly StorageTree _tree;
     private readonly Hash256 _addressHash;
     private readonly SnapUpperBoundAdapter _adapter;
+    private IReadOnlyList<PathWithStorageSlot>? _pendingEntries;
 
     public FlatSnapStorageTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, Hash256 addressHash, bool enableDoubleWriteCheck, ILogManager logManager)
     {
@@ -52,9 +53,9 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
         return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
     }
 
-    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries, ValueHash256 upperBound)
+    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries)
     {
-        _adapter.UpperBound = upperBound;
+        _pendingEntries = entries;
 
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
         for (int i = 0; i < entries.Count; i++)
@@ -62,27 +63,38 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
             PathWithStorageSlot slot = entries[i];
             bulkEntries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
             Interlocked.Add(ref Nethermind.Synchronization.Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
-
-            if (slot.Path <= upperBound)
-            {
-                Hash256 pathHash = slot.Path.ToCommitment();
-                if (_enableDoubleWriteCheck)
-                {
-                    SlotValue existing = default;
-                    if (_reader.TryGetStorageRaw(_addressHash, pathHash, ref existing))
-                        throw new Exception($"Double storage flat write. {_addressHash} {slot.Path}");
-                }
-                Rlp.ValueDecoderContext ctx = ((ReadOnlySpan<byte>)slot.SlotRlpValue).AsRlpValueContext();
-                _writeBatch.SetStorageRaw(_addressHash, pathHash, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
-            }
         }
 
         _tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
         _tree.UpdateRootHash();
     }
 
-    public void Commit() =>
+    public void Commit(ValueHash256 upperBound)
+    {
+        _adapter.UpperBound = upperBound;
+
+        if (_pendingEntries is not null)
+        {
+            for (int i = 0; i < _pendingEntries.Count; i++)
+            {
+                PathWithStorageSlot slot = _pendingEntries[i];
+                if (slot.Path <= upperBound)
+                {
+                    Hash256 pathHash = slot.Path.ToCommitment();
+                    if (_enableDoubleWriteCheck)
+                    {
+                        SlotValue existing = default;
+                        if (_reader.TryGetStorageRaw(_addressHash, pathHash, ref existing))
+                            throw new Exception($"Double storage flat write. address:{_addressHash} slot:{slot.Path} firstEntry:{_pendingEntries[0].Path} lastEntry:{_pendingEntries[_pendingEntries.Count - 1].Path} upperBound:{upperBound}");
+                    }
+                    Rlp.ValueDecoderContext ctx = ((ReadOnlySpan<byte>)slot.SlotRlpValue).AsRlpValueContext();
+                    _writeBatch.SetStorageRaw(_addressHash, pathHash, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
+                }
+            }
+        }
+
         _tree.Commit(writeFlags: WriteFlags.DisableWAL);
+    }
 
     public void Dispose()
     {

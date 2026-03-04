@@ -18,6 +18,6 @@ public interface ISnapTree<TEntry> : IDisposable where TEntry : ISnapEntry
 
     void SetRootFromProof(TrieNode root);
     bool IsPersisted(in TreePath path, in ValueHash256 keccak);
-    void BulkSetAndUpdateRootHash(IReadOnlyList<TEntry> entries, ValueHash256 upperBound);
-    void Commit();
+    void BulkSetAndUpdateRootHash(IReadOnlyList<TEntry> entries);
+    void Commit(ValueHash256 upperBound);
 }
