@@ -71,6 +71,8 @@ namespace Nethermind.Consensus.Processing
                         gasResults[i] = new TaskCompletionSource<long>();
                     }
 
+                    _balBuilder?.MergeIntermediateBalsUpTo(0);
+
                     const int GasValidationChunkSize = 8;
                     Task validatorTask = Task.Run(() =>
                     {
@@ -85,6 +87,7 @@ namespace Nethermind.Consensus.Processing
                                 totalGas += gasResults[j].Task.GetAwaiter().GetResult();
                                 long gasRemaining = block.Header.GasLimit - totalGas;
                                 bool validateStorageReads = j == chunkEnd - 1;
+                                _balBuilder?.MergeIntermediateBalsUpTo((ushort)(j + 1));
                                 _logger.Info($"[parallel] validating block access list at index {j + 1} (storage read check: {validateStorageReads})");
                                 _balBuilder?.ValidateBlockAccessList((ushort)(j + 1), gasRemaining, validateStorageReads);
                             }

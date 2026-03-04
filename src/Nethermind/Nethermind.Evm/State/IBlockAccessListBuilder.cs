@@ -16,7 +16,7 @@ public interface IBlockAccessListBuilder
     public BlockAccessList GeneratedBlockAccessList { get; set; }
     public void ApplyStateChanges(IReleaseSpec spec, bool shouldComputeStateRoot);
     public void SetupGeneratedAccessLists(ILogManager logManager, int txCount);
-    public void GenerateBlockAccessList();
+    public void MergeIntermediateBalsUpTo(ushort index);
     public void AddAccountRead(Address address, int? blockAccessIndex = null);
     public void LoadSuggestedBlockAccessList(BlockAccessList? suggestedBal, long gasUsed);
     public long GasUsed();

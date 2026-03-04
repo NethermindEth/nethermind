@@ -146,17 +146,15 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
         Console.WriteLine("[parallel] completed state change application");
     }
 
-    public void GenerateBlockAccessList()
+    public void MergeIntermediateBalsUpTo(ushort index)
     {
-        if (ParallelExecutionEnabled)
+        if (index == 0)
         {
-            // combine intermediate BALs and receipt tracers
-            BlockAccessList first = _intermediateBlockAccessLists[0];
-            foreach (BlockAccessList bal in _intermediateBlockAccessLists.Skip(1))
-            {
-                first.Merge(bal);
-            }
-            GeneratedBlockAccessList = first;
+            GeneratedBlockAccessList = _intermediateBlockAccessLists[0];
+        }
+        else
+        {
+            GeneratedBlockAccessList.Merge(_intermediateBlockAccessLists[index]);
         }
     }
 

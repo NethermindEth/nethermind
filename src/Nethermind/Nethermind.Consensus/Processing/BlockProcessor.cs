@@ -201,7 +201,6 @@ public partial class BlockProcessor
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        // move everything inside some bal generator class?
         if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
         {
             if (block.IsGenesis)
@@ -210,7 +209,7 @@ public partial class BlockProcessor
             }
             else
             {
-                _balBuilder.GenerateBlockAccessList();
+                _balBuilder.MergeIntermediateBalsUpTo((ushort)(block.Transactions.Length + 1));
                 block.GeneratedBlockAccessList = _balBuilder.GeneratedBlockAccessList;
                 block.EncodedBlockAccessList = Rlp.Encode(_balBuilder.GeneratedBlockAccessList).Bytes;
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
