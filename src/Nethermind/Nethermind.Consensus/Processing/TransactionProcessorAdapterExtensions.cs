@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -19,7 +20,11 @@ internal static class TransactionProcessorAdapterExtensions
     {
         if (processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && currentTx.SenderAddress != Address.SystemUser)
         {
-            currentTx.Nonce = stateProvider.GetNonce(currentTx.SenderAddress!);
+            // Prefer GetAccountDirect to read from block-level state without populating
+            // _intraTxCache, which would leave stale entries breaking the direct transfer path.
+            currentTx.Nonce = stateProvider is IDirectTransferState directState
+                ? directState.GetAccountDirect(currentTx.SenderAddress!)?.Nonce ?? UInt256.Zero
+                : stateProvider.GetNonce(currentTx.SenderAddress!);
         }
 
         using ITxTracer tracer = receiptsTracer.StartNewTxTrace(currentTx);
