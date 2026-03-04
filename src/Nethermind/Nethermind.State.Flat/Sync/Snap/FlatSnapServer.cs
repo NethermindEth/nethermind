@@ -21,7 +21,6 @@ public class FlatSnapServer(
     ILogManager logManager) : ISnapServer
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly AccountDecoder _decoder = new();
 
     private const long HardResponseByteLimit = 2000000;
     private const int HardResponseNodeLimit = 100000;
@@ -62,6 +61,7 @@ public class FlatSnapServer(
                 switch (requestedPath.Length)
                 {
                     case 0:
+                        response.Dispose();
                         return null;
                     case 1:
                         try
@@ -215,13 +215,13 @@ public class FlatSnapServer(
                     break;
                 }
 
-                Account? accountNeth = GetAccountByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes.ToArray());
+                Account? accountNeth = GetAccountByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes);
                 if (accountNeth is null)
                 {
                     break;
                 }
 
-                Hash256? storagePath = accounts[i].Path.ToCommitment();
+                ValueHash256 storagePath = accounts[i].Path;
 
                 PathWithStorageCollector pathWithStorageCollector = new();
                 (long innerResponseSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
@@ -276,13 +276,13 @@ public class FlatSnapServer(
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
     }
 
-    private Account? GetAccountByPath(StateTree tree, in ValueHash256 rootHash, byte[] accountPath)
+    private static Account? GetAccountByPath(StateTree tree, in ValueHash256 rootHash, ReadOnlySpan<byte> accountPath)
     {
         try
         {
             ReadOnlySpan<byte> bytes = tree.Get(accountPath, rootHash.ToCommitment());
             Rlp.ValueDecoderContext rlpContext = new(bytes);
-            return bytes.IsNullOrEmpty() ? null : _decoder.Decode(ref rlpContext);
+            return bytes.IsNullOrEmpty() ? null : AccountDecoder.Instance.Decode(ref rlpContext);
         }
         catch (TrieNodeException)
         {

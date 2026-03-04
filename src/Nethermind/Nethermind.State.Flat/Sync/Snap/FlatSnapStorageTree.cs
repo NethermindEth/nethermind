@@ -58,12 +58,14 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
         _pendingEntries = entries;
 
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
+        long totalBytes = 0;
         for (int i = 0; i < entries.Count; i++)
         {
             PathWithStorageSlot slot = entries[i];
             bulkEntries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
-            Interlocked.Add(ref Nethermind.Synchronization.Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
+            totalBytes += slot.SlotRlpValue.Length;
         }
+        Interlocked.Add(ref Nethermind.Synchronization.Metrics.SnapStateSynced, totalBytes);
 
         _tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
         _tree.UpdateRootHash();
@@ -80,15 +82,14 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
                 PathWithStorageSlot slot = _pendingEntries[i];
                 if (slot.Path <= upperBound)
                 {
-                    Hash256 pathHash = slot.Path.ToCommitment();
                     if (_enableDoubleWriteCheck)
                     {
                         SlotValue existing = default;
-                        if (_reader.TryGetStorageRaw(_addressHash, pathHash, ref existing))
+                        if (_reader.TryGetStorageRaw(_addressHash, slot.Path, ref existing))
                             throw new Exception($"Double storage flat write. address:{_addressHash} slot:{slot.Path} firstEntry:{_pendingEntries[0].Path} lastEntry:{_pendingEntries[_pendingEntries.Count - 1].Path} upperBound:{upperBound}");
                     }
                     Rlp.ValueDecoderContext ctx = ((ReadOnlySpan<byte>)slot.SlotRlpValue).AsRlpValueContext();
-                    _writeBatch.SetStorageRaw(_addressHash, pathHash, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
+                    _writeBatch.SetStorageRaw(_addressHash, slot.Path, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
                 }
             }
         }

@@ -24,12 +24,14 @@ public class PatriciaSnapStorageTree(StorageTree tree, SnapUpperBoundAdapter ada
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
+        long totalBytes = 0;
         for (int i = 0; i < entries.Count; i++)
         {
             PathWithStorageSlot slot = entries[i];
             bulkEntries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
-            Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
+            totalBytes += slot.SlotRlpValue.Length;
         }
+        Interlocked.Add(ref Metrics.SnapStateSynced, totalBytes);
 
         tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
         tree.UpdateRootHash();

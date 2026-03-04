@@ -8,13 +8,15 @@ namespace Nethermind.State.Flat.Persistence;
 
 internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
 {
+    private const int ColumnCount = 7; // Number of FlatDbColumns values
     private const long MinWriteBufferSize = 16L * 1024 * 1024;   // 16 MB floor
     private const long MaxWriteBufferSize = 256L * 1024 * 1024;  // 256 MB cap
 
     private bool _syncBufferSet;
 
-    private readonly Dictionary<FlatDbColumns, long> _lastWriteBufferSize = new();
-    private readonly Dictionary<FlatDbColumns, CountingWriteBatch> _activeCounters = new();
+    private readonly long[] _lastWriteBufferSize = new long[ColumnCount];
+    private readonly CountingWriteBatch?[] _activeCounters = new CountingWriteBatch?[ColumnCount];
+    private int _activeCounterCount;
 
     public IWriteBatch Wrap(IColumnsWriteBatch<FlatDbColumns> batch, FlatDbColumns column, WriteFlags flags)
     {
@@ -33,34 +35,43 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
 
         _syncBufferSet = false;
 
-        if (!_activeCounters.TryGetValue(column, out CountingWriteBatch? counter))
+        int idx = (int)column;
+        CountingWriteBatch? counter = _activeCounters[idx];
+        if (counter is null)
         {
             counter = new(batch.GetColumnBatch(column));
-            _activeCounters[column] = counter;
+            _activeCounters[idx] = counter;
+            _activeCounterCount++;
         }
         return counter;
     }
 
     public void OnBatchDisposed()
     {
-        if (_activeCounters.Count == 0) return;
+        if (_activeCounterCount == 0) return;
 
-        foreach (KeyValuePair<FlatDbColumns, CountingWriteBatch> entry in _activeCounters)
+        for (int i = 0; i < ColumnCount; i++)
         {
-            AdjustWriteBuffer(entry.Key, entry.Value.BytesWritten);
+            CountingWriteBatch? counter = _activeCounters[i];
+            if (counter is not null)
+            {
+                AdjustWriteBuffer((FlatDbColumns)i, counter.BytesWritten);
+                _activeCounters[i] = null;
+            }
         }
-        _activeCounters.Clear();
+        _activeCounterCount = 0;
     }
 
     private void AdjustWriteBuffer(FlatDbColumns column, long bytesWritten)
     {
         if (_syncBufferSet) return;
         if (bytesWritten == 0) return;
+        int idx = (int)column;
         long target = Math.Clamp((long)(bytesWritten * 1.5), MinWriteBufferSize, MaxWriteBufferSize);
-        if (_lastWriteBufferSize.TryGetValue(column, out long lastSize)
-            && Math.Abs(target - lastSize) <= (long)(lastSize * 0.2))
+        long lastSize = _lastWriteBufferSize[idx];
+        if (lastSize != 0 && Math.Abs(target - lastSize) <= (long)(lastSize * 0.2))
             return;
-        _lastWriteBufferSize[column] = target;
+        _lastWriteBufferSize[idx] = target;
         db.GetColumnDb(column).SetWriteBuffer(target);
     }
 

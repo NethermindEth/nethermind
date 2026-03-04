@@ -42,12 +42,13 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     {
         if (_wasFinalized) throw new InvalidOperationException("Db was finalized");
 
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
 
         TrieNode node = new(NodeType.Unknown, data.ToArray());
         node.ResolveNode(NullTrieNodeResolver.Instance, path);
 
-        TrieNode? existingNode = ReadExistingNode(address, path);
+        TrieNode? existingNode = ReadExistingNode(reader, address, path);
 
         if (address is null)
         {
@@ -65,9 +66,8 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         }
     }
 
-    private TrieNode? ReadExistingNode(Hash256? address, TreePath path)
+    private static TrieNode? ReadExistingNode(IPersistence.IPersistenceReader reader, Hash256? address, TreePath path)
     {
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         byte[]? existingData = address is null
             ? reader.TryLoadStateRlp(path, ReadFlags.None)
             : reader.TryLoadStorageRlp(address, path, ReadFlags.None);

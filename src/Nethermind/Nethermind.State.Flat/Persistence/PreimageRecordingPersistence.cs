@@ -71,7 +71,7 @@ public class PreimageRecordingPersistence : IPersistence
 
         public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) => inner.SetStorageTrieNode(address, path, tnValue);
 
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value)
+        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value)
         {
             byte[]? addrPreimage = preimageDb.Get(addrHash.Bytes[..PreimageLookupSize]);
             byte[]? slotPreimage = preimageDb.Get(slotHash.Bytes[..PreimageLookupSize]);
@@ -87,7 +87,7 @@ public class PreimageRecordingPersistence : IPersistence
             }
         }
 
-        public void SetAccountRaw(Hash256 addrHash, Account account)
+        public void SetAccountRaw(in ValueHash256 addrHash, Account account)
         {
             byte[]? addrPreimage = preimageDb.Get(addrHash.Bytes[..PreimageLookupSize]);
             if (addrPreimage is not null)
