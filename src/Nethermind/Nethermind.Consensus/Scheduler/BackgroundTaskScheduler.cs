@@ -102,32 +102,30 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     {
         while (await _taskQueue.Reader.WaitToReadAsync(_mainCancellationTokenSource.Token))
         {
-            while (_taskQueue.Reader.TryRead(out IActivity activity))
+            // Create fresh CancellationTokenSource for current block processing
+            CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(
+                        _blockProcessorCancellationTokenSource.Token,
+                        _mainCancellationTokenSource.Token);
+            try
             {
-                Interlocked.Decrement(ref _queueCount);
-                UpdateQueueCount();
-
-                // Link to both block-processing and main cancellation tokens.
-                // Tasks execute sequentially per worker to maintain concurrency limit
-                // and keep work on BelowNormal priority threads.
-                CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(
-                    _blockProcessorCancellationTokenSource.Token,
-                    _mainCancellationTokenSource.Token);
-                try
+                CancellationToken token = cts.Token;
+                while (_taskQueue.Reader.TryRead(out IActivity activity))
                 {
-                    await activity.Do(cts.Token);
+                    Interlocked.Decrement(ref _queueCount);
+                    UpdateQueueCount();
+                    await activity.Do(token);
                 }
-                catch (OperationCanceledException)
-                {
-                }
-                catch (Exception e)
-                {
-                    if (_logger.IsError) _logger.Error($"Error processing background task {e}.");
-                }
-                finally
-                {
-                    cts.Dispose();
-                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Error processing background task {e}.");
+            }
+            finally
+            {
+                cts.Dispose();
             }
         }
     }
@@ -143,29 +141,16 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
         Evm.Metrics.IncrementTotalBackgroundTasksQueued();
 
-        long count = Interlocked.Increment(ref _queueCount);
-
-        // Hard cap: reject when at capacity
-        if (count > _capacity)
+        if (Interlocked.Increment(ref _queueCount) <= _capacity)
         {
-            Interlocked.Decrement(ref _queueCount);
-            request.TryDispose();
-            return false;
+            if (_taskQueue.Writer.TryWrite(activity))
+            {
+                UpdateQueueCount();
+                return true;
+            }
         }
 
-        // Warn at half capacity
-        if (count > _capacity / 2)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Background task queue above half capacity (Count: {count}, Capacity: {_capacity}).");
-        }
-
-        if (_taskQueue.Writer.TryWrite(activity))
-        {
-            UpdateQueueCount();
-            return true;
-        }
-
-        // Channel completed (scheduler disposing) — reject
+        if (_logger.IsWarn) _logger.Warn($"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task.");
         Interlocked.Decrement(ref _queueCount);
         request.TryDispose();
         return false;
@@ -183,7 +168,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _taskQueue.Writer.Complete();
         await _mainCancellationTokenSource.CancelAsync();
         await Task.WhenAll(_tasksExecutors);
-
         _mainCancellationTokenSource.Dispose();
         _scheduler.Dispose();
     }
