@@ -1,7 +1,8 @@
 ---
 name: review
 description: Deep code review for an Ethereum execution client. Checks consensus correctness, security, robustness, performance, DI patterns, breaking changes, and observability. Use when asked to "review", "check this PR", "look for bugs", "audit", or "review my changes".
-allowed-tools: [Bash(git diff*), Bash(git merge-base*), Bash(git log*), Read, Grep, Glob]
+allowed-tools:
+  [Bash(git diff*), Bash(git merge-base*), Bash(git log*), Read, Grep, Glob]
 ---
 
 # Code review
@@ -22,13 +23,21 @@ Be concise: one sentence per comment when possible. If uncertain, stay silent.
 All recon calls are independent — emit them in a single parallel batch.
 
 **Step 1: Identify the diff base.** Run in ONE parallel batch:
+
 - `git merge-base HEAD origin/master` (or the PR's target branch)
 - `git log --oneline --merges <base>..HEAD` (detect merge commits)
 - `git diff <base> HEAD --name-only` (full file list — always cheap)
 
 **Never diff against `master` directly.** `git diff master` compares against the current master tip, which includes commits merged after the branch diverged. Always use the merge base.
 
+**Stale-ref detection.** If `merge-base` equals `origin/master` exactly (same SHA), the branch appears to descend directly from the remote-tracking tip. This is the signature of a stale ref when the branch was rebased onto a newer master than the local ref. Verify by running `git ls-remote origin refs/heads/master` (read-only, does not modify local refs). If the remote SHA differs from the local `origin/master`:
+
+1. **Warn the user:** "origin/master appears stale (local `<short-sha>` vs remote `<short-sha>`) — the local diff shows N files but the true diff is likely smaller."
+2. **Ask before fetching:** offer to run `git fetch origin master` to update the ref. Do not fetch silently.
+3. **If the user declines or network is unavailable:** proceed with the local diff but note the staleness risk in the scope report.
+
 **Step 2: Filter the file list.** From the file list, remove:
+
 - Binary/compressed: `.zst`, `.zip`, `.gz`, `.tar`, `.bin`, `.png`, `.jpg`, `.wasm`, `.dll`, `.exe`, `.dat`, Git LFS pointers
 - Auto-generated: `Chains/*.json`, runner configs
 - If merge commits exist: run `git log --no-merges --format="" --name-only <base>..HEAD | sort -u` to get only files touched by the PR author's commits. Files only in the full list but not in the author-only list came in through merges — skip them unless the PR description says otherwise.
@@ -81,7 +90,7 @@ Follow these steps in order. At each checkpoint, list your findings for that cat
    2. Check for that evidence.
    3. State **KEEP** or **DROP** (verdict first, then rationale).
    4. If DROP, state what falsified it.
-   Only findings that survive this step appear in the final report.
+      Only findings that survive this step appear in the final report.
 8. **Final report** — Compile surviving findings into the report template at the bottom.
 
 ---
@@ -90,15 +99,15 @@ Follow these steps in order. At each checkpoint, list your findings for that cat
 
 Do not comment on anything below. CI will block the merge if any of it fails.
 
-| Concern | Workflow |
-|---|---|
-| Code formatting, whitespace, EditorConfig | `code-formatting.yml` (`dotnet format`) |
-| Build errors | `build-solutions.yml` |
-| All unit & integration tests | `nethermind-tests.yml` |
-| CodeQL security analysis | `codeql.yml` |
-| Dependency vulnerabilities | `dependency-review.yml` |
+| Concern                                                     | Workflow                                     |
+| ----------------------------------------------------------- | -------------------------------------------- |
+| Code formatting, whitespace, EditorConfig                   | `code-formatting.yml` (`dotnet format`)      |
+| Build errors                                                | `build-solutions.yml`                        |
+| All unit & integration tests                                | `nethermind-tests.yml`                       |
+| CodeQL security analysis                                    | `codeql.yml`                                 |
+| Dependency vulnerabilities                                  | `dependency-review.yml`                      |
 | Ethereum Foundation hive tests (consensus, RPC, Engine API) | `hive-tests.yml`, `hive-consensus-tests.yml` |
-| JSON-RPC output correctness | `rpc-comparison.yml` |
+| JSON-RPC output correctness                                 | `rpc-comparison.yml`                         |
 
 Also skip: naming conventions, missing XML docs on `internal`/`private` members, minor grammar, refactoring suggestions that don't fix a real bug, logging improvements (unless security-related), build warnings that have no behavioural impact.
 
@@ -219,6 +228,7 @@ These are the most expensive issues to fix after release and the hardest for aut
 ### File headers
 
 New source files missing the required SPDX header (replace year with the current year):
+
 ```
 // SPDX-FileCopyrightText: <year> Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
@@ -229,7 +239,7 @@ New source files missing the required SPDX header (replace year with the current
 ## Response format
 
 1. **Problem** — one sentence: what is wrong
-2. **Impact** — one sentence: why it matters in an Ethereum client context *(omit if obvious)*
+2. **Impact** — one sentence: why it matters in an Ethereum client context _(omit if obvious)_
 3. **Fix** — a concrete suggestion or short code snippet
 
 **Example:**
@@ -247,10 +257,12 @@ New source files missing the required SPDX header (replace year with the current
 **Scope:** <files reviewed, grouped by category; list skipped files>
 
 ### Findings
+
 <numbered list of every finding, each with: category tag, file:line, problem, impact (if not obvious), fix>
 <if no findings in a category, omit it — don't write "clean" or "N/A">
 
 ### Summary
+
 - Findings: N (list categories with counts, e.g. "DI: 1, Security: 1")
 - Total: N
 ```
@@ -259,9 +271,11 @@ If the review is genuinely clean — zero findings across all categories — wri
 
 ```markdown
 ### Findings
+
 None.
 
 ### Summary
+
 - Total: 0
 ```
 
