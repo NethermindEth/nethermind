@@ -469,6 +469,8 @@ namespace Nethermind.Xdc
         {
             Task? task;
 
+            CancellationTokenSource cancellationTokenSource;
+
             lock (_lockObject)
             {
                 if (_cancellationTokenSource == null)
@@ -477,6 +479,7 @@ namespace Nethermind.Xdc
                 }
 
                 task = _runTask;
+                cancellationTokenSource = _cancellationTokenSource;
                 _cancellationTokenSource = null;
                 _runTask = null;
             }
@@ -484,7 +487,7 @@ namespace Nethermind.Xdc
             _logger.Debug("Stopping XdcHotStuff consensus runner...");
 
             // Signal cancellation
-            _cancellationTokenSource?.Cancel();
+            cancellationTokenSource.Cancel();
             // Wait for task completion
             if (task != null)
             {
