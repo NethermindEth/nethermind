@@ -155,11 +155,21 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
 
         public void Append(ReadOnlySpan<byte> source)
         {
-            if (source.IsEmpty) return;
+            if (!source.IsEmpty)
+            {
+                if (_length > 0 && _offset >= source.Length)
+                {
+                    _offset -= source.Length;
+                    source.CopyTo(_data.AsSpan(_offset, source.Length));
+                }
+                else
+                {
+                    EnsureCapacity(_offset + _length + source.Length);
+                    source.CopyTo(_data.AsSpan(_offset + _length));
+                }
 
-            EnsureCapacity(_offset + _length + source.Length);
-            source.CopyTo(_data.AsSpan(_offset + _length));
-            _length += source.Length;
+                _length += source.Length;
+            }
         }
 
         private void EnsureCapacity(int required)

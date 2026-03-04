@@ -314,6 +314,46 @@ public class JsonRpcSocketsClientTests
             await ShutdownAndWait(pair.SendSocket, receiver);
         }
 
+        [Test]
+        public async Task Overflow_after_buffer_shrink_preserves_data_order()
+        {
+            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
+
+            int processedRequests = 0;
+            List<string> processedPayloads = [];
+            IJsonRpcProcessor jsonRpcProcessor = CreateCapturingProcessor(buf =>
+            {
+                processedPayloads.Add(Encoding.UTF8.GetString(buf.ToArray()));
+                Interlocked.Increment(ref processedRequests);
+            });
+
+            Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token);
+
+            await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
+
+            // Message 1: large enough (>8KB) so SocketClient grows the buffer, then shrinks it
+            // back to 4KB after processing. The tail after msg1 becomes overflow > 4KB.
+            string large = new('L', 9000);
+            string msg1 = $"{{\"id\":1,\"params\":[\"{large}\"]}}";
+
+            // Messages 2+3: small, sent without delimiters right after msg1.
+            // They end up in the overflow. After the buffer shrinks to 4KB, partial CopyTo
+            // drains part of the overflow. If a boundary is found, the tail must be
+            // correctly ordered before the undrained remainder.
+            string msg2 = "{\"id\":2,\"method\":\"eth_call\",\"params\":[]}";
+            string msg3 = "{\"id\":3,\"method\":\"eth_call\",\"params\":[]}";
+
+            byte[] combined = Encoding.UTF8.GetBytes(msg1 + "\n" + msg2 + msg3);
+            await sendStream.WriteAsync(combined, pair.Cts.Token);
+
+            Assert.That(() => processedRequests, Is.EqualTo(3).After(10000, 10));
+            processedPayloads[0].Should().Be(msg1);
+            processedPayloads[1].Should().Be(msg2);
+            processedPayloads[2].Should().Be(msg3);
+
+            await ShutdownAndWait(pair.SendSocket, receiver);
+        }
+
         [TestCase(10)]
         [TestCase(63)]
         [TestCase(1024)]
