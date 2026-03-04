@@ -11,7 +11,7 @@ Nethermind is an Ethereum execution client built on .NET. Consensus correctness 
 **Only comment when you have HIGH CONFIDENCE (>80%) that a real issue exists.**
 Be concise: one sentence per comment when possible. If uncertain, stay silent.
 
-**Subagent warning:** Subagents do not inherit `.claude/rules/` or CLAUDE.md. If you launch subagents for this review, you **must** paste all `.claude/rules/` content and all applicable domain review sections from this skill into the subagent prompt. After receiving subagent output, cross-check their findings against the rules in your own context.
+**Subagent warning:** Subagents do not inherit full review context automatically. If you launch subagents for this review, you **must** paste the `Codebase Rules` and all applicable domain review sections from this skill into the subagent prompt. After receiving subagent output, cross-check their findings against the rules in your own context.
 
 ---
 
@@ -53,7 +53,7 @@ Review each changed `.cs` file independently. Read the diff, check it, report fi
 - **Stay in the diff:** Findings must only come from changed files.
 - **Batch verification reads:** If reviewing a file surfaces multiple findings that each need a different context file, read all context files in one parallel batch — don't round-trip one at a time.
 - **Never fabricate:** If a category does not apply, write "N/A".
-- **MANDATORY: Never invent exceptions to rules.** If a rule in `.claude/rules/` covers a pattern and the code matches that pattern, report it. Do not dismiss a violation by reasoning that the context "probably" justifies it — that is the author's call, not yours. If the rule is wrong, flag the violation and note the rule may need updating.If you believe the rule is wrong for this case, report the violation AND add a note that the rule may need an exception — but the violation still appears in the count.
+- **MANDATORY: Never invent exceptions to rules.** If a `Codebase Rules` rule covers a pattern and the code matches that pattern, report it. Do not dismiss a violation by reasoning that the context "probably" justifies it — that is the author's call, not yours. If the rule is wrong, flag the violation and note the rule may need updating. If you believe the rule is wrong for this case, report the violation AND add a note that the rule may need an exception — but the violation still appears in the count.
 
 ### Tool call discipline
 
@@ -72,19 +72,17 @@ Follow these steps in order. At each checkpoint, list your findings for that cat
 
 1. **Scope** — Run Phase 1 recon (see Operational constraints). List every changed file grouped by project, noting which were skipped and why. Note which review categories apply.
 2. **Checkpoint: scope** — Report file list and applicable categories.
-3. **Load all project rules** — **MANDATORY.** Use `Glob` to list every `.md` file in `.claude/rules/`, then `Read` them all in a single parallel batch. Do not rely on auto-loading — conditional `paths:` filters may silently fail to trigger. After reading, list each rule file with: (a) filename, (b) whether it has a `paths:` filter and what it matches, (c) whether it is relevant to the files in scope.
-4. **Checkpoint: rules loaded** — Present the full table of rule files and their relevance status. Any rule file that was not successfully read is a blocker — retry before proceeding.
-5. **Project rules check** — For small files: check the diff against every loaded rule file. See "Project rules check" section below. Large files: checked by subagents (Step 4b).
-6. **Checkpoint: rules violations** — List every rule violation with file:line, or state "no violations" per category.
-7. **Domain checks** — Apply all domain review sections below as applicable. Large files: checked by subagents (Step 4b). Collect all subagent findings before proceeding.
-8. **Checkpoint: domain** — List every domain finding, or state "no findings" per category.
-9. **Verification pass** — Treat each finding from steps 6 and 8 — including subagent findings — as a hypothesis. For each one:
+3. **Project rules check** — For small files: check the diff against `Codebase Rules`. See "Project rules check" section below. Large files: checked by subagents (Step 4b).
+4. **Checkpoint: rules violations** — List every rule violation with file:line, or state "no violations" per category.
+5. **Domain checks** — Apply all domain review sections below as applicable. Large files: checked by subagents (Step 4b). Collect all subagent findings before proceeding.
+6. **Checkpoint: domain** — List every domain finding, or state "no findings" per category.
+7. **Verification pass** — Treat each finding from steps 4 and 6 — including subagent findings — as a hypothesis. For each one:
    1. Identify what specific evidence would **falsify** it.
    2. Check for that evidence.
    3. State **KEEP** or **DROP** (verdict first, then rationale).
    4. If DROP, state what falsified it.
    Only findings that survive this step appear in the final report.
-10. **Final report** — Compile surviving findings into the report template at the bottom.
+8. **Final report** — Compile surviving findings into the report template at the bottom.
 
 ---
 
@@ -106,9 +104,9 @@ Also skip: naming conventions, missing XML docs on `internal`/`private` members,
 
 ---
 
-## Step 5: Project rules check
+## Project rules check
 
-For every changed file, check the diff against every rule file loaded in step 3. Each rule file defines conventions for a specific concern (DI patterns, coding style, robustness, performance, package management, etc.). All rule files must already be loaded from step 3 — if any are missing, go back and load them before proceeding.
+For every changed file, check the diff against `Codebase Rules` in step 3. Those rules define conventions for DI patterns, coding style, robustness, performance, test infrastructure, package management, and `.github` automation.
 
 **Reminder: You must report findings for every rule category, even if the finding is "no violations". Do not skip any.**
 
@@ -271,6 +269,6 @@ None.
 
 ## When to stay silent
 
-**Rule violations (step 3) are always reported** — the confidence threshold does not apply. If a grep pattern from Step 2 matched, report it. You may add a note that the rule may need an exception for this case, but the finding must appear in the report. It is the author's decision to dismiss it, not yours.
+**Rule violations (project rules check) are always reported** — the confidence threshold does not apply. If a rule pattern check matched, report it. You may add a note that the rule may need an exception for this case, but the finding must appear in the report. It is the author's decision to dismiss it, not yours.
 
 For domain findings (step 5), if you are not at least 80% confident that something is a real problem, do not comment. One high-confidence comment is worth more than five uncertain ones.
