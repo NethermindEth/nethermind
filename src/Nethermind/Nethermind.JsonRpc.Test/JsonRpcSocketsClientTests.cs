@@ -97,7 +97,6 @@ public class JsonRpcSocketsClientTests
                 return messages;
             }
 
-            CancellationTokenSource cts = new();
             IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
 
             Task<int> receiveMessages = OneShotServer(
@@ -118,7 +117,6 @@ public class JsonRpcSocketsClientTests
                 }
 
                 disposeCount.Should().Be(messageCount);
-                await cts.CancelAsync();
 
                 return messageCount;
             });
@@ -239,6 +237,83 @@ public class JsonRpcSocketsClientTests
             await ShutdownAndWait(pair.SendSocket, receiver);
         }
 
+        [Test]
+        public async Task Json_parse_state_resets_between_consecutive_messages()
+        {
+            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
+
+            int processedRequests = 0;
+            List<string> processedPayloads = [];
+            IJsonRpcProcessor jsonRpcProcessor = CreateCapturingProcessor(buf =>
+            {
+                processedPayloads.Add(Encoding.UTF8.GetString(buf.ToArray()));
+                Interlocked.Increment(ref processedRequests);
+            });
+
+            Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token);
+
+            await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
+
+            // Both messages >4KB to span multiple SocketClient buffer reads, triggering incremental JSON state
+            string payload1 = new('x', 5000);
+            string payload2 = new('y', 5000);
+            string request1 = $"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_call\",\"params\":[\"{payload1}\"]}}";
+            string request2 = $"{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_call\",\"params\":[\"{payload2}\"]}}";
+
+            // Send back-to-back without delimiters — relies on JSON boundary detection + state reset
+            byte[] combined = Encoding.UTF8.GetBytes(request1 + request2);
+            await sendStream.WriteAsync(combined, pair.Cts.Token);
+
+            Assert.That(() => processedRequests, Is.EqualTo(2).After(5000, 10));
+            processedPayloads[0].Should().Be(request1);
+            processedPayloads[1].Should().Be(request2);
+
+            await ShutdownAndWait(pair.SendSocket, receiver);
+        }
+
+        [TestCase(5)]
+        [TestCase(10)]
+        public async Task Can_process_large_chunked_json_without_delimiter(int messageCount)
+        {
+            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
+
+            int processedRequests = 0;
+            List<string> processedPayloads = [];
+            IJsonRpcProcessor jsonRpcProcessor = CreateCapturingProcessor(buf =>
+            {
+                processedPayloads.Add(Encoding.UTF8.GetString(buf.ToArray()));
+                Interlocked.Increment(ref processedRequests);
+            });
+
+            Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token);
+
+            await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
+
+            // Build large JSON messages (~10KB each) to exercise incremental parsing across many 4KB chunks
+            List<string> expectedPayloads = [];
+            for (int i = 0; i < messageCount; i++)
+            {
+                string payload = new((char)('a' + i % 26), 10_000);
+                string request = $"{{\"jsonrpc\":\"2.0\",\"id\":{i},\"method\":\"eth_call\",\"params\":[\"{payload}\"]}}";
+                expectedPayloads.Add(request);
+
+                // Send each message in small pieces to force multi-chunk parsing
+                byte[] requestBytes = Encoding.UTF8.GetBytes(request);
+                int chunkSize = 4096;
+                for (int offset = 0; offset < requestBytes.Length; offset += chunkSize)
+                {
+                    int len = Math.Min(chunkSize, requestBytes.Length - offset);
+                    await sendStream.WriteAsync(requestBytes.AsMemory(offset, len), pair.Cts.Token);
+                    await Task.Delay(1);
+                }
+            }
+
+            Assert.That(() => processedRequests, Is.EqualTo(messageCount).After(10000, 10));
+            processedPayloads.Should().Equal(expectedPayloads);
+
+            await ShutdownAndWait(pair.SendSocket, receiver);
+        }
+
         [TestCase(10)]
         [TestCase(63)]
         [TestCase(1024)]
@@ -281,7 +356,6 @@ public class JsonRpcSocketsClientTests
                 return messages;
             }
 
-            CancellationTokenSource cts = new();
             IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
 
             List<byte[]> sentMessages = [];
@@ -316,7 +390,6 @@ public class JsonRpcSocketsClientTests
                     }
                 }
                 stream.Close();
-                await cts.CancelAsync();
 
                 return messageCount;
             });

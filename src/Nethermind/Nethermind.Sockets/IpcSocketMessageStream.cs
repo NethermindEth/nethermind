@@ -15,92 +15,79 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
     private const byte Delimiter = (byte)'\n';
     private static readonly SearchValues<byte> Whitespace = SearchValues.Create(" \n\r\t"u8);
 
-    private byte[] _bufferedData = [];
-    private int _bufferedDataLength;
+    private PooledBuffer _overflow = new();
+    private JsonParseState _jsonParseState;
 
     public async ValueTask<ReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default)
     {
         if (!Socket.Connected)
+        {
             return default;
+        }
 
-        int read = RestoreBufferedData(buffer);
+        int read = _overflow.CopyTo(buffer);
 
         // Find message boundary — try buffered data first to avoid blocking on socket
-        (int contentLength, int consumed) = FindMessageEnd(GetFullBufferSpan(buffer, read), buffer.Offset);
-        if (consumed == 0)
+        (int contentLength, int consumed) = FindMessageEnd(FullBufferSpan(buffer, read), buffer.Offset);
+        if (consumed == 0 && read < buffer.Count)
         {
             read += await Socket.ReceiveAsync(buffer[read..], SocketFlags.None, cancellationToken);
-            (contentLength, consumed) = FindMessageEnd(GetFullBufferSpan(buffer, read), buffer.Offset);
+            (contentLength, consumed) = FindMessageEnd(FullBufferSpan(buffer, read), buffer.Offset);
         }
 
         if (consumed > 0)
         {
-            SaveOverflow(buffer, consumed, read);
+            ResetJsonParseState();
+            _overflow.Append(buffer.AsSpan()[consumed..read]);
             return new() { Read = contentLength, EndOfMessage = true };
         }
 
-        _bufferedDataLength = 0;
         return new() { Closed = read == 0, Read = read, EndOfMessage = false };
 
-        int RestoreBufferedData(ArraySegment<byte> buf) => _bufferedDataLength switch
-        {
-            <= 0 => 0,
-            _ when _bufferedDataLength > buf.Count => throw new NotSupportedException($"Passed {nameof(buf)} should be larger than internal one"),
-            _ => Copy(buf)
-        };
-
-        int Copy(ArraySegment<byte> buf)
-        {
-            Buffer.BlockCopy(_bufferedData, 0, buf.Array!, buf.Offset, _bufferedDataLength);
-            return _bufferedDataLength;
-        }
-
-        void SaveOverflow(ArraySegment<byte> buf, int start, int end)
-        {
-            int overflow = Math.Max(0, end - start);
-            _bufferedDataLength = overflow;
-
-            if (overflow > 0)
-            {
-                EnsureBufferedDataCapacity(overflow);
-                buf[start..end].CopyTo(_bufferedData);
-            }
-        }
-
-        static Span<byte> GetFullBufferSpan(ArraySegment<byte> buffer, int read) => buffer.Array.AsSpan(0, buffer.Offset + read);
+        static Span<byte> FullBufferSpan(ArraySegment<byte> buffer, int read) => buffer.Array.AsSpan(0, buffer.Offset + read);
     }
 
-    private static (int ContentLength, int Consumed) FindMessageEnd(ReadOnlySpan<byte> data, int offset) =>
+    private (int ContentLength, int Consumed) FindMessageEnd(ReadOnlySpan<byte> data, int offset) =>
         offset >= data.Length
             ? default
             : data[offset..].IndexOf(Delimiter) switch
             {
                 // Fast path: newline delimiter (only search new data)
                 var i and >= 0 => (i, i + 1),
-                // Slow path: complete JSON object/array (parse full accumulated data)
+                // Slow path: complete JSON object/array (incremental parse across calls)
                 _ when TryGetCompleteJsonLength(data, out int jsonLength) => (jsonLength - offset, jsonLength - offset),
                 _ => default
             };
 
-    private static bool TryGetCompleteJsonLength(ReadOnlySpan<byte> span, out int messageLength)
+    private bool TryGetCompleteJsonLength(ReadOnlySpan<byte> span, out int messageLength)
     {
-        int offset = GetStartingOffset(span);
-        ReadOnlySpan<byte> json = span[offset..];
-        if (StartsWithObject(json))
+        messageLength = 0;
+        bool resuming = _jsonParseState.IsActive;
+        int startOffset = resuming ? _jsonParseState.StartOffset : GetStartingOffset(span);
+        ReadOnlySpan<byte> json = span[startOffset..];
+
+        if (resuming || StartsWithObject(json))
         {
-            Utf8JsonReader reader = new(json, isFinalBlock: false, default);
+            Utf8JsonReader reader = new(json[_jsonParseState.BytesConsumed..], isFinalBlock: false, _jsonParseState.ReaderState);
             try
             {
-                if (reader.Read() && reader.TrySkip())
+                while (reader.Read())
                 {
-                    messageLength = offset + (int)reader.BytesConsumed;
-                    return true;
+                    if (IsEndOfJsonStructure(reader))
+                    {
+                        messageLength = startOffset + _jsonParseState.BytesConsumed + (int)reader.BytesConsumed;
+                        return true;
+                    }
                 }
+
+                SaveTemporaryState(reader);
             }
-            catch (JsonException) { }
+            catch (JsonException)
+            {
+                ResetJsonParseState();
+            }
         }
 
-        messageLength = 0;
         return false;
 
         static int GetStartingOffset(ReadOnlySpan<byte> span)
@@ -110,26 +97,20 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         }
 
         static bool StartsWithObject(ReadOnlySpan<byte> span) => !span.IsEmpty && span[0] is (byte)'{' or (byte)'[';
+
+        bool IsEndOfJsonStructure(Utf8JsonReader reader) => reader.CurrentDepth == 0 && reader.TokenType is JsonTokenType.EndObject or JsonTokenType.EndArray;
+
+        void SaveTemporaryState(Utf8JsonReader reader) => _jsonParseState = new(reader.CurrentState, _jsonParseState.BytesConsumed + (int)reader.BytesConsumed, startOffset);
     }
 
-    private void EnsureBufferedDataCapacity(int requiredLength)
-    {
-        if (_bufferedData.Length < requiredLength)
-        {
-            if (_bufferedData.Length != 0)
-            {
-                ArrayPool<byte>.Shared.Return(_bufferedData);
-            }
+    private void ResetJsonParseState() => _jsonParseState = new();
 
-            _bufferedData = ArrayPool<byte>.Shared.Rent(requiredLength);
-        }
-    }
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing && _bufferedData.Length != 0)
+        if (disposing)
         {
-            ArrayPool<byte>.Shared.Return(_bufferedData);
+            _overflow.Dispose();
         }
 
         base.Dispose(disposing);
@@ -139,5 +120,75 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
     {
         WriteByte(Delimiter);
         return ValueTask.FromResult(1);
+    }
+
+    private readonly record struct JsonParseState(JsonReaderState ReaderState = default, int BytesConsumed = 0, int StartOffset = -1)
+    {
+        public bool IsActive => StartOffset >= 0;
+    }
+
+    private struct PooledBuffer()
+    {
+        private byte[] _data = [];
+        private int _offset;
+        private int _length;
+
+        public int CopyTo(ArraySegment<byte> destination)
+        {
+            if (_length > 0)
+            {
+                int toCopy = Math.Min(_length, destination.Count);
+                Buffer.BlockCopy(_data, _offset, destination.Array!, destination.Offset, toCopy);
+                _offset += toCopy;
+                _length -= toCopy;
+
+                if (_length == 0)
+                {
+                    _offset = 0;
+                }
+
+                return toCopy;
+            }
+
+            return 0;
+        }
+
+        public void Append(ReadOnlySpan<byte> source)
+        {
+            if (source.IsEmpty) return;
+
+            EnsureCapacity(_offset + _length + source.Length);
+            source.CopyTo(_data.AsSpan(_offset + _length));
+            _length += source.Length;
+        }
+
+        private void EnsureCapacity(int required)
+        {
+            if (_data.Length < required)
+            {
+                byte[] newBuffer = ArrayPool<byte>.Shared.Rent(required);
+                if (_length > 0)
+                {
+                    Buffer.BlockCopy(_data, _offset, newBuffer, 0, _length);
+                }
+
+                if (_data.Length != 0)
+                {
+                    ArrayPool<byte>.Shared.Return(_data);
+                }
+
+                _data = newBuffer;
+                _offset = 0;
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_data.Length != 0)
+            {
+                ArrayPool<byte>.Shared.Return(_data);
+                _data = [];
+            }
+        }
     }
 }
