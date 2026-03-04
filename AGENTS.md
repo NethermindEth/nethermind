@@ -12,14 +12,11 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 ## Coding guidelines and style
 
 - Follow [CONTRIBUTING.md](./CONTRIBUTING.md) and [.editorconfig](./.editorconfig)
-- Prefer low-allocation code, latest C# syntax, pattern matching, `is null`/`is not null`
-- Avoid `var` (exception: very long nested generic types)
-- **No LINQ** when a simple `for`/`foreach` works — use LINQ only for complex queries
 - Keep changes minimal and focused — don't touch unrelated code
 - When fixing a bug, always add a regression test
 - Do not alter [src/bench_precompiles](./src/bench_precompiles/) or [src/tests](./src/tests/)
 
-> **Canonical conventions** are defined in `## Codebase Rules` below.
+> **Detailed conventions** live in `## Codebase Rules` below — coding style, DI patterns, test infrastructure, performance, robustness, package management, and `.github` workflow rules.
 
 ---
 
@@ -38,6 +35,9 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - Use `ObjectDisposedException.ThrowIf` for disposal checks
 - Use documentation comments for all public APIs
 - Avoid `var` — spell out types (exception: very long nested generic types)
+- Prefer low-allocation code patterns
+- Consider performance implications in high-throughput paths
+- **No LINQ** when a simple `for`/`foreach` works — use LINQ only for complex queries
 - Trust null annotations, don't add redundant null checks
 - Code comments explain _why_, not _what_ — a comment that contradicts the code is worse than no comment; fix or remove it
 - Non-obvious consensus rules or algorithms must reference the EIP number or Yellow Paper section
