@@ -183,8 +183,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.NewBlock:
                     if (CanAcceptBlockGossip())
                     {
-                        HandleInBackground<NewBlockMessage>(message, Handle);
-                    }
+                        NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
+                        ReportIn(newBlockMsg, size);
+                        Task task = Handle(newBlockMsg);
+                        task.GetAwaiter().GetResult();
+                    }   
                     break;
             }
         }
@@ -307,22 +310,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
-        private ValueTask Handle(NewBlockMessage msg, CancellationToken cancellationToken)
-        {
-            try
+        private Task Handle(NewBlockMessage msg) => Task.Run(() =>
             {
                 msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
                 SyncServer.AddNewBlock(msg.Block, this);
             }
-            catch (Exception e)
-            {
-                if (Logger.IsDebug) Logger.Debug($"Handling {msg} from {Node:c} failed: " + e.Message);
-                throw;
-            }
-
-            return ValueTask.CompletedTask;
-        }
-
+        );
+            
         protected virtual void NotifyOfStatus(BlockHeader head)
         {
             StatusMessage statusMessage = new()
