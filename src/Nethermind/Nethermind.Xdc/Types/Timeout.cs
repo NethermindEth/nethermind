@@ -20,7 +20,6 @@ public class Timeout(ulong round, Signature? signature, ulong gapNumber, bool is
     public bool IsMyVote { get; } = isMyVote;
     public override string ToString() => $"{Round}:{GapNumber}";
     public (ulong Round, Hash256 hash) PoolKey() => (Round, Keccak.Compute(_decoder.Encode(this, RlpBehaviors.ForSealing).Bytes));
-    public override bool Equals(object? obj) =>
-        obj is Vote other && Hash == other.Hash;
+    public override bool Equals(object? obj) => obj is Timeout other && Hash == other.Hash;
     public override int GetHashCode() => Hash.GetHashCode();
 }
