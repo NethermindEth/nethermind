@@ -420,7 +420,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (!AccountExistsInternal(address, blockAccessIndex.Value))
@@ -431,7 +431,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override bool TryGetAccount(Address address, out AccountStruct account, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -452,7 +452,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public void AddAccountRead(Address address, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -478,7 +478,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override Snapshot TakeSnapshot(bool newTransactionStart = false, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         int blockAccessListSnapshot = GetGeneratingBlockAccessList(blockAccessIndex).TakeSnapshot();
@@ -500,7 +500,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override bool IsContract(Address address, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -512,7 +512,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override bool IsStorageEmpty(Address address, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         // don't need to add read, already added in IsNonZeroAccount
@@ -534,7 +534,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void ClearStorage(Address address, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (TracingEnabled)
@@ -586,7 +586,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         return ParallelExecutionEnabled ?
@@ -596,7 +596,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void SetTransientState(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (ParallelExecutionEnabled)
@@ -611,7 +611,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
 
     public override void ResetTransient(int? blockAccessIndex = null)
     {
-        if (!blockAccessIndex.HasValue)
+        if (ParallelExecutionEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         if (ParallelExecutionEnabled)
