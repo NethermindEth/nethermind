@@ -141,14 +141,9 @@ public class InitDatabaseSnapshot : InitDatabase
             await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
         }
 
-        using HttpClient httpClient = new();
-        HttpRequestMessage request = new(HttpMethod.Get, snapshotUrl);
-        if (existingSize > 0)
-            request.Headers.Range = new RangeHeaderValue(existingSize, null);
-
-        using HttpResponseMessage response =
-            (await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
-            .EnsureSuccessStatusCode();
+        // HttpClient must outlive the response stream — do not dispose before CopyAsync finishes.
+        using HttpClient httpClient = new(new HttpClientHandler { AllowAutoRedirect = false });
+        using HttpResponseMessage response = await SendWithRangeAsync(httpClient, snapshotUrl, existingSize, cancellationToken);
 
         (FileMode fileMode, long bytesToSkip, long? totalSize) = response.StatusCode switch
         {
@@ -183,6 +178,42 @@ public class InitDatabaseSnapshot : InitDatabase
 
         if (_logger.IsInfo)
             _logger.Info($"Snapshot downloaded to {snapshotFileName}.");
+    }
+
+    // Sends a GET request with an optional Range header, manually following redirects so the
+    // Range header is preserved — HttpClient strips non-standard headers on auto-redirects.
+    private static async Task<HttpResponseMessage> SendWithRangeAsync(
+        HttpClient httpClient, string url, long existingSize, CancellationToken cancellationToken)
+    {
+        Uri currentUri = new(url);
+
+        for (int redirects = 0; redirects < 10; redirects++)
+        {
+            HttpRequestMessage request = new(HttpMethod.Get, currentUri);
+            if (existingSize > 0)
+                request.Headers.Range = new RangeHeaderValue(existingSize, null);
+
+            HttpResponseMessage response = await httpClient.SendAsync(
+                request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            if (response.StatusCode is HttpStatusCode.MovedPermanently
+                                    or HttpStatusCode.Found
+                                    or HttpStatusCode.SeeOther
+                                    or HttpStatusCode.TemporaryRedirect
+                                    or HttpStatusCode.PermanentRedirect)
+            {
+                Uri location = response.Headers.Location
+                    ?? throw new IOException("Redirect response missing Location header.");
+                // Location may be relative — resolve against the current URI.
+                currentUri = new Uri(currentUri, location);
+                response.Dispose();
+                continue;
+            }
+
+            return response.EnsureSuccessStatusCode();
+        }
+
+        throw new IOException("Too many redirects while downloading snapshot.");
     }
 
     private static async Task SkipAsync(Stream stream, long bytesToSkip, CancellationToken cancellationToken)
