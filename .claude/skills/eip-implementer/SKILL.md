@@ -98,7 +98,6 @@ If the user asks for the plan only, stop after presenting it.
 Follow the plan step by step. For each file:
 1. Read the file first to understand existing patterns.
 2. Make the minimal, focused change needed.
-3. Follow Nethermind coding guidelines (no LINQ over loops, no `var`, `is null`/`is not null`, `nameof`, etc.).
 
 After all code changes, add or update tests as planned.
 
@@ -115,12 +114,9 @@ Build, run relevant tests, and format. If build or tests fail → fix → repeat
 
 | Mistake | Fix |
 |---------|-----|
-| Writing code before user approves plan | Always wait for explicit confirmation after Step 3 |
-| Adding `Version` attribute in PackageReference | Nethermind uses CPM — versions go in `Directory.Packages.props` |
-| Using LINQ in hot paths | Use `for`/`foreach` loops per Nethermind guidelines |
-| Creating new test files | Add tests to existing test files with new test cases |
+| Writing code before user approves plan | Always wait for explicit confirmation after Step 4 |
 | Forgetting ChainSpec support | EIP flags need 4 ChainSpec files, not just IReleaseSpec — see reference doc |
-| Skipping build verification | Always run Step 5 before claiming implementation is complete |
+| Skipping build verification | Always run Step 6 before claiming implementation is complete |
 
 ## References
 
