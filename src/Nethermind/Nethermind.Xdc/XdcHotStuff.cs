@@ -6,6 +6,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
@@ -46,6 +47,7 @@ namespace Nethermind.Xdc
         private static readonly PayloadAttributes DefaultPayloadAttributes = new PayloadAttributes();
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
+        private (Hash256? HeadHash, ulong Round) _lastVoteAttempt;
         private bool _writeRoundInfo = true;
         private long _highestSignTxNumber = 0;
 
@@ -338,29 +340,39 @@ namespace Nethermind.Xdc
         {
             if (head.ExtraConsensusData?.QuorumCert is null)
                 throw new InvalidOperationException("Head block missing consensus data.");
-            var votingRound = head.ExtraConsensusData.BlockRound;
-            if (_highestVotedRound >= votingRound)
+
+            ulong votingRound = head.ExtraConsensusData.BlockRound;
+            ulong currentRound = _xdcContext.CurrentRound;
+
+            if (_highestVotedRound >= currentRound)
                 return;
+
+            // Suppress retries for the same stale head within the same round to avoid log spam
+            if (_lastVoteAttempt.HeadHash == head.Hash && _lastVoteAttempt.Round == currentRound)
+                return;
+            else
+                _lastVoteAttempt = (head.Hash, currentRound);
 
             // Commit/record the header's QC
             _quorumCertificateManager.CommitCertificate(head.ExtraConsensusData.QuorumCert);
 
-            _highestVotedRound = votingRound;
-
             // Check if we are in the masternode set
             if (!IsMasternode(epochInfo, _signer.Address))
             {
+                _highestVotedRound = currentRound;
                 _logger.Info($"Round {votingRound}: Skipped voting (not in masternode set)");
                 return;
             }
 
-            // Check voting rule
+            // Check voting rule, do not update _highestVotedRound in case of failure
             bool canVote = _votesManager.VerifyVotingRules(head, out string error);
             if (!canVote)
             {
                 _logger.Info($"Round {votingRound}: Voting rule not satisfied for block #{head.Number}, hash={head.Hash}: {error}");
                 return;
             }
+
+            _highestVotedRound = currentRound;
 
             try
             {
