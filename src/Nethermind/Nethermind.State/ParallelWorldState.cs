@@ -547,19 +547,11 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
         }
     }
 
-    // public override void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
-    // {
-    //     if (!ParallelExecutionEnabled)
-    //     {
-    //         _innerWorldState.Commit(releaseSpec, isGenesis, commitRoots);
-    //     }
-    // }
-
     public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
     {
         if (!ParallelExecutionEnabled)
         {
-            _innerWorldState.Commit(releaseSpec, isGenesis, commitRoots);
+            _innerWorldState.Commit(releaseSpec, tracer, isGenesis, commitRoots);
         }
     }
 

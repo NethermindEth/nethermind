@@ -56,6 +56,7 @@ namespace Nethermind.Consensus.Processing
 
                     ITransactionProcessorAdapter[] transactionProcessors = new ITransactionProcessorAdapter[len];
                     BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
+                    // todo: set and parallelize other tracer
                     TaskCompletionSource<long>[] gasResults = new TaskCompletionSource<long>[len];
                     for (int i = 0; i < len; i++)
                     {

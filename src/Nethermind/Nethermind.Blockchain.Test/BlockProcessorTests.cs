@@ -101,13 +101,13 @@ public class BlockProcessorTests
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
-        Assert.Throws<OperationCanceledException>(async () => await branchProcessor.Process(
+        Assert.ThrowsAsync<OperationCanceledException>(() => branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.None,
             AlwaysCancelBlockTracer.Instance));
 
-        Assert.Throws<OperationCanceledException>(async () => await branchProcessor.Process(
+        Assert.ThrowsAsync<OperationCanceledException>(() => branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.None,
