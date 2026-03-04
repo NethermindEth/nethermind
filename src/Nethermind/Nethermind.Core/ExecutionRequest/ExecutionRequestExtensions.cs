@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Core.ExecutionRequest;
 
 using SHA256 =
-#if ZKVM
+#if ZK_EVM
     SHA256Managed;
 #else
     System.Security.Cryptography.SHA256;

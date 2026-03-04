@@ -109,7 +109,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
 
     public TxReceipt[] Decode(in Span<byte> receiptsData)
     {
-        if (receiptsData.Length == 0 || receiptsData[0] == Rlp.NullObjectByte)
+        if (receiptsData.Length == 0 || receiptsData[0] == Rlp.EmptyListByte)
         {
             return [];
         }

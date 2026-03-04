@@ -9,13 +9,6 @@ namespace Nethermind.Core.Specs;
 
 public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
 {
-    public virtual bool IsEip1559Enabled => spec.IsEip1559Enabled;
-    public virtual long Eip1559TransitionBlock => spec.Eip1559TransitionBlock;
-    public virtual UInt256 ForkBaseFee => spec.ForkBaseFee;
-    public virtual UInt256 BaseFeeMaxChangeDenominator => spec.BaseFeeMaxChangeDenominator;
-    public virtual long ElasticityMultiplier => spec.ElasticityMultiplier;
-    public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
-    public virtual bool IsEip658Enabled => spec.IsEip658Enabled;
     public virtual string Name => spec.Name;
     public virtual long MaximumExtraDataSize => spec.MaximumExtraDataSize;
     public virtual long MaxCodeSize => spec.MaxCodeSize;
@@ -43,6 +36,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip211Enabled => spec.IsEip211Enabled;
     public virtual bool IsEip214Enabled => spec.IsEip214Enabled;
     public virtual bool IsEip649Enabled => spec.IsEip649Enabled;
+    public virtual bool IsEip658Enabled => spec.IsEip658Enabled;
     public virtual bool IsEip145Enabled => spec.IsEip145Enabled;
     public virtual bool IsEip1014Enabled => spec.IsEip1014Enabled;
     public virtual bool IsEip1052Enabled => spec.IsEip1052Enabled;
@@ -58,6 +52,9 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip2565Enabled => spec.IsEip2565Enabled;
     public virtual bool IsEip2929Enabled => spec.IsEip2929Enabled;
     public virtual bool IsEip2930Enabled => spec.IsEip2930Enabled;
+    public virtual bool IsEip1559Enabled => spec.IsEip1559Enabled;
+    public virtual long Eip1559TransitionBlock => spec.Eip1559TransitionBlock;
+    public virtual Address? Eip158IgnoredAccount => spec.Eip158IgnoredAccount;
     public virtual bool IsEip3198Enabled => spec.IsEip3198Enabled;
     public virtual bool IsEip3529Enabled => spec.IsEip3529Enabled;
     public virtual bool IsEip3541Enabled => spec.IsEip3541Enabled;
@@ -70,11 +67,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip4895Enabled => spec.IsEip4895Enabled;
     public virtual bool IsEip4844Enabled => spec.IsEip4844Enabled;
     public virtual bool IsEip4788Enabled => spec.IsEip4788Enabled;
-    public virtual bool ValidateChainId => spec.ValidateChainId;
-    public virtual ulong TargetBlobCount => spec.TargetBlobCount;
-    public virtual ulong MaxBlobCount => spec.MaxBlobCount;
-    public virtual ulong MaxBlobsPerTx { get; init; } = spec.MaxBlobsPerTx;
-    public virtual UInt256 BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
     public virtual Address? Eip4788ContractAddress => spec.Eip4788ContractAddress;
     public virtual bool IsEip6110Enabled => spec.IsEip6110Enabled;
     public virtual Address? DepositContractAddress => spec.DepositContractAddress;
@@ -87,29 +79,35 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual Address? Eip2935ContractAddress => spec.Eip2935ContractAddress;
     public virtual long Eip2935RingBufferSize => spec.Eip2935RingBufferSize;
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
+    public virtual bool IsEofEnabled => spec.IsEofEnabled;
     public virtual bool IsEip7702Enabled => spec.IsEip7702Enabled;
     public virtual bool IsEip7823Enabled => spec.IsEip7823Enabled;
+    public virtual bool IsEip7825Enabled => spec.IsEip7825Enabled;
+    public virtual bool IsEip7918Enabled => spec.IsEip7918Enabled;
+    public virtual bool IsEip7883Enabled => spec.IsEip7883Enabled;
     public virtual bool IsEip7934Enabled => spec.IsEip7934Enabled;
     public virtual int Eip7934MaxRlpBlockSize => spec.Eip7934MaxRlpBlockSize;
     public virtual bool IsEip7951Enabled => spec.IsEip7951Enabled;
     public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
     public virtual bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
     public virtual bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
-    public virtual bool IsOpJovianEnabled => spec.IsOpJovianEnabled;
     public virtual bool IsOpIsthmusEnabled => spec.IsOpIsthmusEnabled;
+    public virtual bool IsOpJovianEnabled => spec.IsOpJovianEnabled;
     public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
-    public virtual bool IsEip7825Enabled { get; init; } = spec.IsEip7825Enabled;
-    public bool IsEip7883Enabled => spec.IsEip7883Enabled;
-    public virtual bool IsEip7918Enabled => spec.IsEip7918Enabled;
+    public virtual bool ValidateChainId => spec.ValidateChainId;
+    public virtual ulong TargetBlobCount => spec.TargetBlobCount;
+    public virtual ulong MaxBlobCount => spec.MaxBlobCount;
+    public virtual ulong MaxBlobsPerTx => spec.MaxBlobsPerTx;
+    public virtual UInt256 BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
-    public virtual bool IsEofEnabled => spec.IsEofEnabled;
-    public virtual bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
     public virtual bool IsEip4844FeeCollectorEnabled => spec.IsEip4844FeeCollectorEnabled;
     public virtual bool IsEip7594Enabled => spec.IsEip7594Enabled;
     public virtual Address? FeeCollector => spec.FeeCollector;
-    public virtual UInt256? Eip1559BaseFeeMinValue => spec.Eip1559BaseFeeMinValue;
-    public virtual bool ValidateReceipts => spec.ValidateReceipts;
+    public virtual UInt256 ForkBaseFee => spec.ForkBaseFee;
+    public virtual UInt256 BaseFeeMaxChangeDenominator => spec.BaseFeeMaxChangeDenominator;
+    public virtual long ElasticityMultiplier => spec.ElasticityMultiplier;
+    public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;

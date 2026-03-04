@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             {
                 if (txReceipts is null)
                 {
-                    stream.Encode(Rlp.OfEmptySequence);
+                    stream.Encode(Rlp.OfEmptyList);
                     continue;
                 }
 
@@ -52,7 +52,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 {
                     if (txReceipt is null)
                     {
-                        stream.Encode(Rlp.OfEmptySequence);
+                        stream.Encode(Rlp.OfEmptyList);
                         continue;
                     }
 
@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 return ReceiptsMessage.Empty;
             }
 
-            if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptySequence[0])
+            if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptyList[0])
             {
                 byteBuffer.ReadByte();
                 return ReceiptsMessage.Empty;
@@ -104,7 +104,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 TxReceipt?[]? txReceipts = message.TxReceipts[i];
                 if (txReceipts is null)
                 {
-                    contentLength += Rlp.OfEmptySequence.Length;
+                    contentLength += Rlp.OfEmptyList.Length;
                 }
                 else
                 {
@@ -132,7 +132,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
                 if (receipt is null)
                 {
-                    contentLength += Rlp.OfEmptySequence.Length;
+                    contentLength += Rlp.OfEmptyList.Length;
                     continue;
                 }
 

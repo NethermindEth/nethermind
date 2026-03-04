@@ -16,7 +16,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static LogEntry? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (rlpStream.IsNextItemNull())
+            if (rlpStream.IsNextItemEmptyList())
             {
                 rlpStream.ReadByte();
                 return null;
@@ -42,7 +42,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static LogEntry? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyList())
             {
                 decoderContext.ReadByte();
                 return null;
@@ -68,7 +68,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors behaviors, out LogEntryStructRef item)
         {
-            if (decoderContext.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyList())
             {
                 decoderContext.ReadByte();
                 item = new LogEntryStructRef();

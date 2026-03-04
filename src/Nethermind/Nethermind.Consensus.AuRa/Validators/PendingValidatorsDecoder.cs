@@ -11,7 +11,7 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         protected override PendingValidators DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (rlpStream.IsNextItemNull())
+            if (rlpStream.IsNextItemEmptyList())
             {
                 rlpStream.ReadByte();
                 return null;
@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence;
+                return Rlp.OfEmptyList;
             }
 
             RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
