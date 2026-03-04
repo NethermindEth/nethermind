@@ -430,7 +430,7 @@ public class JsonRpcSocketsClientTests
                 ReadResult readResult = await reader.ReadToEndAsync();
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
                 onRequest(buffer);
-                reader.AdvanceTo(buffer.Start, buffer.End);
+                reader.AdvanceTo(buffer.End);
                 yield return JsonRpcResult.Single(new JsonRpcSuccessResponse(null), new RpcReport());
             }
             processor.ProcessAsync(Arg.Any<PipeReader>(), Arg.Any<JsonRpcContext>()).Returns(ResponseFunc);
