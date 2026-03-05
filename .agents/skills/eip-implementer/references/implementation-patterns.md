@@ -52,23 +52,11 @@
 - `Nethermind.JsonRpc.Test/` — RPC module tests
 - `Nethermind.TxPool.Test/` — transaction pool tests
 
-## Fork Hierarchy (Mainnet)
-
-```
-Frontier → Homestead → TangerineWhistle → SpuriousDragon
-→ Byzantium → Constantinople → ConstantinopleFix
-→ Istanbul → MuirGlacier → Berlin → London → ArrowGlacier
-→ GrayGlacier → GrayGlacierWithdrawals → Shanghai
-→ Cancun → Prague → Osaka (future)
-```
-
-Each fork class inherits from the previous and overrides properties to enable new EIPs.
-
 ## Implementation Patterns
 
 ### Adding an EIP flag to a fork
 
-Every consensus EIP that needs a feature flag requires changes in **9 files** across 5 layers:
+Every consensus EIP that needs a feature flag requires changes in **10 files** across 5 layers:
 
 **Layer 1 — Core interface + implementations (3 files):**
 1. `Nethermind.Core/Specs/IReleaseSpec.cs` — add `bool IsEipXXXXEnabled { get; }` with XML doc
@@ -86,6 +74,9 @@ Every consensus EIP that needs a feature flag requires changes in **9 files** ac
 7. `Nethermind.Specs/ChainSpecStyle/ChainParameters.cs` — add `public ulong? EipXXXXTransitionTimestamp { get; set; }`
 8. `Nethermind.Specs/ChainSpecStyle/ChainSpecLoader.cs` — map: `EipXXXXTransitionTimestamp = chainSpecJson.Params.EipXXXXTransitionTimestamp,`
 9. `Nethermind.Specs/ChainSpecStyle/ChainSpecBasedSpecProvider.cs` — activate: `releaseSpec.IsEipXXXXEnabled = (chainSpec.Parameters.EipXXXXTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;`
+
+**Layer 5 — Spec provider test (1 file):**
+10. `Nethermind.Specs.Test/MainnetSpecProviderTests.cs` — update the fork's EIP test method to cover the new flag
 
 **Exceptions:**
 - Receipt-only EIPs may use `IReceiptSpec` instead of `IReleaseSpec`

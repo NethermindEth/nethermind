@@ -13,7 +13,7 @@ Copy and track as you go:
 ```
 EIP-XXXX Implementation:
 - [ ] Step 1: Fetch EIP spec — extract and present ALL fields listed below
-- [ ] Step 2: Explore codebase (similar EIPs, current fork, target files)
+- [ ] Step 2: Explore codebase (similar EIPs, verify target fork exists)
 - [ ] Step 3: Route spec changes to implementation patterns
 - [ ] Step 4: Present implementation plan (WAIT for user approval)
 - [ ] Step 5: Implement changes per plan
@@ -50,7 +50,7 @@ The raw GitHub URL returns full markdown with formulas and pseudocode intact. Th
 Before planning, ground yourself in the current state:
 
 1. **Find a similar EIP** — search for a recently implemented EIP in the same category (e.g., if implementing a new opcode, look at how `MCOPY` or `TLOAD` was added). Read its spec flag, EVM handler, and tests to understand the real pattern.
-2. **Determine target fork** — list all fork files in `Nethermind.Specs/Forks/` and read the latest ones. If the EIP's target fork already exists, use it. If not, **ask the user** which fork to target — fork numbers and names are in flux during devnet cycles, so never guess.
+2. **Check if the target fork exists** — list fork files in `Nethermind.Specs/Forks/` and check `MainnetSpecProvider.cs`. If the fork exists, proceed with the 10-file EIP flag registration plus core logic and tests. If it doesn't exist, **confirm with the user**: they can pick an existing fork, use the `fork-creator` skill to create one, or proceed without a fork (the EIP flag will be dormant until a fork enables it).
 3. **Check for partial work** — search for `IsEip{number}` to see if the EIP is already partially implemented.
 
 ### Step 3 — Route to Implementation Patterns
@@ -133,7 +133,7 @@ Build, run relevant tests, and format. If build or tests fail → fix → repeat
 | Mistake                                | Fix                                                                                                                                                      |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Writing code before user approves plan | Always wait for explicit confirmation after Step 4                                                                                                       |
-| Forgetting flag registration files     | EIP flags need 9 files across 5 layers, not just IReleaseSpec — see reference doc                                                                        |
+| Forgetting flag registration files     | EIP flags need 10 files across 5 layers, not just IReleaseSpec — see reference doc                                                                       |
 | Skipping build verification            | Always run Step 6 before claiming implementation is complete                                                                                             |
 | Breaking unrelated tests               | If your EIP changes gas costs or tx validation, **check whether existing tests break** — disable the flag in affected tests via `OverridableReleaseSpec` |
 
