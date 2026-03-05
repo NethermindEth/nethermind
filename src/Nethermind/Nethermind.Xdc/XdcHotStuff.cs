@@ -47,7 +47,8 @@ namespace Nethermind.Xdc
         private static readonly PayloadAttributes DefaultPayloadAttributes = new PayloadAttributes();
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
-        private Hash256? _lastVoteAttemptHash;
+        private (Hash256? HeadHash, ulong Round) _lastVoteAttempt;
+        private Hash256? _successfullyVotedHead;
         private bool _writeRoundInfo = true;
         private long _highestSignTxNumber = 0;
 
@@ -347,9 +348,16 @@ namespace Nethermind.Xdc
             if (_highestVotedRound >= currentRound)
                 return;
 
-            // Skip if already voted for it
-            if (_lastVoteAttemptHash == head.Hash) return;
-            _lastVoteAttemptHash = head.Hash;
+            // After a successful vote for block N, the round advances but head stays N until N+1 arrives.
+            // Short-circuit polling retries
+            if (_successfullyVotedHead == head.Hash)
+                return;
+
+            // Suppress retries for the same stale head within the same round to avoid log spam
+            if (_lastVoteAttempt.HeadHash == head.Hash && _lastVoteAttempt.Round == currentRound)
+                return;
+            else
+                _lastVoteAttempt = (head.Hash, currentRound);
 
             // Commit/record the header's QC
             _quorumCertificateManager.CommitCertificate(head.ExtraConsensusData.QuorumCert);
@@ -371,6 +379,7 @@ namespace Nethermind.Xdc
             }
 
             _highestVotedRound = currentRound;
+            _successfullyVotedHead = head.Hash;
 
             try
             {
