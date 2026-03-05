@@ -17,15 +17,11 @@ using Nethermind.TxPool;
 namespace Nethermind.Consensus.Scheduler;
 
 /// <summary>
-/// Provides a way to orchestrate tasks to run in the background at a lower priority.
-/// - Task will be run in a lower priority thread, but there is a concurrency limit.
-/// - Task closure will have the CancellationToken which will be canceled if block processing happens while the task is running.
-/// - The Task has a default timeout, which is counted from the time it is queued. If timed out because too many other background
-///    tasks before it, for example, the cancellation token passed to it will be canceled.
-/// - During block processing, tasks run with a cancelled CancellationToken so handlers can bail out quickly.
-///   If queue depth exceeds 80% capacity, tasks are disposed without execution to prevent queue overflow.
-///   It is up to running tasks to check the token and stop promptly. Don't hang — other tasks need to be canceled too.
-/// - A failure at this level is considered unexpected and loud. Exception should be handled at handler level.
+/// Orchestrates background tasks at BelowNormal thread priority with a concurrency limit.
+/// Each task receives a CancellationToken that is cancelled during block processing or on deadline expiry.
+/// During block processing, tasks run with a cancelled token so handlers can bail out quickly.
+/// If queue depth exceeds 80% capacity, tasks are disposed without execution to prevent overflow.
+/// Handlers must check the token and stop promptly. Exceptions should be handled at handler level.
 /// </summary>
 public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposable
 {
@@ -118,17 +114,22 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 {
                     Interlocked.Decrement(ref _queueCount);
                     UpdateQueueCount();
+
                     if (token.IsCancellationRequested && Volatile.Read(ref _queueCount) > _highWatermark)
                     {
-                        // Queue pressure during block processing — skip work, just free resources.
-                        // Avoids CTS allocation, handler invocation, and network I/O for each stale task.
+                        // Queue pressure during block processing — fast drain without handler invocation
                         activity.TryDispose();
                         Evm.Metrics.IncrementTotalBackgroundTasksCancelled();
+                        continue;
                     }
-                    else
+
+                    await activity.Do(token);
+                    Evm.Metrics.IncrementTotalBackgroundTasksExecuted();
+
+                    if (token.IsCancellationRequested)
                     {
-                        await activity.Do(token);
-                        Evm.Metrics.IncrementTotalBackgroundTasksExecuted();
+                        // Break to refresh linked CTS — block processing state may have changed
+                        break;
                     }
                 }
             }
