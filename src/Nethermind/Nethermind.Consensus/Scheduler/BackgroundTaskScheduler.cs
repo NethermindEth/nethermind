@@ -42,6 +42,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private long _queueCount;
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
+    private long _lastDropLogTicks;
     private bool _disposed = false;
 
     public BackgroundTaskScheduler(IBranchProcessor branchProcessor, IChainHeadInfoProvider headInfo, int concurrency, int capacity, ILogManager logManager)
@@ -117,7 +118,9 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                     UpdateQueueCount();
                     if (token.IsCancellationRequested)
                     {
-                        await activity.Do(token);
+                        // Block processing is active — skip work, just free resources.
+                        // Avoids CTS allocation, handler invocation, and network I/O for each stale task.
+                        activity.TryDispose();
                         Evm.Metrics.IncrementTotalBackgroundTasksCancelled();
                     }
                     else
@@ -162,10 +165,15 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         }
 
         Evm.Metrics.IncrementTotalBackgroundTasksDropped();
-        if (_logger.IsWarn) _logger.Warn(
-            $"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task [{source ?? "unknown"}]. " +
-            $"Totals: queued={Evm.Metrics.TotalBackgroundTasksQueued}, executed={Evm.Metrics.TotalBackgroundTasksExecuted}, " +
-            $"cancelled={Evm.Metrics.TotalBackgroundTasksCancelled}, dropped={Evm.Metrics.TotalBackgroundTasksDropped}");
+        long now = Environment.TickCount64;
+        long lastLog = Volatile.Read(ref _lastDropLogTicks);
+        if (_logger.IsWarn && now - lastLog > 10_000 && Interlocked.CompareExchange(ref _lastDropLogTicks, now, lastLog) == lastLog)
+        {
+            _logger.Warn(
+                $"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task [{source ?? "unknown"}]. " +
+                $"Totals: queued={Evm.Metrics.TotalBackgroundTasksQueued}, executed={Evm.Metrics.TotalBackgroundTasksExecuted}, " +
+                $"cancelled={Evm.Metrics.TotalBackgroundTasksCancelled}, dropped={Evm.Metrics.TotalBackgroundTasksDropped}");
+        }
         Interlocked.Decrement(ref _queueCount);
         request.TryDispose();
         return false;
@@ -194,6 +202,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         public Func<TReq, CancellationToken, Task> FulfillFunc { get; init; }
 
         public int CompareTo(IActivity? other) => Deadline.CompareTo(other?.Deadline ?? DateTimeOffset.MaxValue);
+
+        public void TryDispose() => Request.TryDispose();
 
         public async Task Do(CancellationToken cancellationToken)
         {
@@ -228,6 +238,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     {
         DateTimeOffset Deadline { get; }
         Task Do(CancellationToken cancellationToken);
+        void TryDispose();
     }
 
     private sealed class BelowNormalPriorityTaskScheduler : TaskScheduler, IDisposable
