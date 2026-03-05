@@ -111,7 +111,7 @@ public class InitDatabaseSnapshot : InitDatabase
             SetCheckpoint(snapshotConfig, Stage.Verified);
         }
 
-        await ExtractSnapshotTo(snapshotFileName, dbPath, cancellationToken);
+        await ExtractSnapshotTo(snapshotFileName, dbPath, snapshotConfig.StripComponents, cancellationToken);
         SetCheckpoint(snapshotConfig, Stage.Extracted);
 
         if (_logger.IsInfo)
@@ -148,6 +148,14 @@ public class InitDatabaseSnapshot : InitDatabase
 
         if (_logger.IsInfo)
             _logger.Info($"Server response: {response.StatusCode}, ETag: {response.Headers.ETag}, Last-Modified: {response.Content.Headers.LastModified}");
+
+        // 416: our Range start was at or beyond the end of the file — we already have the full file.
+        if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+        {
+            if (_logger.IsInfo)
+                _logger.Info("Snapshot file already fully downloaded (server returned 416).");
+            return;
+        }
 
         (FileMode fileMode, long bytesToSkip, long? totalSize) = response.StatusCode switch
         {
@@ -214,6 +222,10 @@ public class InitDatabaseSnapshot : InitDatabase
                 continue;
             }
 
+            // 416 means we already have the full file — let the caller handle it.
+            if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+                return response;
+
             return response.EnsureSuccessStatusCode();
         }
 
@@ -256,13 +268,42 @@ public class InitDatabaseSnapshot : InitDatabase
         return Bytes.AreEqual(hash, checksumBytes);
     }
 
-    private Task ExtractSnapshotTo(string snapshotPath, string dbPath, CancellationToken cancellationToken) =>
+    private Task ExtractSnapshotTo(string snapshotPath, string dbPath, int stripComponents, CancellationToken cancellationToken) =>
         Task.Run(() =>
         {
             if (_logger.IsInfo)
                 _logger.Info($"Extracting snapshot to {dbPath}. Do not interrupt!");
 
-            ZipFile.ExtractToDirectory(snapshotPath, dbPath);
+            string extension = Path.GetExtension(snapshotPath).ToLowerInvariant();
+            string secondExtension = Path.GetExtension(Path.GetFileNameWithoutExtension(snapshotPath)).ToLowerInvariant();
+
+            if (extension == ".zip")
+            {
+                ZipFile.ExtractToDirectory(snapshotPath, dbPath);
+            }
+            else if (extension is ".zst" or ".zstd" or ".gz" or ".bz2" or ".xz" || secondExtension == ".tar")
+            {
+                Directory.CreateDirectory(dbPath);
+                using System.Diagnostics.Process process = new()
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "tar",
+                        Arguments = $"--extract --file \"{snapshotPath}\" --directory \"{dbPath}\" --strip-components={stripComponents}",
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                    }
+                };
+                process.Start();
+                string stderr = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+                if (process.ExitCode != 0)
+                    throw new IOException($"tar extraction failed (exit {process.ExitCode}): {stderr}");
+            }
+            else
+            {
+                throw new NotSupportedException($"Unsupported snapshot archive format: {snapshotPath}");
+            }
         }, cancellationToken);
 
     private enum Stage
