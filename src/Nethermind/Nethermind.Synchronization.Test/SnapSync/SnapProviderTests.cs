@@ -212,7 +212,7 @@ public class SnapProviderTests
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
         (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = ss.GetAccountRanges(
-            root, Keccak.Zero, entries[3].Item1, 1.MB(), default);
+            root, Keccak.Zero, entries[3].Item1, 1.MB, default);
 
         progressTracker.IsFinished(out SnapSyncBatch? batch).Should().Be(false);
 
@@ -255,7 +255,7 @@ public class SnapProviderTests
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
         (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = ss.GetAccountRanges(
-            root, Keccak.Zero, Keccak.MaxValue, 1.MB(), default);
+            root, Keccak.Zero, Keccak.MaxValue, 1.MB, default);
 
         // The range given out here should be half.
         progressTracker.IsFinished(out SnapSyncBatch? batch).Should().Be(false);
