@@ -9,7 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libsodium-dev && \
   rm -rf /var/lib/apt/lists/*
 
-RUN curl -L https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/ziskup | bash -s -- --nokey
+# TODO: Harden Zisk installation
+RUN curl -fsSL --proto '=https' --tlsv1.2 \
+  https://raw.githubusercontent.com/0xPolygonHermez/zisk/b3ca745b80423c8123dc24f19039865a5bc8b074/ziskup/ziskup \
+  | bash -s -- -v 0.15.0 --nokey
 
 ENV PATH="/root/.zisk/bin:${PATH}"
 
