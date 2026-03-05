@@ -22,10 +22,11 @@ namespace Nethermind.Consensus.Scheduler;
 /// - Task closure will have the CancellationToken which will be canceled if block processing happens while the task is running.
 /// - The Task has a default timeout, which is counted from the time it is queued. If timed out because too many other background
 ///    tasks before it, for example, the cancellation token passed to it will be canceled.
-/// - Tasks execute continuously regardless of block processing status. During block processing, the CancellationToken
-///   is cancelled, allowing tasks to check and exit quickly. Tasks are not held back or re-queued.
-///   It is up to the task to determine what happens if canceled, maybe it will reschedule for later or resume later, but
-///   preferably, stop execution immediately. Don't hang BTW. Other background tasks need to be canceled too.
+/// - During block processing, newly queued background tasks are not executed; instead, they are canceled and disposed without running.
+///   This allows block processing to proceed without contention from background work.
+/// - It is up to the task to determine what happens if its CancellationToken is canceled while it is running (for example, because
+///   block processing started), but it should preferably stop execution immediately and not hang, so that other background tasks
+///   can also be canceled promptly.
 /// - A failure at this level is considered unexpected and loud. Exception should be handled at handler level.
 /// </summary>
 public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposable
