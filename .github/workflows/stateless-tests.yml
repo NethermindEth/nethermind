@@ -42,8 +42,8 @@ jobs:
         run: |
           docker build -t zisk .
           block_hash=$(docker run --rm zisk ziskemu -e /n/nethermind -i /n/input.bin)
-          if [[ "${block_hash%%$'\n'*}" != "2528a96c" ]]; then
-            echo "::error::Unexpected block hash: ${block_hash%%$'\n'*}"
+          if [[ "$block_hash" != "0x2528a96c6c16ff80a8c92b84d7202f8250d74c0dd9e520a536179467f7e284b8" ]]; then
+            echo "::error::Unexpected block hash: $block_hash"
             exit 1
           fi
       - name: Upload guest binary
@@ -79,7 +79,7 @@ jobs:
         run: |
           docker build --platform linux/amd64 -t zkevm .
           block_hash=$(docker run --rm zkevm)
-          if [[ "${block_hash:2:8}" != "2528a96c" ]]; then
+          if [[ "$block_hash" != "0x2528a96c6c16ff80a8c92b84d7202f8250d74c0dd9e520a536179467f7e284b8" ]]; then
             echo "::error::Unexpected block hash: $block_hash"
             exit 1
           fi

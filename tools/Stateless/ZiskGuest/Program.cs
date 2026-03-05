@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Stateless.Execution;
+using Nethermind.ZiskBindings;
 
 namespace Nethermind.Stateless.ZiskGuest;
 
@@ -12,7 +13,7 @@ class Program
 {
     static void Main()
     {
-        ReadOnlySpan<byte> input = Zisk.IO.ReadInput();
+        ReadOnlySpan<byte> input = IO.ReadInput();
 
         if (!StatelessExecutor.TryExecute(input, out Block? block))
             Environment.FailFast("Execution failed");
@@ -21,6 +22,8 @@ class Program
 
         // TODO: Output chain id and state root too
         for (int i = 0, j = 0; i < hash.Length; i += sizeof(uint))
-            Zisk.IO.SetOutput(j++, BinaryPrimitives.ReadUInt32BigEndian(hash.Slice(i, sizeof(uint))));
+            IO.SetOutput(j++, BinaryPrimitives.ReadUInt32BigEndian(hash.Slice(i, sizeof(uint))));
+
+        IO.WriteLine(block.Hash.ToString());
     }
 }

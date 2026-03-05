@@ -11,4 +11,4 @@ WORKDIR /n
 
 COPY bin/ .
 
-ENTRYPOINT ["./nethermind"]
+ENTRYPOINT ["qemu-riscv64-static", "./nethermind"]

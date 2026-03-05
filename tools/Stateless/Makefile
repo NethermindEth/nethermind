@@ -97,10 +97,9 @@ build-zisk: build-dotnet-zisk build-docker-bflat
 		--mount type=bind,source="$(ZISK_DIR)",target=$(SRC_DIR) \
 		bflat-riscv64-local \
 		$(BFLAT_BUILD) --libc zisk $(BFLAT_REFS) \
-		--extlib https://github.com/NethermindEth/bflat-libziskos:pre-develop-0.16.0 \
-		$(SRC_DIR)/Program.cs \
-		$(SRC_DIR)/Zisk/Crypto.cs \
-		$(SRC_DIR)/Zisk/IO.cs
+		-r $(BIN_DIR)/Nethermind.ZiskBindings.dll \
+		--extra-ld $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.a \
+		$(SRC_DIR)/Program.cs
 	mkdir -p $(ZISK_DIR)/bin && \
 		mv -f $(ZISK_DIR)/Program.patched $(ZISK_DIR)/bin/nethermind && \
 		rm -f $(ZISK_DIR)/Program
@@ -112,8 +111,10 @@ run-tester: build-tester
 run-zisk: build-zisk
 	[ -f "$(ZISK_DIR)/bin/input.bin" ] || \
 		dotnet run -c release --project $(TESTER_DIR)/Tester.csproj -- $(ZISK_DIR)/bin/input.bin
-	docker build --platform linux/amd64 -t nethermind-zisk $(ZISK_DIR)
-	docker run --rm -it -e RUST_BACKTRACE=full nethermind-zisk ziskemu -e /n/nethermind -i /n/input.bin
+	docker run --rm -it -e RUST_BACKTRACE=full \
+		--mount type=bind,source="$(ZISK_DIR)/bin",target=/n \
+		nethermindeth/zisk:latest \
+		ziskemu -e /n/nethermind -i /n/input.bin
 
 clean:
 	rm -rf \

@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Nethermind.ZiskBindings" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Executor\Executor.csproj" />
   </ItemGroup>
 
