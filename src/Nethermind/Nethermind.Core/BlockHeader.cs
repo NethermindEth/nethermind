@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Threading;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -59,9 +60,9 @@ public static class Out
 
         bool isWarmup = false;
         if (TraceShowStackTrace)
-            Console.WriteLine($"b={CurrentBlockNumber}, t={CurrentTransactionIndex}, {GetCallStackString(out isWarmup)}");
+            Console.WriteLine($"b={CurrentBlockNumber}, tid={Thread.CurrentThread.ManagedThreadId}, t={CurrentTransactionIndex}, {GetCallStackString(out isWarmup)}");
 
-        Console.WriteLine($"b={CurrentBlockNumber}, t={(isWarmup ? "w " : "")}{CurrentTransactionIndex} {log}");
+        Console.WriteLine($"b={CurrentBlockNumber}, tid={Thread.CurrentThread.ManagedThreadId}, t={(isWarmup ? "w " : "")}{CurrentTransactionIndex} {log}");
     }
 
     public static void LogFast(string log)
@@ -69,7 +70,9 @@ public static class Out
         if (!IsTargetBlock)
             return;
 
-        Console.WriteLine($"b={CurrentBlockNumber}, t={CurrentTransactionIndex} {log}");
+        _ = GetCallStackString(out var isWarmup);
+
+        Console.WriteLine($"b={CurrentBlockNumber}, tid={Thread.CurrentThread.ManagedThreadId}, t={(isWarmup ? "w " : "")}{CurrentTransactionIndex} {log}");
     }
 
     public static void Log(string scope, string key, string value)
@@ -79,9 +82,9 @@ public static class Out
 
         bool isWarmup = false;
         if (TraceShowStackTrace)
-            Console.WriteLine($"b={CurrentBlockNumber}, t={CurrentTransactionIndex}, {GetCallStackString(out isWarmup)}");
+            Console.WriteLine($"b={CurrentBlockNumber}, tid={Thread.CurrentThread.ManagedThreadId}, t={CurrentTransactionIndex}, {GetCallStackString(out isWarmup)}");
 
-        Console.WriteLine($"b={CurrentBlockNumber}, t={(isWarmup ? "w " : "")}{CurrentTransactionIndex}, s={scope}: {key} {value}");
+        Console.WriteLine($"b={CurrentBlockNumber}, tid={Thread.CurrentThread.ManagedThreadId}, t={(isWarmup ? "w " : "")}{CurrentTransactionIndex}, s={scope}: {key} {value}");
     }
 
     private static List<StackFrame> GetCallStack(int skipFrames = 2, int maxDepth = 20)
