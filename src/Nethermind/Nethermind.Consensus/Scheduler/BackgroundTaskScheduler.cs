@@ -20,7 +20,6 @@ namespace Nethermind.Consensus.Scheduler;
 /// Orchestrates background tasks at BelowNormal thread priority with a concurrency limit.
 /// Each task receives a CancellationToken that is cancelled during block processing or on deadline expiry.
 /// During block processing, tasks run with a cancelled token so handlers can bail out quickly.
-/// If queue depth exceeds 80% capacity, tasks are disposed without execution to prevent overflow.
 /// Handlers must check the token and stop promptly. Exceptions should be handled at handler level.
 /// </summary>
 public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposable
@@ -35,7 +34,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private readonly IBranchProcessor _branchProcessor;
     private readonly IChainHeadInfoProvider _headInfo;
     private readonly int _capacity;
-    private readonly long _highWatermark;
     private long _queueCount;
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
@@ -63,7 +61,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _branchProcessor = branchProcessor;
         _headInfo = headInfo;
         _capacity = capacity;
-        _highWatermark = (long)(capacity * 0.8);
 
         _branchProcessor.BlocksProcessing += BranchProcessorOnBranchesProcessing;
         _branchProcessor.BlockProcessed += BranchProcessorOnBranchProcessed;
@@ -114,14 +111,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 {
                     Interlocked.Decrement(ref _queueCount);
                     UpdateQueueCount();
-
-                    if (token.IsCancellationRequested && Volatile.Read(ref _queueCount) > _highWatermark)
-                    {
-                        // Queue pressure during block processing — fast drain without handler invocation
-                        activity.TryDispose();
-                        Evm.Metrics.IncrementTotalBackgroundTasksCancelled();
-                        continue;
-                    }
 
                     await activity.Do(token);
                     Evm.Metrics.IncrementTotalBackgroundTasksExecuted();
@@ -175,7 +164,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             _logger.Warn(
                 $"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task [{source ?? "unknown"}]. " +
                 $"Totals: queued={Evm.Metrics.TotalBackgroundTasksQueued}, executed={Evm.Metrics.TotalBackgroundTasksExecuted}, " +
-                $"cancelled={Evm.Metrics.TotalBackgroundTasksCancelled}, dropped={Evm.Metrics.TotalBackgroundTasksDropped}");
+                $"dropped={Evm.Metrics.TotalBackgroundTasksDropped}");
         }
         Interlocked.Decrement(ref _queueCount);
         DisposeDeep(request);
@@ -233,8 +222,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
         public int CompareTo(IActivity? other) => Deadline.CompareTo(other?.Deadline ?? DateTimeOffset.MaxValue);
 
-        public void TryDispose() => DisposeDeep(Request);
-
         public async Task Do(CancellationToken cancellationToken)
         {
             TimeSpan timeToComplete = Deadline - DateTimeOffset.UtcNow;
@@ -268,7 +255,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     {
         DateTimeOffset Deadline { get; }
         Task Do(CancellationToken cancellationToken);
-        void TryDispose();
     }
 
     private sealed class BelowNormalPriorityTaskScheduler : TaskScheduler, IDisposable

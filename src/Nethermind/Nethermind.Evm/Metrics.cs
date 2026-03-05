@@ -127,12 +127,6 @@ public class Metrics
     public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted;
     public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted);
 
-    private static long _totalBackgroundTasksCancelled;
-    [GaugeMetric]
-    [Description("Total number of background tasks disposed without execution (e.g. during block processing).")]
-    public static long TotalBackgroundTasksCancelled => _totalBackgroundTasksCancelled;
-    public static void IncrementTotalBackgroundTasksCancelled() => Interlocked.Increment(ref _totalBackgroundTasksCancelled);
-
     internal static long BlockTransactions { get; set; }
 
     private static float _blockAveGasPrice;
