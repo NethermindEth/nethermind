@@ -128,7 +128,8 @@ namespace Nethermind.Network
 #pragma warning disable 4014
 
                 // TODO: hack related to not clearly separated peer pool and peer manager
-                if (!_nodesBeingAdded.ContainsKey(peer.Node.Id))
+                if (!_nodesBeingAdded.ContainsKey(peer.Node.Id)
+                    && _rlpxHost.ShouldContact(peer.Node.Address.Address))
                 {
                     // fire and forget - all the surrounding logic will be executed
                     // exceptions can be lost here without issues
