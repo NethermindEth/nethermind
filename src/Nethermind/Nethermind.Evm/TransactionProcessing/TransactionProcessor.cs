@@ -893,14 +893,28 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual bool DeployContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {
+            if (Out.IsTargetBlock)
+                Out.Log($"evm deploying contract eip170Enabled={spec.IsEip170Enabled} maxCodeSize={spec.MaxCodeSize}");
+
             if (!CodeDepositHandler.CalculateCost(spec, substate.Output.Length, out long regularDepositCost, out long stateDepositCost))
+            {
+                if (Out.IsTargetBlock)
+                    Out.Log($"evm failed deploy contract codeDepositGasCost calculation failed chargeForTopLevelCreate={spec.ChargeForTopLevelCreate}");
                 return false;
+            }
 
             if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
+            {
+                if (Out.IsTargetBlock)
+                    Out.Log("evm failed deploy contract code is invalid");
                 return false;
+            }
 
             // Copy the bytes so it's not live memory that will be used in another tx.
-            return TryChargeCodeDeposit(spec, codeOwner, in accessedItems, ref unspentGas, regularDepositCost, stateDepositCost, substate.Output.ToArray());
+            bool result = TryChargeCodeDeposit(spec, codeOwner, in accessedItems, ref unspentGas, regularDepositCost, stateDepositCost, substate.Output.ToArray());
+            if (Out.IsTargetBlock)
+                Out.Log(result ? $"evm deployed contract unspentGas={TGasPolicy.GetRemainingGas(in unspentGas)}" : $"evm failed deploy contract charge code deposit failed");
+            return result;
         }
 
         private bool TryChargeCodeDeposit(

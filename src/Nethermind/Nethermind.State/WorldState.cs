@@ -213,6 +213,8 @@ namespace Nethermind.State
         }
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("account", address.ToString(), $"balance+={balanceChange}");
             DebugGuardInScope();
             _stateProvider.AddToBalance(address, balanceChange, spec, out oldBalance);
         }
@@ -221,14 +223,14 @@ namespace Nethermind.State
         public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
             if (Out.IsTargetBlock)
-                Out.Log("account", address.ToString(), $"balance+={balanceChange}");
+                Out.Log("account", address.ToString(), $"balance+={balanceChange}, create-if-not-exists");
             DebugGuardInScope();
             return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
         }
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
             if (Out.IsTargetBlock)
-                Out.Log("account", address.ToString(), $"balance+={balanceChange}, create-if-not-exists");
+                Out.Log("account", address.ToString(), $"balance-={balanceChange}");
             DebugGuardInScope();
             _stateProvider.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
         }
