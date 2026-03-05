@@ -123,13 +123,13 @@ public class Metrics
 
     private static long _totalBackgroundTasksExecuted;
     [GaugeMetric]
-    [Description("Total number of background tasks that were started/executed (may include tasks whose cancellation token was already cancelled).")]
+    [Description("Total number of background tasks executed.")]
     public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted;
     public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted);
 
     private static long _totalBackgroundTasksCancelled;
     [GaugeMetric]
-    [Description("Total number of background tasks that were cancelled or skipped without execution (e.g., disposed during block processing).")]
+    [Description("Total number of background tasks disposed without execution (e.g. during block processing).")]
     public static long TotalBackgroundTasksCancelled => _totalBackgroundTasksCancelled;
     public static void IncrementTotalBackgroundTasksCancelled() => Interlocked.Increment(ref _totalBackgroundTasksCancelled);
 
