@@ -52,7 +52,7 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
             ? default
             : data[offset..].IndexOf(Delimiter) switch
             {
-                // Fast path: newline delimiter (only search new data)
+                // Fast path: newline delimiter found in current buffer segment
                 var i and >= 0 => (i, i + 1),
                 // Slow path: complete JSON object/array (incremental parse across calls)
                 _ when TryGetCompleteJsonLength(data, out int jsonLength) => (jsonLength - offset, jsonLength - offset),
