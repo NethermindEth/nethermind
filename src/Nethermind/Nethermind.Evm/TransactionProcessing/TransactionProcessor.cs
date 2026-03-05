@@ -827,44 +827,13 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas, bool isCreateOnPreExistingAccount)
         {
             if (!CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length, out long regularDepositCost, out long stateDepositCost))
-            {
                 return false;
-            }
-
-            // EIP-8037: CreateState is already charged in intrinsic gas, so don't charge NewAccountState again at code deposit.
-            long totalStateCost = stateDepositCost;
-            bool hasEnoughRegularGas = TGasPolicy.GetRemainingGas(in unspentGas) >= regularDepositCost;
-            bool hasEnoughStateGas = TGasPolicy.GetRemainingGas(in unspentGas) + TGasPolicy.GetStateReservoir(in unspentGas) >= totalStateCost;
-            if ((!hasEnoughRegularGas || !hasEnoughStateGas) && spec.ChargeForTopLevelCreate)
-            {
-                return false;
-            }
 
             if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output.Bytes, 0))
-            {
                 return false;
-            }
 
-            if (hasEnoughRegularGas && hasEnoughStateGas)
-            {
-                TGasPolicy gasAfterCodeDeposit = unspentGas;
-                if (!TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, totalStateCost, regularDepositCost))
-                {
-                    return false;
-                }
-
-                // Copy the bytes so it's not live memory that will be used in another tx.
-                byte[] code = substate.Output.Bytes.ToArray();
-                _codeInfoRepository.InsertCode(code, codeOwner, spec);
-                if (code.Length > CodeSizeConstants.MaxCodeSizeEip170)
-                {
-                    accessedItems.WarmUpLargeContract(codeOwner);
-                }
-
-                unspentGas = gasAfterCodeDeposit;
-            }
-
-            return true;
+            // Copy the bytes so it's not live memory that will be used in another tx.
+            return TryChargeCodeDeposit(spec, codeOwner, in accessedItems, ref unspentGas, regularDepositCost, stateDepositCost, substate.Output.Bytes.ToArray());
         }
 
         private bool DeployEofContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas, bool isCreateOnPreExistingAccount)
@@ -874,24 +843,13 @@ namespace Nethermind.Evm.TransactionProcessing
             EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.Output.DeployCode;
 
             if (!CodeDepositHandler.CalculateCost(spec, deployCodeInfo.Code.Length + auxExtraData.Length, out long regularDepositCost, out long stateDepositCost))
-            {
                 return false;
-            }
 
-            // EIP-8037: CreateState is already charged in intrinsic gas, so don't charge NewAccountState again at code deposit.
-            long totalStateCost = stateDepositCost;
-            bool hasEnoughRegularGas = TGasPolicy.GetRemainingGas(in unspentGas) >= regularDepositCost;
-            bool hasEnoughStateGas = TGasPolicy.GetRemainingGas(in unspentGas) + TGasPolicy.GetStateReservoir(in unspentGas) >= totalStateCost;
-            if ((!hasEnoughRegularGas || !hasEnoughStateGas) && spec.ChargeForTopLevelCreate)
-            {
-                return false;
-            }
             int codeLength = deployCodeInfo.Code.Length + auxExtraData.Length;
             // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
             if (codeLength > spec.MaxCodeSize)
-            {
                 return false;
-            }
+
             // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
             byte[] bytecodeResult = new byte[codeLength];
             // 2 - 1 - 1 - copy old container
@@ -911,21 +869,34 @@ namespace Nethermind.Evm.TransactionProcessing
             bytecodeResult[dataSubHeaderSectionStart + 1] = (byte)(dataSize >> 8);
             bytecodeResult[dataSubHeaderSectionStart + 2] = (byte)(dataSize & 0xFF);
 
+            // 4 - set state[new_address].code to the updated deploy container
+            return TryChargeCodeDeposit(spec, codeOwner, in accessedItems, ref unspentGas, regularDepositCost, stateDepositCost, bytecodeResult);
+        }
+
+        private bool TryChargeCodeDeposit(
+            IReleaseSpec spec,
+            Address codeOwner,
+            in StackAccessTracker accessedItems,
+            ref TGasPolicy unspentGas,
+            long regularDepositCost,
+            long stateDepositCost,
+            byte[] code)
+        {
+            bool hasEnoughRegularGas = TGasPolicy.GetRemainingGas(in unspentGas) >= regularDepositCost;
+            bool hasEnoughStateGas = TGasPolicy.GetRemainingGas(in unspentGas) + TGasPolicy.GetStateReservoir(in unspentGas) >= stateDepositCost;
+            if ((!hasEnoughRegularGas || !hasEnoughStateGas) && spec.ChargeForTopLevelCreate)
+                return false;
+
             if (hasEnoughRegularGas && hasEnoughStateGas)
             {
                 TGasPolicy gasAfterCodeDeposit = unspentGas;
-                if (!TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, totalStateCost, regularDepositCost))
-                {
+                if (!TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, stateDepositCost, regularDepositCost))
                     return false;
-                }
 
-                // 4 - set state[new_address].code to the updated deploy container
-                // push new_address onto the stack (already done before the ifs)
-                _codeInfoRepository.InsertCode(bytecodeResult, codeOwner, spec);
-                if (bytecodeResult.Length > CodeSizeConstants.MaxCodeSizeEip170)
-                {
+                _codeInfoRepository.InsertCode(code, codeOwner, spec);
+                if (code.Length > CodeSizeConstants.MaxCodeSizeEip170)
                     accessedItems.WarmUpLargeContract(codeOwner);
-                }
+
                 unspentGas = gasAfterCodeDeposit;
             }
 

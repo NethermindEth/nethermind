@@ -114,12 +114,7 @@ namespace Nethermind.Evm.Test
         [TestCase(33, 12, 38742)]
         public void Eip8037_code_deposit_costs_are_split(int codeLength, long expectedRegular, long expectedState)
         {
-            ReleaseSpec spec = Prague.Instance switch
-            {
-                ReleaseSpec releaseSpec => releaseSpec.Clone(),
-                _ => throw new InvalidOperationException("Expected Prague spec to be ReleaseSpec.")
-            };
-            spec.IsEip8037Enabled = true;
+            IReleaseSpec spec = Amsterdam.Instance;
 
             bool valid = CodeDepositHandler.CalculateCost(spec, codeLength, out long regularCost, out long stateCost);
 

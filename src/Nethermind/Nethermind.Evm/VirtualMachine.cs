@@ -422,21 +422,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             invalidCode = true;
         }
 
-        // EIP-8037: CreateState is already charged at CREATE/CREATE2 dispatch, so don't charge NewAccountState again at code deposit.
-        long totalStateCost = stateDepositCost;
         long availableGasForState = gasAvailableForCodeDeposit + TGasPolicy.GetStateReservoir(in previousState.Gas);
-        bool hasEnoughGasForDeposit = gasAvailableForCodeDeposit >= regularDepositCost && availableGasForState >= totalStateCost;
+        bool hasEnoughGasForDeposit = gasAvailableForCodeDeposit >= regularDepositCost && availableGasForState >= stateDepositCost;
         bool chargedCodeDeposit = false;
         if (hasEnoughGasForDeposit && !invalidCode)
         {
             TGasPolicy gasAfterCodeDeposit = _currentState.Gas;
-            chargedCodeDeposit = TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, totalStateCost, regularDepositCost);
+            chargedCodeDeposit = TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, stateDepositCost, regularDepositCost);
             if (chargedCodeDeposit)
             {
                 _currentState.Gas = gasAfterCodeDeposit;
 
-                // 4 - set state[new_address].code to the updated deploy container
-                // push new_address onto the stack (already done before the ifs)
                 _codeInfoRepository.InsertCode(bytecodeResultArray, callCodeOwner, spec);
                 if (_txTracer.IsTracingActions)
                 {
@@ -509,17 +505,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Validate the code against legacy rules; mark it invalid if it fails these checks.
         bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, callResult.Output.Bytes);
-        // EIP-8037: CreateState is already charged at CREATE/CREATE2 dispatch, so don't charge NewAccountState again at code deposit.
-        long totalStateCost = stateDepositCost;
         long availableGasForState = gasAvailableForCodeDeposit + TGasPolicy.GetStateReservoir(in previousState.Gas);
-        bool hasEnoughGasForDeposit = gasAvailableForCodeDeposit >= regularDepositCost && availableGasForState >= totalStateCost;
+        bool hasEnoughGasForDeposit = gasAvailableForCodeDeposit >= regularDepositCost && availableGasForState >= stateDepositCost;
         bool chargedCodeDeposit = false;
 
-        // Check if there is sufficient gas and the code is valid.
         if (hasEnoughGasForDeposit && !invalidCode)
         {
             TGasPolicy gasAfterCodeDeposit = _currentState.Gas;
-            chargedCodeDeposit = TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, totalStateCost, regularDepositCost);
+            chargedCodeDeposit = TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, stateDepositCost, regularDepositCost);
             if (chargedCodeDeposit)
             {
                 _currentState.Gas = gasAfterCodeDeposit;
@@ -707,7 +700,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;
 
-        // Restore state gas from the failed child before disposing it.
+        // State gas must be restored to parent before child disposal so spill/usage accounting is not lost.
         VmState<TGasPolicy> childState = _currentState;
         _currentState = _stateStack.Pop();
         TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in childState.Gas);
@@ -795,7 +788,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;
 
-        // Restore state gas from the failed child before disposing it.
+        // State gas must be restored to parent before child disposal so spill/usage accounting is not lost.
         VmState<TGasPolicy> childState = _currentState;
         _currentState = _stateStack.Pop();
         TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in childState.Gas);

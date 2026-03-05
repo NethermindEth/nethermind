@@ -44,7 +44,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy FromLong(long value) =>
-        new() { Value = value, StateReservoir = 0, StateGasUsed = 0, StateGasUsedFloor = 0, StateGasSpill = 0 };
+        new() { Value = value };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetRemainingGas(in EthereumGasPolicy gas) => gas.Value;
@@ -115,10 +115,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void SetOutOfGas(ref EthereumGasPolicy gas)
-    {
-        gas.Value = 0;
-    }
+    public static void SetOutOfGas(ref EthereumGasPolicy gas) => gas.Value = 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeAccountAccessGasWithDelegation(ref EthereumGasPolicy gas,

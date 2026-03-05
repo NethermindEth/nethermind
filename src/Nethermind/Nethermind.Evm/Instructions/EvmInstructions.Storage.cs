@@ -504,17 +504,11 @@ internal static partial class EvmInstructions
             {
                 if (currentIsZero)
                 {
-                    if (TEip8037.IsActive)
+                    if (TEip8037.IsActive switch
                     {
-                        if (!TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.SSetState) ||
-                            !TGasPolicy.UpdateGas(ref gas, GasCostOf.SSetRegular))
-                            goto OutOfGas;
-                    }
-                    else
-                    {
-                        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.SSet))
-                            goto OutOfGas;
-                    }
+                        true => !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.SSetState) || !TGasPolicy.UpdateGas(ref gas, GasCostOf.SSetRegular),
+                        false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.SSet),
+                    }) goto OutOfGas;
                 }
                 else
                 {

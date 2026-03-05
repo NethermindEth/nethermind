@@ -178,28 +178,17 @@ internal static partial class EvmInstructions
         }
 
         // Charge additional gas if the target account is new or considered empty.
-        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
+        bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
         {
-            if (TEip8037.IsActive)
-            {
-                if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
-            }
-            else
-            {
-                if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount)) goto OutOfGas;
-            }
-        }
-        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target))
+            false => !state.AccountExists(target),
+            true => transferValue != 0 && state.IsDeadAccount(target),
+        };
+
+        if (chargesNewAccount && !(TEip8037.IsActive switch
         {
-            if (TEip8037.IsActive)
-            {
-                if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
-            }
-            else
-            {
-                if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount)) goto OutOfGas;
-            }
-        }
+            true => TGasPolicy.ConsumeNewAccountCreation(ref gas),
+            false => TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount),
+        })) goto OutOfGas;
 
         // Retrieve code information for the call and schedule background analysis if needed.
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);

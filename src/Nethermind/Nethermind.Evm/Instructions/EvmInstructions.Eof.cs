@@ -949,16 +949,11 @@ internal static partial class EvmInstructions
         if ((!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(codeSource))
             || (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(codeSource)))
         {
-            if (TEip8037.IsActive)
+            if (TEip8037.IsActive switch
             {
-                if (!TGasPolicy.ConsumeNewAccountCreation(ref gas))
-                    goto OutOfGas;
-            }
-            else
-            {
-                if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
-                    goto OutOfGas;
-            }
+                true => !TGasPolicy.ConsumeNewAccountCreation(ref gas),
+                false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount),
+            }) goto OutOfGas;
         }
 
         // 9. Compute the gas available to the callee after reserving a minimum.

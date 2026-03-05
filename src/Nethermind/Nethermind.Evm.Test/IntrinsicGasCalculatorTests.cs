@@ -243,14 +243,7 @@ namespace Nethermind.Evm.Test
                         UInt256.One))
                 .TestObject;
 
-            ReleaseSpec spec = Prague.Instance switch
-            {
-                ReleaseSpec releaseSpec => releaseSpec.Clone(),
-                _ => throw new InvalidOperationException("Expected Prague spec to be ReleaseSpec.")
-            };
-            spec.IsEip8037Enabled = true;
-
-            IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec);
+            IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
 
             Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular));
             Assert.That(intrinsicGas.Standard.StateReservoir, Is.EqualTo(GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState));
