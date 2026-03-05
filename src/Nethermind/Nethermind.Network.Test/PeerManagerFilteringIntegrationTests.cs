@@ -28,12 +28,7 @@ public class PeerManagerFilteringIntegrationTests
     [Test]
     public void PeerManager_UsesRlpxHostShouldContactInterface()
     {
-        // This test verifies that PeerManager has access to IRlpxHost.ShouldContact
-        // The actual integration is verified by code inspection at PeerManager.cs:228
-        // where ShouldContact is called before attempting connection:
-        // if (!_rlpxHost.ShouldContact(peer.Node.Address.Address)) continue;
-
-        var trackingMock = new CallOrderTrackingMock();
+        CallOrderTrackingMock trackingMock = new();
 
         ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
         INodeStatsManager stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
@@ -47,7 +42,6 @@ public class PeerManagerFilteringIntegrationTests
 
         PeerManager peerManager = new(trackingMock, Substitute.For<IPeerPool>(), stats, networkConfig, LimboLogs.Instance);
 
-        // Verify the mock can be used by PeerManager (interface compatibility)
         trackingMock.ShouldContact(IPAddress.Parse("203.0.113.1")).Should().BeTrue();
     }
 
@@ -72,15 +66,7 @@ public class PeerManagerFilteringIntegrationTests
         public Task Shutdown() => Task.CompletedTask;
         public PublicKey LocalNodeId { get; } = Core.Test.Builders.TestItem.PublicKeyA;
         public int LocalPort => 30303;
-
-#pragma warning disable CS0067 // Event is never used - required by interface for test mock
-        private event EventHandler<SessionEventArgs>? _sessionCreated;
-#pragma warning restore CS0067
-        public event EventHandler<SessionEventArgs>? SessionCreated
-        {
-            add => _sessionCreated += value;
-            remove => _sessionCreated -= value;
-        }
+        public event EventHandler<SessionEventArgs>? SessionCreated { add { } remove { } }
         public ISessionMonitor SessionMonitor => Substitute.For<ISessionMonitor>();
     }
 
@@ -89,11 +75,7 @@ public class PeerManagerFilteringIntegrationTests
         private readonly ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
         private bool _pendingChanges;
 
-        public NetworkNode[] GetPersistedNodes()
-        {
-            return _nodes.Values.ToArray();
-        }
-
+        public NetworkNode[] GetPersistedNodes() => _nodes.Values.ToArray();
         public int PersistedNodesCount => _nodes.Count;
 
         public void UpdateNode(NetworkNode node)
@@ -110,18 +92,9 @@ public class PeerManagerFilteringIntegrationTests
             }
         }
 
-        public void RemoveNode(PublicKey nodeId)
-        {
-            _pendingChanges = true;
-        }
-
+        public void RemoveNode(PublicKey nodeId) => _pendingChanges = true;
         public void StartBatch() { }
-
         public void Commit() { }
-
-        public bool AnyPendingChange()
-        {
-            return _pendingChanges;
-        }
+        public bool AnyPendingChange() => _pendingChanges;
     }
 }

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
@@ -20,32 +20,18 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class RlpxHostIntegrationTests
 {
-    [Test]
-    public async Task ShouldContact_WithFilteringEnabled_BlocksSameIpWithinTimeout()
+    [TestCase(true, true, false, Description = "Exact match: blocks same IP")]
+    [TestCase(false, true, true, Description = "Exact match: allows different IP")]
+    public async Task ShouldContact_ExactMatch(bool sameIp, bool firstExpected, bool secondExpected)
     {
-        NetworkConfig networkConfig = new()
-        {
-            ProcessingThreadCount = 1,
-            P2PPort = GetAvailablePort(),
-            FilterPeersByRecentIp = true,
-            FilterPeersBySameSubnet = false,
-            MaxActivePeers = 50
-        };
-
-        RlpxHost host = new(
-            Substitute.For<IMessageSerializationService>(),
-            new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
-            Substitute.For<IHandshakeService>(),
-            Substitute.For<ISessionMonitor>(),
-            NullDisconnectsAnalyzer.Instance,
-            networkConfig,
-            LimboLogs.Instance);
-
+        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: false);
         try
         {
-            IPAddress ip = IPAddress.Parse("203.0.113.1");
-            host.ShouldContact(ip).Should().BeTrue("first attempt should be accepted");
-            host.ShouldContact(ip).Should().BeFalse("second attempt within timeout should be rejected");
+            IPAddress ip1 = IPAddress.Parse("203.0.113.1");
+            IPAddress ip2 = sameIp ? ip1 : IPAddress.Parse("198.51.100.1");
+
+            host.ShouldContact(ip1).Should().Be(firstExpected);
+            host.ShouldContact(ip2).Should().Be(secondExpected);
         }
         finally
         {
@@ -54,65 +40,13 @@ public class RlpxHostIntegrationTests
     }
 
     [Test]
-    public async Task ShouldContact_WithFilteringEnabled_AllowsDifferentIps()
+    public async Task ShouldContact_WithSubnetBucketing_BlocksSameSubnet()
     {
-        NetworkConfig networkConfig = new()
-        {
-            ProcessingThreadCount = 1,
-            P2PPort = GetAvailablePort(),
-            FilterPeersByRecentIp = true,
-            FilterPeersBySameSubnet = false,
-            MaxActivePeers = 50
-        };
-
-        RlpxHost host = new(
-            Substitute.For<IMessageSerializationService>(),
-            new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
-            Substitute.For<IHandshakeService>(),
-            Substitute.For<ISessionMonitor>(),
-            NullDisconnectsAnalyzer.Instance,
-            networkConfig,
-            LimboLogs.Instance);
-
+        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: true);
         try
         {
             IPAddress ip1 = IPAddress.Parse("203.0.113.1");
-            IPAddress ip2 = IPAddress.Parse("198.51.100.1");
-
-            host.ShouldContact(ip1).Should().BeTrue("first IP should be accepted");
-            host.ShouldContact(ip2).Should().BeTrue("different IP should be accepted");
-        }
-        finally
-        {
-            await host.Shutdown();
-        }
-    }
-
-    [Test]
-    public async Task ShouldContact_WithFilteringEnabled_BlocksSameSubnet()
-    {
-        NetworkConfig networkConfig = new()
-        {
-            ProcessingThreadCount = 1,
-            P2PPort = GetAvailablePort(),
-            FilterPeersByRecentIp = true,
-            FilterPeersBySameSubnet = true,
-            MaxActivePeers = 50
-        };
-
-        RlpxHost host = new(
-            Substitute.For<IMessageSerializationService>(),
-            new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
-            Substitute.For<IHandshakeService>(),
-            Substitute.For<ISessionMonitor>(),
-            NullDisconnectsAnalyzer.Instance,
-            networkConfig,
-            LimboLogs.Instance);
-
-        try
-        {
-            IPAddress ip1 = IPAddress.Parse("203.0.113.1");
-            IPAddress ip2 = IPAddress.Parse("203.0.113.50"); // Same /24 subnet
+            IPAddress ip2 = IPAddress.Parse("203.0.113.50");
 
             host.ShouldContact(ip1).Should().BeTrue("first IP in subnet should be accepted");
             host.ShouldContact(ip2).Should().BeFalse("second IP in same subnet should be rejected");
@@ -126,23 +60,7 @@ public class RlpxHostIntegrationTests
     [Test]
     public async Task ShouldContact_WithFilteringDisabled_AlwaysReturnsTrue()
     {
-        NetworkConfig networkConfig = new()
-        {
-            ProcessingThreadCount = 1,
-            P2PPort = GetAvailablePort(),
-            FilterPeersByRecentIp = false,
-            MaxActivePeers = 50
-        };
-
-        RlpxHost host = new(
-            Substitute.For<IMessageSerializationService>(),
-            new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
-            Substitute.For<IHandshakeService>(),
-            Substitute.For<ISessionMonitor>(),
-            NullDisconnectsAnalyzer.Instance,
-            networkConfig,
-            LimboLogs.Instance);
-
+        RlpxHost host = CreateHost(filterEnabled: false, subnetBucketing: false);
         try
         {
             IPAddress ip = IPAddress.Parse("203.0.113.1");
@@ -158,32 +76,12 @@ public class RlpxHostIntegrationTests
     [Test]
     public async Task ShouldContact_WithExternalIp_UsesItForFiltering()
     {
-        NetworkConfig networkConfig = new()
-        {
-            ProcessingThreadCount = 1,
-            P2PPort = GetAvailablePort(),
-            FilterPeersByRecentIp = true,
-            FilterPeersBySameSubnet = true,
-            ExternalIp = "192.168.1.100", // Private IP for testing exact matching
-            MaxActivePeers = 50
-        };
-
-        RlpxHost host = new(
-            Substitute.For<IMessageSerializationService>(),
-            new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
-            Substitute.For<IHandshakeService>(),
-            Substitute.For<ISessionMonitor>(),
-            NullDisconnectsAnalyzer.Instance,
-            networkConfig,
-            LimboLogs.Instance);
-
+        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: true, externalIp: "192.168.1.100");
         try
         {
-            // IP in same subnet as private external IP
             IPAddress ip1 = IPAddress.Parse("192.168.1.10");
             IPAddress ip2 = IPAddress.Parse("192.168.1.20");
 
-            // When current IP is private and remote is in same subnet, should use exact matching
             host.ShouldContact(ip1).Should().BeTrue("first IP should be accepted");
             host.ShouldContact(ip2).Should().BeTrue("different IP in same local subnet should be accepted (exact match)");
         }
@@ -196,28 +94,9 @@ public class RlpxHostIntegrationTests
     [Test]
     public async Task ShouldContact_WithPrivateRemoteIp_UsesExactMatching()
     {
-        NetworkConfig networkConfig = new()
-        {
-            ProcessingThreadCount = 1,
-            P2PPort = GetAvailablePort(),
-            FilterPeersByRecentIp = true,
-            FilterPeersBySameSubnet = true,
-            ExternalIp = "203.0.113.100",
-            MaxActivePeers = 50
-        };
-
-        RlpxHost host = new(
-            Substitute.For<IMessageSerializationService>(),
-            new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
-            Substitute.For<IHandshakeService>(),
-            Substitute.For<ISessionMonitor>(),
-            NullDisconnectsAnalyzer.Instance,
-            networkConfig,
-            LimboLogs.Instance);
-
+        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: true, externalIp: "203.0.113.100");
         try
         {
-            // Private IPs should use exact matching
             IPAddress ip1 = IPAddress.Parse("192.168.1.1");
             IPAddress ip2 = IPAddress.Parse("192.168.1.2");
 
@@ -230,9 +109,31 @@ public class RlpxHostIntegrationTests
         }
     }
 
+    private static RlpxHost CreateHost(bool filterEnabled, bool subnetBucketing, string? externalIp = null)
+    {
+        NetworkConfig networkConfig = new()
+        {
+            ProcessingThreadCount = 1,
+            P2PPort = GetAvailablePort(),
+            FilterPeersByRecentIp = filterEnabled,
+            FilterPeersBySameSubnet = subnetBucketing,
+            ExternalIp = externalIp,
+            MaxActivePeers = 50
+        };
+
+        return new RlpxHost(
+            Substitute.For<IMessageSerializationService>(),
+            new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
+            Substitute.For<IHandshakeService>(),
+            Substitute.For<ISessionMonitor>(),
+            NullDisconnectsAnalyzer.Instance,
+            networkConfig,
+            LimboLogs.Instance);
+    }
+
     private static int GetAvailablePort()
     {
-        using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        using System.Net.Sockets.TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start();
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();

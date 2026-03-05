@@ -1,7 +1,6 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -19,211 +18,90 @@ public class NodeFilterTests
     [Test]
     public void ExactMatch_BlocksSameAddressWithinTimeout()
     {
-        NodeFilter filter = new(size: 100, exactMatchOnly: true);
+        NodeFilter filter = new(size: 100, exactMatchOnly: true, currentIp: null);
         IPAddress ip = IPAddress.Parse("192.0.2.1");
 
-        filter.Set(ip, null).Should().BeTrue("first attempt should be accepted");
-        filter.Set(ip, null).Should().BeFalse("second attempt within timeout should be rejected");
+        filter.TryAccept(ip).Should().BeTrue("first attempt should be accepted");
+        filter.TryAccept(ip).Should().BeFalse("second attempt within timeout should be rejected");
     }
 
     [Test]
     public void ExactMatch_AllowsDifferentAddresses()
     {
-        NodeFilter filter = new(size: 100, exactMatchOnly: true);
+        NodeFilter filter = new(size: 100, exactMatchOnly: true, currentIp: null);
         IPAddress ip1 = IPAddress.Parse("192.0.2.1");
         IPAddress ip2 = IPAddress.Parse("192.0.2.2");
 
-        filter.Set(ip1, null).Should().BeTrue("first address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("different address should be accepted");
+        filter.TryAccept(ip1).Should().BeTrue("first address should be accepted");
+        filter.TryAccept(ip2).Should().BeTrue("different address should be accepted");
     }
 
-    [Test]
-    public void SubnetBucketing_IPv4_BlocksSameSubnet()
+    [TestCase("192.0.2.1", "192.0.2.50", false, Description = "Same /24 subnet blocked")]
+    [TestCase("192.0.2.1", "192.0.3.1", true, Description = "Different /24 subnet allowed")]
+    [TestCase("2001:db8::1", "2001:db8::ffff", false, Description = "Same /64 IPv6 subnet blocked")]
+    [TestCase("2001:db8:0:0::1", "2001:db8:0:1::1", true, Description = "Different /64 IPv6 subnet allowed")]
+    public void SubnetBucketing_AcceptsOrRejects(string first, string second, bool secondAccepted)
     {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("192.0.2.1");
-        IPAddress ip2 = IPAddress.Parse("192.0.2.50"); // Same /24 subnet
-
-        filter.Set(ip1, null).Should().BeTrue("first address should be accepted");
-        filter.Set(ip2, null).Should().BeFalse("address in same /24 subnet should be rejected");
+        NodeFilter filter = new(size: 100, exactMatchOnly: false, currentIp: null);
+        filter.TryAccept(IPAddress.Parse(first)).Should().BeTrue("first address should be accepted");
+        filter.TryAccept(IPAddress.Parse(second)).Should().Be(secondAccepted);
     }
 
-    [Test]
-    public void SubnetBucketing_IPv4_AllowsDifferentSubnet()
+    [TestCase("10.0.0.1", "10.0.0.2", Description = "RFC1918 10.x")]
+    [TestCase("172.16.0.1", "172.16.0.2", Description = "RFC1918 172.16.x")]
+    [TestCase("192.168.1.1", "192.168.1.2", Description = "RFC1918 192.168.x")]
+    [TestCase("127.0.0.1", "127.0.0.2", Description = "Loopback")]
+    [TestCase("169.254.0.1", "169.254.0.2", Description = "IPv4 link-local")]
+    [TestCase("100.64.0.1", "100.64.0.2", Description = "CGNAT")]
+    [TestCase("fc00::1", "fc00::2", Description = "IPv6 ULA")]
+    [TestCase("fe80::1", "fe80::2", Description = "IPv6 link-local")]
+    public void PrivateOrLocalAddress_TreatedAsExact(string first, string second)
     {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("192.0.2.1");
-        IPAddress ip2 = IPAddress.Parse("192.0.3.1"); // Different /24 subnet
-
-        filter.Set(ip1, null).Should().BeTrue("first address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("address in different /24 subnet should be accepted");
-    }
-
-    [Test]
-    public void SubnetBucketing_IPv6_BlocksSameSubnet()
-    {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("2001:db8::1");
-        IPAddress ip2 = IPAddress.Parse("2001:db8::ffff"); // Same /64 subnet
-
-        filter.Set(ip1, null).Should().BeTrue("first address should be accepted");
-        filter.Set(ip2, null).Should().BeFalse("address in same /64 subnet should be rejected");
-    }
-
-    [Test]
-    public void SubnetBucketing_IPv6_AllowsDifferentSubnet()
-    {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("2001:db8:0:0::1");
-        IPAddress ip2 = IPAddress.Parse("2001:db8:0:1::1"); // Different /64 subnet
-
-        filter.Set(ip1, null).Should().BeTrue("first address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("address in different /64 subnet should be accepted");
-    }
-
-    [Test]
-    public void PrivateAddress_RFC1918_10_TreatedAsExact()
-    {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("10.0.0.1");
-        IPAddress ip2 = IPAddress.Parse("10.0.0.2"); // Same /24 but should be treated as different
-
-        filter.Set(ip1, null).Should().BeTrue("first private address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("different private address should be accepted (exact match)");
-    }
-
-    [Test]
-    public void PrivateAddress_RFC1918_172_TreatedAsExact()
-    {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("172.16.0.1");
-        IPAddress ip2 = IPAddress.Parse("172.16.0.2"); // Same /24 but should be treated as different
-
-        filter.Set(ip1, null).Should().BeTrue("first private address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("different private address should be accepted (exact match)");
-    }
-
-    [Test]
-    public void PrivateAddress_RFC1918_192_TreatedAsExact()
-    {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("192.168.1.1");
-        IPAddress ip2 = IPAddress.Parse("192.168.1.2"); // Same /24 but should be treated as different
-
-        filter.Set(ip1, null).Should().BeTrue("first private address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("different private address should be accepted (exact match)");
-    }
-
-    [Test]
-    public void LoopbackAddress_TreatedAsExact()
-    {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("127.0.0.1");
-        IPAddress ip2 = IPAddress.Parse("127.0.0.2"); // Same /24 but should be treated as different
-
-        filter.Set(ip1, null).Should().BeTrue("first loopback address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("different loopback address should be accepted (exact match)");
-    }
-
-    [Test]
-    public void LinkLocalAddress_IPv4_TreatedAsExact()
-    {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("169.254.0.1");
-        IPAddress ip2 = IPAddress.Parse("169.254.0.2"); // Same /24 but should be treated as different
-
-        filter.Set(ip1, null).Should().BeTrue("first link-local address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("different link-local address should be accepted (exact match)");
-    }
-
-    [Test]
-    public void CGNAT_Address_TreatedAsExact()
-    {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("100.64.0.1");
-        IPAddress ip2 = IPAddress.Parse("100.64.0.2"); // Same /24 but should be treated as different
-
-        filter.Set(ip1, null).Should().BeTrue("first CGNAT address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("different CGNAT address should be accepted (exact match)");
+        NodeFilter filter = new(size: 100, exactMatchOnly: false, currentIp: null);
+        filter.TryAccept(IPAddress.Parse(first)).Should().BeTrue("first address should be accepted");
+        filter.TryAccept(IPAddress.Parse(second)).Should().BeTrue("different address should be accepted (exact match)");
     }
 
     [Test]
     public void IPv6_Loopback_TreatedAsExact()
     {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
+        NodeFilter filter = new(size: 100, exactMatchOnly: false, currentIp: null);
         IPAddress loopback = IPAddress.IPv6Loopback;
 
-        filter.Set(loopback, null).Should().BeTrue("loopback should be accepted");
-        filter.Set(loopback, null).Should().BeFalse("second attempt should be rejected (exact match)");
-    }
-
-    [Test]
-    public void IPv6_ULA_TreatedAsExact()
-    {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("fc00::1");
-        IPAddress ip2 = IPAddress.Parse("fc00::2"); // Same /64 but should be treated as different
-
-        filter.Set(ip1, null).Should().BeTrue("first ULA address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("different ULA address should be accepted (exact match)");
-    }
-
-    [Test]
-    public void IPv6_LinkLocal_TreatedAsExact()
-    {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("fe80::1");
-        IPAddress ip2 = IPAddress.Parse("fe80::2"); // Same /64 but should be treated as different
-
-        filter.Set(ip1, null).Should().BeTrue("first link-local address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("different link-local address should be accepted (exact match)");
+        filter.TryAccept(loopback).Should().BeTrue("loopback should be accepted");
+        filter.TryAccept(loopback).Should().BeFalse("second attempt should be rejected (exact match)");
     }
 
     [Test]
     public void IPv4MappedIPv6_TreatedAsIPv4()
     {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
+        NodeFilter filter = new(size: 100, exactMatchOnly: false, currentIp: null);
         IPAddress ipv4 = IPAddress.Parse("192.0.2.1");
         IPAddress ipv4Mapped = IPAddress.Parse("::ffff:192.0.2.1");
 
-        filter.Set(ipv4, null).Should().BeTrue("IPv4 address should be accepted");
-        filter.Set(ipv4Mapped, null).Should().BeFalse("IPv4-mapped IPv6 address should be rejected (same as IPv4)");
+        filter.TryAccept(ipv4).Should().BeTrue("IPv4 address should be accepted");
+        filter.TryAccept(ipv4Mapped).Should().BeFalse("IPv4-mapped IPv6 address should be rejected (same as IPv4)");
     }
 
     [Test]
     public void IPv4MappedIPv6_SubnetBucketing()
     {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
+        NodeFilter filter = new(size: 100, exactMatchOnly: false, currentIp: null);
         IPAddress ipv4Mapped1 = IPAddress.Parse("::ffff:192.0.2.1");
-        IPAddress ipv4Mapped2 = IPAddress.Parse("::ffff:192.0.2.50"); // Same /24 subnet
+        IPAddress ipv4Mapped2 = IPAddress.Parse("::ffff:192.0.2.50");
 
-        filter.Set(ipv4Mapped1, null).Should().BeTrue("first IPv4-mapped address should be accepted");
-        filter.Set(ipv4Mapped2, null).Should().BeFalse("IPv4-mapped address in same /24 should be rejected");
-    }
-
-    [Test]
-    public void TimeBasedFiltering_AcceptsAfterTimeout()
-    {
-        NodeFilter filter = new(size: 100, exactMatchOnly: true);
-        IPAddress ip = IPAddress.Parse("192.0.2.1");
-
-        filter.Set(ip, null).Should().BeTrue("first attempt should be accepted");
-        filter.Set(ip, null).Should().BeFalse("second attempt within timeout should be rejected");
-
-        // Wait for timeout (5 minutes + buffer)
-        // Note: This test would take 5+ minutes in real time, so we're documenting behavior
-        // In production, Environment.TickCount64 is used, which is monotonic
+        filter.TryAccept(ipv4Mapped1).Should().BeTrue("first IPv4-mapped address should be accepted");
+        filter.TryAccept(ipv4Mapped2).Should().BeFalse("IPv4-mapped address in same /24 should be rejected");
     }
 
     [Test]
     public void ThreadSafety_ConcurrentSetCalls()
     {
-        NodeFilter filter = new(size: 1000, exactMatchOnly: true);
+        NodeFilter filter = new(size: 1000, exactMatchOnly: true, currentIp: null);
         int threadCount = 10;
         int attemptsPerThread = 100;
         List<IPAddress> addresses = [];
 
-        // Pre-generate unique addresses
         for (int i = 0; i < threadCount * attemptsPerThread; i++)
         {
             addresses.Add(IPAddress.Parse($"192.0.{i / 256}.{i % 256}"));
@@ -240,7 +118,7 @@ public class NodeFilterTests
                 for (int i = 0; i < attemptsPerThread; i++)
                 {
                     int index = threadIndex * attemptsPerThread + i;
-                    if (filter.Set(addresses[index], null))
+                    if (filter.TryAccept(addresses[index]))
                     {
                         Interlocked.Increment(ref acceptedCount);
                     }
@@ -256,7 +134,7 @@ public class NodeFilterTests
     [Test]
     public void ThreadSafety_ConcurrentSetCallsSameAddress()
     {
-        NodeFilter filter = new(size: 100, exactMatchOnly: true);
+        NodeFilter filter = new(size: 100, exactMatchOnly: true, currentIp: null);
         IPAddress ip = IPAddress.Parse("192.0.2.1");
         int threadCount = 10;
         int attemptsPerThread = 10;
@@ -270,7 +148,7 @@ public class NodeFilterTests
             {
                 for (int i = 0; i < attemptsPerThread; i++)
                 {
-                    if (filter.Set(ip, null))
+                    if (filter.TryAccept(ip))
                     {
                         Interlocked.Increment(ref acceptedCount);
                     }
@@ -280,35 +158,22 @@ public class NodeFilterTests
 
         Task.WaitAll([.. tasks]);
 
-        acceptedCount.Should().Be(1, "only one thread should succeed in setting the same address");
+        // Without lock, benign race allows 1-2 acceptances
+        acceptedCount.Should().BeInRange(1, 2, "only one or two threads should succeed due to benign race");
     }
 
-    [Test]
-    public void SubnetMasking_EdgeCase_IPv4_Boundary()
+    [TestCase("192.0.2.255", "192.0.3.0", Description = "IPv4 /24 boundary")]
+    [TestCase("2001:db8:0:0:ffff:ffff:ffff:ffff", "2001:db8:0:1::0", Description = "IPv6 /64 boundary")]
+    public void SubnetMasking_EdgeCase_Boundary(string first, string second)
     {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("192.0.2.255"); // Last in /24
-        IPAddress ip2 = IPAddress.Parse("192.0.3.0");   // First in next /24
-
-        filter.Set(ip1, null).Should().BeTrue("first address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("address in different subnet should be accepted");
-    }
-
-    [Test]
-    public void SubnetMasking_EdgeCase_IPv6_Boundary()
-    {
-        NodeFilter filter = new(size: 100, exactMatchOnly: false);
-        IPAddress ip1 = IPAddress.Parse("2001:db8:0:0:ffff:ffff:ffff:ffff"); // Last in /64
-        IPAddress ip2 = IPAddress.Parse("2001:db8:0:1::0");                   // First in next /64
-
-        filter.Set(ip1, null).Should().BeTrue("first address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("address in different subnet should be accepted");
+        NodeFilter filter = new(size: 100, exactMatchOnly: false, currentIp: null);
+        filter.TryAccept(IPAddress.Parse(first)).Should().BeTrue("first address should be accepted");
+        filter.TryAccept(IPAddress.Parse(second)).Should().BeTrue("address in different subnet should be accepted");
     }
 
     [Test]
     public void SubnetMasking_EdgeCase_IPv4_ZeroPrefix()
     {
-        // Direct test of IpSubnetKey with /0 prefix
         IPAddress ip1 = IPAddress.Parse("192.0.2.1");
         IPAddress ip2 = IPAddress.Parse("10.0.0.1");
 
@@ -321,12 +186,10 @@ public class NodeFilterTests
     [Test]
     public void SubnetMasking_EdgeCase_IPv4_FullPrefix()
     {
-        // Direct test of IpSubnetKey with /32 prefix
-        IPAddress ip1 = IPAddress.Parse("192.0.2.1");
-        IPAddress ip2 = IPAddress.Parse("192.0.2.1");
+        IPAddress ip = IPAddress.Parse("192.0.2.1");
 
-        var key1 = new NodeFilter.IpSubnetKey(ip1, v4PrefixBits: 32, v6PrefixBits: 128);
-        var key2 = new NodeFilter.IpSubnetKey(ip2, v4PrefixBits: 32, v6PrefixBits: 128);
+        var key1 = new NodeFilter.IpSubnetKey(ip, v4PrefixBits: 32, v6PrefixBits: 128);
+        var key2 = new NodeFilter.IpSubnetKey(ip, v4PrefixBits: 32, v6PrefixBits: 128);
 
         key1.Should().Be(key2, "exact same address should match with /32 prefix");
     }
@@ -334,7 +197,6 @@ public class NodeFilterTests
     [Test]
     public void SubnetMasking_EdgeCase_IPv6_ZeroPrefix()
     {
-        // Direct test of IpSubnetKey with /0 prefix
         IPAddress ip1 = IPAddress.Parse("2001:db8::1");
         IPAddress ip2 = IPAddress.Parse("fe80::1");
 
@@ -347,12 +209,10 @@ public class NodeFilterTests
     [Test]
     public void SubnetMasking_EdgeCase_IPv6_FullPrefix()
     {
-        // Direct test of IpSubnetKey with /128 prefix
-        IPAddress ip1 = IPAddress.Parse("2001:db8::1");
-        IPAddress ip2 = IPAddress.Parse("2001:db8::1");
+        IPAddress ip = IPAddress.Parse("2001:db8::1");
 
-        var key1 = new NodeFilter.IpSubnetKey(ip1, v4PrefixBits: 32, v6PrefixBits: 128);
-        var key2 = new NodeFilter.IpSubnetKey(ip2, v4PrefixBits: 32, v6PrefixBits: 128);
+        var key1 = new NodeFilter.IpSubnetKey(ip, v4PrefixBits: 32, v6PrefixBits: 128);
+        var key2 = new NodeFilter.IpSubnetKey(ip, v4PrefixBits: 32, v6PrefixBits: 128);
 
         key1.Should().Be(key2, "exact same address should match with /128 prefix");
     }
@@ -360,21 +220,36 @@ public class NodeFilterTests
     [Test]
     public void CapacityBounded_EvictsOldEntries()
     {
-        NodeFilter filter = new(size: 2, exactMatchOnly: true);
+        NodeFilter filter = new(size: 2, exactMatchOnly: true, currentIp: null);
         IPAddress ip1 = IPAddress.Parse("192.0.2.1");
         IPAddress ip2 = IPAddress.Parse("192.0.2.2");
         IPAddress ip3 = IPAddress.Parse("192.0.2.3");
 
-        filter.Set(ip1, null).Should().BeTrue("first address should be accepted");
-        filter.Set(ip2, null).Should().BeTrue("second address should be accepted");
-        filter.Set(ip3, null).Should().BeTrue("third address should be accepted");
+        filter.TryAccept(ip1).Should().BeTrue("first address should be accepted");
+        filter.TryAccept(ip2).Should().BeTrue("second address should be accepted");
+        filter.TryAccept(ip3).Should().BeTrue("third address should be accepted");
 
-        // After adding 3 addresses to a cache of size 2, one should be evicted
-        // Due to cache eviction, one of the first two addresses might now be accepted
-        bool ip1Accepted = filter.Set(ip1, null);
-        bool ip2Accepted = filter.Set(ip2, null);
+        bool ip1Accepted = filter.TryAccept(ip1);
+        bool ip2Accepted = filter.TryAccept(ip2);
 
         (ip1Accepted || ip2Accepted).Should().BeTrue("at least one of the first two addresses should be evicted and accepted again");
+    }
+
+    [Test]
+    public void AcceptAll_AlwaysReturnsTrue()
+    {
+        NodeFilter filter = NodeFilter.AcceptAll;
+        IPAddress ip = IPAddress.Parse("192.0.2.1");
+
+        filter.TryAccept(ip).Should().BeTrue();
+        filter.TryAccept(ip).Should().BeTrue("AcceptAll should always accept");
+    }
+
+    [Test]
+    public void Create_WhenDisabled_ReturnsAcceptAll()
+    {
+        NodeFilter filter = NodeFilter.Create(50, filterEnabled: false, subnetBucketing: true, currentIp: null);
+        filter.Should().BeSameAs(NodeFilter.AcceptAll);
     }
 
     [Test]
@@ -419,68 +294,32 @@ public class NodeFilterTests
         key.Matches(ip2).Should().BeFalse("address in different /24 subnet should not match");
     }
 
-    [Test]
-    public void IpSubnetKey_AreInSameSubnet_IPv4()
+    [TestCase("192.0.2.1", "192.0.2.50", true, Description = "Same /24 IPv4")]
+    [TestCase("192.0.2.1", "192.0.3.1", false, Description = "Different /24 IPv4")]
+    [TestCase("2001:db8::1", "2001:db8::ffff", true, Description = "Same /64 IPv6")]
+    [TestCase("2001:db8::1", "2001:db8:0:1::1", false, Description = "Different /64 IPv6")]
+    public void IpSubnetKey_AreInSameSubnet(string a, string b, bool expected)
     {
-        IPAddress ip1 = IPAddress.Parse("192.0.2.1");
-        IPAddress ip2 = IPAddress.Parse("192.0.2.50");
-        IPAddress ip3 = IPAddress.Parse("192.0.3.1");
-
-        NodeFilter.IpSubnetKey.AreInSameSubnet(ip1, ip2, v4PrefixBits: 24, v6PrefixBits: 64).Should().BeTrue("same /24 subnet");
-        NodeFilter.IpSubnetKey.AreInSameSubnet(ip1, ip3, v4PrefixBits: 24, v6PrefixBits: 64).Should().BeFalse("different /24 subnet");
+        NodeFilter.IpSubnetKey.AreInSameSubnet(
+            IPAddress.Parse(a), IPAddress.Parse(b),
+            v4PrefixBits: 24, v6PrefixBits: 64).Should().Be(expected);
     }
 
-    [Test]
-    public void IpSubnetKey_AreInSameSubnet_IPv6()
+    [TestCase("127.0.0.1", true, Description = "IPv4 loopback")]
+    [TestCase("::1", true, Description = "IPv6 loopback")]
+    [TestCase("10.0.0.1", true, Description = "RFC1918 10.x")]
+    [TestCase("172.16.0.1", true, Description = "RFC1918 172.16.x")]
+    [TestCase("192.168.1.1", true, Description = "RFC1918 192.168.x")]
+    [TestCase("169.254.0.1", true, Description = "IPv4 link-local")]
+    [TestCase("100.64.0.1", true, Description = "CGNAT")]
+    [TestCase("fc00::1", true, Description = "ULA fc00")]
+    [TestCase("fd00::1", true, Description = "ULA fd00")]
+    [TestCase("fe80::1", true, Description = "IPv6 link-local")]
+    [TestCase("8.8.8.8", false, Description = "Public IPv4")]
+    [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
+    public void IpSubnetKey_IsLoopbackOrPrivateOrLinkLocal(string address, bool expected)
     {
-        IPAddress ip1 = IPAddress.Parse("2001:db8::1");
-        IPAddress ip2 = IPAddress.Parse("2001:db8::ffff");
-        IPAddress ip3 = IPAddress.Parse("2001:db8:0:1::1");
-
-        NodeFilter.IpSubnetKey.AreInSameSubnet(ip1, ip2, v4PrefixBits: 24, v6PrefixBits: 64).Should().BeTrue("same /64 subnet");
-        NodeFilter.IpSubnetKey.AreInSameSubnet(ip1, ip3, v4PrefixBits: 24, v6PrefixBits: 64).Should().BeFalse("different /64 subnet");
-    }
-
-    [Test]
-    public void IpSubnetKey_IsLoopbackOrPrivateOrLinkLocal_Loopback()
-    {
-        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Loopback).Should().BeTrue();
-        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.IPv6Loopback).Should().BeTrue();
-    }
-
-    [Test]
-    public void IpSubnetKey_IsLoopbackOrPrivateOrLinkLocal_RFC1918()
-    {
-        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse("10.0.0.1")).Should().BeTrue();
-        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse("172.16.0.1")).Should().BeTrue();
-        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse("192.168.1.1")).Should().BeTrue();
-    }
-
-    [Test]
-    public void IpSubnetKey_IsLoopbackOrPrivateOrLinkLocal_LinkLocal()
-    {
-        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse("169.254.0.1")).Should().BeTrue();
-        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse("fe80::1")).Should().BeTrue();
-    }
-
-    [Test]
-    public void IpSubnetKey_IsLoopbackOrPrivateOrLinkLocal_CGNAT()
-    {
-        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse("100.64.0.1")).Should().BeTrue();
-    }
-
-    [Test]
-    public void IpSubnetKey_IsLoopbackOrPrivateOrLinkLocal_ULA()
-    {
-        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse("fc00::1")).Should().BeTrue();
-        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse("fd00::1")).Should().BeTrue();
-    }
-
-    [Test]
-    public void IpSubnetKey_IsLoopbackOrPrivateOrLinkLocal_Public()
-    {
-        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse("8.8.8.8")).Should().BeFalse();
-        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse("2001:4860:4860::8888")).Should().BeFalse();
+        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse(address)).Should().Be(expected);
     }
 
     [Test]

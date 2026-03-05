@@ -46,8 +46,7 @@ namespace Nethermind.Network.Rlpx
         private readonly TimeSpan _sendLatency;
         private readonly TimeSpan _connectTimeout;
         private readonly IChannelFactory? _channelFactory;
-        private readonly IPAddress? _currentIp;
-        private readonly NodeFilter? _nodeFilter;
+        private readonly NodeFilter _nodeFilter;
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
 
@@ -99,14 +98,11 @@ namespace Nethermind.Network.Rlpx
             _channelFactory = channelFactory;
             _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
             _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
-            _currentIp = IPAddress.TryParse(networkConfig.ExternalIp ?? networkConfig.LocalIp, out IPAddress? currentIp) ? currentIp : null;
-            _nodeFilter = networkConfig.FilterPeersByRecentIp
-                ? new NodeFilter(networkConfig.MaxActivePeers * 4, !networkConfig.FilterPeersBySameSubnet)
-                : null;
-
+            IPAddress? currentIp = IPAddress.TryParse(networkConfig.ExternalIp ?? networkConfig.LocalIp, out IPAddress? ip) ? ip : null;
+            _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, currentIp);
         }
 
-        public bool ShouldContact(IPAddress ip) => _nodeFilter?.Set(ip, _currentIp) ?? true;
+        public bool ShouldContact(IPAddress ip) => _nodeFilter.TryAccept(ip);
 
         public async Task Init()
         {
@@ -254,14 +250,14 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session} channel");
 
-            _nodeFilter?.Set(session.Node.Address.Address, _currentIp);
+            IPEndPoint? remoteEndpoint = channel.RemoteAddress as IPEndPoint;
+            if (remoteEndpoint is not null)
+            {
+                _nodeFilter.TryAccept(remoteEndpoint.Address);
+            }
+
             _sessionMonitor.AddSession(session);
             session.Disconnected += SessionOnPeerDisconnected;
-            session.MsgReceived += SessionOnActive;
-            session.MsgDelivered += SessionOnActive;
-            session.Initialized += SessionOnInitialized;
-            session.HandshakeComplete += SessionOnInitialized;
-            session.Disconnecting += SessionOnDisconnect;
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
@@ -284,35 +280,10 @@ namespace Nethermind.Network.Rlpx
             });
         }
 
-        private void SessionOnInitialized(object? sender, EventArgs e)
-        {
-            if (sender is ISession session)
-            {
-                _nodeFilter?.Set(session.Node.Address.Address, _currentIp);
-            }
-        }
-
-        private void SessionOnDisconnect(object? sender, DisconnectEventArgs e)
-        {
-            if (sender is ISession session)
-            {
-                _nodeFilter?.Set(session.Node.Address.Address, _currentIp);
-            }
-        }
-
-        private void SessionOnActive(object? sender, PeerEventArgs e)
-            => _nodeFilter?.Set(e.Node.Address.Address, _currentIp);
-
         private void SessionOnPeerDisconnected(object sender, DisconnectEventArgs e)
         {
             ISession session = (Session)sender;
-            _nodeFilter?.Set(session.Node.Address.Address, _currentIp);
             session.Disconnected -= SessionOnPeerDisconnected;
-            session.MsgReceived -= SessionOnActive;
-            session.MsgDelivered -= SessionOnActive;
-            session.Initialized -= SessionOnInitialized;
-            session.HandshakeComplete -= SessionOnInitialized;
-            session.Disconnecting -= SessionOnDisconnect;
             session.Dispose();
         }
 

@@ -225,8 +225,10 @@ namespace Nethermind.Network
                 {
                     try
                     {
-                        if (!_rlpxHost.ShouldContact(peer.Node.Address.Address)) continue;
-                        await SetupOutgoingPeerConnection(peer);
+                        if (_rlpxHost.ShouldContact(peer.Node.Address.Address))
+                        {
+                            await SetupOutgoingPeerConnection(peer);
+                        }
                     }
                     catch (TaskCanceledException)
                     {
