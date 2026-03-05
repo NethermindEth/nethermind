@@ -139,7 +139,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, parentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
+        _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, grandParentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
 
         //Mark grand parent as finalized
         _blockTree.ForkChoiceUpdated(grandParentHeader.Hash, grandParentHeader.Hash);
