@@ -363,7 +363,7 @@ public class NodeFilterTests
     }
 
     [Test]
-    public void TimeoutExpiry_ReacceptsAddressAfterTimeout()
+    public async Task TimeoutExpiry_ReacceptsAddressAfterTimeout()
     {
         // Use a short timeout so we can test expiry without waiting minutes
         NodeFilter filter = new(size: 100, exactMatchOnly: true, currentIp: null, timeoutMs: 100);
@@ -372,13 +372,13 @@ public class NodeFilterTests
         filter.TryAccept(ip).Should().BeTrue("first attempt should be accepted");
         filter.TryAccept(ip).Should().BeFalse("second attempt within timeout should be rejected");
 
-        Thread.Sleep(500);
+        await Task.Delay(500);
 
         filter.TryAccept(ip).Should().BeTrue("attempt after timeout expiry should be accepted again");
     }
 
     [Test]
-    public void TimeoutExpiry_SubnetBucketing_ReacceptsAfterTimeout()
+    public async Task TimeoutExpiry_SubnetBucketing_ReacceptsAfterTimeout()
     {
         NodeFilter filter = new(size: 100, exactMatchOnly: false, currentIp: null, timeoutMs: 100);
         IPAddress ip1 = IPAddress.Parse("203.0.113.1");
@@ -387,7 +387,7 @@ public class NodeFilterTests
         filter.TryAccept(ip1).Should().BeTrue("first address should be accepted");
         filter.TryAccept(ip2).Should().BeFalse("same subnet should be rejected within timeout");
 
-        Thread.Sleep(500);
+        await Task.Delay(500);
 
         filter.TryAccept(ip2).Should().BeTrue("same subnet should be accepted after timeout expiry");
     }

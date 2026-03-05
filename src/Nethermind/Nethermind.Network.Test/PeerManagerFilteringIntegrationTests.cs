@@ -76,10 +76,10 @@ public class PeerManagerFilteringIntegrationTests
         }
     }
 
-    [TestCase(true, false, Description = "Static peer bypasses IP filter")]
-    [TestCase(false, true, Description = "Bootnode peer bypasses IP filter")]
+    [TestCase(true, false, Description = "Static peer bypasses subnet filter")]
+    [TestCase(false, true, Description = "Bootnode peer bypasses subnet filter")]
     [Retry(3)]
-    public async Task PrivilegedPeer_BypassesIpFilter(bool isStatic, bool isBootnode)
+    public async Task PrivilegedPeer_BypassesSubnetFilter(bool isStatic, bool isBootnode)
     {
         await using Context ctx = new();
         Node node = new(new PrivateKeyGenerator().Generate().PublicKey, "203.0.113.1", 30303)
@@ -96,7 +96,7 @@ public class PeerManagerFilteringIntegrationTests
         Assert.That(
             () => ctx.RlpxMock.ConnectedNodeIds.Count,
             Is.GreaterThanOrEqualTo(1).After(2000, 50),
-            "Privileged peer should bypass the IP filter and trigger ConnectAsync");
+            "Privileged peer should bypass the subnet filter and trigger ConnectAsync");
     }
 
     [Test, Retry(3)]
