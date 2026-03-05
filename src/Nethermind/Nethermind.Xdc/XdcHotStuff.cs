@@ -47,8 +47,7 @@ namespace Nethermind.Xdc
         private static readonly PayloadAttributes DefaultPayloadAttributes = new PayloadAttributes();
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
-        private (Hash256? HeadHash, ulong Round) _lastVoteAttempt;
-        private Hash256? _successfullyVotedHead;
+        private Hash256? _lastVoteAttemptHash;
         private bool _writeRoundInfo = true;
         private long _highestSignTxNumber = 0;
 
@@ -348,19 +347,13 @@ namespace Nethermind.Xdc
             if (_highestVotedRound >= currentRound)
                 return;
 
-            // After a successful vote for block N, the round advances but head stays N until N+1 arrives.
-            // Short-circuit polling retries
-            if (_successfullyVotedHead == head.Hash)
-                return;
-
-            // Suppress retries for the same stale head within the same round to avoid log spam
-            if (_lastVoteAttempt.HeadHash == head.Hash && _lastVoteAttempt.Round == currentRound)
-                return;
-            else
-                _lastVoteAttempt = (head.Hash, currentRound);
+            // Skip if already voted for it
+            if (_lastVoteAttemptHash == head.Hash) return;
 
             // Commit/record the header's QC
             _quorumCertificateManager.CommitCertificate(head.ExtraConsensusData.QuorumCert);
+
+            _lastVoteAttemptHash = head.Hash;
 
             // Check if we are in the masternode set
             if (!IsMasternode(epochInfo, _signer.Address))
@@ -378,13 +371,11 @@ namespace Nethermind.Xdc
                 return;
             }
 
-            _highestVotedRound = currentRound;
-            _successfullyVotedHead = head.Hash;
-
             try
             {
                 BlockRoundInfo voteInfo = new BlockRoundInfo(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
                 await _votesManager.CastVote(voteInfo);
+                _highestVotedRound = currentRound;
                 _lastActivityTime = DateTime.UtcNow;
                 _logger.Info($"Round {votingRound}: Voted for block #{head.Number}, hash={head.Hash}");
             }
