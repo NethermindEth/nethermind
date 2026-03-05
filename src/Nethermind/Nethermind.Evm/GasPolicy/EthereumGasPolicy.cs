@@ -218,14 +218,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long GetCodeInsertRegularRefund(int codeInsertRefunds) => 0;
+    public static long GetCodeInsertRegularRefund(int codeInsertRefunds, IReleaseSpec spec) =>
+        spec.IsEip8037Enabled || codeInsertRefunds <= 0
+            ? 0
+            : (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long ApplyCodeInsertRefunds(ref EthereumGasPolicy gas, int codeInsertRefunds)
+    public static long ApplyCodeInsertRefunds(ref EthereumGasPolicy gas, int codeInsertRefunds, IReleaseSpec spec)
     {
-        if (codeInsertRefunds > 0)
+        if (codeInsertRefunds > 0 && spec.IsEip8037Enabled)
             RefundStateGas(ref gas, GasCostOf.NewAccountState * codeInsertRefunds);
-        return 0;
+        return GetCodeInsertRegularRefund(codeInsertRefunds, spec);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

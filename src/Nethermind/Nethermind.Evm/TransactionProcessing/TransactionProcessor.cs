@@ -960,7 +960,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!substate.IsError)
             {
-                long codeInsertRegularRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds);
+                long codeInsertRegularRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds, spec);
                 spentGas -= TGasPolicy.GetRemainingGas(in gasAfterExecution) + TGasPolicy.GetStateReservoir(in gasAfterExecution);
 
                 long totalToRefund = codeInsertRegularRefund;
@@ -974,7 +974,7 @@ namespace Nethermind.Evm.TransactionProcessing
             else if (codeInsertRefunds > 0)
             {
                 // On error, only regular refund applies; state refund is not applied.
-                long codeInsertRegularRefund = TGasPolicy.GetCodeInsertRegularRefund(codeInsertRefunds);
+                long codeInsertRegularRefund = TGasPolicy.GetCodeInsertRegularRefund(codeInsertRefunds, spec);
                 if (codeInsertRegularRefund > 0)
                 {
                     actualRefund = CalculateClaimableRefund(spentGas, codeInsertRegularRefund, spec);
