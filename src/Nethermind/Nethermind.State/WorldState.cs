@@ -231,6 +231,16 @@ namespace Nethermind.State
             return _stateProvider.GetNonce(address);
         }
 
+        public bool IsStorageEmpty(Address address, int? _ = null)
+        {
+            return _persistentStorageProvider.IsStorageEmpty(address);
+        }
+
+        public bool HasCode(Address address, int? _ = null)
+        {
+            return _stateProvider.GetAccount(address).HasCode;
+        }
+
         public IDisposable BeginScope(BlockHeader? baseBlock)
         {
             if (Interlocked.CompareExchange(ref _isInScope, true, false))
