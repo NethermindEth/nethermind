@@ -129,7 +129,7 @@ namespace Nethermind.Network
 
                 // TODO: hack related to not clearly separated peer pool and peer manager
                 if (!_nodesBeingAdded.ContainsKey(peer.Node.Id)
-                    && _rlpxHost.ShouldContact(peer.Node.Address.Address))
+                    && ShouldContactPeer(peer))
                 {
                     // fire and forget - all the surrounding logic will be executed
                     // exceptions can be lost here without issues
@@ -226,7 +226,7 @@ namespace Nethermind.Network
                 {
                     try
                     {
-                        if (_rlpxHost.ShouldContact(peer.Node.Address.Address))
+                        if (ShouldContactPeer(peer))
                         {
                             await SetupOutgoingPeerConnection(peer);
                         }
@@ -757,6 +757,9 @@ namespace Nethermind.Network
         }
 
         #endregion
+
+        private bool ShouldContactPeer(Peer peer)
+            => _rlpxHost.ShouldContact(peer.Node.Address.Address, exactOnly: peer.Node.IsStatic || peer.Node.IsBootnode);
 
         private bool CanConnectToPeer(Peer peer)
         {

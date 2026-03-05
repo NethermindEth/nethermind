@@ -21,8 +21,10 @@ namespace Nethermind.Network.Rlpx
         /// Determines whether the host should attempt to contact a node at the specified IP address.
         /// </summary>
         /// <param name="ip">The IP address of the remote node to evaluate.</param>
+        /// <param name="exactOnly">When <see langword="true"/>, only match the exact IP address (bypass subnet bucketing).
+        /// Used for static peers and boot nodes that must always be reachable but should not reconnect to the same IP.</param>
         /// <returns><see langword="true"/> if the host should attempt to contact the node; otherwise, <see langword="false"/>.</returns>
-        bool ShouldContact(IPAddress ip);
+        bool ShouldContact(IPAddress ip, bool exactOnly = false);
 
         event EventHandler<SessionEventArgs> SessionCreated;
 

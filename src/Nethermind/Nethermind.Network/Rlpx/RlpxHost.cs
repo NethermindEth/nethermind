@@ -102,7 +102,7 @@ namespace Nethermind.Network.Rlpx
             _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, currentIp);
         }
 
-        public bool ShouldContact(IPAddress ip) => _nodeFilter.TryAccept(ip);
+        public bool ShouldContact(IPAddress ip, bool exactOnly = false) => _nodeFilter.TryAccept(ip, exactOnly);
 
         public async Task Init()
         {

@@ -52,13 +52,13 @@ public sealed class NodeFilter
     /// Checks whether <paramref name="ipAddress"/> should be accepted.
     /// Returns <c>true</c> if the address was not seen recently, <c>false</c> if it was.
     /// </summary>
-    public bool TryAccept(IPAddress ipAddress)
+    public bool TryAccept(IPAddress ipAddress, bool exactOnly = false)
     {
         if (_cache is null) return true;
 
         long now = Environment.TickCount64;
 
-        IpSubnetKey key = _exactMatchOnly
+        IpSubnetKey key = _exactMatchOnly || exactOnly
             ? IpSubnetKey.Exact(ipAddress)
             : (_parsedCurrentIp is { } current
                 ? IpSubnetKey.CreateNodeFilterKey(ipAddress, current)
