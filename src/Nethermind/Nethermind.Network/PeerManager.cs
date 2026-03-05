@@ -137,7 +137,7 @@ namespace Nethermind.Network
                     // fire and forget - all the surrounding logic will be executed
                     // exceptions can be lost here without issues
                     // this for rapid connections to newly discovered peers without having to go through the UpdatePeerLoop
-                    SetupOutgoingPeerConnection(peer);
+                    SetupOutgoingPeerConnection(peer, cancelIfThrottled: true);
                 }
 #pragma warning restore 4014
             }

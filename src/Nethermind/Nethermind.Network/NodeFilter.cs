@@ -17,7 +17,7 @@ namespace Nethermind.Network;
 /// </summary>
 public sealed class NodeFilter
 {
-    private static readonly long DefaultTimeOutMs = (long)TimeSpan.FromMinutes(5).TotalMilliseconds;
+    private static readonly long DefaultTimeoutMs = (long)TimeSpan.FromMinutes(5).TotalMilliseconds;
 
     /// <summary>
     /// A filter that always accepts every address. Used when filtering is disabled.
@@ -27,19 +27,19 @@ public sealed class NodeFilter
     private readonly ClockCache<IpSubnetKey, long>? _cache;
     private readonly bool _exactMatchOnly;
     private readonly IpSubnetKey.ParsedIp? _parsedCurrentIp;
-    private readonly long _timeOutMs;
+    private readonly long _timeoutMs;
 
     private NodeFilter() { }
 
     public NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp)
-        : this(size, exactMatchOnly, currentIp, DefaultTimeOutMs) { }
+        : this(size, exactMatchOnly, currentIp, DefaultTimeoutMs) { }
 
-    internal NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp, long timeOutMs)
+    internal NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp, long timeoutMs)
     {
         _cache = new(size);
         _exactMatchOnly = exactMatchOnly;
         _parsedCurrentIp = currentIp is not null ? new IpSubnetKey.ParsedIp(currentIp) : null;
-        _timeOutMs = timeOutMs;
+        _timeoutMs = timeoutMs;
     }
 
     /// <summary>
@@ -66,7 +66,7 @@ public sealed class NodeFilter
 
         // Benign race: two threads may both accept the same key concurrently.
         // The filter is advisory — a double-accept is harmless.
-        if (_cache.TryGet(key, out long lastSeen) && now - lastSeen < _timeOutMs)
+        if (_cache.TryGet(key, out long lastSeen) && now - lastSeen < _timeoutMs)
             return false;
 
         _cache.Set(key, now);
