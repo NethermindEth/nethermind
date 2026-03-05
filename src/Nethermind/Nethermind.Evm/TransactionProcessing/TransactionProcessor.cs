@@ -460,7 +460,7 @@ namespace Nethermind.Evm.TransactionProcessing
             TGasPolicy standard = intrinsicGas.Standard;
             TGasPolicy minimal = intrinsicGas.MinimalGas;
             long minGasRequired = spec.IsEip8037Enabled
-                ? TGasPolicy.GetRemainingGas(in standard) + TGasPolicy.GetStateReservoir(in standard)
+                ? Math.Max(TGasPolicy.GetRemainingGas(in standard) + TGasPolicy.GetStateReservoir(in standard), TGasPolicy.GetRemainingGas(in minimal))
                 : TGasPolicy.GetRemainingGas(in minimal);
             return ValidateGas(tx, header, minGasRequired);
         }
