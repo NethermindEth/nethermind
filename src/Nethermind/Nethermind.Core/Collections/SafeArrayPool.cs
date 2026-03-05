@@ -6,13 +6,13 @@ using System.Buffers;
 namespace Nethermind.Core.Collections;
 
 /// <summary>
-/// Provides a ZKVM-safe shared array pool. Under ZKVM, returns a simple allocating pool
+/// Provides a zkEVM-safe shared array pool. Under zkEVM, returns a simple allocating pool
 /// that avoids the complex generic internals of <see cref="ArrayPool{T}"/>.
 /// Under normal execution, returns <see cref="ArrayPool{T}.Shared"/>.
 /// </summary>
 public static class SafeArrayPool<T>
 {
-#if ZKVM
+#if ZK_EVM
     public static readonly ArrayPool<T> Shared = new SimplePool();
 
     private sealed class SimplePool : ArrayPool<T>

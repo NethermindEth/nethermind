@@ -42,7 +42,8 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
             WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         }
 
-        return base.Execute(tx, tracer, (opts != ExecutionOptions.SkipValidation && !opts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
+        ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
+        return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
             ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }
@@ -57,7 +58,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         return TransactionResult.Ok;
     }
 
-    protected override IReleaseSpec GetSpec(BlockHeader header) => SystemTransactionReleaseSpec.GetReleaseSpec(base.GetSpec(header), _isAura, header.IsGenesis);
+    protected override IReleaseSpec GetSpec(BlockHeader header) => base.GetSpec(header).ForSystemTransaction(_isAura, header.IsGenesis);
 
     protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired) => TransactionResult.Ok;
 
@@ -81,7 +82,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
     protected override bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
     {
         Address? sender = tx.SenderAddress;
-        return (sender is null || (spec.IsEip158IgnoredAccount(sender) && !WorldState.AccountExists(sender)))
+        return (sender is null || (sender == spec.Eip158IgnoredAccount && !WorldState.AccountExists(sender)))
                && base.RecoverSenderIfNeeded(tx, spec, opts, in effectiveGasPrice);
     }
 

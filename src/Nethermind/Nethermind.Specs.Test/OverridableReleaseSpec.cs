@@ -76,7 +76,7 @@ namespace Nethermind.Specs.Test
         public int Eip7934MaxRlpBlockSize { get; set; } = spec.Eip7934MaxRlpBlockSize;
         public bool ValidateChainId { get; set; } = spec.ValidateChainId;
         public bool IsEip3607Enabled { get; set; } = spec.IsEip3607Enabled;
-        public bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
+        public Address? Eip158IgnoredAccount { get; set; } = spec.Eip158IgnoredAccount;
         public long Eip1559TransitionBlock { get; set; } = spec.Eip1559TransitionBlock;
         public Address? FeeCollector { get; set; } = spec.FeeCollector;
         public ulong Eip4844TransitionTimestamp { get; set; } = spec.Eip4844TransitionTimestamp;
@@ -119,6 +119,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7939Enabled { get; set; } = spec.IsEip7939Enabled;
         public bool IsEip7907Enabled { get; set; } = spec.IsEip7907Enabled;
         public bool IsRip7728Enabled { get; set; } = spec.IsRip7728Enabled;
+        public SpecGasCosts GasCosts => new(this);
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     }
 }
