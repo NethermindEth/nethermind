@@ -333,20 +333,10 @@ public sealed class NodeFilter
             }
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void ThrowV4PrefixOutOfRange()
-            => throw new ArgumentOutOfRangeException("prefixBits", "IPv4 prefix must be 0..32.");
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void ThrowV6PrefixOutOfRange()
-            => throw new ArgumentOutOfRangeException("prefixBits", "IPv6 prefix must be 0..128.");
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong MaskV4(uint v4, byte prefixBits)
         {
-            if (prefixBits > 32)
-                ThrowV4PrefixOutOfRange();
-
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(prefixBits, (byte)32, nameof(prefixBits));
             return MaskV4Trusted(v4, prefixBits);
         }
 
@@ -357,9 +347,7 @@ public sealed class NodeFilter
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void MaskV6(ref ulong hi, ref ulong lo, byte prefixBits)
         {
-            if (prefixBits > 128)
-                ThrowV6PrefixOutOfRange();
-
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(prefixBits, (byte)128, nameof(prefixBits));
             MaskV6Trusted(ref hi, ref lo, prefixBits);
         }
 

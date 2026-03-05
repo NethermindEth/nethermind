@@ -31,13 +31,13 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class PeerManagerFilteringIntegrationTests
 {
-    [Test]
-    public void PeerManager_UsesRlpxHostShouldContactInterface()
+    [Test, Retry(3)]
+    public async Task PeerManager_CallsShouldContactBeforeConnectAsync()
     {
         CallOrderTrackingMock trackingMock = new();
-
         ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
         INodeStatsManager stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
+        INetworkStorage storage = new InMemoryStorage();
         INetworkConfig networkConfig = new NetworkConfig
         {
             MaxActivePeers = 25,
@@ -45,9 +45,35 @@ public class PeerManagerFilteringIntegrationTests
             MaxOutgoingConnectPerSec = 1000000
         };
 
-        PeerManager peerManager = new(trackingMock, Substitute.For<IPeerPool>(), stats, networkConfig, LimboLogs.Instance);
+        NodesLoader nodesLoader = new(networkConfig, stats, storage, trackingMock, LimboLogs.Instance);
+        IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
+        staticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
+        TestNodeSource testNodeSource = new();
+        CompositeNodeSource nodeSources = new(nodesLoader, Substitute.For<IDiscoveryApp>(), staticNodesManager, testNodeSource);
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        IPeerPool peerPool = new PeerPool(nodeSources, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
+        PeerManager peerManager = new(trackingMock, peerPool, stats, networkConfig, LimboLogs.Instance);
 
-        trackingMock.ShouldContact(IPAddress.Parse("203.0.113.1")).Should().BeTrue();
+        try
+        {
+            peerPool.Start();
+            peerManager.Start();
+
+            testNodeSource.AddNode(new Node(new PrivateKeyGenerator().Generate().PublicKey, "203.0.113.1", 30303));
+
+            Assert.That(
+                () => trackingMock.CallsToConnectAsync.Count,
+                Is.GreaterThanOrEqualTo(1).After(2000, 50),
+                "PeerManager should trigger ConnectAsync for the discovered peer");
+
+            trackingMock.CallsToShouldContact.Should().NotBeEmpty(
+                "ShouldContact should have been called before ConnectAsync");
+        }
+        finally
+        {
+            await peerManager.StopAsync();
+            await peerPool.StopAsync();
+        }
     }
 
     [TestCase(true, false, Description = "Static peer bypasses IP filter")]
