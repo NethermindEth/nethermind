@@ -9,6 +9,7 @@ using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.Config;
+using Nethermind.Specs;
 
 namespace Nethermind.Core.Test;
 
@@ -33,7 +34,7 @@ public static class TestWorldStateFactory
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
         IWorldState innerWorldState = new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
-        return new ParallelWorldState(innerWorldState, blocksConfig);
+        return new ParallelWorldState(innerWorldState, MainnetSpecProvider.Instance, blocksConfig);
     }
 
     public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)

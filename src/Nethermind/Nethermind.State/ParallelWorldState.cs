@@ -19,7 +19,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State;
 
-public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig blocksConfig) : WrappedWorldState(innerWorldState), IBlockAccessListBuilder, IPreBlockCaches
+public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specProvider, IBlocksConfig blocksConfig) : WrappedWorldState(innerWorldState), IBlockAccessListBuilder, IPreBlockCaches
 {
     public bool TracingEnabled { get; set; } = false;
     public bool IsGenesis { get; set; } = true;
@@ -36,6 +36,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
     public class InvalidBlockLevelAccessListException(string message) : Exception(message);
 
     private long _gasUsed;
+    private readonly bool _isAura = specProvider.SealEngine == SealEngineType.AuRa;
 
     public void LoadSuggestedBlockAccessList(BlockAccessList? suggestedBal, long gasUsed)
     {
@@ -101,6 +102,12 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
         Console.WriteLine("[parallel] starting state change application");
         foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
+            // todo: maybe needed for aura, investigate
+            // if (_isAura && accountChanges.Address == Address.SystemUser)
+            // {
+            //     _innerWorldState.CreateAccount(Address.SystemUser, UInt256.Zero, UInt256.Zero);
+            // }
+
             if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges.Last().BlockAccessIndex != -1)
             {
                 _innerWorldState.CreateAccountIfNotExists(accountChanges.Address, 0, 0);

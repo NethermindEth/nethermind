@@ -84,7 +84,7 @@ namespace Nethermind.AuRa.Test
                 .SignedAndResolved().WithChainId(105).WithGasPrice(0).WithValue(0).WithGasLimit(gasLimit + 1).TestObject;
             Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx })
                 .WithGasLimit(gasLimit).TestObject;
-            Assert.DoesNotThrow(async () => await processor.Process(
+            Assert.DoesNotThrowAsync(() => processor.Process(
                 null,
                 new List<Block> { block },
                 ProcessingOptions.None,

@@ -342,6 +342,11 @@ public class AccountChanges : IEquatable<AccountChanges>
             return true;
         }
 
+        if (blockAccessIndex == 0)
+        {
+            return ExistedBeforeBlock;
+        }
+
         foreach (KeyValuePair<int, NonceChange> change in _nonceChanges)
         {
             if (change.Key < blockAccessIndex)
