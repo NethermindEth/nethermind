@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -144,6 +144,8 @@ public class BlobTxStorage : IBlobTxStorage
         if (txBytes is not null)
         {
             transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm);
+            if (transaction is null) return false;
+
             transaction.SenderAddress = sender;
             return true;
         }
