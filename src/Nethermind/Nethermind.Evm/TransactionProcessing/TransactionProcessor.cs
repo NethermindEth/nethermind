@@ -1023,7 +1023,7 @@ namespace Nethermind.Evm.TransactionProcessing
             UInt256 refundAmount = (ulong)(tx.GasLimit - spentGas) * gasPrice;
             PayRefund(tx, refundAmount, spec);
 
-            return new GasConsumed(spentGas, operationGas, blockGas) { BlockStateGas = blockStateGas };
+            return new GasConsumed(spentGas, operationGas, blockGas, blockStateGas);
         }
 
         protected virtual void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)

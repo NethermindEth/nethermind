@@ -184,13 +184,13 @@ internal static partial class EvmInstructions
             true => transferValue != 0 && state.IsDeadAccount(target),
         };
 
-        bool charged = !chargesNewAccount || (TEip8037.IsActive switch
+        bool newAccountOutOfGas = chargesNewAccount && !(TEip8037.IsActive switch
         {
             true => TGasPolicy.ConsumeNewAccountCreation(ref gas),
             false => TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount),
         });
 
-        if (!charged) goto OutOfGas;
+        if (newAccountOutOfGas) goto OutOfGas;
 
         // Retrieve code information for the call and schedule background analysis if needed.
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);

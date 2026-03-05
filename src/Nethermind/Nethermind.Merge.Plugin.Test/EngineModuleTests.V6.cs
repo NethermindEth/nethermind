@@ -700,17 +700,16 @@ public partial class EngineModuleTests
         using (chain)
         {
             IEngineRpcModule rpc = chain.EngineRpcModule;
+            ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV5(payload, [], Keccak.Zero, []);
             if (expectedError is null)
             {
-                ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV5(payload, [], Keccak.Zero, []);
                 Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
                 Assert.That(result.Data.LatestValidHash, Is.EqualTo(payload.BlockHash));
             }
             else
             {
-                ResultWrapper<PayloadStatusV1> errorResult = await rpc.engine_newPayloadV5(payload, [], Keccak.Zero, []);
-                Assert.That(errorResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
-                Assert.That(errorResult.Data.ValidationError, Does.Contain(expectedError));
+                Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+                Assert.That(result.Data.ValidationError, Does.Contain(expectedError));
             }
         }
     }

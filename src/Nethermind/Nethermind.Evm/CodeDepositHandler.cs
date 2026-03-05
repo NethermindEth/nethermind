@@ -12,11 +12,10 @@ namespace Nethermind.Evm
     {
         private const byte InvalidStartingCodeByte = 0xEF;
 
-        public static long CalculateCost(IReleaseSpec spec, int byteCodeLength)
-        {
-            CalculateCost(spec, byteCodeLength, out long regularCost, out long stateCost);
-            return regularCost == long.MaxValue || stateCost == long.MaxValue ? long.MaxValue : regularCost + stateCost;
-        }
+        public static long CalculateCost(IReleaseSpec spec, int byteCodeLength) =>
+            CalculateCost(spec, byteCodeLength, out long regularCost, out long stateCost)
+                ? regularCost + stateCost
+                : long.MaxValue;
 
         public static bool CalculateCost(IReleaseSpec spec, int byteCodeLength, out long regularCost, out long stateCost) =>
             spec.IsEip8037Enabled
