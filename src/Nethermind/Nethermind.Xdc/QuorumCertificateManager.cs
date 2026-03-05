@@ -97,7 +97,11 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        XdcBlockHeader parentHeader = (XdcBlockHeader)_blockTree.FindHeader(proposedBlockHeader.ParentHash);
+        if (_blockTree.FindHeader(proposedBlockHeader.ParentHash!) is not XdcBlockHeader parentHeader)
+        {
+            error = $"Parent header {proposedBlockHeader.ParentHash} is missing.";
+            return false;
+        }
 
         if (parentHeader.ExtraConsensusData is null)
         {
@@ -111,11 +115,14 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        XdcBlockHeader grandParentHeader = (XdcBlockHeader)_blockTree.FindHeader(parentHeader.ParentHash);
+        if (_blockTree.FindHeader(parentHeader.ParentHash!) is not XdcBlockHeader grandParentHeader)
+        {
+            error = $"Grandparent header {parentHeader.ParentHash} is missing.";
+            return false;
+        }
 
         if (grandParentHeader.ExtraConsensusData is null)
         {
-
             error = $"QC grand parent ({grandParentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}) does not have a QC.";
             return false;
         }
