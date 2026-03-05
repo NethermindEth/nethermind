@@ -49,7 +49,7 @@ Before planning, ground yourself in the current state:
 
 ### Step 3 — Route to Implementation Patterns
 
-Read `references/nethermind-eip-mapping.md` for full patterns and file paths.
+Read `references/implementation-patterns.md` for full patterns and file paths.
 
 Based on the key specification changes from Step 1, determine the primary change type and follow the corresponding pattern:
 
@@ -128,4 +128,4 @@ Build, run relevant tests, and format. If build or tests fail → fix → repeat
 
 ## References
 
-- **Implementation patterns + file paths**: See `references/nethermind-eip-mapping.md`
+- **Implementation patterns + file paths**: See `references/implementation-patterns.md`
