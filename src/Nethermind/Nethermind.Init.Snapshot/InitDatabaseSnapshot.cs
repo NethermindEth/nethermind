@@ -1,25 +1,25 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using Nethermind.Api;
+using Nethermind.Core.Extensions;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using System.IO.Compression;
-using System.Net;
-using System.Security.Cryptography;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Init.Snapshot;
 
+/// <summary>
+/// Extends <see cref="InitDatabase"/> to optionally bootstrap the database from a
+/// remote snapshot before the node starts. The download is resumable and idempotent:
+/// a checkpoint file tracks progress so that restarts skip already-completed stages.
+/// </summary>
 public class InitDatabaseSnapshot : InitDatabase
 {
-    private const int BufferSize = 8192;
-
     private readonly INethermindApi _api;
     private readonly ILogger _logger;
 
-    public InitDatabaseSnapshot(INethermindApi api) : base()
+    public InitDatabaseSnapshot(INethermindApi api)
     {
         _api = api;
         _logger = _api.LogManager.GetClassLogger();
@@ -27,311 +27,141 @@ public class InitDatabaseSnapshot : InitDatabase
 
     public override async Task Execute(CancellationToken cancellationToken)
     {
-        switch (_api.Config<IInitConfig>().DiagnosticMode)
-        {
-            case DiagnosticMode.RpcDb:
-            case DiagnosticMode.ReadOnlyDb:
-            case DiagnosticMode.MemDb:
-                break;
-            default:
-                await InitDbFromSnapshot(cancellationToken);
-                break;
-        }
+        if (!IsInMemoryOrReadOnlyMode())
+            await InitDbFromSnapshotAsync(cancellationToken).ConfigureAwait(false);
 
-        await base.Execute(cancellationToken);
+        await base.Execute(cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task InitDbFromSnapshot(CancellationToken cancellationToken)
-    {
+    private bool IsInMemoryOrReadOnlyMode() =>
+        _api.Config<IInitConfig>().DiagnosticMode is
+            DiagnosticMode.RpcDb or
+            DiagnosticMode.ReadOnlyDb or
+            DiagnosticMode.MemDb;
 
+    private async Task InitDbFromSnapshotAsync(CancellationToken cancellationToken)
+    {
         ISnapshotConfig snapshotConfig = _api.Config<ISnapshotConfig>();
         string dbPath = _api.Config<IInitConfig>().BaseDbPath;
-        string snapshotUrl = snapshotConfig.DownloadUrl ??
-                             throw new InvalidOperationException("Snapshot download URL is not configured");
-        string snapshotFileName = Path.Combine(snapshotConfig.SnapshotDirectory, snapshotConfig.SnapshotFileName);
+        string snapshotUrl = snapshotConfig.DownloadUrl
+            ?? throw new InvalidOperationException("Snapshot download URL is not configured.");
+        string snapshotPath = Path.Combine(snapshotConfig.SnapshotDirectory, snapshotConfig.SnapshotFileName);
+
+        SnapshotCheckpoint checkpoint = new(snapshotConfig);
 
         if (Path.Exists(dbPath))
         {
-            if (GetCheckpoint(snapshotConfig) < Stage.Extracted)
+            if (checkpoint.Read() < SnapshotStage.Extracted)
             {
                 if (_logger.IsInfo)
-                    _logger.Info($"Extracting wasn't finished last time, restarting it. To interrupt press Ctrl^C");
-                // Wait few seconds if user wants to stop reinitialization
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                    _logger.Info("Extraction did not complete last time. Restarting. To interrupt press Ctrl^C");
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
                 Directory.Delete(dbPath, true);
             }
             else
             {
                 if (_logger.IsInfo)
-                    _logger.Info($"Database already exists at {dbPath}. Interrupting");
-
+                    _logger.Info($"Database already exists at {dbPath}. Skipping snapshot initialization.");
                 return;
             }
         }
 
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        if (GetCheckpoint(snapshotConfig) < Stage.Downloaded)
-        {
-            while (true)
-            {
-                try
-                {
-                    await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
-                    break;
-                }
-                catch (Exception e) when (e is IOException or HttpRequestException)
-                {
-                    if (_logger.IsError)
-                        _logger.Error($"Snapshot download failed. Retrying in 5 seconds. Error: {e}");
-                    await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
-                }
-                cancellationToken.ThrowIfCancellationRequested();
-            }
-            SetCheckpoint(snapshotConfig, Stage.Downloaded);
-        }
+        await DownloadWithRetryAsync(snapshotUrl, snapshotPath, checkpoint, cancellationToken).ConfigureAwait(false);
 
-        if (GetCheckpoint(snapshotConfig) < Stage.Verified)
-        {
-            if (snapshotConfig.Checksum is not null)
-            {
-                bool isChecksumValid = await VerifyChecksum(snapshotFileName, snapshotConfig.Checksum, cancellationToken);
-                if (!isChecksumValid)
-                {
-                    if (_logger.IsError)
-                        _logger.Error("Snapshot checksum verification failed. Aborting, but will continue running.");
-                    return;
-                }
+        bool checksumPassed = await VerifyChecksumAsync(snapshotPath, snapshotConfig, checkpoint, cancellationToken).ConfigureAwait(false);
+        if (!checksumPassed)
+            return;
 
-                if (_logger.IsInfo)
-                    _logger.Info("Snapshot checksum verified.");
-            }
-            else if (_logger.IsWarn)
-                _logger.Warn("Snapshot checksum is not configured");
-            SetCheckpoint(snapshotConfig, Stage.Verified);
-        }
-
-        await ExtractSnapshotTo(snapshotFileName, dbPath, snapshotConfig.StripComponents, cancellationToken);
-        SetCheckpoint(snapshotConfig, Stage.Extracted);
+        await ExtractAsync(snapshotPath, dbPath, snapshotConfig.StripComponents, checkpoint, cancellationToken).ConfigureAwait(false);
 
         if (_logger.IsInfo)
         {
             _logger.Info("Database successfully initialized from snapshot.");
-            _logger.Info($"Deleting snapshot file {snapshotFileName}.");
+            _logger.Info($"Deleting snapshot file {snapshotPath}.");
         }
 
-        File.Delete(snapshotFileName);
-
-        SetCheckpoint(snapshotConfig, Stage.End);
+        File.Delete(snapshotPath);
+        checkpoint.Advance(SnapshotStage.Completed);
     }
 
-    private async Task DownloadSnapshotTo(
-        string snapshotUrl, string snapshotFileName, CancellationToken cancellationToken)
+    private async Task DownloadWithRetryAsync(
+        string url, string destinationPath, SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
     {
-        FileInfo snapshotFile = new(snapshotFileName);
-        snapshotFile.Refresh(); // ensure we read current size, not a stale cached value
-        long existingSize = snapshotFile.Exists ? snapshotFile.Length : 0;
+        if (checkpoint.Read() >= SnapshotStage.Downloaded)
+            return;
 
-        if (_logger.IsInfo)
-            _logger.Info($"Downloading snapshot from {snapshotUrl} to {snapshotFile.FullName}");
+        SnapshotDownloader downloader = new(_api.LogManager, _api.TimerFactory);
 
-        if (existingSize > 0)
+        while (true)
+        {
+            try
+            {
+                await downloader.DownloadAsync(url, destinationPath, cancellationToken).ConfigureAwait(false);
+                break;
+            }
+            catch (Exception e) when (e is IOException or HttpRequestException)
+            {
+                if (_logger.IsError)
+                    _logger.Error($"Snapshot download failed. Retrying in 5 seconds. Error: {e}");
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        checkpoint.Advance(SnapshotStage.Downloaded);
+    }
+
+    /// <returns><c>true</c> if the checksum passed or was not configured; <c>false</c> if it failed.</returns>
+    private async Task<bool> VerifyChecksumAsync(
+        string snapshotPath, ISnapshotConfig config, SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
+    {
+        if (checkpoint.Read() >= SnapshotStage.Verified)
+            return true;
+
+        if (config.Checksum is null)
         {
             if (_logger.IsWarn)
-                _logger.Warn("Snapshot file already exists. Resuming download. To interrupt press Ctrl^C");
-            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
-        }
-
-        // HttpClient must outlive the response stream — do not dispose before CopyAsync finishes.
-        using HttpClient httpClient = new(new HttpClientHandler { AllowAutoRedirect = false });
-        using HttpResponseMessage response = await SendWithRangeAsync(httpClient, snapshotUrl, existingSize, cancellationToken);
-
-        if (_logger.IsInfo)
-            _logger.Info($"Server response: {response.StatusCode}, ETag: {response.Headers.ETag}, Last-Modified: {response.Content.Headers.LastModified}");
-
-        // 416: our Range start was at or beyond the end of the file — we already have the full file.
-        if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
-        {
-            if (_logger.IsInfo)
-                _logger.Info("Snapshot file already fully downloaded (server returned 416).");
-            return;
-        }
-
-        (FileMode fileMode, long bytesToSkip, long? totalSize) = response.StatusCode switch
-        {
-            // Server honoured our Range request — append remaining bytes.
-            HttpStatusCode.PartialContent =>
-                (FileMode.Append, 0L, existingSize + response.Content.Headers.ContentLength),
-
-            // Server returned the full file. If we had a partial file, skip the already-downloaded
-            // portion in the stream and append; otherwise start fresh.
-            HttpStatusCode.OK when existingSize > 0 =>
-                (FileMode.Append, existingSize, response.Content.Headers.ContentLength),
-
-            HttpStatusCode.OK =>
-                (FileMode.Create, 0L, response.Content.Headers.ContentLength),
-
-            _ => throw new IOException($"Unexpected HTTP status: {response.StatusCode}")
-        };
-
-        if (bytesToSkip > 0 && _logger.IsWarn)
-            _logger.Warn($"Server does not support range requests. Consuming {bytesToSkip} already-downloaded bytes to resume.");
-
-        await using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using FileStream fileStream = new(snapshotFileName, fileMode, FileAccess.Write, FileShare.None, BufferSize, true);
-
-        using ProgressTracker progressTracker = new(
-            _api.LogManager, _api.TimerFactory, TimeSpan.FromSeconds(5), existingSize, totalSize);
-
-        if (bytesToSkip > 0)
-            await SkipAsync(contentStream, bytesToSkip, cancellationToken);
-
-        await CopyAsync(contentStream, fileStream, progressTracker, cancellationToken);
-
-        if (_logger.IsInfo)
-            _logger.Info($"Snapshot downloaded to {snapshotFileName}.");
-    }
-
-    // Sends a GET request with an optional Range header, manually following redirects so the
-    // Range header is preserved — HttpClient strips non-standard headers on auto-redirects.
-    private static async Task<HttpResponseMessage> SendWithRangeAsync(
-        HttpClient httpClient, string url, long existingSize, CancellationToken cancellationToken)
-    {
-        Uri currentUri = new(url);
-
-        for (int redirects = 0; redirects < 10; redirects++)
-        {
-            HttpRequestMessage request = new(HttpMethod.Get, currentUri);
-            if (existingSize > 0)
-                request.Headers.Range = new RangeHeaderValue(existingSize, null);
-
-            HttpResponseMessage response = await httpClient.SendAsync(
-                request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            if (response.StatusCode is HttpStatusCode.MovedPermanently
-                                    or HttpStatusCode.Found
-                                    or HttpStatusCode.SeeOther
-                                    or HttpStatusCode.TemporaryRedirect
-                                    or HttpStatusCode.PermanentRedirect)
-            {
-                Uri location = response.Headers.Location
-                    ?? throw new IOException("Redirect response missing Location header.");
-                // Location may be relative — resolve against the current URI.
-                currentUri = new Uri(currentUri, location);
-                response.Dispose();
-                continue;
-            }
-
-            // 416 means we already have the full file — let the caller handle it.
-            if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
-                return response;
-
-            return response.EnsureSuccessStatusCode();
-        }
-
-        throw new IOException("Too many redirects while downloading snapshot.");
-    }
-
-    private static async Task SkipAsync(Stream stream, long bytesToSkip, CancellationToken cancellationToken)
-    {
-        byte[] buffer = new byte[BufferSize];
-        long remaining = bytesToSkip;
-        while (remaining > 0)
-        {
-            int read = await stream.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, remaining)), cancellationToken);
-            if (read == 0)
-                throw new IOException($"Stream ended prematurely while skipping: {remaining} of {bytesToSkip} bytes remaining.");
-            remaining -= read;
-        }
-    }
-
-    private static async Task CopyAsync(Stream source, FileStream destination, ProgressTracker progressTracker, CancellationToken cancellationToken)
-    {
-        byte[] buffer = new byte[BufferSize];
-        int bytesRead;
-        while ((bytesRead = await source.ReadAsync(buffer, cancellationToken)) > 0)
-        {
-            await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
-            progressTracker.AddProgress(bytesRead);
-        }
-    }
-
-    private async Task<bool> VerifyChecksum(
-        string snapshotFilePath, string snapshotChecksum, CancellationToken cancellationToken)
-    {
-        byte[] checksumBytes = Bytes.FromHexString(snapshotChecksum);
-        if (_logger.IsInfo)
-            _logger.Info($"Verifying snapshot checksum {snapshotChecksum}.");
-
-        await using FileStream fileStream = File.OpenRead(snapshotFilePath);
-        byte[] hash = await SHA256.HashDataAsync(fileStream, cancellationToken);
-        return Bytes.AreEqual(hash, checksumBytes);
-    }
-
-    private Task ExtractSnapshotTo(string snapshotPath, string dbPath, int stripComponents, CancellationToken cancellationToken) =>
-        Task.Run(() =>
-        {
-            if (_logger.IsInfo)
-                _logger.Info($"Extracting snapshot to {dbPath}. Do not interrupt!");
-
-            string extension = Path.GetExtension(snapshotPath).ToLowerInvariant();
-            string secondExtension = Path.GetExtension(Path.GetFileNameWithoutExtension(snapshotPath)).ToLowerInvariant();
-
-            if (extension == ".zip")
-            {
-                ZipFile.ExtractToDirectory(snapshotPath, dbPath);
-            }
-            else if (extension is ".zst" or ".zstd" or ".gz" or ".bz2" or ".xz" || secondExtension == ".tar")
-            {
-                Directory.CreateDirectory(dbPath);
-                using System.Diagnostics.Process process = new()
-                {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "tar",
-                        Arguments = $"--extract --file \"{snapshotPath}\" --directory \"{dbPath}\" --strip-components={stripComponents}",
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                    }
-                };
-                process.Start();
-                string stderr = process.StandardError.ReadToEnd();
-                process.WaitForExit();
-                if (process.ExitCode != 0)
-                    throw new IOException($"tar extraction failed (exit {process.ExitCode}): {stderr}");
-            }
-            else
-            {
-                throw new NotSupportedException($"Unsupported snapshot archive format: {snapshotPath}");
-            }
-        }, cancellationToken);
-
-    private enum Stage
-    {
-        Start,
-        Downloaded,
-        Verified,
-        Extracted,
-        End,
-    }
-
-    private static void SetCheckpoint(ISnapshotConfig snapshotConfig, Stage stage)
-    {
-        string checkpointPath = Path.Combine(snapshotConfig.SnapshotDirectory, "checkpoint" + "_" + snapshotConfig.SnapshotFileName);
-        File.WriteAllText(checkpointPath, stage.ToString());
-    }
-
-    private static Stage GetCheckpoint(ISnapshotConfig snapshotConfig)
-    {
-        string checkpointPath = Path.Combine(snapshotConfig.SnapshotDirectory, "checkpoint" + "_" + snapshotConfig.SnapshotFileName);
-        if (File.Exists(checkpointPath))
-        {
-            string stringStage = File.ReadAllText(checkpointPath);
-            return Enum.Parse<Stage>(stringStage);
+                _logger.Warn("Snapshot checksum is not configured.");
         }
         else
         {
-            return Stage.Start;
+            if (_logger.IsInfo)
+                _logger.Info($"Verifying snapshot checksum {config.Checksum}.");
+
+            bool valid = await ComputeAndCompareChecksumAsync(snapshotPath, config.Checksum, cancellationToken).ConfigureAwait(false);
+            if (!valid)
+            {
+                if (_logger.IsError)
+                    _logger.Error("Snapshot checksum verification failed. Aborting snapshot initialization, but the node will continue running.");
+                return false;
+            }
+
+            if (_logger.IsInfo)
+                _logger.Info("Snapshot checksum verified.");
         }
+
+        checkpoint.Advance(SnapshotStage.Verified);
+        return true;
+    }
+
+    private async Task ExtractAsync(
+        string snapshotPath, string dbPath, int stripComponents, SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
+    {
+        if (checkpoint.Read() >= SnapshotStage.Extracted)
+            return;
+
+        SnapshotExtractor extractor = new(_api.LogManager);
+        await extractor.ExtractAsync(snapshotPath, dbPath, stripComponents, cancellationToken).ConfigureAwait(false);
+        checkpoint.Advance(SnapshotStage.Extracted);
+    }
+
+    private static async Task<bool> ComputeAndCompareChecksumAsync(
+        string filePath, string expectedChecksum, CancellationToken cancellationToken)
+    {
+        byte[] expected = Bytes.FromHexString(expectedChecksum);
+        await using FileStream fileStream = File.OpenRead(filePath);
+        byte[] actual = await SHA256.HashDataAsync(fileStream, cancellationToken).ConfigureAwait(false);
+        return Bytes.AreEqual(actual, expected);
     }
 }
