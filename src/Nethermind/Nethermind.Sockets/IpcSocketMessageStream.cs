@@ -105,7 +105,6 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
 
     private void ResetJsonParseState() => _jsonParseState = new();
 
-
     protected override void Dispose(bool disposing)
     {
         if (disposing)
