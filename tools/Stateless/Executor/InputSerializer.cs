@@ -20,10 +20,9 @@ public static class InputSerializer
         var blockLen = blockDecoder.GetLength(block, RlpBehaviors.None);
         var codesLen = GetSerializedLength(witness.Codes);
         var headersLen = GetSerializedLength(witness.Headers);
-        var keysLen = GetSerializedLength(witness.Keys);
         var stateLen = GetSerializedLength(witness.State);
         var outputLen = MinSerializedLength +
-            blockLen + codesLen + headersLen + keysLen + stateLen;
+            blockLen + codesLen + headersLen + stateLen;
 
         byte[] output = GC.AllocateUninitializedArray<byte>(outputLen);
         var offset = 0;
@@ -40,7 +39,6 @@ public static class InputSerializer
 
         WriteJaggedArray(witness.Codes, codesLen, output, ref offset);
         WriteJaggedArray(witness.Headers, headersLen, output, ref offset);
-        WriteJaggedArray(witness.Keys, keysLen, output, ref offset);
         WriteJaggedArray(witness.State, stateLen, output, ref offset);
 
         if (offset != outputLen)
@@ -65,7 +63,6 @@ public static class InputSerializer
 
         IOwnedReadOnlyList<byte[]> codes = ReadJaggedArray(input, ref offset);
         IOwnedReadOnlyList<byte[]> headers = ReadJaggedArray(input, ref offset);
-        IOwnedReadOnlyList<byte[]> keys = ReadJaggedArray(input, ref offset);
         IOwnedReadOnlyList<byte[]> state = ReadJaggedArray(input, ref offset);
 
         if (offset != input.Length)
@@ -75,7 +72,7 @@ public static class InputSerializer
         {
             Codes = codes,
             Headers = headers,
-            Keys = keys,
+            Keys = ArrayPoolList<byte[]>.Empty(),
             State = state
         };
 
@@ -177,6 +174,5 @@ public static class InputSerializer
         sizeof(int) +  // block length
         sizeof(int) +  // codes length
         sizeof(int) +  // headers length
-        sizeof(int) +  // keys length
         sizeof(int);   // state length
 }

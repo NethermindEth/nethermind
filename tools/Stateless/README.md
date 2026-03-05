@@ -35,13 +35,12 @@ chain_id: u32le
 block_rlp = len: i32le | bytes[len]
 codes     = len: i32le | n: i32le | repeat n: (item_len: i32le | bytes[item_len])
 headers   = len: i32le | n: i32le | repeat n: (item_len: i32le | bytes[item_len])
-keys      = len: i32le | n: i32le | repeat n: (item_len: i32le | bytes[item_len])
 state     = len: i32le | n: i32le | repeat n: (item_len: i32le | bytes[item_len])
 ```
 
 The block section is a regular RLP-encoded block prefixed with its length.
 
-The witness section is a concatenation of 4 sections: codes, headers, keys, and state.
+The witness section is a concatenation of 3 sections: codes, headers, and state.
 Each section is a list of byte arrays, prefixed with the total length of the section and the number of items in the section.
 The witness data comes from `debug_executionWitness` and is deserialized to the same format:
 
@@ -49,7 +48,6 @@ The witness data comes from `debug_executionWitness` and is deserialized to the 
 {
   "codes": [[]],
   "headers": [[]],
-  "keys": [[]],
   "state": [[]]
 }
 ```
