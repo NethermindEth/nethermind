@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -90,26 +91,44 @@ public class ReadOnlySnapshotBundleBenchmark
 
             int addressOffset = totalAccountCount;
 
+            // Pre-compute addresses in parallel (DeriveAddress involves Keccak)
+            Address[] addresses = new Address[accountCount];
+            int offset = addressOffset;
+            Parallel.For(0, accountCount, i =>
+            {
+                addresses[i] = DeriveAddress(offset + i + 1);
+            });
+
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch =
                 scope.StartWriteBatch(accountCount))
             {
+                // Phase 1 (sequential): set accounts and create storage write batches
+                IWorldStateScopeProvider.IStorageWriteBatch[] storageBatches =
+                    new IWorldStateScopeProvider.IStorageWriteBatch[storageAccountCount];
                 for (int i = 0; i < accountCount; i++)
                 {
-                    Address addr = Address.FromNumber((UInt256)(ulong)(addressOffset + i + 1));
-                    batch.Set(addr, new Account(balance: (UInt256)(addressOffset + i + 1)));
+                    batch.Set(addresses[i], new Account(balance: (UInt256)(addressOffset + i + 1)));
 
                     if (i < storageAccountCount)
                     {
-                        using IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
-                            batch.CreateStorageWriteBatch(addr,
-                                estimatedEntries: slotsPerStorageAccount);
-                        for (int s = 0; s < slotsPerStorageAccount; s++)
-                        {
-                            storageBatch.Set((UInt256)(ulong)(s + 1),
-                                new byte[] { (byte)((s + 1) & 0xFF) });
-                        }
+                        storageBatches[i] = batch.CreateStorageWriteBatch(addresses[i],
+                            estimatedEntries: slotsPerStorageAccount);
                     }
                 }
+
+                // Phase 2 (parallel): fill storage slots — each FlatStorageTree is independent
+                int slots = slotsPerStorageAccount;
+                Parallel.For(0, storageAccountCount, i =>
+                {
+                    IWorldStateScopeProvider.IStorageWriteBatch storageBatch = storageBatches[i];
+                    for (int s = 0; s < slots; s++)
+                    {
+                        storageBatch.Set((UInt256)(ulong)(s + 1),
+                            new byte[] { (byte)((s + 1) & 0xFF) });
+                    }
+
+                    storageBatch.Dispose();
+                });
             }
 
             scope.Commit(blockNumber: block + 1);
@@ -144,7 +163,7 @@ public class ReadOnlySnapshotBundleBenchmark
         for (int i = 0; i < ArraySize; i++)
         {
             int accountIndex = (i * accountStep % totalAccountCount) + 1;
-            _hitAccounts[i] = Address.FromNumber((UInt256)(ulong)accountIndex);
+            _hitAccounts[i] = DeriveAddress(accountIndex);
         }
 
         // Hit slots: use storage accounts from the first snapshot (addresses 1..640, slots 1..3200)
@@ -155,7 +174,7 @@ public class ReadOnlySnapshotBundleBenchmark
         {
             int storageAccountIndex = (i % firstStorageCount) + 1;
             UInt256 slot = (UInt256)(ulong)((i * 100 % firstSlotsPerAccount) + 1);
-            _hitSlots[i] = (Address.FromNumber((UInt256)(ulong)storageAccountIndex), slot);
+            _hitSlots[i] = (DeriveAddress(storageAccountIndex), slot);
         }
 
         // Collect state/storage trie nodes from all snapshots
@@ -194,7 +213,7 @@ public class ReadOnlySnapshotBundleBenchmark
         _hitStorageNodes = storageNodesList.ToArray();
 
         // --- Same-account arrays (hot-contract pattern) ---
-        Address sameAddr = Address.FromNumber((UInt256)1UL);
+        Address sameAddr = DeriveAddress(1);
         _sameAccountSlots = new (Address, UInt256)[ArraySize];
         for (int i = 0; i < ArraySize; i++)
             _sameAccountSlots[i] = (sameAddr, (UInt256)(ulong)(i + 1));
@@ -221,13 +240,12 @@ public class ReadOnlySnapshotBundleBenchmark
         // --- Miss arrays ---
         _missAccounts = new Address[ArraySize];
         for (int i = 0; i < ArraySize; i++)
-            _missAccounts[i] = Address.FromNumber(
-                (UInt256)(ulong)(totalAccountCount + 200_001 + i));
+            _missAccounts[i] = DeriveAddress(totalAccountCount + 200_001 + i);
 
         _missSlots = new (Address, UInt256)[ArraySize];
         for (int i = 0; i < ArraySize; i++)
         {
-            Address storageAddr = Address.FromNumber((UInt256)(ulong)((i % 20) + 1));
+            Address storageAddr = DeriveAddress((i % 20) + 1);
             UInt256 missSlot = (UInt256)(ulong)(maxSlotsPerStorageAccount + 100 + i);
             _missSlots[i] = (storageAddr, missSlot);
         }
@@ -236,8 +254,7 @@ public class ReadOnlySnapshotBundleBenchmark
         _missLongPaths = new TreePath[ArraySize];
         for (int i = 0; i < ArraySize; i++)
         {
-            Address nonExistent = Address.FromNumber(
-                (UInt256)(ulong)(totalAccountCount + 300_001 + i));
+            Address nonExistent = DeriveAddress(totalAccountCount + 300_001 + i);
             ValueHash256 addrHash = ValueKeccak.Compute(nonExistent.Bytes);
             TreePath shortPath = TreePath.FromPath(addrHash.Bytes);
             shortPath = shortPath.Truncate(15);
@@ -248,8 +265,7 @@ public class ReadOnlySnapshotBundleBenchmark
         _missStorageNodes = new (Hash256, TreePath)[ArraySize];
         for (int i = 0; i < ArraySize; i++)
         {
-            Address nonStorageAddr = Address.FromNumber(
-                (UInt256)(ulong)(totalAccountCount + 400_001 + i));
+            Address nonStorageAddr = DeriveAddress(totalAccountCount + 400_001 + i);
             Hash256 addrHash = Keccak.Compute(nonStorageAddr.Bytes);
             _missStorageNodes[i] = (addrHash, TreePath.Empty);
         }
@@ -352,6 +368,9 @@ public class ReadOnlySnapshotBundleBenchmark
             _missStorageNodes[_index++ % _missStorageNodes.Length];
         return _bundle.TryFindStorageNodes(addrHash, in path, Keccak.Zero, out _);
     }
+
+    private static Address DeriveAddress(int index) =>
+        new Address(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
 
     private sealed class NullTrieNodeCache : ITrieNodeCache
     {
