@@ -128,13 +128,16 @@ namespace Nethermind.Network
 #pragma warning disable 4014
 
                 // TODO: hack related to not clearly separated peer pool and peer manager
+                // Check throttle before the IP filter so a throttled no-op does not
+                // consume a filter entry and block the peer for the full timeout window.
                 if (!_nodesBeingAdded.ContainsKey(peer.Node.Id)
+                    && !_outgoingConnectionRateLimiter.IsThrottled()
                     && ShouldContactPeer(peer))
                 {
                     // fire and forget - all the surrounding logic will be executed
                     // exceptions can be lost here without issues
                     // this for rapid connections to newly discovered peers without having to go through the UpdatePeerLoop
-                    SetupOutgoingPeerConnection(peer, cancelIfThrottled: true);
+                    SetupOutgoingPeerConnection(peer);
                 }
 #pragma warning restore 4014
             }
