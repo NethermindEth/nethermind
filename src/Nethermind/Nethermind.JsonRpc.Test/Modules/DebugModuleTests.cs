@@ -345,9 +345,9 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void StandardTraceBlockToFile()
+    public async Task StandardTraceBlockToFile()
     {
-        var blockHash = Keccak.EmptyTreeHash;
+        Hash256 blockHash = Keccak.EmptyTreeHash;
 
         static IEnumerable<string> GetFileNames(Hash256 hash) =>
             new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
@@ -356,17 +356,17 @@ public class DebugModuleTests
             .TraceBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(static c => GetFileNames(c.ArgAt<Hash256>(0)));
 
-        var rpcModule = CreateDebugRpcModule(debugBridge);
-        var actual = rpcModule.debug_standardTraceBlockToFile(blockHash);
+        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
+        ResultWrapper<IEnumerable<string>> actual = await rpcModule.debug_standardTraceBlockToFile(blockHash);
         var expected = ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash));
 
         actual.Should().BeEquivalentTo(expected);
     }
 
     [Test]
-    public void StandardTraceBadBlockToFile()
+    public async Task StandardTraceBadBlockToFile()
     {
-        var blockHash = Keccak.EmptyTreeHash;
+        Hash256 blockHash = Keccak.EmptyTreeHash;
 
         static IEnumerable<string> GetFileNames(Hash256 hash) =>
             new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
@@ -375,8 +375,8 @@ public class DebugModuleTests
             .TraceBadBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(static c => GetFileNames(c.ArgAt<Hash256>(0)));
 
-        var rpcModule = CreateDebugRpcModule(debugBridge);
-        var actual = rpcModule.debug_standardTraceBadBlockToFile(blockHash);
+        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
+        ResultWrapper<IEnumerable<string>> actual = await rpcModule.debug_standardTraceBadBlockToFile(blockHash);
         var expected = ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash));
 
         actual.Should().BeEquivalentTo(expected);
