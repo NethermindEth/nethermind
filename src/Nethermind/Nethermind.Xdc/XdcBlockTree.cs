@@ -76,4 +76,32 @@ internal class XdcBlockTree : BlockTree
         return AddBlockResult.InvalidBlock;
     }
 
+    protected override bool HeadImprovementRequirementsSatisfied(BlockHeader header)
+    {
+        if (header is XdcBlockHeader { ExtraConsensusData: not null } newBlock
+            && Head?.Header is XdcBlockHeader { ExtraConsensusData: not null } headBlock)
+        {
+            return IsXdcImprovementRequirementSatisfied(newBlock, headBlock);
+        }
+
+        return base.HeadImprovementRequirementsSatisfied(header);
+    }
+
+    protected override bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
+    {
+        if (header is XdcBlockHeader { ExtraConsensusData: not null } newBlock
+            && BestSuggestedBody?.Header is XdcBlockHeader { ExtraConsensusData: not null } bestBlock)
+        {
+            return IsXdcImprovementRequirementSatisfied(newBlock, bestBlock);
+        }
+
+        return base.BestSuggestedImprovementRequirementsSatisfied(header);
+    }
+
+    // XDPoS orders blocks by round, not total difficulty (all blocks use Difficulty=1).
+    // A block with a higher round should become the canonical head.
+    private static bool IsXdcImprovementRequirementSatisfied(XdcBlockHeader newHeader, XdcBlockHeader oldHeader)
+    {
+        return newHeader.ExtraConsensusData?.BlockRound > oldHeader.ExtraConsensusData?.BlockRound;
+    }
 }
