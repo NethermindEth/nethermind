@@ -99,27 +99,26 @@ public class BackgroundTaskSchedulerTests
 
     [Test]
     [Retry(3)]
-    public async Task Test_task_scheduled_during_block_processing_is_skipped_and_disposed()
+    public async Task Test_task_scheduled_during_block_processing_gets_cancelled_token()
     {
-        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 16, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
         _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
 
-        int handlerCalledCount = 0;
+        int cancelledCount = 0;
         for (int i = 0; i < 5; i++)
         {
             scheduler.TryScheduleTask(1, (_, token) =>
             {
-                Interlocked.Increment(ref handlerCalledCount);
+                if (token.IsCancellationRequested)
+                    Interlocked.Increment(ref cancelledCount);
                 return Task.CompletedTask;
             });
         }
 
-        // Tasks during block processing are disposed without calling the handler.
-        // Verify by checking the queue drains and accepts new tasks.
-        await Task.Delay(200);
-        handlerCalledCount.Should().Be(0, "handlers should not be called during block processing");
+        // Tasks during block processing run with a cancelled token
+        Assert.That(() => Volatile.Read(ref cancelledCount), Is.EqualTo(5).After(2000, 10));
 
-        // After block processing, new tasks execute normally
+        // After block processing, new tasks execute with active token
         _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
 
         int postBlockCount = 0;
@@ -137,31 +136,33 @@ public class BackgroundTaskSchedulerTests
     }
 
     [Test]
-    public async Task Test_task_scheduled_during_block_processing_is_disposed_not_executed()
+    public async Task Test_task_during_block_processing_gets_cancelled_token_and_exits()
     {
-        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 16, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
         _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
 
-        bool handlerCalled = false;
+        bool wasCancelled = false;
+        ManualResetEvent waitSignal = new(false);
         scheduler.TryScheduleTask(1, (_, token) =>
         {
-            handlerCalled = true;
+            wasCancelled = token.IsCancellationRequested;
+            waitSignal.Set();
             return Task.CompletedTask;
-        }, TimeSpan.FromMilliseconds(1));
+        }, TimeSpan.FromSeconds(5));
 
-        await Task.Delay(200);
-        handlerCalled.Should().BeFalse("handler should not be called during block processing — task is disposed");
+        (await waitSignal.WaitOneAsync(CancellationToken.None)).Should().BeTrue();
+        wasCancelled.Should().BeTrue("task should receive a cancelled token during block processing");
 
         // After block processing, new tasks execute normally
         _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
 
-        ManualResetEvent waitSignal = new(false);
+        ManualResetEvent postBlockSignal = new(false);
         scheduler.TryScheduleTask(1, (_, token) =>
         {
-            waitSignal.Set();
+            postBlockSignal.Set();
             return Task.CompletedTask;
         });
-        (await waitSignal.WaitOneAsync(CancellationToken.None)).Should().BeTrue();
+        (await postBlockSignal.WaitOneAsync(CancellationToken.None)).Should().BeTrue();
     }
 
     [Test]

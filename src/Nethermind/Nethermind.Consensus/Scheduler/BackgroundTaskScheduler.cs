@@ -22,8 +22,8 @@ namespace Nethermind.Consensus.Scheduler;
 /// - Task closure will have the CancellationToken which will be canceled if block processing happens while the task is running.
 /// - The Task has a default timeout, which is counted from the time it is queued. If timed out because too many other background
 ///    tasks before it, for example, the cancellation token passed to it will be canceled.
-/// - During block processing, queued tasks are disposed without execution to avoid contention with block processing.
-///   Tasks already running when block processing starts will have their CancellationToken cancelled.
+/// - During block processing, tasks run with a cancelled CancellationToken so handlers can bail out quickly.
+///   If queue depth exceeds 80% capacity, tasks are disposed without execution to prevent queue overflow.
 ///   It is up to running tasks to check the token and stop promptly. Don't hang — other tasks need to be canceled too.
 /// - A failure at this level is considered unexpected and loud. Exception should be handled at handler level.
 /// </summary>
@@ -39,6 +39,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private readonly IBranchProcessor _branchProcessor;
     private readonly IChainHeadInfoProvider _headInfo;
     private readonly int _capacity;
+    private readonly long _highWatermark;
     private long _queueCount;
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
@@ -66,6 +67,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _branchProcessor = branchProcessor;
         _headInfo = headInfo;
         _capacity = capacity;
+        _highWatermark = (long)(capacity * 0.8);
 
         _branchProcessor.BlocksProcessing += BranchProcessorOnBranchesProcessing;
         _branchProcessor.BlockProcessed += BranchProcessorOnBranchProcessed;
@@ -116,9 +118,9 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 {
                     Interlocked.Decrement(ref _queueCount);
                     UpdateQueueCount();
-                    if (token.IsCancellationRequested)
+                    if (token.IsCancellationRequested && Volatile.Read(ref _queueCount) > _highWatermark)
                     {
-                        // Block processing is active — skip work, just free resources.
+                        // Queue pressure during block processing — skip work, just free resources.
                         // Avoids CTS allocation, handler invocation, and network I/O for each stale task.
                         activity.TryDispose();
                         Evm.Metrics.IncrementTotalBackgroundTasksCancelled();

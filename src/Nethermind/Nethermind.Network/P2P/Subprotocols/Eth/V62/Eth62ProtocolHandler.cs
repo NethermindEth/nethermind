@@ -252,14 +252,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     {
                         if (i == startIdx)
                         {
-                            // Timeout immediately on the first transaction. This indicate that this task spent too much
-                            // time in the queue as the queue is probably full. In this case, queuing again wont help
-                            // as it later will just take as much time in the queue, then timing out again.
-                            if (Logger.IsDebug) Logger.Debug("Background task queue full. Dropping transactions.");
+                            // Cancelled before processing any transaction — dispose and bail out.
+                            // Rescheduling would just loop (cancelled again immediately).
+                            transactions.Dispose();
                             return ValueTask.CompletedTask;
                         }
 
-                        // Reschedule and with different start index
+                        // Reschedule remaining transactions with a different start index
                         BackgroundTaskScheduler.TryScheduleBackgroundTask((transactions, i), HandleSlow, "Transactions");
                         return ValueTask.CompletedTask;
                     }
