@@ -250,13 +250,17 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session} channel");
 
-            // Record incoming connections in the filter so future outgoing attempts
-            // to the same IP/subnet are suppressed. Outgoing connections are already
-            // recorded by ShouldContact before ConnectAsync is called.
+            // Record incoming connections in the filter and reject IPs already seen
+            // within the filter window. This suppresses duplicate inbound connections
+            // and avoids setting up the full handshake pipeline for filtered IPs.
+            // Outgoing connections are already filtered by ShouldContact before ConnectAsync.
             if (session.Direction == ConnectionDirection.In
-                && channel.RemoteAddress is IPEndPoint remoteEndpoint)
+                && channel.RemoteAddress is IPEndPoint remoteEndpoint
+                && !_nodeFilter.TryAccept(remoteEndpoint.Address))
             {
-                _nodeFilter.TryAccept(remoteEndpoint.Address);
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {remoteEndpoint.Address}");
+                channel.CloseAsync();
+                return;
             }
 
             _sessionMonitor.AddSession(session);
