@@ -406,7 +406,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             internal int ScheduledTasks = 0;
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
-                TimeSpan? timeout = null)
+                TimeSpan? timeout = null, string? source = null)
             {
                 CancellationTokenSource cts = new();
                 cts.Cancel();

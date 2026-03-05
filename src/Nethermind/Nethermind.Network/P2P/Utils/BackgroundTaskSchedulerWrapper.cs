@@ -21,13 +21,13 @@ namespace Nethermind.Network.P2P.Utils;
 public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgroundTaskScheduler backgroundTaskScheduler)
 {
     internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage =>
-        TryScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSender);
+        TryScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSender, typeof(TReq).Name);
 
     internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage =>
-        TryScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSenderValueTask);
+        TryScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSenderValueTask, typeof(TReq).Name);
 
-    internal bool TryScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc) =>
-        backgroundTaskScheduler.TryScheduleTask((request, fulfillFunc), BackgroundTaskFailureHandlerValueTask);
+    internal bool TryScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc, string? source = null) =>
+        backgroundTaskScheduler.TryScheduleTask((request, fulfillFunc), BackgroundTaskFailureHandlerValueTask, source: source);
 
     // I just don't want to create a closure... so this happens.
     private async ValueTask BackgroundSyncSender<TReq, TRes>(

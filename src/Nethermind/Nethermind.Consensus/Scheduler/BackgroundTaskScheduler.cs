@@ -85,6 +85,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         // as there are potentially no gaps between blocks
         if (!_headInfo.IsSyncing)
         {
+            long depth = Volatile.Read(ref _queueCount);
+            if (_logger.IsDebug) _logger.Debug($"Block processing starting, background queue depth: {depth}");
             // On block processing, cancel the block process CTS so running tasks can exit quickly
             _blockProcessorCancellationTokenSource.Cancel();
         }
@@ -113,7 +115,16 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 {
                     Interlocked.Decrement(ref _queueCount);
                     UpdateQueueCount();
-                    await activity.Do(token);
+                    if (token.IsCancellationRequested)
+                    {
+                        await activity.Do(token);
+                        Evm.Metrics.IncrementTotalBackgroundTasksCancelled();
+                    }
+                    else
+                    {
+                        await activity.Do(token);
+                        Evm.Metrics.IncrementTotalBackgroundTasksExecuted();
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -130,7 +141,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         }
     }
 
-    public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+    public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
     {
         IActivity activity = new Activity<TReq>
         {
@@ -150,7 +161,11 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             }
         }
 
-        if (_logger.IsWarn) _logger.Warn($"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task.");
+        Evm.Metrics.IncrementTotalBackgroundTasksDropped();
+        if (_logger.IsWarn) _logger.Warn(
+            $"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task [{source ?? "unknown"}]. " +
+            $"Totals: queued={Evm.Metrics.TotalBackgroundTasksQueued}, executed={Evm.Metrics.TotalBackgroundTasksExecuted}, " +
+            $"cancelled={Evm.Metrics.TotalBackgroundTasksCancelled}, dropped={Evm.Metrics.TotalBackgroundTasksDropped}");
         Interlocked.Decrement(ref _queueCount);
         request.TryDispose();
         return false;

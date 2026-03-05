@@ -236,7 +236,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected void Handle(TransactionsMessage msg)
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-            BackgroundTaskScheduler.TryScheduleBackgroundTask((iList, 0), _handleSlow);
+            BackgroundTaskScheduler.TryScheduleBackgroundTask((iList, 0), _handleSlow, "Transactions");
         }
 
         protected virtual ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
@@ -262,7 +262,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         }
 
                         // Reschedule and with different start index
-                        BackgroundTaskScheduler.TryScheduleBackgroundTask((transactions, i), HandleSlow);
+                        BackgroundTaskScheduler.TryScheduleBackgroundTask((transactions, i), HandleSlow, "Transactions");
                         return ValueTask.CompletedTask;
                     }
 
