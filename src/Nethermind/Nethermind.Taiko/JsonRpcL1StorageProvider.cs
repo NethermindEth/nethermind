@@ -31,7 +31,7 @@ public class JsonRpcL1StorageProvider : IL1StorageProvider
     {
         try
         {
-            if (_logger.IsInfo) _logger.Info($"[jmadibekov] L1StorageProvider: sending eth_getStorageAt to L1 — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}");
+            if (_logger.IsDebug) _logger.Debug($"L1SLOAD: sending eth_getStorageAt — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}");
 
             string? response = _rpcClient.Post<string>("eth_getStorageAt", new object[]
             {
@@ -42,17 +42,17 @@ public class JsonRpcL1StorageProvider : IL1StorageProvider
 
             if (response == null)
             {
-                _logger.Warn($"[jmadibekov] L1StorageProvider: eth_getStorageAt returned NULL — contract={contractAddress}, key={storageKey}, block={blockNumber}");
+                if (_logger.IsDebug) _logger.Debug($"L1SLOAD: eth_getStorageAt returned null — contract={contractAddress}, key={storageKey}, block={blockNumber}");
                 return null;
             }
 
             var parsedValue = UInt256.Parse(response);
-            if (_logger.IsInfo) _logger.Info($"[jmadibekov] L1StorageProvider: eth_getStorageAt SUCCESS — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}, rawResponse={response}, parsedValue={parsedValue}");
+            if (_logger.IsDebug) _logger.Debug($"L1SLOAD: eth_getStorageAt success — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}, value={parsedValue}");
             return parsedValue;
         }
         catch (Exception ex)
         {
-            _logger.Error($"[jmadibekov] L1StorageProvider: eth_getStorageAt EXCEPTION — contract={contractAddress}, key={storageKey}, block={blockNumber}, error={ex.Message}");
+            if (_logger.IsWarn) _logger.Warn($"L1SLOAD: eth_getStorageAt exception — contract={contractAddress}, key={storageKey}, block={blockNumber}, error={ex.Message}");
             return null;
         }
     }
