@@ -711,11 +711,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             Snapshot snapshot = WorldState.TakeSnapshot();
 
-            // Must check before PayValue: for child CREATEs, EvmInstructions.Create checks accountExists
-            // before the value transfer. PayValue only touches the sender, but PrepareAccountForContractDeployment
-            // below may create the account, so we capture pre-tx existence here for EIP-8037 NewAccountState gating.
-            bool isCreateOnPreExistingAccount = tx.IsContractCreation && WorldState.AccountExists(env.ExecutingAccount);
-
             PayValue(tx, spec, opts);
 
             if (env.CodeInfo is not null)
@@ -768,14 +763,14 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         if (!spec.IsEofEnabled || tx.IsLegacyContractCreation)
                         {
-                            if (!DeployLegacyContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable, isCreateOnPreExistingAccount))
+                            if (!DeployLegacyContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
                             {
                                 goto FailContractCreate;
                             }
                         }
                         else
                         {
-                            if (!DeployEofContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable, isCreateOnPreExistingAccount))
+                            if (!DeployEofContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
                             {
                                 goto FailContractCreate;
                             }
@@ -824,7 +819,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts) => tx.GasLimit;
 
-        protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas, bool isCreateOnPreExistingAccount)
+        protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {
             if (!CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length, out long regularDepositCost, out long stateDepositCost))
                 return false;
@@ -836,7 +831,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return TryChargeCodeDeposit(spec, codeOwner, in accessedItems, ref unspentGas, regularDepositCost, stateDepositCost, substate.Output.Bytes.ToArray());
         }
 
-        private bool DeployEofContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas, bool isCreateOnPreExistingAccount)
+        private bool DeployEofContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {
             // 1 - load deploy EOF subContainer at deploy_container_index in the container from which RETURNCODE is executed
             ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;

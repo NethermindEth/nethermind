@@ -13,8 +13,6 @@ namespace Nethermind.Evm
         public const long SResetReversedHotCold = GasCostOf.SReset - GasCostOf.ColdSLoad - GasCostOf.WarmStateRead;
         public const long SSetStateReversedEip8037 = GasCostOf.SSetState;
         public const long SSetRegularReversedEip8037 = GasCostOf.SSetRegular - GasCostOf.WarmStateRead;
-        public const long SClearStateEip8037 = GasCostOf.SSetState;
-        public const long SClearRegularEip8037 = GasCostOf.SReset - GasCostOf.ColdSLoad + GasCostOf.AccessStorageListEntry;
         private const long SClearAfter3529 = GasCostOf.SReset - GasCostOf.ColdSLoad + GasCostOf.AccessStorageListEntry;
         private const long SClearBefore3529 = 15000;
         private const long DestroyBefore3529 = 24000;

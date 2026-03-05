@@ -81,13 +81,11 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     /// <returns>The cumulative post-refund gas for receipts</returns>
     protected long UpdateCumulativeGasTracking(in GasConsumed gasConsumed)
     {
-        // Track cumulative block regular gas for restore (pre-refund)
-        long cumulativeBlockGas = (_cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : 0) + gasConsumed.EffectiveBlockGas;
-        _cumulativeBlockGasPerTx.Add(cumulativeBlockGas);
-
-        // EIP-8037: Track cumulative block state gas separately for two-dimensional max
-        long cumulativeBlockStateGas = (_cumulativeBlockStateGasPerTx.Count > 0 ? _cumulativeBlockStateGasPerTx[^1] : 0) + gasConsumed.BlockStateGas;
-        _cumulativeBlockStateGasPerTx.Add(cumulativeBlockStateGas);
+        // Track cumulative block gas for restore (regular + EIP-8037 state)
+        (long prevRegular, long prevState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
+        long cumulativeBlockGas = prevRegular + gasConsumed.EffectiveBlockGas;
+        long cumulativeBlockStateGas = prevState + gasConsumed.BlockStateGas;
+        _cumulativeBlockGasPerTx.Add((cumulativeBlockGas, cumulativeBlockStateGas));
 
         // EIP-8037: block gasUsed = max(sum_regular, sum_state). Override header accumulation.
         Block.Header.GasUsed = Math.Max(cumulativeBlockGas, cumulativeBlockStateGas);
@@ -229,8 +227,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     private ITxTracer _currentTxTracer = NullTxTracer.Instance;
     protected int _currentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = new();
-    private readonly List<long> _cumulativeBlockGasPerTx = new();  // Track pre-refund block regular gas for restore
-    private readonly List<long> _cumulativeBlockStateGasPerTx = new();  // EIP-8037: Track block state gas for two-dimensional max
+    private readonly List<(long Regular, long State)> _cumulativeBlockGasPerTx = new();  // Track pre-refund block gas for restore (regular + EIP-8037 state)
     private long _cumulativeReceiptGas;  // Track cumulative post-refund gas for receipts
     protected Transaction? CurrentTx;
     public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
@@ -248,15 +245,13 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         {
             _txReceipts.RemoveRange(snapshot, numToRemove);
             _cumulativeBlockGasPerTx.RemoveRange(snapshot, numToRemove);
-            _cumulativeBlockStateGasPerTx.RemoveRange(snapshot, numToRemove);
         }
 
         Debug.Assert(_txReceipts.Count == _cumulativeBlockGasPerTx.Count,
             "Receipt and gas tracking lists must remain synchronized after restore");
 
         // Restore block gas from tracking: max(cumulative_regular, cumulative_state) for EIP-8037
-        long cumulativeRegular = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : 0;
-        long cumulativeState = _cumulativeBlockStateGasPerTx.Count > 0 ? _cumulativeBlockStateGasPerTx[^1] : 0;
+        (long cumulativeRegular, long cumulativeState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
         Block.Header.GasUsed = Math.Max(cumulativeRegular, cumulativeState);
 
         // Restore receipt gas from remaining receipts (post-refund)
@@ -272,7 +267,6 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         _currentIndex = 0;
         _txReceipts.Clear();
         _cumulativeBlockGasPerTx.Clear();
-        _cumulativeBlockStateGasPerTx.Clear();
         _cumulativeReceiptGas = 0;
 
         _otherTracer.StartNewBlockTrace(block);
