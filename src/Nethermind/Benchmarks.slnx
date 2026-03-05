@@ -56,4 +56,5 @@
   <Project Path="Nethermind.JsonRpc.Benchmark/Nethermind.JsonRpc.Benchmark.csproj" />
   <Project Path="Nethermind.Network.Benchmark/Nethermind.Network.Benchmark.csproj" />
   <Project Path="Nethermind.Precompiles.Benchmark/Nethermind.Precompiles.Benchmark.csproj" />
+  <Project Path="Nethermind.Precompiles.Benchmark.Test/Nethermind.Precompiles.Benchmark.Test.csproj" />
 </Solution>

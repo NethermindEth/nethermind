@@ -5,9 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc.TxPool;
 

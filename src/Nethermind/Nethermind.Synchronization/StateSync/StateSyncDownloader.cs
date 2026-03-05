@@ -48,7 +48,7 @@ namespace Nethermind.Synchronization.StateSync
                 task = nodeDataHandler.GetNodeData(hashList, cancellationToken);
             }
             // If the NodeData protocol is not supported, try eth66
-            else if (peer.ProtocolVersion < EthVersions.Eth67)
+            else if (ProtocolSupportsNodeData(peer))
             {
                 if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer}");
                 hashList = HashList.Rent(batch.RequestedNodes);
@@ -90,6 +90,8 @@ namespace Nethermind.Synchronization.StateSync
                 getTrieNodesRequest?.Dispose();
             }
         }
+
+        protected virtual bool ProtocolSupportsNodeData(ISyncPeer peer) => peer.ProtocolVersion < EthVersions.Eth67;
 
         /// <summary>
         /// SNAP protocol allows grouping of storage requests by account path.
