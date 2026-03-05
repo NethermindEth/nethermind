@@ -11,11 +11,11 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class AmsterdamEip8037BlockChainTests : BlockchainTestBase
+public class Eip7928BlockChainTests : BlockchainTestBase
 {
     private const string ArchiveVersion = "bal@v5.2.0";
     private const string ArchiveName = "fixtures_bal.tar.gz";
-    private const string Eip8037Wildcard = "eip8037_state_creation_gas_cost_increase";
+    private const string Eip7928Wildcard = "eip7928_block_level_access_lists";
 
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => await RunTest(test);
@@ -26,7 +26,7 @@ public class AmsterdamEip8037BlockChainTests : BlockchainTestBase
         {
             ArchiveVersion = ArchiveVersion,
             ArchiveName = ArchiveName
-        }, "fixtures/blockchain_tests", Eip8037Wildcard);
+        }, "fixtures/blockchain_tests", Eip7928Wildcard);
 
         return loader.LoadTests().OfType<BlockchainTest>();
     }
