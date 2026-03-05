@@ -17,7 +17,7 @@ namespace Nethermind.Network;
 /// </summary>
 public sealed class NodeFilter
 {
-    private static readonly long _timeOutMs = (long)TimeSpan.FromMinutes(5).TotalMilliseconds;
+    private static readonly long DefaultTimeOutMs = (long)TimeSpan.FromMinutes(5).TotalMilliseconds;
 
     /// <summary>
     /// A filter that always accepts every address. Used when filtering is disabled.
@@ -27,14 +27,19 @@ public sealed class NodeFilter
     private readonly ClockCache<IpSubnetKey, long>? _cache;
     private readonly bool _exactMatchOnly;
     private readonly IpSubnetKey.ParsedIp? _parsedCurrentIp;
+    private readonly long _timeOutMs;
 
     private NodeFilter() { }
 
     public NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp)
+        : this(size, exactMatchOnly, currentIp, DefaultTimeOutMs) { }
+
+    internal NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp, long timeOutMs)
     {
         _cache = new(size);
         _exactMatchOnly = exactMatchOnly;
         _parsedCurrentIp = currentIp is not null ? new IpSubnetKey.ParsedIp(currentIp) : null;
+        _timeOutMs = timeOutMs;
     }
 
     /// <summary>
