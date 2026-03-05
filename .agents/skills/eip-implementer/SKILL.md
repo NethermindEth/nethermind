@@ -103,7 +103,10 @@ Follow the plan step by step. For each file:
 1. Read the file first to understand existing patterns.
 2. Make the minimal, focused change needed.
 
-After all code changes, add or update tests as planned.
+After all code changes, add or update tests:
+- **ALWAYS** use `Prepare.EvmCode` fluent builder for test bytecode — never construct byte arrays manually
+- **ALWAYS** match the test base class to the EIP category: `VirtualMachineTestsBase` for opcodes/gas, `PrecompileTests<T>` for precompiles — follow the similar EIP's test from Step 2
+- **If the EIP changes existing behavior** (gas costs, validation rules), you **MUST** test both enabled and disabled states using `OverridableReleaseSpec` — for new-only features (new opcode, new precompile), enabled-only is sufficient
 
 ### Step 6 — Verify
 
@@ -121,6 +124,7 @@ Build, run relevant tests, and format. If build or tests fail → fix → repeat
 | Writing code before user approves plan | Always wait for explicit confirmation after Step 4 |
 | Forgetting flag registration files | EIP flags need 9 files across 5 layers, not just IReleaseSpec — see reference doc |
 | Skipping build verification | Always run Step 6 before claiming implementation is complete |
+| Breaking unrelated tests | If your EIP changes gas costs or tx validation, **check whether existing tests break** — disable the flag in affected tests via `OverridableReleaseSpec` |
 
 ## References
 
