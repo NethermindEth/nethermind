@@ -102,7 +102,7 @@ Every consensus EIP that needs a feature flag requires changes in **9 files** ac
 ### Adding a new precompile
 
 1. Create class implementing `IPrecompile<T>` in `Nethermind.Evm.Precompiles/`
-2. Implement `Address`, `Name`, `BaseGasCost()`, `DataGasCost()`, `Run()`
+2. Implement all members of `IPrecompile<T>` — **read the interface** for current requirements
 3. Add EIP flag to `IReleaseSpec` and set it in the fork
 4. Register in `ReleaseSpec.BuildPrecompilesCache()` and `Extensions.ListPrecompiles()`
 
@@ -137,12 +137,13 @@ High blast radius — expect 20+ files. Key areas:
 Consensus-critical — changes the receipt Merkle root.
 
 1. `Nethermind.Core/TransactionReceipt.cs` — add field to both `TxReceipt` and `TxReceiptStructRef`
-2. `Nethermind.Serialization.Rlp/RlpBehaviors.cs` — add flag (e.g., `Eip7778Receipts = 256`)
+2. `Nethermind.Serialization.Rlp/RlpBehaviors.cs` — add a new flag with the next available power-of-2 value (**read existing flags** to determine it)
 3. `Nethermind.Serialization.Rlp/Decoders/ReceiptMessageDecoder.cs` — encode/decode when flag set
 4. `Nethermind.Serialization.Rlp/Decoders/ReceiptStorageDecoder.cs` — storage format
 5. `Nethermind.Serialization.Rlp/Decoders/CompactReceiptStorageDecoder.cs` — compact format
 6. `Nethermind.State/Proofs/ReceiptTrie.cs` — **consensus-critical**: include flag when computing receipt root
 7. `Nethermind.JsonRpc/.../ReceiptForRpc.cs` — add to JSON-RPC response
+8. **Test:** add encode→decode roundtrip in `ReceiptDecoderTests.cs` with the new field present and absent
 
 ### New header field
 
@@ -155,3 +156,4 @@ Adds an optional field to the block header RLP encoding.
 5. `Nethermind.Merge.Plugin/Data/ExecutionPayload*.cs` — add to Engine API payloads
 6. `Nethermind.Consensus/Producers/PayloadAttributes.cs` — add to payload attributes, include in payload ID hash
 7. `Nethermind.Facade/Eth/BlockForRpc.cs` — conditionally include in JSON-RPC responses
+8. **Test:** add encode→decode roundtrip in `HeaderDecoderTests.cs` with the new field present and absent
