@@ -67,7 +67,7 @@ public class OptimismPayloadPreparationServiceTests
             .WithExtraData([])
             .TestObject;
         IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
-        processor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns(block);
+        processor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns((block, null));
 
         var service = new OptimismPayloadPreparationService(
             blockProducer: new PostMergeBlockProducer(

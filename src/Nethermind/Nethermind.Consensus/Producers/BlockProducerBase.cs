@@ -137,7 +137,7 @@ namespace Nethermind.Consensus.Producers
                 Block block = PrepareBlock(parent, payloadAttributes, flags);
                 if (PreparedBlockCanBeMined(block))
                 {
-                    Block? processedBlock = await ProcessPreparedBlock(block, blockTracer, token);
+                    (Block? processedBlock, string? _) = await ProcessPreparedBlock(block, blockTracer, token);
                     if (processedBlock is null)
                     {
                         if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
@@ -189,7 +189,7 @@ namespace Nethermind.Consensus.Producers
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
             Sealer.SealBlock(block, token);
 
-        protected virtual Task<Block?> ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
+        protected virtual Task<(Block?, string?)> ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
             CancellationToken token = default)
         {
             return Processor.Process(block, GetProcessingOptions(), blockTracer ?? NullBlockTracer.Instance, token);

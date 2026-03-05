@@ -70,7 +70,7 @@ namespace Nethermind.AuRa.Test
                 {
                     Block block = c.Arg<Block>();
                     block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.GasLimit).ToArray());
-                    return block;
+                    return (block, null);
                 });
                 StateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(x => true);
                 InitProducer();
@@ -208,7 +208,7 @@ namespace Nethermind.AuRa.Test
         public async Task Does_not_produce_block_when_processing_fails()
         {
             Context context = new();
-            context.BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns((Block)null);
+            context.BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns((null, null));
             (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
 

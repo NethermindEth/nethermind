@@ -101,7 +101,7 @@ public class TaikoPayloadPreparationService(
             {
                 if (worldState.HasStateForBlock(parent))
                 {
-                    return await processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, token)
+                    return (await processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, token)).Item1
                         ?? throw new InvalidOperationException("Block processing failed");
                 }
             }

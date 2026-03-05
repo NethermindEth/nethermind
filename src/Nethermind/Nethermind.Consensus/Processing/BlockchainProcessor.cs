@@ -25,6 +25,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
+using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -370,8 +371,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 if (isTrace) TraceProcessing(block);
 
                 _stats.Start();
-                Block processedBlock = await Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken);
-                string? error = "";
+                (Block? processedBlock, string? error) = await Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken);
 
                 if (processedBlock is null)
                 {
@@ -435,14 +435,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public bool IsEmpty => Volatile.Read(ref _queueCount) == 0;
     public int Count => Volatile.Read(ref _queueCount);
 
-    // public async Task<Block?> Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default) =>
-    //     await Process(suggestedBlock, options, tracer, token);
-
-    public async Task<Block?> Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)//, out string? error)
+    public async Task<(Block?, string?)> Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
     {
         if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
         {
-            return null;
+            return (null, null);
         }
 
         UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
@@ -456,7 +453,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (!shouldProcess)
         {
             if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
-            return null;
+            return (null, null);
         }
 
         bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
@@ -466,11 +463,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
         _stopwatch.Restart();
-        Block[]? processedBlocks = await ProcessBranch(processingBranch, options, tracer, token);
+        (Block[]? processedBlocks, string? error) = await ProcessBranch(processingBranch, options, tracer, token);
+
         _stopwatch.Stop();
         if (processedBlocks is null)
         {
-            return null;
+            return (null, error);
         }
 
         Block? lastProcessed = null;
@@ -513,7 +511,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
         }
 
-        return lastProcessed;
+        return (lastProcessed, error);
     }
 
     public bool IsProcessingBlocks(ulong? maxProcessingInterval) =>
@@ -545,7 +543,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    private async Task<Block[]?> ProcessBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)//, out string? error)
+    private async Task<(Block[]?, string?)> ProcessBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)
     {
         void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
         {
@@ -620,9 +618,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
         }
 
-        // todo: deal with error
-
-        return processedBlocks;
+        return (processedBlocks, error);
     }
 
     private void PrepareBlocksToProcess(Block suggestedBlock, ProcessingOptions options, ProcessingBranch processingBranch)

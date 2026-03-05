@@ -98,7 +98,6 @@ public partial class BlockProcessor
         {
             _balBuilder.TracingEnabled = true;
             _balBuilder.GeneratedBlockAccessList.Clear();
-            // _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
             SetupBlockAccessLists(spec, suggestedBlock);
         }
 
@@ -215,10 +214,6 @@ public partial class BlockProcessor
                 block.GeneratedBlockAccessList = _balBuilder.GeneratedBlockAccessList;
                 block.EncodedBlockAccessList = Rlp.Encode(_balBuilder.GeneratedBlockAccessList).Bytes;
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
-
-
-                // string y = $"Generated block access list:\n{block.GeneratedBlockAccessList}";
-                // Console.WriteLine(y);
             }
         }
 
@@ -370,7 +365,6 @@ public partial class BlockProcessor
         }
     }
 
-    // private void SetupBlockAccessLists(IReleaseSpec spec, BlockAccessList? suggestedBal, int txCount, bool isGenesis)
     private void SetupBlockAccessLists(IReleaseSpec spec, Block suggested)
     {
         if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
