@@ -10,6 +10,7 @@ namespace Nethermind.Specs.Forks;
 public class Amsterdam : BPO5
 {
     private static IReleaseSpec _instance;
+    private static IReleaseSpec _noEip8037Instance;
 
     public Amsterdam()
     {
@@ -26,4 +27,5 @@ public class Amsterdam : BPO5
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Amsterdam());
+    public static IReleaseSpec NoEip8037Instance => LazyInitializer.EnsureInitialized(ref _noEip8037Instance, static () => new Amsterdam { IsEip8037Enabled = false });
 }

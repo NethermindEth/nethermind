@@ -226,6 +226,20 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual void RefundStateGas(ref TSelf gas, long amount) => TSelf.UpdateGasUp(ref gas, amount);
 
     /// <summary>
+    /// Returns the regular gas portion of EIP-7702 code insert refunds (for end-of-tx refund cap).
+    /// Pre-EIP-8037: (NewAccount - PerAuthBaseCost) per refund. EIP-8037: zero (state refund only).
+    /// </summary>
+    static virtual long GetCodeInsertRegularRefund(int codeInsertRefunds) =>
+        codeInsertRefunds > 0 ? (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds : 0;
+
+    /// <summary>
+    /// Applies EIP-7702 code insert refunds: state refund to reservoir + returns regular refund amount.
+    /// Only call on success paths (state gas accounting must not be modified on error).
+    /// </summary>
+    static virtual long ApplyCodeInsertRefunds(ref TSelf gas, int codeInsertRefunds) =>
+        TSelf.GetCodeInsertRegularRefund(codeInsertRefunds);
+
+    /// <summary>
     /// Charges gas for CALL value transfer.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>

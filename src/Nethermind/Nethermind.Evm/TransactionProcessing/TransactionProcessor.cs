@@ -957,20 +957,10 @@ namespace Nethermind.Evm.TransactionProcessing
             TGasPolicy gasAfterExecution = unspentGas;
             long spentGas = tx.GasLimit;
             long actualRefund = 0;
-            long codeInsertRegularRefund = spec.IsEip8037Enabled
-                ? 0
-                : (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
-            long codeInsertStateRefund = spec.IsEip8037Enabled
-                ? GasCostOf.NewAccountState * codeInsertRefunds
-                : 0;
 
             if (!substate.IsError)
             {
-                if (codeInsertStateRefund > 0)
-                {
-                    TGasPolicy.RefundStateGas(ref gasAfterExecution, codeInsertStateRefund);
-                }
-
+                long codeInsertRegularRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds);
                 spentGas -= TGasPolicy.GetRemainingGas(in gasAfterExecution) + TGasPolicy.GetStateReservoir(in gasAfterExecution);
 
                 long totalToRefund = codeInsertRegularRefund;
@@ -981,12 +971,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding unused gas of " + TGasPolicy.GetRemainingGas(in gasAfterExecution) + " and refund of " + actualRefund);
             }
-            else if (codeInsertRegularRefund > 0)
+            else if (codeInsertRefunds > 0)
             {
-                actualRefund = CalculateClaimableRefund(spentGas, codeInsertRegularRefund, spec);
+                // On error, only regular refund applies; state refund is not applied.
+                long codeInsertRegularRefund = TGasPolicy.GetCodeInsertRegularRefund(codeInsertRefunds);
+                if (codeInsertRegularRefund > 0)
+                {
+                    actualRefund = CalculateClaimableRefund(spentGas, codeInsertRegularRefund, spec);
 
-                if (Logger.IsTrace)
-                    Logger.Trace("Refunding delegations only: " + actualRefund);
+                    if (Logger.IsTrace)
+                        Logger.Trace("Refunding delegations only: " + actualRefund);
+                }
             }
 
             // EIP-7778: Track pre-refund gas for block gas accounting

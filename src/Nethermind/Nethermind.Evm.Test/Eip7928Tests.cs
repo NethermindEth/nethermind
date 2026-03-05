@@ -19,7 +19,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -31,8 +30,6 @@ public class Eip7928Tests() : VirtualMachineTestsBase
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
 
-    // EIP-7928 tests verify BAL (block-level access lists); disable EIP-8037 to keep gas costs stable.
-    private static readonly OverridableReleaseSpec _specWithoutEip8037 = new(Amsterdam.Instance) { IsEip8037Enabled = false };
     private static readonly EthereumEcdsa _ecdsa = new(0);
     private static readonly UInt256 _accountBalance = 10.Ether();
     private static readonly UInt256 _testAccountBalance = 1.Ether();
@@ -66,7 +63,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
 
-        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specWithoutEip8037));
+        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.NoEip8037Instance));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = _processor.Execute(createTx, callOutputTracer);
         BlockAccessList bal = worldState.GeneratedBlockAccessList;
@@ -115,7 +112,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             .WithGasLimit(0)
             .WithValue(_testAccountBalance)
             .TestObject;
-        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, _specWithoutEip8037).MinimalGas;
+        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.NoEip8037Instance).MinimalGas;
         long gasLimit = intrinsicGas + executionGas;
 
         Transaction createTx = Build.A.Transaction
@@ -125,7 +122,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
 
-        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specWithoutEip8037));
+        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.NoEip8037Instance));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = _processor.Execute(createTx, callOutputTracer);
         BlockAccessList bal = worldState.GeneratedBlockAccessList;

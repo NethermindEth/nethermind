@@ -26,15 +26,12 @@ using System;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
-using Nethermind.Specs.Test;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    // Amsterdam with EIP-8037 disabled — used by original NewPayloadV5 tests with hardcoded hashes
-    private static readonly OverridableReleaseSpec AmsterdamWithoutEip8037 = new(Amsterdam.Instance) { IsEip8037Enabled = false };
 
     [TestCase(
         "0xb54389c226c76c61de0a8ebea2fe74cb0119295d34b8c01d0897901867c41c63",
@@ -219,7 +216,7 @@ public partial class EngineModuleTests
     public virtual async Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? auraWithdrawalContractAddress)
     {
         using MergeTestBlockchain chain =
-            await CreateBlockchain(AmsterdamWithoutEip8037);
+            await CreateBlockchain(Amsterdam.NoEip8037Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         const ulong timestamp = 1000000;
@@ -522,7 +519,7 @@ public partial class EngineModuleTests
         }
 
         using MergeTestBlockchain chain =
-            await CreateBlockchain(AmsterdamWithoutEip8037);
+            await CreateBlockchain(Amsterdam.NoEip8037Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         const long gasUsed = 167340;
@@ -693,7 +690,7 @@ public partial class EngineModuleTests
         bool withMissingChange = false,
         bool withSurplusReads = false)
     {
-        IReleaseSpec spec = eip8037Enabled ? Amsterdam.Instance : AmsterdamWithoutEip8037;
+        IReleaseSpec spec = eip8037Enabled ? Amsterdam.Instance : Amsterdam.NoEip8037Instance;
         (MergeTestBlockchain chain, ExecutionPayloadV4 payload) = await BuildTestBlockViaEngine(
             spec, expectedBlockHash, expectedReceiptsRoot, expectedStateRoot,
             withIncorrectChange, withSurplusChange, withMissingChange, withSurplusReads);
