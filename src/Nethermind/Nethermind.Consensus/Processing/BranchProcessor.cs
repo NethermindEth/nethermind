@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -123,6 +124,8 @@ public class BranchProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
+                long branchBlockStart = Stopwatch.GetTimestamp();
+
                 if (preWarmTask is null)
                 {
                     // Even though we skip prewarming we still need to ensure the caches are cleared
@@ -133,7 +136,11 @@ public class BranchProcessor(
                     }
                 }
 
+                long beforeProcessOne = Stopwatch.GetTimestamp();
+
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+
+                long afterProcessOne = Stopwatch.GetTimestamp();
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
@@ -169,7 +176,25 @@ public class BranchProcessor(
                 WaitAndClear(ref preWarmTask);
                 prefetchBlockhash = null;
 
+                long beforeReset = Stopwatch.GetTimestamp();
+
                 _stateProvider.Reset();
+
+                long branchBlockEnd = Stopwatch.GetTimestamp();
+
+                double branchTotalMs = Stopwatch.GetElapsedTime(branchBlockStart, branchBlockEnd).TotalMilliseconds;
+                if (branchTotalMs > 1000 && _logger.IsInfo)
+                {
+                    double cacheWaitMs = Stopwatch.GetElapsedTime(branchBlockStart, beforeProcessOne).TotalMilliseconds;
+                    double processOneMs = Stopwatch.GetElapsedTime(beforeProcessOne, afterProcessOne).TotalMilliseconds;
+                    double postProcessMs = Stopwatch.GetElapsedTime(afterProcessOne, beforeReset).TotalMilliseconds;
+                    double resetMs = Stopwatch.GetElapsedTime(beforeReset, branchBlockEnd).TotalMilliseconds;
+                    double merkleMs = _stateProvider.StateMerkleizationTime;
+
+                    _logger.Info(
+                        $"SLOW BLOCK {suggestedBlock.Number} branch | total {branchTotalMs,8:N1} ms | processOne {processOneMs,8:N1} ms | " +
+                        $"merkle {merkleMs,8:N1} ms | postProcess {postProcessMs,8:N1} ms | cacheWait {cacheWaitMs,8:N1} ms | reset {resetMs,8:N1} ms");
+                }
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler

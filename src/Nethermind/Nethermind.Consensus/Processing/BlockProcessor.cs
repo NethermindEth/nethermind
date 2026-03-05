@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -94,6 +95,8 @@ public partial class BlockProcessor(
         IReleaseSpec spec,
         CancellationToken token)
     {
+        long blockStart = Stopwatch.GetTimestamp();
+
         BlockHeader header = block.Header;
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
@@ -105,7 +108,11 @@ public partial class BlockProcessor(
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
+        long afterSetup = Stopwatch.GetTimestamp();
+
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+
+        long afterTxExec = Stopwatch.GetTimestamp();
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
@@ -113,7 +120,11 @@ public partial class BlockProcessor(
 
         _stateProvider.Commit(spec, commitRoots: false);
 
+        long afterPostTxCommit = Stopwatch.GetTimestamp();
+
         CalculateBlooms(receipts);
+
+        long afterBlooms = Stopwatch.GetTimestamp();
 
         if (spec.IsEip4844Enabled)
         {
@@ -121,6 +132,8 @@ public partial class BlockProcessor(
         }
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+
+        long afterReceiptsRoot = Stopwatch.GetTimestamp();
 
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
@@ -133,6 +146,8 @@ public partial class BlockProcessor(
 
         ReceiptsTracer.EndBlockTrace();
 
+        long beforeFinalCommit = Stopwatch.GetTimestamp();
+
         _stateProvider.Commit(spec, commitRoots: true);
 
         if (BlockchainProcessor.IsMainProcessingThread)
@@ -141,11 +156,17 @@ public partial class BlockProcessor(
             block.AccountChanges = _stateProvider.GetAccountChanges();
         }
 
+        long beforeStateRoot = Stopwatch.GetTimestamp();
+
         if (ShouldComputeStateRoot(header))
         {
             _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
         }
+
+        long blockEnd = Stopwatch.GetTimestamp();
+
+        LogSlowBlock(block, blockStart, afterSetup, afterTxExec, afterPostTxCommit, afterBlooms, afterReceiptsRoot, beforeFinalCommit, beforeStateRoot, blockEnd);
 
         header.Hash = header.CalculateHash();
 
@@ -258,6 +279,30 @@ public partial class BlockProcessor(
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
         _stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void LogSlowBlock(Block block, long blockStart, long afterSetup, long afterTxExec,
+        long afterPostTxCommit, long afterBlooms, long afterReceiptsRoot,
+        long beforeFinalCommit, long beforeStateRoot, long blockEnd)
+    {
+        double totalMs = Stopwatch.GetElapsedTime(blockStart, blockEnd).TotalMilliseconds;
+        if (totalMs < 1000 || !_logger.IsInfo) return;
+
+        double setupMs = Stopwatch.GetElapsedTime(blockStart, afterSetup).TotalMilliseconds;
+        double txExecMs = Stopwatch.GetElapsedTime(afterSetup, afterTxExec).TotalMilliseconds;
+        double postTxCommitMs = Stopwatch.GetElapsedTime(afterTxExec, afterPostTxCommit).TotalMilliseconds;
+        double bloomsMs = Stopwatch.GetElapsedTime(afterPostTxCommit, afterBlooms).TotalMilliseconds;
+        double receiptsRootMs = Stopwatch.GetElapsedTime(afterBlooms, afterReceiptsRoot).TotalMilliseconds;
+        double rewardsWithdrawalsMs = Stopwatch.GetElapsedTime(afterReceiptsRoot, beforeFinalCommit).TotalMilliseconds;
+        double finalCommitMs = Stopwatch.GetElapsedTime(beforeFinalCommit, beforeStateRoot).TotalMilliseconds;
+        double stateRootMs = Stopwatch.GetElapsedTime(beforeStateRoot, blockEnd).TotalMilliseconds;
+
+        _logger.Info(
+            $"SLOW BLOCK {block.Number} | total {totalMs,8:N1} ms | txExec {txExecMs,8:N1} ms | stateRoot {stateRootMs,8:N1} ms | " +
+            $"finalCommit {finalCommitMs,8:N1} ms | postTxCommit {postTxCommitMs,8:N1} ms | blooms {bloomsMs,8:N1} ms | " +
+            $"receiptsRoot {receiptsRootMs,8:N1} ms | rewards+wd {rewardsWithdrawalsMs,8:N1} ms | setup {setupMs,8:N1} ms | " +
+            $"txs {block.Transactions.Length} | gas {block.GasUsed / 1_000_000.0:F2} MGas");
     }
 
     private void ApplyDaoTransition(Block block)
