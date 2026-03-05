@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.EvmObjectFormat;
 
@@ -17,13 +16,7 @@ namespace Nethermind.Evm
                 ? regularCost + stateCost
                 : long.MaxValue;
 
-        public static bool CalculateCost(IReleaseSpec spec, int byteCodeLength, out long regularCost, out long stateCost) =>
-            spec.IsEip8037Enabled
-                ? CalculateCost<OnFlag>(spec, byteCodeLength, out regularCost, out stateCost)
-                : CalculateCost<OffFlag>(spec, byteCodeLength, out regularCost, out stateCost);
-
-        public static bool CalculateCost<TEip8037>(IReleaseSpec spec, int byteCodeLength, out long regularCost, out long stateCost)
-            where TEip8037 : struct, IFlag
+        public static bool CalculateCost(IReleaseSpec spec, int byteCodeLength, out long regularCost, out long stateCost)
         {
             stateCost = 0;
 
@@ -33,7 +26,7 @@ namespace Nethermind.Evm
                 return false;
             }
 
-            if (!TEip8037.IsActive)
+            if (!spec.IsEip8037Enabled)
             {
                 regularCost = GasCostOf.CodeDeposit * byteCodeLength;
                 return true;

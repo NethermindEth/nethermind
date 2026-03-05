@@ -957,10 +957,11 @@ namespace Nethermind.Evm.TransactionProcessing
             TGasPolicy gasAfterExecution = unspentGas;
             long spentGas = tx.GasLimit;
             long actualRefund = 0;
+            long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
 
             if (!substate.IsError)
             {
-                long codeInsertRegularRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds, spec);
+                long codeInsertRegularRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds, spec, stateGasFloor);
                 spentGas -= TGasPolicy.GetRemainingGas(in gasAfterExecution) + TGasPolicy.GetStateReservoir(in gasAfterExecution);
 
                 long totalToRefund = codeInsertRegularRefund;

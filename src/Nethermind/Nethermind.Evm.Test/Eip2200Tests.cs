@@ -128,7 +128,7 @@ namespace Nethermind.Evm.Test
         {
             EthereumGasPolicy gas = new()
             {
-                RegularGas = 100,
+                Value = 100,
                 StateReservoir = 50,
                 StateGasUsed = 0,
             };
@@ -137,7 +137,7 @@ namespace Nethermind.Evm.Test
 
             Assert.That(consumed, Is.True);
             Assert.That(gas.StateReservoir, Is.EqualTo(0));
-            Assert.That(gas.RegularGas, Is.EqualTo(80));
+            Assert.That(gas.Value, Is.EqualTo(80));
             Assert.That(gas.StateGasUsed, Is.EqualTo(70));
         }
 
@@ -146,17 +146,17 @@ namespace Nethermind.Evm.Test
         {
             EthereumGasPolicy parent = new()
             {
-                RegularGas = 1_000,
+                Value = 1_000,
                 StateReservoir = 333,
                 StateGasUsed = 50,
             };
 
             EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 444);
 
-            Assert.That(parent.RegularGas, Is.EqualTo(1_000));
+            Assert.That(parent.Value, Is.EqualTo(1_000));
             Assert.That(parent.StateReservoir, Is.EqualTo(0));
             Assert.That(parent.StateGasUsed, Is.EqualTo(50));
-            Assert.That(child.RegularGas, Is.EqualTo(444));
+            Assert.That(child.Value, Is.EqualTo(444));
             Assert.That(child.StateReservoir, Is.EqualTo(333));
             Assert.That(child.StateGasUsed, Is.EqualTo(0));
         }
@@ -166,7 +166,7 @@ namespace Nethermind.Evm.Test
         {
             EthereumGasPolicy parent = new()
             {
-                RegularGas = 1_000,
+                Value = 1_000,
                 StateReservoir = 333,
                 StateGasUsed = 50,
             };
@@ -180,7 +180,7 @@ namespace Nethermind.Evm.Test
 
             EthereumGasPolicy.Refund(ref parent, in child);
 
-            Assert.That(parent.RegularGas, Is.EqualTo(1_294));
+            Assert.That(parent.Value, Is.EqualTo(1_294));
             Assert.That(parent.StateReservoir, Is.EqualTo(233));
             Assert.That(parent.StateGasUsed, Is.EqualTo(150));
         }
@@ -190,13 +190,12 @@ namespace Nethermind.Evm.Test
         {
             EthereumGasPolicy gas = new()
             {
-                RegularGas = 100,
+                Value = 100,
                 StateReservoir = 0,
                 StateGasUsed = 120,
-                StateGasUsedFloor = 40,
             };
 
-            EthereumGasPolicy.RefundStateGas(ref gas, 200);
+            EthereumGasPolicy.RefundStateGas(ref gas, 200, stateGasFloor: 40);
 
             Assert.That(gas.StateReservoir, Is.EqualTo(200));
             Assert.That(gas.StateGasUsed, Is.EqualTo(0));
@@ -207,10 +206,9 @@ namespace Nethermind.Evm.Test
         {
             EthereumGasPolicy parent = new()
             {
-                RegularGas = 1_000,
+                Value = 1_000,
                 StateReservoir = 500,
                 StateGasUsed = 10,
-                StateGasUsedFloor = 10,
             };
 
             EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 600);
@@ -227,7 +225,7 @@ namespace Nethermind.Evm.Test
             Assert.That(child.StateReservoir, Is.EqualTo(300));
 
             // Restore returns full original reservoir to parent
-            EthereumGasPolicy.RestoreChildStateGas(ref parent, in child);
+            EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 500);
             Assert.That(parent.StateReservoir, Is.EqualTo(500));
             Assert.That(parent.StateGasUsed, Is.EqualTo(10));
         }
@@ -237,10 +235,9 @@ namespace Nethermind.Evm.Test
         {
             EthereumGasPolicy parent = new()
             {
-                RegularGas = 1_000,
+                Value = 1_000,
                 StateReservoir = 400,
                 StateGasUsed = 20,
-                StateGasUsedFloor = 20,
             };
 
             // Simulate parent allocating 600 regular gas to child (done by VM before CreateChildFrameGas)
@@ -253,10 +250,10 @@ namespace Nethermind.Evm.Test
 
             // Simulate revert path: return remaining regular gas, restore state gas
             EthereumGasPolicy.UpdateGasUp(ref parent, EthereumGasPolicy.GetRemainingGas(in child));
-            EthereumGasPolicy.RestoreChildStateGas(ref parent, in child);
+            EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 400);
 
             // Parent gets remaining regular gas back
-            Assert.That(parent.RegularGas, Is.EqualTo(900));
+            Assert.That(parent.Value, Is.EqualTo(900));
             // Parent's reservoir is fully restored (child's remaining 250 + child's used 150 = 400)
             Assert.That(parent.StateReservoir, Is.EqualTo(400));
             // Parent's StateGasUsed is NOT merged with child's
@@ -269,7 +266,7 @@ namespace Nethermind.Evm.Test
             long gasLimit = 10_000;
             EthereumGasPolicy gas = new()
             {
-                RegularGas = 3_000,
+                Value = 3_000,
                 StateReservoir = 2_000,
                 StateGasUsed = 500,
             };

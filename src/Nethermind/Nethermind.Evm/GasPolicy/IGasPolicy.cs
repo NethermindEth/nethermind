@@ -100,7 +100,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="parentGas">The parent gas state to restore into.</param>
     /// <param name="childGas">The child gas state to restore from.</param>
-    static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas) { }
+    /// <param name="initialStateReservoir">The initial state reservoir that was assigned to the child frame.</param>
+    static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
 
     /// <summary>
     /// Mark the gas state as out of gas.
@@ -223,7 +224,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
     /// <param name="amount">Refunded state gas amount.</param>
-    static virtual void RefundStateGas(ref TSelf gas, long amount) => TSelf.UpdateGasUp(ref gas, amount);
+    /// <param name="stateGasFloor">Minimum state gas used (intrinsic state gas).</param>
+    static virtual void RefundStateGas(ref TSelf gas, long amount, long stateGasFloor) => TSelf.UpdateGasUp(ref gas, amount);
 
     /// <summary>
     /// Returns the regular gas portion of EIP-7702 code insert refunds (for end-of-tx refund cap).
@@ -236,7 +238,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// Applies EIP-7702 code insert refunds: state refund to reservoir + returns regular refund amount.
     /// Only call on success paths (state gas accounting must not be modified on error).
     /// </summary>
-    static virtual long ApplyCodeInsertRefunds(ref TSelf gas, int codeInsertRefunds, IReleaseSpec spec) =>
+    /// <param name="stateGasFloor">Minimum state gas used (intrinsic state gas), for clamping refunds.</param>
+    static virtual long ApplyCodeInsertRefunds(ref TSelf gas, int codeInsertRefunds, IReleaseSpec spec, long stateGasFloor) =>
         TSelf.GetCodeInsertRegularRefund(codeInsertRefunds, spec);
 
     /// <summary>
