@@ -169,7 +169,7 @@ public class ForkInfoTests
     [TestCase(4_000_000, ChiadoSpecProvider.CancunTimestamp, "0x5fbc16bc", ChiadoSpecProvider.PragueTimestamp, "First Cancun timestamp")]
     [TestCase(5_000_000, ChiadoSpecProvider.PragueTimestamp - 1, "0x5fbc16bc", ChiadoSpecProvider.PragueTimestamp, "Future Cancun timestamp")]
     [TestCase(5_000_000, ChiadoSpecProvider.PragueTimestamp, "0x8ba51786", ChiadoSpecProvider.OsakaTimestamp, "First Prague timestamp")]
-    [TestCase(5_000_000, ChiadoSpecProvider.OsakaTimestamp - 1, "0x8ba51786",  ChiadoSpecProvider.OsakaTimestamp, "Future Prague timestamp")]
+    [TestCase(5_000_000, ChiadoSpecProvider.OsakaTimestamp - 1, "0x8ba51786", ChiadoSpecProvider.OsakaTimestamp, "Future Prague timestamp")]
     [TestCase(5_000_000, ChiadoSpecProvider.OsakaTimestamp, "0x71c457cd", 0ul, "First Osaka timestamp")]
     [TestCase(5_000_000, ChiadoSpecProvider.OsakaTimestamp + 100, "0x71c457cd", 0ul, "Future Osaka timestamp")]
     public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
