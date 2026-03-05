@@ -301,7 +301,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             startingHash ??= SyncServer.FindHash(msg.StartBlockNumber);
 
             IOwnedReadOnlyList<BlockHeader> headers =
-                startingHash is null
+                startingHash is null || cancellationToken.IsCancellationRequested
                     ? ArrayPoolList<BlockHeader>.Empty()
                     : SyncServer.FindHeaders(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
 
@@ -331,11 +331,16 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             ulong sizeEstimate = 0;
             for (int i = 0; i < hashes.Count; i++)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
                 Block block = SyncServer.Find(hashes[i]);
                 blocks.Add(block);
                 sizeEstimate += MessageSizeEstimator.EstimateSize(block);
 
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit || cancellationToken.IsCancellationRequested)
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
                 {
                     break;
                 }
@@ -371,13 +376,18 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             ulong sizeEstimate = 0;
             for (int i = 0; i < getReceiptsMessage.Hashes.Count; i++)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
                 txReceipts.Add(SyncServer.GetReceipts(getReceiptsMessage.Hashes[i]));
                 for (int j = 0; j < txReceipts[i].Length; j++)
                 {
                     sizeEstimate += MessageSizeEstimator.EstimateSize(txReceipts[i][j]);
                 }
 
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit || cancellationToken.IsCancellationRequested)
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
                 {
                     break;
                 }

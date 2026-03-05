@@ -58,10 +58,9 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                     {
                         if (_expiringQueue.TryDequeue(out item))
                         {
-                            Interlocked.Decrement(ref _expiringQueueCounter);
-
                             if (_retryRequests.TryRemove(item.ResourceId, out ConcurrentHashSet<IMessageHandler<TMessage>>? requests))
                             {
+                                Interlocked.Decrement(ref _expiringQueueCounter);
                                 try
                                 {
                                     bool set = false;
@@ -114,7 +113,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (_expiringQueueCounter > _expiringQueueLimit)
         {
-            if (_logger.IsDebug) _logger.Warn($"{nameof(TResourceId)} retry queue is full");
+            if (_logger.IsWarn) _logger.Warn($"{nameof(TResourceId)} retry queue is full");
 
             return AnnounceResult.RequestRequired;
         }
@@ -161,6 +160,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (_retryRequests.TryRemove(resourceId, out ConcurrentHashSet<IMessageHandler<TMessage>>? item))
         {
+            Interlocked.Decrement(ref _expiringQueueCounter);
             _handlerBagsPool.Return(item);
         }
 
