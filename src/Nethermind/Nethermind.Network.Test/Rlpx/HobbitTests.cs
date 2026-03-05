@@ -1,15 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
-using DotNetty.Buffers;
-using DotNetty.Common;
-using DotNetty.Common.Internal.Logging;
-using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Embedded;
-using Microsoft.Extensions.Logging.Console;
-using Microsoft.Extensions.Options;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
