@@ -26,7 +26,7 @@ namespace Nethermind.Xdc.Test.ModuleTests
             var baseFactory = new RocksDbConfigFactory(dbConfig, pruning, hw, logManager, validateConfig: true);
             var custom = new XdcRocksDbConfigFactory(baseFactory, dbConfig);
 
-            IRocksDbConfig config = custom.GetForDatabase("XdcSnapshots", null);
+            IRocksDbConfig config = custom.GetForDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName, null);
 
             config.Should().NotBeNull();
             config.RocksDbOptions.Should().NotBeNull();

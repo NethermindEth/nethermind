@@ -11,13 +11,13 @@ namespace Nethermind.Xdc;
 /// </summary>
 public class XdcRocksDbConfigFactory(IRocksDbConfigFactory baseFactory, IDbConfig dbConfig) : IRocksDbConfigFactory
 {
-    private const string SnapshotDbName = "XdcSnapshots";
+    public const string XdcSnapshotDbName = "XdcSnapshots";
 
     public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
     {
         // For XdcSnapshots, create PerTableDbConfig with validate=false since it doesn't have
         // XdcSnapshotsDbRocksDbOptions configured in IDbConfig
-        if (databaseName == SnapshotDbName)
+        if (databaseName == XdcSnapshotDbName)
         {
             return new PerTableDbConfig(dbConfig, databaseName, columnName, validate: false);
         }
