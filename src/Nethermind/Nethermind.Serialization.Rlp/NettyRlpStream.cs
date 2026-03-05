@@ -43,45 +43,6 @@ namespace Nethermind.Serialization.Rlp
             _buffer.WriteZero(length);
         }
 
-        public override byte ReadByte()
-        {
-            return _buffer.ReadByte();
-        }
-
-        public override Span<byte> Read(int length)
-        {
-            Span<byte> span = _buffer.Array.AsSpan(_buffer.ArrayOffset + _buffer.ReaderIndex, length);
-            _buffer.SkipBytes(span.Length);
-            return span;
-        }
-
-        public override Span<byte> Peek(int offset, int length)
-        {
-            Span<byte> span = _buffer.Array.AsSpan(_buffer.ArrayOffset + _buffer.ReaderIndex + offset, length);
-            return span;
-        }
-
-        public override byte PeekByte()
-        {
-            byte result = _buffer.ReadByte();
-            _buffer.SetReaderIndex(_buffer.ReaderIndex - 1);
-            return result;
-        }
-
-        protected override byte PeekByte(int offset)
-        {
-            _buffer.MarkReaderIndex();
-            _buffer.SkipBytes(offset);
-            byte result = _buffer.ReadByte();
-            _buffer.ResetReaderIndex();
-            return result;
-        }
-
-        protected override void SkipBytes(int length)
-        {
-            _buffer.SkipBytes(length);
-        }
-
         public override int Position
         {
             get => _buffer.ReaderIndex - _initialPosition;
@@ -89,8 +50,6 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public override int Length => _buffer.ReadableBytes + (_buffer.ReaderIndex - _initialPosition);
-
-        public override bool HasBeenRead => _buffer.ReadableBytes <= 0;
 
         protected override string Description => "|NettyRlpStream|description missing|";
 

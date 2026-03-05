@@ -174,7 +174,7 @@ public class SyncDispatcherTests
         public readonly HashSet<int> _results = new();
         private readonly ConcurrentQueue<TestBatch> _returned = new();
         private readonly ManualResetEvent _responseLock = new ManualResetEvent(true);
-        private TaskCompletionSource _handleResponseCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _handleResponseCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public void LockResponse()
         {

@@ -17,10 +17,10 @@ namespace Nethermind.State.Proofs;
 /// </summary>
 public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
 {
-    private readonly IRlpStreamDecoder<TxReceipt> _decoder;
+    private readonly IRlpStreamEncoder<TxReceipt> _decoder;
     /// <inheritdoc/>
     /// <param name="receipts">The transaction receipts to build the trie of.</param>
-    public ReceiptTrie(IReceiptSpec spec, ReadOnlySpan<TxReceipt> receipts, IRlpStreamDecoder<TxReceipt> trieDecoder, ICappedArrayPool bufferPool, bool canBuildProof = false, bool canBeParallel = true)
+    public ReceiptTrie(IReceiptSpec spec, ReadOnlySpan<TxReceipt> receipts, IRlpStreamEncoder<TxReceipt> trieDecoder, ICappedArrayPool bufferPool, bool canBuildProof = false, bool canBeParallel = true)
         : base(null, canBuildProof, bufferPool: bufferPool, canBeParallel)
     {
         ArgumentNullException.ThrowIfNull(spec);
@@ -51,14 +51,14 @@ public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
 
     protected override void Initialize(ReadOnlySpan<TxReceipt> list) => throw new NotSupportedException();
 
-    public static byte[][] CalculateReceiptProofs(IReleaseSpec spec, ReadOnlySpan<TxReceipt> receipts, int index, IRlpStreamDecoder<TxReceipt> decoder)
+    public static byte[][] CalculateReceiptProofs(IReleaseSpec spec, ReadOnlySpan<TxReceipt> receipts, int index, IRlpStreamEncoder<TxReceipt> decoder)
     {
         bool canBeParallel = receipts.Length > MinItemsForParallelRootHash;
         using TrackingCappedArrayPool cappedArrayPool = new(receipts.Length * 4, canBeParallel: canBeParallel);
         return new ReceiptTrie(spec, receipts, decoder, cappedArrayPool, canBuildProof: true, canBeParallel: canBeParallel).BuildProof(index);
     }
 
-    public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, ReadOnlySpan<TxReceipt> txReceipts, IRlpStreamDecoder<TxReceipt> decoder)
+    public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, ReadOnlySpan<TxReceipt> txReceipts, IRlpStreamEncoder<TxReceipt> decoder)
     {
         bool canBeParallel = txReceipts.Length > MinItemsForParallelRootHash;
         using TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Length * 4, canBeParallel: canBeParallel);

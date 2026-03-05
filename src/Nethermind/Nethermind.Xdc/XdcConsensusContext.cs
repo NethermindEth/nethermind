@@ -31,11 +31,13 @@ public class XdcConsensusContext : IXdcConsensusContext
     public void SetNewRound(ulong round)
     {
         int previousTimeoutCounter = TimeoutCounter;
+        ulong last = CurrentRound;
         CurrentRound = round;
         TimeoutCounter = 0;
+        DateTime lastRoundStarted = RoundStarted;
         RoundStarted = DateTime.UtcNow;
 
         // timer should be reset outside
-        NewRoundSetEvent?.Invoke(this, new NewRoundEventArgs(round, previousTimeoutCounter));
+        NewRoundSetEvent?.Invoke(this, new NewRoundEventArgs(round, last, previousTimeoutCounter, RoundStarted - lastRoundStarted));
     }
 }

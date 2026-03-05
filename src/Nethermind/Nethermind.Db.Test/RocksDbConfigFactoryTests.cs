@@ -38,7 +38,7 @@ public class RocksDbConfigFactoryTests
     public void WillOverrideStateConfigWhenMemoryIsHigh()
     {
         var dbConfig = new DbConfig();
-        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(100.GiB()), LimboLogs.Instance);
+        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(100.GiB), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
         config.RocksDbOptions.Should().Be(dbConfig.RocksDbOptions + dbConfig.StateDbRocksDbOptions + dbConfig.StateDbLargeMemoryRocksDbOptions);
     }
@@ -52,7 +52,7 @@ public class RocksDbConfigFactoryTests
         pruningConfig.DirtyCacheMb = 10000;
         var factory = new RocksDbConfigFactory(dbConfig, pruningConfig, new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        config.WriteBufferSize.Should().Be((ulong)500.MB());
+        config.WriteBufferSize.Should().Be((ulong)500.MB);
     }
 
     [Test]
