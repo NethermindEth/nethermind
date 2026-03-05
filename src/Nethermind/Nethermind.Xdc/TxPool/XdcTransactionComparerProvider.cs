@@ -8,9 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool.Comparison;
 using Nethermind.Xdc.Spec;
-using System;
 using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc.TxPool;
 

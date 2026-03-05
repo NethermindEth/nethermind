@@ -106,11 +106,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
         // Set basefeepergas in genesis or it will fail 1559 validation.
-        spec.Genesis.Header.BaseFeePerGas = 10.Wei();
+        spec.Genesis.Header.BaseFeePerGas = 10.Wei;
 
         // Needed for generating spam state.
         spec.Genesis.Header.GasLimit = 1_000_000_000;
-        spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(300.Ether());
+        spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(300.Ether);
 
         spec.Allocations[Eip7002Constants.WithdrawalRequestPredeployAddress] = new ChainSpecAllocation
         {
@@ -504,7 +504,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     .WithCode(byteCode)
                     .WithNonce(currentNonce++)
                     .WithGasLimit(gasLimit)
-                    .WithGasPrice(10.GWei())
+                    .WithGasPrice(10.GWei)
                     .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject)
                 .ToArray();
             nonces[nodeKey.Address] = currentNonce;
