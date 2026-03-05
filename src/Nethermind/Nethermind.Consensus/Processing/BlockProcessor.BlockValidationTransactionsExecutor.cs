@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Processing
                 Metrics.ResetBlockStats();
 
                 int len = block.Transactions.Length;
-                if (_balBuilder.ParallelExecutionEnabled)
+                if (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled)
                 {
                     _logger.Info($"[parallel] beginning parallel execution for block {block.Number}");
 
@@ -137,13 +137,6 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    // if (_transactionProcessor is null)
-                    // {
-                    //     VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
-                    //     TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
-                    //     _transactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
-                    // }
-
                     long? gasRemaining = _balBuilder?.GasUsed();
                     if (gasRemaining is not null)
                     {
