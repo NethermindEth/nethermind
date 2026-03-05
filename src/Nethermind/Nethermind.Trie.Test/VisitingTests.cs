@@ -157,13 +157,13 @@ public class VisitingTests
         yield return new TestCaseData(new VisitingOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount,
-            FullScanMemoryBudget = 1.MiB(),
+            FullScanMemoryBudget = 1.MiB,
         }, INodeStorage.KeyScheme.HalfPath).SetName("Parallel");
 
         yield return new TestCaseData(new VisitingOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount,
-            FullScanMemoryBudget = 1.MiB(),
+            FullScanMemoryBudget = 1.MiB,
         }, INodeStorage.KeyScheme.Hash).SetName("Parallel Hash");
     }
 

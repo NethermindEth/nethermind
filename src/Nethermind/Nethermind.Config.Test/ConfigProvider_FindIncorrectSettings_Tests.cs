@@ -176,7 +176,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         Assert.Multiple(() =>
         {
             Assert.That(isSet, Is.False);
-            Assert.That(((ValueTuple<bool, object>)value).Item2, Is.False);
+            Assert.That(value, Is.False);
         });
 
         (isSet, value) = envSource.GetValue(typeof(bool), "BloomConfig", "Migration");
@@ -184,7 +184,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         Assert.Multiple(() =>
         {
             Assert.That(isSet, Is.False);
-            Assert.That(((ValueTuple<bool, object>)value).Item2, Is.False);
+            Assert.That(value, Is.False);
         });
     }
 }

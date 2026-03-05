@@ -9,7 +9,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks.Config;
 
-public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConfig, IHardwareInfo hardwareInfo, ILogManager logManager) : IRocksDbConfigFactory
+public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConfig, IHardwareInfo hardwareInfo, ILogManager logManager, bool validateConfig = true) : IRocksDbConfigFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<IRocksDbConfigFactory>();
     private bool _maxOpenFilesInitialized;
@@ -46,7 +46,7 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
             }
         }
 
-        IRocksDbConfig rocksDbConfig = new PerTableDbConfig(dbConfig, databaseName, columnName);
+        IRocksDbConfig rocksDbConfig = new PerTableDbConfig(dbConfig, databaseName, columnName, validateConfig);
         if (databaseName.StartsWith("State"))
         {
             if (!pruningConfig.Mode.IsMemory())
@@ -64,7 +64,7 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
             }
             else if (hardwareInfo.AvailableMemoryBytes >= IHardwareInfo.StateDbLargerMemoryThreshold)
             {
-                if (_logger.IsInfo) _logger.Info($"Detected {hardwareInfo.AvailableMemoryBytes / 1.GiB()} GB of available memory. Applying large memory State Db config.");
+                if (_logger.IsInfo) _logger.Info($"Detected {hardwareInfo.AvailableMemoryBytes / 1.GiB} GB of available memory. Applying large memory State Db config.");
 
                 ulong writeBufferSize = rocksDbConfig.WriteBufferSize ?? 0;
                 if (writeBufferSize < dbConfig.StateDbLargeMemoryWriteBufferSize) writeBufferSize = dbConfig.StateDbLargeMemoryWriteBufferSize;
@@ -78,13 +78,13 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
 
             if (pruningConfig.Mode.IsMemory())
             {
-                ulong totalWriteBufferMb = rocksDbConfig.WriteBufferNumber!.Value * rocksDbConfig.WriteBufferSize!.Value / (ulong)1.MB();
+                ulong totalWriteBufferMb = rocksDbConfig.WriteBufferNumber!.Value * rocksDbConfig.WriteBufferSize!.Value / (ulong)1.MB;
                 double minimumWriteBufferMb = 0.2 * pruningConfig.DirtyCacheMb;
                 if (totalWriteBufferMb < minimumWriteBufferMb)
                 {
-                    ulong minimumWriteBufferSize = (ulong)Math.Ceiling((minimumWriteBufferMb * 1.MB()) / rocksDbConfig.WriteBufferNumber!.Value);
+                    ulong minimumWriteBufferSize = (ulong)Math.Ceiling((minimumWriteBufferMb * 1.MB) / rocksDbConfig.WriteBufferNumber!.Value);
 
-                    if (_logger.IsInfo) _logger.Info($"Adjust state DB write buffer size to {minimumWriteBufferSize / (ulong)1.MB()} MB to account for pruning cache.");
+                    if (_logger.IsInfo) _logger.Info($"Adjust state DB write buffer size to {minimumWriteBufferSize / (ulong)1.MB} MB to account for pruning cache.");
 
                     rocksDbConfig = new AdjustedRocksdbConfig(
                         rocksDbConfig,

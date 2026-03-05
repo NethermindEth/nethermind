@@ -30,11 +30,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
         }
 
-        public BlockHeadersMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            return Deserialize(rlpStream);
-        }
+        public BlockHeadersMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
 
         public int GetLength(BlockHeadersMessage message, out int contentLength)
         {
@@ -47,10 +44,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public BlockHeadersMessage Deserialize(RlpStream rlpStream)
+        public BlockHeadersMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             BlockHeadersMessage message = new();
-            message.BlockHeaders = _headerDecoder.DecodeArrayPool(rlpStream, limit: RlpLimit);
+            message.BlockHeaders = Rlp.DecodeArrayPool(ref ctx, _headerDecoder, limit: RlpLimit);
             return message;
         }
     }

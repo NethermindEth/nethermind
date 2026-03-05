@@ -9,6 +9,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NSubstitute;
@@ -51,7 +52,7 @@ namespace Nethermind.AuRa.Test.Transactions
             MinGasPriceContractTxFilter txFilter = new(minGasPriceFilter, dictionaryContractDataStore);
             Transaction tx = Build.A.Transaction.WithTo(address).WithGasPrice(gasLimit).WithData(null).TestObject;
 
-            return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject, Substitute.For<IReleaseSpec>());
+            return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject, ReleaseSpecSubstitute.Create());
         }
     }
 }

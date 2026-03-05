@@ -374,6 +374,7 @@ namespace Nethermind.Xdc
             try
             {
                 BlockRoundInfo voteInfo = new BlockRoundInfo(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
+                _highestVotedRound = votingRound;
                 await _votesManager.CastVote(voteInfo);
                 _highestVotedRound = currentRound;
                 _lastActivityTime = DateTime.UtcNow;
@@ -477,6 +478,7 @@ namespace Nethermind.Xdc
         public async Task StopAsync()
         {
             Task? task;
+            CancellationTokenSource? cts;
 
             CancellationTokenSource cancellationTokenSource;
 
@@ -487,6 +489,7 @@ namespace Nethermind.Xdc
                     return;
                 }
 
+                cts = _cancellationTokenSource;
                 task = _runTask;
                 cancellationTokenSource = _cancellationTokenSource;
                 _cancellationTokenSource = null;
@@ -510,7 +513,7 @@ namespace Nethermind.Xdc
                 }
             }
 
-            _cancellationTokenSource?.Dispose();
+            cts.Dispose();
             _logger.Info("XdcHotStuff consensus runner stopped");
         }
 

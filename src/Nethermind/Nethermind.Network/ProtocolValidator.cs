@@ -21,8 +21,6 @@ namespace Nethermind.Network
     {
         protected readonly ILogger _logger;
         protected readonly IBlockTree _blockTree;
-        protected virtual bool MustValidateNetworkId { get; set; } = true;
-        protected virtual bool MustValidateGenesisHash { get; set; } = true;
         protected virtual bool MustValidateForkId { get; set; } = true;
 
         private readonly INodeStatsManager _nodeStatsManager;
@@ -84,10 +82,10 @@ namespace Nethermind.Network
         protected virtual bool ValidateEthProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)
         {
             SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs)eventArgs;
-            if (MustValidateNetworkId && !ValidateNetworkId(session, syncPeerArgs.NetworkId))
+            if (!ValidateNetworkId(session, syncPeerArgs.NetworkId))
                 return false;
 
-            if (MustValidateGenesisHash && !ValidateGenesisHash(session, syncPeerArgs))
+            if (!ValidateGenesisHash(session, syncPeerArgs))
                 return false;
 
             if (!MustValidateForkId)

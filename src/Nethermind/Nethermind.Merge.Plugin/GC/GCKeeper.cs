@@ -19,7 +19,7 @@ public class GCKeeper
     private readonly IGCStrategy _gcStrategy;
     private readonly int _postBlockDelayMs;
     private readonly ILogger _logger;
-    private static readonly long _defaultSize = 512.MB();
+    private static readonly long _defaultSize = 512.MB;
     private Task _gcScheduleTask = Task.CompletedTask;
     private readonly Func<IDisposable> _tryStartNoGCRegionFunc;
 
