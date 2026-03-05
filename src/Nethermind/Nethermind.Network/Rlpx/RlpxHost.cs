@@ -250,8 +250,11 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session} channel");
 
-            IPEndPoint? remoteEndpoint = channel.RemoteAddress as IPEndPoint;
-            if (remoteEndpoint is not null)
+            // Record incoming connections in the filter so future outgoing attempts
+            // to the same IP/subnet are suppressed. Outgoing connections are already
+            // recorded by ShouldContact before ConnectAsync is called.
+            if (session.Direction == ConnectionDirection.In
+                && channel.RemoteAddress is IPEndPoint remoteEndpoint)
             {
                 _nodeFilter.TryAccept(remoteEndpoint.Address);
             }
