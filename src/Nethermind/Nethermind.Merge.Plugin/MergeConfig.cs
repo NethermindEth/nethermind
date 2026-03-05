@@ -36,5 +36,8 @@ namespace Nethermind.Merge.Plugin
 
         public bool SimulateBlockProduction { get; set; } = false;
         public int? PostBlockGcDelayMs { get; set; } = null;
+
+        public bool SszRestEnabled { get; set; } = false;
+        public int SszRestPort { get; set; } = 8552;
     }
 }

@@ -75,4 +75,10 @@ public interface IMergeConfig : IConfig
 
     [ConfigItem(Description = "Delay, in milliseconds, between `newPayload` and GC trigger. If not set, defaults to 1/8th of `Blocks.SecondsPerSlot`.", DefaultValue = null, HiddenFromDocs = true)]
     int? PostBlockGcDelayMs { get; set; }
+
+    [ConfigItem(Description = "Whether to enable the SSZ-REST Engine API transport (EIP-8161). Serves binary SSZ-encoded payloads over REST endpoints alongside the JSON-RPC Engine API.", DefaultValue = "false")]
+    bool SszRestEnabled { get; set; }
+
+    [ConfigItem(Description = "The port for the SSZ-REST Engine API server.", DefaultValue = "8552")]
+    int SszRestPort { get; set; }
 }
