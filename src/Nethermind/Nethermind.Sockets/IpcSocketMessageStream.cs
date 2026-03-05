@@ -16,7 +16,7 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
     private static readonly SearchValues<byte> Whitespace = SearchValues.Create(" \n\r\t"u8);
 
     private PooledBuffer _overflow = new();
-    private JsonParseState _jsonParseState;
+    private JsonParseState _jsonParseState = new();
 
     public async ValueTask<ReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default)
     {
@@ -47,17 +47,33 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         static Span<byte> FullBufferSpan(ArraySegment<byte> buffer, int read) => buffer.Array.AsSpan(0, buffer.Offset + read);
     }
 
-    private (int ContentLength, int Consumed) FindMessageEnd(ReadOnlySpan<byte> data, int offset) =>
-        offset >= data.Length
-            ? default
-            : data[offset..].IndexOf(Delimiter) switch
-            {
-                // Fast path: newline delimiter found in current buffer segment
-                var i and >= 0 => (i, i + 1),
-                // Slow path: complete JSON object/array (incremental parse across calls)
-                _ when TryGetCompleteJsonLength(data, out int jsonLength) => (jsonLength - offset, jsonLength - offset),
-                _ => default
-            };
+    private (int ContentLength, int Consumed) FindMessageEnd(ReadOnlySpan<byte> data, int offset)
+    {
+        if (offset >= data.Length)
+            return default;
+
+        // Try JSON boundary detection first — this prevents a newline from a later
+        // message being incorrectly used to delimit a JSON message without a trailing newline.
+        if (TryGetCompleteJsonLength(data, out int jsonLength))
+        {
+            int contentLen = jsonLength - offset;
+            // Consume an optional trailing newline delimiter
+            bool hasTrailingDelimiter = jsonLength < data.Length && data[jsonLength] == Delimiter;
+            return (contentLen, hasTrailingDelimiter ? contentLen + 1 : contentLen);
+        }
+
+        // If JSON parsing is in progress (incomplete object/array), don't fall back
+        // to newline — it may be inside the JSON structure.
+        if (_jsonParseState.IsActive)
+            return default;
+
+        // Fall back to newline delimiter for non-JSON messages.
+        return data[offset..].IndexOf(Delimiter) switch
+        {
+            var i and >= 0 => (i, i + 1),
+            _ => default
+        };
+    }
 
     private bool TryGetCompleteJsonLength(ReadOnlySpan<byte> span, out int messageLength)
     {
