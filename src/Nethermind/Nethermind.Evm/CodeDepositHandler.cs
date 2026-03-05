@@ -12,51 +12,44 @@ namespace Nethermind.Evm
     {
         private const byte InvalidStartingCodeByte = 0xEF;
 
-        public static long CalculateCost(IReleaseSpec spec, int byteCodeLength) =>
-            spec.IsEip8037Enabled
-                ? CalculateCost<OnFlag>(spec, byteCodeLength)
-                : CalculateCost<OffFlag>(spec, byteCodeLength);
-
-        public static bool CalculateCost(IReleaseSpec spec, int byteCodeLength, out long regularCost, out long stateCost)
+        public static long CalculateCost(IReleaseSpec spec, int byteCodeLength)
         {
-            return spec.IsEip8037Enabled
-                ? CalculateCost<OnFlag>(spec, byteCodeLength, out regularCost, out stateCost)
-                : CalculateCost<OffFlag>(spec, byteCodeLength, out regularCost, out stateCost);
+            CalculateCost(spec, byteCodeLength, out long regularCost, out long stateCost);
+            return regularCost == long.MaxValue || stateCost == long.MaxValue ? long.MaxValue : regularCost + stateCost;
         }
 
-        public static long CalculateCost<TEip8037>(IReleaseSpec spec, int byteCodeLength)
-            where TEip8037 : struct, IFlag =>
-            CalculateCost<TEip8037>(spec, byteCodeLength, out long regularCost, out long stateCost)
-                ? regularCost + stateCost
-                : long.MaxValue;
+        public static bool CalculateCost(IReleaseSpec spec, int byteCodeLength, out long regularCost, out long stateCost) =>
+            spec.IsEip8037Enabled
+                ? CalculateCost<OnFlag>(spec, byteCodeLength, out regularCost, out stateCost)
+                : CalculateCost<OffFlag>(spec, byteCodeLength, out regularCost, out stateCost);
 
         public static bool CalculateCost<TEip8037>(IReleaseSpec spec, int byteCodeLength, out long regularCost, out long stateCost)
             where TEip8037 : struct, IFlag
         {
+            stateCost = 0;
+
             if (spec.LimitCodeSize && byteCodeLength > spec.MaxCodeSize)
             {
                 regularCost = long.MaxValue;
-                stateCost = 0;
                 return false;
             }
 
-            if (TEip8037.IsActive)
+            if (!TEip8037.IsActive)
             {
-                long words = EvmCalculations.Div32Ceiling((ulong)byteCodeLength, out bool outOfGas);
-                if (outOfGas)
-                {
-                    regularCost = long.MaxValue;
-                    stateCost = long.MaxValue;
-                    return false;
-                }
-
-                regularCost = GasCostOf.CodeDepositRegularPerWord * words;
-                stateCost = GasCostOf.CodeDepositState * byteCodeLength;
+                regularCost = GasCostOf.CodeDeposit * byteCodeLength;
                 return true;
             }
 
-            regularCost = GasCostOf.CodeDeposit * byteCodeLength;
-            stateCost = 0;
+            long words = EvmCalculations.Div32Ceiling((ulong)byteCodeLength, out bool outOfGas);
+            if (outOfGas)
+            {
+                regularCost = long.MaxValue;
+                stateCost = long.MaxValue;
+                return false;
+            }
+
+            regularCost = GasCostOf.CodeDepositRegularPerWord * words;
+            stateCost = GasCostOf.CodeDepositState * byteCodeLength;
             return true;
         }
 

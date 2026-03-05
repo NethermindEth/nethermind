@@ -261,11 +261,13 @@ internal static partial class EvmInstructions
             (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
             || (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection);
 
-        if (chargesNewAccount && !(TEip8037.IsActive switch
+        bool outOfGas = chargesNewAccount && !(TEip8037.IsActive switch
         {
             true => TGasPolicy.ConsumeNewAccountCreation(ref gas),
             false => TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount),
-        })) goto OutOfGas;
+        });
+
+        if (outOfGas) goto OutOfGas;
 
         // Create or update the inheritor account with the transferred balance.
         if (!inheritorAccountExists)

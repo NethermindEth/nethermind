@@ -953,7 +953,8 @@ internal static partial class EvmInstructions
             {
                 true => !TGasPolicy.ConsumeNewAccountCreation(ref gas),
                 false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount),
-            }) goto OutOfGas;
+            })
+                goto OutOfGas;
         }
 
         // 9. Compute the gas available to the callee after reserving a minimum.

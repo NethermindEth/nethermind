@@ -343,6 +343,32 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             throw new InvalidDataException($"Transaction with an access list received within the context of {spec.Name}. EIP-2930 is not enabled.");
     }
 
+    public static (long RegularCost, long StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec)
+    {
+        AuthorizationTuple[]? authList = transaction.AuthorizationList;
+        if (authList is null)
+        {
+            return (0, 0);
+        }
+
+        if (!spec.IsAuthorizationListEnabled)
+        {
+            ThrowAuthorizationListNotEnabled(spec);
+        }
+
+        long authCount = authList.Length;
+        return spec.IsEip8037Enabled
+            ? (
+                authCount * GasCostOf.PerAuthBaseRegular,
+                authCount * (GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
+            )
+            : (authCount * GasCostOf.NewAccount, 0);
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowAuthorizationListNotEnabled(IReleaseSpec releaseSpec) =>
+            throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. EIP-7702 is not enabled.");
+    }
+
     protected static long CalculateFloorCost(long tokensInCallData, IReleaseSpec spec) =>
         spec.IsEip7623Enabled
             ? GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623

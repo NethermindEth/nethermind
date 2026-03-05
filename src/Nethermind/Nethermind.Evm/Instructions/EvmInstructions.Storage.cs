@@ -504,11 +504,13 @@ internal static partial class EvmInstructions
             {
                 if (currentIsZero)
                 {
-                    if (TEip8037.IsActive switch
+                    bool ssetOutOfGas = TEip8037.IsActive switch
                     {
                         true => !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.SSetState) || !TGasPolicy.UpdateGas(ref gas, GasCostOf.SSetRegular),
                         false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.SSet),
-                    }) goto OutOfGas;
+                    };
+
+                    if (ssetOutOfGas) goto OutOfGas;
                 }
                 else
                 {
@@ -553,7 +555,7 @@ internal static partial class EvmInstructions
                 {
                     long refundFromReversal = originalIsZero
                         ? TEip8037.IsActive
-                            ? RefundOf.SSetStateReversedEip8037 + RefundOf.SSetRegularReversedEip8037
+                            ? RefundOf.SSetReversedEip8037
                             : spec.GetSetReversalRefund()
                         : spec.GetClearReversalRefund();
 

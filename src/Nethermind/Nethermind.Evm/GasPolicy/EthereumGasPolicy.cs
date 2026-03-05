@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.IO;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -43,8 +40,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EthereumGasPolicy FromLong(long value) =>
-        new() { Value = value };
+    public static EthereumGasPolicy FromLong(long value) => new() { Value = value };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetRemainingGas(in EthereumGasPolicy gas) => gas.Value;
@@ -270,7 +266,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
     {
         long tokensInCallData = IGasPolicy<EthereumGasPolicy>.CalculateTokensInCallData(tx, spec);
-        (long authRegularCost, long authStateCost) = AuthorizationListCost(tx, spec);
+        (long authRegularCost, long authStateCost) = IGasPolicy<EthereumGasPolicy>.AuthorizationListCost(tx, spec);
 
         long regularGas = GasCostOf.Transaction
                           + DataCost(tx, spec, tokensInCallData)
@@ -331,29 +327,4 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     private static long DataCost(Transaction tx, IReleaseSpec spec, long tokensInCallData) =>
         spec.GetBaseDataCost(tx) + tokensInCallData * GasCostOf.TxDataZero;
 
-    private static (long RegularCost, long StateCost) AuthorizationListCost(Transaction tx, IReleaseSpec spec)
-    {
-        AuthorizationTuple[]? authList = tx.AuthorizationList;
-        if (authList is null)
-        {
-            return (0, 0);
-        }
-
-        if (!spec.IsAuthorizationListEnabled)
-        {
-            ThrowAuthorizationListNotEnabled(spec);
-        }
-
-        long authCount = authList.Length;
-        return spec.IsEip8037Enabled
-            ? (
-                authCount * GasCostOf.PerAuthBaseRegular,
-                authCount * (GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
-            )
-            : (authCount * GasCostOf.NewAccount, 0);
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowAuthorizationListNotEnabled(IReleaseSpec releaseSpec) =>
-            throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. EIP-7702 is not enabled.");
-    }
 }

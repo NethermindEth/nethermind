@@ -233,16 +233,8 @@ namespace Nethermind.Evm.Test
         public void Eip8037_policy_intrinsic_gas_splits_authorization_cost()
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved()
-                .WithAuthorizationCode(
-                    new AuthorizationTuple(
-                        1,
-                        TestItem.AddressF,
-                        0,
-                        0,
-                        UInt256.One,
-                        UInt256.One))
+                .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
                 .TestObject;
-
             IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
 
             Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular));

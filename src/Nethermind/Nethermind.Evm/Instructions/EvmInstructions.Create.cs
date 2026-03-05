@@ -121,11 +121,13 @@ internal static partial class EvmInstructions
         long create2HashCost = typeof(TOpCreate) == typeof(OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
         long extraCost = initCodeWordCost + create2HashCost;
 
-        if (TEip8037.IsActive switch
+        bool createOutOfGas = TEip8037.IsActive switch
         {
             true => !TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateRegular + extraCost) || !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState),
             false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.Create + extraCost),
-        }) goto OutOfGas;
+        };
+
+        if (createOutOfGas) goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, vm.VmState))

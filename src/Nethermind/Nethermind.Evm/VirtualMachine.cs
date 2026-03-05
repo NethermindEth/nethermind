@@ -416,11 +416,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-        bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
         if (!CodeDepositHandler.CalculateCost(spec, bytecodeResultArray.Length, out long regularDepositCost, out long stateDepositCost))
         {
-            invalidCode = true;
+            regularDepositCost = long.MaxValue;
+            stateDepositCost = long.MaxValue;
         }
+
+        bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
 
         long availableGasForState = gasAvailableForCodeDeposit + TGasPolicy.GetStateReservoir(in previousState.Gas);
         bool hasEnoughGasForDeposit = gasAvailableForCodeDeposit >= regularDepositCost && availableGasForState >= stateDepositCost;
