@@ -12,7 +12,7 @@ using NUnit.Framework;
 namespace Nethermind.Xdc.Test.Network
 {
     [TestFixture]
-    public class HobbitTests: HobbitTestsBase
+    public class HobbitTests : HobbitTestsBase
     {
         [TestCase(StackType.Zero, StackType.Zero, true)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
