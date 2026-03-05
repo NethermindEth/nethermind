@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -175,8 +176,35 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 $"cancelled={Evm.Metrics.TotalBackgroundTasksCancelled}, dropped={Evm.Metrics.TotalBackgroundTasksDropped}");
         }
         Interlocked.Decrement(ref _queueCount);
-        request.TryDispose();
+        DisposeDeep(request);
         return false;
+    }
+
+    /// <summary>
+    /// Recursively disposes IDisposable members buried inside ValueTuples.
+    /// Requests are often wrapped as ((actualRequest, func), outerFunc) by BackgroundTaskSchedulerWrapper,
+    /// so a plain TryDispose() on the outer tuple is a no-op — the inner IOwnedReadOnlyList etc. would leak.
+    /// </summary>
+    private static void DisposeDeep<T>(T value)
+    {
+        if (value is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
+        else if (value is ITuple tuple)
+        {
+            for (int i = 0; i < tuple.Length; i++)
+            {
+                object? element = tuple[i];
+                if (element is IDisposable d)
+                    d.Dispose();
+                else if (element is ITuple nested)
+                {
+                    for (int j = 0; j < nested.Length; j++)
+                        (nested[j] as IDisposable)?.Dispose();
+                }
+            }
+        }
     }
 
     private void UpdateQueueCount() => Evm.Metrics.NumberOfBackgroundTasksScheduled = Volatile.Read(ref _queueCount);
@@ -203,7 +231,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
         public int CompareTo(IActivity? other) => Deadline.CompareTo(other?.Deadline ?? DateTimeOffset.MaxValue);
 
-        public void TryDispose() => Request.TryDispose();
+        public void TryDispose() => DisposeDeep(Request);
 
         public async Task Do(CancellationToken cancellationToken)
         {
