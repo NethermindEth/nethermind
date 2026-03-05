@@ -112,7 +112,6 @@ public class InitDatabaseSnapshot : InitDatabase
         checkpoint.Advance(SnapshotStage.Downloaded);
     }
 
-    /// <returns><c>true</c> if the checksum passed or was not configured; <c>false</c> if it failed.</returns>
     private async Task<bool> VerifyChecksumAsync(
         string snapshotPath, ISnapshotConfig config, SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
     {
