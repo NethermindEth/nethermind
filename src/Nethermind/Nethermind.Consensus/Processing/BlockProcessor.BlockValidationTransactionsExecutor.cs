@@ -77,18 +77,23 @@ namespace Nethermind.Consensus.Processing
                     {
                         _logger.Info("[parallel] running gas validation");
 
+                        long gasRemaining = _balBuilder.GasUsed();
+                        _balBuilder.ValidateBlockAccessList(0, gasRemaining);
+
                         long totalGas = 0;
                         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
                         {
                             int chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, len);
                             for (int j = chunkStart; j < chunkEnd; j++)
                             {
-                                totalGas += gasResults[j].Task.GetAwaiter().GetResult();
-                                long gasRemaining = block.Header.GasLimit - totalGas;
+                                long txGasUsed = gasResults[j].Task.GetAwaiter().GetResult();
+                                totalGas += txGasUsed;
+                                gasRemaining -= txGasUsed;
+
                                 bool validateStorageReads = j == chunkEnd - 1;
-                                _balBuilder?.MergeIntermediateBalsUpTo((ushort)(j + 1));
+                                _balBuilder.MergeIntermediateBalsUpTo((ushort)(j + 1));
                                 _logger.Info($"[parallel] validating block access list at index {j + 1} (storage read check: {validateStorageReads})");
-                                _balBuilder?.ValidateBlockAccessList((ushort)(j + 1), gasRemaining, validateStorageReads);
+                                _balBuilder.ValidateBlockAccessList((ushort)(j + 1), gasRemaining, validateStorageReads);
                             }
 
                             if (totalGas > block.Header.GasLimit)
@@ -97,7 +102,7 @@ namespace Nethermind.Consensus.Processing
                             }
                         }
                         _blockExecutionContext.Header.GasUsed = totalGas;
-                    });
+                    }, token);
 
                     ParallelUnbalancedWork.For(
                         0,

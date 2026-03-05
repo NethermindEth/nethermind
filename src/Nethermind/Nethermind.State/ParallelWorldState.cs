@@ -921,7 +921,7 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlocksConfig block
             AdvanceSuggested();
         }
 
-        if (validateStorageReads && gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
+        if (validateStorageReads && gasRemaining < (suggestedReads - generatedReads) * Eip7928Constants.ItemCost)
         {
             throw new InvalidBlockLevelAccessListException("Suggested block-level access list contained invalid storage reads.");
         }
