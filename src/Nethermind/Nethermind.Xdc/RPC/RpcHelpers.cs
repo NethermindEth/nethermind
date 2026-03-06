@@ -58,7 +58,7 @@ internal static class RpcHelpers
                 throw new InvalidOperationException($"fail to get header by hash {nextHeader.ParentHash}");
             }
 
-            XdcBlockHeader parentHeader = parentHeaderBase as XdcBlockHeader 
+            XdcBlockHeader parentHeader = parentHeaderBase as XdcBlockHeader
                 ?? throw new InvalidOperationException($"Parent header is not XdcBlockHeader");
 
             if (parentHeader.ExtraConsensusData == null || nextHeader.ExtraConsensusData == null)
@@ -77,7 +77,7 @@ internal static class RpcHelpers
                 {
                     ulong leaderIndex = i % (ulong)spec.EpochLength % (ulong)masternodes.Length;
                     Address whosTurn = masternodes[leaderIndex];
-                    
+
                     missedRounds.Add(new MissedRoundInfo
                     {
                         Round = i,

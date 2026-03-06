@@ -46,7 +46,8 @@ internal class SyncInfoManager(
             //We can get SyncInfo while syncing
             if (_logger.IsDebug)
                 _logger.Debug($"Couldn't find {nameof(SyncInfo)} block {e.IncomingBlockHash.ToShortString()} #{e.IncomingBlockNumber} ");
-        } finally
+        }
+        finally
         {
             _syncInfoPool.Add(syncInfo);
         }

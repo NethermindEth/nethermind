@@ -28,12 +28,12 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     public ResultWrapper<EpochNumInfo> GetBlockInfoByEpochNum(ulong epochNumber)
     {
         var spec = specProvider.GetXdcSpec(tree.Head?.Header?.Number ?? 0);
-        
+
         if (epochNumber < (ulong)spec.SwitchEpoch)
         {
             return CalculateBlockInfoByV1EpochNum(epochNumber);
         }
-        
+
         return GetBlockInfoByV2EpochNum(epochNumber);
     }
 
@@ -279,7 +279,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     public ResultWrapper<PublicApiMissedRoundsMetadata> GetMissedRoundsInEpochByBlockNum(BlockParameter blockNumber)
     {
         BlockHeader? header;
-        
+
         if (blockNumber is null || blockNumber.Type == BlockParameterType.Latest)
         {
             header = tree.Head?.Header;
@@ -344,7 +344,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
         var spec = specProvider.GetXdcSpec(header.Number);
 
-        if(header.Number < spec.SwitchBlock)
+        if (header.Number < spec.SwitchBlock)
         {
             return ResultWrapper<Address[]>.Fail("Unsupported block version : V1");
         }
@@ -482,7 +482,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
         bool committed = false;
         var latestCommittedBlock = quorumCertificateManager.HighestKnownCertificate?.ProposedBlockInfo;
-        
+
         if (latestCommittedBlock is null)
         {
             return ResultWrapper<V2BlockInfo>.Success(new V2BlockInfo
@@ -491,7 +491,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
                 Error = "can not find latest committed block from consensus"
             });
         }
-        
+
         if (header.Number <= latestCommittedBlock.BlockNumber)
         {
             committed = true && !uncle;
@@ -560,7 +560,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     public ResultWrapper<NetworkInformation> NetworkInformation()
     {
         var spec = specProvider.GetXdcSpec(tree.Head?.Header?.Number ?? 0);
-        
+
         NetworkInformation info = new NetworkInformation
         {
             NetworkId = (UInt256)specProvider.NetworkId,
