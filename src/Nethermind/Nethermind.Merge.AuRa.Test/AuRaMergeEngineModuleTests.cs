@@ -171,13 +171,13 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
     [Test]
     public override async Task GetPayloadBodiesHashV2_returns_correctly()
-    {}
-        // => await base.GetPayloadBodiesHashV2_returns_correctly();
+    { }
+    // => await base.GetPayloadBodiesHashV2_returns_correctly();
 
     [Test]
     public override async Task GetPayloadBodiesByRangeV2_returns_correctly()
-    {}
-        // => await base.GetPayloadBodiesByRangeV2_returns_correctly();
+    { }
+    // => await base.GetPayloadBodiesByRangeV2_returns_correctly();
 
     [Test]
     [TestCase(
