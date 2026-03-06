@@ -176,11 +176,6 @@ internal static partial class EvmInstructions
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
 
-        // EIP-7907: charge for large contract access before the 63/64 gas rule
-        // so that the gas deduction affects the child call's gas limit.
-        if (spec.IsEip7907Enabled && !ChargeEip7907CallAccess(vm, codeSource, ref gas))
-            goto OutOfGas;
-
         // Get remaining gas for 63/64 calculation
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
 
@@ -304,38 +299,6 @@ internal static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
         return EvmExceptionType.OutOfGas;
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool ChargeEip7907CallAccess<TGasPolicy>(
-        VirtualMachine<TGasPolicy> vm, Address codeSource, ref TGasPolicy gas)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, vm.Spec);
-        uint excessContractSize = (uint)Math.Max(0, codeInfo.CodeSpan.Length - CodeSizeConstants.MaxCodeSizeEip170);
-        return excessContractSize == 0 || ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.VmState.AccessTracker, ref gas);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool ChargeEip7907ExtCodeAccess<TGasPolicy>(
-        ReadOnlySpan<byte> externalCode, Address address, in StackAccessTracker accessTracker, ref TGasPolicy gas)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        uint excessContractSize = (uint)Math.Max(0, externalCode.Length - CodeSizeConstants.MaxCodeSizeEip170);
-        return excessContractSize == 0 || ChargeForLargeContractAccess(excessContractSize, address, in accessTracker, ref gas);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool ChargeForLargeContractAccess<TGasPolicy>(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref TGasPolicy gas)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        if (accessTracer.WarmUpLargeContract(codeAddress))
-        {
-            long largeContractCost = GasCostOf.InitCodeWord * EvmCalculations.Div32Ceiling(excessContractSize, out bool outOfGas);
-            if (outOfGas || !TGasPolicy.UpdateGas(ref gas, largeContractCost)) return false;
-        }
-
-        return true;
     }
 
     /// <summary>
