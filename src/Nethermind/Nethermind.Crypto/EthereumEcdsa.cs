@@ -35,7 +35,7 @@ public class EthereumEcdsa(ulong chainId) : Ecdsa, IEthereumEcdsa
             message.Bytes,
             publicKey
             );
-        
+
         return success ? PublicKey.ComputeAddress(publicKey[1..]) : null;
 #endif
     }
