@@ -199,7 +199,7 @@ public partial class EthRpcModule(
         }
     }
 
-    public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
+    public virtual Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
     {
         if (blockParameter == BlockParameter.Pending)
         {
@@ -422,7 +422,7 @@ public partial class EthRpcModule(
         return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(false));
     }
 
-    public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
+    public virtual ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
     {
         Transaction[] transactions = _txPool.GetPendingTransactions();
         TransactionForRpc[] transactionsModels = new TransactionForRpc[transactions.Length];

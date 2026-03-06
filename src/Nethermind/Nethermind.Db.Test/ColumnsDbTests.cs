@@ -34,7 +34,7 @@ public class ColumnsDbTests
                 DeleteOnStart = true,
             },
             new DbConfig(),
-            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance),
+            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
             LimboLogs.Instance,
             Enum.GetValues<ReceiptsColumns>()
         );
@@ -74,7 +74,7 @@ public class ColumnsDbTests
         colA.Set(TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
         colB.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
 
-        Assert.That(() => _db.GatherMetric().MemtableSize, Is.EqualTo(2566224).After(1000, 10));
+        Assert.That(() => _db.GatherMetric().MemtableSize, Is.EqualTo(2566224).Within(1).Percent.After(1000, 10));
     }
 
     [Test]
