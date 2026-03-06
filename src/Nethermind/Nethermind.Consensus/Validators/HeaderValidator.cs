@@ -74,7 +74,11 @@ namespace Nethermind.Consensus.Validators
         public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
             Validate<OffFlag>(header, parent, isUncle, out error);
 
-        protected virtual bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) where TOrphaned : struct, IFlag
+        protected
+#if !ZK_EVM
+        virtual
+#endif
+        bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) where TOrphaned : struct, IFlag
         {
             IReleaseSpec spec;
             error = null;
