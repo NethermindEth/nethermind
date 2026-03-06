@@ -49,7 +49,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         {
             try
             {
-                return Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping);
+                return TxDecoder.Instance.DecodeGuardNotNull(t, RlpBehaviors.SkipTypedWrapping);
             }
             catch (RlpException e)
             {

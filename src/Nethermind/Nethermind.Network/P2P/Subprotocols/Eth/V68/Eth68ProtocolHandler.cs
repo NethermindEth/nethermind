@@ -261,6 +261,6 @@ public class Eth68ProtocolHandler(ISession session,
         return base.HandleSlow(request, cancellationToken);
     }
 
-    private bool ValidateSizeAndType(Transaction tx)
-        => !TxShapeAnnouncements.Delete(tx.Hash!, out (int Size, TxType Type) txShape) || (tx.GetLength() == txShape.Size && tx.Type == txShape.Type);
+    private bool ValidateSizeAndType(Transaction? tx)
+        => tx is not null && (!TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape) || (tx.GetLength() == txShape.Size && tx.Type == txShape.Type));
 }

@@ -8,6 +8,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Transport.Channels;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -26,8 +27,10 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -402,6 +405,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _transactionPool.Received(canGossipTransactions ? 3 : 0).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
         }
 
+        [Test]
+        public void Disconnects_peer_on_transaction_deserialization_exception()
+        {
+            _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
+            IByteBuffer malformedTransactionsPacket = Unpooled.WrappedBuffer(new byte[] { 0xc1, 0xc0 });
+
+            HandleIncomingStatusMessage();
+            RlpException exception = Assert.Throws<RlpException>(() => HandleZeroMessage(malformedTransactionsPacket, Eth62MessageCode.Transactions));
+
+            ZeroNettyP2PHandler zeroNettyP2PHandler = new(_session, LimboLogs.Instance);
+            zeroNettyP2PHandler.ExceptionCaught(Substitute.For<IChannelHandlerContext>(), exception);
+
+            _session.Received().InitiateDisconnect(
+                DisconnectReason.Exception,
+                Arg.Is<string>(details => details.Contains("RlpException") && details.Contains("Transaction decoding returned null")));
+        }
+
         private class AlwaysTimeoutBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
             internal int ScheduledTasks = 0;
@@ -628,6 +648,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
             getBlockHeadersPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+        }
+
+        private void HandleZeroMessage(IByteBuffer msg, int messageCode)
+        {
+            _handler.HandleMessage(new ZeroPacket(msg) { PacketType = (byte)messageCode });
         }
 
         [Test]

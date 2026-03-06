@@ -25,6 +25,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 using Newtonsoft.Json.Linq;
@@ -745,6 +746,18 @@ public class TraceRpcModuleTests
 
         ParityAccountStateChange? stateChanges = traces.Data.StateChanges?.GetValueOrDefault(address);
         stateChanges?.Balance?.Should().BeEquivalentTo(new ParityStateChange<UInt256>(balance, balance - send));
+    }
+
+    [Test]
+    public async Task Trace_rawTransaction_returns_invalid_rlp_for_empty_list()
+    {
+        Context context = new();
+        await context.Build();
+
+        ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_rawTransaction([0xC0], ["trace"]);
+
+        Assert.That(traces.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
+        Assert.That(traces.Result.Error, Is.EqualTo("Invalid RLP."));
     }
 
     [Test]

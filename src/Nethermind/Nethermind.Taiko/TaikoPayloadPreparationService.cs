@@ -151,7 +151,7 @@ public class TaikoPayloadPreparationService(
 
         while (ctx.Position < transactionsCheck)
         {
-            transactions[txIndex++] = txDecoder.Decode(ref ctx)!;
+            transactions[txIndex++] = txDecoder.DecodeGuardNotNull(ref ctx);
         }
 
         ctx.Check(transactionsCheck);

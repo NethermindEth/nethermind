@@ -1177,6 +1177,16 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Send_raw_transaction_returns_invalid_rlp_for_empty_list()
+    {
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", "c0");
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Invalid RLP.\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Send_transaction_without_signature_will_not_set_nonce_when_zero_and_not_null()
     {
         using Context ctx = await Context.Create();

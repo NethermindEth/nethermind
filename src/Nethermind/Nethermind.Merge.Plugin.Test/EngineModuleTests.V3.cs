@@ -247,6 +247,22 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task NewPayloadV3_EmptyRlpListTransaction_IsRejectedAsInvalid()
+    {
+        (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
+
+        payload.Transactions = [[0xC0]];
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.ValidationError, Does.StartWith("Transaction 0 is not valid"));
+    }
+
+    [Test]
     public async Task NewPayloadV3_should_decline_null_blobversionedhashes()
     {
         (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)
@@ -424,7 +440,7 @@ public partial class EngineModuleTests
                     txBlobVersionedHashes[txHashIndex][1] = hashByte;
                     txHashIndex++;
                 }
-                transactions[txIndex] = Build.A.Transaction.WithNonce((ulong)txIndex)
+                transactions[txIndex] = Build.A.Transaction.WithNonce(txIndex)
                     .WithType(TxType.Blob)
                     .WithTimestamp(Timestamper.UnixTime.Seconds)
                     .WithTo(TestItem.AddressB)
