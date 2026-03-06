@@ -12,31 +12,13 @@ namespace Nethermind.Db.Rocks.Config;
 public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConfig, IHardwareInfo hardwareInfo, ILogManager logManager, bool validateConfig = true) : IRocksDbConfigFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<IRocksDbConfigFactory>();
-    private bool _maxOpenFilesInitialized;
+    private bool _initialized;
 
     public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
     {
-        // Automatically adjust MaxOpenFiles if not configured (only once)
-        if (!_maxOpenFilesInitialized)
+        if (!_initialized)
         {
-            _maxOpenFilesInitialized = true;
-
-            if (dbConfig.MaxOpenFiles is null && hardwareInfo.MaxOpenFilesLimit.HasValue)
-            {
-                int systemLimit = hardwareInfo.MaxOpenFilesLimit.Value;
-                // Apply 80% of system limit as safety margin to account for:
-                // - Multiple databases (~15) each using this limit
-                // - System operations and network sockets
-                // - Other file descriptors needed by the application
-                int perDbLimit = Math.Max(256, (int)(systemLimit * 0.8));
-
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Detected system open files limit of {systemLimit}. Setting MaxOpenFiles to {perDbLimit} per database.");
-                }
-
-                dbConfig.MaxOpenFiles = perDbLimit;
-            }
+            _initialized = true;
 
             bool skipSstChecks = dbConfig.SkipCheckingSstFileSizesOnDbOpen ?? RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
             if (skipSstChecks)
