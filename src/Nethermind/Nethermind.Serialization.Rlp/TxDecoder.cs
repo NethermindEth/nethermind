@@ -66,6 +66,14 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
 
     public void RegisterDecoder(TxType type, ITxDecoder decoder) => _decoders[(int)type] = decoder;
 
+    private static void ThrowIfLegacy(TxType txType1)
+    {
+        if (txType1 == TxType.Legacy)
+        {
+            throw new RlpException("Legacy transactions are not allowed in EIP-2718 Typed Transaction Envelope");
+        }
+    }
+
     private ITxDecoder GetDecoder(TxType txType) =>
         _decoders.TryGetByTxType(txType, out ITxDecoder decoder)
             ? decoder
@@ -98,6 +106,7 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
                 txSequenceStart = decoderContext.Position;
                 transactionSequence = decoderContext.Peek(decoderContext.Length);
                 txType = (TxType)decoderContext.ReadByte();
+                ThrowIfLegacy(txType);
             }
         }
         else
@@ -108,6 +117,7 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
                 txSequenceStart = decoderContext.Position;
                 transactionSequence = decoderContext.Peek(contentLength);
                 txType = (TxType)decoderContext.ReadByte();
+                ThrowIfLegacy(txType);
             }
         }
 

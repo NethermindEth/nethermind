@@ -116,6 +116,20 @@ public partial class ShardBlobTxDecoderTests
         tryDecode.Should().Throw<RlpException>();
     }
 
+    [TestCaseSource(nameof(OverLimitCollectionDecodeCases))]
+    public void Decode_rejects_more_than_blob_count_limit_for_decoding(Transaction tx, RlpBehaviors rlpBehaviors)
+    {
+        Rlp encoded = _txDecoder.Encode(tx, rlpBehaviors);
+
+        Action decodeByValueDecoderContext = () =>
+        {
+            Rlp.ValueDecoderContext decoderContext = new(encoded.Bytes);
+            _txDecoder.Decode(ref decoderContext, rlpBehaviors);
+        };
+
+        decodeByValueDecoderContext.Should().Throw<RlpLimitException>();
+    }
+
     [TestCaseSource(nameof(ShardBlobTxTests))]
     public void NetworkWrapper_is_decoded_correctly(string rlp, Hash256 signedHash, RlpBehaviors rlpBehaviors)
     {
@@ -147,5 +161,57 @@ public partial class ShardBlobTxDecoderTests
             _txDecoder.Encode(decodedByValueDecoderContext!, rlpBehaviors);
         Assert.That(encoded.Bytes, Is.EquivalentTo(spanIncomingTxRlp));
         Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EquivalentTo(spanIncomingTxRlp));
+    }
+
+    private static IEnumerable<TestCaseData> OverLimitCollectionDecodeCases()
+    {
+        static Transaction BuildTransactionWithBlobVersionedHashCount(int count) =>
+            Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(1, false)
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithBlobVersionedHashes(count)
+                .SignedAndResolved()
+                .TestObject;
+
+        static Transaction BuildMempoolTransactionWithWrapperCounts(int blobsCount, int commitmentsCount, int proofsCount)
+        {
+            byte[][] blobs = CreateEmptyByteArrays(blobsCount);
+            byte[][] commitments = CreateEmptyByteArrays(commitmentsCount);
+            byte[][] proofs = CreateEmptyByteArrays(proofsCount);
+            return Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(1, false)
+                .WithChainId(TestBlockchainIds.ChainId)
+                .With(tx => tx.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, ProofVersion.V0))
+                .SignedAndResolved()
+                .TestObject;
+        }
+
+        static byte[][] CreateEmptyByteArrays(int count)
+        {
+            byte[][] arrays = new byte[count][];
+            for (int i = 0; i < count; i++)
+            {
+                arrays[i] = [];
+            }
+
+            return arrays;
+        }
+
+        yield return new TestCaseData(BuildTransactionWithBlobVersionedHashCount(129), RlpBehaviors.None)
+        {
+            TestName = "Decode rejects more than 128 blob versioned hashes"
+        };
+        yield return new TestCaseData(BuildMempoolTransactionWithWrapperCounts(129, 1, 1), RlpBehaviors.InMempoolForm)
+        {
+            TestName = "Decode rejects more than 128 wrapper blobs"
+        };
+        yield return new TestCaseData(BuildMempoolTransactionWithWrapperCounts(1, 129, 1), RlpBehaviors.InMempoolForm)
+        {
+            TestName = "Decode rejects more than 128 wrapper commitments"
+        };
+        yield return new TestCaseData(BuildMempoolTransactionWithWrapperCounts(1, 1, 129), RlpBehaviors.InMempoolForm)
+        {
+            TestName = "Decode rejects more than 128 wrapper proofs"
+        };
     }
 }

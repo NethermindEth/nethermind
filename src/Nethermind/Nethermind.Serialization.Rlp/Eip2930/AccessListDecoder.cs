@@ -38,24 +38,26 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 Address address = decoderContext.DecodeAddress() ?? throw new RlpException("Invalid tx access list format - address is null");
                 accessListBuilder.AddAddress(address);
 
-                if (decoderContext.Position < check)
+                if (decoderContext.Position >= accessListItemCheck)
                 {
-                    int storagesLength = decoderContext.ReadSequenceLength();
-                    int storagesCheck = decoderContext.Position + storagesLength;
-                    while (decoderContext.Position < storagesCheck)
-                    {
-                        int storageItemCheck = decoderContext.Position + IndexLength + 1;
-                        UInt256 index = decoderContext.DecodeUInt256(IndexLength);
-                        accessListBuilder.AddStorage(index);
-                        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-                        {
-                            decoderContext.Check(storageItemCheck);
-                        }
-                    }
+                    throw new RlpException("Invalid tx access list format - storage keys missing");
+                }
+
+                int storagesLength = decoderContext.ReadSequenceLength();
+                int storagesCheck = decoderContext.Position + storagesLength;
+                while (decoderContext.Position < storagesCheck)
+                {
+                    int storageItemCheck = decoderContext.Position + IndexLength + 1;
+                    UInt256 index = decoderContext.DecodeUInt256(IndexLength);
+                    accessListBuilder.AddStorage(index);
                     if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
                     {
-                        decoderContext.Check(storagesCheck);
+                        decoderContext.Check(storageItemCheck);
                     }
+                }
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                {
+                    decoderContext.Check(storagesCheck);
                 }
                 if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
                 {

@@ -85,7 +85,7 @@ namespace Nethermind.Core.Test.Encoding
                 .Select(_ => Task.Factory.StartNew(() => decodedTx.Hash.Should().Be(expectedHash), TaskCreationOptions.RunContinuationsAsynchronously))
                 .ToPooledList(32);
 
-            await Task.WhenAll<AndConstraint<ComparableTypeAssertions<Hash256>>>(tasks.AsSpan());
+            await Task.WhenAll(tasks.AsSpan());
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
@@ -272,6 +272,27 @@ namespace Nethermind.Core.Test.Encoding
             duplicates.CalculateHash().Should().NotBe(noDuplicates.CalculateHash());
         }
 
+
+        [TestCaseSource(nameof(InvalidEncodingTestCases))]
+        public void Rejects_invalid_tx_encoding(byte[] invalidTxBytes)
+        {
+            Action decodeStream = () =>
+            {
+                Rlp.ValueDecoderContext ctx = new RlpStream(invalidTxBytes).Data.AsSpan().AsRlpValueContext();
+                _txDecoder.Decode(ref ctx);
+            };
+
+            decodeStream.Should().Throw<RlpException>();
+
+            Action decodeContext = () =>
+            {
+                Rlp.ValueDecoderContext ctx = invalidTxBytes.AsSpan().AsRlpValueContext();
+                _txDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
+            };
+
+            decodeContext.Should().Throw<RlpException>();
+        }
+
         public static IEnumerable<(string, Hash256)> SkipTypedWrappingTestCases()
         {
             yield return
@@ -375,6 +396,13 @@ namespace Nethermind.Core.Test.Encoding
                 "b8cb01f8c887796f6c6f76337803843b9aca00826a40948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f85bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a094f3a6bbf5039b1a794e5be7628809bdf757c4ff59e5399dec74c61137074f80a049baf92bb5fb2d6c6bf8287fcd75eaea80ad38d1b8d29ce242c4ac51e1067d52",
                 new Hash256("0x0a956694228afe4577bd94fcf8a3aa8544bbadcecfe0d66ccad8ec7ae56c025f")
             );
+        }
+
+        public static IEnumerable<TestCaseData> InvalidEncodingTestCases()
+        {
+            static TestCaseData TestCase(string testName, string invalidTxBytes) => new(Convert.FromHexString(invalidTxBytes)) { TestName = testName };
+
+            yield return TestCase("Missing storage keys array in access list", "01e3010101825208808080d6d5940000000000000000000000000000000000000001010101");
         }
     }
 }
