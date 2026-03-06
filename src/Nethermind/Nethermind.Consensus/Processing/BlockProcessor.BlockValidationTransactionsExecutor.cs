@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -57,7 +58,7 @@ namespace Nethermind.Consensus.Processing
                     ITransactionProcessorAdapter[] transactionProcessors = new ITransactionProcessorAdapter[len];
                     BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
                     // todo: set and parallelize other tracer
-                    TaskCompletionSource<long>[] gasResults = new TaskCompletionSource<long>[len];
+                    TaskCompletionSource<(long? GasUsed, Exception? Exception)>[] gasResults = new TaskCompletionSource<(long? GasUsed, Exception? Exception)>[len];
                     for (int i = 0; i < len; i++)
                     {
                         VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
@@ -69,7 +70,7 @@ namespace Nethermind.Consensus.Processing
                         BlockReceiptsTracer tracer = new();
                         tracer.StartNewBlockTrace(block);
                         receiptsTracers[i] = tracer;
-                        gasResults[i] = new TaskCompletionSource<long>();
+                        gasResults[i] = new TaskCompletionSource<(long? GasUsed, Exception? Exception)>();
                     }
 
                     const int GasValidationChunkSize = 8;
@@ -86,9 +87,12 @@ namespace Nethermind.Consensus.Processing
                             int chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, len);
                             for (int j = chunkStart; j < chunkEnd; j++)
                             {
-                                long txGasUsed = gasResults[j].Task.GetAwaiter().GetResult();
-                                totalGas += txGasUsed;
-                                gasRemaining -= txGasUsed;
+                                (long? txGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
+                                if (ex is not null)
+                                    ExceptionDispatchInfo.Capture(ex).Throw();
+
+                                totalGas += txGasUsed!.Value;
+                                gasRemaining -= txGasUsed.Value;
 
                                 bool validateStorageReads = j == chunkEnd - 1;
                                 _balBuilder.MergeIntermediateBalsUpTo((ushort)(j + 1));
@@ -118,17 +122,25 @@ namespace Nethermind.Consensus.Processing
                             }
 
                             int txIndex = i - 1;
-                            ProcessTransactionParallel(
-                                state.transactionProcessors[txIndex],
-                                state.stateProvider,
-                                state.specProvider,
-                                state.block,
-                                state.txs[txIndex],
-                                txIndex,
-                                state.receiptsTracers[txIndex],
-                                state.processingOptions,
-                                state.logger);
-                            state.gasResults[txIndex].SetResult(state.txs[txIndex].BlockGasUsed);
+                            try
+                            {
+                                ProcessTransactionParallel(
+                                    state.transactionProcessors[txIndex],
+                                    state.stateProvider,
+                                    state.specProvider,
+                                    state.block,
+                                    state.txs[txIndex],
+                                    txIndex,
+                                    state.receiptsTracers[txIndex],
+                                    state.processingOptions,
+                                    state.logger);
+                                state.gasResults[txIndex].SetResult((state.txs[txIndex].BlockGasUsed, null));
+                            }
+                            catch (Exception ex)
+                            {
+                                state.gasResults[txIndex].SetResult((null, ex));
+                            }
+
                             return state;
                         });
 

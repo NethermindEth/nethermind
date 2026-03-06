@@ -646,7 +646,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return accountChanges.GetBalance(blockAccessIndex.Value);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Balance access for {address} not in block access list.");
+            throw new InvalidBlockLevelAccessListException($"Balance access for {address} not in block access list at index {blockAccessIndex.Value}.");
         }
         else
         {
@@ -672,7 +672,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return accountChanges.GetNonce(blockAccessIndex.Value);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Nonce access for {address} not in block access list.");
+            throw new InvalidBlockLevelAccessListException($"Nonce access for {address} not in block access list at index {blockAccessIndex.Value}.");
         }
         else
         {
@@ -698,7 +698,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return accountChanges.GetCode(blockAccessIndex.Value);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Code access for {address} not in block access list.");
+            throw new InvalidBlockLevelAccessListException($"Code access for {address} not in block access list at index {blockAccessIndex.Value}.");
         }
         else
         {
@@ -732,7 +732,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return slotChanges.Get(blockAccessIndex.Value);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Storage access for {storageCell.Address} not in block access list.");
+            throw new InvalidBlockLevelAccessListException($"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex.Value}.");
         }
         else
         {
@@ -752,7 +752,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return slotChanges.Get(blockAccessIndex.Value);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Storage access for {storageCell.Address} not in block access list.");
+            throw new InvalidBlockLevelAccessListException($"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex.Value}.");
         }
         else
         {
@@ -779,7 +779,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return accountChanges.AccountExists(blockAccessIndex.Value);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Account existence check for {address} not in block access list.");
+            throw new InvalidBlockLevelAccessListException($"Account {address} not found in block access list when checking existence at index {blockAccessIndex.Value}.");
         }
         else
         {
@@ -823,7 +823,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return allSlots.SetEquals(zeroedSlots);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Storage empty check for {address} not in block access list.");
+            throw new InvalidBlockLevelAccessListException($"Storage empty check for {address} not in block access list at index {blockAccessIndex.Value}.");
         }
         else
         {
