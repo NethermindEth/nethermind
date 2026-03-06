@@ -142,7 +142,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
-        UInt256 balance = state.GetBalance(env.ExecutingAccount);
+        UInt256 balance = state.GetBalance(env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex);
         if (value > balance)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
@@ -151,7 +151,7 @@ internal static partial class EvmInstructions
         }
 
         // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
-        UInt256 accountNonce = state.GetNonce(env.ExecutingAccount);
+        UInt256 accountNonce = state.GetNonce(env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex);
         UInt256 maxNonce = ulong.MaxValue;
         if (accountNonce >= maxNonce)
         {
@@ -177,7 +177,7 @@ internal static partial class EvmInstructions
         // - For CREATE: based on the executing account and its current nonce.
         // - For CREATE2: based on the executing account, the provided salt, and the init code.
         Address contractAddress = typeof(TOpCreate) == typeof(OpCreate)
-            ? ContractAddress.From(env.ExecutingAccount, state.GetNonce(env.ExecutingAccount))
+            ? ContractAddress.From(env.ExecutingAccount, state.GetNonce(env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex))
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
@@ -197,18 +197,18 @@ internal static partial class EvmInstructions
         }
 
         // Increment the nonce of the executing account to reflect the contract creation.
-        state.IncrementNonce(env.ExecutingAccount);
+        state.IncrementNonce(env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex);
 
         // Analyze and compile the initialization code.
         CodeInfoFactory.CreateInitCodeInfo(initCode, spec, out CodeInfo? codeInfo, out _);
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
-        Snapshot snapshot = state.TakeSnapshot();
+        Snapshot snapshot = state.TakeSnapshot(blockAccessIndex: vm.TxExecutionContext.BlockAccessIndex);
 
         // Check for contract address collision. If the contract already exists and contains code or non-zero state,
         // then the creation should be aborted.
-        bool accountExists = state.AccountExists(contractAddress);
-        if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
+        bool accountExists = state.AccountExists(contractAddress, vm.TxExecutionContext.BlockAccessIndex);
+        if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state, vm.TxExecutionContext.BlockAccessIndex))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
@@ -216,14 +216,14 @@ internal static partial class EvmInstructions
         }
 
         // If the contract address refers to a dead account, clear its storage before creation.
-        if (state.IsDeadAccount(contractAddress))
+        if (state.IsDeadAccount(contractAddress, vm.TxExecutionContext.BlockAccessIndex))
         {
             // Note: Seems to be needed on block 21827914 for some reason
-            state.ClearStorage(contractAddress);
+            state.ClearStorage(contractAddress, vm.TxExecutionContext.BlockAccessIndex);
         }
 
         // Deduct the transfer value from the executing account's balance.
-        state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+        state.SubtractFromBalance(env.ExecutingAccount, value, spec, vm.TxExecutionContext.BlockAccessIndex);
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.

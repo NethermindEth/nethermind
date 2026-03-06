@@ -167,10 +167,10 @@ internal static partial class EvmInstructions
             if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, vm.VmState))
                 goto OutOfGas;
 
-            (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address);
+            (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address, vm.TxExecutionContext.BlockAccessIndex);
 
             CodeInfo codeInfo = vm.CodeInfoRepository
-                .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+                .GetCachedCodeInfo(address, followDelegation: false, spec, out _, vm.TxExecutionContext.BlockAccessIndex);
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
@@ -201,7 +201,7 @@ internal static partial class EvmInstructions
         }
         else
         {
-            (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address);
+            (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address, vm.TxExecutionContext.BlockAccessIndex);
         }
 
         return EvmExceptionType.None;
@@ -248,7 +248,7 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
             goto OutOfGas;
 
-        (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address);
+        (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address, vm.TxExecutionContext.BlockAccessIndex);
 
         // Attempt a peephole optimization when tracing is not active and code is available.
         ReadOnlySpan<byte> codeSection = vm.VmState.Env.CodeInfo.CodeSpan;
@@ -282,7 +282,7 @@ internal static partial class EvmInstructions
                 TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
                 // Determine if the account is a contract by checking the loaded CodeHash.
-                bool isCodeLengthNotZero = vm.WorldState.IsContract(address);
+                bool isCodeLengthNotZero = vm.WorldState.IsContract(address, vm.TxExecutionContext.BlockAccessIndex);
                 // If the original instruction was GT, invert the check to match the semantics.
                 if (nextInstruction == Instruction.GT)
                 {
@@ -304,7 +304,7 @@ internal static partial class EvmInstructions
 
         // No optimization applied: load the account's code from storage.
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
-            .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
+            .GetCachedCodeInfo(address, followDelegation: false, spec, out _, vm.TxExecutionContext.BlockAccessIndex)
             .CodeSpan;
         // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
         if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))

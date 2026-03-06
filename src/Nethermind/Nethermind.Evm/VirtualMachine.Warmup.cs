@@ -36,12 +36,12 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         address[^1] = 0x1;
         Address addressOne = new(address);
 
-        state.CreateAccount(addressOne, 1000.Ether());
+        state.CreateAccount(addressOne, 1000.Ether(), blockAccessIndex: -1);
         state.Commit(spec);
         BlockHeader header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
 
         vm.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
-        vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
+        vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0, 0));
 
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(
             codeInfo: new CodeInfo(bytecode),
@@ -53,7 +53,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             value: 0,
             inputData: default);
 
-        using (VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(TGasPolicy.FromLong(long.MaxValue), ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot()))
+        using (VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(TGasPolicy.FromLong(long.MaxValue), ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot(blockAccessIndex: vm.TxExecutionContext.BlockAccessIndex)))
         {
             vm.VmState = vmState;
             vm._worldState = state;
@@ -77,7 +77,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         Address sender = Address.SystemUser;
         Address recipient = new("0x0000000000000000000000000000000000000100");
 
-        state.CreateAccountIfNotExists(recipient, 100.Ether());
+        state.CreateAccountIfNotExists(recipient, 100.Ether(), blockAccessIndex: -1);
 
         List<byte> bytes = [(byte)Instruction.JUMPDEST];
 

@@ -93,9 +93,9 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
 
-    public void Restore(Snapshot snapshot) => inner.Restore(snapshot);
+    public void Restore(Snapshot snapshot, int? _ = null) => inner.Restore(snapshot);
 
-    public bool TryGetAccount(Address address, out AccountStruct account)
+    public bool TryGetAccount(Address address, out AccountStruct account, int? _ = null)
     {
         RecordEmptySlots(address);
         return inner.TryGetAccount(address, out account);
@@ -107,7 +107,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 
     public IWorldStateScopeProvider ScopeProvider => inner.ScopeProvider;
 
-    public byte[]? GetCode(Address address)
+    public byte[]? GetCode(Address address, int? _ = null)
     {
         RecordEmptySlots(address);
         byte[] code = inner.GetCode(address);
@@ -122,71 +122,71 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         return code;
     }
 
-    public bool IsContract(Address address)
+    public bool IsContract(Address address, int? _ = null)
     {
         RecordEmptySlots(address);
         return inner.IsContract(address);
     }
 
-    public bool AccountExists(Address address)
+    public bool AccountExists(Address address, int? _ = null)
     {
         RecordEmptySlots(address);
         return inner.AccountExists(address);
     }
 
-    public bool IsDeadAccount(Address address)
+    public bool IsDeadAccount(Address address, int? _ = null)
     {
         RecordEmptySlots(address);
         return inner.IsDeadAccount(address);
     }
 
-    public ref readonly UInt256 GetBalance(Address address)
+    public UInt256 GetBalance(Address address, int? _ = null)
     {
         RecordEmptySlots(address);
-        return ref inner.GetBalance(address);
+        return inner.GetBalance(address);
     }
 
-    public ref readonly ValueHash256 GetCodeHash(Address address)
+    public ValueHash256 GetCodeHash(Address address, int? _ = null)
     {
         RecordEmptySlots(address);
-        return ref inner.GetCodeHash(address);
+        return inner.GetCodeHash(address);
     }
 
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public byte[] GetOriginal(in StorageCell storageCell, int? _ = null)
     {
         RecordSlot(storageCell);
         return inner.GetOriginal(in storageCell);
     }
 
-    public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public ReadOnlySpan<byte> Get(in StorageCell storageCell, int? _ = null)
     {
         RecordSlot(storageCell);
         return inner.Get(in storageCell);
     }
 
-    public void Set(in StorageCell storageCell, byte[] newValue)
+    public void Set(in StorageCell storageCell, byte[] newValue, int? _ = null)
     {
         RecordSlot(storageCell);
         inner.Set(in storageCell, newValue);
     }
 
     // Transient state does not need trie node capture as it's purely in-memory storage, no trie representation whatsoever
-    public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell, int? _ = null)
         => inner.GetTransientState(in storageCell);
 
     // Transient state does not need trie node capture as it's purely in-memory storage, no trie representation whatsoever
-    public void SetTransientState(in StorageCell storageCell, byte[] newValue)
+    public void SetTransientState(in StorageCell storageCell, byte[] newValue, int? _ = null)
         => inner.SetTransientState(in storageCell, newValue);
 
     public void Reset(bool resetBlockChanges = true) => inner.Reset(resetBlockChanges);
 
-    public Snapshot TakeSnapshot(bool newTransactionStart = false) => inner.TakeSnapshot(newTransactionStart);
+    public Snapshot TakeSnapshot(bool newTransactionStart = false, int? _ = null) => inner.TakeSnapshot(newTransactionStart);
 
     public void WarmUp(AccessList? accessList) => inner.WarmUp(accessList);
 
     public void WarmUp(Address address) => inner.WarmUp(address);
 
-    public void ClearStorage(Address address)
+    public void ClearStorage(Address address, int? _ = null)
     {
         RecordEmptySlots(address);
         inner.ClearStorage(address);
@@ -194,71 +194,71 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 
     public void RecalculateStateRoot() => inner.RecalculateStateRoot();
 
-    public void DeleteAccount(Address address)
+    public void DeleteAccount(Address address, int? _ = null)
     {
         RecordEmptySlots(address);
         inner.DeleteAccount(address);
     }
 
-    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default, int? _ = null)
     {
         RecordEmptySlots(address);
         inner.CreateAccount(address, in balance, in nonce);
     }
 
-    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default, int? _ = null)
     {
         RecordEmptySlots(address);
         inner.CreateAccountIfNotExists(address, in balance, in nonce);
     }
 
-    public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+    public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false, int? _ = null)
     {
         RecordEmptySlots(address);
         return inner.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
 
-    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? _ = null)
     {
         RecordEmptySlots(address);
         inner.AddToBalance(address, in balanceChange, spec);
     }
 
-    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? _ = null)
     {
         RecordEmptySlots(address);
         inner.AddToBalance(address, in balanceChange, spec, out oldBalance);
     }
 
-    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? _ = null)
     {
         RecordEmptySlots(address);
         return inner.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec);
     }
-    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? _ = null)
     {
         RecordEmptySlots(address);
         return inner.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, out oldBalance);
     }
 
-    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? _ = null)
     {
         RecordEmptySlots(address);
         inner.SubtractFromBalance(address, in balanceChange, spec);
     }
 
-    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? _ = null)
     {
         RecordEmptySlots(address);
         inner.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
     }
 
-    public void IncrementNonce(Address address, UInt256 delta)
+    public void IncrementNonce(Address address, UInt256 delta, int? _ = null)
     {
         RecordEmptySlots(address);
         inner.IncrementNonce(address, delta);
     }
-    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? _ = null)
     {
         RecordEmptySlots(address);
         inner.IncrementNonce(address, delta, out oldNonce);
@@ -270,7 +270,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         inner.DecrementNonce(address, delta);
     }
 
-    public void SetNonce(Address address, in UInt256 nonce)
+    public void SetNonce(Address address, in UInt256 nonce, int? _ = null)
     {
         RecordEmptySlots(address);
         inner.SetNonce(address, nonce);
@@ -286,15 +286,15 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 
     public ArrayPoolList<AddressAsKey>? GetAccountChanges() => inner.GetAccountChanges();
 
-    public void ResetTransient() => inner.ResetTransient();
+    public void ResetTransient(int? _ = null) => inner.ResetTransient();
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => inner.BeginScope(baseBlock);
 
-    public void CreateEmptyAccountIfDeleted(Address address)
-    {
-        RecordEmptySlots(address);
-        inner.CreateEmptyAccountIfDeleted(address);
-    }
+    // public void CreateEmptyAccountIfDeleted(Address address)
+    // {
+    //     RecordEmptySlots(address);
+    //     inner.CreateEmptyAccountIfDeleted(address);
+    // }
 
     private void RecordSlot(in StorageCell storageCell) => RecordEmptySlots(storageCell.Address).Add(storageCell.Index);
 

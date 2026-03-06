@@ -50,8 +50,12 @@ public class WitnessGeneratingBlockProcessingEnv(
         WitnessGeneratingHeaderFinder witnessGenHeaderFinder = new(headerStore);
         WitnessGeneratingWorldState state = new(baseWorldState, stateReader, witnessCapturingTrieStore, witnessGenHeaderFinder);
         TransactionProcessor<EthereumGasPolicy> txProcessor = CreateTransactionProcessor(state, witnessGenHeaderFinder);
-        IBlockProcessor.IBlockTransactionsExecutor txExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(
-            new ExecuteTransactionProcessorAdapter(txProcessor), state);
+        // IBlockProcessor.IBlockTransactionsExecutor txExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(
+        //     new ExecuteTransactionProcessorAdapter(txProcessor), state);
+
+        // todo: fix
+        IBlockProcessor.IBlockTransactionsExecutor txExecutor = null;
+
 
         IHeaderValidator headerValidator = new HeaderValidator(blockTree, sealValidator, specProvider, logManager);
         IBlockValidator blockValidator = new BlockValidator(new TxValidator(specProvider.ChainId), headerValidator,

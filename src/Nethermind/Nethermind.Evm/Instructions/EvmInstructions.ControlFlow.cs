@@ -240,7 +240,7 @@ internal static partial class EvmInstructions
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
         // Retrieve the current balance for transfer.
-        UInt256 result = state.GetBalance(executingAccount);
+        UInt256 result = state.GetBalance(executingAccount, vm.TxExecutionContext.BlockAccessIndex);
 
         if (executingAccount == inheritor)
         {
@@ -255,14 +255,14 @@ internal static partial class EvmInstructions
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
         // For certain specs, charge gas if transferring to a dead account.
-        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
+        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor, vm.TxExecutionContext.BlockAccessIndex))
         {
             if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
                 goto OutOfGas;
         }
 
         // If account creation rules apply, ensure gas is charged for new accounts.
-        bool inheritorAccountExists = state.AccountExists(inheritor);
+        bool inheritorAccountExists = state.AccountExists(inheritor, vm.TxExecutionContext.BlockAccessIndex);
         if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
         {
             if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
@@ -272,11 +272,12 @@ internal static partial class EvmInstructions
         // Create or update the inheritor account with the transferred balance.
         if (!inheritorAccountExists)
         {
-            state.CreateAccount(inheritor, result);
+            // should only be recorded if result != 0 ?
+            state.CreateAccount(inheritor, result, blockAccessIndex: vm.TxExecutionContext.BlockAccessIndex);
         }
         else if (!inheritor.Equals(executingAccount))
         {
-            state.AddToBalance(inheritor, result, spec);
+            state.AddToBalance(inheritor, result, spec, vm.TxExecutionContext.BlockAccessIndex);
         }
 
         // Special handling when SELFDESTRUCT is limited to the same transaction.
@@ -284,7 +285,7 @@ internal static partial class EvmInstructions
             goto Stop; // Avoid burning ETH if contract is not destroyed per EIP clarification
 
         // Subtract the balance from the executing account.
-        state.SubtractFromBalance(executingAccount, result, spec);
+        state.SubtractFromBalance(executingAccount, result, spec, vm.TxExecutionContext.BlockAccessIndex);
 
     // Jump forward to be unpredicted by the branch predictor.
     Stop:
