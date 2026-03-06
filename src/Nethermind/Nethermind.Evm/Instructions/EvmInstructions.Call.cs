@@ -176,15 +176,17 @@ internal static partial class EvmInstructions
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
 
-        // Retrieve code information for the call and schedule background analysis if needed.
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
-
-        // If contract is large, charge for access
+        // EIP-7907: charge for large contract access before the 63/64 gas rule
+        // so that the gas deduction affects the child call's gas limit.
+        CodeInfo codeInfo;
         if (spec.IsEip7907Enabled)
         {
-            uint excessContractSize = (uint)Math.Max(0, codeInfo.CodeSpan.Length - CodeSizeConstants.MaxCodeSizeEip170);
-            if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.VmState.AccessTracker, ref gas))
+            if (!ChargeEip7907CallAccess(vm, codeSource, ref gas, out codeInfo))
                 goto OutOfGas;
+        }
+        else
+        {
+            Unsafe.SkipInit(out codeInfo);
         }
 
         // Get remaining gas for 63/64 calculation
@@ -245,6 +247,12 @@ internal static partial class EvmInstructions
         Snapshot snapshot = state.TakeSnapshot();
         // Subtract the transfer value from the caller's balance.
         state.SubtractFromBalance(caller, in transferValue, spec);
+
+        // Deferred code lookup for the common path (EIP-7907 inactive).
+        if (!spec.IsEip7907Enabled)
+        {
+            codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
+        }
 
         // Fast-path for calls to externally owned accounts (non-contracts)
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
@@ -309,6 +317,26 @@ internal static partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool ChargeEip7907CallAccess<TGasPolicy>(
+        VirtualMachine<TGasPolicy> vm, Address codeSource, ref TGasPolicy gas, out CodeInfo codeInfo)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, vm.Spec);
+        uint excessContractSize = (uint)Math.Max(0, codeInfo.CodeSpan.Length - CodeSizeConstants.MaxCodeSizeEip170);
+        return excessContractSize == 0 || ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.VmState.AccessTracker, ref gas);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool ChargeEip7907ExtCodeAccess<TGasPolicy>(
+        ReadOnlySpan<byte> externalCode, Address address, in StackAccessTracker accessTracker, ref TGasPolicy gas)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        uint excessContractSize = (uint)Math.Max(0, externalCode.Length - CodeSizeConstants.MaxCodeSizeEip170);
+        return excessContractSize == 0 || ChargeForLargeContractAccess(excessContractSize, address, in accessTracker, ref gas);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool ChargeForLargeContractAccess<TGasPolicy>(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {

@@ -171,13 +171,9 @@ internal static partial class EvmInstructions
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
-            // If contract is large, charge for access
-            if (spec.IsEip7907Enabled)
-            {
-                uint excessContractSize = (uint)Math.Max(0, externalCode.Length - CodeSizeConstants.MaxCodeSizeEip170);
-                if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, address, in vm.VmState.AccessTracker, ref gas))
-                    goto OutOfGas;
-            }
+            // EIP-7907: charge for large contract access (out-of-line to keep this method lean)
+            if (spec.IsEip7907Enabled && !ChargeEip7907ExtCodeAccess(externalCode, address, in vm.VmState.AccessTracker, ref gas))
+                goto OutOfGas;
 
             // If EOF is enabled and the code is an EOF contract, use a predefined magic value.
             if (spec.IsEofEnabled && EofValidator.IsEof(externalCode, out _))

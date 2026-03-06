@@ -38,7 +38,10 @@ public struct StackAccessTracker() : IDisposable
         => _trackingState.AccessedStorageCells.Add(storageCell);
 
     public readonly bool WarmUpLargeContract(Address address)
-        => _trackingState.LargeContractList.Add(address);
+    {
+        _trackingState.HasLargeContracts = true;
+        return _trackingState.LargeContractList.Add(address);
+    }
 
     public readonly void WarmUp(AccessList? accessList)
     {
@@ -71,7 +74,8 @@ public struct StackAccessTracker() : IDisposable
         _storageKeysSnapshots = _trackingState.AccessedStorageCells.TakeSnapshot();
         _destroyListSnapshots = _trackingState.DestroyList.TakeSnapshot();
         _logsSnapshots = _trackingState.Logs.TakeSnapshot();
-        _largeContractList = _trackingState.LargeContractList.TakeSnapshot();
+        if (_trackingState.HasLargeContracts)
+            _largeContractList = _trackingState.LargeContractList.TakeSnapshot();
     }
 
     public readonly void Restore()
@@ -80,7 +84,8 @@ public struct StackAccessTracker() : IDisposable
         _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
         _trackingState.DestroyList.Restore(_destroyListSnapshots);
         _trackingState.Logs.Restore(_logsSnapshots);
-        _trackingState.LargeContractList.Restore(_largeContractList);
+        if (_trackingState.HasLargeContracts)
+            _trackingState.LargeContractList.Restore(_largeContractList);
     }
 
     public void Dispose()
@@ -107,6 +112,7 @@ public struct StackAccessTracker() : IDisposable
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
         public JournalSet<AddressAsKey> LargeContractList { get; } = new(AddressAsKey.EqualityComparer);
+        public bool HasLargeContracts;
 
         private void Clear()
         {
@@ -115,7 +121,11 @@ public struct StackAccessTracker() : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
-            LargeContractList.Clear();
+            if (HasLargeContracts)
+            {
+                LargeContractList.Clear();
+                HasLargeContracts = false;
+            }
         }
     }
 }
