@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
+using System.Formats.Tar;
 using System.IO.Compression;
 using Nethermind.Logging;
+using ZstdSharp;
 
 namespace Nethermind.Init.Snapshot;
 
@@ -33,7 +34,7 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         if (IsZip(extension))
             ExtractZip(archivePath, destinationPath);
         else if (IsTarArchive(extension, innerExtension))
-            ExtractTar(archivePath, destinationPath, stripComponents);
+            ExtractTar(archivePath, destinationPath, extension, stripComponents);
         else
             throw new NotSupportedException($"Unsupported snapshot archive format: {archivePath}");
     }
@@ -47,31 +48,60 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
     private static void ExtractZip(string archivePath, string destinationPath) =>
         ZipFile.ExtractToDirectory(archivePath, destinationPath);
 
-    private static void ExtractTar(string archivePath, string destinationPath, int stripComponents)
+    private static void ExtractTar(string archivePath, string destinationPath, string extension, int stripComponents)
     {
         Directory.CreateDirectory(destinationPath);
 
-        using Process process = new()
+        using FileStream fileStream = File.OpenRead(archivePath);
+        using Stream decompressedStream = OpenDecompressedStream(fileStream, extension);
+        using TarReader tarReader = new(decompressedStream);
+
+        string destinationRoot = destinationPath.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+        TarEntry? entry;
+        while ((entry = tarReader.GetNextEntry()) is not null)
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "tar",
-                RedirectStandardError = true,
-                UseShellExecute = false,
-            }
+            string? strippedPath = StripLeadingComponents(entry.Name, stripComponents);
+            if (strippedPath is null)
+                continue;
+
+            string destinationEntryPath = Path.GetFullPath(Path.Combine(destinationPath, strippedPath));
+
+            if (!destinationEntryPath.StartsWith(destinationRoot, StringComparison.Ordinal))
+                throw new IOException($"Tar entry '{entry.Name}' would extract outside the destination directory.");
+
+            if (entry.EntryType is TarEntryType.Directory)
+                Directory.CreateDirectory(destinationEntryPath);
+            else
+                entry.ExtractToFile(destinationEntryPath, overwrite: true);
+        }
+    }
+
+    private static Stream OpenDecompressedStream(Stream fileStream, string extension) =>
+        extension switch
+        {
+            ".zst" or ".zstd" => new DecompressionStream(fileStream),
+            ".gz" => new GZipStream(fileStream, CompressionMode.Decompress),
+            _ => fileStream
         };
-        process.StartInfo.ArgumentList.Add("--extract");
-        process.StartInfo.ArgumentList.Add("--file");
-        process.StartInfo.ArgumentList.Add(archivePath);
-        process.StartInfo.ArgumentList.Add("--directory");
-        process.StartInfo.ArgumentList.Add(destinationPath);
-        process.StartInfo.ArgumentList.Add($"--strip-components={stripComponents}");
 
-        process.Start();
-        string stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit();
+    /// <summary>
+    /// Strips <paramref name="count"/> leading path components from <paramref name="entryName"/>.
+    /// Returns <c>null</c> if the entry should be skipped (not enough components).
+    /// </summary>
+    private static string? StripLeadingComponents(string entryName, int count)
+    {
+        ReadOnlySpan<char> remaining = entryName.AsSpan().TrimStart('/');
 
-        if (process.ExitCode != 0)
-            throw new IOException($"tar extraction failed (exit {process.ExitCode}): {stderr}");
+        for (int i = 0; i < count; i++)
+        {
+            int slash = remaining.IndexOf('/');
+            if (slash < 0)
+                return null;
+
+            remaining = remaining[(slash + 1)..];
+        }
+
+        return remaining.IsEmpty ? null : remaining.ToString();
     }
 }
