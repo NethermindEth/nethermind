@@ -492,6 +492,7 @@ public class IpcSocketMessageStreamTests
         // "M1\nABCDE\nFGHIJK\nLM\n" = 21 bytes
         byte[] data = Encoding.UTF8.GetBytes($"{msg1}\n{msg2}\n{msg3}\n{msg4}\n");
         await sendStream.WriteAsync(data);
+        sendStream.Socket.Shutdown(SocketShutdown.Send);
         // Ensure all data is flushed and in the kernel buffer
         await Task.Delay(50);
 
