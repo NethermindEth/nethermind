@@ -51,7 +51,7 @@ public partial class DebugRpcModuleTests
         using Context ctx = await Context.Create();
 
         Address address = Build.An.Address.TestObject;
-        UInt256 balance = 100.Ether(), send = balance / 2;
+        UInt256 balance = 100.Ether, send = balance / 2;
 
         JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { from = $"{address}", to = $"{TestItem.AddressC}", value = send.ToString("X") }
@@ -68,7 +68,7 @@ public partial class DebugRpcModuleTests
         TestRpcBlockchain blockchain = ctx.Blockchain;
 
         Address address = Build.An.Address.TestObject;
-        UInt256 balance = 100.Ether();
+        UInt256 balance = 100.Ether;
 
         await blockchain.AddFunds(address, balance / 2);
         await blockchain.AddFunds(address, balance / 2);

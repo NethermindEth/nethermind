@@ -121,7 +121,7 @@ public class Era1ModuleTests
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create(
             configurer: (builder) => builder.WithGenesisPostProcessor((block, state, specProvider) =>
             {
-                state.AddToBalance(TestItem.AddressA, 10.Ether(), specProvider.GenesisSpec);
+                state.AddToBalance(TestItem.AddressA, 10.Ether, specProvider.GenesisSpec);
             })
         );
 
@@ -218,7 +218,7 @@ public class Era1ModuleTests
             builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
                 new FunctionalGenesisPostProcessor((block) =>
                 {
-                    worldState.AddToBalance(TestItem.AddressA, 10.Ether(), specProvider.GenesisSpec);
+                    worldState.AddToBalance(TestItem.AddressA, 10.Ether, specProvider.GenesisSpec);
                     worldState.RecalculateStateRoot();
                 }));
         });

@@ -76,7 +76,7 @@ public class RpcModuleTests
             {
                 SwitchRound = 0,
                 MaxMasternodes = maxMasternodes ?? 108,
-                CertThreshold = certThreshold ?? 0.667,
+                CertificateThreshold = certThreshold ?? 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = timeoutPeriod ?? 30000,
                 MinePeriod = minePeriod ?? 2
@@ -104,7 +104,7 @@ public class RpcModuleTests
             TimeoutPeriod = timeoutPeriod ?? 30000,    // 30 seconds timeout
 
             // Consensus thresholds
-            CertThreshold = certThreshold ?? 0.667,     // 2/3 majority for certificates
+            CertificateThreshold = certThreshold ?? 0.667,     // 2/3 majority for certificates
 
             // Reward configuration (in Wei)
             Reward = 5000,

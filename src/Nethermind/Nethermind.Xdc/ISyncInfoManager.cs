@@ -11,8 +11,8 @@ namespace Nethermind.Xdc;
 public interface ISyncInfoManager
 {
     void ProcessSyncInfo(SyncInfo syncInfo);
-    bool VerifySyncInfo(SyncInfo syncInfo);
     SyncInfo GetSyncInfo();
 
     IDictionary<(ulong Round, Hash256 Hash), ArrayPoolList<SyncInfo>> GetReceivedSyncInfos();
+    bool VerifySyncInfo(SyncInfo syncInfo, out string error);
 }

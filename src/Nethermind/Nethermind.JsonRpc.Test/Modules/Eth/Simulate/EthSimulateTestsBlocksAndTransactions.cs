@@ -42,7 +42,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     Calls = [ToRpcForInput(txToFail), ToRpcForInput(tx)],
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
-                        { TestItem.AddressA, new AccountOverride { Balance = 2100.Ether() } }
+                        { TestItem.AddressA, new AccountOverride { Balance = 2100.Ether } }
                     }
                 }
             ],
@@ -159,8 +159,8 @@ public class EthSimulateTestsBlocksAndTransactions
             GasLimit = 50_000,
             SenderAddress = from.Address,
             To = to,
-            GasPrice = 20.GWei(),
-            DecodedMaxFeePerGas = type >= TxType.EIP1559 ? 20.GWei() : 0
+            GasPrice = 20.GWei,
+            DecodedMaxFeePerGas = type >= TxType.EIP1559 ? 20.GWei : 0
         };
 
         ethereumEcdsa.Sign(from, tx);
