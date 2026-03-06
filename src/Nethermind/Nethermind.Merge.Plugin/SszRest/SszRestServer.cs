@@ -145,12 +145,15 @@ public sealed class SszRestServer : IDisposable
             string? authHeader = ctx.Request.Headers["Authorization"];
             if (!await _auth.Authenticate(authHeader ?? string.Empty))
             {
+                if (_logger.IsWarn) _logger.Warn($"SSZ-REST auth failed from {ctx.Request.RemoteEndPoint} for {ctx.Request.Url?.AbsolutePath}");
                 await WriteJsonError(ctx.Response, 401, -32001, "Unauthorized");
                 return;
             }
 
-            // Only POST is allowed
-            if (!string.Equals(ctx.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
+            // Only POST and GET are allowed
+            string httpMethod = ctx.Request.HttpMethod;
+            if (!string.Equals(httpMethod, "POST", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(httpMethod, "GET", StringComparison.OrdinalIgnoreCase))
             {
                 await WriteJsonError(ctx.Response, 405, -32600, "Method not allowed");
                 return;
@@ -196,24 +199,40 @@ public sealed class SszRestServer : IDisposable
 
         if (_logger.IsInfo) _logger.Info($"SSZ-REST << engine_v{version}_{method} ({body.Length} bytes)");
 
+        // Handle GET /engine/v{N}/payloads/{payload_id} for RESTful getPayload
+        if (method.StartsWith("payloads/", StringComparison.Ordinal))
+        {
+            string payloadIdHex = method["payloads/".Length..];
+            await HandleGetPayloadByPath(ctx, payloadIdHex, version);
+            return;
+        }
+
         switch (method)
         {
             case "new_payload":
+            case "payloads":
                 await HandleNewPayload(ctx, body, version);
                 break;
             case "forkchoice_updated":
+            case "forkchoice":
                 await HandleForkchoiceUpdated(ctx, body, version);
                 break;
             case "get_payload":
-                await HandleGetPayload(ctx, body, version);
+            {
+                byte[] payloadId = SszRestCodec.DecodeGetPayloadRequest(body);
+                await HandleGetPayload(ctx, payloadId, version);
                 break;
+            }
             case "get_blobs":
+            case "blobs":
                 await HandleGetBlobs(ctx, body, version);
                 break;
             case "exchange_capabilities":
+            case "capabilities":
                 await HandleExchangeCapabilities(ctx, body);
                 break;
             case "get_client_version":
+            case "client/version":
                 await HandleGetClientVersion(ctx, body);
                 break;
             default:
@@ -251,7 +270,7 @@ public sealed class SszRestServer : IDisposable
         try
         {
             (ExecutionPayloadV3 payload, byte[]?[] versionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests) =
-                SszEncoding.DecodeNewPayloadRequest(body, version);
+                SszRestCodec.DecodeNewPayloadRequest(body, version);
 
             // Set the additional fields that the handler expects
             payload.ParentBeaconBlockRoot = parentBeaconBlockRoot;
@@ -265,7 +284,7 @@ public sealed class SszRestServer : IDisposable
                 return;
             }
 
-            byte[] responseBytes = SszEncoding.EncodePayloadStatus(result.Data);
+            byte[] responseBytes = SszRestCodec.EncodePayloadStatus(result.Data);
             await WriteSszResponse(ctx.Response, responseBytes);
         }
         catch (SszDecodingException ex)
@@ -279,7 +298,7 @@ public sealed class SszRestServer : IDisposable
         try
         {
             (ForkchoiceStateV1 state, PayloadAttributes? attributes) =
-                SszEncoding.DecodeForkchoiceUpdatedRequest(body, version);
+                SszRestCodec.DecodeForkchoiceUpdatedRequest(body, version);
 
             ResultWrapper<ForkchoiceUpdatedV1Result> result = await _forkchoiceUpdatedHandler.Handle(state, attributes, version);
 
@@ -289,7 +308,7 @@ public sealed class SszRestServer : IDisposable
                 return;
             }
 
-            byte[] responseBytes = SszEncoding.EncodeForkchoiceUpdatedResponse(result.Data);
+            byte[] responseBytes = SszRestCodec.EncodeForkchoiceUpdatedResponse(result.Data);
             await WriteSszResponse(ctx.Response, responseBytes);
         }
         catch (SszDecodingException ex)
@@ -298,12 +317,35 @@ public sealed class SszRestServer : IDisposable
         }
     }
 
-    private async Task HandleGetPayload(HttpListenerContext ctx, byte[] body, int version)
+    private async Task HandleGetPayloadByPath(HttpListenerContext ctx, string payloadIdHex, int version)
     {
         try
         {
-            byte[] payloadId = SszEncoding.DecodeGetPayloadRequest(body);
+            // Strip 0x prefix if present
+            if (payloadIdHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                payloadIdHex = payloadIdHex[2..];
 
+            byte[] payloadId = Convert.FromHexString(payloadIdHex);
+            if (payloadId.Length < 8)
+            {
+                byte[] padded = new byte[8];
+                payloadId.CopyTo(padded, 0);
+                payloadId = padded;
+            }
+
+            if (_logger.IsInfo) _logger.Info($"SSZ-REST << GET engine_v{version}_get_payload (id={payloadIdHex})");
+            await HandleGetPayload(ctx, payloadId, version);
+        }
+        catch (FormatException)
+        {
+            await WriteJsonError(ctx.Response, 400, ErrorCodes.InvalidParams, $"Invalid payload ID hex: {payloadIdHex}");
+        }
+    }
+
+    private async Task HandleGetPayload(HttpListenerContext ctx, byte[] payloadId, int version)
+    {
+        try
+        {
             switch (version)
             {
                 case 1:
@@ -314,7 +356,7 @@ public sealed class SszRestServer : IDisposable
                         await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Payload not found");
                         return;
                     }
-                    byte[] responseBytes = SszEncoding.EncodeExecutionPayload(result.Data, 1);
+                    byte[] responseBytes = SszRestCodec.EncodeExecutionPayload(result.Data, 1);
                     await WriteSszResponse(ctx.Response, responseBytes);
                     break;
                 }
@@ -326,7 +368,7 @@ public sealed class SszRestServer : IDisposable
                         await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Payload not found");
                         return;
                     }
-                    byte[] responseBytes = SszEncoding.EncodeGetPayloadResponse(
+                    byte[] responseBytes = SszRestCodec.EncodeGetPayloadResponse(
                         result.Data.ExecutionPayload, result.Data.BlockValue, null, false, null, version);
                     await WriteSszResponse(ctx.Response, responseBytes);
                     break;
@@ -339,7 +381,7 @@ public sealed class SszRestServer : IDisposable
                         await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Payload not found");
                         return;
                     }
-                    byte[] responseBytes = SszEncoding.EncodeGetPayloadResponse(
+                    byte[] responseBytes = SszRestCodec.EncodeGetPayloadResponse(
                         result.Data.ExecutionPayload, result.Data.BlockValue, result.Data.BlobsBundle, result.Data.ShouldOverrideBuilder, null, version);
                     await WriteSszResponse(ctx.Response, responseBytes);
                     break;
@@ -352,7 +394,7 @@ public sealed class SszRestServer : IDisposable
                         await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Payload not found");
                         return;
                     }
-                    byte[] responseBytes = SszEncoding.EncodeGetPayloadResponse(
+                    byte[] responseBytes = SszRestCodec.EncodeGetPayloadResponse(
                         result.Data.ExecutionPayload, result.Data.BlockValue, result.Data.BlobsBundle, result.Data.ShouldOverrideBuilder, result.Data.ExecutionRequests, version);
                     await WriteSszResponse(ctx.Response, responseBytes);
                     break;
@@ -365,8 +407,7 @@ public sealed class SszRestServer : IDisposable
                         await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Payload not found");
                         return;
                     }
-                    // V5 uses BlobsBundleV2 but we encode with the BlobsBundleV1 base for SSZ wire compat
-                    byte[] responseBytes = SszEncoding.EncodeGetPayloadResponse(
+                    byte[] responseBytes = SszRestCodec.EncodeGetPayloadResponse(
                         result.Data.ExecutionPayload, result.Data.BlockValue, null, result.Data.ShouldOverrideBuilder, result.Data.ExecutionRequests, version);
                     await WriteSszResponse(ctx.Response, responseBytes);
                     break;
@@ -386,7 +427,7 @@ public sealed class SszRestServer : IDisposable
     {
         try
         {
-            byte[][] hashes = SszEncoding.DecodeGetBlobsRequest(body);
+            byte[][] hashes = SszRestCodec.DecodeGetBlobsRequest(body);
             ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await _getBlobsHandler.HandleAsync(hashes);
 
             if (result.Result != Result.Success)
@@ -411,7 +452,7 @@ public sealed class SszRestServer : IDisposable
     {
         try
         {
-            string[] incomingCaps = SszEncoding.DecodeCapabilities(body);
+            string[] incomingCaps = SszRestCodec.DecodeCapabilities(body);
             ResultWrapper<IEnumerable<string>> result = _capabilitiesHandler.Handle(incomingCaps);
 
             if (result.Result != Result.Success)
@@ -420,7 +461,7 @@ public sealed class SszRestServer : IDisposable
                 return;
             }
 
-            byte[] responseBytes = SszEncoding.EncodeCapabilities(result.Data);
+            byte[] responseBytes = SszRestCodec.EncodeCapabilities(result.Data);
             await WriteSszResponse(ctx.Response, responseBytes);
         }
         catch (SszDecodingException ex)
@@ -436,12 +477,12 @@ public sealed class SszRestServer : IDisposable
             // Decode the incoming client version (we don't actually use it, just parse for validation)
             if (body.Length > 0)
             {
-                SszEncoding.DecodeClientVersions(body);
+                SszRestCodec.DecodeClientVersions(body);
             }
 
             // Return our client version
             ClientVersionV1[] versions = [new ClientVersionV1()];
-            byte[] responseBytes = SszEncoding.EncodeClientVersions(versions);
+            byte[] responseBytes = SszRestCodec.EncodeClientVersions(versions);
             await WriteSszResponse(ctx.Response, responseBytes);
         }
         catch (SszDecodingException ex)
