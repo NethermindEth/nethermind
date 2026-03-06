@@ -488,8 +488,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IReleaseSpec spec = BlockExecutionContext.Spec;
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
-        long availableGasForState = gasAvailableForCodeDeposit + TGasPolicy.GetStateReservoir(in previousState.Gas);
-        bool hasEnoughGas = gasAvailableForCodeDeposit >= regularDepositCost && availableGasForState >= stateDepositCost;
+        long childStateReservoir = TGasPolicy.GetStateReservoir(in previousState.Gas);
+        long stateSpill = Math.Max(0, stateDepositCost - childStateReservoir);
+        bool hasEnoughGas = gasAvailableForCodeDeposit >= regularDepositCost + stateSpill;
         bool chargedCodeDeposit = false;
 
         if (hasEnoughGas && !invalidCode)
