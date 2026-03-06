@@ -104,7 +104,7 @@ public abstract class BlockchainTestBase
 
         // Assert.That(isEngineTest || test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance, "Expected genesis spec to be Frontier for blockchain tests");
 
-        if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
+        if (test.Network.IsEip4844Enabled || test.NetworkAfterTransition?.IsEip4844Enabled == true)
         {
             await KzgPolynomialCommitments.InitializeAsync();
         }

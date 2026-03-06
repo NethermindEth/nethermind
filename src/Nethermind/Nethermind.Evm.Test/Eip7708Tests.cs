@@ -154,9 +154,9 @@ public class Eip7708Tests(bool eip7708Enabled)
         AssertLogs(chain.ReceiptStorage.Get(block), [ExpectedTransferLog(contractAddress, inheritor, contractBalance)], contractBalance != 0);
     }
 
-    [TestCase(1_000_000ul, 1, TestName = "selfdestruct to self")]
-    [TestCase(0ul, 0, TestName = "selfdestruct to self zero balance")]
-    public async Task SelfDestruct_ToSelf_EmitsSelfDestructLog(ulong contractBalance, int expectedLogCountWhenEnabled)
+    [TestCase(1_000_000ul, TestName = "selfdestruct to self cross tx")]
+    [TestCase(0ul, TestName = "selfdestruct to self cross tx zero balance")]
+    public async Task SelfDestruct_ToSelf_InCrossTx_EmitsNoLog(ulong contractBalance)
     {
         BasicTestBlockchain chain = await CreateChain();
 
@@ -196,7 +196,7 @@ public class Eip7708Tests(bool eip7708Enabled)
 
         Block block = await chain.AddBlock(callTx);
 
-        AssertLogs(chain.ReceiptStorage.Get(block), [ExpectedBurnLog(contractAddress, contractBalance)], contractBalance != 0);
+        AssertLogs(chain.ReceiptStorage.Get(block), [], logCondition: false);
     }
 
     [Test]

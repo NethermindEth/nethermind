@@ -275,6 +275,7 @@ namespace Ethereum.Test.Base
                         CurrentGasLimit = testJson.Env.CurrentGasLimit,
                         CurrentNumber = testJson.Env.CurrentNumber,
                         CurrentTimestamp = testJson.Env.CurrentTimestamp,
+                        CurrentSlotNumber = testJson.Env.SlotNumber,
                         CurrentBaseFee = testJson.Env.CurrentBaseFee,
                         CurrentRandom = testJson.Env.CurrentRandom,
                         CurrentBeaconRoot = testJson.Env.CurrentBeaconRoot,

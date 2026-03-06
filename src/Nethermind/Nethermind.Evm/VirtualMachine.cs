@@ -509,6 +509,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         if (!chargedCodeDeposit && (spec.FailOnOutOfGasCodeDeposit || invalidCode))
         {
+            TGasPolicy.RevertRefundedCreateStateGasOnFailure(ref _currentState.Gas, in previousState.Gas);
             TGasPolicy.Consume(ref _currentState.Gas, gasAvailableForCodeDeposit);
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)

@@ -231,6 +231,31 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void Eip8037_failed_create_reverts_refunded_child_state_gas()
+        {
+            EthereumGasPolicy parent = new()
+            {
+                Value = 1_000,
+                StateReservoir = 400,
+                StateGasUsed = 25,
+            };
+
+            EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 300);
+            EthereumGasPolicy.UpdateGas(ref child, 100);
+            EthereumGasPolicy.ConsumeStateGas(ref child, 150);
+
+            EthereumGasPolicy.Refund(ref parent, in child);
+
+            Assert.That(parent.StateReservoir, Is.EqualTo(250));
+            Assert.That(parent.StateGasUsed, Is.EqualTo(175));
+
+            EthereumGasPolicy.RevertRefundedCreateStateGasOnFailure(ref parent, in child);
+
+            Assert.That(parent.StateReservoir, Is.EqualTo(400));
+            Assert.That(parent.StateGasUsed, Is.EqualTo(25));
+        }
+
+        [Test]
         public void Eip8037_revert_restores_state_gas_to_parent_reservoir()
         {
             EthereumGasPolicy parent = new()
