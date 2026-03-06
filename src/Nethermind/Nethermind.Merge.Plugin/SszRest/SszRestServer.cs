@@ -3,16 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Net;
-using System.Text;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core;
-using Nethermind.Core.Authentication;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -22,14 +16,18 @@ using Nethermind.Merge.Plugin.Handlers;
 namespace Nethermind.Merge.Plugin.SszRest;
 
 /// <summary>
-/// HTTP server for EIP-8161 SSZ-REST Engine API transport.
-/// Serves binary SSZ-encoded payloads over REST endpoints alongside the JSON-RPC Engine API.
-/// Wire-compatible with geth and erigon implementations.
+/// Response from SSZ-REST handler.
 /// </summary>
-public sealed class SszRestServer : IDisposable
+public readonly record struct SszRestResponse(int StatusCode, string ContentType, byte[] Body);
+
+/// <summary>
+/// EIP-8161 SSZ-REST Engine API handler.
+/// Serves binary SSZ-encoded payloads over REST endpoints on the same port as JSON-RPC.
+/// Requests with paths starting with /engine/ are routed here by the ASP.NET Core middleware.
+/// This class has no ASP.NET Core dependencies — it takes raw path/body and returns a response.
+/// </summary>
+public sealed class SszRestHandler
 {
-    private readonly HttpListener _listener;
-    private readonly IRpcAuthentication _auth;
     private readonly IAsyncHandler<ExecutionPayload, PayloadStatusV1> _newPayloadHandler;
     private readonly IForkchoiceUpdatedHandler _forkchoiceUpdatedHandler;
     private readonly IAsyncHandler<byte[], ExecutionPayload?> _getPayloadV1Handler;
@@ -40,11 +38,8 @@ public sealed class SszRestServer : IDisposable
     private readonly IHandler<IEnumerable<string>, IEnumerable<string>> _capabilitiesHandler;
     private readonly IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> _getBlobsHandler;
     private readonly ILogger _logger;
-    private CancellationTokenSource? _cts;
-    private Task? _listenTask;
 
-    public SszRestServer(
-        IRpcAuthentication auth,
+    public SszRestHandler(
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadHandler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedHandler,
         IAsyncHandler<byte[], ExecutionPayload?> getPayloadV1Handler,
@@ -54,10 +49,8 @@ public sealed class SszRestServer : IDisposable
         IAsyncHandler<byte[], GetPayloadV5Result?> getPayloadV5Handler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
-        IMergeConfig mergeConfig,
         ILogManager logManager)
     {
-        _auth = auth;
         _newPayloadHandler = newPayloadHandler;
         _forkchoiceUpdatedHandler = forkchoiceUpdatedHandler;
         _getPayloadV1Handler = getPayloadV1Handler;
@@ -68,177 +61,55 @@ public sealed class SszRestServer : IDisposable
         _capabilitiesHandler = capabilitiesHandler;
         _getBlobsHandler = getBlobsHandler;
         _logger = logManager.GetClassLogger();
-
-        int port = mergeConfig.SszRestPort;
-        _listener = new HttpListener();
-        _listener.Prefixes.Add($"http://+:{port}/");
     }
 
     /// <summary>
-    /// Starts the SSZ-REST server listening for requests.
+    /// Handles a request. Path should start with /engine/v{N}/{method}.
     /// </summary>
-    public void Start()
-    {
-        _cts = new CancellationTokenSource();
-        try
-        {
-            _listener.Start();
-        }
-        catch (HttpListenerException ex)
-        {
-            if (_logger.IsError) _logger.Error($"Failed to start SSZ-REST server: {ex.Message}", ex);
-            return;
-        }
-
-        if (_logger.IsInfo) _logger.Info($"SSZ-REST Engine API server started on {string.Join(", ", _listener.Prefixes)}");
-        _listenTask = AcceptLoop(_cts.Token);
-    }
-
-    /// <summary>
-    /// Stops the SSZ-REST server.
-    /// </summary>
-    public async Task StopAsync()
-    {
-        _cts?.Cancel();
-        _listener.Stop();
-        if (_listenTask is not null)
-        {
-            try { await _listenTask; } catch (OperationCanceledException) { }
-        }
-    }
-
-    public void Dispose()
-    {
-        _cts?.Cancel();
-        _listener.Close();
-        _cts?.Dispose();
-    }
-
-    private async Task AcceptLoop(CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested)
-        {
-            HttpListenerContext ctx;
-            try
-            {
-                ctx = await _listener.GetContextAsync().WaitAsync(ct);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (HttpListenerException)
-            {
-                break;
-            }
-
-            // Process each request without awaiting to allow concurrent handling
-            _ = ProcessRequestAsync(ctx);
-        }
-    }
-
-    private async Task ProcessRequestAsync(HttpListenerContext ctx)
+    public async Task<SszRestResponse> HandleAsync(string httpMethod, string path, byte[] body)
     {
         try
         {
-            // JWT authentication
-            string? authHeader = ctx.Request.Headers["Authorization"];
-            if (!await _auth.Authenticate(authHeader ?? string.Empty))
-            {
-                if (_logger.IsWarn) _logger.Warn($"SSZ-REST auth failed from {ctx.Request.RemoteEndPoint} for {ctx.Request.Url?.AbsolutePath}");
-                await WriteJsonError(ctx.Response, 401, -32001, "Unauthorized");
-                return;
-            }
-
-            // Only POST and GET are allowed
-            string httpMethod = ctx.Request.HttpMethod;
             if (!string.Equals(httpMethod, "POST", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(httpMethod, "GET", StringComparison.OrdinalIgnoreCase))
             {
-                await WriteJsonError(ctx.Response, 405, -32600, "Method not allowed");
-                return;
+                return MakeJsonError(405, -32600, "Method not allowed");
             }
 
-            string? path = ctx.Request.Url?.AbsolutePath;
-            if (path is null)
-            {
-                await WriteJsonError(ctx.Response, 400, -32600, "Invalid request path");
-                return;
-            }
-
-            // Read request body
-            byte[] body;
-            using (MemoryStream ms = new())
-            {
-                await ctx.Request.InputStream.CopyToAsync(ms);
-                body = ms.ToArray();
-            }
-
-            await RouteRequest(ctx, path, body);
+            return await RouteRequest(path, body);
         }
         catch (Exception ex)
         {
             if (_logger.IsError) _logger.Error($"SSZ-REST request processing error: {ex.Message}", ex);
-            try
-            {
-                await WriteJsonError(ctx.Response, 500, -32603, "Internal error");
-            }
-            catch { /* best effort */ }
+            return MakeJsonError(500, -32603, "Internal error");
         }
     }
 
-    private async Task RouteRequest(HttpListenerContext ctx, string path, byte[] body)
+    private async Task<SszRestResponse> RouteRequest(string path, byte[] body)
     {
-        // Route format: /engine/v{version}/{method}
-        // Parse version and method from the path
         if (!TryParsePath(path, out int version, out string method))
         {
-            await WriteJsonError(ctx.Response, 404, -32601, $"Unknown endpoint: {path}");
-            return;
+            return MakeJsonError(404, -32601, $"Unknown endpoint: {path}");
         }
 
         if (_logger.IsInfo) _logger.Info($"SSZ-REST << engine_v{version}_{method} ({body.Length} bytes)");
 
-        // Handle GET /engine/v{N}/payloads/{payload_id} for RESTful getPayload
         if (method.StartsWith("payloads/", StringComparison.Ordinal))
         {
             string payloadIdHex = method["payloads/".Length..];
-            await HandleGetPayloadByPath(ctx, payloadIdHex, version);
-            return;
+            return await HandleGetPayloadByPath(payloadIdHex, version);
         }
 
-        switch (method)
+        return method switch
         {
-            case "new_payload":
-            case "payloads":
-                await HandleNewPayload(ctx, body, version);
-                break;
-            case "forkchoice_updated":
-            case "forkchoice":
-                await HandleForkchoiceUpdated(ctx, body, version);
-                break;
-            case "get_payload":
-            {
-                byte[] payloadId = SszRestCodec.DecodeGetPayloadRequest(body);
-                await HandleGetPayload(ctx, payloadId, version);
-                break;
-            }
-            case "get_blobs":
-            case "blobs":
-                await HandleGetBlobs(ctx, body, version);
-                break;
-            case "exchange_capabilities":
-            case "capabilities":
-                await HandleExchangeCapabilities(ctx, body);
-                break;
-            case "get_client_version":
-            case "client/version":
-                await HandleGetClientVersion(ctx, body);
-                break;
-            default:
-                await WriteJsonError(ctx.Response, 404, -32601, $"Unknown method: {method}");
-                break;
-        }
+            "new_payload" or "payloads" => await HandleNewPayload(body, version),
+            "forkchoice_updated" or "forkchoice" => await HandleForkchoiceUpdated(body, version),
+            "get_payload" => await HandleGetPayload(SszRestCodec.DecodeGetPayloadRequest(body), version),
+            "get_blobs" or "blobs" => await HandleGetBlobs(body),
+            "exchange_capabilities" or "capabilities" => await HandleExchangeCapabilities(body),
+            "get_client_version" or "client/version" => await HandleGetClientVersion(body),
+            _ => MakeJsonError(404, -32601, $"Unknown method: {method}")
+        };
     }
 
     private static bool TryParsePath(string path, out int version, out string method)
@@ -246,7 +117,6 @@ public sealed class SszRestServer : IDisposable
         version = 0;
         method = string.Empty;
 
-        // Expected: /engine/v{N}/{method_name}
         ReadOnlySpan<char> pathSpan = path.AsSpan();
         if (!pathSpan.StartsWith("/engine/v", StringComparison.OrdinalIgnoreCase))
             return false;
@@ -265,35 +135,30 @@ public sealed class SszRestServer : IDisposable
 
     #region Handlers
 
-    private async Task HandleNewPayload(HttpListenerContext ctx, byte[] body, int version)
+    private async Task<SszRestResponse> HandleNewPayload(byte[] body, int version)
     {
         try
         {
-            (ExecutionPayloadV3 payload, byte[]?[] versionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests) =
+            (ExecutionPayloadV3 payload, byte[]?[] _, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests) =
                 SszRestCodec.DecodeNewPayloadRequest(body, version);
 
-            // Set the additional fields that the handler expects
             payload.ParentBeaconBlockRoot = parentBeaconBlockRoot;
             payload.ExecutionRequests = executionRequests;
 
             ResultWrapper<PayloadStatusV1> result = await _newPayloadHandler.HandleAsync(payload);
 
             if (result.Result != Result.Success)
-            {
-                await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Unknown error");
-                return;
-            }
+                return MakeJsonError(400, result.ErrorCode, result.Result.Error ?? "Unknown error");
 
-            byte[] responseBytes = SszRestCodec.EncodePayloadStatus(result.Data);
-            await WriteSszResponse(ctx.Response, responseBytes);
+            return MakeSszResponse(SszRestCodec.EncodePayloadStatus(result.Data));
         }
         catch (SszDecodingException ex)
         {
-            await WriteJsonError(ctx.Response, 400, ErrorCodes.InvalidParams, ex.Message);
+            return MakeJsonError(400, ErrorCodes.InvalidParams, ex.Message);
         }
     }
 
-    private async Task HandleForkchoiceUpdated(HttpListenerContext ctx, byte[] body, int version)
+    private async Task<SszRestResponse> HandleForkchoiceUpdated(byte[] body, int version)
     {
         try
         {
@@ -303,25 +168,20 @@ public sealed class SszRestServer : IDisposable
             ResultWrapper<ForkchoiceUpdatedV1Result> result = await _forkchoiceUpdatedHandler.Handle(state, attributes, version);
 
             if (result.Result != Result.Success)
-            {
-                await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Unknown error");
-                return;
-            }
+                return MakeJsonError(400, result.ErrorCode, result.Result.Error ?? "Unknown error");
 
-            byte[] responseBytes = SszRestCodec.EncodeForkchoiceUpdatedResponse(result.Data);
-            await WriteSszResponse(ctx.Response, responseBytes);
+            return MakeSszResponse(SszRestCodec.EncodeForkchoiceUpdatedResponse(result.Data));
         }
         catch (SszDecodingException ex)
         {
-            await WriteJsonError(ctx.Response, 400, ErrorCodes.InvalidParams, ex.Message);
+            return MakeJsonError(400, ErrorCodes.InvalidParams, ex.Message);
         }
     }
 
-    private async Task HandleGetPayloadByPath(HttpListenerContext ctx, string payloadIdHex, int version)
+    private async Task<SszRestResponse> HandleGetPayloadByPath(string payloadIdHex, int version)
     {
         try
         {
-            // Strip 0x prefix if present
             if (payloadIdHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
                 payloadIdHex = payloadIdHex[2..];
 
@@ -334,15 +194,15 @@ public sealed class SszRestServer : IDisposable
             }
 
             if (_logger.IsInfo) _logger.Info($"SSZ-REST << GET engine_v{version}_get_payload (id={payloadIdHex})");
-            await HandleGetPayload(ctx, payloadId, version);
+            return await HandleGetPayload(payloadId, version);
         }
         catch (FormatException)
         {
-            await WriteJsonError(ctx.Response, 400, ErrorCodes.InvalidParams, $"Invalid payload ID hex: {payloadIdHex}");
+            return MakeJsonError(400, ErrorCodes.InvalidParams, $"Invalid payload ID hex: {payloadIdHex}");
         }
     }
 
-    private async Task HandleGetPayload(HttpListenerContext ctx, byte[] payloadId, int version)
+    private async Task<SszRestResponse> HandleGetPayload(byte[] payloadId, int version)
     {
         try
         {
@@ -352,78 +212,52 @@ public sealed class SszRestServer : IDisposable
                 {
                     ResultWrapper<ExecutionPayload?> result = await _getPayloadV1Handler.HandleAsync(payloadId);
                     if (result.Result != Result.Success || result.Data is null)
-                    {
-                        await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Payload not found");
-                        return;
-                    }
-                    byte[] responseBytes = SszRestCodec.EncodeExecutionPayload(result.Data, 1);
-                    await WriteSszResponse(ctx.Response, responseBytes);
-                    break;
+                        return MakeJsonError(400, result.ErrorCode, result.Result.Error ?? "Payload not found");
+                    return MakeSszResponse(SszRestCodec.EncodeExecutionPayload(result.Data, 1));
                 }
                 case 2:
                 {
                     ResultWrapper<GetPayloadV2Result?> result = await _getPayloadV2Handler.HandleAsync(payloadId);
                     if (result.Result != Result.Success || result.Data is null)
-                    {
-                        await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Payload not found");
-                        return;
-                    }
-                    byte[] responseBytes = SszRestCodec.EncodeGetPayloadResponse(
-                        result.Data.ExecutionPayload, result.Data.BlockValue, null, false, null, version);
-                    await WriteSszResponse(ctx.Response, responseBytes);
-                    break;
+                        return MakeJsonError(400, result.ErrorCode, result.Result.Error ?? "Payload not found");
+                    return MakeSszResponse(SszRestCodec.EncodeGetPayloadResponse(
+                        result.Data.ExecutionPayload, result.Data.BlockValue, null, false, null, version));
                 }
                 case 3:
                 {
                     ResultWrapper<GetPayloadV3Result?> result = await _getPayloadV3Handler.HandleAsync(payloadId);
                     if (result.Result != Result.Success || result.Data is null)
-                    {
-                        await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Payload not found");
-                        return;
-                    }
-                    byte[] responseBytes = SszRestCodec.EncodeGetPayloadResponse(
-                        result.Data.ExecutionPayload, result.Data.BlockValue, result.Data.BlobsBundle, result.Data.ShouldOverrideBuilder, null, version);
-                    await WriteSszResponse(ctx.Response, responseBytes);
-                    break;
+                        return MakeJsonError(400, result.ErrorCode, result.Result.Error ?? "Payload not found");
+                    return MakeSszResponse(SszRestCodec.EncodeGetPayloadResponse(
+                        result.Data.ExecutionPayload, result.Data.BlockValue, result.Data.BlobsBundle, result.Data.ShouldOverrideBuilder, null, version));
                 }
                 case 4:
                 {
                     ResultWrapper<GetPayloadV4Result?> result = await _getPayloadV4Handler.HandleAsync(payloadId);
                     if (result.Result != Result.Success || result.Data is null)
-                    {
-                        await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Payload not found");
-                        return;
-                    }
-                    byte[] responseBytes = SszRestCodec.EncodeGetPayloadResponse(
-                        result.Data.ExecutionPayload, result.Data.BlockValue, result.Data.BlobsBundle, result.Data.ShouldOverrideBuilder, result.Data.ExecutionRequests, version);
-                    await WriteSszResponse(ctx.Response, responseBytes);
-                    break;
+                        return MakeJsonError(400, result.ErrorCode, result.Result.Error ?? "Payload not found");
+                    return MakeSszResponse(SszRestCodec.EncodeGetPayloadResponse(
+                        result.Data.ExecutionPayload, result.Data.BlockValue, result.Data.BlobsBundle, result.Data.ShouldOverrideBuilder, result.Data.ExecutionRequests, version));
                 }
                 case 5:
                 {
                     ResultWrapper<GetPayloadV5Result?> result = await _getPayloadV5Handler.HandleAsync(payloadId);
                     if (result.Result != Result.Success || result.Data is null)
-                    {
-                        await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Payload not found");
-                        return;
-                    }
-                    byte[] responseBytes = SszRestCodec.EncodeGetPayloadResponse(
-                        result.Data.ExecutionPayload, result.Data.BlockValue, null, result.Data.ShouldOverrideBuilder, result.Data.ExecutionRequests, version);
-                    await WriteSszResponse(ctx.Response, responseBytes);
-                    break;
+                        return MakeJsonError(400, result.ErrorCode, result.Result.Error ?? "Payload not found");
+                    return MakeSszResponse(SszRestCodec.EncodeGetPayloadResponse(
+                        result.Data.ExecutionPayload, result.Data.BlockValue, null, result.Data.ShouldOverrideBuilder, result.Data.ExecutionRequests, version));
                 }
                 default:
-                    await WriteJsonError(ctx.Response, 400, ErrorCodes.InvalidParams, $"Unsupported getPayload version: {version}");
-                    break;
+                    return MakeJsonError(400, ErrorCodes.InvalidParams, $"Unsupported getPayload version: {version}");
             }
         }
         catch (SszDecodingException ex)
         {
-            await WriteJsonError(ctx.Response, 400, ErrorCodes.InvalidParams, ex.Message);
+            return MakeJsonError(400, ErrorCodes.InvalidParams, ex.Message);
         }
     }
 
-    private async Task HandleGetBlobs(HttpListenerContext ctx, byte[] body, int version)
+    private async Task<SszRestResponse> HandleGetBlobs(byte[] body)
     {
         try
         {
@@ -431,24 +265,17 @@ public sealed class SszRestServer : IDisposable
             ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await _getBlobsHandler.HandleAsync(hashes);
 
             if (result.Result != Result.Success)
-            {
-                await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Unknown error");
-                return;
-            }
+                return MakeJsonError(400, result.ErrorCode, result.Result.Error ?? "Unknown error");
 
-            // For getBlobsV1, we return the SSZ-encoded result.
-            // The response format is complex (list of optional blob+proof pairs).
-            // For now, return empty success since getBlobsV1 response SSZ encoding
-            // requires blob data which is large; CL clients primarily use newPayload/forkchoiceUpdated.
-            await WriteSszResponse(ctx.Response, []);
+            return MakeSszResponse([]);
         }
         catch (SszDecodingException ex)
         {
-            await WriteJsonError(ctx.Response, 400, ErrorCodes.InvalidParams, ex.Message);
+            return MakeJsonError(400, ErrorCodes.InvalidParams, ex.Message);
         }
     }
 
-    private async Task HandleExchangeCapabilities(HttpListenerContext ctx, byte[] body)
+    private Task<SszRestResponse> HandleExchangeCapabilities(byte[] body)
     {
         try
         {
@@ -456,38 +283,29 @@ public sealed class SszRestServer : IDisposable
             ResultWrapper<IEnumerable<string>> result = _capabilitiesHandler.Handle(incomingCaps);
 
             if (result.Result != Result.Success)
-            {
-                await WriteJsonError(ctx.Response, 400, result.ErrorCode, result.Result.Error ?? "Unknown error");
-                return;
-            }
+                return Task.FromResult(MakeJsonError(400, result.ErrorCode, result.Result.Error ?? "Unknown error"));
 
-            byte[] responseBytes = SszRestCodec.EncodeCapabilities(result.Data);
-            await WriteSszResponse(ctx.Response, responseBytes);
+            return Task.FromResult(MakeSszResponse(SszRestCodec.EncodeCapabilities(result.Data)));
         }
         catch (SszDecodingException ex)
         {
-            await WriteJsonError(ctx.Response, 400, ErrorCodes.InvalidParams, ex.Message);
+            return Task.FromResult(MakeJsonError(400, ErrorCodes.InvalidParams, ex.Message));
         }
     }
 
-    private async Task HandleGetClientVersion(HttpListenerContext ctx, byte[] body)
+    private Task<SszRestResponse> HandleGetClientVersion(byte[] body)
     {
         try
         {
-            // Decode the incoming client version (we don't actually use it, just parse for validation)
             if (body.Length > 0)
-            {
                 SszRestCodec.DecodeClientVersions(body);
-            }
 
-            // Return our client version
             ClientVersionV1[] versions = [new ClientVersionV1()];
-            byte[] responseBytes = SszRestCodec.EncodeClientVersions(versions);
-            await WriteSszResponse(ctx.Response, responseBytes);
+            return Task.FromResult(MakeSszResponse(SszRestCodec.EncodeClientVersions(versions)));
         }
         catch (SszDecodingException ex)
         {
-            await WriteJsonError(ctx.Response, 400, ErrorCodes.InvalidParams, ex.Message);
+            return Task.FromResult(MakeJsonError(400, ErrorCodes.InvalidParams, ex.Message));
         }
     }
 
@@ -495,24 +313,11 @@ public sealed class SszRestServer : IDisposable
 
     #region Response helpers
 
-    private static async Task WriteSszResponse(HttpListenerResponse response, byte[] data)
-    {
-        response.StatusCode = 200;
-        response.ContentType = "application/octet-stream";
-        response.ContentLength64 = data.Length;
-        await response.OutputStream.WriteAsync(data);
-        response.Close();
-    }
+    private static SszRestResponse MakeSszResponse(byte[] data)
+        => new(200, "application/octet-stream", data);
 
-    private static async Task WriteJsonError(HttpListenerResponse response, int httpStatus, int code, string message)
-    {
-        response.StatusCode = httpStatus;
-        response.ContentType = "application/json";
-        byte[] body = JsonSerializer.SerializeToUtf8Bytes(new { code, message });
-        response.ContentLength64 = body.Length;
-        await response.OutputStream.WriteAsync(body);
-        response.Close();
-    }
+    private static SszRestResponse MakeJsonError(int httpStatus, int code, string message)
+        => new(httpStatus, "application/json", JsonSerializer.SerializeToUtf8Bytes(new { code, message }));
 
     #endregion
 }

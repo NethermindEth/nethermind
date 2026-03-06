@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
@@ -18,6 +19,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Sockets;
 
@@ -81,6 +83,12 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         Bootstrap.Instance.JsonSerializer = api.EthereumJsonSerializer;
         Bootstrap.Instance.JsonRpcLocalStats = api.JsonRpcLocalStats!;
         Bootstrap.Instance.JsonRpcAuthentication = auth;
+
+        // EIP-8161: Pass SSZ-REST handler to the ASP.NET Core pipeline if available.
+        if (api.Context.TryResolve<SszRestHandler>(out SszRestHandler? sszRestHandler))
+        {
+            Bootstrap.Instance.SszRestHandler = sszRestHandler;
+        }
 
         JsonRpcRunner? jsonRpcRunner = new(
             jsonRpcProcessor,

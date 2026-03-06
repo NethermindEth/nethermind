@@ -235,26 +235,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
     public Task InitRpcModules()
     {
-        if (MergeEnabled && mergeConfig.SszRestEnabled)
-        {
-            StartSszRestServer();
-        }
-
         return Task.CompletedTask;
-    }
-
-    private void StartSszRestServer()
-    {
-        try
-        {
-            SszRestServer sszRestServer = _api.Context.Resolve<SszRestServer>();
-            sszRestServer.Start();
-            _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _ = sszRestServer.StopAsync()));
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsError) _logger.Error($"Failed to start SSZ-REST server: {ex.Message}", ex);
-        }
     }
 
     private void AddPostMergeNetworkProtocols()
@@ -373,20 +354,12 @@ public class BaseMergePluginModule : Module
                 })
                 .AddSingleton<IHttpClient, DefaultHttpClient>()
 
-                // EIP-8161 SSZ-REST Engine API transport
-                .AddSingleton<SszRestServer>(ctx =>
+                // EIP-8161 SSZ-REST Engine API transport (served on engine port alongside JSON-RPC)
+                .AddSingleton<SszRestHandler>(ctx =>
                 {
-                    IMergeConfig mc = ctx.Resolve<IMergeConfig>();
-                    IJsonRpcConfig jsonRpcConfig = ctx.Resolve<IJsonRpcConfig>();
                     ILogManager logManager = ctx.Resolve<ILogManager>();
-                    ILogger logger = logManager.GetClassLogger();
 
-                    IRpcAuthentication auth = string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile) || jsonRpcConfig.UnsecureDevNoRpcAuthentication
-                        ? NoAuthentication.Instance
-                        : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, ctx.Resolve<ITimestamper>(), logger);
-
-                    return new SszRestServer(
-                        auth,
+                    return new SszRestHandler(
                         ctx.Resolve<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
                         ctx.Resolve<IForkchoiceUpdatedHandler>(),
                         ctx.Resolve<IAsyncHandler<byte[], ExecutionPayload?>>(),
@@ -396,7 +369,6 @@ public class BaseMergePluginModule : Module
                         ctx.Resolve<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
                         ctx.Resolve<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
                         ctx.Resolve<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
-                        mc,
                         logManager);
                 })
             ;
