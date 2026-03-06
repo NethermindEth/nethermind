@@ -38,11 +38,11 @@ public sealed class ReadOnlySnapshotBundle(
     private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
     private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
 
-    public Account? GetAccount(Address address)
+    public Account? GetAccount(Address address) => GetAccount(address, new HashedKey<AddressAsKey>(address));
+
+    public Account? GetAccount(Address address, HashedKey<AddressAsKey> key)
     {
         GuardDispose();
-
-        HashedKey<AddressAsKey> key = new(address);
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
