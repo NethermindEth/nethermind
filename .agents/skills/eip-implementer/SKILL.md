@@ -18,7 +18,8 @@ EIP-XXXX Implementation:
 - [ ] Step 3: Route spec changes to implementation patterns
 - [ ] Step 4: Present implementation plan (WAIT for user approval)
 - [ ] Step 5: Load relevant `.agents/rules/` per Codebase Rules, then implement
-- [ ] Step 6: Build, test, and format
+- [ ] Step 6: Build, test (all related EIPs), and format
+- [ ] Step 7: Self-review via subagent with review skill
 ```
 
 ## Workflow
@@ -117,6 +118,15 @@ Follow the plan step by step. For each file:
 1. Read the file first to understand existing patterns.
 2. Make the minimal, focused change needed.
 
+#### Backward compatibility with prerequisite EIPs
+
+EIPs build on prerequisites — e.g., an EIP may assume EIP-1559 base fee fields already exist. The new EIP's feature flag controls **only the new behavior**. When implementing:
+
+- **Guard new behavior behind `IsEip{number}Enabled`**, but do NOT wrap prerequisite logic that already exists under its own flag. The new flag must be additive — when it is `false`, the client must behave identically to before.
+- **Never assume the new flag is the only one that matters.** If the EIP spec says "the access list from EIP-2930 is extended with...", the access-list logic is already gated by its own flag. Your code adds to it; it does not replace or re-gate it.
+- **Test the flag-off path explicitly.** Create at least one test where `IsEip{number}Enabled = false` and verify that all existing behavior (gas costs, validation, header fields, tx processing) is unchanged. This catches accidental coupling where new code runs even when the flag is off.
+- **Check call sites that branch on related flags.** If you add a new field to `BlockHeader` or `Transaction`, search for every place the related prerequisite fields are read and ensure your addition does not alter those code paths when your flag is off.
+
 After all code changes, add or update tests:
 
 - **ALWAYS** use `Prepare.EvmCode` fluent builder for test bytecode — never construct byte arrays manually
@@ -126,6 +136,24 @@ After all code changes, add or update tests:
 ### Step 6 — Verify
 
 Build, run relevant tests, and format. If build or tests fail → fix → repeat.
+
+#### Test scope — all related EIP tests, not just yours
+
+Your EIP may share validation logic, gas accounting, or data structures with prerequisite and sibling EIPs. A seemingly isolated change can break tests for EIPs you didn't touch.
+
+- Run the full test project for each module you touched, not just your new test file.
+- If that takes too long, at minimum also run tests whose names match EIPs listed in the `Requires` header from Step 1.
+- If any pre-existing test fails, do NOT skip or modify it without understanding why. A failing prerequisite-EIP test means you broke backward compatibility — fix your implementation, not the old test.
+
+### Step 7 — Self-Review
+
+Before claiming the implementation is complete, launch a **subagent** to review your changes with fresh eyes. Provide it with:
+
+- The EIP spec (and prerequisite specs from Step 1)
+- The diff of all changed files
+- The `review` skill
+
+The subagent should review as if reviewing a PR from someone else — checking for spec compliance, backward compatibility, consensus correctness, and test coverage. If it finds issues, fix them and re-run Step 6.
 
 ## Edge cases
 
@@ -140,6 +168,9 @@ Build, run relevant tests, and format. If build or tests fail → fix → repeat
 | Forgetting flag registration files     | EIP flags need 10 files across 5 layers, not just IReleaseSpec — see reference doc                                                                       |
 | Skipping build verification            | Always run Step 6 before claiming implementation is complete                                                                                             |
 | Breaking unrelated tests               | If your EIP changes gas costs or tx validation, **check whether existing tests break** — disable the flag in affected tests via `OverridableReleaseSpec` |
+| Breaking behavior when new flag is off | New code must be fully gated behind `IsEip{number}Enabled` — test the flag-off path to confirm existing behavior is unchanged                            |
+| Only running new test file             | Run the full test project for each touched module; prerequisite EIP tests can break silently                                                              |
+| Skipping self-review                   | Always run Step 7 — the implementation author misses spec gaps that a fresh review catches                                                                |
 
 ## References
 
