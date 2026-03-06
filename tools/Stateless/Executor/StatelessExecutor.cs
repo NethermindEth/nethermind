@@ -24,11 +24,11 @@ public static class StatelessExecutor
         using (witness)
         {
             ISpecProvider specProvider = GetSpecProvider(chainId);
-            //IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            //EthereumEcdsa ecdsa = new(chainId);
+            IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
+            EthereumEcdsa ecdsa = new(chainId);
 
-            //foreach (Transaction tx in suggestedBlock.Transactions)
-            //    tx.SenderAddress ??= ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+            foreach (Transaction tx in suggestedBlock.Transactions)
+                tx.SenderAddress ??= ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
             return TryExecute(suggestedBlock, witness, specProvider, out processedBlock);
         }
@@ -59,10 +59,6 @@ public static class StatelessExecutor
         using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(baseBlock);
 
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
-
-        // TODO: Remove once the sender recovery is implemented
-        suggestedBlock.Transactions[0].SenderAddress ??= new("0xaa2fbe31e6d774d2e70b1375f3bc791ae487fd50");
-        suggestedBlock.Transactions[1].SenderAddress ??= new("0xa4a59a31360b4ab10d28755f53697b60c796ee03");
 
         (processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(
             suggestedBlock,
