@@ -849,8 +849,8 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
             // the exception will be thrown if the account did not exist before the call
             try
             {
-                SpanSource verifyOneProof = ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!);
-                new AccountDecoder().Decode(verifyOneProof.Span);
+                CappedArray<byte> verifyOneProof = ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!);
+                new AccountDecoder().Decode(verifyOneProof.AsSpan());
             }
             catch (Exception)
             {
