@@ -56,13 +56,23 @@ public class RocksDbConfigFactoryTests
     }
 
     [Test]
-    public void WillAutomaticallySetMaxOpenFilesWhenNotConfigured()
+    public void WillAutomaticallySetMaxOpenFilesWhenLowSystemLimit()
     {
         var dbConfig = new DbConfig();
-        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, 10000), LimboLogs.Instance);
+        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, 1024), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        // With system limit of 10000, should set per-db limit to 10000 * 0.8 = 8000
-        config.MaxOpenFiles.Should().Be(8000);
+        // With low system limit of 1024: max(128, 1024 * 0.8 / 15) = max(128, 54) = 128
+        config.MaxOpenFiles.Should().Be(128);
+    }
+
+    [Test]
+    public void WillSetCorrectLimitForHighSystemLimit()
+    {
+        var dbConfig = new DbConfig();
+        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, 65536), LimboLogs.Instance);
+        IRocksDbConfig config = factory.GetForDatabase("State0", null);
+        // With system limit of 65536: max(128, 65536 * 0.8 / 15) = max(128, 3495) = 3495
+        config.MaxOpenFiles.Should().Be(3495);
     }
 
     [Test]
@@ -90,11 +100,11 @@ public class RocksDbConfigFactoryTests
     public void WillEnforceMinimumMaxOpenFiles()
     {
         var dbConfig = new DbConfig();
-        // Very low system limit (e.g., 1000) should still give minimum of 256
-        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, 1000), LimboLogs.Instance);
+        // Very low system limit should still give minimum of 128
+        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, 100), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        // With system limit of 1000, would be 1000 * 0.8 = 800
-        config.MaxOpenFiles.Should().Be(800);
+        // With system limit of 100: max(128, 100 * 0.8 / 15) = max(128, 5) = 128
+        config.MaxOpenFiles.Should().Be(128);
     }
 
     [Test]

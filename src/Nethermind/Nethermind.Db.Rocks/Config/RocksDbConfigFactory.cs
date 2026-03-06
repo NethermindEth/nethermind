@@ -24,11 +24,11 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
             if (dbConfig.MaxOpenFiles is null && hardwareInfo.MaxOpenFilesLimit.HasValue)
             {
                 int systemLimit = hardwareInfo.MaxOpenFilesLimit.Value;
-                // Apply 80% of system limit as safety margin to account for:
-                // - Multiple databases (~15) each using this limit
-                // - System operations and network sockets
-                // - Other file descriptors needed by the application
-                int perDbLimit = Math.Max(256, (int)(systemLimit * 0.8));
+                // The OS limit is shared across all file descriptors in the process.
+                // Divide by estimated DB count since MaxOpenFiles is applied per database.
+                // Reserve 20% for non-RocksDB file descriptors (sockets, logs, etc.).
+                const int EstimatedDbCount = 15;
+                int perDbLimit = Math.Max(128, (int)(systemLimit * 0.8 / EstimatedDbCount));
 
                 if (_logger.IsInfo)
                 {
