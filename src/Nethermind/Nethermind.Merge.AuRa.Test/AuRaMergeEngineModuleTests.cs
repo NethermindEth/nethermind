@@ -83,8 +83,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         "0x2802e8a8c34cd1ea",
         _auraWithdrawalContractAddress)]
     public override async Task Should_process_block_as_expected_V6(string latestValidHash, string blockHash, string stateRoot, string payloadId, string? auraWithdrawalContractAddress)
-    {}
-        // => await base.Should_process_block_as_expected_V6(latestValidHash, blockHash, stateRoot, payloadId, auraWithdrawalContractAddress);
+    { }
+    // => await base.Should_process_block_as_expected_V6(latestValidHash, blockHash, stateRoot, payloadId, auraWithdrawalContractAddress);
 
     [TestCase(
         "0x76a808853695a92a5ff69afcf430667e54cfcde244d68cdb941ae0f2d543c24e",
@@ -110,7 +110,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         _auraWithdrawalContractAddress)]
     public override Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? auraWithdrawalContractAddress)
         => Task.CompletedTask;
-        // => base.NewPayloadV5_rejects_invalid_BAL_after_processing(blockHash, stateRoot, invalidBalHash, expectedBalHash, auraWithdrawalContractAddress);
+    // => base.NewPayloadV5_rejects_invalid_BAL_after_processing(blockHash, stateRoot, invalidBalHash, expectedBalHash, auraWithdrawalContractAddress);
 
     [TestCase(
         "0x5ab84199bdbe0d5806de6bffbbd52cf31ede2248f842395aa9a850a45ad9f4db",
