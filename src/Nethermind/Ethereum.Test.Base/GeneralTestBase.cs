@@ -135,6 +135,7 @@ namespace Ethereum.Test.Base
                 BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
                 RequestsHash = test.RequestsHash ?? (spec.RequestsEnabled ? ExecutionRequestExtensions.EmptyRequestsHash : null),
                 BlockAccessListHash = spec.IsEip7928Enabled ? Keccak.OfAnEmptySequenceRlp : null,
+                SlotNumber = test.CurrentSlotNumber,
                 TxRoot = TxTrie.CalculateRoot(transactions),
                 ReceiptsRoot = test.PostReceiptsRoot,
             };

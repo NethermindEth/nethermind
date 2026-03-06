@@ -7,10 +7,13 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -120,6 +123,46 @@ public class TransactionProcessorFeeTests
 
         tracer.Fees.Should().Be(525213);
         tracer.BurntFees.Should().Be(58357);
+    }
+
+    [Test]
+    public void Destroyed_gas_beneficiary_burn_log_includes_priority_fee()
+    {
+        _spec.IsEip7708Enabled = true;
+
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        TestTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithMaxPriorityFeePerGas(3)
+            .WithMaxFeePerGas(10)
+            .WithGasLimit(21_000)
+            .TestObject;
+        BlockHeader header = Build.A.Block
+            .WithBeneficiary(SelfDestructAddress)
+            .WithBaseFeePerGas(1)
+            .TestObject
+            .Header;
+
+        JournalSet<Address> destroyList = new(Address.EqualityComparer);
+        destroyList.Add(SelfDestructAddress);
+
+        JournalCollection<LogEntry> logs = new();
+        TransactionSubstate substate = new((default(CodeInfo), ReadOnlyMemory<byte>.Empty), 0, destroyList, logs, false, false);
+        LogCapturingTxTracer tracer = new();
+
+        processor.InvokePayFees(tx, header, _spec, tracer, in substate, 21_000, 3, UInt256.Zero, StatusCode.Success, 1_000);
+
+        LogEntry[] emittedLogs = logs.ToArray();
+        emittedLogs.Should().ContainSingle();
+        emittedLogs[0].Should().BeEquivalentTo(new LogEntry(
+            TransferLog.Sender,
+            ((UInt256)64_000).ToBigEndian(),
+            [TransferLog.BurnSignature, SelfDestructAddress.ToHash().ToHash256()]));
+        tracer.Logs.Should().ContainSingle().Which.Should().BeEquivalentTo(emittedLogs[0]);
+        _stateProvider.GetBalance(SelfDestructAddress).Should().Be(UInt256.Zero);
     }
 
     [TestCase(false)]
@@ -321,4 +364,30 @@ public class TransactionProcessorFeeTests
         }
         tracer.EndBlockTrace();
     }
+
+    private sealed class TestTransactionProcessor(
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+        ISpecProvider specProvider,
+        IWorldState worldState,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
+        ILogManager logManager)
+        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    {
+        public void InvokePayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode, in UInt256 destroyedGasBeneficiaryBalance)
+            => PayFees(tx, header, spec, tracer, in substate, spentGas, premiumPerGas, blobBaseFee, statusCode, destroyedGasBeneficiaryBalance);
+    }
+
+    private sealed class LogCapturingTxTracer : TxTracer
+    {
+        public LogCapturingTxTracer()
+        {
+            IsTracingLogs = true;
+        }
+
+        public System.Collections.Generic.List<LogEntry> Logs { get; } = [];
+
+        public override void ReportLog(LogEntry log) => Logs.Add(log);
+    }
+
 }

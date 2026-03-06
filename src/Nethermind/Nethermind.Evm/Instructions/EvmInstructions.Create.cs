@@ -105,13 +105,6 @@ internal static partial class EvmInstructions
             salt = stack.PopWord256();
         }
 
-        // EIP-3860: Limit the maximum size of the initialization code.
-        if (spec.IsEip3860Enabled)
-        {
-            if (initCodeLength > spec.MaxInitCodeSize)
-                goto OutOfGas;
-        }
-
         bool outOfGas = false;
         long initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas);
         if (outOfGas)
@@ -128,6 +121,11 @@ internal static partial class EvmInstructions
         };
 
         if (createOutOfGas) goto OutOfGas;
+
+        // EIP-3860: initcode length violations are exceptional halts, but under EIP-8037
+        // the create-state charge has already been applied before the size check.
+        if (spec.IsEip3860Enabled && initCodeLength > spec.MaxInitCodeSize)
+            goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, vm.VmState))

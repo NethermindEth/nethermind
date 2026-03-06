@@ -236,6 +236,7 @@ internal static partial class EvmInstructions
 
         Address executingAccount = vmState.Env.ExecutingAccount;
         bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
+        bool suppressSelfBurnLog = spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount);
         // Mark the executing account for destruction if allowed.
         if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
@@ -245,7 +246,10 @@ internal static partial class EvmInstructions
 
         if (executingAccount == inheritor)
         {
-            vm.AddBurnLog(executingAccount, result);
+            if (!suppressSelfBurnLog)
+            {
+                vm.AddBurnLog(executingAccount, result);
+            }
         }
         else
         {
@@ -280,7 +284,7 @@ internal static partial class EvmInstructions
         }
 
         // Special handling when SELFDESTRUCT is limited to the same transaction.
-        if (spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount))
+        if (suppressSelfBurnLog)
             goto Stop; // Avoid burning ETH if contract is not destroyed per EIP clarification
 
         // Subtract the balance from the executing account.

@@ -14,6 +14,7 @@ namespace Ethereum.Test.Base
         public long CurrentGasLimit { get; set; }
         public long CurrentNumber { get; set; }
         public ulong CurrentTimestamp { get; set; }
+        public ulong? SlotNumber { get; set; }
         public UInt256? CurrentBaseFee { get; set; }
         public Hash256 PreviousHash { get; set; }
         public Hash256? CurrentRandom { get; set; }

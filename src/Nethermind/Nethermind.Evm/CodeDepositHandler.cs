@@ -45,6 +45,29 @@ namespace Nethermind.Evm
             return true;
         }
 
+        public static bool CalculateMeteredCostIgnoringSizeLimit(IReleaseSpec spec, int byteCodeLength, out long regularCost, out long stateCost)
+        {
+            stateCost = 0;
+
+            if (!spec.IsEip8037Enabled)
+            {
+                regularCost = GasCostOf.CodeDeposit * byteCodeLength;
+                return true;
+            }
+
+            long words = EvmCalculations.Div32Ceiling((ulong)byteCodeLength, out bool outOfGas);
+            if (outOfGas)
+            {
+                regularCost = long.MaxValue;
+                stateCost = long.MaxValue;
+                return false;
+            }
+
+            regularCost = GasCostOf.CodeDepositRegularPerWord * words;
+            stateCost = GasCostOf.CodeDepositState * byteCodeLength;
+            return true;
+        }
+
         public static bool CodeIsInvalid(IReleaseSpec spec, ReadOnlyMemory<byte> code, int fromVersion)
             => !CodeIsValid(spec, code, fromVersion);
 

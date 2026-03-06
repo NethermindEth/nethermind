@@ -643,20 +643,15 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
-        if (programCounter >= code.Length)
-        {
-            depth = 0;
-            return false;
-        }
-
-        byte imm = code[programCounter];
-        int mask = (90 - imm) >> 31;
-        depth = imm + 17 + (mask & -37);
+        byte imm = programCounter < code.Length ? code[programCounter] : (byte)0;
+        depth = (imm + 145) & 0xff;
 
         if ((uint)(imm - 0x5B) <= 0x24)
             return false;
 
-        programCounter++;
+        if (programCounter < code.Length)
+            programCounter++;
+
         return true;
     }
 
@@ -671,31 +666,22 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
-        if (programCounter >= code.Length)
-        {
-            n = m = 0;
-            return false;
-        }
-
-        byte imm = code[programCounter];
-
-        // k = imm if imm <= 79, imm - 48 if imm >= 128
-        int k = imm - (~((imm - 0x80) >> 31) & 48);
+        byte imm = programCounter < code.Length ? code[programCounter] : (byte)0;
+        int k = imm ^ 0x8f;
         int q = k >> 4;
         int r = k & 0x0F;
 
-        // mask = -1 if q < r, 0 otherwise
         int mask = (q - r) >> 31;
 
-        // EIP-8024 base mapping (0-based stack): if (q < r) n=q+1, m=r+1 else n=r+1, m=29-q
-        // Add +1 for 1-indexed stack positions used by Exchange: if (q < r) final_n=q+2, final_m=r+2; else final_n=r+2, final_m=30-q
         n = ((q & mask) | (r & ~mask)) + 2;
         m = (((r + 1) & mask) | ((29 - q) & ~mask)) + 1;
 
-        if ((uint)(imm - 0x50) <= 0x2F)
+        if ((uint)(imm - 0x52) <= 0x2d)
             return false;
 
-        programCounter++;
+        if (programCounter < code.Length)
+            programCounter++;
+
         return true;
     }
 

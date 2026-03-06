@@ -97,6 +97,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void RevertRefundedCreateStateGasOnFailure(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
+    {
+        parentGas.StateReservoir += childGas.StateGasUsed - childGas.StateGasSpill;
+        parentGas.StateGasUsed -= childGas.StateGasUsed;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SetOutOfGas(ref EthereumGasPolicy gas) => gas.Value = 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

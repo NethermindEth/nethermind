@@ -24,14 +24,14 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void DupN_ValidImmediate_DuplicatesStackElement()
     {
-        // Push values 1-20 onto the stack, then DUPN with immediate 0x00 (depth=17)
-        // Should duplicate the 17th element from top
+        // Push values 1-20 onto the stack, then DUPN with immediate 0x80 (depth=17).
+        // This should duplicate the 17th element from the top.
         byte[] code = Prepare.EvmCode
             .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
             .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
             .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
             .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-            .Op(Instruction.DUPN).Data(0x00) // DUPN with immediate 0x00 -> depth=17
+            .Op(Instruction.DUPN).Data(0x80)
             .MSTORE(0)
             .Return(32, 0)
             .Done;
@@ -39,9 +39,8 @@ public class Eip8024Tests : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(code);
         result.StatusCode.Should().Be(StatusCode.Success);
 
-        // Stack: [1, 2, 3, 4, 5, ..., 20] with 20 on top (20 items)
-        // Position 17 from top = index 20-17 = 3 = value 4
-        // After DUPN: top = 4
+        // Stack: [1, 2, 3, 4, 5, ..., 20] with 20 on top.
+        // The 17th item from the top is 4.
         new UInt256(result.ReturnValue, true).Should().Be(4);
     }
 
@@ -64,11 +63,11 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void DupN_StackUnderflow_Fails()
     {
-        // DUPN with immediate 0x00 (depth=17) but only 10 elements on stack
+        // DUPN with immediate 0x80 (depth=17) but only 10 elements on stack.
         byte[] code = Prepare.EvmCode
             .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
             .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
-            .Op(Instruction.DUPN).Data(0x00) // depth=17, but only 10 elements
+            .Op(Instruction.DUPN).Data(0x80)
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -78,14 +77,14 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void SwapN_ValidImmediate_SwapsStackElements()
     {
-        // Push values, then SWAPN with immediate 0x00 (depth=17)
-        // Should swap top with 17th element from top
+        // Push values, then SWAPN with immediate 0x80 (depth=17).
+        // This should swap the top with the 18th element from the top.
         byte[] code = Prepare.EvmCode
             .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
             .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
             .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
             .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-            .Op(Instruction.SWAPN).Data(0x00) // SWAPN with immediate 0x00 -> depth=17
+            .Op(Instruction.SWAPN).Data(0x80)
             .MSTORE(0) // Store new top
             .Return(32, 0)
             .Done;
@@ -93,9 +92,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(code);
         result.StatusCode.Should().Be(StatusCode.Success);
 
-        // Stack: [1, 2, 3, 4, 5, ..., 20] with 20 on top (20 items)
-        // SWAPN decode(0x00)=17: swap top (20) with (n+1)th=18th item from top (value 3)
-        // After swap: top = 3
+        // SWAPN 17 swaps the top with the 18th item from the top, which is 3.
         new UInt256(result.ReturnValue, true).Should().Be(3);
     }
 
@@ -118,11 +115,11 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void SwapN_StackUnderflow_Fails()
     {
-        // SWAPN with immediate 0x00 (depth=17) but only 10 elements
+        // SWAPN with immediate 0x80 (depth=17) but only 10 elements.
         byte[] code = Prepare.EvmCode
             .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
             .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
-            .Op(Instruction.SWAPN).Data(0x00)
+            .Op(Instruction.SWAPN).Data(0x80)
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -201,7 +198,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void Exchange_EdgeCase_0x4f_Succeeds()
     {
-        // 0x4f: k=79, q=4, r=15, q<r -> (5, 16) -> Exchange(6, 17)
+        // 0x4f: k=0xc0, q=12, r=0, q>=r -> Exchange(2, 18)
         // Need 17 items on stack
         Prepare prepare = Prepare.EvmCode;
         for (int i = 1; i <= 17; i++) prepare.PushData(i);
@@ -217,10 +214,10 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void Exchange_EdgeCase_0x80_Succeeds()
     {
-        // 0x80: k=80 (128-48), q=5, r=0, q>=r -> n=r+2=2, m=(29-5)+1=25
-        // Exchange(2, 25) needs 25 items on stack
+        // 0x80: k=0x0f, q=0, r=15, q<r -> Exchange(2, 17)
+        // Exchange(2, 17) needs 17 items on stack
         Prepare prepare = Prepare.EvmCode;
-        for (int i = 1; i <= 25; i++) prepare.PushData(i);
+        for (int i = 1; i <= 17; i++) prepare.PushData(i);
         byte[] code = prepare
             .Op(Instruction.EXCHANGE).Data(0x80)
             .MSTORE(0).Return(32, 0)
@@ -233,11 +230,10 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void Exchange_StackUnderflow_Fails()
     {
-        // EXCHANGE with immediate 0x12 -> decode_pair gives (3, 4)
-        // Exchange(n+1, m+1) = Exchange(3, 4) requires at least 4 items on stack
+        // EXCHANGE with immediate 0x12 decodes to Exchange(2, 18), which needs 18 stack items.
         byte[] code = Prepare.EvmCode
             .PushData(1).PushData(2)
-            .Op(Instruction.EXCHANGE).Data(0x12) // n=3, m=4 -> needs at least 4 elements
+            .Op(Instruction.EXCHANGE).Data(0x12)
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -248,33 +244,65 @@ public class Eip8024Tests : VirtualMachineTestsBase
     public void DupN_MissingImmediateAtEnd_Fails()
     {
         byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
+            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
+            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
+            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
             .Op(Instruction.DUPN)
+            .MSTORE(0)
+            .Return(32, 0)
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
+        result.StatusCode.Should().Be(StatusCode.Success);
+        new UInt256(result.ReturnValue, true).Should().Be(1);
     }
 
     [Test]
     public void SwapN_MissingImmediateAtEnd_Fails()
     {
         byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
+            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
+            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
+            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
+            .PushData(2)
             .Op(Instruction.SWAPN)
+            .MSTORE(0)
+            .Return(32, 0)
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
+        result.StatusCode.Should().Be(StatusCode.Success);
+        new UInt256(result.ReturnValue, true).Should().Be(1);
     }
 
     [Test]
     public void Exchange_MissingImmediateAtEnd_Fails()
     {
         byte[] code = Prepare.EvmCode
+            .PushData(2)
+            .PushData(0)
+            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
+            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
+            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
+            .Op(Instruction.DUPN).Data(0x80)
             .Op(Instruction.EXCHANGE)
+            .Op(Instruction.ISZERO)
+            .MSTORE(0)
+            .Return(32, 0)
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
+        result.StatusCode.Should().Be(StatusCode.Success);
+        new UInt256(result.ReturnValue, true).Should().Be(1);
     }
 
     [Test]
@@ -287,7 +315,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         }
 
         byte[] code = prepare
-            .Op(Instruction.DUPN).Data(0xff) // depth=235
+            .Op(Instruction.DUPN).Data(0x5a) // depth=235
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -304,7 +332,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         }
 
         byte[] code = prepare
-            .Op(Instruction.SWAPN).Data(0xff) // depth=235
+            .Op(Instruction.SWAPN).Data(0x5a) // depth=235
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -321,7 +349,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         }
 
         byte[] code = prepare
-            .Op(Instruction.EXCHANGE).Data(0x00) // n=2, m=30 -> needs depth 30, only 29 items
+            .Op(Instruction.EXCHANGE).Data(0x8f) // Exchange(1, 29) -> stack positions 2 and 30
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -339,7 +367,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
             .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
             .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
             .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-            .Op(Instruction.DUPN).Data(0x00)
+            .Op(Instruction.DUPN).Data(0x80)
             .Op(Instruction.STOP)
             .Done;
 
@@ -359,7 +387,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
             .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
             .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
             .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-            .Op(Instruction.SWAPN).Data(0x00)
+            .Op(Instruction.SWAPN).Data(0x80)
             .Op(Instruction.STOP)
             .Done;
 
@@ -376,7 +404,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
 
         byte[] code = Prepare.EvmCode
             .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .Op(Instruction.EXCHANGE).Data(0x12) // decode_pair(0x12) = (3, 4)
+            .Op(Instruction.EXCHANGE).Data(0x8e)
             .Op(Instruction.STOP)
             .Done;
 
@@ -388,11 +416,11 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void EipTestVector_DupN_18Items_TopIs1()
     {
-        // EIP test: 60016000808080808080808080808080808080e600
-        // PUSH1 01, PUSH1 00, DUP1 x15, DUPN 0x00
+        // EIP test: 60016000808080808080808080808080808080e680
+        // PUSH1 01, PUSH1 00, DUP1 x15, DUPN 0x80
         // Note: The bytecode has 15 DUP1s (30 hex chars = 15 bytes)
         // After setup: stack = [1, 0, 0, ...] (17 items, 1 at bottom)
-        // DUPN with decode(0)=17: duplicate 17th item from top = bottom item = 1
+        // DUPN with decode(0x80)=17: duplicate 17th item from top = bottom item = 1
         // Result: 18 items with top = 1
         byte[] code = Prepare.EvmCode
             .PushData(1)
@@ -401,7 +429,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
             .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
             .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
             .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1) // 15 DUP1s total
-            .Op(Instruction.DUPN).Data(0x00)
+            .Op(Instruction.DUPN).Data(0x80)
             .MSTORE(0)
             .Return(32, 0)
             .Done;
@@ -414,10 +442,10 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void EipTestVector_SwapN_18Items_TopIs0()
     {
-        // EIP test: 600160008080808080808080808080808080806002e700
-        // PUSH1 01, PUSH1 00, DUP1 x15, PUSH1 02, SWAPN 0x00
+        // EIP test: 600160008080808080808080808080808080806002e780
+        // PUSH1 01, PUSH1 00, DUP1 x15, PUSH1 02, SWAPN 0x80
         // After setup: stack = [1, 0, 0, ..., 0, 2] (18 items with 2 on top, 1 at bottom)
-        // SWAPN decode(0x00)=17: swap top (2) with (n+1)th=18th item from top (value 1)
+        // SWAPN decode(0x80)=17: swap top (2) with (n+1)th=18th item from top (value 1)
         // Result: top = 1
         byte[] code = Prepare.EvmCode
             .PushData(1)
@@ -427,31 +455,29 @@ public class Eip8024Tests : VirtualMachineTestsBase
             .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
             .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1) // 15 DUP1s total
             .PushData(2)
-            .Op(Instruction.SWAPN).Data(0x00) // SWAPN with depth=17
+            .Op(Instruction.SWAPN).Data(0x80)
             .MSTORE(0)
             .Return(32, 0)
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
         result.StatusCode.Should().Be(StatusCode.Success);
-        // After SWAPN decode(0)=17: swap top (2) with (n+1)th=18th from top = 1
         new UInt256(result.ReturnValue, true).Should().Be(1);
     }
 
     [Test]
     public void EipTestVector_Exchange_3Items()
     {
-        // EIP test: 600060016002e801
+        // EIP test: 600060016002e88e
         // PUSH1 00, PUSH1 01, PUSH1 02, EXCHANGE 0x01
         // Stack before: [0, 1, 2] (2 on top)
-        // decode_pair(0x01): k=1, q=0, r=1, q<r -> (1, 2)
-        // TryDecodePair returns n=2, m=3, so EXCHANGE swaps stack positions 2 and 3 from the top.
+        // decode_pair(0x8e): (1, 2), so EXCHANGE swaps stack positions 2 and 3 from the top.
         // After: [1, 0, 2] (2 on top), matching the EIP vector.
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(1)
             .PushData(2)
-            .Op(Instruction.EXCHANGE).Data(0x01)
+            .Op(Instruction.EXCHANGE).Data(0x8e)
             .MSTORE(0)
             .Return(32, 0)
             .Done;
@@ -487,8 +513,8 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void EipTestVector_DupN_StackUnderflow_ExceptionalHalt()
     {
-        // EIP test: 6000808080808080808080808080808080e600
-        // PUSH1 00, DUP1 x15, DUPN 0x00
+        // EIP test: 6000808080808080808080808080808080e680
+        // PUSH1 00, DUP1 x15, DUPN 0x80
         // Stack has 16 items, DUPN 17 needs depth 17 -> exceptional halt.
         byte[] code = Prepare.EvmCode
             .PushData(0)
@@ -496,7 +522,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
             .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
             .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
             .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1) // 15 DUP1s total
-            .Op(Instruction.DUPN).Data(0x00)
+            .Op(Instruction.DUPN).Data(0x80)
             .Op(Instruction.STOP)
             .Done;
 
@@ -514,7 +540,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
             .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
             .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1)
             .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.DUP1) // Only 15 DUP1s = 16 items
-            .Op(Instruction.DUPN).Data(0x00) // depth=17, but only 16 items
+            .Op(Instruction.DUPN).Data(0x80)
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -540,7 +566,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
                 .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
                 .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
                 .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-                .Op(Instruction.DUPN).Data(0x00)
+                .Op(Instruction.DUPN).Data(0x80)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
@@ -557,7 +583,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
                 .PushData(6).PushData(7).PushData(8).PushData(9).PushData(10)
                 .PushData(11).PushData(12).PushData(13).PushData(14).PushData(15)
                 .PushData(16).PushData(17).PushData(18).PushData(19).PushData(20)
-                .Op(Instruction.SWAPN).Data(0x00)
+                .Op(Instruction.SWAPN).Data(0x80)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
@@ -569,7 +595,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         {
             byte[] code = Prepare.EvmCode
                 .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-                .Op(Instruction.EXCHANGE).Data(0x12) // decode_pair(0x12) = (3, 4)
+                .Op(Instruction.EXCHANGE).Data(0x8e)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);

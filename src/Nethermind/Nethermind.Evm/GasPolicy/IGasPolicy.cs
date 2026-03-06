@@ -104,6 +104,15 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
 
     /// <summary>
+    /// Reverts state-gas accounting that was already merged from a successful child frame
+    /// when contract deployment later fails during code deposit and the child state is rolled back.
+    /// Pre-EIP-8037 policies are no-ops.
+    /// </summary>
+    /// <param name="parentGas">The parent gas state to adjust.</param>
+    /// <param name="childGas">The refunded child gas state.</param>
+    static virtual void RevertRefundedCreateStateGasOnFailure(ref TSelf parentGas, in TSelf childGas) { }
+
+    /// <summary>
     /// Mark the gas state as out of gas.
     /// Called when execution exhausts all gas.
     /// </summary>
