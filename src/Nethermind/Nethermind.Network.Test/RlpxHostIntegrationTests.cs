@@ -22,88 +22,20 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class RlpxHostIntegrationTests
 {
-    [TestCase(true, true, false, Description = "Exact match: blocks same IP")]
-    [TestCase(false, true, true, Description = "Exact match: allows different IP")]
-    public async Task ShouldContact_ExactMatch(bool sameIp, bool firstExpected, bool secondExpected)
+    [TestCase(true, false, null, "203.0.113.1", "203.0.113.1", false, Description = "Exact match: blocks same IP")]
+    [TestCase(true, false, null, "203.0.113.1", "198.51.100.1", true, Description = "Exact match: allows different IP")]
+    [TestCase(true, true, null, "203.0.113.1", "203.0.113.50", false, Description = "Subnet bucketing: blocks same subnet")]
+    [TestCase(false, false, null, "203.0.113.1", "203.0.113.1", true, Description = "Filtering disabled: always accepts")]
+    [TestCase(true, true, "192.168.1.100", "192.168.1.10", "192.168.1.20", true, Description = "Same local subnet uses exact matching")]
+    [TestCase(true, true, "203.0.113.100", "192.168.1.1", "192.168.1.2", true, Description = "Private remote IP uses exact matching")]
+    public async Task ShouldContact_FiltersCorrectly(bool filterEnabled, bool subnetBucketing, string? externalIp,
+        string addr1, string addr2, bool secondExpected)
     {
-        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: false);
+        RlpxHost host = CreateHost(filterEnabled, subnetBucketing, externalIp);
         try
         {
-            IPAddress ip1 = IPAddress.Parse("203.0.113.1");
-            IPAddress ip2 = sameIp ? ip1 : IPAddress.Parse("198.51.100.1");
-
-            host.ShouldContact(ip1).Should().Be(firstExpected);
-            host.ShouldContact(ip2).Should().Be(secondExpected);
-        }
-        finally
-        {
-            await host.Shutdown();
-        }
-    }
-
-    [Test]
-    public async Task ShouldContact_WithSubnetBucketing_BlocksSameSubnet()
-    {
-        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: true);
-        try
-        {
-            IPAddress ip1 = IPAddress.Parse("203.0.113.1");
-            IPAddress ip2 = IPAddress.Parse("203.0.113.50");
-
-            host.ShouldContact(ip1).Should().BeTrue("first IP in subnet should be accepted");
-            host.ShouldContact(ip2).Should().BeFalse("second IP in same subnet should be rejected");
-        }
-        finally
-        {
-            await host.Shutdown();
-        }
-    }
-
-    [Test]
-    public async Task ShouldContact_WithFilteringDisabled_AlwaysReturnsTrue()
-    {
-        RlpxHost host = CreateHost(filterEnabled: false, subnetBucketing: false);
-        try
-        {
-            IPAddress ip = IPAddress.Parse("203.0.113.1");
-            host.ShouldContact(ip).Should().BeTrue("filtering disabled, first attempt should be accepted");
-            host.ShouldContact(ip).Should().BeTrue("filtering disabled, second attempt should still be accepted");
-        }
-        finally
-        {
-            await host.Shutdown();
-        }
-    }
-
-    [Test]
-    public async Task ShouldContact_WithExternalIp_UsesItForFiltering()
-    {
-        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: true, externalIp: "192.168.1.100");
-        try
-        {
-            IPAddress ip1 = IPAddress.Parse("192.168.1.10");
-            IPAddress ip2 = IPAddress.Parse("192.168.1.20");
-
-            host.ShouldContact(ip1).Should().BeTrue("first IP should be accepted");
-            host.ShouldContact(ip2).Should().BeTrue("different IP in same local subnet should be accepted (exact match)");
-        }
-        finally
-        {
-            await host.Shutdown();
-        }
-    }
-
-    [Test]
-    public async Task ShouldContact_WithPrivateRemoteIp_UsesExactMatching()
-    {
-        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: true, externalIp: "203.0.113.100");
-        try
-        {
-            IPAddress ip1 = IPAddress.Parse("192.168.1.1");
-            IPAddress ip2 = IPAddress.Parse("192.168.1.2");
-
-            host.ShouldContact(ip1).Should().BeTrue("first private IP should be accepted");
-            host.ShouldContact(ip2).Should().BeTrue("different private IP should be accepted (exact match)");
+            host.ShouldContact(IPAddress.Parse(addr1)).Should().BeTrue("first IP should be accepted");
+            host.ShouldContact(IPAddress.Parse(addr2)).Should().Be(secondExpected);
         }
         finally
         {
