@@ -55,15 +55,15 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
                 // Fast path: newline delimiter found in current buffer segment
                 var i and >= 0 => (i, i + 1),
                 // Slow path: complete JSON object/array (incremental parse across calls)
-                _ when TryGetCompleteJsonLength(data, out int jsonLength) => (jsonLength - offset, jsonLength - offset),
+                _ when TryGetCompleteJsonLength(data, offset, out int jsonLength) => (jsonLength - offset, jsonLength - offset),
                 _ => default
             };
 
-    private bool TryGetCompleteJsonLength(ReadOnlySpan<byte> span, out int messageLength)
+    private bool TryGetCompleteJsonLength(ReadOnlySpan<byte> span, int offset, out int messageLength)
     {
         messageLength = 0;
         bool resuming = _jsonParseState.IsActive;
-        int startOffset = resuming ? _jsonParseState.StartOffset : GetStartingOffset(span);
+        int startOffset = resuming ? _jsonParseState.StartOffset : GetStartingOffset(span, offset);
         ReadOnlySpan<byte> json = span[startOffset..];
 
         if (resuming || StartsWithObject(json))
@@ -90,10 +90,10 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
 
         return false;
 
-        static int GetStartingOffset(ReadOnlySpan<byte> span)
+        static int GetStartingOffset(ReadOnlySpan<byte> span, int offset)
         {
-            int i = span.IndexOfAnyExcept(Whitespace);
-            return i < 0 ? span.Length : i;
+            int i = span[offset..].IndexOfAnyExcept(Whitespace);
+            return i < 0 ? span.Length : offset + i;
         }
 
         static bool StartsWithObject(ReadOnlySpan<byte> span) => !span.IsEmpty && span[0] is (byte)'{' or (byte)'[';
