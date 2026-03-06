@@ -536,6 +536,7 @@
     "nodetype",
     "nofile",
     "nongcstatic",
+    "nongeneric",
     "noninteractive",
     "nonposdao",
     "nonstring",
