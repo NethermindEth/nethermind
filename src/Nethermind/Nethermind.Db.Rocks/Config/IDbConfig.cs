@@ -145,7 +145,4 @@ public interface IDbConfig : IConfig
 
     string? PreimageDbRocksDbOptions { get; set; }
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
-
-    public string XdcSnapshotsDbRocksDbOptions { get; set; }
-    public string? XdcSnapshotsDbAdditionalRocksDbOptions { get; set; }
 }
