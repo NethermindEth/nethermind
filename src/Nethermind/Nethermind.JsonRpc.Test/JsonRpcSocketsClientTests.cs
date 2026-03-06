@@ -322,12 +322,22 @@ public class JsonRpcSocketsClientTests
                 new[] { json1, json2 }
             ).SetName("Json_without_newline_followed_by_newline_delimited_message");
 
-            // JSON with escaped \n in string value — not a message delimiter
-            string jsonWithNewline = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"line1\\nline2\"}";
+            // JSON with escaped \n (backslash-n) in string value — 0x0A never appears on the wire, not a delimiter
+            string jsonWithEscapedNewline = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"line1\\nline2\"}";
             yield return new TestCaseData(
-                jsonWithNewline,
-                new[] { jsonWithNewline }
-            ).SetName("Json_with_newline_in_string_value");
+                jsonWithEscapedNewline,
+                new[] { jsonWithEscapedNewline }
+            ).SetName("Json_with_escaped_newline_in_string_value");
+
+            // Literal 0x0A byte inside a JSON string value (invalid JSON per spec).
+            // Utf8JsonReader rejects the raw control character and throws JsonException,
+            // causing fallback to the \n-delimiter path which splits at the 0x0A byte.
+            string jsonBeforeLiteralNewline = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"line1";
+            string jsonAfterLiteralNewline = "line2\"}";
+            yield return new TestCaseData(
+                jsonBeforeLiteralNewline + "\n" + jsonAfterLiteralNewline,
+                new[] { jsonBeforeLiteralNewline }
+            ).SetName("Json_with_literal_0x0A_byte_in_string_value");
         }
 
         [TestCaseSource(nameof(JsonBoundaryDetectionCases))]
