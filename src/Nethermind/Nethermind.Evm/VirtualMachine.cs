@@ -653,15 +653,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;
 
-        // State gas must be restored to parent before child disposal so spill/usage accounting is not lost.
+        PopAndRestoreParentState();
+
+        shouldExit = false;
+        return default;
+    }
+
+    /// <summary>
+    /// Pops the child state, restores state gas to the parent frame, and disposes the child.
+    /// Must be called before the child <see cref="VmState{TGasPolicy}"/> is disposed so that
+    /// spill/usage accounting is not lost.
+    /// </summary>
+    private void PopAndRestoreParentState()
+    {
         VmState<TGasPolicy> childState = _currentState;
         _currentState = _stateStack.Pop();
         TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in childState.Gas, childState.InitialStateReservoir);
         _currentState.IsContinuation = true;
         childState.Dispose();
-
-        shouldExit = false;
-        return default;
     }
 
     /// <summary>
@@ -741,12 +750,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;
 
-        // State gas must be restored to parent before child disposal so spill/usage accounting is not lost.
-        VmState<TGasPolicy> childState = _currentState;
-        _currentState = _stateStack.Pop();
-        TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in childState.Gas, childState.InitialStateReservoir);
-        _currentState.IsContinuation = true;
-        childState.Dispose();
+        PopAndRestoreParentState();
 
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
         shouldExit = false;
