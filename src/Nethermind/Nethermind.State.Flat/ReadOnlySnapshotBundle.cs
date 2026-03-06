@@ -42,7 +42,7 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
-        AddressAsKey key = address;
+        HashedKey<AddressAsKey> key = new(address);
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
@@ -70,9 +70,10 @@ public sealed class ReadOnlySnapshotBundle(
 
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
+        HashedKey<AddressAsKey> key = new(address);
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].HasSelfDestruct(address))
+            if (snapshots[i].HasSelfDestruct(key))
             {
                 return i;
             }
@@ -85,10 +86,12 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
+        HashedKey<(AddressAsKey, UInt256)> key = new((address, index));
+
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorage(address, index, out SlotValue? slotValue))
+            if (snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
             {
                 byte[]? res = slotValue?.ToEvmBytes();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
@@ -126,10 +129,12 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
+        HashedKey<TreePath> key = new(path);
+
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStateNode(path, out node))
+            if (snapshots[i].TryGetStateNode(key, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
@@ -147,10 +152,12 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
+        HashedKey<(Hash256AsKey, TreePath)> key = new((address, path));
+
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorageNode(address, path, out node))
+            if (snapshots[i].TryGetStorageNode(key, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);

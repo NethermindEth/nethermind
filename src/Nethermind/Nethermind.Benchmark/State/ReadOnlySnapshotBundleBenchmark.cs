@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -192,12 +193,12 @@ public class ReadOnlySnapshotBundleBenchmark
         {
             if (shortPaths.Count < ArraySize || longPaths.Count < ArraySize)
             {
-                foreach (KeyValuePair<TreePath, TrieNode> kv in snapshot.StateNodes)
+                foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
                 {
-                    if (shortPaths.Count < ArraySize && kv.Key.Length <= 15)
-                        shortPaths.Add(kv.Key);
-                    if (longPaths.Count < ArraySize && kv.Key.Length > 15)
-                        longPaths.Add(kv.Key);
+                    if (shortPaths.Count < ArraySize && kv.Key.Key.Length <= 15)
+                        shortPaths.Add(kv.Key.Key);
+                    if (longPaths.Count < ArraySize && kv.Key.Key.Length > 15)
+                        longPaths.Add(kv.Key.Key);
                     if (shortPaths.Count >= ArraySize && longPaths.Count >= ArraySize)
                         break;
                 }
@@ -205,9 +206,9 @@ public class ReadOnlySnapshotBundleBenchmark
 
             if (storageNodesList.Count < ArraySize)
             {
-                foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in snapshot.StorageNodes)
+                foreach (KeyValuePair<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
                 {
-                    storageNodesList.Add((kv.Key.Item1.Value, kv.Key.Item2));
+                    storageNodesList.Add((kv.Key.Key.Item1.Value, kv.Key.Key.Item2));
                     if (storageNodesList.Count >= ArraySize)
                         break;
                 }
@@ -228,11 +229,11 @@ public class ReadOnlySnapshotBundleBenchmark
         List<(Hash256, TreePath)> sameAccountNodesList = new List<(Hash256, TreePath)>(ArraySize);
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
-            foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in snapshot.StorageNodes)
+            foreach (KeyValuePair<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
             {
-                if (kv.Key.Item1.Value == sameAddrHash)
+                if (kv.Key.Key.Item1.Value == sameAddrHash)
                 {
-                    sameAccountNodesList.Add((kv.Key.Item1.Value, kv.Key.Item2));
+                    sameAccountNodesList.Add((kv.Key.Key.Item1.Value, kv.Key.Key.Item2));
                     if (sameAccountNodesList.Count >= ArraySize)
                         break;
                 }
