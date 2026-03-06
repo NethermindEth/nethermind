@@ -19,6 +19,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -62,7 +63,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
 
-        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.NoEip8037Instance));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = _processor.Execute(createTx, callOutputTracer);
         BlockAccessList bal = worldState.GeneratedBlockAccessList;
@@ -111,7 +112,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             .WithGasLimit(0)
             .WithValue(_testAccountBalance)
             .TestObject;
-        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance).MinimalGas;
+        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.NoEip8037Instance).MinimalGas;
         long gasLimit = intrinsicGas + executionGas;
 
         Transaction createTx = Build.A.Transaction
@@ -121,7 +122,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
 
-        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.NoEip8037Instance));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = _processor.Execute(createTx, callOutputTracer);
         BlockAccessList bal = worldState.GeneratedBlockAccessList;

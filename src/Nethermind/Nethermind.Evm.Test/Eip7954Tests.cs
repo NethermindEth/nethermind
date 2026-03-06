@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -48,6 +49,30 @@ public class Eip7954Tests : VirtualMachineTestsBase
         return _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), NullTxTracer.Instance);
     }
 
+    [Test]
+    public void Eip8037_floor_gas_enforced_in_validate_gas()
+    {
+        // Craft a calldata-heavy tx where floor gas exceeds regular + state gas.
+        // 100 non-zero bytes: tokens = 100*4 = 400
+        // regularGas = 21000 + 400*4 = 22600, stateGas = 0, floorGas = 21000 + 400*10 = 25000
+        // gasLimit = 23000 is between regularGas and floorGas — must be rejected.
+        byte[] calldata = new byte[100];
+        for (int i = 0; i < calldata.Length; i++) calldata[i] = 0xFF;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+
+        (Block block, Transaction transaction) = PrepareTx(Activation, 23000, null);
+        transaction.Data = calldata;
+        transaction.To = TestItem.AddressC;
+
+        TransactionResult result = _processor.Execute(
+            transaction,
+            new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+            NullTxTracer.Instance);
+
+        Assert.That(result, Is.EqualTo(TransactionResult.GasLimitBelowIntrinsicGas));
+    }
+
     private TestAllTracerWithOutput ExecuteDeployTransaction(ulong timestamp, int deployedCodeSize)
     {
         // Build minimal init code: PUSH size, PUSH 0, RETURN
@@ -66,7 +91,7 @@ public class Eip7954Tests : VirtualMachineTestsBase
         transaction.To = null;
         transaction.Data = initCode;
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Amsterdam.NoEip8037Instance), tracer);
         return tracer;
     }
 }

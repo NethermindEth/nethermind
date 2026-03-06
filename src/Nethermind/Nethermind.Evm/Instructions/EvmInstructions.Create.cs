@@ -68,7 +68,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or the type of exception encountered.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst>(
+    public static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip8037>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
@@ -76,6 +76,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCreate : struct, IOpCreate
         where TTracingInst : struct, IFlag
+        where TEip8037 : struct, IFlag
     {
         // Increment metrics counter for contract creation operations.
         Metrics.IncrementCreates();
@@ -112,17 +113,21 @@ internal static partial class EvmInstructions
         }
 
         bool outOfGas = false;
-        // Calculate the gas cost for the creation, including fixed cost and per-word cost for init code.
-        // Also include an extra cost for CREATE2 if applicable.
-        long gasCost = GasCostOf.Create +
-                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
-                       (typeof(TOpCreate) == typeof(OpCreate2)
-                           ? GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas)
-                           : 0);
-
-        // Check gas sufficiency: if outOfGas flag was set during gas division or if gas update fails.
-        if (outOfGas || !TGasPolicy.UpdateGas(ref gas, gasCost))
+        long initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas);
+        if (outOfGas)
             goto OutOfGas;
+
+        long initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
+        long create2HashCost = typeof(TOpCreate) == typeof(OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
+        long extraCost = initCodeWordCost + create2HashCost;
+
+        bool createOutOfGas = TEip8037.IsActive switch
+        {
+            true => !TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateRegular + extraCost) || !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState),
+            false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.Create + extraCost),
+        };
+
+        if (createOutOfGas) goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, vm.VmState))
@@ -210,6 +215,9 @@ internal static partial class EvmInstructions
         bool accountExists = state.AccountExists(contractAddress);
         if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
         {
+            // EIP-8037: callGas burned on collision is wasted (user pays but it doesn't count as block_regular)
+            if (TEip8037.IsActive)
+                TGasPolicy.AddWastedRegularGas(ref gas, callGas);
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
             goto None;
@@ -239,7 +247,7 @@ internal static partial class EvmInstructions
 
         // Rent a new frame to run the initialization code in the new execution environment.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-            gas: TGasPolicy.FromLong(callGas),
+            gas: TGasPolicy.CreateChildFrameGas(ref gas, callGas),
             outputDestination: 0,
             outputLength: 0,
             executionType: TOpCreate.ExecutionType,
