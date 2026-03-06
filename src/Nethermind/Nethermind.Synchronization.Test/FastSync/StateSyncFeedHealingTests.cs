@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -194,6 +195,6 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
         byte[][] lastProof = accountProofCollector.BuildResult().Proof!;
 
-        _ = SnapProviderHelper.AddAccountRange(snapTrieFactory, blockNumber, rootHash, startingHash, limitHash, accounts, firstProof.Concat(lastProof).ToArray());
+        _ = SnapProviderHelper.AddAccountRange(snapTrieFactory, blockNumber, rootHash, startingHash, limitHash, accounts, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
     }
 }

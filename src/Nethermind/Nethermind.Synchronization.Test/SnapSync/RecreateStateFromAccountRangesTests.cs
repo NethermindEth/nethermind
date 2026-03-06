@@ -9,6 +9,7 @@ using System.Linq;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -131,7 +132,7 @@ public class RecreateStateFromAccountRangesTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ISnapTestHelper helper = container.Resolve<ISnapTestHelper>();
 
-        AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
+        AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         Assert.That(helper.CountTrieNodes(), Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
@@ -150,7 +151,7 @@ public class RecreateStateFromAccountRangesTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ISnapTestHelper helper = container.Resolve<ISnapTestHelper>();
 
-        var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
+        var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         Assert.That(helper.CountTrieNodes(), Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
@@ -186,21 +187,21 @@ public class RecreateStateFromAccountRangesTests
         byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
 
-        var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+        var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(helper.CountTrieNodes(), Is.EqualTo(2));
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
 
-        var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
+        var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(helper.CountTrieNodes(), Is.EqualTo(4));  // we don't persist proof nodes (boundary nodes)
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
-        var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
+        var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
@@ -221,19 +222,19 @@ public class RecreateStateFromAccountRangesTests
 
         byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
-        var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
+        var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(helper.CountTrieNodes(), Is.EqualTo(4));
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
-        var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
+        var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(helper.CountTrieNodes(), Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
 
         firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
-        var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+        var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
@@ -254,19 +255,19 @@ public class RecreateStateFromAccountRangesTests
 
         byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
-        var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
+        var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(helper.CountTrieNodes(), Is.EqualTo(4));
 
         firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
-        var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+        var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(helper.CountTrieNodes(), Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
-        var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
+        var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
@@ -288,26 +289,26 @@ public class RecreateStateFromAccountRangesTests
         byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
 
-        var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..3], firstProof!.Concat(lastProof!).ToArray());
+        var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..3], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(helper.CountTrieNodes(), Is.EqualTo(3));
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
 
-        var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
+        var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
 
-        var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[3].Path, TestItem.Tree.AccountsWithPaths[3..5], firstProof!.Concat(lastProof!).ToArray());
+        var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[3].Path, TestItem.Tree.AccountsWithPaths[3..5], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(helper.CountTrieNodes(), Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
-        var result4 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
+        var result4 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
@@ -325,7 +326,7 @@ public class RecreateStateFromAccountRangesTests
         // output state
         byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
-        byte[][] proofs = firstProof.Concat(lastProof).ToArray();
+        IByteArrayList proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof)));
 
         using IContainer container = CreateContainer();
         ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
@@ -374,7 +375,7 @@ public class RecreateStateFromAccountRangesTests
         // output state
         byte[][] firstProof = CreateProofForPath(ac1.Path.Bytes, tree);
         byte[][] lastProof = CreateProofForPath(ac2.Path.Bytes, tree);
-        byte[][] proofs = firstProof.Concat(lastProof).ToArray();
+        IByteArrayList proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof)));
 
         using IContainer container = CreateContainer();
         ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
@@ -429,7 +430,7 @@ public class RecreateStateFromAccountRangesTests
         byte[][] lastProof = CreateProofForPath(firstHalf[^1].Path.Bytes, inputTree);
 
         (AddRangeResult result1, bool _, IList<PathWithAccount> _, IList<ValueHash256> _, Hash256 _) =
-            SnapProviderHelper.AddAccountRange(factory, 0, rootHash, Keccak.Zero, Keccak.MaxValue, firstHalf, firstProof.Concat(lastProof).ToArray());
+            SnapProviderHelper.AddAccountRange(factory, 0, rootHash, Keccak.Zero, Keccak.MaxValue, firstHalf, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
 
         // Add second half — boundary proof contains leaf nodes from first range's edge
         PathWithAccount[] secondHalf = allAccounts.GetRange(50, 50).ToArray();
@@ -437,7 +438,7 @@ public class RecreateStateFromAccountRangesTests
         lastProof = CreateProofForPath(secondHalf[^1].Path.Bytes, inputTree);
 
         (AddRangeResult result2, bool _, IList<PathWithAccount> _, IList<ValueHash256> _, Hash256 _) =
-            SnapProviderHelper.AddAccountRange(factory, 0, rootHash, secondHalf[0].Path, Keccak.MaxValue, secondHalf, firstProof.Concat(lastProof).ToArray());
+            SnapProviderHelper.AddAccountRange(factory, 0, rootHash, secondHalf[0].Path, Keccak.MaxValue, secondHalf, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
 
         // Root hash verification inside AddAccountRange validates that the keccak-only leaf
         // reference produces a correct root hash — if leaves were handled incorrectly,
@@ -477,7 +478,7 @@ public class RecreateStateFromAccountRangesTests
 
         // The range starts at midpoint — extension nodes for subtrees before this should be skipped
         (AddRangeResult result, bool _, IList<PathWithAccount> _, IList<ValueHash256> _, Hash256 _) =
-            SnapProviderHelper.AddAccountRange(factory, 0, rootHash, rangeAccounts[0].Path, Keccak.MaxValue, rangeAccounts, proofs);
+            SnapProviderHelper.AddAccountRange(factory, 0, rootHash, rangeAccounts[0].Path, Keccak.MaxValue, rangeAccounts, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proofs.Length, proofs)));
 
         result.Should().Be(AddRangeResult.OK);
     }
@@ -517,7 +518,7 @@ public class RecreateStateFromAccountRangesTests
             byte[][] lastProof = CreateProofForPath(chunk[^1].Path.Bytes, inputTree);
 
             (results[r], bool _, IList<PathWithAccount> _, IList<ValueHash256> _, Hash256 _) =
-                SnapProviderHelper.AddAccountRange(factory, 0, rootHash, startHash.ToCommitment(), Keccak.MaxValue, chunk, firstProof.Concat(lastProof).ToArray());
+                SnapProviderHelper.AddAccountRange(factory, 0, rootHash, startHash.ToCommitment(), Keccak.MaxValue, chunk, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
         }
 
         results.Should().AllSatisfy(r => r.Should().Be(AddRangeResult.OK));
@@ -536,7 +537,7 @@ public class RecreateStateFromAccountRangesTests
         byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
 
-        var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+        var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(helper.CountTrieNodes(), Is.EqualTo(2));
 
@@ -544,14 +545,14 @@ public class RecreateStateFromAccountRangesTests
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
 
         // missing TestItem.Tree.AccountsWithHashes[2]
-        var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[3..4], firstProof!.Concat(lastProof!).ToArray());
+        var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[3..4], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(helper.CountTrieNodes(), Is.EqualTo(2));
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
-        var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
+        var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
         Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));

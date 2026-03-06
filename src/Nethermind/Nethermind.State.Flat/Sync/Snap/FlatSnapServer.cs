@@ -40,10 +40,10 @@ public class FlatSnapServer(
         return true;
     }
 
-    public IOwnedReadOnlyList<byte[]>? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
+    public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
     {
         if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId))
-            return ArrayPoolList<byte[]>.Empty();
+            return EmptyByteArrayList.Instance;
 
         using (bundle)
         {
@@ -102,12 +102,12 @@ public class FlatSnapServer(
                 }
             }
 
-            if (response.Count == 0) return ArrayPoolList<byte[]>.Empty();
-            return response;
+            if (response.Count == 0) return EmptyByteArrayList.Instance;
+            return new ByteArrayListAdapter(response);
         }
     }
 
-    public IOwnedReadOnlyList<byte[]> GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
+    public IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
     {
         long currentByteCount = 0;
         ArrayPoolList<byte[]> response = new(requestedHashes.Count);
@@ -139,10 +139,10 @@ public class FlatSnapServer(
             }
         }
 
-        return response;
+        return new ByteArrayListAdapter(response);
     }
 
-    public (IOwnedReadOnlyList<PathWithAccount>, IOwnedReadOnlyList<byte[]>) GetAccountRanges(
+    public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(
         Hash256 rootHash,
         in ValueHash256 startingHash,
         in ValueHash256? limitHash,
@@ -150,14 +150,14 @@ public class FlatSnapServer(
         CancellationToken cancellationToken)
     {
         if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId))
-            return (ArrayPoolList<PathWithAccount>.Empty(), ArrayPoolList<byte[]>.Empty());
+            return (ArrayPoolList<PathWithAccount>.Empty(), EmptyByteArrayList.Instance);
 
         using (bundle)
         {
             byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
             AccountCollector accounts = new();
-            (long _, IOwnedReadOnlyList<byte[]> proofs, _) = GetNodesFromTrieVisitor(
+            (long _, IByteArrayList proofs, _) = GetNodesFromTrieVisitor(
                 bundle,
                 stateId.StateRoot,
                 startingHash,
@@ -173,7 +173,7 @@ public class FlatSnapServer(
         }
     }
 
-    public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IOwnedReadOnlyList<byte[]>?) GetStorageRanges(
+    public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IByteArrayList?) GetStorageRanges(
         Hash256 rootHash,
         IReadOnlyList<PathWithAccount> accounts,
         in ValueHash256? startingHash,
@@ -182,7 +182,7 @@ public class FlatSnapServer(
         CancellationToken cancellationToken)
     {
         if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId))
-            return (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), ArrayPoolList<byte[]>.Empty());
+            return (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), EmptyByteArrayList.Instance);
 
         using (bundle)
         {
@@ -223,7 +223,7 @@ public class FlatSnapServer(
                 ValueHash256 storagePath = accounts[i].Path;
 
                 PathWithStorageCollector pathWithStorageCollector = new();
-                (long innerResponseSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
+                (long innerResponseSize, IByteArrayList proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
                     bundle,
                     stateId.StateRoot,
                     startingHash1,
@@ -250,11 +250,11 @@ public class FlatSnapServer(
                 responseSize += innerResponseSize;
             }
 
-            return (responseNodes, ArrayPoolList<byte[]>.Empty());
+            return (responseNodes, EmptyByteArrayList.Instance);
         }
     }
 
-    private (long bytesSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) GetNodesFromTrieVisitor(
+    private (long bytesSize, IByteArrayList proofs, bool stoppedEarly) GetNodesFromTrieVisitor(
         ReadOnlySnapshotBundle bundle,
         in ValueHash256 rootHash,
         in ValueHash256 startingHash,
@@ -271,7 +271,7 @@ public class FlatSnapServer(
         VisitingOptions opt = new();
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 
-        ArrayPoolList<byte[]> proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? visitor.GetProofs() : ArrayPoolList<byte[]>.Empty();
+        IByteArrayList proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? new ByteArrayListAdapter(visitor.GetProofs()) : EmptyByteArrayList.Instance;
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
     }
 
