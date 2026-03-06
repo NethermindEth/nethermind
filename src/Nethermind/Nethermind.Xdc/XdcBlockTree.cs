@@ -78,30 +78,26 @@ internal class XdcBlockTree : BlockTree
 
     protected override bool HeadImprovementRequirementsSatisfied(BlockHeader header)
     {
-        if (header is XdcBlockHeader { ExtraConsensusData: not null } newBlock
-            && Head?.Header is XdcBlockHeader { ExtraConsensusData: not null } headBlock)
-        {
-            return IsXdcImprovementRequirementSatisfied(newBlock, headBlock);
-        }
+        if (base.HeadImprovementRequirementsSatisfied(header))
+            return true;
 
-        return base.HeadImprovementRequirementsSatisfied(header);
+        return header is XdcBlockHeader newBlock && Head?.Header is XdcBlockHeader headBlock &&
+            IsSameTdButGreaterNumber(newBlock, headBlock);
     }
 
     protected override bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
     {
-        if (header is XdcBlockHeader { ExtraConsensusData: not null } newBlock
-            && BestSuggestedBody?.Header is XdcBlockHeader { ExtraConsensusData: not null } bestBlock)
-        {
-            return IsXdcImprovementRequirementSatisfied(newBlock, bestBlock);
-        }
+        if (base.BestSuggestedImprovementRequirementsSatisfied(header))
+            return true;
 
-        return base.BestSuggestedImprovementRequirementsSatisfied(header);
+        return header is XdcBlockHeader newBlock && BestSuggestedBody?.Header is XdcBlockHeader bestBlock &&
+            IsSameTdButGreaterNumber(newBlock, bestBlock);
     }
 
     // XDPoS orders blocks by round, not total difficulty (all blocks use Difficulty=1).
     // A block with a higher round should become the canonical head.
-    private static bool IsXdcImprovementRequirementSatisfied(XdcBlockHeader newHeader, XdcBlockHeader oldHeader)
+    private static bool IsSameTdButGreaterNumber(XdcBlockHeader newHeader, XdcBlockHeader oldHeader)
     {
-        return newHeader.ExtraConsensusData?.BlockRound > oldHeader.ExtraConsensusData?.BlockRound;
+        return newHeader.TotalDifficulty == oldHeader.TotalDifficulty && newHeader.Number > oldHeader.Number;
     }
 }
