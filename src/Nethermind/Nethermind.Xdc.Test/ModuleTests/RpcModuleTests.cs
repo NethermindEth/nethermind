@@ -284,7 +284,7 @@ public class RpcModuleTests
         _blockTree.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
 
         IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: switchEpoch, configsCount: (int)epochNumber);
-        _specProvider.GetSpec(new ForkActivation(header.Number, header.Timestamp)).Returns(spec);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         BlockRoundInfo blockRoundInfo = new(TestItem.KeccakA, 100, 500);
         _epochSwitchManager.GetBlockByEpochNumber(epochNumber).Returns(blockRoundInfo);
@@ -550,7 +550,7 @@ public class RpcModuleTests
         _blockTree.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
 
         IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
-        _specProvider.GetSpec(new ForkActivation(header.Number, header.Timestamp)).Returns(spec);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         Address[] masternodes = new[] { TestItem.AddressA, TestItem.AddressB };
         Address[] penalties = new[] { TestItem.AddressC };
@@ -558,8 +558,8 @@ public class RpcModuleTests
 
         EpochSwitchInfo epochSwitchInfo = new(
             masternodes,
-            penalties,
             standbynodes,
+            penalties,
             new BlockRoundInfo(TestItem.KeccakA, 50, 100));
 
         _epochSwitchManager.GetEpochSwitchInfo(header).Returns(epochSwitchInfo);
@@ -699,15 +699,15 @@ public class RpcModuleTests
         // Arrange
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         header.Number = 100;
+        header.Hash = Keccak.OfAnEmptySequenceRlp;
 
         _blockTree.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
 
         IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
-        _specProvider.GetSpec(new ForkActivation(header.Number, header.Timestamp)).Returns(spec);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         Address[] expectedSigners = new[] { TestItem.AddressA, TestItem.AddressB };
-        Nethermind.Xdc.Types.Snapshot snapshot = Substitute.For<Nethermind.Xdc.Types.Snapshot>();
-        snapshot.GetSigners().Returns(expectedSigners);
+        Nethermind.Xdc.Types.Snapshot snapshot = new Types.Snapshot(header.Number, header.Hash!, expectedSigners);
 
         _snapshotManager.GetSnapshotByBlockNumber(100, spec).Returns(snapshot);
 
@@ -726,15 +726,15 @@ public class RpcModuleTests
         BlockParameter blockParameter = new(50);
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         header.Number = 50;
+        header.Hash = Keccak.OfAnEmptySequenceRlp;
 
         _blockTree.FindHeader(50).Returns(header);
 
         IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
-        _specProvider.GetSpec(new ForkActivation(header.Number, header.Timestamp)).Returns(spec);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         Address[] expectedSigners = new[] { TestItem.AddressA };
-        Nethermind.Xdc.Types.Snapshot snapshot = Substitute.For<Nethermind.Xdc.Types.Snapshot>();
-        snapshot.GetSigners().Returns(expectedSigners);
+        Nethermind.Xdc.Types.Snapshot snapshot = new Types.Snapshot(header.Number, header.Hash!, expectedSigners);
 
         _snapshotManager.GetSnapshotByBlockNumber(50, spec).Returns(snapshot);
 

@@ -343,9 +343,15 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
 
         var spec = specProvider.GetXdcSpec(header.Number);
+
+        if(header.Number < spec.SwitchBlock)
+        {
+            return ResultWrapper<Address[]>.Fail("Unsupported block version : V1");
+        }
+
         var snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
 
-        return ResultWrapper<Address[]>.Success(snapshot.GetSigners());
+        return ResultWrapper<Address[]>.Success(snapshot.NextEpochCandidates);
     }
 
     public ResultWrapper<Address[]> GetSignersAtHash(BlockParameter blockParam)
@@ -368,8 +374,15 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<Address[]>.Fail("Unknown block");
         }
         var spec = specProvider.GetXdcSpec(header.Number);
+
+
+        if (header.Number < spec.SwitchBlock)
+        {
+            return ResultWrapper<Address[]>.Fail("Unsupported block version : V1");
+        }
+
         var snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
-        return ResultWrapper<Address[]>.Success(snapshot.GetSigners());
+        return ResultWrapper<Address[]>.Success(snapshot.NextEpochCandidates);
     }
 
     public ResultWrapper<PublicApiSnapshot> GetSnapshot(BlockParameter blockParam)
@@ -420,6 +433,12 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<PublicApiSnapshot>.Fail("Unknown block");
         }
         var spec = specProvider.GetXdcSpec(header.Number);
+
+        if (header.Number < spec.SwitchBlock)
+        {
+            return ResultWrapper<PublicApiSnapshot>.Fail("Unsupported block version : V1");
+        }
+
         var snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
         return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot((XdcBlockHeader)header));
     }
@@ -439,10 +458,12 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.FindHeader(blockParam.BlockHash);
         }
+
         if (header is null)
         {
             return ResultWrapper<V2BlockInfo>.Fail("Unknown block");
         }
+
         return GetV2BlockByHeader(header, uncle: false);
     }
 

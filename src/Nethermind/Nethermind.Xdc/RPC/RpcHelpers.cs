@@ -26,11 +26,6 @@ internal static class RpcHelpers
         };
     }
 
-    public static Address[] GetSigners(this Snapshot snapshot)
-    {
-        throw new NotImplementedException();
-    }
-
     public static PublicApiMissedRoundsMetadata CalculateMissingRounds(
         this XdcBlockHeader header,
         IBlockTree blockTree,
