@@ -307,7 +307,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
-         private ValueTask Handle(NewBlockMessage msg, CancellationToken cancellationToken)
+        private ValueTask Handle(NewBlockMessage msg, CancellationToken cancellationToken)
         {
             try
             {
@@ -322,6 +322,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             return ValueTask.CompletedTask;
         }
+
         protected virtual void NotifyOfStatus(BlockHeader head)
         {
             StatusMessage statusMessage = new()
