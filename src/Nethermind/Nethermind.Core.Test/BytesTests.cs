@@ -467,5 +467,164 @@ namespace Nethermind.Core.Test
         {
             Bytes.NullableEqualityComparer.Equals(null, null).Should().BeTrue();
         }
+
+        [Test]
+        public void FastHash_EmptyInput_ReturnsZero()
+        {
+            ReadOnlySpan<byte> empty = ReadOnlySpan<byte>.Empty;
+            empty.FastHash().Should().Be(0);
+        }
+
+        [Test]
+        public void FastHash_SameInput_ReturnsSameHash()
+        {
+            byte[] input = new byte[100];
+            TestContext.CurrentContext.Random.NextBytes(input);
+
+            int hash1 = ((ReadOnlySpan<byte>)input).FastHash();
+            int hash2 = ((ReadOnlySpan<byte>)input).FastHash();
+
+            hash1.Should().Be(hash2);
+        }
+
+        [Test]
+        public void FastHash_DifferentInput_ReturnsDifferentHash()
+        {
+            byte[] input1 = new byte[100];
+            byte[] input2 = new byte[100];
+            TestContext.CurrentContext.Random.NextBytes(input1);
+            Array.Copy(input1, input2, input1.Length);
+            input2[50] ^= 0xFF; // Flip bits at position 50
+
+            int hash1 = ((ReadOnlySpan<byte>)input1).FastHash();
+            int hash2 = ((ReadOnlySpan<byte>)input2).FastHash();
+
+            hash1.Should().NotBe(hash2);
+        }
+
+        // Test cases for the fold-back bug fix: remaining in [49-63] after 64-byte initial load
+        // For len=113 to 127, remaining = len-64 = 49 to 63, which requires the last64 fold-back
+        [TestCase(113)] // remaining=49, boundary case for last64
+        [TestCase(120)] // remaining=56, middle of the gap range
+        [TestCase(127)] // remaining=63, upper boundary
+        [TestCase(65)]  // remaining=1, lower boundary for >64 path
+        [TestCase(80)]  // remaining=16
+        [TestCase(96)]  // remaining=32
+        [TestCase(112)] // remaining=48, boundary where last64 is NOT needed
+        public void FastHash_AllBytesAreHashed_FoldBackCoverage(int length)
+        {
+            byte[] input = new byte[length];
+            TestContext.CurrentContext.Random.NextBytes(input);
+
+            int originalHash = ((ReadOnlySpan<byte>)input).FastHash();
+
+            // Verify that changing any byte changes the hash
+            // This catches the gap bug where bytes[64-71] weren't being hashed
+            for (int i = 0; i < length; i++)
+            {
+                byte[] modified = (byte[])input.Clone();
+                modified[i] ^= 0xFF;
+
+                int modifiedHash = ((ReadOnlySpan<byte>)modified).FastHash();
+                modifiedHash.Should().NotBe(originalHash, $"Changing byte at index {i} should change the hash for length {length}");
+            }
+        }
+
+        // Specifically test the gap range that was buggy: bytes[64-71] for len=120
+        [Test]
+        public void FastHash_GapBytesAreHashed_Len120()
+        {
+            byte[] input = new byte[120];
+            TestContext.CurrentContext.Random.NextBytes(input);
+
+            int originalHash = ((ReadOnlySpan<byte>)input).FastHash();
+
+            // The bug was that bytes[64-71] weren't hashed for len=120
+            // Test each byte in the gap
+            for (int i = 64; i < 72; i++)
+            {
+                byte[] modified = (byte[])input.Clone();
+                modified[i] ^= 0xFF;
+
+                int modifiedHash = ((ReadOnlySpan<byte>)modified).FastHash();
+                modifiedHash.Should().NotBe(originalHash, $"Changing byte at index {i} (in gap range) should change the hash");
+            }
+        }
+
+        // Test medium-large case (33-64 bytes) with overlap to verify it works
+        [TestCase(50)] // Tests overlap in medium-large path
+        public void FastHash_MediumLarge_AllBytesContribute(int length)
+        {
+            byte[] input = new byte[length];
+            TestContext.CurrentContext.Random.NextBytes(input);
+
+            int originalHash = ((ReadOnlySpan<byte>)input).FastHash();
+
+            // Test ALL bytes to verify overlap handling works
+            for (int i = 0; i < length; i++)
+            {
+                byte[] modified = (byte[])input.Clone();
+                modified[i] ^= 0xFF;
+
+                int modifiedHash = ((ReadOnlySpan<byte>)modified).FastHash();
+                modifiedHash.Should().NotBe(originalHash, $"Changing byte at index {i} should change the hash for length {length}");
+            }
+        }
+
+        [TestCase(1)]
+        [TestCase(7)]
+        [TestCase(8)]
+        [TestCase(15)]
+        [TestCase(16)]
+        [TestCase(31)]
+        [TestCase(32)]
+        [TestCase(33)]
+        [TestCase(64)]
+        [TestCase(128)]
+        [TestCase(256)]
+        [TestCase(500)]
+        public void FastHash_VariousLengths_AllBytesContribute(int length)
+        {
+            byte[] input = new byte[length];
+            TestContext.CurrentContext.Random.NextBytes(input);
+
+            int originalHash = ((ReadOnlySpan<byte>)input).FastHash();
+
+            // Test first, middle, and last bytes to ensure all contribute
+            int[] indicesToTest = [0, length / 2, length - 1];
+            foreach (int i in indicesToTest)
+            {
+                byte[] modified = (byte[])input.Clone();
+                modified[i] ^= 0xFF;
+
+                int modifiedHash = ((ReadOnlySpan<byte>)modified).FastHash();
+                modifiedHash.Should().NotBe(originalHash, $"Changing byte at index {i} should change the hash for length {length}");
+            }
+        }
+
+        [TestCase(1, 1000u, 2000u)]
+        [TestCase(8, 1000u, 2000u)]
+        [TestCase(16, 1000u, 2000u)]
+        [TestCase(16, 0u, 1u)]
+        [TestCase(16, 0u, 0xFFFFFFFFu)]
+        [TestCase(20, 1000u, 2000u)]
+        [TestCase(32, 1000u, 2000u)]
+        [TestCase(33, 1000u, 2000u)]
+        [TestCase(64, 1000u, 2000u)]
+        [TestCase(65, 1000u, 2000u)]
+        [TestCase(71, 1000u, 2000u)]
+        [TestCase(79, 1000u, 2000u)]
+        [TestCase(80, 1000u, 2000u)]
+        [TestCase(128, 1000u, 2000u)]
+        public void FastHash_SeedAffectsOutput(int length, uint seed1, uint seed2)
+        {
+            byte[] input = new byte[length];
+            for (int i = 0; i < length; i++)
+                input[i] = (byte)(i * 0x17 + 0x42);
+
+            SpanExtensions.FastHash(input, seed1).Should()
+                .NotBe(SpanExtensions.FastHash(input, seed2),
+                    $"seeds {seed1} vs {seed2} for {length} bytes");
+        }
     }
 }

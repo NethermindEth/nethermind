@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -46,7 +46,7 @@ namespace Nethermind.Network.Rlpx
         private readonly TimeSpan _sendLatency;
         private readonly TimeSpan _connectTimeout;
         private readonly IChannelFactory? _channelFactory;
-
+        private readonly NodeFilter _nodeFilter;
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
 
@@ -98,7 +98,11 @@ namespace Nethermind.Network.Rlpx
             _channelFactory = channelFactory;
             _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
             _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
+            IPAddress? currentIp = IPAddress.TryParse(networkConfig.ExternalIp ?? networkConfig.LocalIp, out IPAddress? ip) ? ip : null;
+            _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, currentIp);
         }
+
+        public bool ShouldContact(IPAddress ip, bool exactOnly = false) => _nodeFilter.TryAccept(ip, exactOnly);
 
         public async Task Init()
         {
@@ -128,8 +132,8 @@ namespace Nethermind.Network.Rlpx
                     .ChildOption(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
                     .ChildOption(ChannelOption.TcpNodelay, true)
                     .ChildOption(ChannelOption.SoKeepalive, true)
-                    .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB())
-                    .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
+                    .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB)
+                    .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
                     .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<IChannel>(ch =>
                     {
@@ -186,8 +190,8 @@ namespace Nethermind.Network.Rlpx
                 .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
                 .Option(ChannelOption.TcpNodelay, true)
                 .Option(ChannelOption.SoKeepalive, true)
-                .Option(ChannelOption.WriteBufferHighWaterMark, (int)3.MB())
-                .Option(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
+                .Option(ChannelOption.WriteBufferHighWaterMark, (int)3.MB)
+                .Option(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
                 .Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default)
                 .Option(ChannelOption.ConnectTimeout, _connectTimeout);
             clientBootstrap.Handler(new ActionChannelInitializer<IChannel>(ch =>
@@ -233,6 +237,46 @@ namespace Nethermind.Network.Rlpx
 
         public event EventHandler<SessionEventArgs> SessionCreated;
 
+        internal void TrackSessionActivity(ISession session)
+        {
+            ArgumentNullException.ThrowIfNull(session);
+
+            void RefreshNodeFilter(object? _, PeerEventArgs __)
+            {
+                Node remoteNode = session.Node;
+                _nodeFilter.Touch(remoteNode.Address.Address, remoteNode.IsStatic || remoteNode.IsBootnode);
+            }
+
+            void Unsubscribe(object? _, DisconnectEventArgs __)
+            {
+                session.MsgReceived -= RefreshNodeFilter;
+                session.MsgDelivered -= RefreshNodeFilter;
+                session.Disconnected -= Unsubscribe;
+            }
+
+            session.MsgReceived += RefreshNodeFilter;
+            session.MsgDelivered += RefreshNodeFilter;
+            session.Disconnected += Unsubscribe;
+        }
+
+        /// <summary>
+        /// Rejects inbound connections from IPs already seen within the filter window.
+        /// Outgoing connections are filtered earlier by <see cref="ShouldContact"/> before <see cref="ConnectAsync"/>.
+        /// </summary>
+        private bool ShouldRejectInbound(ISession session, IChannel channel)
+        {
+            if (session.Direction == ConnectionDirection.In
+                && channel.RemoteAddress is IPEndPoint remoteEndpoint
+                && !_nodeFilter.TryAccept(remoteEndpoint.Address))
+            {
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {remoteEndpoint.Address}");
+                _ = channel.CloseAsync();
+                return true;
+            }
+
+            return false;
+        }
+
         private void InitializeChannel(IChannel channel, ISession session)
         {
             if (session.Direction == ConnectionDirection.In)
@@ -246,6 +290,12 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session} channel");
 
+            if (ShouldRejectInbound(session, channel))
+            {
+                return;
+            }
+
+            TrackSessionActivity(session);
             _sessionMonitor.AddSession(session);
             session.Disconnected += SessionOnPeerDisconnected;
             SessionCreated?.Invoke(this, new SessionEventArgs(session));

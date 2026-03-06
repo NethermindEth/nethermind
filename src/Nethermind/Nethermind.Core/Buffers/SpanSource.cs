@@ -135,16 +135,8 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
     /// <returns></returns>
     public byte[]? ToArray()
     {
-        var obj = _obj;
-        if (obj is null)
-            return null;
-
-        if (obj is byte[] array)
-        {
-            return array;
-        }
-
-        return Unsafe.As<CappedArraySource>(obj).Span.ToArray();
+        object? obj = _obj;
+        return obj is null ? null : obj as byte[] ?? Unsafe.As<CappedArraySource>(obj).Span.ToArray();
     }
 
     public bool TryGetCappedArray(out CappedArray<byte> cappedArray)

@@ -15,13 +15,11 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.SnapSync
@@ -29,7 +27,6 @@ namespace Nethermind.Synchronization.Test.SnapSync
     [TestFixture]
     public class RecreateStateFromStorageRangesTests
     {
-
         private TestRawTrieStore _store;
         private StateTree _inputStateTree;
         private StorageTree _inputStorageTree;
@@ -45,6 +42,20 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [OneTimeTearDown]
         public void TearDown() => ((IDisposable)_store)?.Dispose();
 
+        private ContainerBuilder CreateContainerBuilder()
+        {
+            ContainerBuilder builder = new ContainerBuilder()
+                .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
+                .AddKeyedSingleton<IDb>(DbNames.State, (_) => (IDb)new TestMemDb())
+                .AddSingleton<ISnapTestHelper, PatriciaSnapTestHelper>()
+                ;
+
+            return builder;
+        }
+
+        private IContainer CreateContainer() =>
+            CreateContainerBuilder().Build();
+
         [Test]
         public void RecreateStorageStateFromOneRangeWithNonExistenceProof()
         {
@@ -54,11 +65,11 @@ namespace Nethermind.Synchronization.Test.SnapSync
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new TestSyncConfig())).Build();
+            using IContainer container = CreateContainer();
             SnapProvider snapProvider = container.Resolve<SnapProvider>();
 
             var storageRange = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, Keccak.Zero);
-            var result = snapProvider.AddStorageRangeForAccount(storageRange, 0, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result = snapProvider.AddStorageRangeForAccount(storageRange, 0, TestItem.Tree.SlotsWithPaths, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
@@ -72,11 +83,11 @@ namespace Nethermind.Synchronization.Test.SnapSync
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new TestSyncConfig())).Build();
+            using IContainer container = CreateContainer();
             SnapProvider snapProvider = container.Resolve<SnapProvider>();
 
             var storageRange = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, Keccak.Zero);
-            var result = snapProvider.AddStorageRangeForAccount(storageRange, 0, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result = snapProvider.AddStorageRangeForAccount(storageRange, 0, TestItem.Tree.SlotsWithPaths, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
@@ -86,7 +97,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         {
             Hash256 rootHash = _inputStorageTree!.RootHash;   // "..."
 
-            using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new TestSyncConfig())).Build();
+            using IContainer container = CreateContainer();
             SnapProvider snapProvider = container.Resolve<SnapProvider>();
 
             var storageRange = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, TestItem.Tree.SlotsWithPaths[0].Path);
@@ -101,7 +112,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             Hash256 rootHash = _inputStorageTree!.RootHash;   // "..."
 
             // output state
-            using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new TestSyncConfig())).Build();
+            using IContainer container = CreateContainer();
             SnapProvider snapProvider = container.Resolve<SnapProvider>();
 
             AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueHash256[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
@@ -109,21 +120,21 @@ namespace Nethermind.Synchronization.Test.SnapSync
             var proof = accountProofCollector.BuildResult();
 
             var storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, Keccak.Zero);
-            var result1 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result1 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[0..2], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, [TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[3].Path]);
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
             storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, TestItem.Tree.SlotsWithPaths[2].Path);
-            var result2 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[2..4], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result2 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[2..4], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, [TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[5].Path]);
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
             storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, TestItem.Tree.SlotsWithPaths[4].Path);
-            var result3 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[4..6], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result3 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
@@ -136,7 +147,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             Hash256 rootHash = _inputStorageTree!.RootHash;   // "..."
 
             // output state
-            using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new TestSyncConfig())).Build();
+            using IContainer container = CreateContainer();
             SnapProvider snapProvider = container.Resolve<SnapProvider>();
 
             AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueHash256[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
@@ -144,21 +155,21 @@ namespace Nethermind.Synchronization.Test.SnapSync
             var proof = accountProofCollector.BuildResult();
 
             var storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, Keccak.Zero);
-            var result1 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result1 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[0..2], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, [TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[3].Path]);
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
             storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, TestItem.Tree.SlotsWithPaths[2].Path);
-            var result2 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[3..4], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result2 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[3..4], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, [TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[5].Path]);
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
             storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, TestItem.Tree.SlotsWithPaths[4].Path);
-            var result3 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[4..6], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result3 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));
@@ -169,47 +180,52 @@ namespace Nethermind.Synchronization.Test.SnapSync
         public void AddStorageRange_WhereProofIsTheSameAsAllKey_ShouldStillStore()
         {
             Hash256 account = TestItem.KeccakA;
-            TestMemDb testMemDb = new();
-            var rawTrieStore = new RawScopedTrieStore(new NodeStorage(testMemDb), account);
-            StorageTree tree = new(rawTrieStore, LimboLogs.Instance);
+            using IContainer container = CreateContainerBuilder()
+                .Build();
+            ISnapTestHelper helper = container.Resolve<ISnapTestHelper>();
+            ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
 
-            (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(
-                tree,
-                new PathWithAccount(account, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA)),
+            var pathWithAccount = new PathWithAccount(account, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA));
+            (AddRangeResult result, bool moreChildrenToRight, Hash256 _, bool rootFinished) = SnapProviderHelper.AddStorageRange(
+                factory,
+                pathWithAccount,
                 [
                     new PathWithStorageSlot(new ValueHash256("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"), Bytes.FromHexString("94654f75e491acf8c380d2a6906e67e2e56813665e")),
                 ],
                 Keccak.Zero,
                 null,
-                proofs: [
+                proofs: new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2)
+                {
                     Bytes.FromHexString("f838a120290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e5639594654f75e491acf8c380d2a6906e67e2e56813665e"),
                     Bytes.FromHexString("f838a120290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e5639594654f75e491acf8c380d2a6906e67e2e56813665e"),
-                ]);
+                }));
 
             result.Should().Be(AddRangeResult.OK);
             moreChildrenToRight.Should().BeFalse();
-            testMemDb.WritesCount.Should().Be(1);
+            helper.TrieNodeWritesCount.Should().Be(1);
         }
 
         [Test]
         public void AddStorageRange_EmptySlots_ReturnsEmptySlots()
         {
             Hash256 account = TestItem.KeccakA;
-            TestMemDb testMemDb = new();
-            var rawTrieStore = new RawScopedTrieStore(new NodeStorage(testMemDb), account);
-            StorageTree tree = new(rawTrieStore, LimboLogs.Instance);
+            using IContainer container = CreateContainerBuilder()
+                .Build();
 
-            (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(
-                tree,
-                new PathWithAccount(account, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA)),
+            ISnapTestHelper helper = container.Resolve<ISnapTestHelper>();
+            ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
+
+            var pathWithAccount = new PathWithAccount(account, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA));
+            (AddRangeResult result, bool moreChildrenToRight, Hash256 _, bool rootFinished) = SnapProviderHelper.AddStorageRange(
+                factory,
+                pathWithAccount,
                 Array.Empty<PathWithStorageSlot>(), // Empty slots list
                 Keccak.Zero,
                 null,
                 proofs: null);
 
-            result.Should().Be(AddRangeResult.EmptySlots);
-            moreChildrenToRight.Should().BeFalse();
-            testMemDb.WritesCount.Should().Be(0); // No writes should happen
+            result.Should().Be(AddRangeResult.EmptyRange);
+            helper.TrieNodeWritesCount.Should().Be(0); // No writes should happen
         }
 
         private static StorageRange PrepareStorageRequest(ValueHash256 accountPath, Hash256 storageRoot, ValueHash256 startingHash)

@@ -16,9 +16,8 @@ namespace Nethermind.Serialization.Rlp
         int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
-    public interface IRlpStreamDecoder<T> : IRlpDecoder<T>
+    public interface IRlpStreamEncoder<T> : IRlpDecoder<T>
     {
-        T Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
         void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
@@ -41,36 +40,19 @@ namespace Nethermind.Serialization.Rlp
         }
     }
 
-    public abstract class RlpStreamDecoder<T> : IRlpStreamDecoder<T>
+    public abstract class RlpStreamEncoder<T> : IRlpStreamEncoder<T>
     {
         public abstract int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-        public T Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            try
-            {
-                return DecodeInternal(rlpStream, rlpBehaviors);
-            }
-            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
-            {
-                ThrowRlpException(e);
-                return default;
-            }
-        }
+        public abstract void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
         [DoesNotReturn]
         [StackTraceHidden]
-        protected static void ThrowRlpException(Exception exception)
-        {
+        protected static void ThrowRlpException(Exception exception) =>
             throw new RlpException($"Cannot decode stream of {nameof(T)}", exception);
-        }
-
-        protected abstract T DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-
-        public abstract void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
-    public abstract class RlpValueDecoder<T> : RlpStreamDecoder<T>, IRlpValueDecoder<T>
+    public abstract class RlpValueDecoder<T> : RlpStreamEncoder<T>, IRlpValueDecoder<T>
     {
         public T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

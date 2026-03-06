@@ -242,7 +242,7 @@ namespace Nethermind.Store.Test
             Hash256 stateRoot;
             using (var _ = provider.BeginScope(IWorldState.PreGenesis))
             {
-                provider.CreateAccount(TestItem.AddressA, 1.Ether());
+                provider.CreateAccount(TestItem.AddressA, 1.Ether);
                 provider.Commit(MuirGlacier.Instance);
                 provider.CommitTree(0);
                 stateRoot = provider.StateRoot;
@@ -255,7 +255,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void IsInvalidContractSender_AccountHasCode_ReturnsTrue()
         {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
             IDbProvider dbProvider = TestMemDbProvider.Init();
@@ -274,7 +274,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void IsInvalidContractSender_AccountHasNoCode_ReturnsFalse()
         {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
             IDbProvider dbProvider = TestMemDbProvider.Init();
@@ -292,7 +292,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void IsInvalidContractSender_AccountHasDelegatedCode_ReturnsFalse()
         {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
             IDbProvider dbProvider = TestMemDbProvider.Init();
@@ -312,7 +312,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void IsInvalidContractSender_AccountHasCodeButDelegateReturnsTrue_ReturnsFalse()
         {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
             IDbProvider dbProvider = TestMemDbProvider.Init();
@@ -332,7 +332,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void IsInvalidContractSender_AccountHasDelegatedCodeBut7702IsNotEnabled_ReturnsTrue()
         {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(true);
             IDbProvider dbProvider = TestMemDbProvider.Init();
             (IWorldState sut, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
@@ -351,7 +351,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void IsInvalidContractSender_AccountHasDelegatedCodeBut3807IsNotEnabled_ReturnsFalse()
         {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip7702Enabled.Returns(true);
             IDbProvider dbProvider = TestMemDbProvider.Init();
             (IWorldState sut, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
@@ -374,7 +374,7 @@ namespace Nethermind.Store.Test
             Hash256 stateRoot;
             using (var _ = provider.BeginScope(IWorldState.PreGenesis))
             {
-                provider.CreateAccount(TestItem.AddressA, 1.Ether());
+                provider.CreateAccount(TestItem.AddressA, 1.Ether);
                 provider.Commit(MuirGlacier.Instance);
                 provider.CommitTree(0);
                 stateRoot = provider.StateRoot;
@@ -392,7 +392,7 @@ namespace Nethermind.Store.Test
             Hash256 stateRoot;
             using (var _ = provider.BeginScope(IWorldState.PreGenesis))
             {
-                provider.CreateAccount(TestItem.AddressA, 1.Ether());
+                provider.CreateAccount(TestItem.AddressA, 1.Ether);
                 provider.Commit(MuirGlacier.Instance);
                 provider.CommitTree(0);
                 stateRoot = provider.StateRoot;
