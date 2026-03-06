@@ -29,7 +29,6 @@ Detailed rules live in [`.agents/rules/`](./.agents/rules/). **You MUST read the
 - [performance.md](./.agents/rules/performance.md) — Load when working on hot paths in the codebase. Covers ref structs, Span, SIMD, function pointers, and zero-allocation patterns.
 - [package-management.md](./.agents/rules/package-management.md) — Load when working with NuGet dependencies. Covers Central Package Management (CPM) rules.
 - [github-workflows.md](./.agents/rules/github-workflows.md) — Load when working with GitHub Actions, CODEOWNERS, or PR templates. Covers workflow conventions and automation patterns.
-- [domain-types.md](./.agents/rules/domain-types.md) — Load when working with core types like `Transaction`, `BlockHeader`, `IReleaseSpec`, `Address`, `Hash256`, or `UInt256` etc. Quick reference for what each type is and where it lives — always read the source file before using properties.
 - [agent-skills.md](./.agents/rules/agent-skills.md) — Load when working with agentic skills. Covers the symlink convention.
 
 ---
