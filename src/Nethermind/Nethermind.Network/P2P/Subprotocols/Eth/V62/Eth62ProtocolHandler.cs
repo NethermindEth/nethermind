@@ -183,9 +183,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.NewBlock:
                     if (CanAcceptBlockGossip())
                     {
-                        NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
-                        ReportIn(newBlockMsg, size);
-                        Handle(newBlockMsg).GetAwaiter().GetResult();
+                        HandleInBackground<NewBlockMessage>(message, Handle);
                     }
                     break;
             }
@@ -311,12 +309,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         // Task.Run avoids BackgroundTaskScheduler's 2-thread limit (default config) 
         // and deadlock risk when AddNewBlock spawns nested tasks.
-        private Task Handle(NewBlockMessage msg) => Task.Run(() =>
-            {
-                msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
-                SyncServer.AddNewBlock(msg.Block, this);
-            }
-        );
+        private ValueTask Handle(NewBlockMessage msg, CancellationToken cancellationToken)
+        {
+            msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
+
+            Task task = Task.Run(() => SyncServer.AddNewBlock(msg.Block, this), cancellationToken);
+
+            return new ValueTask(task);
+        }
 
         protected virtual void NotifyOfStatus(BlockHeader head)
         {
