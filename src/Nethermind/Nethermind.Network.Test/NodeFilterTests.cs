@@ -59,7 +59,7 @@ public class NodeFilterTests
     [TestCase("fe80::1", "fe80::2", true, Description = "Private exact: IPv6 link-local")]
     [TestCase("192.0.2.255", "192.0.3.0", true, Description = "Boundary: IPv4 /24")]
     [TestCase("2001:db8:0:0:ffff:ffff:ffff:ffff", "2001:db8:0:1::0", true, Description = "Boundary: IPv6 /64")]
-    public void SubnetBucketing_AcceptsOrRejects(string first, string second, bool secondAccepted)
+    public void TryAccept_FiltersSecondAddress(string first, string second, bool secondAccepted)
     {
         NodeFilter filter = CreateFilter();
         filter.TryAccept(IPAddress.Parse(first)).Should().BeTrue("first address should be accepted");
