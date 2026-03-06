@@ -20,9 +20,12 @@ using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 namespace Nethermind.Benchmarks.State;
 
 [MemoryDiagnoser]
+[WarmupCount(3)]
+[MinIterationCount(3)]
+[MaxIterationCount(10)]
 public class WriteBatchBenchmark
 {
-    private const int SnapshotCount = 4;
+    private const int SnapshotCount = 1;
 
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
@@ -35,7 +38,7 @@ public class WriteBatchBenchmark
     [Params(100, 1000)]
     public int AccountCount { get; set; }
 
-    [Params(10, 100)]
+    [Params(1000, 5000, 10000)]
     public int StorageSlotsPerAccount { get; set; }
 
     [GlobalSetup]

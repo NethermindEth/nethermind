@@ -59,6 +59,9 @@ public class ReadOnlySnapshotBundleBenchmark
         int totalStorageAccountCount = 0;
         int maxSlotsPerStorageAccount = 0;
 
+        // Track storage account ranges per snapshot for hit distribution
+        List<(int AddressStart, int StorageCount, int SlotsPerAccount)> storageRanges = new();
+
         for (int block = 0; block < SnapshotCount; block++)
         {
             int multiplier = block < 6 ? 32 : 1;
@@ -140,6 +143,7 @@ public class ReadOnlySnapshotBundleBenchmark
             allSnapshots.Add(snapshot);
 
             currentStateId = new StateId(block + 1, scope.RootHash);
+            storageRanges.Add((totalAccountCount + 1, storageAccountCount, slotsPerStorageAccount));
             totalAccountCount += accountCount;
             totalStorageAccountCount += storageAccountCount;
             if (slotsPerStorageAccount > maxSlotsPerStorageAccount)
@@ -166,14 +170,13 @@ public class ReadOnlySnapshotBundleBenchmark
             _hitAccounts[i] = DeriveAddress(accountIndex);
         }
 
-        // Hit slots: use storage accounts from the first snapshot (addresses 1..640, slots 1..3200)
-        int firstStorageCount = 20 * 32; // first snapshot multiplier = 32
-        int firstSlotsPerAccount = 100 * 32;
+        // Hit slots: spread across all snapshots so lookups hit different depth positions
         _hitSlots = new (Address, UInt256)[ArraySize];
         for (int i = 0; i < ArraySize; i++)
         {
-            int storageAccountIndex = (i % firstStorageCount) + 1;
-            UInt256 slot = (UInt256)(ulong)((i * 100 % firstSlotsPerAccount) + 1);
+            var range = storageRanges[i % storageRanges.Count];
+            int storageAccountIndex = range.AddressStart + (i / storageRanges.Count % range.StorageCount);
+            UInt256 slot = (UInt256)(ulong)((i * 97 % range.SlotsPerAccount) + 1);
             _hitSlots[i] = (DeriveAddress(storageAccountIndex), slot);
         }
 
