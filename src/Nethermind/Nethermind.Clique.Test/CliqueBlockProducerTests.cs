@@ -106,17 +106,17 @@ public class CliqueBlockProducerTests
             IWorldState stateProvider = container.Resolve<IMainProcessingContext>().WorldState;
             using (stateProvider.BeginScope(IWorldState.PreGenesis))
             {
-                stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether(), 0, -1);
+                stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 if (finalSpec.WithdrawalsEnabled)
                 {
-                    stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce, -1);
-                    stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec, false, -1);
+                    stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+                    stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
                 }
 
                 if (finalSpec.ConsolidationRequestsEnabled)
                 {
-                    stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce, -1);
-                    stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec, false, -1);
+                    stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+                    stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
                 }
 
                 stateProvider.Commit(testnetSpecProvider.GenesisSpec);

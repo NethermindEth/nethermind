@@ -140,7 +140,6 @@ public partial class BlockProcessor
         BlockHeader header = block.Header;
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
-        // need one receipts / block tracer per thread & combine
         ReceiptsTracer.StartNewBlockTrace(block);
 
         bool shouldComputeStateRoot = ShouldComputeStateRoot(header);
@@ -335,7 +334,7 @@ public partial class BlockProcessor
     {
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
-        _stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec, -1);
+        _stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
     }
 
     private void ApplyDaoTransition(Block block)
@@ -351,16 +350,16 @@ public partial class BlockProcessor
         {
             if (_logger.IsInfo) _logger.Info("Applying the DAO transition");
             Address withdrawAccount = DaoData.DaoWithdrawalAccount;
-            if (!_stateProvider.AccountExists(withdrawAccount, -1))
+            if (!_stateProvider.AccountExists(withdrawAccount))
             {
-                _stateProvider.CreateAccount(withdrawAccount, 0, 0, -1);
+                _stateProvider.CreateAccount(withdrawAccount, 0);
             }
 
             foreach (Address daoAccount in DaoData.DaoAccounts)
             {
-                UInt256 balance = _stateProvider.GetBalance(daoAccount, -1);
-                _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance, -1);
-                _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance, -1);
+                UInt256 balance = _stateProvider.GetBalance(daoAccount);
+                _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
+                _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
             }
         }
     }

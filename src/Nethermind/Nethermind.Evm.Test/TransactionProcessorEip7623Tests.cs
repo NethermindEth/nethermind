@@ -51,7 +51,7 @@ public class TransactionProcessorEip7623Tests
 
     public void transaction_validation_intrinsic_below_floor(long gasLimit, bool executed)
     {
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether(), 0, -1);
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -77,7 +77,7 @@ public class TransactionProcessorEip7623Tests
     [Test]
     public void balance_validation_intrinsic_below_floor()
     {
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether(), 0, -1);
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 

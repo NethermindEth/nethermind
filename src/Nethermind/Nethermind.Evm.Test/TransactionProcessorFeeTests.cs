@@ -40,7 +40,7 @@ public class TransactionProcessorFeeTests
 
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether(), 0, -1);
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 

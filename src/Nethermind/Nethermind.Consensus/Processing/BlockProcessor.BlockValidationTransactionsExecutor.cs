@@ -28,7 +28,6 @@ namespace Nethermind.Consensus.Processing
             ITransactionProcessorAdapter transactionProcessor,
             ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
             ISpecProvider specProvider,
-            // IVirtualMachine virtualMachine,
             IBlockhashProvider blockHashProvider,
             ICodeInfoRepository codeInfoRepository,
             ILogManager logManager,
@@ -36,7 +35,7 @@ namespace Nethermind.Consensus.Processing
             : IBlockProcessor.IBlockTransactionsExecutor
         {
             private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
-            private readonly ITransactionProcessorAdapter _transactionProcessor = transactionProcessor; // system tx exec
+            private readonly ITransactionProcessorAdapter _transactionProcessor = transactionProcessor;
             private BlockExecutionContext _blockExecutionContext;
             private ILogger _logger = logManager.GetClassLogger();
 
@@ -56,8 +55,7 @@ namespace Nethermind.Consensus.Processing
                     _logger.Info($"[parallel] beginning parallel execution for block {block.Number}");
 
                     ITransactionProcessorAdapter[] transactionProcessors = new ITransactionProcessorAdapter[len];
-                    BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
-                    // todo: set and parallelize other tracer
+                    BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len]; // n.b. other tracer not set
                     TaskCompletionSource<(long? GasUsed, Exception? Exception)>[] gasResults = new TaskCompletionSource<(long? GasUsed, Exception? Exception)>[len];
                     for (int i = 0; i < len; i++)
                     {

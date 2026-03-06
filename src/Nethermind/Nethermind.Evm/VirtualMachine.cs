@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,7 +31,6 @@ using Nethermind.Evm.Tracing.Debugger;
 namespace Nethermind.Evm;
 
 using Int256;
-using Org.BouncyCastle.Crypto.Engines;
 
 public sealed class EthereumVirtualMachine(
     IBlockhashProvider? blockHashProvider,
@@ -117,7 +115,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
-    // should be array?
     private TxExecutionContext _txExecutionContext;
     public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
     /// <summary>
@@ -173,7 +170,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
-        // (_worldState as TracedAccessWorldState).BlockAccessIndex = 
 
         // Main execution loop: processes call frames until the top-level transaction completes.
         while (true)
@@ -947,7 +943,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         if (_parityTouchBugAccount.ShouldDelete)
         {
-            // potential edge case?
             if (_worldState.AccountExists(_parityTouchBugAccount.Address, TxExecutionContext.BlockAccessIndex))
             {
                 _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec, TxExecutionContext.BlockAccessIndex);

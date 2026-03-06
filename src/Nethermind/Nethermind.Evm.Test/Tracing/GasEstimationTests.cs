@@ -1276,7 +1276,7 @@ namespace Nethermind.Evm.Test.Tracing
                 _specProvider = MainnetSpecProvider.Instance;
                 _stateProvider = TestWorldStateFactory.CreateForTest();
                 _closer = _stateProvider.BeginScope(IWorldState.PreGenesis);
-                _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether(), 0, -1);
+                _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
 
@@ -1292,7 +1292,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             public void InsertContract(Address contractAddress, byte[] code)
             {
-                _stateProvider.CreateAccount(contractAddress, 0, 0, -1);
+                _stateProvider.CreateAccount(contractAddress, 0);
                 _stateProvider.InsertCode(contractAddress, ValueKeccak.Compute(code), code, _specProvider.GenesisSpec, false, -1);
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);

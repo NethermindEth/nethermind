@@ -101,7 +101,7 @@ namespace Ethereum.Test.Base
             // Modern tests correctly create coinbase only after successful tx.
             if (test.IsLegacy && test.CurrentCoinbase is not null)
             {
-                stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero, 0, -1);
+                stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero);
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.RecalculateStateRoot();
             }
@@ -166,7 +166,7 @@ namespace Ethereum.Test.Base
                 // For legacy tests, coinbase was already created before tx execution.
                 if (!test.IsLegacy)
                 {
-                    stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero, 0, -1);
+                    stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero);
                 }
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.RecalculateStateRoot();
@@ -207,12 +207,12 @@ namespace Ethereum.Test.Base
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
                     stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
-                        storageItem.Value.WithoutLeadingZeros().ToArray(), -1);
+                        storageItem.Value.WithoutLeadingZeros().ToArray());
                 }
 
-                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, 0, -1);
+                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
                 stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
-                stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce, -1);
+                stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);

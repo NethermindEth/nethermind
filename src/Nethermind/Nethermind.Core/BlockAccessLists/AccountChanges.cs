@@ -10,7 +10,6 @@ using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -44,9 +43,6 @@ public class AccountChanges : IEquatable<AccountChanges>
     private readonly SortedList<int, BalanceChange> _balanceChanges;
     private readonly SortedList<int, NonceChange> _nonceChanges;
     private readonly SortedList<int, CodeChange> _codeChanges;
-    // private bool _isDestroyed = false;
-    // private ValueHash256 _codeHash;
-    // private bool _existedPreBlock = false;
 
     public AccountChanges()
     {
@@ -171,13 +167,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         _storageChanges.Clear();
         _nonceChanges.Clear();
         _codeChanges.Clear();
-        // _isDestroyed = true;
     }
-
-    // public void CreateAccount()
-    // {
-    //     _isDestroyed = false;
-    // }
 
     public void AddBalanceChange(BalanceChange balanceChange)
         => _balanceChanges[balanceChange.BlockAccessIndex] = balanceChange;

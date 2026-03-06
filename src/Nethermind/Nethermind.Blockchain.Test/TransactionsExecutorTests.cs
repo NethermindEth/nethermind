@@ -275,9 +275,9 @@ namespace Nethermind.Blockchain.Test
                 .Do(info =>
                 {
                     Transaction tx = info.Arg<Transaction>();
-                    stateProvider.IncrementNonce(tx.SenderAddress!, -1);
+                    stateProvider.IncrementNonce(tx.SenderAddress!);
                     stateProvider.SubtractFromBalance(tx.SenderAddress!,
-                        tx.Value + ((UInt256)tx.GasLimit * tx.GasPrice), spec, -1);
+                        tx.Value + ((UInt256)tx.GasLimit * tx.GasPrice), spec);
                 });
 
             IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -303,10 +303,10 @@ namespace Nethermind.Blockchain.Test
                 foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates
                     .Where(v => !missingAddressesSet.Contains(v.Key)))
                 {
-                    stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, 0, -1);
+                    stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
                     for (int i = 0; i < accountState.Value.Nonce; i++)
                     {
-                        stateProvider.IncrementNonce(accountState.Key, -1);
+                        stateProvider.IncrementNonce(accountState.Key);
                     }
                 }
 
