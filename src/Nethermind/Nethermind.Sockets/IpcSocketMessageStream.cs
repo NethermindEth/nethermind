@@ -61,11 +61,6 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
             return (contentLen, hasTrailingDelimiter ? contentLen + 1 : contentLen);
         }
 
-        // If JSON parsing is in progress (incomplete object/array), don't fall back
-        // to newline — it may be inside the JSON structure.
-        if (_jsonParseState.IsActive)
-            return default;
-
         // Fall back to newline delimiter for non-JSON messages.
         return data[offset..].IndexOf(Delimiter) switch
         {
