@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -23,11 +24,11 @@ public sealed class SnapshotBundle : IDisposable
 
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
-    private ConcurrentDictionary<AddressAsKey, Account?> _changedAccounts = null!;
-    private ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> _changedSlots = null!;
-    private ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes = null!;
-    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes = null!;
-    private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses = null!;
+    private ConcurrentDictionary<HashedKey<AddressAsKey>, Account?> _changedAccounts = null!;
+    private ConcurrentDictionary<HashedKey<(AddressAsKey, UInt256)>, SlotValue?> _changedSlots = null!;
+    private ShardedDictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
+    private ShardedDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> _changedStorageNodes = null!;
+    private ConcurrentDictionary<HashedKey<AddressAsKey>, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
     private ConcurrentDictionary<TreePath, TrieNode> _readStateNodes = null!;
@@ -69,6 +70,7 @@ public sealed class SnapshotBundle : IDisposable
 
     private void ExpandCurrentPooledContent()
     {
+        _currentPooledContent.EnableLocks();
         _changedAccounts = _currentPooledContent.Accounts;
         _changedSlots = _currentPooledContent.Storages;
         _changedStorageNodes = _currentPooledContent.StorageNodes;
@@ -82,9 +84,10 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (!excludeChanged && _changedAccounts.TryGetValue(address, out Account? acc)) return acc;
+        HashedKey<AddressAsKey> key = new(address);
 
-        AddressAsKey key = address;
+        if (!excludeChanged && _changedAccounts.TryGetValue(key, out Account? acc)) return acc;
+
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetAccount(key, out acc))
@@ -98,11 +101,13 @@ public sealed class SnapshotBundle : IDisposable
 
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
-        if (_selfDestructedAccountAddresses.ContainsKey(address)) return _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount;
+        HashedKey<AddressAsKey> key = new(address);
+
+        if (_selfDestructedAccountAddresses.ContainsKey(key)) return _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount;
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (_snapshots[i].HasSelfDestruct(address)) return i + _readOnlySnapshotBundle.SnapshotCount;
+            if (_snapshots[i].HasSelfDestruct(key)) return i + _readOnlySnapshotBundle.SnapshotCount;
         }
 
         return _readOnlySnapshotBundle.DetermineSelfDestructSnapshotIdx(address);
@@ -112,7 +117,9 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_changedSlots.TryGetValue((address, index), out SlotValue? slotValue))
+        HashedKey<(AddressAsKey, UInt256)> key = new((address, index));
+
+        if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
         {
             return slotValue?.ToEvmBytes();
         }
@@ -126,7 +133,7 @@ public sealed class SnapshotBundle : IDisposable
         int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (_snapshots[i].TryGetStorage(address, index, out slotValue))
+            if (_snapshots[i].TryGetStorage(key, out slotValue))
             {
                 return slotValue?.ToEvmBytes();
             }
@@ -145,7 +152,9 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_trieChanged && _changedStateNodes.TryGetValue(path, out TrieNode? node))
+        HashedKey<TreePath> key = new(path);
+
+        if (_trieChanged && _changedStateNodes.TryGetValue(key, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
@@ -197,9 +206,10 @@ public sealed class SnapshotBundle : IDisposable
             return true;
         }
 
+        HashedKey<TreePath> key = new(path);
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (_snapshots[i].TryGetStateNode(path, out node))
+            if (_snapshots[i].TryGetStateNode(key, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 return true;
@@ -213,8 +223,9 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
+        HashedKey<(Hash256AsKey, TreePath)> key = new(((Hash256AsKey)address, path));
 
-        if (_trieChanged && _changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out TrieNode? node))
+        if (_trieChanged && _changedStorageNodes.TryGetValue(key, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
@@ -269,9 +280,10 @@ public sealed class SnapshotBundle : IDisposable
             return true;
         }
 
+        HashedKey<(Hash256AsKey, TreePath)> key = new((address, path));
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (_snapshots[i].TryGetStorageNode(address, path, out node))
+            if (_snapshots[i].TryGetStorageNode(key, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 return true;
@@ -303,7 +315,7 @@ public sealed class SnapshotBundle : IDisposable
 
         // Note: Hot path
         _trieChanged = true;
-        _changedStateNodes[path] = newNode;
+        _changedStateNodes[new HashedKey<TreePath>(path)] = newNode;
 
         // Note to self:
         // Skipping the cached resource update and doing it in background in TrieNodeCache barely make a dent
@@ -319,24 +331,26 @@ public sealed class SnapshotBundle : IDisposable
 
         // Note: Hot path
         _trieChanged = true;
-        _changedStorageNodes[(addr, path)] = newNode;
+        _changedStorageNodes[new HashedKey<(Hash256AsKey, TreePath)>((addr, path))] = newNode;
         _transientResource.UpdateStorageNode(addr, path, newNode);
     }
 
-    public void SetAccount(AddressAsKey addr, Account? account) => _changedAccounts[addr] = account;
+    public void SetAccount(AddressAsKey addr, Account? account) =>
+        _changedAccounts[new HashedKey<AddressAsKey>(addr)] = account;
 
     public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
     {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
         // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
         // lower down.
+        HashedKey<(AddressAsKey, UInt256)> key = new((address, index));
         if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
         {
-            _changedSlots[(address, index)] = null;
+            _changedSlots[key] = null;
         }
         else
         {
-            _changedSlots[(address, index)] = SlotValue.FromSpanWithoutLeadingZero(value);
+            _changedSlots[key] = SlotValue.FromSpanWithoutLeadingZero(value);
         }
     }
 
@@ -350,35 +364,35 @@ public sealed class SnapshotBundle : IDisposable
         // it skips persistence, but probably need to make sure it does not send it at all in the first place.
         bool isNewAccount = account == null || account.StorageRoot == Keccak.EmptyTreeHash;
 
-        _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
+        _selfDestructedAccountAddresses.TryAdd(new HashedKey<AddressAsKey>(address), isNewAccount);
 
         if (!isNewAccount)
         {
             // Collect keys first to avoid modifying during iteration
-            using ArrayPoolListRef<(Hash256AsKey, TreePath)> storageKeysToRemove = new(16);
-            foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in _changedStorageNodes)
+            using ArrayPoolListRef<HashedKey<(Hash256AsKey, TreePath)>> storageKeysToRemove = new(16);
+            foreach (KeyValuePair<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> kv in _changedStorageNodes)
             {
-                if (kv.Key.Item1.Value == addressHash)
+                if (kv.Key.Key.Item1.Value == addressHash)
                 {
                     storageKeysToRemove.Add(kv.Key);
                 }
             }
 
-            foreach ((Hash256AsKey, TreePath) key in storageKeysToRemove)
+            foreach (HashedKey<(Hash256AsKey, TreePath)> key in storageKeysToRemove)
             {
                 _changedStorageNodes.TryRemove(key, out _);
             }
 
-            using ArrayPoolListRef<(AddressAsKey, UInt256)> slotKeysToRemove = new(16);
-            foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in _changedSlots)
+            using ArrayPoolListRef<HashedKey<(AddressAsKey, UInt256)>> slotKeysToRemove = new(16);
+            foreach (KeyValuePair<HashedKey<(AddressAsKey, UInt256)>, SlotValue?> kv in _changedSlots)
             {
-                if (kv.Key.Item1.Value == address)
+                if (kv.Key.Key.Item1.Value == address)
                 {
                     slotKeysToRemove.Add(kv.Key);
                 }
             }
 
-            foreach ((AddressAsKey, UInt256) key in slotKeysToRemove)
+            foreach (HashedKey<(AddressAsKey, UInt256)> key in slotKeysToRemove)
             {
                 _changedSlots.TryRemove(key, out _);
             }
@@ -401,6 +415,7 @@ public sealed class SnapshotBundle : IDisposable
             resourcePool: _resourcePool,
             usage: _usage);
 
+        _currentPooledContent.DisableLocks();
         snapshot.AcquireLease(); // For this SnapshotBundle.
         _snapshots.Add(snapshot); // Now later reads are correct
 

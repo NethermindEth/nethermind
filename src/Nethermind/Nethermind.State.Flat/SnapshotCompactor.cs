@@ -129,11 +129,11 @@ public class SnapshotCompactor : ISnapshotCompactor
         ResourcePool.Usage usage = ResourcePool.CompactUsage(compactSize);
 
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage);
-        ConcurrentDictionary<AddressAsKey, Account?> accounts = snapshot.Content.Accounts;
-        ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> storages = snapshot.Content.Storages;
-        ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
-        ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = snapshot.Content.StorageNodes;
-        ConcurrentDictionary<TreePath, TrieNode> stateNodes = snapshot.Content.StateNodes;
+        ConcurrentDictionary<HashedKey<AddressAsKey>, Account?> accounts = snapshot.Content.Accounts;
+        ConcurrentDictionary<HashedKey<(AddressAsKey, UInt256)>, SlotValue?> storages = snapshot.Content.Storages;
+        ConcurrentDictionary<HashedKey<AddressAsKey>, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
+        ShardedDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> storageNodes = snapshot.Content.StorageNodes;
+        ShardedDictionary<HashedKey<TreePath>, TrieNode> stateNodes = snapshot.Content.StateNodes;
 
         using ArrayPoolListRef<Task> compactTask = new ArrayPoolListRef<Task>(4);
 
@@ -157,7 +157,7 @@ public class SnapshotCompactor : ISnapshotCompactor
                 Snapshot knownState = snapshots[i];
                 addressToClear.Clear();
 
-                foreach ((AddressAsKey address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
+                foreach ((HashedKey<AddressAsKey> address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
                 {
                     if (isNewAccount)
                     {
@@ -167,18 +167,18 @@ public class SnapshotCompactor : ISnapshotCompactor
                     else
                     {
                         selfDestructedStorageAddresses[address] = false;
-                        addressToClear.Add(address);
+                        addressToClear.Add(address.Key);
                     }
                 }
 
                 if (addressToClear.Count > 0)
                 {
                     // Clear
-                    foreach (((AddressAsKey Address, UInt256) key, SlotValue? _) in storages)
+                    foreach ((HashedKey<(AddressAsKey, UInt256)> key, SlotValue? _) in storages)
                     {
-                        if (addressToClear.Contains(key.Address))
+                        if (addressToClear.Contains(key.Key.Item1))
                         {
-                            storages.Remove(key, out _);
+                            storages.TryRemove(key, out _);
                         }
                     }
                 }
@@ -207,19 +207,19 @@ public class SnapshotCompactor : ISnapshotCompactor
                 Snapshot knownState = snapshots[i];
 
                 addressHashToClear.Clear();
-                foreach ((AddressAsKey address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
+                foreach ((HashedKey<AddressAsKey> address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
                 {
-                    if (!isNewAccount) addressHashToClear.Add(address.Value.ToAccountPath.ToCommitment());
+                    if (!isNewAccount) addressHashToClear.Add(address.Key.Value.ToAccountPath.ToCommitment());
                 }
 
                 if (addressHashToClear.Count > 0)
                 {
                     // Clear
-                    foreach (((Hash256AsKey Address, TreePath) key, TrieNode? _) in storageNodes)
+                    foreach ((HashedKey<(Hash256AsKey, TreePath)> key, TrieNode? _) in storageNodes)
                     {
-                        if (addressHashToClear.Contains(key.Address))
+                        if (addressHashToClear.Contains(key.Key.Item1))
                         {
-                            storageNodes.Remove(key, out _);
+                            storageNodes.TryRemove(key, out _);
                         }
                     }
 

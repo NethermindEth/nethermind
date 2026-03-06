@@ -97,6 +97,27 @@ namespace Nethermind.Core.Collections
             return true;
         }
 
+        public static bool NoResizeClear<TKey, TValue>(this ShardedDictionary<TKey, TValue>? dictionary)
+                where TKey : notnull
+        {
+            if (dictionary?.IsEmpty ?? true)
+            {
+                return false;
+            }
+
+            dictionary.NoResizeClear();
+            return true;
+        }
+
+        public static void AddOrUpdateRange<TKey, TValue>(this ShardedDictionary<TKey, TValue> dict, IEnumerable<KeyValuePair<TKey, TValue>> items)
+                where TKey : notnull
+        {
+            foreach (KeyValuePair<TKey, TValue> kv in items)
+            {
+                dict[kv.Key] = kv.Value;
+            }
+        }
+
         private static class ClearCache<TKey, TValue> where TKey : notnull
         {
             public static readonly Action<ConcurrentDictionary<TKey, TValue>> Clear = CreateNoResizeClearExpression();
