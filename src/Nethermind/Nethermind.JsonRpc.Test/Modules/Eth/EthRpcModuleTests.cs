@@ -1264,7 +1264,7 @@ public partial class EthRpcModuleTests
             transaction.AccessList = GetTestAccessList(2, accessListProvided == AccessListProvided.Full).AccessList;
         }
 
-        string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "0x0", optimize);
+        string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "0x0", null, optimize);
         Assert.That(serialized, Is.EqualTo(expected));
     }
 
@@ -1280,8 +1280,8 @@ public partial class EthRpcModuleTests
         object stateOverride = JsonSerializer.Deserialize<object>(
             """{"0xc200000000000000000000000000000000000000":{"code":"0x6001545000"}}""")!;
 
-        string withOverride = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", false, stateOverride);
-        string withoutOverride = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", false);
+        string withOverride = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, false);
+        string withoutOverride = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", null, false);
 
         JToken withOverrideResult = JToken.Parse(withOverride);
         JToken withoutOverrideResult = JToken.Parse(withoutOverride);

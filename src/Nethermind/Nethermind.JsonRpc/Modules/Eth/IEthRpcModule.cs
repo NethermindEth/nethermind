@@ -178,9 +178,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             [JsonRpcParameter(Description = "(optional)")]
             BlockParameter? blockParameter = null,
             [JsonRpcParameter(Description = "(optional)")]
-            bool optimize = true,
+            Dictionary<Address, AccountOverride>? stateOverride = null,
             [JsonRpcParameter(Description = "(optional)")]
-            Dictionary<Address, AccountOverride>? stateOverride = null);
+            bool optimize = true);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves a block by hash",
