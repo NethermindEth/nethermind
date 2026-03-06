@@ -110,13 +110,13 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
                     or HttpStatusCode.SeeOther
                     or HttpStatusCode.TemporaryRedirect
                     or HttpStatusCode.PermanentRedirect:
-                {
-                    Uri location = response.Headers.Location
-                                   ?? throw new IOException("Redirect response missing Location header.");
-                    currentUri = new Uri(currentUri, location); // resolve relative redirects
-                    response.Dispose();
-                    continue;
-                }
+                    {
+                        Uri location = response.Headers.Location
+                                       ?? throw new IOException("Redirect response missing Location header.");
+                        currentUri = new Uri(currentUri, location); // resolve relative redirects
+                        response.Dispose();
+                        continue;
+                    }
                 // Let the caller handle 416 — it means the file is already complete.
                 case HttpStatusCode.RequestedRangeNotSatisfiable:
                     return response;
