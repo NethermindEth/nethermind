@@ -20,6 +20,9 @@ using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 namespace Nethermind.Benchmarks.State;
 
 [MemoryDiagnoser]
+[WarmupCount(3)]
+[MinIterationCount(3)]
+[MaxIterationCount(10)]
 public class ReadOnlySnapshotBundleBenchmark
 {
     private ReadOnlySnapshotBundle _bundle = null!;
@@ -64,8 +67,8 @@ public class ReadOnlySnapshotBundleBenchmark
 
         for (int block = 0; block < SnapshotCount; block++)
         {
-            int multiplier = block < 6 ? 32 : 1;
-            int accountCount = 2000 * multiplier;
+            int multiplier = block < 6 ? 16 : 1;
+            int accountCount = 1000 * multiplier;
             int storageAccountCount = 20 * multiplier;
             int slotsPerStorageAccount = 100 * multiplier;
 
