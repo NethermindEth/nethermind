@@ -346,6 +346,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return totalZeros + (data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
+
     public static long AccessListCost(Transaction transaction, IReleaseSpec spec)
     {
         AccessList? accessList = transaction.AccessList;
@@ -393,10 +394,28 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. EIP-7702 is not enabled.");
     }
 
-    protected static long CalculateFloorCost(long tokensInCallData, IReleaseSpec spec) =>
-        spec.IsEip7623Enabled
-            ? GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623
-            : 0L;
+    /// <summary>
+    /// Calculates the calldata floor cost for a transaction.
+    /// EIP-7976 uses uniform byte weighting (all bytes treated as non-zero) with TOTAL_COST_FLOOR_PER_TOKEN of 16.
+    /// EIP-7623 uses differentiated zero/non-zero token counting with TOTAL_COST_FLOOR_PER_TOKEN of 10.
+    /// The floor applies to regular gas only (independent of state gas in EIP-8037).
+    /// </summary>
+    protected static long CalculateFloorCost(Transaction transaction, IReleaseSpec spec, long tokensInCallData)
+    {
+        // EIP-7976 supersedes EIP-7623: floor_tokens_in_calldata = total_bytes * nonzero_multiplier (uniform weighting)
+        if (spec.IsEip7976Enabled)
+        {
+            long floorTokensInCallData = transaction.Data.Length * spec.GetTxDataNonZeroMultiplier();
+            return GasCostOf.Transaction + floorTokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7976;
+        }
+        // EIP-7623: tokens_in_calldata uses differentiated zero/non-zero byte costs
+        else if (spec.IsEip7623Enabled)
+        {
+            return GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623;
+        }
+
+        return 0L;
+    }
 }
 
 /// <summary>

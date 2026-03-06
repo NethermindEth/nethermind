@@ -369,6 +369,11 @@ namespace Nethermind.Core.Specs
         bool IsEip7623Enabled { get; }
 
         /// <summary>
+        ///  Increase calldata floor cost and changes the floor token formula so zero bytes also cost 4 tokens.
+        /// </summary>
+        bool IsEip7976Enabled { get; }
+
+        /// <summary>
         ///  Transaction gas limit cap
         /// </summary>
         bool IsEip7825Enabled { get; }
