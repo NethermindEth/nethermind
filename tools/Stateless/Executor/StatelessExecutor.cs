@@ -38,38 +38,53 @@ public static class StatelessExecutor
         Block suggestedBlock, Witness witness, ISpecProvider specProvider, out Block? processedBlock)
     {
         processedBlock = null;
-        BlockHeader? baseBlock = null;
+        BlockHeader? parentHeader = null;
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
 
         foreach (BlockHeader header in headers)
         {
             if (header.Hash == suggestedBlock.Header.ParentHash)
             {
-                baseBlock = header;
+                parentHeader = header;
                 break;
             }
         }
 
-        if (baseBlock is null)
+        if (parentHeader is null)
+            return false;
+
+        StatelessBlockTree blockTree = new(headers);
+        HeaderValidator headerValidator = new(
+            blockTree,
+            Always.Valid,
+            specProvider,
+            NullLogManager.Instance
+        );
+        BlockValidator blockValidator = new(
+            new TxValidator(specProvider.ChainId),
+            headerValidator,
+            new UnclesValidator(blockTree, headerValidator, NullLogManager.Instance),
+            specProvider,
+            NullLogManager.Instance
+        );
+
+        if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out _))
             return false;
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
             witness, specProvider, Always.Valid, NullLogManager.Instance);
 
-        using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(baseBlock);
+        using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(parentHeader);
 
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
-        (processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(
+        (processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
             suggestedBlock,
             ProcessingOptions.ReadOnlyChain,
             NullBlockTracer.Instance,
             specProvider.GetSpec(suggestedBlock.Header));
 
-        if (processedBlock.Hash != suggestedBlock.Hash)
-            return false;
-
-        return true;
+        return blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock);
     }
 
     private static ISpecProvider GetSpecProvider(uint chainId) => chainId switch
