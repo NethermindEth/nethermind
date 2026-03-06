@@ -34,6 +34,11 @@ function require_env() {
 
 if [ "$(uname -m)" != "riscv64" ] ; then
     # On non-riscv64: upload artifacts and run on the RISC-V host via SSH.
+    # Skip gracefully when SSH credentials are not configured.
+    if [ -z "$STATELESS_EXECUTOR_RISCV_HOST" ] || [ -z "$STATELESS_EXECUTOR_RISCV_USERNAME" ] || [ -z "$STATELESS_EXECUTOR_RISCV_SSH_PRIVATE_KEY" ] ; then
+        echo "::notice::Skipping RISC-V host execution: SSH credentials (STATELESS_EXECUTOR_RISCV_HOST, STATELESS_EXECUTOR_RISCV_USERNAME, STATELESS_EXECUTOR_RISCV_SSH_PRIVATE_KEY) are not configured."
+        exit 0
+    fi
     require_env STATELESS_EXECUTOR_RISCV_USERNAME
     require_env STATELESS_EXECUTOR_RISCV_HOST
     require_env STATELESS_EXECUTOR_RISCV_SSH_PRIVATE_KEY
