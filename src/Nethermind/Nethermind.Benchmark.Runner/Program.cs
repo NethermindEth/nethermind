@@ -50,7 +50,6 @@ namespace Nethermind.Benchmark.Runner
     {
         public static void Main(string[] args)
         {
-            /*
             bool quickMode = args.Contains("--quick");
             string[] benchmarkArgs = args.Where(static arg => arg != "--quick").ToArray();
             Job benchmarkJob = (quickMode ? Job.ShortRun : Job.MediumRun).WithRuntime(CoreRuntime.Core10_0);
@@ -82,11 +81,6 @@ namespace Nethermind.Benchmark.Runner
                     .FromAssemblies(releaseAssemblies)
                     .Run(benchmarkArgs, new PrecompileBenchmarkConfig(benchmarkJob));
             }
-            */
-
-            BenchmarkSwitcher
-                .FromTypes([typeof(WriteBatchBenchmark), typeof(ReadOnlySnapshotBundleBenchmark)])
-                .RunAll(new DebugInProcessConfig());
         }
     }
 }
