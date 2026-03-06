@@ -257,9 +257,11 @@ internal static partial class EvmInstructions
 
         // Charge gas if transferring to a dead or non-existent account.
         bool inheritorAccountExists = state.AccountExists(inheritor);
-        bool chargesNewAccount =
-            (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
-            || (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection);
+        bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
+        {
+            true => !result.IsZero && state.IsDeadAccount(inheritor),
+            false => !inheritorAccountExists && spec.UseShanghaiDDosProtection,
+        };
 
         bool outOfGas = chargesNewAccount && !(TEip8037.IsActive switch
         {
