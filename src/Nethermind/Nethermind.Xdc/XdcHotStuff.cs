@@ -250,15 +250,12 @@ namespace Nethermind.Xdc
             if (_writeRoundInfo)
                 _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
 
-            if (isMyTurn)
+            if (isMyTurn && // miningParent is null when highestQC block is not in the local chain yet
+                FindHeaderToBuildOn(_xdcContext.HighestQC) is { } miningParent &&
+                IsItTimeToPropose(miningParent, currentRound, spec))
             {
-                // miningParent is null when highestQC block is not in the local chain yet
-                if (FindHeaderToBuildOn(_xdcContext.HighestQC) is { } miningParent &&
-                    IsItTimeToPropose(miningParent, currentRound, spec))
-                {
-                    _highestSelfMinedRound = currentRound;
-                    _ = BuildAndProposeBlock(miningParent, currentRound, spec, ct); // TODO: wait for it to finish?
-                }
+                _highestSelfMinedRound = currentRound;
+                _ = BuildAndProposeBlock(miningParent, currentRound, spec, ct); // TODO: wait for it to finish?
             }
 
             if (_highestSignTxNumber < roundParent.Number
@@ -337,6 +334,7 @@ namespace Nethermind.Xdc
         {
             if (head.ExtraConsensusData?.QuorumCert is null)
                 throw new InvalidOperationException("Head block missing consensus data.");
+
             var votingRound = head.ExtraConsensusData.BlockRound;
             if (_highestVotedRound >= votingRound)
                 return;
