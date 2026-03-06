@@ -85,7 +85,7 @@ namespace Nethermind.Benchmark.Runner
             */
 
             BenchmarkSwitcher
-                .FromTypes([typeof(ReadOnlySnapshotBundleBenchmark)])
+                .FromTypes([typeof(WriteBatchBenchmark), typeof(ReadOnlySnapshotBundleBenchmark)])
                 .RunAll(new DebugInProcessConfig());
         }
     }

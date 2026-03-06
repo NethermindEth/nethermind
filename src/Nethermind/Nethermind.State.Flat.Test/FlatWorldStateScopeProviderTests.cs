@@ -162,20 +162,20 @@ public class FlatWorldStateScopeProviderTests
         // Layer 1: Older snapshot
         ctx.AddSnapshot(content =>
         {
-            content.Accounts[testAddress] = olderAccount;
-            content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(olderSlotValue);
+            content.Accounts[new HashedKey<AddressAsKey>(testAddress)] = olderAccount;
+            content.Storages[new HashedKey<(AddressAsKey, UInt256)>((testAddress, slotIndex))] = SlotValue.FromSpanWithoutLeadingZero(olderSlotValue);
         });
 
         // Layer 2: Newer snapshot (shadowing Layer 1)
         ctx.AddSnapshot(content =>
         {
-            content.Accounts[testAddress] = newerAccount;
-            content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(newerSlotValue);
+            content.Accounts[new HashedKey<AddressAsKey>(testAddress)] = newerAccount;
+            content.Storages[new HashedKey<(AddressAsKey, UInt256)>((testAddress, slotIndex))] = SlotValue.FromSpanWithoutLeadingZero(newerSlotValue);
         });
 
         // Layer 3: Another newer snapshot, but only for account
         Account newestAccount = TestItem.GenerateRandomAccount();
-        ctx.AddSnapshot(content => content.Accounts[testAddress] = newestAccount);
+        ctx.AddSnapshot(content => content.Accounts[new HashedKey<AddressAsKey>(testAddress)] = newestAccount);
 
         // Verify account shadowed by newest snapshot (newestAccount)
         Assert.That(ctx.Scope.Get(testAddress), Is.EqualTo(newestAccount));
@@ -272,11 +272,11 @@ public class FlatWorldStateScopeProviderTests
 
         // Verify in snapshot
         Assert.That(ctx.LastCommittedSnapshot, Is.Not.Null);
-        ctx.LastCommittedSnapshot!.TryGetAccount(testAddress, out Account? committedAccount);
+        ctx.LastCommittedSnapshot!.TryGetAccount(new HashedKey<AddressAsKey>(testAddress), out Account? committedAccount);
         Assert.That(committedAccount!.Balance, Is.EqualTo(testAccount.Balance));
         Assert.That(committedAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
 
-        ctx.LastCommittedSnapshot!.TryGetStorage(testAddress, slotIndex, out SlotValue? committedSlot);
+        ctx.LastCommittedSnapshot!.TryGetStorage(new HashedKey<(AddressAsKey, UInt256)>((testAddress, slotIndex)), out SlotValue? committedSlot);
         Assert.That(committedSlot!.Value.ToEvmBytes(), Is.EqualTo(slotValue));
     }
 
@@ -298,13 +298,13 @@ public class FlatWorldStateScopeProviderTests
         // Layer 1: Account and Slot data
         ctx.AddSnapshot(content =>
         {
-            content.Accounts[testAddress] = oldAccount;
-            content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(oldSlotValue);
+            content.Accounts[new HashedKey<AddressAsKey>(testAddress)] = oldAccount;
+            content.Storages[new HashedKey<(AddressAsKey, UInt256)>((testAddress, slotIndex))] = SlotValue.FromSpanWithoutLeadingZero(oldSlotValue);
         });
 
         // Layer 2: SELFDESTRUCT
         // isNewAccount = false means there was storage to clear
-        ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[testAddress] = false);
+        ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[new HashedKey<AddressAsKey>(testAddress)] = false);
 
         // Layer 3: Empty snapshot after selfdestruct
         ctx.AddSnapshot(content => { });
@@ -327,13 +327,13 @@ public class FlatWorldStateScopeProviderTests
         byte[] slot2AfterValue = { 0x02 };
 
         // Snapshot 0: slot1 exists
-        ctx.AddSnapshot(content => content.Storages[(testAddress, slot1)] = SlotValue.FromSpanWithoutLeadingZero(slot1BeforeValue));
+        ctx.AddSnapshot(content => content.Storages[new HashedKey<(AddressAsKey, UInt256)>((testAddress, slot1))] = SlotValue.FromSpanWithoutLeadingZero(slot1BeforeValue));
 
         // Snapshot 1: selfdestruct happens at this index
-        ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[testAddress] = false);
+        ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[new HashedKey<AddressAsKey>(testAddress)] = false);
 
         // Snapshot 2: slot2 is set after selfdestruct
-        ctx.AddSnapshot(content => content.Storages[(testAddress, slot2)] = SlotValue.FromSpanWithoutLeadingZero(slot2AfterValue));
+        ctx.AddSnapshot(content => content.Storages[new HashedKey<(AddressAsKey, UInt256)>((testAddress, slot2))] = SlotValue.FromSpanWithoutLeadingZero(slot2AfterValue));
 
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
 
@@ -582,13 +582,13 @@ public class FlatWorldStateScopeProviderTests
 
         // Verify all committed to snapshot
         Assert.That(ctx.LastCommittedSnapshot, Is.Not.Null);
-        ctx.LastCommittedSnapshot!.TryGetAccount(addr1, out Account? committedAcc1);
+        ctx.LastCommittedSnapshot!.TryGetAccount(new HashedKey<AddressAsKey>(addr1), out Account? committedAcc1);
         Assert.That(committedAcc1!.Balance, Is.EqualTo(acc1.Balance));
 
-        ctx.LastCommittedSnapshot!.TryGetAccount(addr2, out Account? committedAcc2);
+        ctx.LastCommittedSnapshot!.TryGetAccount(new HashedKey<AddressAsKey>(addr2), out Account? committedAcc2);
         Assert.That(committedAcc2!.Balance, Is.EqualTo(acc2.Balance));
 
-        ctx.LastCommittedSnapshot!.TryGetStorage(addr1, slot1, out SlotValue? committedSlot);
+        ctx.LastCommittedSnapshot!.TryGetStorage(new HashedKey<(AddressAsKey, UInt256)>((addr1, slot1)), out SlotValue? committedSlot);
         Assert.That(committedSlot!.Value.ToEvmBytes(), Is.EqualTo(val1));
     }
 
@@ -644,8 +644,8 @@ public class FlatWorldStateScopeProviderTests
             .Returns(x => { x[2] = outVal; return true; });
 
         // Snapshot Setup
-        ctx.AddSnapshot(content => content.Storages[(addr, slot)] = SlotValue.FromSpanWithoutLeadingZero(snapshotVal));
-        ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[addr] = true);
+        ctx.AddSnapshot(content => content.Storages[new HashedKey<(AddressAsKey, UInt256)>((addr, slot))] = SlotValue.FromSpanWithoutLeadingZero(snapshotVal));
+        ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[new HashedKey<AddressAsKey>(addr)] = true);
         ctx.AddSnapshot(content => { });
 
         // Verify both are blocked
@@ -676,11 +676,11 @@ public class FlatWorldStateScopeProviderTests
         // Add storage slot AND trie node for addr1 to ReadOnlySnapshots
         ctx.AddSnapshot(content =>
         {
-            content.Storages[(addr1, slot1)] = SlotValue.FromSpanWithoutLeadingZero(value1);
+            content.Storages[new HashedKey<(AddressAsKey, UInt256)>((addr1, slot1))] = SlotValue.FromSpanWithoutLeadingZero(value1);
 
             // Also add a storage trie node for addr1 at root path
             TrieNode storageNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
-            content.StorageNodes[(addr1Hash, TreePath.Empty)] = storageNode;
+            content.StorageNodes[new HashedKey<(Hash256AsKey, TreePath)>((addr1Hash, TreePath.Empty))] = storageNode;
         });
 
         // Create local commits for addr2 (NOT addr1) - this creates local _snapshots
@@ -783,10 +783,10 @@ public class FlatWorldStateScopeProviderTests
 
         // Read-only snapshot 0: slot exists before self-destruct
         ctx.AddSnapshot(content =>
-            content.Storages[(addr, slotBefore)] = SlotValue.FromSpanWithoutLeadingZero(valueBeforeSelfDestruct));
+            content.Storages[new HashedKey<(AddressAsKey, UInt256)>((addr, slotBefore))] = SlotValue.FromSpanWithoutLeadingZero(valueBeforeSelfDestruct));
 
         // Read-only snapshot 1: self-destruct marker (in ReadOnlySnapshotBundle)
-        ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[addr] = false);
+        ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[new HashedKey<AddressAsKey>(addr)] = false);
 
         // Local commit 1: write storage after self-destruct
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
