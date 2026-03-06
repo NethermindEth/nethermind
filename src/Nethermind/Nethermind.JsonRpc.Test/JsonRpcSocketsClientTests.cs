@@ -300,11 +300,12 @@ public class JsonRpcSocketsClientTests
             string large = new('L', 9000);
             string msg1 = $"{{\"id\":1,\"params\":[\"{large}\"]}}";
 
-            // Messages 2+3: small, sent without delimiters right after msg1.
+            // Messages 2+3: combined overflow > 4KB, sent without delimiters right after msg1.
             // They end up in the overflow. After the buffer shrinks to 4KB, partial CopyTo
             // drains part of the overflow. If a boundary is found, the tail must be
             // correctly ordered before the undrained remainder.
-            string msg2 = "{\"id\":2,\"method\":\"eth_call\",\"params\":[]}";
+            string large2 = new('M', 5000);
+            string msg2 = $"{{\"id\":2,\"method\":\"eth_call\",\"params\":[\"{large2}\"]}}";
             string msg3 = "{\"id\":3,\"method\":\"eth_call\",\"params\":[]}";
 
             await SendAndAssertPayloads(msg1 + "\n" + msg2 + msg3, [msg1, msg2, msg3], timeout: 10000);
