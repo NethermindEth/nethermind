@@ -140,7 +140,7 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
-        UInt256 totalValue = ((int)(count * value)).GWei();
+        UInt256 totalValue = ((int)(count * value)).GWei;
         BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(getPayloadResult.BlockHash);
         chain.StateReader.GetBalance(payloadBlock, recipient).Should().Be(totalValue);
     }

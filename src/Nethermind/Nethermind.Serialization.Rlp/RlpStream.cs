@@ -165,6 +165,33 @@ namespace Nethermind.Serialization.Rlp
             _position += bytesToWrite.Length;
         }
 
+        public void WriteByteArrayList(IByteArrayList? list)
+        {
+            if (list is null || list.Count == 0)
+            {
+                EncodeNullObject();
+                return;
+            }
+
+            if (list is IRlpWrapper rlpWrapper)
+            {
+                rlpWrapper.Write(this);
+                return;
+            }
+
+            int contentLength = 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                contentLength += Rlp.LengthOf(list[i]);
+            }
+
+            StartSequence(contentLength);
+            for (int i = 0; i < list.Count; i++)
+            {
+                Encode(list[i]);
+            }
+        }
+
         protected virtual string Description =>
             Data.AsSpan(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
 

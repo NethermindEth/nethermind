@@ -67,19 +67,19 @@ namespace Nethermind.Evm.Test
 
         private void Test(string codeHex, long gasUsed, long refund, byte originalValue, bool eip3529Enabled)
         {
-            // the account value = 1.Ether() here because you cannot set a storageRoot for an empty account.
+            // the account value = 1.Ether here because you cannot set a storageRoot for an empty account.
             // EmptyAccount => Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString
             // earlier it used to work - because the cache mapping address:storageTree was never cleared on account of
             // Storage.CommitTrees() not being called. But now the WorldState.CommitTrees is called inside PrepareTx,
             // which also calls Storage.CommitTrees, clearing the cache.
-            TestState.CreateAccount(Recipient, 1.Ether());
+            TestState.CreateAccount(Recipient, 1.Ether);
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             TestState.Commit(eip3529Enabled ? London.Instance : Berlin.Instance);
             _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
             long blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, Bytes.FromHexString(codeHex));
 
-            transaction.GasPrice = 20.GWei();
+            transaction.GasPrice = 20.GWei;
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
@@ -91,7 +91,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false)]
         public void After_3529_self_destruct_has_zero_refund(bool eip3529Enabled)
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
 
