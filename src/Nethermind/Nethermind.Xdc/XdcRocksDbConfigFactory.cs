@@ -22,7 +22,6 @@ public class XdcRocksDbConfigFactory(IRocksDbConfigFactory baseFactory, IDbConfi
             return new PerTableDbConfig(dbConfig, databaseName, columnName, validate: false);
         }
 
-        // For all other databases, use the base factory with normal validation
         return baseFactory.GetForDatabase(databaseName, columnName);
     }
 }
