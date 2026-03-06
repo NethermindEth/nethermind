@@ -14,7 +14,7 @@ Creates a new hard fork in the Nethermind codebase.
 Fork creation:
 - [ ] Step 1: Gather fork details from user
 - [ ] Step 2: Explore current fork state
-- [ ] Step 3: Create fork scaffolding
+- [ ] Step 3: Load relevant `.agents/rules/` per Codebase Rules, then create fork scaffolding
 - [ ] Step 4: Build and verify
 ```
 
