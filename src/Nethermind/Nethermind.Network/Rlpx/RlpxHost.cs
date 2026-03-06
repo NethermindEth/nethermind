@@ -281,7 +281,7 @@ namespace Nethermind.Network.Rlpx
                 && !_nodeFilter.TryAccept(remoteEndpoint.Address))
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {remoteEndpoint.Address}");
-                channel.CloseAsync();
+                _ = channel.CloseAsync();
                 return;
             }
 
