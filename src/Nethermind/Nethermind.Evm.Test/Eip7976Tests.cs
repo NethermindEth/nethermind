@@ -19,15 +19,12 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class Eip7976Tests
 {
-    private static IReleaseSpec Eip7976Spec()
+    private static OverridableReleaseSpec Eip7976Spec => new OverridableReleaseSpec(Prague.Instance)
     {
-        return new OverridableReleaseSpec(Prague.Instance)
-        {
-            IsEip7976Enabled = true
-        };
-    }
+        IsEip7976Enabled = true
+    };
 
-    // Roughtly
+    // Roughly
     // Standard: 21000 + zero*4 + nonzero*16
     // Floor: 21000 + byteCount * 4 * 16
     [TestCase(new byte[] { 1 }, 21_016, 21_064, TestName = "Single nonzero byte")]
@@ -37,7 +34,7 @@ public class Eip7976Tests
     public void Intrinsic_gas_with_eip7976(byte[] data, long expectedStandard, long expectedFloor)
     {
         Transaction transaction = new() { Data = data, To = Address.Zero };
-        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Eip7976Spec());
+        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Eip7976Spec);
         cost.Should().Be(new EthereumIntrinsicGas(expectedStandard, expectedFloor));
     }
 
@@ -45,7 +42,7 @@ public class Eip7976Tests
     public void Contract_creation_standard_exceeds_floor()
     {
         Transaction transaction = new() { Data = new byte[] { 1 }, To = null };
-        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Eip7976Spec());
+        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Eip7976Spec);
         cost.Should().Be(new EthereumIntrinsicGas(Standard: 53_018, FloorGas: 21_064));
     }
 
