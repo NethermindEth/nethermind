@@ -24,18 +24,33 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
             if (dbConfig.MaxOpenFiles is null && hardwareInfo.MaxOpenFilesLimit.HasValue)
             {
                 int systemLimit = hardwareInfo.MaxOpenFilesLimit.Value;
-                // The OS limit is shared across all file descriptors in the process.
-                // Divide by estimated DB count since MaxOpenFiles is applied per database.
-                // Reserve 20% for non-RocksDB file descriptors (sockets, logs, etc.).
-                const int EstimatedDbCount = 15;
-                int perDbLimit = Math.Max(128, (int)(systemLimit * 0.8 / EstimatedDbCount));
 
-                if (_logger.IsInfo)
+                // Only cap MaxOpenFiles on systems with genuinely low file descriptor limits
+                // (e.g. macOS default 256, restricted Docker 1024). Setting any finite value
+                // forces RocksDB to use an LRU table cache instead of keeping all SST handles
+                // open, which adds measurable overhead on every read. On systems with high
+                // limits (typical Linux servers: 1048576), leave unlimited for best performance.
+                const int LowLimitThreshold = 10000;
+                if (systemLimit < LowLimitThreshold)
                 {
-                    _logger.Info($"Detected system open files limit of {systemLimit}. Setting MaxOpenFiles to {perDbLimit} per database.");
-                }
+                    // Apply 80% of system limit per database. On low-limit systems the total
+                    // across ~15 databases may exceed the OS limit, but RocksDB will gracefully
+                    // handle open() failures via its table cache eviction. The per-DB value
+                    // stays high so databases with many SST files (state DB) can still cache
+                    // most of their file handles.
+                    int perDbLimit = Math.Max(128, (int)(systemLimit * 0.8));
 
-                dbConfig.MaxOpenFiles = perDbLimit;
+                    if (_logger.IsInfo)
+                    {
+                        _logger.Info($"Low system open files limit ({systemLimit}). Setting MaxOpenFiles to {perDbLimit} per database to prevent FD exhaustion.");
+                    }
+
+                    dbConfig.MaxOpenFiles = perDbLimit;
+                }
+                else if (_logger.IsDebug)
+                {
+                    _logger.Debug($"System open files limit is {systemLimit}. Leaving MaxOpenFiles unlimited for best performance.");
+                }
             }
 
             bool skipSstChecks = dbConfig.SkipCheckingSstFileSizesOnDbOpen ?? RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
