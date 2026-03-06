@@ -10,11 +10,11 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class AmsterdamEip8037StateTests : GeneralStateTestBase
+public class Eip7843StateTests : GeneralStateTestBase
 {
     private const string ArchiveVersion = "bal@v5.2.0";
     private const string ArchiveName = "fixtures_bal.tar.gz";
-    private const string Eip8037Wildcard = "eip8037_state_creation_gas_cost_increase";
+    private const string Eip7843Wildcard = "eip7843_slotnum";
 
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test) => RunTest(test).Pass.Should().BeTrue();
@@ -25,7 +25,7 @@ public class AmsterdamEip8037StateTests : GeneralStateTestBase
         {
             ArchiveVersion = ArchiveVersion,
             ArchiveName = ArchiveName
-        }, "fixtures/state_tests", Eip8037Wildcard);
+        }, "fixtures/state_tests", Eip7843Wildcard);
 
         return loader.LoadTests<GeneralStateTest>();
     }
