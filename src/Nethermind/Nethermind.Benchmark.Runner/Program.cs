@@ -13,6 +13,7 @@ using BenchmarkDotNet.Running;
 using System.Linq;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using BenchmarkDotNet.Columns;
+using Nethermind.Benchmarks.State;
 using Nethermind.Precompiles.Benchmark;
 
 namespace Nethermind.Benchmark.Runner
@@ -49,6 +50,7 @@ namespace Nethermind.Benchmark.Runner
     {
         public static void Main(string[] args)
         {
+            /*
             bool quickMode = args.Contains("--quick");
             string[] benchmarkArgs = args.Where(static arg => arg != "--quick").ToArray();
             Job benchmarkJob = (quickMode ? Job.ShortRun : Job.MediumRun).WithRuntime(CoreRuntime.Core10_0);
@@ -80,6 +82,11 @@ namespace Nethermind.Benchmark.Runner
                     .FromAssemblies(releaseAssemblies)
                     .Run(benchmarkArgs, new PrecompileBenchmarkConfig(benchmarkJob));
             }
+            */
+
+            BenchmarkSwitcher
+                .FromTypes([typeof(ReadOnlySnapshotBundleBenchmark)])
+                .RunAll(new DebugInProcessConfig());
         }
     }
 }

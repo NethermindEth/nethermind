@@ -35,10 +35,12 @@ public class WriteBatchBenchmark
 
     private FlatWorldStateScope _scope = null!;
 
-    [Params(100, 1000)]
+    // [Params(100, 1000)]
+    [Params(200)]
     public int AccountCount { get; set; }
 
-    [Params(1000, 5000, 10000)]
+    // [Params(1000, 5000, 10000)]
+    [Params(5000)]
     public int StorageSlotsPerAccount { get; set; }
 
     [GlobalSetup]
