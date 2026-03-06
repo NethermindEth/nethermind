@@ -63,7 +63,7 @@ namespace Nethermind.Trie.Test
 
         private IPruningTrieStore CreateTrieStore(IDb? memDb = null)
         {
-            return TestTrieStoreFactory.Build(memDb ?? new MemDb(), Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, _logManager);
+            return TestTrieStoreFactory.Build(memDb ?? new MemDb(), Prune.WhenCacheReaches(1.MB), Persist.EveryBlock, _logManager);
         }
 
         [Test]
@@ -290,7 +290,7 @@ namespace Nethermind.Trie.Test
         public void Test_add_many(int i)
         {
             MemDb memDb = new();
-            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB()), Persist.EveryBlock, _logManager);
+            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB), Persist.EveryBlock, _logManager);
             PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, true, _logManager);
 
             for (int j = 0; j < i; j++)
@@ -316,7 +316,7 @@ namespace Nethermind.Trie.Test
         public void Test_try_delete_and_read_missing_nodes(int i)
         {
             MemDb memDb = new();
-            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB()), Persist.EveryBlock, _logManager);
+            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB), Persist.EveryBlock, _logManager);
             PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, true, _logManager);
 
             for (int j = 0; j < i; j++)
@@ -794,8 +794,8 @@ namespace Nethermind.Trie.Test
 
         private static IEnumerable<TrieStoreConfigurations> CreateTrieStoreConfigurations()
         {
-            yield return new TrieStoreConfigurations(1.MiB(), 8, 8, false);
-            yield return new TrieStoreConfigurations(1.MiB(), 8, 8, true);
+            yield return new TrieStoreConfigurations(1.MiB, 8, 8, false);
+            yield return new TrieStoreConfigurations(1.MiB, 8, 8, true);
             yield return new TrieStoreConfigurations(-1, 1, 8, false);
         }
 

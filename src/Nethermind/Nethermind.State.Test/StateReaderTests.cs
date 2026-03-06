@@ -242,7 +242,7 @@ namespace Nethermind.Store.Test
             Hash256 stateRoot;
             using (var _ = provider.BeginScope(IWorldState.PreGenesis))
             {
-                provider.CreateAccount(TestItem.AddressA, 1.Ether());
+                provider.CreateAccount(TestItem.AddressA, 1.Ether);
                 provider.Commit(MuirGlacier.Instance);
                 provider.CommitTree(0);
                 stateRoot = provider.StateRoot;
@@ -374,7 +374,7 @@ namespace Nethermind.Store.Test
             Hash256 stateRoot;
             using (var _ = provider.BeginScope(IWorldState.PreGenesis))
             {
-                provider.CreateAccount(TestItem.AddressA, 1.Ether());
+                provider.CreateAccount(TestItem.AddressA, 1.Ether);
                 provider.Commit(MuirGlacier.Instance);
                 provider.CommitTree(0);
                 stateRoot = provider.StateRoot;
@@ -392,7 +392,7 @@ namespace Nethermind.Store.Test
             Hash256 stateRoot;
             using (var _ = provider.BeginScope(IWorldState.PreGenesis))
             {
-                provider.CreateAccount(TestItem.AddressA, 1.Ether());
+                provider.CreateAccount(TestItem.AddressA, 1.Ether);
                 provider.Commit(MuirGlacier.Instance);
                 provider.CommitTree(0);
                 stateRoot = provider.StateRoot;

@@ -481,7 +481,7 @@ internal class SpecialTransactionsTests
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
             spec.IsTipTrc21FeeEnabled = false;
         });
 

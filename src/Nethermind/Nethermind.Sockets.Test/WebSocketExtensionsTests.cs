@@ -143,7 +143,7 @@ public class WebSocketExtensionsTests
             localStats,
             Substitute.For<IJsonSerializer>(),
             null,
-            30.MB(),
+            30.MB,
             1);
 
         webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs(static async x =>
@@ -226,7 +226,7 @@ public class WebSocketExtensionsTests
             "TestClient",
             new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
             Substitute.For<IJsonSerializer>(),
-            (int)1.MB());
+            (int)1.MB);
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         Assert.ThrowsAsync<InvalidOperationException>(async () => await webSocketsClient.ReceiveLoopAsync(cts.Token));

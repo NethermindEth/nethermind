@@ -124,7 +124,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 return pruningConfig;
             })
 
-            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB()))
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
             ;
     }
 }
