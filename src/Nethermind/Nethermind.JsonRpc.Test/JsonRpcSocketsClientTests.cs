@@ -240,35 +240,13 @@ public class JsonRpcSocketsClientTests
         [Test]
         public async Task Json_parse_state_resets_between_consecutive_messages()
         {
-            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
-
-            int processedRequests = 0;
-            List<string> processedPayloads = [];
-            IJsonRpcProcessor jsonRpcProcessor = CreateCapturingProcessor(buf =>
-            {
-                processedPayloads.Add(Encoding.UTF8.GetString(buf.ToArray()));
-                Interlocked.Increment(ref processedRequests);
-            });
-
-            Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token);
-
-            await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
-
             // Both messages >4KB to span multiple SocketClient buffer reads, triggering incremental JSON state
             string payload1 = new('x', 5000);
             string payload2 = new('y', 5000);
             string request1 = $"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_call\",\"params\":[\"{payload1}\"]}}";
             string request2 = $"{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_call\",\"params\":[\"{payload2}\"]}}";
 
-            // Send back-to-back without delimiters — relies on JSON boundary detection + state reset
-            byte[] combined = Encoding.UTF8.GetBytes(request1 + request2);
-            await sendStream.WriteAsync(combined, pair.Cts.Token);
-
-            Assert.That(() => processedRequests, Is.EqualTo(2).After(5000, 10));
-            processedPayloads[0].Should().Be(request1);
-            processedPayloads[1].Should().Be(request2);
-
-            await ShutdownAndWait(pair.SendSocket, receiver);
+            await SendAndAssertPayloads(request1 + request2, [request1, request2]);
         }
 
         [TestCase(5)]
@@ -317,20 +295,6 @@ public class JsonRpcSocketsClientTests
         [Test]
         public async Task Overflow_after_buffer_shrink_preserves_data_order()
         {
-            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
-
-            int processedRequests = 0;
-            List<string> processedPayloads = [];
-            IJsonRpcProcessor jsonRpcProcessor = CreateCapturingProcessor(buf =>
-            {
-                processedPayloads.Add(Encoding.UTF8.GetString(buf.ToArray()));
-                Interlocked.Increment(ref processedRequests);
-            });
-
-            Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token);
-
-            await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
-
             // Message 1: large enough (>8KB) so SocketClient grows the buffer, then shrinks it
             // back to 4KB after processing. The tail after msg1 becomes overflow > 4KB.
             string large = new('L', 9000);
@@ -343,16 +307,31 @@ public class JsonRpcSocketsClientTests
             string msg2 = "{\"id\":2,\"method\":\"eth_call\",\"params\":[]}";
             string msg3 = "{\"id\":3,\"method\":\"eth_call\",\"params\":[]}";
 
-            byte[] combined = Encoding.UTF8.GetBytes(msg1 + "\n" + msg2 + msg3);
-            await sendStream.WriteAsync(combined, pair.Cts.Token);
-
-            Assert.That(() => processedRequests, Is.EqualTo(3).After(10000, 10));
-            processedPayloads[0].Should().Be(msg1);
-            processedPayloads[1].Should().Be(msg2);
-            processedPayloads[2].Should().Be(msg3);
-
-            await ShutdownAndWait(pair.SendSocket, receiver);
+            await SendAndAssertPayloads(msg1 + "\n" + msg2 + msg3, [msg1, msg2, msg3], timeout: 10000);
         }
+
+        private static IEnumerable<TestCaseData> JsonBoundaryDetectionCases()
+        {
+            string json1 = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}";
+            string json2 = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_chainId\",\"params\":[]}";
+
+            // JSON without trailing \n followed by newline-delimited message
+            yield return new TestCaseData(
+                json1 + json2 + "\n",
+                new[] { json1, json2 }
+            ).SetName("Json_without_newline_followed_by_newline_delimited_message");
+
+            // JSON with escaped \n in string value — not a message delimiter
+            string jsonWithNewline = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"line1\\nline2\"}";
+            yield return new TestCaseData(
+                jsonWithNewline,
+                new[] { jsonWithNewline }
+            ).SetName("Json_with_newline_in_string_value");
+        }
+
+        [TestCaseSource(nameof(JsonBoundaryDetectionCases))]
+        public async Task Json_boundary_detection(string wireData, string[] expectedPayloads) =>
+            await SendAndAssertPayloads(wireData, expectedPayloads);
 
         [TestCase(10)]
         [TestCase(63)]
@@ -440,6 +419,29 @@ public class JsonRpcSocketsClientTests
 
             Assert.That(received, Is.EqualTo(sent));
             Assert.That(sentMessages, Is.EqualTo(receivedMessages).AsCollection);
+        }
+
+        private static async Task SendAndAssertPayloads(string wireData, IReadOnlyList<string> expectedPayloads, int timeout = 5000)
+        {
+            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
+
+            int processedRequests = 0;
+            List<string> processedPayloads = [];
+            IJsonRpcProcessor jsonRpcProcessor = CreateCapturingProcessor(buf =>
+            {
+                processedPayloads.Add(Encoding.UTF8.GetString(buf.ToArray()));
+                Interlocked.Increment(ref processedRequests);
+            });
+
+            Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token);
+
+            await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
+            await sendStream.WriteAsync(Encoding.UTF8.GetBytes(wireData), pair.Cts.Token);
+
+            Assert.That(() => processedRequests, Is.EqualTo(expectedPayloads.Count).After(timeout, 10));
+            processedPayloads.Should().Equal(expectedPayloads);
+
+            await ShutdownAndWait(pair.SendSocket, receiver);
         }
 
         private static Task StartReceiver(Socket listener, IJsonRpcProcessor processor, CancellationToken token, int concurrency = 1) =>
@@ -773,7 +775,7 @@ public class JsonRpcSocketsClientTests
             Socket socket = new(endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
             await socket.ConnectAsync(endPoint);
             IpcSocketMessageStream stream = new(socket);
-            return new TestClient<IpcSocketMessageStream>(stream);
+            return new TestClient<IpcSocketMessageStream>(stream, owner: socket);
         }
 
         public static async Task<TestClient<WebSocketMessageStream>> ConnectWsAsync(long? maxBatchResponseBodySize = null)

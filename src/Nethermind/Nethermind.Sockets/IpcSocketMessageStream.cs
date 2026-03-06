@@ -52,20 +52,14 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         if (offset >= data.Length)
             return default;
 
-        // Try JSON boundary detection first — this prevents a newline from a later
-        // message being incorrectly used to delimit a JSON message without a trailing newline.
-        if (TryGetCompleteJsonLength(data, out int jsonLength))
+        // Try JSON boundary first — prevents a \n from a later message
+        // being incorrectly used to delimit a JSON message without trailing \n.
+        if (TryGetCompleteJsonLength(data, offset, out int jsonLength))
         {
             int contentLen = jsonLength - offset;
-            // Consume an optional trailing newline delimiter
             bool hasTrailingDelimiter = jsonLength < data.Length && data[jsonLength] == Delimiter;
             return (contentLen, hasTrailingDelimiter ? contentLen + 1 : contentLen);
         }
-
-        // If JSON parsing is in progress (incomplete object/array), don't fall back
-        // to newline — it may be inside the JSON structure.
-        if (_jsonParseState.IsActive)
-            return default;
 
         // Fall back to newline delimiter for non-JSON messages.
         return data[offset..].IndexOf(Delimiter) switch
@@ -75,11 +69,20 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         };
     }
 
-    private bool TryGetCompleteJsonLength(ReadOnlySpan<byte> span, out int messageLength)
+    private bool TryGetCompleteJsonLength(ReadOnlySpan<byte> span, int offset, out int messageLength)
     {
         messageLength = 0;
         bool resuming = _jsonParseState.IsActive;
-        int startOffset = resuming ? _jsonParseState.StartOffset : GetStartingOffset(span);
+        int startOffset = resuming ? _jsonParseState.StartOffset : GetStartingOffset(span, offset);
+
+        // Validate saved state — buffer may have been reused by a non-accumulating caller
+        if (resuming && (startOffset >= span.Length || !StartsWithObject(span[startOffset..])))
+        {
+            ResetJsonParseState();
+            resuming = false;
+            startOffset = GetStartingOffset(span, offset);
+        }
+
         ReadOnlySpan<byte> json = span[startOffset..];
 
         if (resuming || StartsWithObject(json))
@@ -106,10 +109,10 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
 
         return false;
 
-        static int GetStartingOffset(ReadOnlySpan<byte> span)
+        static int GetStartingOffset(ReadOnlySpan<byte> span, int offset)
         {
-            int i = span.IndexOfAnyExcept(Whitespace);
-            return i < 0 ? span.Length : i;
+            int i = span[offset..].IndexOfAnyExcept(Whitespace);
+            return i < 0 ? span.Length : offset + i;
         }
 
         static bool StartsWithObject(ReadOnlySpan<byte> span) => !span.IsEmpty && span[0] is (byte)'{' or (byte)'[';
@@ -120,7 +123,6 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
     }
 
     private void ResetJsonParseState() => _jsonParseState = new();
-
 
     protected override void Dispose(bool disposing)
     {
@@ -140,6 +142,7 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
 
     private readonly record struct JsonParseState(JsonReaderState ReaderState = default, int BytesConsumed = 0, int StartOffset = -1)
     {
+        public JsonParseState() : this(default, 0, -1) { }
         public bool IsActive => StartOffset >= 0;
     }
 
