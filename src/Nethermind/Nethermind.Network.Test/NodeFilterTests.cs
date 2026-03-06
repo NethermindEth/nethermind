@@ -391,4 +391,47 @@ public class NodeFilterTests
 
         filter.TryAccept(ip2).Should().BeTrue("same subnet should be accepted after timeout expiry");
     }
+
+    [Test]
+    public async Task Touch_RefreshesTimeoutForExactMatch()
+    {
+        NodeFilter filter = new(size: 100, exactMatchOnly: true, currentIp: null, timeoutMs: 200);
+        IPAddress ip = IPAddress.Parse("192.0.2.1");
+
+        filter.TryAccept(ip).Should().BeTrue("first attempt should be accepted");
+
+        await Task.Delay(100);
+
+        filter.Touch(ip);
+
+        await Task.Delay(150);
+
+        filter.TryAccept(ip).Should().BeFalse("touch should refresh the timeout window for an active connection");
+
+        await Task.Delay(100);
+
+        filter.TryAccept(ip).Should().BeTrue("address should be accepted again after the refreshed timeout expires");
+    }
+
+    [Test]
+    public async Task Touch_RefreshesTimeoutForSubnetBucket()
+    {
+        NodeFilter filter = new(size: 100, exactMatchOnly: false, currentIp: null, timeoutMs: 200);
+        IPAddress ip1 = IPAddress.Parse("203.0.113.1");
+        IPAddress ip2 = IPAddress.Parse("203.0.113.50");
+
+        filter.TryAccept(ip1).Should().BeTrue("first address should be accepted");
+
+        await Task.Delay(100);
+
+        filter.Touch(ip2);
+
+        await Task.Delay(150);
+
+        filter.TryAccept(ip1).Should().BeFalse("touch from the same subnet should refresh the shared bucket");
+
+        await Task.Delay(100);
+
+        filter.TryAccept(ip1).Should().BeTrue("same subnet should be accepted again after the refreshed timeout expires");
+    }
 }

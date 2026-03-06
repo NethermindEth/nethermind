@@ -57,12 +57,7 @@ public sealed class NodeFilter
         if (_cache is null) return true;
 
         long now = Environment.TickCount64;
-
-        IpSubnetKey key = _exactMatchOnly || exactOnly
-            ? IpSubnetKey.Exact(ipAddress)
-            : (_parsedCurrentIp is { } current
-                ? IpSubnetKey.CreateNodeFilterKey(ipAddress, current)
-                : IpSubnetKey.DefaultKey(ipAddress));
+        IpSubnetKey key = GetKey(ipAddress, exactOnly);
 
         // Benign race: two threads may both accept the same key concurrently.
         // The filter is advisory — a double-accept is harmless.
@@ -72,6 +67,24 @@ public sealed class NodeFilter
         _cache.Set(key, now);
         return true;
     }
+
+    internal void Touch(IPAddress ipAddress, bool exactOnly = false)
+    {
+        if (_cache is null)
+        {
+            return;
+        }
+
+        _cache.Set(GetKey(ipAddress, exactOnly), Environment.TickCount64);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private IpSubnetKey GetKey(IPAddress ipAddress, bool exactOnly)
+        => _exactMatchOnly || exactOnly
+            ? IpSubnetKey.Exact(ipAddress)
+            : (_parsedCurrentIp is { } current
+                ? IpSubnetKey.CreateNodeFilterKey(ipAddress, current)
+                : IpSubnetKey.DefaultKey(ipAddress));
 
     /// <summary>
     /// Allocation-free key for an IP address or a masked subnet prefix, suitable for hash lookups and prefix checks.

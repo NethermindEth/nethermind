@@ -8,9 +8,11 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -102,6 +104,36 @@ public class RlpxHostIntegrationTests
 
             host.ShouldContact(ip1).Should().BeTrue("first private IP should be accepted");
             host.ShouldContact(ip2).Should().BeTrue("different private IP should be accepted (exact match)");
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [Test]
+    public async Task TrackSessionActivity_RefreshesFilterOnReceivedAndDeliveredMessages()
+    {
+        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: true);
+        try
+        {
+            IPAddress receivedIp = IPAddress.Parse("203.0.113.1");
+            ISession receivedSession = Substitute.For<ISession>();
+            receivedSession.Node.Returns(new Node(TestItem.PublicKeyA, receivedIp.ToString(), 30303));
+
+            host.TrackSessionActivity(receivedSession);
+            receivedSession.MsgReceived += Raise.EventWith(receivedSession, new PeerEventArgs(receivedSession.Node, "eth", 1, 32));
+
+            host.ShouldContact(receivedIp).Should().BeFalse("received traffic should keep the active session filtered");
+
+            IPAddress deliveredIp = IPAddress.Parse("198.51.100.1");
+            ISession deliveredSession = Substitute.For<ISession>();
+            deliveredSession.Node.Returns(new Node(TestItem.PublicKeyA, deliveredIp.ToString(), 30303));
+
+            host.TrackSessionActivity(deliveredSession);
+            deliveredSession.MsgDelivered += Raise.EventWith(deliveredSession, new PeerEventArgs(deliveredSession.Node, "eth", 2, 64));
+
+            host.ShouldContact(deliveredIp).Should().BeFalse("sent traffic should keep the active session filtered");
         }
         finally
         {

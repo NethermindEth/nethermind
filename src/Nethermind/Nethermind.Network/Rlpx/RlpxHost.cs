@@ -237,6 +237,28 @@ namespace Nethermind.Network.Rlpx
 
         public event EventHandler<SessionEventArgs> SessionCreated;
 
+        internal void TrackSessionActivity(ISession session)
+        {
+            ArgumentNullException.ThrowIfNull(session);
+
+            void RefreshNodeFilter(object? _, PeerEventArgs __)
+            {
+                Node remoteNode = session.Node;
+                _nodeFilter.Touch(remoteNode.Address.Address, remoteNode.IsStatic || remoteNode.IsBootnode);
+            }
+
+            void Unsubscribe(object? _, DisconnectEventArgs __)
+            {
+                session.MsgReceived -= RefreshNodeFilter;
+                session.MsgDelivered -= RefreshNodeFilter;
+                session.Disconnected -= Unsubscribe;
+            }
+
+            session.MsgReceived += RefreshNodeFilter;
+            session.MsgDelivered += RefreshNodeFilter;
+            session.Disconnected += Unsubscribe;
+        }
+
         private void InitializeChannel(IChannel channel, ISession session)
         {
             if (session.Direction == ConnectionDirection.In)
@@ -263,6 +285,7 @@ namespace Nethermind.Network.Rlpx
                 return;
             }
 
+            TrackSessionActivity(session);
             _sessionMonitor.AddSession(session);
             session.Disconnected += SessionOnPeerDisconnected;
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
