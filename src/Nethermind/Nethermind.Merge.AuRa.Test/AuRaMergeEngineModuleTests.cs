@@ -170,6 +170,14 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => await base.GetPayloadV6_builds_block_with_BAL(auraWithdrawalContractAddress);
 
     [Test]
+    public override async Task GetPayloadBodiesHashV2_returns_correctly()
+        => await base.GetPayloadBodiesHashV2_returns_correctly();
+
+    [Test]
+    public override async Task GetPayloadBodiesByRangeV2_returns_correctly()
+        => await base.GetPayloadBodiesByRangeV2_returns_correctly();
+
+    [Test]
     [TestCase(
         "0xa66ec67b117f57388da53271f00c22a68e6c297b564f67c5904e6f2662881875",
         "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926"

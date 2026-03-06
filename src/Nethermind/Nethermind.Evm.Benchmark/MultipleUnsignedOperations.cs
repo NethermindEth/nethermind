@@ -77,7 +77,7 @@ public class MultipleUnsignedOperations
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         _virtualMachine = new EthereumVirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
         _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
-        _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
+        _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0, -1));
 
         _environment = ExecutionEnvironment.Rent(
             executingAccount: Address.Zero,

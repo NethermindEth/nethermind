@@ -149,9 +149,9 @@ public class BackgroundTaskSchedulerBenchmarks
         public event EventHandler<BlockEventArgs>? BlockProcessing;
 #pragma warning restore CS0067
 
-        public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks,
+        public Task<Block[]> Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks,
             ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token = default)
-            => [];
+            => Task.FromResult(Array.Empty<Block>());
 
         public void RaiseBlocksProcessing() =>
             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs([]));
