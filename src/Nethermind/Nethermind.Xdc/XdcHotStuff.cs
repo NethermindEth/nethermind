@@ -35,20 +35,18 @@ namespace Nethermind.Xdc
         ISignTransactionManager signTransactionManager,
         ILogManager logManager) : IBlockProducerRunner
     {
-        private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        private readonly IXdcConsensusContext _xdcContext = xdcContext;
-        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        private readonly IBlockProducer _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
-        private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
-        private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
-        private readonly IMasternodesCalculator _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
-        private readonly IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
-        private readonly IVotesManager _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
-        private readonly ISigner _signer = signer ?? throw new ArgumentNullException(nameof(signer));
-        private readonly ITimeoutTimer _timeoutTimer = timeoutTimer;
-        private readonly IProcessExitSource _processExit = processExit;
-        private readonly ILogger _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly ISignTransactionManager _signTransactionManager = signTransactionManager ?? throw new ArgumentNullException(nameof(signTransactionManager));
+        private readonly IBlockTree _blockTree;
+        private readonly IXdcConsensusContext _xdcContext;
+        private readonly ISpecProvider _specProvider;
+        private readonly IBlockProducer _blockBuilder;
+        private readonly IEpochSwitchManager _epochSwitchManager;
+        private readonly IMasternodesCalculator _masternodesCalculator;
+        private readonly IQuorumCertificateManager _quorumCertificateManager;
+        private readonly IVotesManager _votesManager;
+        private readonly ISigner _signer;
+        private readonly ITimeoutTimer _timeoutTimer;
+        private readonly IProcessExitSource _processExit;
+        private readonly ILogger _logger;
 
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _runTask;
@@ -60,7 +58,37 @@ namespace Nethermind.Xdc
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
         private bool _writeRoundInfo = true;
-        private long _highestSignTxNumber = 0;
+
+
+        public XdcHotStuff(
+            IBlockTree blockTree,
+            IXdcConsensusContext xdcContext,
+            ISpecProvider specProvider,
+            IBlockProducer blockBuilder,
+            IEpochSwitchManager epochSwitchManager,
+            IMasternodesCalculator masternodesCalculator,
+            IQuorumCertificateManager quorumCertificateManager,
+            IVotesManager votesManager,
+            ISigner signer,
+            ITimeoutTimer timeoutTimer,
+            IProcessExitSource processExit,
+            ILogManager logManager)
+        {
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _xdcContext = xdcContext;
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
+            _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
+            _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
+            _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
+            _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _timeoutTimer = timeoutTimer;
+            _processExit = processExit;
+            _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
+
+            _lastActivityTime = DateTime.UtcNow;
+        }
 
         /// <summary>
         /// Starts the consensus runner.
@@ -232,18 +260,6 @@ namespace Nethermind.Xdc
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
             }
-
-            if (_highestSignTxNumber < roundParent.Number
-                && ((roundParent.Number % spec.MergeSignRange == 0)))
-            {
-                Snapshot snapshot = _snapshotManager.GetSnapshotByBlockNumber(roundParent.Number, spec);
-                if (snapshot is not null && snapshot.NextEpochCandidates.AsSpan().IndexOf(_signer.Address) != -1)
-                {
-                    _highestSignTxNumber = roundParent.Number;
-                    await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
-                }
-            }
-
             _writeRoundInfo = false;
         }
 
