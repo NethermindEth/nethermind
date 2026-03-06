@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain.Test
                 yield return new TestCaseData(baseFeeLowerThanGasPrice).SetName("Legacy transactions: All transactions selected - BaseFee lower than gas price");
 
                 ProperTransactionsSelectedTestCase baseFeeGreaterThanGasPrice = ProperTransactionsSelectedTestCase.Eip1559DefaultLegacyTransactions;
-                baseFeeGreaterThanGasPrice.BaseFee = 1.GWei();
+                baseFeeGreaterThanGasPrice.BaseFee = 1.GWei;
                 yield return new TestCaseData(baseFeeGreaterThanGasPrice).SetName("Legacy transactions: None transactions selected - BaseFee greater than gas price");
 
                 ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new()
@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.Test
                 yield return new TestCaseData(baseFeeLowerThanGasPrice).SetName("EIP1559 transactions: All transactions selected - BaseFee lower than gas price");
 
                 ProperTransactionsSelectedTestCase baseFeeGreaterThanGasPrice = ProperTransactionsSelectedTestCase.Eip1559Default;
-                baseFeeGreaterThanGasPrice.BaseFee = 1.GWei();
+                baseFeeGreaterThanGasPrice.BaseFee = 1.GWei;
                 yield return new TestCaseData(baseFeeGreaterThanGasPrice).SetName("EIP1559 transactions: None transactions selected - BaseFee greater than gas price");
 
                 ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new()
@@ -591,7 +591,7 @@ namespace Nethermind.Blockchain.Test
                 new()
                 {
                     ReleaseSpec = London.Instance,
-                    BaseFee = 1.GWei(),
+                    BaseFee = 1.GWei,
                     AccountStates = { { TestItem.AddressA, (1000, 1) } },
                     Transactions =
                     {
@@ -609,7 +609,7 @@ namespace Nethermind.Blockchain.Test
                 new()
                 {
                     ReleaseSpec = London.Instance,
-                    BaseFee = 1.GWei(),
+                    BaseFee = 1.GWei,
                     AccountStates = { { TestItem.AddressA, (1000, 1) } },
                     Transactions =
                     {

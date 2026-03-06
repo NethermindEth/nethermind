@@ -307,20 +307,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
+        // Task.Run avoids BackgroundTaskScheduler's 2-thread limit (default config) 
+        // and deadlock risk when AddNewBlock spawns nested tasks.
         private ValueTask Handle(NewBlockMessage msg, CancellationToken cancellationToken)
         {
-            try
-            {
-                msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
-                SyncServer.AddNewBlock(msg.Block, this);
-            }
-            catch (Exception e)
-            {
-                if (Logger.IsDebug) Logger.Debug($"Handling {msg} from {Node:c} failed: " + e.Message);
-                throw;
-            }
+            msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
 
-            return ValueTask.CompletedTask;
+            Task task = Task.Run(() => SyncServer.AddNewBlock(msg.Block, this), cancellationToken);
+
+            return new ValueTask(task);
         }
 
         protected virtual void NotifyOfStatus(BlockHeader head)

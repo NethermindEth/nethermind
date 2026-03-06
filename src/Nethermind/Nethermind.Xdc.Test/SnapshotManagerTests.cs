@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -155,7 +156,7 @@ internal class SnapshotManagerTests
 
     [TestCase(450)]
     [TestCase(1350)]
-    public void NewHeadBlock_(int gapNumber)
+    public void BlockAddedToMain_ShouldStoreSnapshot(int gapNumber)
     {
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
         releaseSpec.EpochLength.Returns(900);
@@ -169,8 +170,9 @@ internal class SnapshotManagerTests
             .WithGeneratedExtraConsensusData(1)
             .WithNumber(gapNumber).TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
+        blockTree.WasProcessed(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(true);
 
-        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
+        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(new Block(header)));
         snapshotManager.GetSnapshotByGapNumber(header.Number)!.HeaderHash.Should().Be(header.Hash!);
     }
 }

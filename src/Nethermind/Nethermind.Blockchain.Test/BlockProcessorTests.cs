@@ -125,7 +125,7 @@ public class BlockProcessorTests
         TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(spec);
         testRpc.TestWallet.UnlockAccount(address, new SecureString());
-        await testRpc.AddFunds(address, 1.Ether());
+        await testRpc.AddFunds(address, 1.Ether);
         await testRpc.AddBlock();
         SemaphoreSlim suggestedBlockResetEvent = new SemaphoreSlim(0);
         testRpc.BlockTree.NewHeadBlock += (_, _) =>
@@ -245,7 +245,7 @@ public class BlockProcessorTests
             .SignedAndResolved()
             .TestObject;
 
-        BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, transactionWithNetworkForm.GetLength(true) / 1.KiB() - 1);
+        BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, transactionWithNetworkForm.GetLength(true) / 1.KiB - 1);
         BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
         WorldStateStab stateProvider = new();
 

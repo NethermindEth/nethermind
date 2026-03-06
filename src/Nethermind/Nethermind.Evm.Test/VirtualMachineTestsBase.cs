@@ -221,14 +221,14 @@ public abstract class VirtualMachineTestsBase
         // earlier it used to work - because the cache mapping address:storageTree was never cleared on account of
         // TestState.CommitTrees() not being called. But now the WorldState.CommitTrees which also calls TestState.CommitTrees, clearing the cache.
         if (!TestState.AccountExists(senderRecipientAndMiner.Sender))
-            TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
+            TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether);
         else
-            TestState.AddToBalance(senderRecipientAndMiner.Sender, 100.Ether(), SpecProvider.GenesisSpec);
+            TestState.AddToBalance(senderRecipientAndMiner.Sender, 100.Ether, SpecProvider.GenesisSpec);
 
         if (!TestState.AccountExists(senderRecipientAndMiner.Recipient))
-            TestState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
+            TestState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether);
         else
-            TestState.AddToBalance(senderRecipientAndMiner.Recipient, 100.Ether(), SpecProvider.GenesisSpec);
+            TestState.AddToBalance(senderRecipientAndMiner.Recipient, 100.Ether, SpecProvider.GenesisSpec);
 
         if (code is not null)
         {
@@ -277,14 +277,14 @@ public abstract class VirtualMachineTestsBase
         // earlier it used to work - because the cache mapping address:storageTree was never cleared on account of
         // TestState.CommitTrees() not being called. But now the WorldState.CommitTrees which also calls TestState.CommitTrees, clearing the cache.
         if (!TestState.AccountExists(senderRecipientAndMiner.Sender))
-            TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
+            TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether);
         else
-            TestState.AddToBalance(senderRecipientAndMiner.Sender, 100.Ether(), SpecProvider.GenesisSpec);
+            TestState.AddToBalance(senderRecipientAndMiner.Sender, 100.Ether, SpecProvider.GenesisSpec);
 
         if (!TestState.AccountExists(senderRecipientAndMiner.Recipient))
-            TestState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
+            TestState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether);
         else
-            TestState.AddToBalance(senderRecipientAndMiner.Recipient, 100.Ether(), SpecProvider.GenesisSpec);
+            TestState.AddToBalance(senderRecipientAndMiner.Recipient, 100.Ether, SpecProvider.GenesisSpec);
         TestState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec);
 
         TestState.Commit(SpecProvider.GenesisSpec);
@@ -307,7 +307,7 @@ public abstract class VirtualMachineTestsBase
         SenderRecipientAndMiner senderRecipientAndMiner = null)
     {
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-        TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
+        TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether);
         TestState.Commit(SpecProvider.GenesisSpec);
 
         Transaction transaction = Build.A.Transaction
