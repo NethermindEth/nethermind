@@ -13,10 +13,11 @@ Copy and track as you go:
 ```
 EIP-XXXX Implementation:
 - [ ] Step 1: Fetch EIP spec — extract and present ALL fields listed below
-- [ ] Step 2: Explore codebase (similar EIPs, verify target fork exists)
+- [ ] Step 2: Explore codebase (similar EIPs, determine target fork)
+- [ ] Step 2a: Confirm target fork with user (WAIT — if EIP doesn't specify one, or fork doesn't exist, or user wants to skip fork)
 - [ ] Step 3: Route spec changes to implementation patterns
 - [ ] Step 4: Present implementation plan (WAIT for user approval)
-- [ ] Step 5: Implement changes per plan
+- [ ] Step 5: Load relevant `.agents/rules/` per Codebase Rules, then implement
 - [ ] Step 6: Build, test, and format
 ```
 
@@ -50,7 +51,10 @@ The raw GitHub URL returns full markdown with formulas and pseudocode intact. Th
 Before planning, ground yourself in the current state:
 
 1. **Find a similar EIP** — search for a recently implemented EIP in the same category (e.g., if implementing a new opcode, look at how `MCOPY` or `TLOAD` was added). Read its spec flag, EVM handler, and tests to understand the real pattern.
-2. **Check if the target fork exists** — list fork files in `Nethermind.Specs/Forks/` and check `MainnetSpecProvider.cs`. If the fork exists, proceed with the 10-file EIP flag registration plus core logic and tests. If it doesn't exist, **confirm with the user**: they can pick an existing fork, use the `fork-creator` skill to create one, or proceed without a fork (the EIP flag will be dormant until a fork enables it).
+2. **Determine the target fork** — check whether the EIP spec names a target fork. If it does, verify the fork exists in `Nethermind.Specs/Forks/` and `MainnetSpecProvider.cs`. If the EIP **does not specify a fork** (common for Draft/Review status), list the available forks and **WAIT to ask the user** which fork to target — do not guess. The user can choose to:
+   - Target an existing fork
+   - Use the `fork-creator` skill to create a new one
+   - Skip fork assignment entirely (the EIP flag will be dormant until a fork enables it)
 3. **Check for partial work** — search for `IsEip{number}` to see if the EIP is already partially implemented.
 
 ### Step 3 — Route to Implementation Patterns
