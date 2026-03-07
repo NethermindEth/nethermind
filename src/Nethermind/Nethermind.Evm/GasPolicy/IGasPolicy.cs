@@ -254,18 +254,20 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
         long tokens = 0;
         long nonZeroMultiplier = spec.GetTxDataNonZeroMultiplier();
-        foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in accessList)
+
+        foreach ((Address address, _) in accessList.Addresses)
         {
             ReadOnlySpan<byte> addressBytes = address.Bytes;
             int addressZeros = addressBytes.CountZeros();
             tokens += addressZeros + (addressBytes.Length - addressZeros) * nonZeroMultiplier;
-
-            foreach (UInt256 key in storageKeys)
-            {
-                int keyZeros = key.CountZeroBytes();
-                tokens += keyZeros + (Nethermind.Core.Extensions.UInt256Extensions.ByteSize - keyZeros) * nonZeroMultiplier;
-            }
         }
+
+        foreach (UInt256 key in accessList.Keys)
+        {
+            int keyZeros = key.CountZeroBytes();
+            tokens += keyZeros + (UInt256Extensions.ByteSize - keyZeros) * nonZeroMultiplier;
+        }
+
         return tokens;
     }
 

@@ -357,7 +357,7 @@ public struct EvmPooledMemory : IEvmMemory
     }
 }
 
-public static class UInt256Extensions
+public static class EvmUInt256Extensions
 {
     extension(in UInt256 value)
     {

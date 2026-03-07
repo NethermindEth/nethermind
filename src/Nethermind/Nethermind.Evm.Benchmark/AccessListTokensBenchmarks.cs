@@ -86,18 +86,20 @@ public class AccessListTokensBenchmarks
         if (accessList is null) return 0L;
 
         long tokens = 0;
-        foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in accessList)
+
+        foreach ((Address address, _) in accessList.Addresses)
         {
             ReadOnlySpan<byte> addressBytes = address.Bytes;
             int addressZeros = addressBytes.CountZeros();
             tokens += addressZeros + (addressBytes.Length - addressZeros) * NonZeroMultiplier;
-
-            foreach (UInt256 key in storageKeys)
-            {
-                int keyZeros = key.CountZeroBytes();
-                tokens += keyZeros + (UInt256Extensions.ByteSize - keyZeros) * NonZeroMultiplier;
-            }
         }
+
+        foreach (UInt256 key in accessList.Keys)
+        {
+            int keyZeros = key.CountZeroBytes();
+            tokens += keyZeros + (UInt256Extensions.ByteSize - keyZeros) * NonZeroMultiplier;
+        }
+
         return tokens;
     }
 
