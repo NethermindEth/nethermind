@@ -4,6 +4,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   spacing-check:
     name: Check whitespaces
@@ -13,9 +17,14 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+
       - name: Format
-        run: dotnet format whitespace src/Nethermind/ --folder --verify-no-changes
+        run: |
+          dotnet format whitespace src/Nethermind/ --folder --verify-no-changes
+          dotnet format whitespace tools/ --folder --verify-no-changes
+
       - name: Check spelling
         uses: streetsidesoftware/cspell-action@v7
