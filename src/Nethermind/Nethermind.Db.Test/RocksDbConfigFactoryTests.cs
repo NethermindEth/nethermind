@@ -55,37 +55,19 @@ public class RocksDbConfigFactoryTests
         config.WriteBufferSize.Should().Be((ulong)500.MB);
     }
 
-    [TestCase(1024, 819, TestName = "LowLimit")]
-    [TestCase(100, 128, TestName = "MinimumEnforced")]
-    [TestCase(9999, 7999, TestName = "Boundary")]
-    public void WillCapMaxOpenFilesOnLowLimitSystem(int systemLimit, int expected)
+    [TestCase(1024, ExpectedResult = 819, TestName = "Caps to 80 pct on low limit")]
+    [TestCase(100, ExpectedResult = 128, TestName = "Enforces minimum of 128 on very low limit")]
+    [TestCase(9999, ExpectedResult = 7999, TestName = "Caps just below threshold")]
+    [TestCase(65536, ExpectedResult = null, TestName = "Unlimited on high limit")]
+    [TestCase(1048576, ExpectedResult = null, TestName = "Unlimited on typical Linux systemd limit")]
+    [TestCase(10000, ExpectedResult = null, TestName = "Unlimited at exact threshold")]
+    [TestCase(null, ExpectedResult = null, TestName = "Unlimited when system limit unknown")]
+    [TestCase(500, 3000, ExpectedResult = 3000, TestName = "Preserves user-configured value")]
+    public int? MaxOpenFilesIsSetCorrectly(int? systemLimit, int? userConfigured = null)
     {
-        DbConfig dbConfig = new DbConfig();
+        DbConfig dbConfig = new() { MaxOpenFiles = userConfigured };
         RocksDbConfigFactory factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, systemLimit), LimboLogs.Instance);
-        IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        config.MaxOpenFiles.Should().Be(expected);
-    }
-
-    [TestCase(65536, TestName = "HighLimit")]
-    [TestCase(1048576, TestName = "TypicalLinuxSystemd")]
-    [TestCase(10000, TestName = "ExactThreshold")]
-    [TestCase(null, TestName = "UnknownLimit")]
-    public void WillLeaveMaxOpenFilesUnlimited(int? systemLimit)
-    {
-        DbConfig dbConfig = new DbConfig();
-        RocksDbConfigFactory factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, systemLimit), LimboLogs.Instance);
-        IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        config.MaxOpenFiles.Should().BeNull();
-    }
-
-    [Test]
-    public void WillNotOverrideUserConfiguredMaxOpenFiles()
-    {
-        DbConfig dbConfig = new DbConfig();
-        dbConfig.MaxOpenFiles = 3000;
-        RocksDbConfigFactory factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, 500), LimboLogs.Instance);
-        IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        config.MaxOpenFiles.Should().Be(3000);
+        return factory.GetForDatabase("State0", null).MaxOpenFiles;
     }
 
     [Test]
