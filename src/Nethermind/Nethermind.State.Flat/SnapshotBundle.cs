@@ -145,7 +145,7 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.GetSlot(address, index, selfDestructStateIdx);
+        return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
@@ -216,7 +216,7 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStateNodes(path, hash, out node);
+        return _readOnlySnapshotBundle.TryFindStateNodes(out node, key);
     }
 
     public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash)
@@ -290,7 +290,7 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStorageNodes(address, path, hash, out node);
+        return _readOnlySnapshotBundle.TryFindStorageNodes(out node, key);
     }
 
     public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
