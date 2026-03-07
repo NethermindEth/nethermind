@@ -16,6 +16,7 @@ using Word = Vector256<byte>;
 
 public static class UInt256Extensions
 {
+    public const int ByteSize = 32;
     // value?.IsZero == false <=> x > 0
     public static bool IsPositive(this UInt256? @this) => @this?.IsZero == false;
 

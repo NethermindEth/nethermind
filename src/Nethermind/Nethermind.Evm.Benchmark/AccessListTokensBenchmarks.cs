@@ -61,7 +61,7 @@ public class AccessListTokensBenchmarks
         if (accessList is null) return 0L;
 
         long tokens = 0;
-        Span<byte> keyBytes = stackalloc byte[32];
+        Span<byte> keyBytes = stackalloc byte[UInt256Extensions.ByteSize];
         foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in accessList)
         {
             ReadOnlySpan<byte> addressBytes = address.Bytes;
@@ -72,7 +72,7 @@ public class AccessListTokensBenchmarks
             {
                 key.ToBigEndian(keyBytes);
                 int keyZeros = ((ReadOnlySpan<byte>)keyBytes).CountZeros();
-                tokens += keyZeros + (32 - keyZeros) * NonZeroMultiplier;
+                tokens += keyZeros + (UInt256Extensions.ByteSize - keyZeros) * NonZeroMultiplier;
             }
         }
         return tokens;
@@ -95,7 +95,7 @@ public class AccessListTokensBenchmarks
             foreach (UInt256 key in storageKeys)
             {
                 int keyZeros = key.CountZeroBytes();
-                tokens += keyZeros + (32 - keyZeros) * NonZeroMultiplier;
+                tokens += keyZeros + (UInt256Extensions.ByteSize - keyZeros) * NonZeroMultiplier;
             }
         }
         return tokens;

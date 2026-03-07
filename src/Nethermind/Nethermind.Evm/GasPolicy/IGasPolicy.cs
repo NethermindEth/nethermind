@@ -240,8 +240,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="gas">The current gas state after execution.</param>
     static abstract void OnAfterInstructionTrace(in TSelf gas);
 
-    private const int UInt256Size = 32;
-
     protected static long CalculateTokensInCallData(Transaction transaction, IReleaseSpec spec)
     {
         ReadOnlySpan<byte> data = transaction.Data.Span;
@@ -265,7 +263,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             foreach (UInt256 key in storageKeys)
             {
                 int keyZeros = key.CountZeroBytes();
-                tokens += keyZeros + (UInt256Size - keyZeros) * nonZeroMultiplier;
+                tokens += keyZeros + (Nethermind.Core.Extensions.UInt256Extensions.ByteSize - keyZeros) * nonZeroMultiplier;
             }
         }
         return tokens;
