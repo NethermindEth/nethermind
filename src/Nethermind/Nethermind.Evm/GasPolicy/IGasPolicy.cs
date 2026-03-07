@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -262,7 +263,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             foreach (UInt256 key in storageKeys)
             {
                 int keyZeros = key.CountZeroBytes();
-                tokens += keyZeros + (32 - keyZeros) * nonZeroMultiplier;
+                tokens += keyZeros + (Unsafe.SizeOf<UInt256>() - keyZeros) * nonZeroMultiplier;
             }
         }
         return tokens;
