@@ -247,7 +247,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return totalZeros + (data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
-    protected static long CalculateTokensInAccessList(Transaction transaction, IReleaseSpec spec)
+    public static long CalculateTokensInAccessList(Transaction transaction, IReleaseSpec spec)
     {
         AccessList? accessList = transaction.AccessList;
         if (accessList is null) return 0L;
@@ -271,7 +271,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return tokens;
     }
 
-    public static long AccessListCost(Transaction transaction, IReleaseSpec spec)
+    /// <param name="tokensInAccessList">
+    /// Pre-computed token count from <see cref="CalculateTokensInAccessList"/>. When the caller has
+    /// already computed this value (e.g. for <see cref="CalculateFloorCost"/>), pass it here to avoid
+    /// a second iteration. Pass 0 when EIP-7981 is disabled or the access list is absent.
+    /// </param>
+    public static long AccessListCost(Transaction transaction, IReleaseSpec spec, long tokensInAccessList = 0)
     {
         AccessList? accessList = transaction.AccessList;
         if (accessList is not null)
@@ -285,7 +290,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             long cost = addressesCount * GasCostOf.AccessAccountListEntry + storageKeysCount * GasCostOf.AccessStorageListEntry;
             if (spec.IsEip7981Enabled)
             {
-                cost += GasCostOf.TotalCostFloorPerTokenEip7623 * CalculateTokensInAccessList(transaction, spec);
+                cost += GasCostOf.TotalCostFloorPerTokenEip7623 * tokensInAccessList;
             }
             return cost;
         }
