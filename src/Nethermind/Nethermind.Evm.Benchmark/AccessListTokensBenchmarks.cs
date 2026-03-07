@@ -4,7 +4,6 @@
 #nullable enable
 
 using System;
-using System.Numerics;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
@@ -14,10 +13,9 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.Benchmark;
 
 /// <summary>
-/// Compares three approaches for counting zero/non-zero bytes in access list storage keys:
-///   Span       — serialize UInt256 via ToBigEndian into a stackalloc byte[32], then count zeros over the span
-///   SwarOld    — classic SWAR formula (v - 0x0101...) &amp; ~v &amp; 0x8080... (has false positives for 0x01 bytes)
-///   SwarNew    — borrow-safe SWAR: ~(((v &amp; 0x7F7F...) + 0x7F7F...) | v | 0x7F7F...) — correct and no carry across bytes
+/// Compares two approaches for counting zero/non-zero bytes in access list storage keys:
+///   Span — serialize UInt256 via ToBigEndian into a stackalloc byte[32], then count zeros over the span
+///   Swar — borrow-safe SWAR directly on the four ulong limbs, no memory write
 /// </summary>
 [MemoryDiagnoser]
 public class AccessListTokensBenchmarks
@@ -37,32 +35,23 @@ public class AccessListTokensBenchmarks
         _largeTx = BuildTransaction(addresses: 50, keysPerAddress: 20);
     }
 
-    [Benchmark(Baseline = true, Description = "Span    — small (1 addr, 0 keys)")]
+    [Benchmark(Baseline = true, Description = "Span — small (1 addr, 0 keys)")]
     public long Span_Small() => CountTokensViaSpan(_smallTx);
 
-    [Benchmark(Description = "SwarOld — small (1 addr, 0 keys)")]
-    public long SwarOld_Small() => CountTokensViaSwarOld(_smallTx);
+    [Benchmark(Description = "Swar — small (1 addr, 0 keys)")]
+    public long Swar_Small() => CountTokensViaSwar(_smallTx);
 
-    [Benchmark(Description = "SwarNew — small (1 addr, 0 keys)")]
-    public long SwarNew_Small() => CountTokensViaSwarNew(_smallTx);
-
-    [Benchmark(Description = "Span    — medium (10 addr, 5 keys)")]
+    [Benchmark(Description = "Span — medium (10 addr, 5 keys)")]
     public long Span_Medium() => CountTokensViaSpan(_mediumTx);
 
-    [Benchmark(Description = "SwarOld — medium (10 addr, 5 keys)")]
-    public long SwarOld_Medium() => CountTokensViaSwarOld(_mediumTx);
+    [Benchmark(Description = "Swar — medium (10 addr, 5 keys)")]
+    public long Swar_Medium() => CountTokensViaSwar(_mediumTx);
 
-    [Benchmark(Description = "SwarNew — medium (10 addr, 5 keys)")]
-    public long SwarNew_Medium() => CountTokensViaSwarNew(_mediumTx);
-
-    [Benchmark(Description = "Span    — large (50 addr, 20 keys)")]
+    [Benchmark(Description = "Span — large (50 addr, 20 keys)")]
     public long Span_Large() => CountTokensViaSpan(_largeTx);
 
-    [Benchmark(Description = "SwarOld — large (50 addr, 20 keys)")]
-    public long SwarOld_Large() => CountTokensViaSwarOld(_largeTx);
-
-    [Benchmark(Description = "SwarNew — large (50 addr, 20 keys)")]
-    public long SwarNew_Large() => CountTokensViaSwarNew(_largeTx);
+    [Benchmark(Description = "Swar — large (50 addr, 20 keys)")]
+    public long Swar_Large() => CountTokensViaSwar(_largeTx);
 
     // ── baseline: ToBigEndian + CountZeros on Span<byte> ────────────────────────
 
@@ -89,33 +78,9 @@ public class AccessListTokensBenchmarks
         return tokens;
     }
 
-    // ── classic SWAR: (v - 0x0101...) & ~v & 0x8080... (buggy for 0x01 bytes) ──
-
-    private static long CountTokensViaSwarOld(Transaction transaction)
-    {
-        AccessList? accessList = transaction.AccessList;
-        if (accessList is null) return 0L;
-
-        long tokens = 0;
-        foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in accessList)
-        {
-            ReadOnlySpan<byte> addressBytes = address.Bytes;
-            int addressZeros = addressBytes.CountZeros();
-            tokens += addressZeros + (addressBytes.Length - addressZeros) * NonZeroMultiplier;
-
-            foreach (UInt256 key in storageKeys)
-            {
-                int keyZeros = CountZeroBytesOld(key.u0) + CountZeroBytesOld(key.u1)
-                             + CountZeroBytesOld(key.u2) + CountZeroBytesOld(key.u3);
-                tokens += keyZeros + (32 - keyZeros) * NonZeroMultiplier;
-            }
-        }
-        return tokens;
-    }
-
     // ── borrow-safe SWAR: production formula in UInt256Extensions ────────────────
 
-    private static long CountTokensViaSwarNew(Transaction transaction)
+    private static long CountTokensViaSwar(Transaction transaction)
     {
         AccessList? accessList = transaction.AccessList;
         if (accessList is null) return 0L;
@@ -134,12 +99,6 @@ public class AccessListTokensBenchmarks
             }
         }
         return tokens;
-    }
-
-    private static int CountZeroBytesOld(ulong v)
-    {
-        ulong mask = (v - 0x0101010101010101UL) & ~v & 0x8080808080808080UL;
-        return BitOperations.PopCount(mask);
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
