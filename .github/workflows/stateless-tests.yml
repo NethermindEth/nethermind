@@ -1,4 +1,4 @@
-name: Test stateless execution
+name: Stateless execution tests
 
 on:
   merge_group:
@@ -19,9 +19,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  EXPECTED_BLOCK_HASH: '0x2528a96c6c16ff80a8c92b84d7202f8250d74c0dd9e520a536179467f7e284b8'
+
 jobs:
   test-zisk:
-    name: Test on Zisk
+    name: Run on Zisk
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -49,10 +52,11 @@ jobs:
             nethermindeth/zisk:latest \
             ziskemu -e /n/nethermind -i /n/input.bin
           )
-          if [[ "$block_hash" != "0x2528a96c6c16ff80a8c92b84d7202f8250d74c0dd9e520a536179467f7e284b8" ]]; then
+          if [[ "$block_hash" != "$EXPECTED_BLOCK_HASH" ]]; then
             echo "::error::Unexpected block hash: $block_hash"
             exit 1
           fi
+
       - name: Upload guest binary
         if: github.event.inputs.upload == 'true'
         uses: actions/upload-artifact@v4
@@ -62,7 +66,7 @@ jobs:
           if-no-files-found: error
 
   test-qemu:
-    name: Test on QEMU
+    name: Run on QEMU
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -86,10 +90,11 @@ jobs:
         run: |
           docker build --platform linux/amd64 -t zkevm .
           block_hash=$(docker run --rm zkevm)
-          if [[ "$block_hash" != "0x2528a96c6c16ff80a8c92b84d7202f8250d74c0dd9e520a536179467f7e284b8" ]]; then
+          if [[ "$block_hash" != "$EXPECTED_BLOCK_HASH" ]]; then
             echo "::error::Unexpected block hash: $block_hash"
             exit 1
           fi
+
       - name: Upload guest binary
         if: github.event.inputs.upload == 'true'
         uses: actions/upload-artifact@v4
