@@ -55,7 +55,7 @@ public class RocksDbConfigFactoryTests
         config.WriteBufferSize.Should().Be((ulong)500.MB);
     }
 
-    [TestCase(1024, ExpectedResult = 819, TestName = "Caps to 80 pct on low limit")]
+    [TestCase(1024, ExpectedResult = 819, TestName = "Caps to 80% on low limit")]
     [TestCase(100, ExpectedResult = 128, TestName = "Enforces minimum of 128 on very low limit")]
     [TestCase(9999, ExpectedResult = 7999, TestName = "Caps just below threshold")]
     [TestCase(65536, ExpectedResult = null, TestName = "Unlimited on high limit")]
