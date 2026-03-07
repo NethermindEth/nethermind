@@ -271,12 +271,22 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return tokens;
     }
 
-    /// <param name="tokensInAccessList">
-    /// Pre-computed token count from <see cref="CalculateTokensInAccessList"/>. When the caller has
-    /// already computed this value (e.g. for <see cref="CalculateFloorCost"/>), pass it here to avoid
-    /// a second iteration. Pass 0 when EIP-7981 is disabled or the access list is absent.
-    /// </param>
-    public static long AccessListCost(Transaction transaction, IReleaseSpec spec, long tokensInAccessList = 0)
+    public static long AccessListCost(Transaction transaction, IReleaseSpec spec)
+    {
+        long cost = AccessListFixedCost(transaction, spec);
+        if (cost > 0 && spec.IsEip7981Enabled)
+        {
+            cost += GasCostOf.TotalCostFloorPerTokenEip7623 * CalculateTokensInAccessList(transaction, spec);
+        }
+        return cost;
+    }
+
+    /// <summary>
+    /// EIP-2930 fixed cost only (addresses × 2400 + keys × 1900), without the EIP-7981 token component.
+    /// Use this in <see cref="CalculateIntrinsicGas"/> implementations that already have
+    /// <see cref="CalculateTokensInAccessList"/> pre-computed, to avoid iterating the access list twice.
+    /// </summary>
+    protected static long AccessListFixedCost(Transaction transaction, IReleaseSpec spec)
     {
         AccessList? accessList = transaction.AccessList;
         if (accessList is not null)
@@ -287,12 +297,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             }
 
             (int addressesCount, int storageKeysCount) = accessList.Count;
-            long cost = addressesCount * GasCostOf.AccessAccountListEntry + storageKeysCount * GasCostOf.AccessStorageListEntry;
-            if (spec.IsEip7981Enabled)
-            {
-                cost += GasCostOf.TotalCostFloorPerTokenEip7623 * tokensInAccessList;
-            }
-            return cost;
+            return addressesCount * GasCostOf.AccessAccountListEntry + storageKeysCount * GasCostOf.AccessStorageListEntry;
         }
 
         return 0;

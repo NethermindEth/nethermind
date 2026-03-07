@@ -34,11 +34,6 @@ public static class IntrinsicGasCalculator
     public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec) =>
         Calculate<EthereumGasPolicy>(transaction, releaseSpec);
 
-    public static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        long tokensInAccessList = releaseSpec.IsEip7981Enabled
-            ? IGasPolicy<EthereumGasPolicy>.CalculateTokensInAccessList(transaction, releaseSpec)
-            : 0L;
-        return IGasPolicy<EthereumGasPolicy>.AccessListCost(transaction, releaseSpec, tokensInAccessList);
-    }
+    public static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec) =>
+        IGasPolicy<EthereumGasPolicy>.AccessListCost(transaction, releaseSpec);
 }
