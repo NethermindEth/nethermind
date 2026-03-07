@@ -67,18 +67,12 @@ public static class UInt256Extensions
     }
 
     /// <summary>
-    /// Returns the number of zero-valued bytes in the 256-bit value using the SWAR technique.
+    /// Returns the number of zero-valued bytes in the 256-bit value.
     /// Operates directly on the four <see cref="ulong"/> limbs — no serialization needed.
     /// </summary>
     public static int CountZeroBytes(this in UInt256 value) =>
-        ZeroByteCount(value.u0) + ZeroByteCount(value.u1)
-        + ZeroByteCount(value.u2) + ZeroByteCount(value.u3);
-
-    private static int ZeroByteCount(ulong v)
-    {
-        ulong mask = (v - 0x0101010101010101UL) & ~v & 0x8080808080808080UL;
-        return BitOperations.PopCount(mask);
-    }
+        value.u0.CountZeroBytes() + value.u1.CountZeroBytes()
+        + value.u2.CountZeroBytes() + value.u3.CountZeroBytes();
 
     public static int CountLeadingZeros(this in UInt256 uInt256)
     {
