@@ -31,8 +31,8 @@ public sealed class SnapshotBundle : IDisposable
     private ConcurrentDictionary<HashedKey<AddressAsKey>, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
-    private ConcurrentDictionary<TreePath, TrieNode> _readStateNodes = null!;
-    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _readStorageNodes = null!;
+    private ShardedDictionary<HashedKey<TreePath>, TrieNode> _readStateNodes = null!;
+    private ShardedDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> _readStorageNodes = null!;
 
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
@@ -158,18 +158,18 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
-        else if (_readStateNodes.TryGetValue(path, out node))
+        else if (_readStateNodes.TryGetValue(key, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
         else if (_transientResource.TryGetStateNode(path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            node = _readStateNodes.GetOrAdd(path, node);
+            node = _readStateNodes.GetOrAdd(key, node);
         }
         else
         {
-            node = _readStateNodes.GetOrAdd(path,
+            node = _readStateNodes.GetOrAdd(key,
                 DoFindStateNodeExternal(path, hash, out node)
                     ? node
                     : new TrieNode(NodeType.Unknown, hash));
@@ -229,18 +229,18 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
-        else if (_readStorageNodes.TryGetValue(((Hash256AsKey)address, path), out node))
+        else if (_readStorageNodes.TryGetValue(key, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
         else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            node = _readStorageNodes.GetOrAdd(((Hash256AsKey)address, path), node);
+            node = _readStorageNodes.GetOrAdd(key, node);
         }
         else
         {
-            node = _readStorageNodes.GetOrAdd(((Hash256AsKey)address, path),
+            node = _readStorageNodes.GetOrAdd(key,
                 DoTryFindStorageNodeExternal((Hash256AsKey)address, path, hash, out node) && node is not null
                     ? node
                     : new TrieNode(NodeType.Unknown, hash));
