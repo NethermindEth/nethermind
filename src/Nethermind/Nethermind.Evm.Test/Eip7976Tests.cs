@@ -3,19 +3,12 @@
 
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-/// <summary>
-/// Tests for EIP-7976: Increase Calldata Floor Cost.
-/// Verifies both standard and floor gas for various calldata patterns.
-/// </summary>
 [TestFixture]
 public class Eip7976Tests
 {
