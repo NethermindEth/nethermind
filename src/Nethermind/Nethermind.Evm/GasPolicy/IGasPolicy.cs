@@ -396,19 +396,14 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     /// <summary>
     /// Calculates the calldata floor cost for a transaction.
-    /// EIP-7976 uses uniform byte weighting (all bytes treated as non-zero) with TOTAL_COST_FLOOR_PER_TOKEN of 16.
-    /// EIP-7623 uses differentiated zero/non-zero token counting with TOTAL_COST_FLOOR_PER_TOKEN of 10.
-    /// The floor applies to regular gas only (independent of state gas in EIP-8037).
     /// </summary>
     protected static long CalculateFloorCost(Transaction transaction, IReleaseSpec spec, long tokensInCallData)
     {
-        // EIP-7976 supersedes EIP-7623: floor_tokens_in_calldata = total_bytes * nonzero_multiplier (uniform weighting)
         if (spec.IsEip7976Enabled)
         {
             long floorTokensInCallData = transaction.Data.Length * spec.GetTxDataNonZeroMultiplier();
             return GasCostOf.Transaction + floorTokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7976;
         }
-        // EIP-7623: tokens_in_calldata uses differentiated zero/non-zero byte costs
         else if (spec.IsEip7623Enabled)
         {
             return GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623;
