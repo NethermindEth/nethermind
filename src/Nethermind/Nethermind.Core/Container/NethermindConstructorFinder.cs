@@ -21,6 +21,9 @@ public class NethermindConstructorFinder : IConstructorFinder
 
     public ConstructorInfo[] FindConstructors(Type targetType)
     {
+        Console.Error.WriteLine($"[NethermindConstructorFinder] FindConstructors called for {targetType.Name}");
+        Console.Error.Flush();
+
         ConstructorInfo[] constructors = _baseFinder.FindConstructors(targetType);
 
         ConstructorInfo[] explicitlySelectedConstructors = constructors
