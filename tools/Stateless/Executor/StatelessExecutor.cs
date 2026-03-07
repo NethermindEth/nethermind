@@ -27,8 +27,10 @@ public static class StatelessExecutor
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
             EthereumEcdsa ecdsa = new(chainId);
 
+            // Recover sender addresses for transactions,
+            // as RLP-deserialized blocks don't have them
             foreach (Transaction tx in suggestedBlock.Transactions)
-                tx.SenderAddress ??= ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+                tx.SenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
             return TryExecute(suggestedBlock, witness, specProvider, out processedBlock);
         }
