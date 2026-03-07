@@ -82,11 +82,12 @@ public sealed class ReadOnlySnapshotBundle(
         return -1;
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
+    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx) =>
+        GetSlot(selfDestructStateIdx, new HashedKey<(AddressAsKey, UInt256)>((address, index)));
+
+    public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(AddressAsKey, UInt256)> key)
     {
         GuardDispose();
-
-        HashedKey<(AddressAsKey, UInt256)> key = new((address, index));
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
@@ -107,7 +108,7 @@ public sealed class ReadOnlySnapshotBundle(
         SlotValue outSlotValue = new();
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        persistenceReader.TryGetSlot(address, index, ref outSlotValue);
+        persistenceReader.TryGetSlot(key.Key.Item1.Value, key.Key.Item2, ref outSlotValue);
         byte[]? value = outSlotValue.ToEvmBytes();
 
         if (recordDetailedMetrics)
@@ -125,11 +126,12 @@ public sealed class ReadOnlySnapshotBundle(
         return value;
     }
 
-    public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
+        TryFindStateNodes(out node, new HashedKey<TreePath>(path));
+
+    public bool TryFindStateNodes([NotNullWhen(true)] out TrieNode? node, HashedKey<TreePath> key)
     {
         GuardDispose();
-
-        HashedKey<TreePath> key = new(path);
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
@@ -148,11 +150,12 @@ public sealed class ReadOnlySnapshotBundle(
 
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
     // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed.
-    public bool TryFindStorageNodes(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    public bool TryFindStorageNodes(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
+        TryFindStorageNodes(out node, new HashedKey<(Hash256AsKey, TreePath)>((address, path)));
+
+    public bool TryFindStorageNodes([NotNullWhen(true)] out TrieNode? node, HashedKey<(Hash256AsKey, TreePath)> key)
     {
         GuardDispose();
-
-        HashedKey<(Hash256AsKey, TreePath)> key = new((address, path));
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
