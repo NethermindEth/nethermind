@@ -43,6 +43,8 @@ public class Eip7976Tests
     {
         Transaction transaction = new() { Data = new byte[] { 1 }, To = null };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Eip7976Spec);
+        // Standard: 21000 (base) + 32000 (tx creation) + InitCodeWord * 1 + 1 * 16 (1 non-zero byte) = 53,018
+        // Floor Gas Cost: 21000 (base) + 1 * 4 * 16 (1 non-zero byte) = 21,064
         cost.Should().Be(new EthereumIntrinsicGas(Standard: 53_018, FloorGas: 21_064));
     }
 
