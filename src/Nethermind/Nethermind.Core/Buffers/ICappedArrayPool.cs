@@ -12,15 +12,8 @@ public interface ICappedArrayPool
 
 public static class CappedArrayPoolExtensions
 {
-    public static CappedArray<byte> SafeRent(this ICappedArrayPool? pool, int size)
-    {
-        if (pool is null)
-        {
-            return new CappedArray<byte>(new byte[size]);
-        }
-
-        return pool.Rent(size);
-    }
+    public static CappedArray<byte> SafeRent(this ICappedArrayPool? pool, int size) =>
+        pool?.Rent(size) ?? new CappedArray<byte>(new byte[size]);
 
     public static void SafeReturn(this ICappedArrayPool? pool, in CappedArray<byte> buffer)
     {
