@@ -24,7 +24,7 @@ jobs:
       - name: Format
         run: |
           dotnet format whitespace src/Nethermind/ --folder --verify-no-changes
-          dotnet format whitespace src/tools/ --folder --verify-no-changes
+          dotnet format whitespace tools/ --folder --verify-no-changes
 
       - name: Check spelling
         uses: streetsidesoftware/cspell-action@v7
