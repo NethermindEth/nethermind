@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Numerics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using Nethermind.Core;
@@ -262,21 +261,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
             foreach (UInt256 key in storageKeys)
             {
-                // Count zero bytes directly on the four ulong limbs via SWAR — ~2.5× faster than
-                // ToBigEndian into a stackalloc span because it avoids the 32-byte write+read roundtrip.
-                // Endianness is irrelevant: zero-byte count is the same in any limb order.
-                int keyZeros = ZeroByteCount(key.u0) + ZeroByteCount(key.u1)
-                             + ZeroByteCount(key.u2) + ZeroByteCount(key.u3);
+                int keyZeros = key.CountZeroBytes();
                 tokens += keyZeros + (32 - keyZeros) * nonZeroMultiplier;
             }
         }
         return tokens;
-
-        static int ZeroByteCount(ulong v)
-        {
-            ulong mask = (v - 0x0101010101010101UL) & ~v & 0x8080808080808080UL;
-            return BitOperations.PopCount(mask);
-        }
     }
 
     public static long AccessListCost(Transaction transaction, IReleaseSpec spec)
