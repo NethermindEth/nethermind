@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V70;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-7975 - partial block receipt lists.
 /// </summary>
-public class Eth70ProtocolHandler : Eth69ProtocolHandler
+public class Eth70ProtocolHandler : Eth69ProtocolHandler, IMessageSender<GetReceiptsMessage70>
 {
     private readonly MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70> _receiptsRequests70;
 
@@ -47,7 +47,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
             gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy)
     {
-        _receiptsRequests70 = new MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>(Send);
+        _receiptsRequests70 = new MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>(this);
     }
 
     public override string Name => "eth70";
@@ -384,4 +384,6 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
             }
         }
     }
+
+    void IMessageSender<GetReceiptsMessage70>.Send(GetReceiptsMessage70 message) => Send(message);
 }

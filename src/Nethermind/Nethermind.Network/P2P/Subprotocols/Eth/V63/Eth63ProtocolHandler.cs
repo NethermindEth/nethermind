@@ -22,7 +22,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
-    public class Eth63ProtocolHandler : Eth62ProtocolHandler
+    public class Eth63ProtocolHandler : Eth62ProtocolHandler, IMessageSender<GetNodeDataMessage>, IMessageSender<GetReceiptsMessage>
     {
         private readonly MessageQueue<GetNodeDataMessage, IByteArrayList> _nodeDataRequests;
 
@@ -39,8 +39,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ITxGossipPolicy? transactionsGossipPolicy = null)
             : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
-            _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(Send);
-            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(Send);
+            _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(this);
+            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(this);
         }
 
         public override byte ProtocolVersion => EthVersions.Eth63;
@@ -159,5 +159,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 static (_) => $"{nameof(GetReceiptsMessage)}",
                 token);
         }
+
+        void IMessageSender<GetNodeDataMessage>.Send(GetNodeDataMessage message) => Send(message);
+        void IMessageSender<GetReceiptsMessage>.Send(GetReceiptsMessage message) => Send(message);
     }
 }

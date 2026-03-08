@@ -81,7 +81,7 @@ internal class XdcProtocolManager : ProtocolsManager
                 100 => new XdcProtocolHandler(timeoutCertificateManager, votesManager, syncInfoManager, session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                 _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
             };
-            InitSyncPeerProtocol(session, ethHandler);
+            session.Node.EthDetails = ethHandler.Name;
             return ethHandler;
         };
         return protocolFactory;

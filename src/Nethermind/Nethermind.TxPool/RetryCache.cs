@@ -29,7 +29,6 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private int _expiringQueueCounter = 0;
     private readonly ClockKeyCache<TResourceId> _requestingResources;
     private readonly ILogger _logger;
-    private readonly Func<TResourceId, ConcurrentHashSet<IMessageHandler<TMessage>>, IMessageHandler<TMessage>, ConcurrentHashSet<IMessageHandler<TMessage>>> _announceUpdate;
 
     internal int ResourcesInRetryQueue => _expiringQueueCounter;
 
@@ -43,9 +42,6 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _requestingResources = new(requestingCacheSize);
         _expiringQueueLimit = expiringQueueLimit;
         _maxRetryRequests = maxRetryRequests;
-        // Closure capture
-        _announceUpdate = AnnounceUpdate;
-
         _mainLoopTask = Task.Run(async () =>
         {
             PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_checkMs));
@@ -96,12 +92,12 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                 }
                 catch (Exception ex)
                 {
-                    if (_logger.IsError) _logger.Error($"Unexpected error in {nameof(TResourceId)} retry cache loop", ex);
+                    if (_logger.IsError) _logger.Error($"Unexpected error in {typeof(TResourceId)} retry cache loop", ex);
                     Clear();
                 }
             }
 
-            if (_logger.IsDebug) _logger.Debug($"{nameof(TResourceId)} retry cache stopped");
+            if (_logger.IsDebug) _logger.Debug($"{typeof(TResourceId)} retry cache stopped");
         }, token);
     }
 
@@ -114,16 +110,37 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (_expiringQueueCounter > _expiringQueueLimit)
         {
-            if (_logger.IsDebug) _logger.Warn($"{nameof(TResourceId)} retry queue is full");
+            if (_logger.IsDebug) _logger.Warn($"{typeof(TResourceId)} retry queue is full");
 
             return AnnounceResult.RequestRequired;
         }
 
         if (!_requestingResources.Contains(resourceId))
         {
-            AnnounceResult result = AnnounceResult.Delayed;
-            _retryRequests.AddOrUpdate(resourceId, (resourceId, retryHandler) => AnnounceAdd(resourceId, retryHandler, out result), _announceUpdate, handler);
-            return result;
+            if (_retryRequests.TryGetValue(resourceId, out ConcurrentHashSet<IMessageHandler<TMessage>>? existing))
+            {
+                AnnounceUpdate(resourceId, existing, handler);
+                return AnnounceResult.Delayed;
+            }
+
+            ConcurrentHashSet<IMessageHandler<TMessage>> newBag = _handlerBagsPool.Get();
+            if (_retryRequests.TryAdd(resourceId, newBag))
+            {
+                AnnounceAddEnqueue(resourceId, handler);
+                return AnnounceResult.RequestRequired;
+            }
+
+            // Lost the race — another thread added first, fall back to update. There is still a
+            // narrow accepted race where the timer thread can remove the entry between TryAdd
+            // failing and the fallback TryGetValue below, which drops this handler. RetryCache is
+            // best-effort and this window is negligible compared to the retry interval, so we keep
+            // the lower-allocation fast path instead of going back to AddOrUpdate.
+            _handlerBagsPool.Return(newBag);
+            if (_retryRequests.TryGetValue(resourceId, out existing))
+            {
+                AnnounceUpdate(resourceId, existing, handler);
+            }
+            return AnnounceResult.Delayed;
         }
 
         if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {handler}, but a retry is in progress already, immediately firing");
@@ -131,19 +148,15 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         return AnnounceResult.RequestRequired;
     }
 
-    private ConcurrentHashSet<IMessageHandler<TMessage>> AnnounceAdd(TResourceId resourceId, IMessageHandler<TMessage> retryHandler, out AnnounceResult result)
+    private void AnnounceAddEnqueue(TResourceId resourceId, IMessageHandler<TMessage> retryHandler)
     {
         if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}: NEW");
 
         _expiringQueue.Enqueue((resourceId, DateTimeOffset.UtcNow.AddMilliseconds(_timeoutMs)));
         Interlocked.Increment(ref _expiringQueueCounter);
-
-        result = AnnounceResult.RequestRequired;
-
-        return _handlerBagsPool.Get();
     }
 
-    private ConcurrentHashSet<IMessageHandler<TMessage>> AnnounceUpdate(TResourceId resourceId, ConcurrentHashSet<IMessageHandler<TMessage>> requests, IMessageHandler<TMessage> retryHandler)
+    private void AnnounceUpdate(TResourceId resourceId, ConcurrentHashSet<IMessageHandler<TMessage>> requests, IMessageHandler<TMessage> retryHandler)
     {
         if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}: UPDATE");
 
@@ -151,8 +164,6 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         {
             requests.Add(retryHandler);
         }
-
-        return requests;
     }
 
     public void Received(in TResourceId resourceId)

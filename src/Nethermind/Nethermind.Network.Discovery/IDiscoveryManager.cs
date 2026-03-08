@@ -13,7 +13,7 @@ namespace Nethermind.Network.Discovery;
 public interface IDiscoveryManager : IDiscoveryMsgListener
 {
     IMsgSender MsgSender { set; }
-    INodeLifecycleManager? GetNodeLifecycleManager(Node node, bool isPersisted = false);
+    INodeLifecycleManager? GetNodeLifecycleManager(Node node, bool isPersisted = false, bool isTrusted = false);
     void SendMessage(DiscoveryMsg discoveryMsg);
     Task SendMessageAsync(DiscoveryMsg discoveryMsg);
     ValueTask<bool> WasMessageReceived(Hash256 senderIdHash, MsgType msgType, int timeout);
