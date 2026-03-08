@@ -72,30 +72,27 @@ DOCKER_RUN := docker run --platform linux/amd64 --rm \
   -e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
   -w $(SRC_DIR)
 
-build-docker-bflat:
-	docker build --platform linux/amd64 -f $(MAKEFILE_DIR)/Dockerfile.bflat -t bflat-riscv64-local $(MAKEFILE_DIR)
-
 build-dotnet-tester:
 	dotnet build -c release -p:EnableZkEvm=true $(TESTER_DIR)/Tester.csproj
 
 build-dotnet-zisk:
 	dotnet build -c release -p:EnableZkEvm=true $(ZISK_DIR)/ZiskGuest.csproj
 
-build-tester: build-dotnet-tester build-docker-bflat
+build-tester: build-dotnet-tester
 	$(DOCKER_RUN) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/Tester/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(TESTER_DIR)",target=$(SRC_DIR) \
-		bflat-riscv64-local \
+		nethermindeth/bflat-riscv64:latest \
 		$(BFLAT_BUILD) --libc zisk_sim -d ZK_EVM $(BFLAT_REFS) \
 		$(SRC_DIR)/Program.cs
 	mkdir -p $(TESTER_DIR)/bin && \
 		mv -f $(TESTER_DIR)/Program $(TESTER_DIR)/bin/nethermind
 
-build-zisk: build-dotnet-zisk build-docker-bflat
+build-zisk: build-dotnet-zisk
 	$(DOCKER_RUN) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/ZiskGuest/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(ZISK_DIR)",target=$(SRC_DIR) \
-		bflat-riscv64-local \
+		nethermindeth/bflat-riscv64:latest \
 		$(BFLAT_BUILD) --libc zisk $(BFLAT_REFS) \
 		-r $(BIN_DIR)/Nethermind.ZiskBindings.dll \
 		--extra-ld $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.a \
@@ -114,7 +111,7 @@ run-zisk: build-zisk
 		dotnet run -c release --project $(TESTER_DIR)/Tester.csproj -- $(ZISK_DIR)/bin/input.bin
 	docker run --rm -it -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(ZISK_DIR)/bin",target=/n \
-		nethermindeth/zisk:latest \
+		nethermindeth/zisk@sha256:a440f877305cc6bb406b00fa8728e91d5286b5492453b410243ed2b84899fec2 \
 		ziskemu -e /n/nethermind -i /n/input.bin
 
 clean:
@@ -129,7 +126,6 @@ clean:
 	dotnet clean -c release $(MAKEFILE_DIR)/Stateless.slnx
 
 .PHONY: \
-	build-docker-bflat \
 	build-dotnet-tester \
 	build-dotnet-zisk \
 	build-tester \
