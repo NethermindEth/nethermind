@@ -7,11 +7,12 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Faster.Map.Core;
 
 namespace Nethermind.Core.Collections;
 
 /// <summary>
-/// 16-shard Dictionary+Lock for concurrent writes with lock-free reads when disabled.
+/// 16-shard DenseMap+Lock for concurrent writes with lock-free reads when disabled.
 /// </summary>
 public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>
     where TKey : notnull
@@ -20,17 +21,17 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
     private const int ShardMask = NumShards - 1;
 
     private readonly Lock[] _locks;
-    private readonly Dictionary<TKey, TValue>[] _dicts;
+    private readonly DenseMap<TKey, TValue>[] _dicts;
     private volatile bool _lockEnabled = true;
 
     public ShardedDictionary()
     {
         _locks = new Lock[NumShards];
-        _dicts = new Dictionary<TKey, TValue>[NumShards];
+        _dicts = new DenseMap<TKey, TValue>[NumShards];
         for (int i = 0; i < NumShards; i++)
         {
             _locks[i] = new Lock();
-            _dicts[i] = new Dictionary<TKey, TValue>();
+            _dicts[i] = new DenseMap<TKey, TValue>();
         }
     }
 
@@ -52,9 +53,9 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
         {
             int idx = GetShardIndex(key);
             if (_lockEnabled)
-                lock (_locks[idx]) _dicts[idx][key] = value;
+                lock (_locks[idx]) _dicts[idx].InsertOrUpdate(key, value);
             else
-                _dicts[idx][key] = value;
+                _dicts[idx].InsertOrUpdate(key, value);
         }
     }
 
@@ -63,8 +64,8 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
     {
         int idx = GetShardIndex(key);
         if (_lockEnabled)
-            lock (_locks[idx]) return _dicts[idx].TryGetValue(key, out value);
-        return _dicts[idx].TryGetValue(key, out value);
+            lock (_locks[idx]) return _dicts[idx].Get(key, out value);
+        return _dicts[idx].Get(key, out value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -75,16 +76,16 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
         {
             lock (_locks[idx])
             {
-                ref TValue? slot = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(_dicts[idx], key, out bool exists);
-                if (!exists) slot = value;
-                return slot!;
+                if (_dicts[idx].Get(key, out TValue existing)) return existing;
+                _dicts[idx].Insert(key, value);
+                return value;
             }
         }
 
         {
-            ref TValue? slot = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(_dicts[idx], key, out bool exists);
-            if (!exists) slot = value;
-            return slot!;
+            if (_dicts[idx].Get(key, out TValue existing)) return existing;
+            _dicts[idx].Insert(key, value);
+            return value;
         }
     }
 
@@ -96,16 +97,18 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
         {
             lock (_locks[idx])
             {
-                ref TValue? slot = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(_dicts[idx], key, out bool exists);
-                if (!exists) slot = factory(key);
-                return slot!;
+                if (_dicts[idx].Get(key, out TValue existing)) return existing;
+                TValue value = factory(key);
+                _dicts[idx].Insert(key, value);
+                return value;
             }
         }
 
         {
-            ref TValue? slot = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(_dicts[idx], key, out bool exists);
-            if (!exists) slot = factory(key);
-            return slot!;
+            if (_dicts[idx].Get(key, out TValue existing)) return existing;
+            TValue value = factory(key);
+            _dicts[idx].Insert(key, value);
+            return value;
         }
     }
 
@@ -114,8 +117,8 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
     {
         int idx = GetShardIndex(key);
         if (_lockEnabled)
-            lock (_locks[idx]) return _dicts[idx].ContainsKey(key);
-        return _dicts[idx].ContainsKey(key);
+            lock (_locks[idx]) return _dicts[idx].Contains(key);
+        return _dicts[idx].Contains(key);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -123,8 +126,18 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
     {
         int idx = GetShardIndex(key);
         if (_lockEnabled)
-            lock (_locks[idx]) return _dicts[idx].TryAdd(key, value);
-        return _dicts[idx].TryAdd(key, value);
+        {
+            lock (_locks[idx])
+            {
+                if (_dicts[idx].Contains(key)) return false;
+                _dicts[idx].Insert(key, value);
+                return true;
+            }
+        }
+
+        if (_dicts[idx].Contains(key)) return false;
+        _dicts[idx].Insert(key, value);
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -132,8 +145,18 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
     {
         int idx = GetShardIndex(key);
         if (_lockEnabled)
-            lock (_locks[idx]) return _dicts[idx].Remove(key, out value);
-        return _dicts[idx].Remove(key, out value);
+        {
+            lock (_locks[idx])
+            {
+                if (!_dicts[idx].Get(key, out value)) return false;
+                _dicts[idx].Remove(key);
+                return true;
+            }
+        }
+
+        if (!_dicts[idx].Get(key, out value)) return false;
+        _dicts[idx].Remove(key);
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -220,7 +243,7 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
             if (_lockEnabled) _locks[i].Enter();
             try
             {
-                foreach (KeyValuePair<TKey, TValue> kv in _dicts[i]) yield return kv;
+                foreach (KeyValuePair<TKey, TValue> kv in _dicts[i].Entries) yield return kv;
             }
             finally
             {
@@ -236,13 +259,13 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
 
     public void AddOrUpdateFromShard(int shardIndex, ShardedDictionary<TKey, TValue> source)
     {
-        foreach (KeyValuePair<TKey, TValue> kv in source._dicts[shardIndex])
-            _dicts[shardIndex][kv.Key] = kv.Value;
+        foreach (KeyValuePair<TKey, TValue> kv in source._dicts[shardIndex].Entries)
+            _dicts[shardIndex].InsertOrUpdate(kv.Key, kv.Value);
     }
 
     public void RemoveFromShard(int shardIndex, Func<TKey, bool> predicate)
     {
-        Dictionary<TKey, TValue> dict = _dicts[shardIndex];
+        DenseMap<TKey, TValue> dict = _dicts[shardIndex];
         List<TKey>? toRemove = null;
         foreach (TKey key in dict.Keys)
         {
