@@ -17,6 +17,7 @@
     <PackageVersion Include="ConcurrentHashSet" Version="1.3.0" />
     <PackageVersion Include="Crc32.NET" Version="1.2.0" />
     <PackageVersion Include="DnsClient" Version="1.8.0" />
+    <PackageVersion Include="Faster.Map" Version="8.1.1" />
     <PackageVersion Include="FastEnum" Version="2.0.6" />
     <PackageVersion Include="FluentAssertions" Version="[7.2.1]" />
     <PackageVersion Include="FluentAssertions.Json" Version="[6.1.0]" />
