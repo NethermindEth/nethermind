@@ -44,8 +44,9 @@ public class EnrRecordParser : IEnrRecordParser
         {
             if (base64[^1] != '=')
             {
-                int mod3 = base64.Count % 4;
-                for (int i = 0; i < mod3; i++)
+                int mod4 = base64.Count % 4;
+                int paddingNeeded = (4 - mod4) % 4;
+                for (int i = 0; i < paddingNeeded; i++)
                 {
                     byteBuffer.WriteString("=", Encoding.UTF8);
                 }
