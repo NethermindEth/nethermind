@@ -17,6 +17,7 @@
     <PackageVersion Include="ConcurrentHashSet" Version="1.3.0" />
     <PackageVersion Include="Crc32.NET" Version="1.2.0" />
     <PackageVersion Include="DnsClient" Version="1.8.0" />
+    <PackageVersion Include="Faster.Map" Version="8.1.1" />
     <PackageVersion Include="FastEnum" Version="2.0.6" />
     <PackageVersion Include="FluentAssertions" Version="[7.2.0]" />
     <PackageVersion Include="FluentAssertions.Json" Version="[6.1.0]" />
@@ -85,7 +86,7 @@
     <PackageVersion Include="Spectre.Console" Version="0.54.0" />
     <PackageVersion Include="System.CommandLine" Version="2.0.3" />
     <PackageVersion Include="System.Configuration.ConfigurationManager" Version="10.0.3" />
-    <PackageVersion Include="System.IO.Hashing" Version="10.0.2" />
+    <PackageVersion Include="System.IO.Hashing" Version="10.0.3" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.3" />
     <PackageVersion Include="Testably.Abstractions" Version="10.1.0" />
     <PackageVersion Include="Testably.Abstractions.Testing" Version="5.3.0" />

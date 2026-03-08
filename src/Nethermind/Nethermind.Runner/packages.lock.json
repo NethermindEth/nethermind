@@ -716,6 +716,7 @@
           "Autofac": "[9.0.0, )",
           "Autofac.Extensions.DependencyInjection": "[10.0.0, )",
           "FastEnum": "[2.0.6, )",
+          "Faster.Map": "[8.1.1, )",
           "Microsoft.IO.RecyclableMemoryStream": "[3.0.1, )",
           "Microsoft.IdentityModel.JsonWebTokens": "[8.15.0, )",
           "Nethermind.Crypto.SecP256k1": "[1.5.0, )",
@@ -1127,7 +1128,7 @@
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
           "Nethermind.State": "[1.37.0-unstable, )",
           "Nethermind.Trie": "[1.37.0-unstable, )",
-          "System.IO.Hashing": "[10.0.2, )"
+          "System.IO.Hashing": "[10.0.3, )"
         }
       },
       "nethermind.synchronization": {
@@ -1295,6 +1296,15 @@
         "dependencies": {
           "FastEnum.Core": "2.0.6",
           "FastEnum.Generators": "2.0.6"
+        }
+      },
+      "Faster.Map": {
+        "type": "CentralTransitive",
+        "requested": "[8.1.1, )",
+        "resolved": "8.1.1",
+        "contentHash": "x20BLFApZ/vzpmQsvsUC9PpDPqZp0s+pHsRdzFjlikGUPksMuGv8tPcnzlxHHy4Tbey46vjoe/P6LV65JFryQA==",
+        "dependencies": {
+          "System.IO.Hashing": "10.0.3"
         }
       },
       "Google.Protobuf": {
@@ -1608,9 +1618,9 @@
       },
       "System.IO.Hashing": {
         "type": "CentralTransitive",
-        "requested": "[10.0.2, )",
-        "resolved": "10.0.2",
-        "contentHash": "AKJknIFi9O3+rGExxTry188JPvUoZAPcCtS2qdqyFhIzsxQ1Ap94BeGDG0VzVEHakhmRxmJtVih6TsHoghIt/g=="
+        "requested": "[10.0.3, )",
+        "resolved": "10.0.3",
+        "contentHash": "La6ICwsdTKhVX+LKN+pvFjQRR3LhLwq3uKdi2knjLzRyPYBSydF4cjXidYxIiTcDD6XVYdsBWQEI8ZxiZ/OdIg=="
       },
       "System.Security.Cryptography.ProtectedData": {
         "type": "CentralTransitive",
