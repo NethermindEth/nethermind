@@ -41,6 +41,18 @@ namespace Nethermind.Network.Test
             await ctx.PeerManager.StopAsync();
         }
 
+        [Test]
+        public async Task Will_ignore_sessions_created_after_stop()
+        {
+            await using Context ctx = new();
+            ctx.PeerManager.Start();
+
+            await ctx.PeerManager.StopAsync();
+            ctx.RlpxPeer.CreateRandomIncoming();
+
+            ctx.PeerManager.ActivePeers.Count.Should().Be(0);
+        }
+
         private const string enode1String =
             "enode://22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222@51.141.78.53:30303";
 

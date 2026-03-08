@@ -3,9 +3,11 @@
 
 using DotNetty.Buffers;
 using FluentAssertions;
+using System.Linq;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using NUnit.Framework;
 
@@ -99,6 +101,44 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             byte[] recode = serializer.Serialize(msg);
 
             recode.Should().BeEquivalentTo(data);
+        }
+
+        [Test]
+        public void Deserialize_Throws_On_TooMany_Path_Groups()
+        {
+            PathGroup[] groups = Enumerable.Range(0, 4_097).Select(static _ => new PathGroup { Group = [TestItem.RandomDataA] }).ToArray();
+            AssertDeserializeThrows(PathGroup.EncodeToRlpPathGroupList(groups));
+        }
+
+        [Test]
+        public void Deserialize_Throws_On_TooMany_Paths_Per_Group()
+        {
+            byte[][] paths = Enumerable.Range(0, 1_025).Select(static _ => TestItem.RandomDataA).ToArray();
+            AssertDeserializeThrows(PathGroup.EncodeToRlpPathGroupList([new() { Group = paths }]));
+        }
+
+        private static void AssertDeserializeThrows(RlpPathGroupList paths)
+        {
+            GetTrieNodesMessage msg = new()
+            {
+                RequestId = MessageConstants.Random.NextLong(),
+                RootHash = TestItem.KeccakA,
+                Paths = paths,
+                Bytes = 10
+            };
+
+            GetTrieNodesMessageSerializer serializer = new();
+            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 64);
+            try
+            {
+                serializer.Serialize(buffer, msg);
+                Assert.Throws<RlpLimitException>(() => serializer.Deserialize(buffer));
+            }
+            finally
+            {
+                buffer.Release();
+                msg.Dispose();
+            }
         }
 
         /// <summary>

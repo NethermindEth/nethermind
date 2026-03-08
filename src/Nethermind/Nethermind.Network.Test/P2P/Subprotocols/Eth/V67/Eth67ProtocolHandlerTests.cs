@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -20,7 +19,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
-using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -129,20 +127,8 @@ public class Eth67ProtocolHandlerTests
     }
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
-    {
-        IByteBuffer getZeroPacket = _svc.ZeroSerialize(msg);
-        getZeroPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(getZeroPacket) { PacketType = (byte)messageCode });
-    }
+        => EthProtocolTestHelper.HandleZeroMessage(_svc, _handler, msg, messageCode);
 
     private void HandleIncomingStatusMessage()
-    {
-        var statusMsg = new StatusMessage();
-        statusMsg.GenesisHash = _genesisBlock.Hash;
-        statusMsg.BestHash = _genesisBlock.Hash;
-
-        IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
-        statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
-    }
+        => EthProtocolTestHelper.HandleIncomingStatusMessage(_svc, _handler, _genesisBlock);
 }

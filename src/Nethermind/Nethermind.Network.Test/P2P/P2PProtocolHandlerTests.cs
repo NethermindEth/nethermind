@@ -33,7 +33,8 @@ namespace Nethermind.Network.Test.P2P
             _session = Substitute.For<ISession>();
             _serializer = new MessageSerializationService(
                 SerializerInfo.Create(new HelloMessageSerializer()),
-                SerializerInfo.Create(new PingMessageSerializer())
+                SerializerInfo.Create(new PingMessageSerializer()),
+                SerializerInfo.Create(new AddCapabilityMessageSerializer())
             );
         }
 
@@ -47,11 +48,14 @@ namespace Nethermind.Network.Test.P2P
 
         private Packet CreatePacket<T>(T message) where T : P2PMessage
         {
-            return new(new ZeroPacket(_serializer.ZeroSerialize(message))
+            IByteBuffer data = _serializer.ZeroSerialize(message);
+            data.ReadByte(); // strip adaptive packet type; Packet.Data is payload-only
+
+            return new Packet(data.ReadAllBytesAsArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
-            });
+            };
         }
 
         private const int ListenPort = 8003;
@@ -235,6 +239,38 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.HandleMessage(packet);
 
             _session.DidNotReceive().InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+        }
+
+        [Test]
+        public void Duplicate_add_capability_is_ignored()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            Capability capability = new(Protocol.Eth, 68);
+            int requestedCount = 0;
+
+            p2PProtocolHandler.AddSupportedCapability(capability);
+            p2PProtocolHandler.SubprotocolRequested += (_, _) => requestedCount++;
+
+            p2PProtocolHandler.HandleMessage(CreatePacket(new AddCapabilityMessage(capability)));
+            p2PProtocolHandler.HandleMessage(CreatePacket(new AddCapabilityMessage(capability)));
+
+            requestedCount.Should().Be(1);
+            p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(capability)).Should().Be(1);
+        }
+
+        [Test]
+        public void Too_many_add_capability_messages_disconnect()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+
+            for (int i = 0; i < 64; i++)
+            {
+                p2PProtocolHandler.HandleMessage(CreatePacket(new AddCapabilityMessage(new Capability($"cap{i}", 1))));
+            }
+
+            p2PProtocolHandler.HandleMessage(CreatePacket(new AddCapabilityMessage(new Capability("overflow", 1))));
+
+            _session.Received(1).InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
         }
     }
 }

@@ -20,6 +20,7 @@ namespace Nethermind.Network.Test;
 public class MessageDictionaryTests
 {
     private readonly List<Eth66Message<GetBlockHeadersMessage>> _recordedRequests = new();
+    private RecordingMessageSender _messageSender;
     private MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>
         _testMessageDictionary;
 
@@ -27,7 +28,8 @@ public class MessageDictionaryTests
     public void Setup()
     {
         _recordedRequests.Clear();
-        _testMessageDictionary = new((message) => _recordedRequests.Add(message));
+        _messageSender = new(_recordedRequests);
+        _testMessageDictionary = new(_messageSender);
     }
 
     [Test]
@@ -118,5 +120,11 @@ public class MessageDictionaryTests
             new(new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage(requestId,
                 new GetBlockHeadersMessage()));
         return request;
+    }
+
+    private sealed class RecordingMessageSender(List<Eth66Message<GetBlockHeadersMessage>> recordedRequests)
+        : IMessageSender<Eth66Message<GetBlockHeadersMessage>>
+    {
+        public void Send(Eth66Message<GetBlockHeadersMessage> message) => recordedRequests.Add(message);
     }
 }
