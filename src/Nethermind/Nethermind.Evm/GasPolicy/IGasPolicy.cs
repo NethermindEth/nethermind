@@ -255,7 +255,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         long tokens = 0;
         long nonZeroMultiplier = spec.GetTxDataNonZeroMultiplier();
 
-        foreach ((Address address, _) in accessList.Addresses)
+        foreach ((Address address, AccessList.StorageKeysEnumerable _) in accessList)
         {
             ReadOnlySpan<byte> addressBytes = address.Bytes;
             int addressZeros = addressBytes.CountZeros();

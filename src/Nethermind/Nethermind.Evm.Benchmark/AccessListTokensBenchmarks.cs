@@ -87,7 +87,7 @@ public class AccessListTokensBenchmarks
 
         long tokens = 0;
 
-        foreach ((Address address, _) in accessList.Addresses)
+        foreach ((Address address, AccessList.StorageKeysEnumerable _) in accessList)
         {
             ReadOnlySpan<byte> addressBytes = address.Bytes;
             int addressZeros = addressBytes.CountZeros();
