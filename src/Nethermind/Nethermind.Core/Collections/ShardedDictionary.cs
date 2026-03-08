@@ -16,8 +16,8 @@ namespace Nethermind.Core.Collections;
 public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>
     where TKey : notnull
 {
-    private const int ShardCount = 16;
-    private const int ShardMask = ShardCount - 1;
+    public const int NumShards = 16;
+    private const int ShardMask = NumShards - 1;
 
     private readonly Lock[] _locks;
     private readonly Dictionary<TKey, TValue>[] _dicts;
@@ -25,9 +25,9 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
 
     public ShardedDictionary()
     {
-        _locks = new Lock[ShardCount];
-        _dicts = new Dictionary<TKey, TValue>[ShardCount];
-        for (int i = 0; i < ShardCount; i++)
+        _locks = new Lock[NumShards];
+        _dicts = new Dictionary<TKey, TValue>[NumShards];
+        for (int i = 0; i < NumShards; i++)
         {
             _locks[i] = new Lock();
             _dicts[i] = new Dictionary<TKey, TValue>();
@@ -145,7 +145,7 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
         get
         {
             int count = 0;
-            for (int i = 0; i < ShardCount; i++)
+            for (int i = 0; i < NumShards; i++)
             {
                 if (_lockEnabled)
                     lock (_locks[i]) count += _dicts[i].Count;
@@ -160,7 +160,7 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
     {
         get
         {
-            for (int i = 0; i < ShardCount; i++)
+            for (int i = 0; i < NumShards; i++)
             {
                 if (_lockEnabled)
                 {
@@ -179,7 +179,7 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
     {
         get
         {
-            for (int i = 0; i < ShardCount; i++)
+            for (int i = 0; i < NumShards; i++)
             {
                 if (_lockEnabled) _locks[i].Enter();
                 try
@@ -198,7 +198,7 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
     {
         get
         {
-            for (int i = 0; i < ShardCount; i++)
+            for (int i = 0; i < NumShards; i++)
             {
                 if (_lockEnabled) _locks[i].Enter();
                 try
@@ -215,7 +215,7 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
 
     public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
     {
-        for (int i = 0; i < ShardCount; i++)
+        for (int i = 0; i < NumShards; i++)
         {
             if (_lockEnabled) _locks[i].Enter();
             try
@@ -234,9 +234,30 @@ public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<T
     public void EnableLock() => _lockEnabled = true;
     public void DisableLock() => _lockEnabled = false;
 
+    public void AddOrUpdateFromShard(int shardIndex, ShardedDictionary<TKey, TValue> source)
+    {
+        foreach (KeyValuePair<TKey, TValue> kv in source._dicts[shardIndex])
+            _dicts[shardIndex][kv.Key] = kv.Value;
+    }
+
+    public void RemoveFromShard(int shardIndex, Func<TKey, bool> predicate)
+    {
+        Dictionary<TKey, TValue> dict = _dicts[shardIndex];
+        List<TKey>? toRemove = null;
+        foreach (TKey key in dict.Keys)
+        {
+            if (predicate(key))
+                (toRemove ??= new List<TKey>()).Add(key);
+        }
+
+        if (toRemove is not null)
+            foreach (TKey key in toRemove)
+                dict.Remove(key);
+    }
+
     internal void NoResizeClear()
     {
-        for (int i = 0; i < ShardCount; i++)
+        for (int i = 0; i < NumShards; i++)
             lock (_locks[i]) _dicts[i].Clear();
     }
 }
