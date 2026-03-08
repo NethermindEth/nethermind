@@ -284,9 +284,16 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         }
 
         (int addressesCount, int storageKeysCount) = accessList.Count;
-        return addressesCount * GasCostOf.AccessAccountListEntry
-            + storageKeysCount * GasCostOf.AccessStorageListEntry
-            + GasCostOf.TotalCostFloorPerTokenEip7623 * tokensInAccessList;
+        long baseCost = addressesCount * GasCostOf.AccessAccountListEntry
+            + storageKeysCount * GasCostOf.AccessStorageListEntry;
+
+        if (!spec.IsEip7981Enabled)
+        {
+            Debug.Assert(tokensInAccessList == 0L, "tokensInAccessList must be zero when EIP-7981 is disabled.");
+            return baseCost;
+        }
+
+        return baseCost + GasCostOf.TotalCostFloorPerTokenEip7623 * tokensInAccessList;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidDataException(IReleaseSpec spec) =>

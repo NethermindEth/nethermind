@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Benchmark;
 [MemoryDiagnoser]
 public class AccessListTokensBenchmarks
 {
-    private static readonly IReleaseSpec _spec = Osaka.Instance;
+    private static readonly IReleaseSpec _spec = Amsterdam.Instance;
 
     private Transaction _smallTx = null!;   // 1 address, 0 storage keys
     private Transaction _mediumTx = null!;  // 10 addresses, 5 storage keys each
