@@ -169,6 +169,12 @@ public sealed class SeqlockCache<TKey, TValue>
     public delegate TValue? ValueFactory(in TKey key);
 
     /// <summary>
+    /// Delegate-based factory with state parameter to avoid closure/delegate allocations.
+    /// Cache the delegate in a static field and pass instance state via <paramref name="state"/>.
+    /// </summary>
+    public delegate TValue? ValueFactory<TState>(in TKey key, TState state);
+
+    /// <summary>
     /// Gets a value from the cache, or adds it using the factory if not present.
     /// </summary>
     [SkipLocalsInit]
@@ -189,6 +195,28 @@ public sealed class SeqlockCache<TKey, TValue>
     }
 
     /// <summary>
+    /// Gets a value from the cache, or adds it using the factory with state if not present.
+    /// Use this overload to avoid per-call delegate allocations by passing a static method
+    /// and the required state separately.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public TValue? GetOrAdd<TState>(in TKey key, TState state, ValueFactory<TState> valueFactory)
+    {
+        long hashCode = key.GetHashCode64();
+        int idx0 = (int)hashCode & SetMask;
+        int idx1 = Sets + ((int)(hashCode >> Way1Shift) & SetMask);
+        long hashPart = (hashCode >> HashShift) & HashMask;
+
+        if (TryGetValueCore(in key, idx0, idx1, hashPart, out TValue? value))
+        {
+            return value;
+        }
+
+        return GetOrAddMiss(in key, state, valueFactory, idx0, idx1, hashPart);
+    }
+
+    /// <summary>
     /// Cold path for GetOrAdd: invokes factory and stores the result.
     /// Kept out-of-line so the hot path (cache hit) compiles to a lean method body
     /// with minimal register saves and stack frame.
@@ -197,6 +225,17 @@ public sealed class SeqlockCache<TKey, TValue>
     private TValue? GetOrAddMiss(in TKey key, ValueFactory valueFactory, int idx0, int idx1, long hashPart)
     {
         TValue? value = valueFactory(in key);
+        SetCore(in key, value, idx0, idx1, hashPart);
+        return value;
+    }
+
+    /// <summary>
+    /// Cold path for GetOrAdd with state: invokes factory and stores the result.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private TValue? GetOrAddMiss<TState>(in TKey key, TState state, ValueFactory<TState> valueFactory, int idx0, int idx1, long hashPart)
+    {
+        TValue? value = valueFactory(in key, state);
         SetCore(in key, value, idx0, idx1, hashPart);
         return value;
     }
