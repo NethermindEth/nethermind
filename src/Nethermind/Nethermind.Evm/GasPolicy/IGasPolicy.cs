@@ -265,7 +265,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         foreach (UInt256 key in accessList.Keys)
         {
             int keyZeros = key.CountZeroBytes();
-            tokens += keyZeros + (UInt256Extensions.ByteSize - keyZeros) * nonZeroMultiplier;
+            tokens += keyZeros + (Nethermind.Core.Extensions.UInt256Extensions.ByteSize - keyZeros) * nonZeroMultiplier;
         }
 
         return tokens;
