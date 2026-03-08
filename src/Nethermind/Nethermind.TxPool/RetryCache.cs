@@ -117,29 +117,19 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (!_requestingResources.Contains(resourceId))
         {
-            if (_retryRequests.TryGetValue(resourceId, out ConcurrentHashSet<IMessageHandler<TMessage>>? existing))
-            {
-                AnnounceUpdate(resourceId, existing, handler);
-                return AnnounceResult.Delayed;
-            }
-
             ConcurrentHashSet<IMessageHandler<TMessage>> newBag = _handlerBagsPool.Get();
-            if (_retryRequests.TryAdd(resourceId, newBag))
+            ConcurrentHashSet<IMessageHandler<TMessage>> requests = _retryRequests.GetOrAdd(resourceId, newBag);
+
+            if (ReferenceEquals(requests, newBag))
             {
+                // We added the new entry
                 AnnounceAddEnqueue(resourceId, handler);
                 return AnnounceResult.RequestRequired;
             }
 
-            // Lost the race — another thread added first, fall back to update. There is still a
-            // narrow accepted race where the timer thread can remove the entry between TryAdd
-            // failing and the fallback TryGetValue below, which drops this handler. RetryCache is
-            // best-effort and this window is negligible compared to the retry interval, so we keep
-            // the lower-allocation fast path instead of going back to AddOrUpdate.
+            // Got existing entry — return unused bag and update
             _handlerBagsPool.Return(newBag);
-            if (_retryRequests.TryGetValue(resourceId, out existing))
-            {
-                AnnounceUpdate(resourceId, existing, handler);
-            }
+            AnnounceUpdate(resourceId, requests, handler);
             return AnnounceResult.Delayed;
         }
 

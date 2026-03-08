@@ -226,7 +226,7 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.Handler(new OutboundChannelInitializer(this, node));
 
             Task<IChannel> connectTask = clientBootstrap.ConnectAsync(node.Address);
-            CancellationTokenSource delayCancellation = new();
+            using CancellationTokenSource delayCancellation = new();
             Task firstTask = await Task.WhenAny(connectTask, Task.Delay(_connectTimeout.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
             if (firstTask != connectTask)
             {
@@ -365,13 +365,7 @@ namespace Nethermind.Network.Rlpx
 
         public async Task Shutdown()
         {
-            foreach (SessionActivitySubscription subscription in _sessionActivitySubscriptions.Values)
-            {
-                subscription.Detach();
-            }
-
-            _sessionActivitySubscriptions.Clear();
-
+            // Close channels first so Disconnected handlers fire while subscriptions are still active
             await (_bootstrapChannel?.CloseAsync().ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -398,6 +392,14 @@ namespace Nethermind.Network.Rlpx
             {
                 delayCancellation.Cancel();
             }
+
+            // Detach subscriptions after channels are closed so Disconnected handlers fire during shutdown
+            foreach (SessionActivitySubscription subscription in _sessionActivitySubscriptions.Values)
+            {
+                subscription.Detach();
+            }
+
+            _sessionActivitySubscriptions.Clear();
 
             if (_logger.IsInfo) _logger.Info("Local peer shutdown complete.. please wait for all components to close");
         }
