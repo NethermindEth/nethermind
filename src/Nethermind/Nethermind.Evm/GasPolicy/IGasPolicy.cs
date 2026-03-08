@@ -255,7 +255,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         if (accessList is null) return 0L;
 
         long tokens = 0;
-        long nonZeroMultiplier = spec.GetTxDataNonZeroMultiplier();
+        long nonZeroMultiplier = spec.GasCosts.TxDataNonZeroMultiplier;
 
         foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in accessList)
         {
