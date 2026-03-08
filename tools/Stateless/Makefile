@@ -99,6 +99,7 @@ build-zisk: build-dotnet-zisk build-docker-bflat
 		$(BFLAT_BUILD) --libc zisk $(BFLAT_REFS) \
 		-r $(BIN_DIR)/Nethermind.ZiskBindings.dll \
 		--extra-ld $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.a \
+		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.bflat.manifest \
 		$(SRC_DIR)/Program.cs
 	mkdir -p $(ZISK_DIR)/bin && \
 		mv -f $(ZISK_DIR)/Program.patched $(ZISK_DIR)/bin/nethermind && \

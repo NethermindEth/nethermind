@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -15,18 +14,11 @@ public class EthereumEcdsa(ulong chainId) : Ecdsa, IEthereumEcdsa
     public Address? RecoverAddress(Signature signature, in ValueHash256 message)
     {
 #if ZK_EVM
-        Span<byte> address = stackalloc byte[32];
-        byte success;
-
-        unsafe
-        {
-            fixed (byte* sig = &MemoryMarshal.GetReference(signature.Bytes))
-            fixed (byte* msg = &MemoryMarshal.GetReference(message.Bytes))
-            fixed (byte* output = &MemoryMarshal.GetReference(address))
-                success = ZiskBindings.Crypto.secp256k1_ecdsa_address_recover_c(sig, signature.RecoveryId, msg, output);
-        }
+        Span<byte> output = stackalloc byte[32];
+        byte success = ZiskBindings.Crypto.secp256k1_ecdsa_address_recover_c(
+            signature.Bytes, signature.RecoveryId, message.Bytes, output);
         
-        return success == 0 ? new(address[12..]) : null;
+        return success == 0 ? new(output[12..]) : null;
 #else
         Span<byte> publicKey = stackalloc byte[65];
         bool success = RecoverAddressRaw(
