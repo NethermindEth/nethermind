@@ -291,9 +291,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             throw new InvalidDataException($"Transaction with an access list received within the context of {spec.Name}. EIP-2930 is not enabled.");
     }
 
-    protected static long CalculateFloorCost(long tokensInCallData, long tokensInAccessList, IReleaseSpec spec) =>
+    protected static long CalculateFloorCost(long totalDataTokens, IReleaseSpec spec) =>
         spec.IsEip7623Enabled
-            ? GasCostOf.Transaction + (tokensInCallData + (spec.IsEip7981Enabled ? tokensInAccessList : 0L)) * GasCostOf.TotalCostFloorPerTokenEip7623
+            ? GasCostOf.Transaction + totalDataTokens * GasCostOf.TotalCostFloorPerTokenEip7623
             : 0L;
 }
 
