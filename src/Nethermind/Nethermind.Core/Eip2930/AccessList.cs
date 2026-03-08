@@ -28,8 +28,6 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
     public bool IsEmpty => _addresses.Count == 0;
     public (int AddressesCount, int StorageKeysCount) Count => (_addresses.Count, _keys.Count);
 
-    /// <summary>Flat span of all storage keys across all addresses.</summary>
-    public ReadOnlySpan<UInt256> Keys => CollectionsMarshal.AsSpan(_keys);
 
     public class Builder
     {
