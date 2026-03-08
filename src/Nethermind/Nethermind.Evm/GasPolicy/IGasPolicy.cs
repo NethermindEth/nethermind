@@ -271,36 +271,20 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return tokens;
     }
 
-    public static long AccessListCost(Transaction transaction, IReleaseSpec spec)
-    {
-        long cost = AccessListFixedCost(transaction, spec);
-        if (cost > 0 && spec.IsEip7981Enabled)
-        {
-            cost += GasCostOf.TotalCostFloorPerTokenEip7623 * CalculateTokensInAccessList(transaction, spec);
-        }
-        return cost;
-    }
-
-    /// <summary>
-    /// EIP-2930 fixed cost only (addresses × 2400 + keys × 1900), without the EIP-7981 token component.
-    /// Use this in <see cref="CalculateIntrinsicGas"/> implementations that already have
-    /// <see cref="CalculateTokensInAccessList"/> pre-computed, to avoid iterating the access list twice.
-    /// </summary>
-    protected static long AccessListFixedCost(Transaction transaction, IReleaseSpec spec)
+    public static long AccessListCost(Transaction transaction, IReleaseSpec spec, long tokensInAccessList)
     {
         AccessList? accessList = transaction.AccessList;
-        if (accessList is not null)
-        {
-            if (!spec.UseTxAccessLists)
-            {
-                ThrowInvalidDataException(spec);
-            }
+        if (accessList is null) return 0;
 
-            (int addressesCount, int storageKeysCount) = accessList.Count;
-            return addressesCount * GasCostOf.AccessAccountListEntry + storageKeysCount * GasCostOf.AccessStorageListEntry;
+        if (!spec.UseTxAccessLists)
+        {
+            ThrowInvalidDataException(spec);
         }
 
-        return 0;
+        (int addressesCount, int storageKeysCount) = accessList.Count;
+        return addressesCount * GasCostOf.AccessAccountListEntry
+            + storageKeysCount * GasCostOf.AccessStorageListEntry
+            + GasCostOf.TotalCostFloorPerTokenEip7623 * tokensInAccessList;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidDataException(IReleaseSpec spec) =>
