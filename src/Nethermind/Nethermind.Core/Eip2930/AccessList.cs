@@ -28,7 +28,6 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
     public bool IsEmpty => _addresses.Count == 0;
     public (int AddressesCount, int StorageKeysCount) Count => (_addresses.Count, _keys.Count);
 
-
     public class Builder
     {
         private readonly List<(Address address, int count)> _addresses = new();
