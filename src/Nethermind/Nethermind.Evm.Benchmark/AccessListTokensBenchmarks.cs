@@ -63,7 +63,7 @@ public class AccessListTokensBenchmarks
         if (accessList is null) return 0L;
 
         long tokens = 0;
-        long nonZeroMultiplier = _spec.GetTxDataNonZeroMultiplier();
+        long nonZeroMultiplier = _spec.GasCosts.TxDataNonZeroMultiplier;
         Span<byte> keyBytes = stackalloc byte[Nethermind.Core.Extensions.UInt256Extensions.ByteSize];
         foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in accessList)
         {
