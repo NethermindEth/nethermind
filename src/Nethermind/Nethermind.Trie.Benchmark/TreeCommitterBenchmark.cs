@@ -48,24 +48,8 @@ namespace Nethermind.Trie.Benchmark
         // [ParamsSource(nameof(Inputs))]
         // public Param Input { get; set; }
 
-        private IKeyValueStore _whateverDb = new MemDb();
-
-        private ILogManager _logManager = new OneLoggerLogManager(NullLogger.Instance);
-
-        [Benchmark]
-        public TrieStore Trie_committer_with_one_node()
-        {
-            TrieNode trieNode = new TrieNode(NodeType.Unknown); // 56B
-
-            ITrieNodeCache trieNodeCache = new TrieNodeCache(_logManager);
-            TrieStore treeStore = new TrieStore(
-                trieNodeCache,
-                _whateverDb,
-                new DepthAndMemoryBased(128, 1.MB),
-                No.Persistence,
-                _logManager);
-            treeStore.CommitOneNode(1234, new NodeCommitInfo(trieNode));
-            return treeStore;
-        }
+        // Benchmark disabled: TrieStore API has changed significantly since this was written.
+        // ITrieNodeCache, TrieNodeCache, DepthAndMemoryBased, NodeCommitInfo, CommitOneNode
+        // no longer exist in their original form.
     }
 }

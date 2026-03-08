@@ -56,7 +56,7 @@ namespace Nethermind.Trie.Benchmark
         }
 
         [Benchmark]
-        public Keccak Just_keccak_80B()
+        public Hash256 Just_keccak_80B()
         {
             return Keccak.Compute(_bytes);
         }
@@ -104,9 +104,9 @@ namespace Nethermind.Trie.Benchmark
         }
 
         [Benchmark]
-        public HexPrefix Just_hex_prefix_64B()
+        public byte[] Just_hex_prefix_64B()
         {
-            return new HexPrefix(true, new byte[5]);
+            return HexPrefix.ToBytes(new byte[5], true);
         }
 
         [Benchmark]
