@@ -249,6 +249,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     public static long CalculateTokensInAccessList(Transaction transaction, IReleaseSpec spec)
     {
+        if (!spec.IsEip7981Enabled) return 0L;
+
         AccessList? accessList = transaction.AccessList;
         if (accessList is null) return 0L;
 
