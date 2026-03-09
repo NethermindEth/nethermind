@@ -256,10 +256,10 @@ public class DiscoveryManager : IDiscoveryManager
     }
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
-    public async ValueTask<bool> WasMessageReceived(Hash256 senderIdHash, MsgType msgType, int timeout)
+    public async ValueTask<bool> WasMessageReceived(Hash256 senderIdHash, MsgType msgType, int timeout, CancellationToken cancellationToken = default)
     {
         TaskCompletionSource<DiscoveryMsg> completionSource = GetCompletionSource(senderIdHash, (int)msgType);
-        using CancellationTokenSource delayCancellation = new();
+        using CancellationTokenSource delayCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task firstTask = await Task.WhenAny(completionSource.Task, Task.Delay(timeout, delayCancellation.Token));
 
         bool result = firstTask == completionSource.Task;

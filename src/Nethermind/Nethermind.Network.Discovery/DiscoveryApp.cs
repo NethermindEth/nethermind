@@ -135,7 +135,7 @@ public class DiscoveryApp : IDiscoveryApp
 
         _stopCts.Dispose();
 
-        if (_logger.IsInfo) _logger.Info("Discovery shutdown complete.. please wait for all components to close");
+        if (_logger.IsInfo) _logger.Info("Discovery shutdown complete. Please wait for all components to close");
     }
 
     private void DetachEventHandlers()
@@ -407,6 +407,10 @@ public class DiscoveryApp : IDiscoveryApp
 
                 await _nodesLocator.LocateNodesAsync(cancellationToken);
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception e)
             {
                 _logger.Error($"Error during discovery process: {e}");
@@ -418,6 +422,10 @@ public class DiscoveryApp : IDiscoveryApp
 
                 _cryptoRandom.GenerateRandomBytes(randomId);
                 await _nodesLocator.LocateNodesAsync(randomId, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception e)
             {
