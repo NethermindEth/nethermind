@@ -712,10 +712,8 @@ internal static partial class EvmInstructions
         // Take a snapshot before modifying state for the new contract.
         Snapshot snapshot = state.TakeSnapshot();
 
-        bool accountExists = state.AccountExists(contractAddress);
-
-        // If the account already exists and is non-zero, then the creation fails.
-        if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
+        // EIP-7610: If the account already exists and is non-zero, then the creation fails.
+        if (state.IsNonZeroAccount(contractAddress, out bool accountExists))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
