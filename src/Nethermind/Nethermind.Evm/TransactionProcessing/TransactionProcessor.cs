@@ -309,11 +309,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (authorizationResult != AuthorizationTupleResult.Valid)
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
-
-                    if (_balBuilder is not null && _balBuilder.TracingEnabled && IncludeAccountRead(authorizationResult))
-                    {
-                        _balBuilder.AddAccountRead(authority);
-                    }
                 }
                 else
                 {
@@ -333,9 +328,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return refunds;
         }
-
-        private static bool IncludeAccountRead(in AuthorizationTupleResult res)
-            => res is AuthorizationTupleResult.IncorrectNonce or AuthorizationTupleResult.InvalidAsCodeDeployed;
 
         private enum AuthorizationTupleResult
         {

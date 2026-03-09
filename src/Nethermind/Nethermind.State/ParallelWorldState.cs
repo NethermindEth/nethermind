@@ -122,6 +122,18 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         return ref _innerWorldState.GetBalance(address);
     }
 
+    public UInt256 GetNonce(Address address)
+    {
+        AddAccountRead(address);
+        return _innerWorldState.GetNonce(address);
+    }
+
+    public bool HasCode(Address address)
+    {
+        AddAccountRead(address);
+        return _innerWorldState.HasCode(address);
+    }
+
     public override ref readonly ValueHash256 GetCodeHash(Address address)
     {
         AddAccountRead(address);
