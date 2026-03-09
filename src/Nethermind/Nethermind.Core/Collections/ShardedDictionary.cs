@@ -12,12 +12,12 @@ using Faster.Map.Core;
 namespace Nethermind.Core.Collections;
 
 /// <summary>
-/// 16-shard DenseMap+Lock for concurrent writes with lock-free reads when disabled.
+/// 4-shard DenseMap+Lock for concurrent writes with lock-free reads when disabled.
 /// </summary>
 public sealed class ShardedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>
     where TKey : notnull
 {
-    public const int NumShards = 16;
+    public const int NumShards = 4;
     private const int ShardMask = NumShards - 1;
 
     private readonly Lock[] _locks;
