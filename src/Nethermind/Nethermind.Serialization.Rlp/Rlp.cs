@@ -599,48 +599,7 @@ namespace Nethermind.Serialization.Rlp
             public readonly bool IsSequenceNext() => Data[Position] >= 192;
 
             public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
-            {
-                int positionStored = Position;
-                int numberOfItems = 0;
-                while (Position < (beforePosition ?? Data.Length))
-                {
-                    int prefix = ReadByte();
-                    if (prefix <= 128)
-                    {
-                    }
-                    else if (prefix <= 183)
-                    {
-                        int length = prefix - 128;
-                        Position += length;
-                    }
-                    else if (prefix < 192)
-                    {
-                        int lengthOfLength = prefix - 183;
-                        int length = DeserializeLength(lengthOfLength);
-                        if (length < RlpHelpers.SmallPrefixBarrier)
-                        {
-                            RlpHelpers.ThrowUnexpectedLength(length);
-                        }
-
-                        Position += length;
-                    }
-                    else
-                    {
-                        Position--;
-                        int sequenceLength = ReadSequenceLength();
-                        Position += sequenceLength;
-                    }
-
-                    numberOfItems++;
-                    if (numberOfItems >= maxSearch)
-                    {
-                        break;
-                    }
-                }
-
-                Position = positionStored;
-                return numberOfItems;
-            }
+                => RlpHelpers.CountItems(Data, Position, beforePosition ?? Data.Length, maxSearch);
 
             public void SkipLength() => Position += PeekPrefixLength();
 
@@ -648,17 +607,7 @@ namespace Nethermind.Serialization.Rlp
             public readonly int PeekPrefixLength() => RlpHelpers.GetPrefixLength(Data[Position]);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public int PeekNextRlpLength()
-            {
-                int prefix = Data[Position];
-                int prefixLength = RlpHelpers.GetPrefixLengthForContent(prefix);
-                if (prefixLength >= 0)
-                    return prefixLength + RlpHelpers.GetContentLength(prefix);
-
-                return RlpHelpers.IsLongString(prefixLength)
-                    ? PeekLongStringRlpLength(prefix)
-                    : PeekLongListRlpLength(prefix);
-            }
+            public int PeekNextRlpLength() => RlpHelpers.PeekNextRlpLength(Data, Position);
 
             public ReadOnlySpan<byte> Peek(int length)
             {
@@ -670,134 +619,14 @@ namespace Nethermind.Serialization.Rlp
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public (int PrefixLength, int ContentLength) ReadPrefixAndContentLength()
             {
-                int prefix = ReadByte();
-                int prefixLength = RlpHelpers.GetPrefixLengthForContent(prefix);
-                if (prefixLength >= 0)
-                    return (prefixLength, RlpHelpers.GetContentLength(prefix));
-
-                return RlpHelpers.IsLongString(prefixLength)
-                    ? ReadLongStringPrefixAndContentLength(prefix)
-                    : ReadLongListPrefixAndContentLength(prefix);
+                (int prefixLength, int contentLength) = RlpHelpers.PeekPrefixAndContentLength(Data, Position);
+                Position += Math.Max(prefixLength, 1);
+                return (prefixLength, contentLength);
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
-            {
-                int prefix = Data[Position];
-                int prefixLength = RlpHelpers.GetPrefixLengthForContent(prefix);
-                if (prefixLength >= 0)
-                    return (prefixLength, RlpHelpers.GetContentLength(prefix));
-
-                return RlpHelpers.IsLongString(prefixLength)
-                    ? PeekLongStringPrefixAndContentLength(prefix)
-                    : PeekLongListPrefixAndContentLength(prefix);
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            private int PeekLongStringRlpLength(int prefix)
-            {
-                int lengthOfLength = prefix - 183;
-                if ((uint)lengthOfLength > 4)
-                {
-                    // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                    RlpHelpers.ThrowSequenceLengthTooLong();
-                }
-
-                int length = PeekDeserializeLength(lengthOfLength);
-                if (length < RlpHelpers.SmallPrefixBarrier)
-                {
-                    RlpHelpers.ThrowUnexpectedLength(length);
-                }
-
-                return lengthOfLength + 1 + length;
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            private (int prefixLength, int contentLength) PeekLongStringPrefixAndContentLength(int prefix)
-            {
-                int lengthOfLength = prefix - 183;
-                if ((uint)lengthOfLength > 4)
-                {
-                    // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                    RlpHelpers.ThrowSequenceLengthTooLong();
-                }
-
-                int length = PeekDeserializeLength(lengthOfLength);
-                if (length < RlpHelpers.SmallPrefixBarrier)
-                {
-                    RlpHelpers.ThrowUnexpectedLength(length);
-                }
-
-                return (lengthOfLength + 1, length);
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            private (int prefixLength, int contentLength) ReadLongStringPrefixAndContentLength(int prefix)
-            {
-                int lengthOfLength = prefix - 183;
-                if ((uint)lengthOfLength > 4)
-                {
-                    // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                    RlpHelpers.ThrowSequenceLengthTooLong();
-                }
-
-                int length = DeserializeLength(lengthOfLength);
-                if (length < RlpHelpers.SmallPrefixBarrier)
-                {
-                    RlpHelpers.ThrowUnexpectedLength(length);
-                }
-
-                return (lengthOfLength + 1, length);
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            private int PeekLongListRlpLength(int prefix)
-            {
-                int lengthOfContentLength = prefix - 247;
-                int contentLength = PeekDeserializeLength(lengthOfContentLength);
-                if (contentLength < RlpHelpers.SmallPrefixBarrier)
-                {
-                    RlpHelpers.ThrowUnexpectedLength(contentLength);
-                }
-
-                return lengthOfContentLength + 1 + contentLength;
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            private (int prefixLength, int contentLength) PeekLongListPrefixAndContentLength(int prefix)
-            {
-                int lengthOfContentLength = prefix - 247;
-                int contentLength = PeekDeserializeLength(lengthOfContentLength);
-                if (contentLength < RlpHelpers.SmallPrefixBarrier)
-                {
-                    RlpHelpers.ThrowUnexpectedLength(contentLength);
-                }
-
-                return (lengthOfContentLength + 1, contentLength);
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            private (int prefixLength, int contentLength) ReadLongListPrefixAndContentLength(int prefix)
-            {
-                int lengthOfContentLength = prefix - 247;
-                int contentLength = DeserializeLength(lengthOfContentLength);
-                if (contentLength < RlpHelpers.SmallPrefixBarrier)
-                {
-                    RlpHelpers.ThrowUnexpectedLength(contentLength);
-                }
-
-                return (lengthOfContentLength + 1, contentLength);
-            }
-
-            private readonly int PeekDeserializeLength(int lengthOfLength)
-            {
-                if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
-                {
-                    RlpHelpers.ThrowInvalidLength(lengthOfLength);
-                }
-
-                return RlpHelpers.DeserializeLengthRef(ref MemoryMarshal.GetReference(Data.Slice(Position + 1, lengthOfLength)), lengthOfLength);
-            }
+                => RlpHelpers.PeekPrefixAndContentLength(Data, Position);
 
             public int ReadSequenceLength()
             {
