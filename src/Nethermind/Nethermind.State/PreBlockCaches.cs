@@ -1,18 +1,18 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
+using Nethermind.Trie;
 using System;
 using System.Collections.Concurrent;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Collections;
-using Nethermind.Trie;
-
+using static Nethermind.State.PreBlockCaches;
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
 namespace Nethermind.State;
 
-public class PreBlockCaches
+public class PreBlockCaches : IPreBlockCachesInner
 {
     private const int InitialCapacity = 4096 * 8;
     private static int LockPartitions => CollectionExtensions.LockPartitions;
@@ -34,9 +34,6 @@ public class PreBlockCaches
         ];
     }
 
-    public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
-    public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
-    public SeqlockCache<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
 
     public CacheType ClearCaches()
@@ -50,6 +47,46 @@ public class PreBlockCaches
         return isDirty;
     }
 
+    public Account? GetOrAdd(in AddressAsKey key, InFactory<AddressAsKey, Account> factory)
+    {
+        return _stateCache.GetOrAdd(in key, (in asKey) => factory(asKey) );
+    }
+
+    public Account AddOrUpdate(in AddressAsKey key, Account newValue, Func<AddressAsKey, Account, Account> updateFunc)
+    {
+        _stateCache.Set(in key, newValue);
+        return newValue;
+    }
+
+    public bool TryGetValue(in AddressAsKey key, out Account? account)
+    {
+        return _stateCache.TryGetValue(key, out account);
+    }
+
+    public bool TryRemove(AddressAsKey key, out Account? account)
+    {
+        account = null;
+        return false;
+    }
+
+    public byte[]? GetOrAdd(in StorageCell key, InFactory<StorageCell, byte[]?> factory)
+    {
+        return _storageCache.GetOrAdd(in key, (in cell) => factory(cell));
+    }
+
+    public bool TryGetValue(in StorageCell key, out byte[]? data)
+    {
+        return _storageCache.TryGetValue(in key, out data);
+    }
+
+    public byte[] AddOrUpdate(in StorageCell key, byte[] newValue, Func<StorageCell, byte[], byte[]> updateFunc)
+    {
+        _storageCache.Set(in key, newValue);
+        return newValue;
+    }
+
+    public void Seal() { }
+
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>
     {
         private Address Address { get; } = address;
@@ -58,6 +95,45 @@ public class PreBlockCaches
         public override bool Equals(object? obj) => obj is PrecompileCacheKey other && Equals(other);
         public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode();
     }
+}
+
+public interface IPreBlockCachesWrapper
+{
+    public IPreBlockCachesInner Active { get; }
+    public IPreBlockCachesInner? Next { get; }
+    public IPreBlockCachesInner CreateNext();
+    public void Promote();
+}
+
+public class PreBlockCachesWrapper : IPreBlockCachesWrapper
+{
+    private readonly PreBlockCaches _instance = new();
+
+    public IPreBlockCachesInner Active => _instance;
+    public IPreBlockCachesInner Next => _instance;
+
+    public IPreBlockCachesInner CreateNext()
+    {
+        return _instance;
+    }
+
+    public void Promote() { }
+}
+
+public delegate TValue? InFactory<TKey, out TValue>(in TKey key);
+
+public interface IPreBlockCachesInner
+{
+    public CacheType ClearCaches();
+    public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache { get; }
+
+    //accounts
+    Account? GetOrAdd(in AddressAsKey key, InFactory<AddressAsKey, Account> factory);
+    bool TryGetValue(in AddressAsKey key, out Account? account);
+
+    //storage slots
+    byte[]? GetOrAdd(in StorageCell key, InFactory<StorageCell, byte[]> factory);
+    bool TryGetValue(in StorageCell key, out byte[] account);
 }
 
 [Flags]

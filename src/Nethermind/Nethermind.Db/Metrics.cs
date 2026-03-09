@@ -25,7 +25,7 @@ namespace Nethermind.Db
         [Description("Number of State Trie cache hits.")]
         public static long StateTreeCache => _stateTreeCacheHits.GetTotalValue();
         private static readonly ZeroContentionCounter _stateTreeCacheHits = new();
-        internal static void IncrementStateTreeCacheHits() => _stateTreeCacheHits.Increment();
+        public static void IncrementStateTreeCacheHits() => _stateTreeCacheHits.Increment();
 
         [CounterMetric]
         [Description("Number of State Trie reads.")]
@@ -33,8 +33,8 @@ namespace Nethermind.Db
         private static readonly ZeroContentionCounter _stateTreeReads = new();
 
         [Description("Number of State Trie reads on thread.")]
-        internal static long ThreadLocalStateTreeReads => _stateTreeReads.ThreadLocalValue;
-        internal static void IncrementStateTreeReads() => _stateTreeReads.Increment();
+        public static long ThreadLocalStateTreeReads => _stateTreeReads.ThreadLocalValue;
+        public static void IncrementStateTreeReads() => _stateTreeReads.Increment();
 
         [CounterMetric]
         [Description("Number of State Reader reads.")]
@@ -62,7 +62,7 @@ namespace Nethermind.Db
         [Description("Number of storage trie cache hits.")]
         public static long StorageTreeCache => _storageTreeCache.GetTotalValue();
         private static readonly ZeroContentionCounter _storageTreeCache = new();
-        internal static void IncrementStorageTreeCache() => _storageTreeCache.Increment();
+        public static void IncrementStorageTreeCache() => _storageTreeCache.Increment();
 
         [CounterMetric]
         [Description("Number of storage trie reads.")]
@@ -70,8 +70,8 @@ namespace Nethermind.Db
         private static readonly ZeroContentionCounter _storageTreeReads = new();
 
         [Description("Number of storage trie reads on thread.")]
-        internal static long ThreadLocalStorageTreeReads => _storageTreeReads.ThreadLocalValue;
-        internal static void IncrementStorageTreeReads() => _storageTreeReads.Increment();
+        public static long ThreadLocalStorageTreeReads => _storageTreeReads.ThreadLocalValue;
+        public static void IncrementStorageTreeReads() => _storageTreeReads.Increment();
 
         [CounterMetric]
         [Description("Number of storage reader reads.")]

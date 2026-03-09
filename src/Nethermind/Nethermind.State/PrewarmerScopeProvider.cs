@@ -1,19 +1,22 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Metric;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using System;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 
 namespace Nethermind.State;
 
-internal class PrewarmerGetTimeLabels(bool isPrewarmer)
+public class PrewarmerGetTimeLabels(bool isPrewarmer)
 {
     public static PrewarmerGetTimeLabels Prewarmer { get; } = new(true);
     public static PrewarmerGetTimeLabels NonPrewarmer { get; } = new(false);
@@ -29,33 +32,28 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
-    PreBlockCaches preBlockCaches,
+    IPreBlockCachesWrapper preBlockCachesWrapper,
     bool populatePreBlockCache = true
-) : IWorldStateScopeProvider, IPreBlockCaches
+) : IWorldStateScopeProvider
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache);
-
-    public PreBlockCaches? Caches => preBlockCaches;
-    public bool IsWarmWorldState => !populatePreBlockCache;
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCachesWrapper, populatePreBlockCache);
 
     private sealed class ScopeWrapper : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope;
-        private readonly SeqlockCache<AddressAsKey, Account> preBlockCache;
-        private readonly SeqlockCache<StorageCell, byte[]> storageCache;
+        private readonly IPreBlockCachesInner preBlockCache;
         private readonly bool populatePreBlockCache;
-        private readonly SeqlockCache<AddressAsKey, Account>.ValueFactory _getFromBaseTree;
+        private readonly InFactory<AddressAsKey, Account> _getFromBaseTree;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
 
-        public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache)
+        public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, IPreBlockCachesWrapper preBlockCachesWrapper, bool populatePreBlockCache)
         {
             this.baseScope = baseScope;
-            preBlockCache = preBlockCaches.StateCache;
-            storageCache = preBlockCaches.StorageCache;
+            preBlockCache = preBlockCachesWrapper.CreateNext();
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
             _getFromBaseTree = GetFromBaseTree;
@@ -69,7 +67,7 @@ public class PrewarmerScopeProvider(
         {
             return new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
-                storageCache,
+                preBlockCache,
                 address,
                 populatePreBlockCache);
         }
@@ -165,17 +163,17 @@ public class PrewarmerScopeProvider(
     private sealed class StorageTreeWrapper : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree;
-        private readonly SeqlockCache<StorageCell, byte[]> preBlockCache;
+        private readonly IPreBlockCachesInner preBlockCache;
         private readonly Address address;
         private readonly bool populatePreBlockCache;
-        private readonly SeqlockCache<StorageCell, byte[]>.ValueFactory _loadFromTreeStorage;
+        private readonly InFactory<StorageCell, byte[]> _loadFromTreeStorage;
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
 
         public StorageTreeWrapper(
             IWorldStateScopeProvider.IStorageTree baseStorageTree,
-            SeqlockCache<StorageCell, byte[]> preBlockCache,
+            IPreBlockCachesInner preBlockCache,
             Address address,
             bool populatePreBlockCache)
         {
