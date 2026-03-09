@@ -130,6 +130,8 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
         {
+            // Prevent ARM64 from hoisting Key/Value loads before the seqlock header read.
+            Thread.MemoryBarrier();
             TKey storedKey = e0.Key;
             TValue? storedValue = e0.Value;
 
@@ -147,6 +149,7 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
         {
+            Thread.MemoryBarrier();
             TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
 
@@ -221,6 +224,7 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
         {
+            Thread.MemoryBarrier();
             TKey storedKey = e0.Key;
             TValue? storedValue = e0.Value;
 
@@ -238,6 +242,7 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
         {
+            Thread.MemoryBarrier();
             TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
 
