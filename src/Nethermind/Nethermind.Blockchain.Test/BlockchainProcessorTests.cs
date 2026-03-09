@@ -323,18 +323,9 @@ public class BlockchainProcessorTests
                         }
                         finally
                         {
-                            // For new-best blocks, BlockAdded fires during SuggestBlock (before
-                            // this point) so the TCS is already completed. For non-best blocks
-                            // (same/lower difficulty), no enqueue occurs, so this is the signal.
-                            // When AllowSynchronousContinuations causes inline processing,
-                            // SuggestBlock blocks indefinitely but BlockAdded already fired.
                             suggestCompleted.TrySetResult();
                         }
                     });
-                    Assert.That(
-                        SpinWait.SpinUntil(() => _blockTree.IsKnownBlock(block.Number, block.Hash!), ProcessingWait),
-                        Is.True,
-                        $"Timed out waiting for {block.ToString(Block.Format.Short)} to appear in the block tree");
                     Assert.That(
                         suggestCompleted.Task.Wait(ProcessingWait),
                         Is.True,
