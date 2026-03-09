@@ -80,7 +80,7 @@ public class StateProviderTests
     {
         IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
-        Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
+        Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether, Olympic.Instance));
     }
 
     [Test]
