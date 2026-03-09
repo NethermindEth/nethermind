@@ -42,7 +42,7 @@ public class JsonRpcL1StorageProvider : IL1StorageProvider
 
             if (response == null)
             {
-                if (_logger.IsDebug) _logger.Debug($"L1SLOAD: eth_getStorageAt returned null — contract={contractAddress}, key={storageKey}, block={blockNumber}");
+                if (_logger.IsWarn) _logger.Warn($"L1SLOAD: eth_getStorageAt returned null — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}");
                 return null;
             }
 
