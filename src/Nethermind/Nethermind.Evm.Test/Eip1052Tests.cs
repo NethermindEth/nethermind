@@ -25,7 +25,7 @@ public class Eip1052Tests : VirtualMachineTestsBase
     [Test]
     public void Account_without_code_returns_empty_data_hash()
     {
-        TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 100.Ether);
 
         byte[] code = Prepare.EvmCode
             .PushData(TestItem.AddressC)
@@ -78,7 +78,7 @@ public class Eip1052Tests : VirtualMachineTestsBase
         Address precompileAddress = Sha256Precompile.Address;
         Assert.That(Spec.IsPrecompile(precompileAddress), Is.True);
 
-        TestState.CreateAccount(precompileAddress, 1.Wei());
+        TestState.CreateAccount(precompileAddress, 1.Wei);
 
         byte[] code = Prepare.EvmCode
             .PushData(precompileAddress)
@@ -111,7 +111,7 @@ public class Eip1052Tests : VirtualMachineTestsBase
         byte[] addressWithGarbage = TestItem.AddressC.Bytes.PadLeft(32);
         addressWithGarbage[11] = 88;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, "some code"u8.ToArray(), Spec);
 
         byte[] code = Prepare.EvmCode
@@ -138,7 +138,7 @@ public class Eip1052Tests : VirtualMachineTestsBase
             .PushData(Recipient)
             .Op(Instruction.SELFDESTRUCT).Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, selfDestructCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -164,10 +164,10 @@ public class Eip1052Tests : VirtualMachineTestsBase
             .PushData(Recipient)
             .Op(Instruction.SELFDESTRUCT).Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, selfDestructCode, Spec);
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, callAndRevertCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -185,7 +185,7 @@ public class Eip1052Tests : VirtualMachineTestsBase
     [Test]
     public void Empty_account_that_would_be_cleared_returns_zero()
     {
-        TestState.CreateAccount(TestItem.AddressC, 0.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 0.Ether);
 
         byte[] code = Prepare.EvmCode
             .Call(TestItem.AddressC, 0)
@@ -238,7 +238,7 @@ public class Eip1052Tests : VirtualMachineTestsBase
             .Create(initCode, 0)
             .Op(Instruction.REVERT).Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -265,7 +265,7 @@ public class Eip1052Tests : VirtualMachineTestsBase
         byte[] createCode = Prepare.EvmCode
             .Create(initCode, 0).Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
