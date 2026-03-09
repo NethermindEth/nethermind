@@ -153,7 +153,9 @@ namespace Nethermind.Xdc
             //TODO Technically we have to apply timeout exponents from spec, but they are always 1
             _timeoutTimer.Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
 
-            _logger.Info($"Round {args.PreviousRound} completed in {args.LastRoundDuration.TotalSeconds:F2}s");
+            if (args.LastRoundDuration is {} lastRoundDuration)
+                _logger.Info($"Round {args.PreviousRound} completed in {lastRoundDuration.TotalSeconds:F2}s");
+
             _writeRoundInfo = true;
         }
 

@@ -18,7 +18,7 @@ public class XdcConsensusContext : IXdcConsensusContext
         HighestTC = new TimeoutCertificate(0, [], 0);
     }
 
-    public DateTime RoundStarted { get; private set; }
+    public DateTime? RoundStarted { get; private set; }
     public int TimeoutCounter { get; set; }
     public ulong CurrentRound { get => _currentRound; set => _currentRound = value; }
     public QuorumCertificate HighestQC { get; set; }
@@ -35,7 +35,7 @@ public class XdcConsensusContext : IXdcConsensusContext
         ulong last = CurrentRound;
         CurrentRound = round;
         TimeoutCounter = 0;
-        DateTime lastRoundStarted = RoundStarted;
+        DateTime? lastRoundStarted = RoundStarted;
         RoundStarted = DateTime.UtcNow;
 
         // timer should be reset outside
