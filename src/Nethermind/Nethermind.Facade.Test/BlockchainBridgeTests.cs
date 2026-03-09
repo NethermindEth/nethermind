@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -340,6 +341,47 @@ public class BlockchainBridgeTests
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
         Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance"));
+    }
+
+    [Test]
+    public void EstimateGas_clears_initial_execution_error_when_estimation_succeeds()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithGasLimit(100_000)
+            .TestObject;
+        Transaction tx = new()
+        {
+            GasLimit = 100_000,
+            SenderAddress = TestItem.AddressA,
+            To = TestItem.AddressB,
+        };
+
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(
+                callInfo =>
+                {
+                    Transaction transaction = callInfo.Arg<Transaction>();
+                    ITxTracer tracer = callInfo.Arg<ITxTracer>();
+
+                    tracer.ReportAction(transaction.GasLimit, UInt256.Zero, tx.SenderAddress!, tx.To!, ReadOnlyMemory<byte>.Empty, ExecutionType.TRANSACTION);
+
+                    if (transaction.GasLimit > 60_000)
+                    {
+                        tracer.ReportActionRevert(40_000, ReadOnlyMemory<byte>.Empty);
+                        tracer.MarkAsFailed(tx.To!, 40_000, [], "execution reverted");
+                        return TransactionResult.EvmException(EvmExceptionType.Revert, "execution reverted");
+                    }
+
+                    tracer.ReportActionEnd(35_000, ReadOnlyMemory<byte>.Empty);
+                    tracer.MarkAsSuccess(tx.To!, 65_000, [], []);
+                    return TransactionResult.Ok;
+                });
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 0);
+
+        callOutput.Error.Should().BeNull();
+        callOutput.InputError.Should().BeFalse();
+        callOutput.GasSpent.Should().BeGreaterThan(0);
     }
 
     [Test]

@@ -109,6 +109,7 @@ public class EstimateGasTracer : TxTracer
     {
         if (_currentNestingLevel == -1)
         {
+            ResetForNewTopLevelExecution();
             OutOfGas = false;
             TopLevelRevert = false;
             IntrinsicGasAt = gas;
@@ -194,5 +195,18 @@ public class EstimateGasTracer : TxTracer
     {
         _currentGasAndNesting.Peek().ExtraGasPressure =
             Math.Max(_currentGasAndNesting.Peek().ExtraGasPressure, extraGasPressure);
+    }
+
+    private void ResetForNewTopLevelExecution()
+    {
+        Error = null;
+        ReturnValue = null;
+        GasSpent = 0;
+        IntrinsicGasAt = 0;
+        TotalRefund = 0;
+        StatusCode = 0;
+        NonIntrinsicGasSpentBeforeRefund = 0;
+        _currentGasAndNesting.Clear();
+        _currentGasAndNesting.Push(new GasAndNesting(0, -1));
     }
 }
