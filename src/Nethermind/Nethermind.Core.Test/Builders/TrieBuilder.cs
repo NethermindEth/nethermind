@@ -56,8 +56,15 @@ namespace Nethermind.Core.Test.Builders
         private byte[] GenerateIndexedAccountRlp(int index)
         {
             Account account = GenerateIndexedAccount(index);
-            byte[] value = _accountDecoder.Encode(account).Bytes;
+            byte[] value = EncodeAccount(account);
             return value;
+        }
+
+        private byte[] EncodeAccount(Account account)
+        {
+            RlpStream stream = new(_accountDecoder.GetLength(account));
+            _accountDecoder.Encode(stream, account);
+            return stream.Data.ToArray()!;
         }
 
 

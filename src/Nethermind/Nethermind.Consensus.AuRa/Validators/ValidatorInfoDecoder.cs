@@ -6,7 +6,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    internal sealed class ValidatorInfoDecoder : RlpValueDecoder<ValidatorInfo>, IRlpObjectDecoder<ValidatorInfo>
+    internal sealed class ValidatorInfoDecoder : RlpValueDecoder<ValidatorInfo>
     {
         protected override ValidatorInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -35,18 +35,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             decoderContext.Check(check);
 
             return new ValidatorInfo(finalizingBlockNumber, previousFinalizingBlockNumber, addresses);
-        }
-
-        public Rlp Encode(ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                return Rlp.OfEmptyList;
-            }
-
-            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-            Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data.ToArray());
         }
 
         public override void Encode(RlpStream stream, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

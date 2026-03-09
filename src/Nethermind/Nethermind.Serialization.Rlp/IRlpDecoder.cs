@@ -21,11 +21,6 @@ namespace Nethermind.Serialization.Rlp
         void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
-    public interface IRlpObjectDecoder<in T> : IRlpDecoder<T>
-    {
-        Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-    }
-
     public interface IRlpValueDecoder<T> : IRlpDecoder<T>
     {
         T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);

@@ -121,7 +121,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             ValueHash256 slotPath = default;
             if (acc.PathAndAccounts.Count > 0)
             {
-                accountRlp = _accountDecoder.Encode(acc.PathAndAccounts[0].Account).Bytes;
+                accountRlp = Rlp.Encode(acc.PathAndAccounts[0].Account).Bytes;
                 slotPath = acc.PathAndAccounts[0].Path;
             }
 

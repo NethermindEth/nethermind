@@ -8,7 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class AccountDecoder : RlpValueDecoder<Account?>, IRlpObjectDecoder<Account?>
+    public sealed class AccountDecoder : RlpValueDecoder<Account?>
     {
         private readonly bool _slimFormat;
 
@@ -54,21 +54,6 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Encode(item, stream);
-        }
-
-        public Rlp Encode(Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                return Rlp.OfEmptyList;
-            }
-
-            int contentLength = GetContentLength(item);
-            RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
-
-            Encode(item, rlpStream, contentLength);
-
-            return new Rlp(rlpStream.Data.ToArray());
         }
 
         public void Encode(Account account, RlpStream rlpStream, int? contentLength = null)

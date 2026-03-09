@@ -581,7 +581,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = _accountDecoder.Encode(account).Bytes;
+            a.Value = EncodeAccount(account);
             a.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -636,7 +636,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = _accountDecoder.Encode(account).Bytes;
+            a.Value = EncodeAccount(account);
             a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -698,7 +698,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = _accountDecoder.Encode(account).Bytes;
+            a.Value = EncodeAccount(account);
             a.Key = storage1Nib[1..];
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -707,7 +707,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode b = new(NodeType.Leaf);
             Account accountB = new(2, 1, storage2.Keccak, Keccak.OfAnEmptyString);
-            b.Value = _accountDecoder.Encode(accountB).Bytes;
+            b.Value = EncodeAccount(accountB);
             b.Key = storage2Nib[1..];
             b.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -836,7 +836,7 @@ namespace Nethermind.Trie.Test.Pruning
         {
             TrieNode node = new(NodeType.Leaf);
             Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
-            node.Value = _accountDecoder.Encode(account).Bytes;
+            node.Value = EncodeAccount(account);
             node.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
             TreePath emptyPath = TreePath.Empty;
             node.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
@@ -1686,6 +1686,13 @@ namespace Nethermind.Trie.Test.Pruning
             };
 
             commitBlock1.Should().NotThrow();
+        }
+
+        private byte[] EncodeAccount(Account account)
+        {
+            RlpStream stream = new(_accountDecoder.GetLength(account));
+            _accountDecoder.Encode(stream, account);
+            return stream.Data.ToArray()!;
         }
     }
 }

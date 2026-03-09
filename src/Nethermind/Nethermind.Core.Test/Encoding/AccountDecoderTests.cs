@@ -16,7 +16,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            Rlp rlp = decoder.Encode(account);
+            Rlp rlp = EncodeAccount(decoder, account);
             Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
             (Hash256 codeHash, Hash256 storageRoot) = decoder.DecodeHashesOnly(ref ctx);
             Assert.That(TestItem.KeccakA, Is.EqualTo(codeHash));
@@ -28,13 +28,20 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            Rlp rlp = decoder.Encode(account);
+            Rlp rlp = EncodeAccount(decoder, account);
             Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
             Account decoded = decoder.Decode(ref ctx)!;
             Assert.That((int)decoded.Balance, Is.EqualTo(100));
             Assert.That((int)decoded.Nonce, Is.EqualTo(0));
             Assert.That(TestItem.KeccakA, Is.EqualTo(decoded.CodeHash));
             Assert.That(TestItem.KeccakB, Is.EqualTo(decoded.StorageRoot));
+        }
+
+        private static Rlp EncodeAccount(AccountDecoder decoder, Account account)
+        {
+            RlpStream stream = new(decoder.GetLength(account));
+            decoder.Encode(stream, account);
+            return new Rlp(stream.Data.ToArray()!);
         }
     }
 }

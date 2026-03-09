@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -10,7 +9,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
-    public sealed class NetworkNodeDecoder : RlpValueDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
+    public sealed class NetworkNodeDecoder : RlpValueDecoder<NetworkNode>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB, nameof(NetworkNode.HostIp));
 
@@ -50,24 +49,6 @@ namespace Nethermind.Network
             stream.Encode(item.Port);
             stream.Encode(string.Empty);
             stream.Encode(item.Reputation);
-        }
-
-        public Rlp Encode(NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            int contentLength = GetContentLength(item, rlpBehaviors);
-            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-            stream.StartSequence(contentLength);
-            stream.Encode(item.NodeId.Bytes);
-            stream.Encode(item.Host);
-            stream.Encode(item.Port);
-            stream.Encode(string.Empty);
-            stream.Encode(item.Reputation);
-            return new Rlp(stream.Data.ToArray());
-        }
-
-        public void Encode(MemoryStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new NotImplementedException();
         }
 
         public override int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors)
