@@ -800,7 +800,8 @@
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.Crypto": "[1.37.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
-          "Nethermind.Specs": "[1.37.0-unstable, )"
+          "Nethermind.Specs": "[1.37.0-unstable, )",
+          "Nethermind.Trie": "[1.37.0-unstable, )"
         }
       },
       "nethermind.evm.precompiles": {

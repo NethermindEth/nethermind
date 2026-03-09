@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
 
-namespace Nethermind.Blockchain;
+namespace Nethermind.Core;
 
 public class InvalidBlockException(BlockHeader block, string message, Exception? innerException = null)
     : BlockchainException(message, innerException)

@@ -6,14 +6,15 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
+using ValidationResult = Nethermind.Merge.Plugin.Data.ValidationResult;
 
 namespace Nethermind.Merge.Plugin;
 
