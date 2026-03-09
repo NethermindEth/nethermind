@@ -26,7 +26,7 @@ using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State
 {
-    internal class StateProvider
+    internal class StateProvider(ILogManager logManager)
     {
         private static readonly UInt256 _zero = UInt256.Zero;
 
@@ -42,8 +42,8 @@ namespace Nethermind.State
         private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
 
         private readonly List<Change> _keptInCache = new();
-        private readonly ILogger _logger;
-        private Dictionary<Hash256AsKey, byte[]> _codeBatch;
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private Dictionary<Hash256AsKey, byte[]>? _codeBatch;
         private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
@@ -51,12 +51,6 @@ namespace Nethermind.State
 
         private bool _needsStateRootUpdate;
         private IWorldStateScopeProvider.ICodeDb? _codeDb;
-
-        public StateProvider(
-            ILogManager logManager)
-        {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
 
         public void RecalculateStateRoot()
         {
@@ -126,6 +120,7 @@ namespace Nethermind.State
                     _codeBatch = new(Hash256AsKeyComparer.Instance);
                     _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
                 }
+
                 if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
                     && codeArray.Offset == 0
                     && codeArray.Count == code.Length)
@@ -746,16 +741,10 @@ namespace Nethermind.State
             return account;
         }
 
-        private Account? GetThroughCache(Address address)
-        {
-            if (_intraTxCache.TryGetValue(address, out StackList<int> value))
-            {
-                return _changes[value.Peek()].Account;
-            }
-
-            Account account = GetAndAddToCache(address);
-            return account;
-        }
+        internal Account? GetThroughCache(Address address) =>
+            _intraTxCache.TryGetValue(address, out StackList<int> value)
+                ? _changes[value.Peek()].Account
+                : GetAndAddToCache(address);
 
         private void PushJustCache(Address address, Account account)
             => Push(address, account, ChangeType.JustCache);
