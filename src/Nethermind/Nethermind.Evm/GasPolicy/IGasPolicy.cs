@@ -50,6 +50,13 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract void ConsumeSelfDestructGas(ref TSelf gas);
 
     /// <summary>
+    /// Consume gas for code deposit during CREATE/CREATE2.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="cost">The gas cost (GasCostOf.CodeDeposit * codeLength).</param>
+    static abstract void ConsumeCodeDeposit(ref TSelf gas, long cost);
+
+    /// <summary>
     /// Refund gas from a child call frame.
     /// Merges the child gas state back into the parent, preserving any tracking data.
     /// </summary>

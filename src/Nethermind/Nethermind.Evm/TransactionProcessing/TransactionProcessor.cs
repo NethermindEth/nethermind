@@ -806,7 +806,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     accessedItems.WarmUpLargeContract(codeOwner);
                 }
 
-                TGasPolicy.Consume(ref unspentGas, codeDepositGasCost);
+                TGasPolicy.ConsumeCodeDeposit(ref unspentGas, codeDepositGasCost);
             }
 
             return true;
@@ -857,7 +857,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     accessedItems.WarmUpLargeContract(codeOwner);
                 }
-                TGasPolicy.Consume(ref unspentGas, codeDepositGasCost);
+                TGasPolicy.ConsumeCodeDeposit(ref unspentGas, codeDepositGasCost);
             }
 
             return true;
