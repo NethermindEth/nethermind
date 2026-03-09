@@ -195,7 +195,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                 if (slotPathAsTreePath.Truncate(currentPath.Length) == currentPath)
                 {
                     // Try using the slot as a leaf with the remaining path as key
-                    TrieNode leafNode = TrieNodeFactory.CreateLeaf(slotPathAsTreePath.ToNibble()[currentPath.Length..], new SpanSource(value));
+                    TrieNode leafNode = TrieNodeFactory.CreateLeaf(slotPathAsTreePath.ToNibble()[currentPath.Length..], new CappedArray<byte>(value));
                     leafNode.ResolveNode(emptyResolver, currentPath);
                     leafNode.ResolveKey(emptyResolver, ref currentPath);
                     if (leafNode.Keccak == currentHash)

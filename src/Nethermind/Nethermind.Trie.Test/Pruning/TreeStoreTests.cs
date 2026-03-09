@@ -966,7 +966,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new CappedArray<byte>(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
@@ -1009,7 +1009,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new CappedArray<byte>(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
@@ -1049,7 +1049,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new CappedArray<byte>(new byte[2]));
                 using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
@@ -1140,7 +1140,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new CappedArray<byte>(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
@@ -1178,7 +1178,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 2; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new CappedArray<byte>(new byte[2]));
                 using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i + 1, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
