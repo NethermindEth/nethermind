@@ -18,6 +18,12 @@ internal static class RlpHelpers
 {
     public const int SmallPrefixBarrier = 56;
 
+    // RLP prefix boundaries (Ethereum Yellow Paper, Appendix B)
+    private const int ShortStringOffset = 0x80;     // 128 — first short-string prefix
+    private const int ShortStringMaxPrefix = 0xB7;  // 183 — last short-string prefix
+    private const int ListOffset = 0xC0;            // 192 — first list prefix
+    private const int ShortListMaxPrefix = 0xF7;    // 247 — last short-list prefix
+
     // RVA static data — embedded in the assembly binary, no heap allocation, no GC root,
     // no CORINFO_HELP_GET_GCSTATIC_BASE in any JIT tier.
 
@@ -126,15 +132,14 @@ internal static class RlpHelpers
         ReadOnlySpan<byte> data, int position)
     {
         int prefix = data[position];
-        if ((uint)prefix < 128u)
-            return (0, 1);                                                        // single byte value
-        if (prefix <= 183)
-            return (1, prefix - 128);                                             // short string
-        if (prefix < 192)
-            return PeekLongPrefixAndContentLength(data, position, prefix - 183);  // long string
-        if (prefix <= 247)
-            return (1, prefix - 192);                                             // short list
-        return PeekLongPrefixAndContentLength(data, position, prefix - 247);      // long list
+        return prefix switch
+        {
+            < ShortStringOffset => (0, 1),                                                                 // single byte value
+            <= ShortStringMaxPrefix => (1, prefix - ShortStringOffset),                                    // short string
+            < ListOffset => PeekLongPrefixAndContentLength(data, position, prefix - ShortStringMaxPrefix), // long string
+            <= ShortListMaxPrefix => (1, prefix - ListOffset),                                             // short list
+            _ => PeekLongPrefixAndContentLength(data, position, prefix - ShortListMaxPrefix)               // long list
+        };
     }
 
     /// <summary>
@@ -145,9 +150,9 @@ internal static class RlpHelpers
     {
         int prefix = data[position];
         int totalLength = GetTotalRlpLength(prefix);
-        if (totalLength != 0)
-            return totalLength;
-        return PeekLongRlpLength(data, position, prefix);
+        return totalLength != 0
+            ? totalLength
+            : PeekLongRlpLength(data, position, prefix);
     }
 
     /// <summary>
@@ -156,12 +161,10 @@ internal static class RlpHelpers
     public static int CountItems(ReadOnlySpan<byte> data, int position, int end, int maxSearch)
     {
         int numberOfItems = 0;
-        while (position < end)
+        while (position < end && numberOfItems < maxSearch)
         {
             position += PeekNextRlpLength(data, position);
             numberOfItems++;
-            if (numberOfItems >= maxSearch)
-                break;
         }
         return numberOfItems;
     }
@@ -192,7 +195,7 @@ internal static class RlpHelpers
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static int PeekLongRlpLength(ReadOnlySpan<byte> data, int position, int prefix)
     {
-        int lengthOfLength = prefix < 192 ? prefix - 183 : prefix - 247;
+        int lengthOfLength = prefix < ListOffset ? prefix - ShortStringMaxPrefix : prefix - ShortListMaxPrefix;
         (int prefixLength, int contentLength) = PeekLongPrefixAndContentLength(data, position, lengthOfLength);
         return prefixLength + contentLength;
     }
