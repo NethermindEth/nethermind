@@ -31,58 +31,29 @@ using static Nethermind.Consensus.Processing.IBlockProcessor;
 
 namespace Nethermind.Consensus.Processing;
 
-public partial class BlockProcessor
+public partial class BlockProcessor(
+    ISpecProvider specProvider,
+    IBlockValidator blockValidator,
+    IRewardCalculator rewardCalculator,
+    IBlockTransactionsExecutor blockTransactionsExecutor,
+    IWorldState stateProvider,
+    IReceiptStorage receiptStorage,
+    IBeaconBlockRootHandler beaconBlockRootHandler,
+    IBlockhashStore blockHashStore,
+    ILogManager logManager,
+    IWithdrawalProcessor withdrawalProcessor,
+    IExecutionRequestsProcessor executionRequestsProcessor)
     : IBlockProcessor
 {
-    private readonly ILogger _logger;
-    private readonly IBlockAccessListBuilder? _balBuilder;
-    protected readonly WorldStateMetricsDecorator _stateProvider;
-    private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
-    private readonly ISpecProvider _specProvider;
-    private readonly IBlockValidator _blockValidator;
-    private readonly IRewardCalculator _rewardCalculator;
-    private readonly IBlockTransactionsExecutor _blockTransactionsExecutor;
-    private readonly IReceiptStorage _receiptStorage;
-    private readonly IBeaconBlockRootHandler _beaconBlockRootHandler;
-    private readonly IBlockhashStore _blockHashStore;
-    private readonly ILogManager _logManager;
-    private readonly IWithdrawalProcessor _withdrawalProcessor;
-    private readonly IExecutionRequestsProcessor _executionRequestsProcessor;
+    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
+    protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
     /// to any block-specific tracers.
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
-
-    public BlockProcessor(
-        ISpecProvider specProvider,
-        IBlockValidator blockValidator,
-        IRewardCalculator rewardCalculator,
-        IBlockTransactionsExecutor blockTransactionsExecutor,
-        IWorldState stateProvider,
-        IReceiptStorage receiptStorage,
-        IBeaconBlockRootHandler beaconBlockRootHandler,
-        IBlockhashStore blockHashStore,
-        ILogManager logManager,
-        IWithdrawalProcessor withdrawalProcessor,
-        IExecutionRequestsProcessor executionRequestsProcessor)
-    {
-        _specProvider = specProvider;
-        _blockValidator = blockValidator;
-        _rewardCalculator = rewardCalculator;
-        _blockTransactionsExecutor = blockTransactionsExecutor;
-        _receiptStorage = receiptStorage;
-        _beaconBlockRootHandler = beaconBlockRootHandler;
-        _blockHashStore = blockHashStore;
-        _logManager = logManager;
-        _withdrawalProcessor = withdrawalProcessor;
-        _executionRequestsProcessor = executionRequestsProcessor;
-
-        _logger = _logManager.GetClassLogger();
-        _balBuilder = stateProvider as IBlockAccessListBuilder;
-        _stateProvider = new(stateProvider);
-    }
 
     public event Action? TransactionsExecuted;
 
@@ -111,7 +82,7 @@ public partial class BlockProcessor
 
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
-        if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
+        if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
             throw new InvalidBlockException(suggestedBlock, error);
@@ -123,7 +94,7 @@ public partial class BlockProcessor
     }
 
     protected bool ShouldComputeStateRoot(BlockHeader header) =>
-        !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
+        !header.IsGenesis || !specProvider.GenesisStateUnavailable;
 
     protected virtual TxReceipt[] ProcessBlock(
         Block block,
@@ -132,19 +103,18 @@ public partial class BlockProcessor
         IReleaseSpec spec,
         CancellationToken token)
     {
-        BlockBody body = block.Body;
         BlockHeader header = block.Header;
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+        blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
         StoreBeaconRoot(block, spec);
-        _blockHashStore.ApplyBlockhashStateChanges(header, spec);
+        blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
@@ -159,16 +129,16 @@ public partial class BlockProcessor
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
 
         ApplyMinerRewards(block, blockTracer, spec);
-        _withdrawalProcessor.ProcessWithdrawals(block, spec);
+        withdrawalProcessor.ProcessWithdrawals(block, spec);
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
         _stateProvider.Commit(spec, commitRoots: false);
 
-        _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         _balBuilder?.SetBlockAccessList(block, spec);
 
@@ -213,7 +183,7 @@ public partial class BlockProcessor
     {
         try
         {
-            _beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+            beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         }
         catch (Exception e)
         {
@@ -224,7 +194,7 @@ public partial class BlockProcessor
     private void StoreTxReceipts(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
     {
         // Setting canonical is done when the BlockAddedToMain event is fired
-        _receiptStorage.Insert(block, txReceipts, spec, false);
+        receiptStorage.Insert(block, txReceipts, spec, false);
     }
 
     protected virtual Block PrepareBlockForProcessing(Block suggestedBlock)
@@ -312,7 +282,7 @@ public partial class BlockProcessor
 
     private void ApplyDaoTransition(Block block)
     {
-        long? daoBlockNumber = _specProvider.DaoBlockNumber;
+        long? daoBlockNumber = specProvider.DaoBlockNumber;
         if (daoBlockNumber.HasValue && daoBlockNumber.Value == block.Header.Number)
         {
             ApplyTransition();
