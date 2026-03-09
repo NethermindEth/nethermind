@@ -27,8 +27,9 @@ public class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+#if !ZK_EVM
         Metrics.Bn254PairingPrecompile++;
-
+#endif
         if (releaseSpec.IsOpGraniteEnabled && inputData.Length > PairingMaxInputSizeGranite ||
             inputData.Length % BN254.PairSize > 0)
         {
@@ -36,8 +37,27 @@ public class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
         }
 
         byte[] output = new byte[32];
-        bool result = BN254.CheckPairing(output, inputData.Span);
+        var success = false;
+#if ZK_EVM
+        if (inputData.Length == 0)
+        {
+            output[31] = 1;
+            success = true;
+        }
+        else
+        {
+            byte result = ZiskBindings.Crypto.bn254_pairing_check_c(
+                inputData.Span,
+                (nuint)inputData.Length / BN254.PairSize
+            );
+            success = result <= 1;
 
-        return result ? output : Errors.Failed;
+            if (result == 0)
+                output[31] = 1;
+        }
+#else
+        success = BN254.CheckPairing(output, inputData.Span);
+#endif
+        return success ? output : Errors.Failed;
     }
 }

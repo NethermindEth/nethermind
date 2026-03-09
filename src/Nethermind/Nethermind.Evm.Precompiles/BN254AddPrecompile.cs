@@ -29,8 +29,9 @@ public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+#if !ZK_EVM
         Metrics.Bn254AddPrecompile++;
-
+#endif
         ReadOnlySpan<byte> input = inputData.Span;
         if (InputLength < input.Length)
         {
@@ -40,19 +41,32 @@ public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
 
         byte[] output = new byte[OutputLength];
         bool result = input.Length == InputLength ?
-            BN254.Add(output, input) :
-            RunPaddedInput(output, input);
+            Add(input, output) :
+            RunPaddedInput(input, output);
 
         return result ? output : Errors.Failed;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool RunPaddedInput(byte[] output, ReadOnlySpan<byte> input)
+    private static bool RunPaddedInput(ReadOnlySpan<byte> input, byte[] output)
     {
         // Input is too short - pad with zeros up to the expected length.
         Span<byte> padded = stackalloc byte[InputLength];
         // Copies input bytes; rest of the span is already zero-initialized.
         input.CopyTo(padded);
-        return BN254.Add(output, padded);
+
+        return Add(padded, output);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool Add(ReadOnlySpan<byte> input, byte[] output) =>
+#if ZK_EVM
+        ZiskBindings.Crypto.bn254_g1_add_c(
+            input[..(InputLength / 2)],
+            input[(InputLength / 2)..],
+            output
+        ) == 0;
+#else
+        BN254.Add(output, input);
+#endif
 }
