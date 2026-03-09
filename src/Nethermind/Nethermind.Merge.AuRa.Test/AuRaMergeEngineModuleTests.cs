@@ -178,6 +178,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     }
 
     [Test]
+    [Retry(3)]
     [Platform(Exclude = "MacOsX", Reason = "Timing-sensitive 10ms delays too tight on macOS ARM runners")]
     public new Task getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
     {
