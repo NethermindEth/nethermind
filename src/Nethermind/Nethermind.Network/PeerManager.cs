@@ -39,6 +39,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly SemaphoreSlim _peerUpdateRequested = new(0, 1);
         private readonly PeerComparer _peerComparer = new();
+        private Task? _peerUpdateLoopTask;
         private readonly IPeerPool _peerPool;
         private readonly Lock _sessionLock = new();
         private readonly List<PeerStats> _candidates;
@@ -184,35 +185,31 @@ namespace Nethermind.Network
 
             StartPeerUpdateLoop();
 
-            Task.Factory.StartNew(
-                RunPeerUpdateLoop,
-                _cancellationTokenSource.Token,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error("Peer update loop encountered an exception.", t.Exception);
-                }
-                else if (t.IsCanceled)
-                {
-                    if (_logger.IsDebug) DebugPeerUpdateLoop(isStopped: true);
-                }
-                else if (t.IsCompleted)
-                {
-                    if (_logger.IsDebug) DebugPeerUpdateLoop(isStopped: false);
-                }
-            });
+            _peerUpdateLoopTask = RunPeerUpdateLoopAsync();
 
             _isStarted = true;
             SignalPeerUpdateNeeded();
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void DebugPeerUpdateLoop(bool isStopped)
-                => _logger.Debug(isStopped ? "Peer update loop stopped." : "Peer update loop complete.");
         }
 
-        public Task StopAsync()
+        private async Task RunPeerUpdateLoopAsync()
+        {
+            await Task.Yield();
+
+            try
+            {
+                await RunPeerUpdateLoop();
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                if (_logger.IsError) _logger.Error("Peer update loop encountered an exception.", e);
+            }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug("Peer update loop stopped.");
+            }
+        }
+
+        public async Task StopAsync()
         {
             lock (_sessionLock)
             {
@@ -230,10 +227,22 @@ namespace Nethermind.Network
             }
 
             _cancellationTokenSource.Cancel();
+
+            if (_peerUpdateLoopTask is not null)
+            {
+                try
+                {
+                    await _peerUpdateLoopTask;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected during shutdown.
+                }
+            }
+
             StopTimers();
 
-            if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
-            return Task.CompletedTask;
+            if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete. Please wait for all components to close");
         }
 
         string IStoppableService.Description => "peer manager";
