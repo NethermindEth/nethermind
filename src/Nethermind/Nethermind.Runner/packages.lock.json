@@ -715,7 +715,6 @@
         "dependencies": {
           "Autofac": "[9.0.0, )",
           "Autofac.Extensions.DependencyInjection": "[10.0.0, )",
-          "BouncyCastle.Cryptography": "[2.6.2, )",
           "FastEnum": "[2.0.6, )",
           "Microsoft.IO.RecyclableMemoryStream": "[3.0.1, )",
           "Microsoft.IdentityModel.JsonWebTokens": "[8.15.0, )",
@@ -734,7 +733,7 @@
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.Crypto.Bls": "[1.0.5, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
-          "Nethermind.ZiskBindings": "[1.0.0-preview.7, )",
+          "Nethermind.ZiskBindings": "[1.0.0-preview.14, )",
           "System.Security.Cryptography.ProtectedData": "[10.0.3, )"
         }
       },
@@ -1528,9 +1527,9 @@
       },
       "Nethermind.ZiskBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0-preview.7, )",
-        "resolved": "1.0.0-preview.7",
-        "contentHash": "wcEKMS3AWAovBxp+r5JLd2KxaZXGyJgLhLC8Ud6CJfv8y1WNsjrM0X+4nz8blRN1tPasRz0nOVxSvw3B2lIu8g=="
+        "requested": "[1.0.0-preview.14, )",
+        "resolved": "1.0.0-preview.14",
+        "contentHash": "f7iC5WIWbHbLo6KHSI3h3Qgsp8ppajqdfneIw8R8M1pYIrcskvD75SNnISEWos5g2Iw7pzNqWgHisB7G1P1ahQ=="
       },
       "Nito.Collections.Deque": {
         "type": "CentralTransitive",
@@ -1744,9 +1743,9 @@
       },
       "Nethermind.ZiskBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0-preview.7, )",
-        "resolved": "1.0.0-preview.7",
-        "contentHash": "wcEKMS3AWAovBxp+r5JLd2KxaZXGyJgLhLC8Ud6CJfv8y1WNsjrM0X+4nz8blRN1tPasRz0nOVxSvw3B2lIu8g=="
+        "requested": "[1.0.0-preview.14, )",
+        "resolved": "1.0.0-preview.14",
+        "contentHash": "f7iC5WIWbHbLo6KHSI3h3Qgsp8ppajqdfneIw8R8M1pYIrcskvD75SNnISEWos5g2Iw7pzNqWgHisB7G1P1ahQ=="
       },
       "RocksDB": {
         "type": "CentralTransitive",
@@ -1848,9 +1847,9 @@
       },
       "Nethermind.ZiskBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0-preview.7, )",
-        "resolved": "1.0.0-preview.7",
-        "contentHash": "wcEKMS3AWAovBxp+r5JLd2KxaZXGyJgLhLC8Ud6CJfv8y1WNsjrM0X+4nz8blRN1tPasRz0nOVxSvw3B2lIu8g=="
+        "requested": "[1.0.0-preview.14, )",
+        "resolved": "1.0.0-preview.14",
+        "contentHash": "f7iC5WIWbHbLo6KHSI3h3Qgsp8ppajqdfneIw8R8M1pYIrcskvD75SNnISEWos5g2Iw7pzNqWgHisB7G1P1ahQ=="
       },
       "RocksDB": {
         "type": "CentralTransitive",
@@ -1952,9 +1951,9 @@
       },
       "Nethermind.ZiskBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0-preview.7, )",
-        "resolved": "1.0.0-preview.7",
-        "contentHash": "wcEKMS3AWAovBxp+r5JLd2KxaZXGyJgLhLC8Ud6CJfv8y1WNsjrM0X+4nz8blRN1tPasRz0nOVxSvw3B2lIu8g=="
+        "requested": "[1.0.0-preview.14, )",
+        "resolved": "1.0.0-preview.14",
+        "contentHash": "f7iC5WIWbHbLo6KHSI3h3Qgsp8ppajqdfneIw8R8M1pYIrcskvD75SNnISEWos5g2Iw7pzNqWgHisB7G1P1ahQ=="
       },
       "RocksDB": {
         "type": "CentralTransitive",
@@ -2056,9 +2055,9 @@
       },
       "Nethermind.ZiskBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0-preview.7, )",
-        "resolved": "1.0.0-preview.7",
-        "contentHash": "wcEKMS3AWAovBxp+r5JLd2KxaZXGyJgLhLC8Ud6CJfv8y1WNsjrM0X+4nz8blRN1tPasRz0nOVxSvw3B2lIu8g=="
+        "requested": "[1.0.0-preview.14, )",
+        "resolved": "1.0.0-preview.14",
+        "contentHash": "f7iC5WIWbHbLo6KHSI3h3Qgsp8ppajqdfneIw8R8M1pYIrcskvD75SNnISEWos5g2Iw7pzNqWgHisB7G1P1ahQ=="
       },
       "RocksDB": {
         "type": "CentralTransitive",
@@ -2160,9 +2159,9 @@
       },
       "Nethermind.ZiskBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0-preview.7, )",
-        "resolved": "1.0.0-preview.7",
-        "contentHash": "wcEKMS3AWAovBxp+r5JLd2KxaZXGyJgLhLC8Ud6CJfv8y1WNsjrM0X+4nz8blRN1tPasRz0nOVxSvw3B2lIu8g=="
+        "requested": "[1.0.0-preview.14, )",
+        "resolved": "1.0.0-preview.14",
+        "contentHash": "f7iC5WIWbHbLo6KHSI3h3Qgsp8ppajqdfneIw8R8M1pYIrcskvD75SNnISEWos5g2Iw7pzNqWgHisB7G1P1ahQ=="
       },
       "RocksDB": {
         "type": "CentralTransitive",
