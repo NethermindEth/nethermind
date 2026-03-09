@@ -20,18 +20,38 @@ env:
   COLLECT_COVERAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event.inputs.coverage }}
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
-  OS_MATRIX: '[{"runner":"ubuntu-latest","arch":"x64"},{"runner":"ubuntu-24.04-arm","arch":"arm64"},{"runner":"windows-latest","arch":"x64"},{"runner":"macos-latest","arch":"arm64"}]'
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
+  setup:
+    name: Setup matrix
+    runs-on: ubuntu-latest
+    outputs:
+      os-matrix: >-
+        [
+          {"runner":"ubuntu-latest",    "label":"ubuntu-latest",         "checked":false},
+          {"runner":"ubuntu-latest",    "label":"ubuntu-latest-checked", "checked":true},
+          {"runner":"ubuntu-24.04-arm", "label":"ubuntu-24.04-arm",      "checked":false},
+          {"runner":"windows-latest",   "label":"windows-latest",        "checked":false},
+          {"runner":"macos-latest",     "label":"macos-latest",          "checked":false}
+        ]
+    steps:
+      - run: echo "OS matrix defined in outputs"
+
   tests:
-    name: Run ${{ matrix.project }} [${{ matrix.os.arch }}]
+    name: Run ${{ matrix.project }} [${{ matrix.os.label }}]
+    needs: setup
     runs-on: ${{ matrix.os.runner }}
     continue-on-error: true
     outputs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
     strategy:
+      fail-fast: false
       matrix:
-        os: ${{ fromJSON(env.OS_MATRIX) }}
+        os: ${{ fromJSON(needs.setup.outputs.os-matrix) }}
         project:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
@@ -106,7 +126,8 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         run: |
           dotnet test --project ${{ matrix.project }}.csproj -c release \
-            ${{ matrix.os.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}
+            ${{ matrix.os.checked && '-p:DefineConstants="TRACE;DEBUG"' || '' }} \
+            ${{ matrix.os.label == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}
 
       - name: Save test outcome
         if: success() || failure()
@@ -116,12 +137,12 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.project }}-${{ matrix.os.runner }}-outcome
+          name: ${{ matrix.project }}-${{ matrix.os.label }}-outcome
           path: test.outcome
           retention-days: 1
 
       - name: Upload coverage report
-        if: matrix.os.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
+        if: matrix.os.label == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.project }}-coverage
@@ -129,12 +150,14 @@ jobs:
           retention-days: 1
 
   tests-chunked:
-    name: Run Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }}) [${{ matrix.os.arch }}]
+    name: Run Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }}) [${{ matrix.os.label }}]
+    needs: setup
     runs-on: ${{ matrix.os.runner }}
     continue-on-error: true
     strategy:
+      fail-fast: false
       matrix:
-        os: ${{ fromJSON(env.OS_MATRIX) }}
+        os: ${{ fromJSON(needs.setup.outputs.os-matrix) }}
         chunk: [1of4, 2of4, 3of4, 4of4]
     steps:
       - name: Check out repository
@@ -151,7 +174,8 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
-          dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release
+          dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release \
+            ${{ matrix.os.checked && '-p:DefineConstants="TRACE;DEBUG"' || '' }}
 
       - name: Save test outcome
         if: success() || failure()
@@ -161,7 +185,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Ethereum.Legacy.Blockchain.Test-${{ matrix.chunk }}-${{ matrix.os.runner }}-outcome
+          name: Ethereum.Legacy.Blockchain.Test-${{ matrix.chunk }}-${{ matrix.os.label }}-outcome
           path: test.outcome
           retention-days: 1
 
@@ -172,10 +196,13 @@ jobs:
     steps:
       - name: Download test outcomes
         uses: actions/download-artifact@v4
+        with:
+          path: .outcomes
+          pattern: '*-outcome'
 
       - name: Ensure all tests passed
         run: |
-          data=$(cat **/test.outcome) && data=${data%?}
+          data=$(cat .outcomes/*/test.outcome) && data=${data%?}
           passed=$(echo "[$data]" | jq -r 'all')
           [[ "$passed" == "true" ]] && exit 0 || exit 1
 

@@ -30,6 +30,7 @@ namespace Nethermind.Core.Test
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
+        [RequiresIntrinsic(nameof(System.Runtime.Intrinsics.X86.Avx2))]
         public void avx2_should_compute_correct_values((int Rounds, string Output) testCase)
         {
             (int rounds, string output) = testCase;
@@ -37,6 +38,7 @@ namespace Nethermind.Core.Test
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
+        [RequiresIntrinsic(nameof(System.Runtime.Intrinsics.X86.Sse41))]
         public void sse41_should_compute_correct_values((int Rounds, string Output) testCase)
         {
             (int rounds, string output) = testCase;
