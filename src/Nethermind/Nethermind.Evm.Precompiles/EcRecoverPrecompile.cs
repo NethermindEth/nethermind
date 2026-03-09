@@ -33,7 +33,9 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+#if !ZK_EVM
         Metrics.EcRecoverPrecompile++;
+#endif
         return inputData.Length >= 128 ? RunInternal(inputData.Span) : RunInternal(inputData);
     }
 
@@ -63,9 +65,19 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
             return Empty;
         }
 
+        ReadOnlySpan<byte> message = inputDataSpan[..32];
+        ReadOnlySpan<byte> signature = inputDataSpan.Slice(64, 64);
+        byte recoveryId = Signature.GetRecoveryId(v);
+
+#if ZK_EVM
+        Span<byte> result = stackalloc byte[32];
+
+        return ZkEvmEcdsa.RecoverAddressRaw(signature, recoveryId, message, result)
+            ? result.ToArray() : Empty;
+#else
         Span<byte> publicKey = stackalloc byte[65];
-        if (!EthereumEcdsa.RecoverAddressRaw(inputDataSpan.Slice(64, 64), Signature.GetRecoveryId(v),
-                inputDataSpan[..32], publicKey))
+
+        if (!EthereumEcdsa.RecoverAddressRaw(signature, recoveryId, message, publicKey))
         {
             return Empty;
         }
@@ -78,5 +90,6 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
         // Clear first 12 bytes, as address is last 20 bytes of the hash
         Unsafe.InitBlockUnaligned(ref refResult, 0, 12);
         return result;
+#endif
     }
 }

@@ -26,4 +26,12 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup Condition="'$(EnableZkEvm)' == 'true'">
+    <Compile Remove="EthereumEcdsa.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(EnableZkEvm)' != 'true'">
+    <Compile Remove="ZkEvmEcdsa.cs" />
+  </ItemGroup>
+
 </Project>

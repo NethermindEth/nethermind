@@ -57,7 +57,7 @@ namespace Nethermind.Evm.TransactionProcessing
     public abstract class TransactionProcessorBase<TGasPolicy> : ITransactionProcessor
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        protected EthereumEcdsa Ecdsa { get; }
+        protected IEthereumEcdsa Ecdsa { get; }
         protected ILogger Logger { get; }
         protected ISpecProvider SpecProvider { get; }
         protected IWorldState WorldState { get; }
@@ -128,7 +128,14 @@ namespace Nethermind.Evm.TransactionProcessing
             _codeInfoRepository = codeInfoRepository;
             _blobBaseFeeCalculator = blobBaseFeeCalculator;
 
-            Ecdsa = new EthereumEcdsa(specProvider.ChainId);
+            Ecdsa = new
+#if ZK_EVM
+                ZkEvmEcdsa
+#else
+                EthereumEcdsa
+#endif
+                (specProvider.ChainId);
+
             _logManager = logManager;
         }
 
