@@ -125,6 +125,12 @@ namespace Nethermind.Trie
         public NodeType NodeType => _nodeData?.NodeType ?? NodeType.Unknown;
         public INodeData? NodeData => _nodeData;
 
+        /// <summary>
+        /// True when the node has been decoded from RLP and is no longer in the Unknown state.
+        /// Used by the fast-path traversal in PatriciaTree to skip path-tracking when all nodes are cached.
+        /// </summary>
+        internal bool IsDecoded => _nodeData is not null;
+
         public bool IsLeaf => NodeType == NodeType.Leaf;
 
         public bool IsBranch => NodeType == NodeType.Branch;

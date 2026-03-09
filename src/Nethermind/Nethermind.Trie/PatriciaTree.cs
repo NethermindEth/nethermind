@@ -355,6 +355,11 @@ namespace Nethermind.Trie
                     root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
                 }
 
+                // Fast path: traverse without path tracking when all nodes are already decoded.
+                // Falls back to the full path-tracked traversal for cold (DB) lookups.
+                if (TryGetNewFast(nibbles, root, out SpanSource fastResult))
+                    return fastResult.IsNull ? ReadOnlySpan<byte>.Empty : fastResult.Span;
+
                 SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: false);
 
                 return result.IsNull ? ReadOnlySpan<byte>.Empty : result.Span;
@@ -862,6 +867,94 @@ namespace Nethermind.Trie
             public TrieNode Node;
             public int ChildIdx;
             public TrieNode? OriginalChild;
+        }
+
+        /// <summary>
+        /// Path-free fast traversal for value reads when all nodes on the path are already decoded.
+        /// Returns true when the result is definitive (key found or absent); returns false when a
+        /// node needs DB loading and the caller must fall back to <see cref="GetNew"/>.
+        /// </summary>
+        private static bool TryGetNewFast(Span<byte> remainingKey, TrieNode? node, out SpanSource result)
+        {
+            while (true)
+            {
+                if (node is null)
+                {
+                    result = default;
+                    return true; // key not found
+                }
+
+                INodeData? nodeData = node.NodeData;
+
+                if (nodeData is BranchData branchData)
+                {
+                    // Read child object directly from the concrete BranchData — avoids INodeData interface dispatch.
+                    object? childData = branchData[remainingKey[0]];
+
+                    if (childData is TrieNode childNode)
+                    {
+                        if (!childNode.IsDecoded)
+                        {
+                            // Unknown node stored from a previous FindCachedOrUnknown call — needs ResolveNode(path).
+                            result = default;
+                            return false;
+                        }
+
+                        node = childNode;
+                        remainingKey = remainingKey[1..];
+                        continue;
+                    }
+
+                    if (childData is null || childData is Hash256)
+                    {
+                        // null  → slot not yet decoded or was evicted by the pruning trick (needs slow path).
+                        // Hash256 → keccak reference that needs FindCachedOrUnknown (needs slow path).
+                        result = default;
+                        return false;
+                    }
+
+                    // Any remaining type is the _nullNode sentinel — this child slot is explicitly empty.
+                    result = default;
+                    return true; // key not found
+                }
+
+                if (nodeData is LeafData leafData)
+                {
+                    byte[] leafKey = leafData.Key;
+                    int commonPrefixLength = remainingKey.CommonPrefixLength(leafKey);
+                    result = (commonPrefixLength == leafKey.Length && commonPrefixLength == remainingKey.Length)
+                        ? leafData.Value
+                        : default;
+                    return true;
+                }
+
+                if (nodeData is ExtensionData extensionData)
+                {
+                    byte[] extKey = extensionData.Key!;
+                    int commonPrefixLength = remainingKey.CommonPrefixLength(extKey);
+                    if (commonPrefixLength != extKey.Length)
+                    {
+                        result = default;
+                        return true; // no match
+                    }
+
+                    object? childData = extensionData.Value;
+                    if (childData is TrieNode extChild && extChild.IsDecoded)
+                    {
+                        remainingKey = remainingKey[extKey.Length..];
+                        node = extChild;
+                        continue;
+                    }
+
+                    // Not cached or unknown — needs path for DB lookup.
+                    result = default;
+                    return false;
+                }
+
+                // nodeData is null → Unknown node, needs ResolveNode(path).
+                result = default;
+                return false;
+            }
         }
 
         private SpanSource GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)
