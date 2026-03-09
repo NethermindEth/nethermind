@@ -3,9 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO.Abstractions;
 using System.Text.Json;
-
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -23,10 +22,10 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.JsonRpc.Test;
 
@@ -62,7 +61,7 @@ public class JsonRpcServiceTests
 
     private JsonRpcResponse TestRequestWithPool<T>(IRpcModulePool<T> pool, string method, params object?[]? parameters) where T : IRpcModule
     {
-        RpcModuleProvider moduleProvider = new(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
+        RpcModuleProvider moduleProvider = new(new RealFileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(pool);
         _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
         JsonRpcRequest request = RpcTest.BuildJsonRequest(method, parameters);
@@ -257,4 +256,17 @@ public class JsonRpcServiceTests
 
             (false, Build.A.Block.WithWithdrawals(null).TestObject)
         };
+    [Test]
+    public async Task Unhandled_exception_returns_InternalError()
+    {
+        IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
+        moduleProvider.Resolve(Arg.Any<string>()).Throws(new Exception("test"));
+
+        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
+        JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_test");
+        JsonRpcResponse response = await service.SendRequestAsync(request, _context);
+
+        JsonRpcErrorResponse errorResponse = response.Should().BeOfType<JsonRpcErrorResponse>().Subject;
+        errorResponse.Error!.Code.Should().Be(ErrorCodes.InternalError);
+    }
 }

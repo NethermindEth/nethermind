@@ -5,7 +5,7 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 
-public class NodeDataMessage(IOwnedReadOnlyList<byte[]>? data) : Eth.V63.Messages.NodeDataMessage(data)
+public class NodeDataMessage(IByteArrayList? data) : Eth.V63.Messages.NodeDataMessage(data)
 {
     public override int PacketType => NodeDataMessageCode.NodeData;
     public override string Protocol => "nodedata";

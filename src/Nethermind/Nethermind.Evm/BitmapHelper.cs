@@ -48,7 +48,7 @@ public static class BitmapHelper
             bitVector.SetN(pc, _lookup[bitCount]);
             pc += bitCount;
         }
-        else
+        else if (bitCount == 1)
         {
             bitVector.Set1(pc);
             pc += bitCount;

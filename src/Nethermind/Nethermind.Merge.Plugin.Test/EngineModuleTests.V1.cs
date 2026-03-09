@@ -753,7 +753,7 @@ public partial class EngineModuleTests
             .WithTransactions(
                 Build.A.Transaction
                     .WithTo(TestItem.AddressD)
-                    .WithValue(100.GWei())
+                    .WithValue(100.GWei)
                     .SignedAndResolved(TestItem.PrivateKeyA)
                     .TestObject
             )

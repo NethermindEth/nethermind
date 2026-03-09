@@ -60,8 +60,10 @@ public class EnrRecordParser : IEnrRecordParser
         IByteBuffer base64Buffer = Base64.Decode(buffer, Base64Dialect.URL_SAFE);
         try
         {
-            NettyRlpStream rlpStream = new(base64Buffer);
-            return _nodeRecordSigner.Deserialize(rlpStream);
+            Rlp.ValueDecoderContext ctx = base64Buffer.AsRlpContext();
+            NodeRecord result = _nodeRecordSigner.Deserialize(ref ctx);
+            base64Buffer.SetReaderIndex(base64Buffer.ReaderIndex + ctx.Position);
+            return result;
         }
         finally
         {
