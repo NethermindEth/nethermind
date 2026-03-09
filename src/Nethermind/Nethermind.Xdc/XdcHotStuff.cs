@@ -219,7 +219,7 @@ namespace Nethermind.Xdc
         {
             ulong currentRound = _xdcContext.CurrentRound;
 
-            XdcBlockHeader? roundParent = FindHeaderForVoting();
+            XdcBlockHeader? roundParent = GetParentForRound();
             if (roundParent == null)
             {
                 throw new InvalidOperationException($"Head is null or not XdcBlockHeader.");
@@ -251,12 +251,10 @@ namespace Nethermind.Xdc
             if (_writeRoundInfo)
                 _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
 
-            if (isMyTurn && // miningParent is null when highestQC block is not in the local chain yet
-                FindHeaderToBuildOn(_xdcContext.HighestQC) is { } miningParent &&
-                IsItTimeToPropose(miningParent, currentRound, spec))
+            if (isMyTurn && IsItTimeToPropose(roundParent, currentRound, spec))
             {
                 _highestSelfMinedRound = currentRound;
-                _ = BuildAndProposeBlock(miningParent, currentRound, spec, ct); // TODO: wait for it to finish?
+                Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
             }
 
             if (_highestSignTxNumber < roundParent.Number
@@ -270,23 +268,21 @@ namespace Nethermind.Xdc
             _writeRoundInfo = false;
         }
 
-        private XdcBlockHeader FindHeaderForVoting()
+        private XdcBlockHeader GetParentForRound()
         {
             return _blockTree.Head.Header as XdcBlockHeader;
         }
 
-        private XdcBlockHeader? FindHeaderToBuildOn(QuorumCertificate qc) =>
-            (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber);
-
         /// <summary>
         /// Build block with parentQC.
         /// </summary>
-        internal async Task BuildAndProposeBlock(XdcBlockHeader parentHeader, ulong currentRound, IXdcReleaseSpec spec, CancellationToken ct)
+        internal async Task BuildAndProposeBlock(XdcBlockHeader parent, ulong currentRound, IXdcReleaseSpec spec, CancellationToken ct)
         {
             DateTime now = DateTime.UtcNow;
 
             try
             {
+                XdcBlockHeader parentHeader = FindHeaderToBuildOn(_xdcContext.HighestQC) ?? parent;
                 ulong parentTimestamp = parentHeader.Timestamp;
                 ulong minTimestamp = parentTimestamp + (ulong)spec.MinePeriod;
                 ulong currentTimestamp = (ulong)new DateTimeOffset(now).ToUnixTimeSeconds();
@@ -326,6 +322,10 @@ namespace Nethermind.Xdc
                 _logger.Error($"Failed to build block in round {currentRound}", ex);
             }
 
+            XdcBlockHeader FindHeaderToBuildOn(QuorumCertificate highestQC) =>
+                _blockTree.FindHeader(
+                    highestQC.ProposedBlockInfo.Hash,
+                    highestQC.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
         }
 
         /// <summary>
@@ -401,9 +401,24 @@ namespace Nethermind.Xdc
                 return false;
             }
 
-            if ((long)parent.Timestamp + spec.MinePeriod > DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            if ((long)parent.Timestamp + spec.MinePeriod > now)
             {
                 //Not enough time has passed since last block
+                return false;
+            }
+
+            // TODO: discuss better period value
+            var fallbackPeriod = (spec.TimeoutPeriod + spec.MinePeriod) / 2;
+            if ((long)parent.Timestamp + fallbackPeriod > DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+            {
+                // fallback to mining without accumulating enough votes
+                return true;
+            }
+
+            if (parent.Hash != _xdcContext.HighestQC.ProposedBlockInfo.Hash)
+            {
+                //We have not reached QC vote threshold yet
                 return false;
             }
 
