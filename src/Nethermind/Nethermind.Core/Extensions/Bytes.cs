@@ -960,8 +960,6 @@ namespace Nethermind.Core.Extensions
                 // ARM: Sum uses native horizontal add (addv) at 128-bit NEON width,
                 // avoiding the expensive multi-instruction ExtractMsb decomposition.
                 // x86: ExtractMostSignificantBits compiles to single pmovmskb instruction.
-                // AdvSimd.IsSupported is a JIT constant — the losing branch is dead-code
-                // eliminated, so this costs nothing at runtime.
                 if (AdvSimd.IsSupported)
                 {
                     for (; i <= data.Length - Vector128<byte>.Count; i += Vector128<byte>.Count)
