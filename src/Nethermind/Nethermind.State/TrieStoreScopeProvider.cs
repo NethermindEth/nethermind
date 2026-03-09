@@ -135,6 +135,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 }
             }
 
+            // STUCK HERE (comment will be removed)
             Task.WaitAll(commitTask.AsSpan());
             _backingStateTree.Commit();
             _storages.Clear();

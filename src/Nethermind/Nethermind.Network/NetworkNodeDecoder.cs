@@ -12,7 +12,7 @@ namespace Nethermind.Network
 {
     public sealed class NetworkNodeDecoder : RlpValueDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB(), nameof(NetworkNode.HostIp));
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB, nameof(NetworkNode.HostIp));
 
         static NetworkNodeDecoder()
         {

@@ -260,7 +260,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB,
-            GasPrice = useNonZeroGasPrice ? 10.GWei() : 0
+            GasPrice = useNonZeroGasPrice ? 10.GWei : 0
         };
 
         _proofRpcModule.proof_call(tx, new BlockParameter(block.Number));
@@ -283,7 +283,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB,
-            GasPrice = useNonZeroGasPrice ? 10.GWei() : 0
+            GasPrice = useNonZeroGasPrice ? 10.GWei : 0
         };
         _proofRpcModule.proof_call(tx, new BlockParameter(block.Hash!));
 
@@ -306,7 +306,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB,
-            GasPrice = useNonZeroGasPrice ? 10.GWei() : 0
+            GasPrice = useNonZeroGasPrice ? 10.GWei : 0
         };
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, new { blockHash = block.Hash, requireCanonical = true });
@@ -741,7 +741,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
             .Op(Instruction.SSTORE)
             .Done;
 
-        await TestCallWithStorageAndCode(code, useNonZeroGasPrice ? 10.GWei() : 0);
+        await TestCallWithStorageAndCode(code, useNonZeroGasPrice ? 10.GWei : 0);
     }
 
     [TestCase]
@@ -784,7 +784,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         {
             From = from,
             To = TestItem.AddressB,
-            GasPrice = useNonZeroGasPrice ? 10.GWei() : 0
+            GasPrice = useNonZeroGasPrice ? 10.GWei : 0
         };
 
         CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
@@ -873,8 +873,8 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         IWorldState stateProvider = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
-        AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
-        AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
+        AddAccount(stateProvider, TestItem.AddressA, 1.Ether);
+        AddAccount(stateProvider, TestItem.AddressB, 1.Ether);
 
         if (code is not null)
         {
@@ -883,7 +883,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
 
         if (createZeroAccount)
         {
-            AddAccount(stateProvider, Address.Zero, 1.Ether());
+            AddAccount(stateProvider, Address.Zero, 1.Ether);
         }
 
         stateProvider.CommitTree(0);

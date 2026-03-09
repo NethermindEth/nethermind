@@ -28,49 +28,8 @@ public ref struct ValueRlpStream(SpanSource data)
     public readonly bool IsNotNull => !IsNull;
     public readonly int Length => Data.Length;
 
-    public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
-    {
-        int positionStored = _position;
-        int numberOfItems = 0;
-        while (_position < (beforePosition ?? Data.Length))
-        {
-            int prefix = ReadByte();
-            if (prefix <= 128)
-            {
-            }
-            else if (prefix <= 183)
-            {
-                int length = prefix - 128;
-                SkipBytes(length);
-            }
-            else if (prefix < 192)
-            {
-                int lengthOfLength = prefix - 183;
-                int length = DeserializeLength(lengthOfLength);
-                if (length < RlpHelpers.SmallPrefixBarrier)
-                {
-                    RlpHelpers.ThrowUnexpectedLength(length);
-                }
-
-                SkipBytes(length);
-            }
-            else
-            {
-                _position--;
-                int sequenceLength = ReadSequenceLength();
-                SkipBytes(sequenceLength);
-            }
-
-            numberOfItems++;
-            if (numberOfItems >= maxSearch)
-            {
-                break;
-            }
-        }
-
-        _position = positionStored;
-        return numberOfItems;
-    }
+    public readonly int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
+        => RlpHelpers.CountItems(Data, _position, beforePosition ?? Data.Length, maxSearch);
 
     public void SkipLength() => SkipBytes(PeekPrefixLength());
 
@@ -78,94 +37,11 @@ public ref struct ValueRlpStream(SpanSource data)
     public readonly int PeekPrefixLength() => RlpHelpers.GetPrefixLength(PeekByte());
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly int PeekNextRlpLength()
-    {
-        int prefix = PeekByte();
-        int preLen = RlpHelpers.GetPrefixLengthForContent(prefix);
-        if (preLen >= 0)
-            return preLen + RlpHelpers.GetContentLength(prefix);
-
-        return RlpHelpers.IsLongString(preLen)
-            ? PeekLongStringRlpLength(prefix)
-            : PeekLongListRlpLength(prefix);
-    }
+    public readonly int PeekNextRlpLength() => RlpHelpers.PeekNextRlpLength(Data, _position);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
-    {
-        int prefix = PeekByte();
-        int preLen = RlpHelpers.GetPrefixLengthForContent(prefix);
-        if (preLen >= 0)
-            return (preLen, RlpHelpers.GetContentLength(prefix));
-
-        return RlpHelpers.IsLongString(preLen)
-            ? PeekLongStringPrefixAndContentLength(prefix)
-            : PeekLongListPrefixAndContentLength(prefix);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private readonly int PeekLongStringRlpLength(int prefix)
-    {
-        int lengthOfLength = prefix - 183;
-        if ((uint)lengthOfLength > 4)
-        {
-            // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-            RlpHelpers.ThrowSequenceLengthTooLong();
-        }
-
-        int length = PeekDeserializeLength(1, lengthOfLength);
-        if (length < RlpHelpers.SmallPrefixBarrier)
-        {
-            RlpHelpers.ThrowUnexpectedLength(length);
-        }
-
-        return lengthOfLength + 1 + length;
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private readonly (int prefixLength, int contentLength) PeekLongStringPrefixAndContentLength(int prefix)
-    {
-        int lengthOfLength = prefix - 183;
-        if ((uint)lengthOfLength > 4)
-        {
-            // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-            RlpHelpers.ThrowSequenceLengthTooLong();
-        }
-
-        int length = PeekDeserializeLength(1, lengthOfLength);
-        if (length < RlpHelpers.SmallPrefixBarrier)
-        {
-            RlpHelpers.ThrowUnexpectedLength(length);
-        }
-
-        return (lengthOfLength + 1, length);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private readonly int PeekLongListRlpLength(int prefix)
-    {
-        int lengthOfContentLength = prefix - 247;
-        int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
-        if (contentLength < RlpHelpers.SmallPrefixBarrier)
-        {
-            RlpHelpers.ThrowUnexpectedLength(contentLength);
-        }
-
-        return lengthOfContentLength + 1 + contentLength;
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private readonly (int prefixLength, int contentLength) PeekLongListPrefixAndContentLength(int prefix)
-    {
-        int lengthOfContentLength = prefix - 247;
-        int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
-        if (contentLength < RlpHelpers.SmallPrefixBarrier)
-        {
-            RlpHelpers.ThrowUnexpectedLength(contentLength);
-        }
-
-        return (lengthOfContentLength + 1, contentLength);
-    }
+        => RlpHelpers.PeekPrefixAndContentLength(Data, _position);
 
     public int ReadSequenceLength()
     {
@@ -197,31 +73,9 @@ public ref struct ValueRlpStream(SpanSource data)
             RlpHelpers.ThrowInvalidLength(lengthOfLength);
         }
 
-        // Will use Unsafe.ReadUnaligned as we know the length of the span is same
-        // as what we asked for and then explicitly check lengths, so can skip the
-        // additional bounds checking from BinaryPrimitives.ReadUInt16BigEndian etc
         ref byte firstElement = ref MemoryMarshal.GetReference(Read(lengthOfLength));
-
-        return DeserializeLengthRef(ref firstElement, lengthOfLength);
+        return RlpHelpers.DeserializeLengthRef(ref firstElement, lengthOfLength);
     }
-
-    private readonly int PeekDeserializeLength(int offset, int lengthOfLength)
-    {
-        if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
-        {
-            RlpHelpers.ThrowInvalidLength(lengthOfLength);
-        }
-
-        // Will use Unsafe.ReadUnaligned as we know the length of the span is same
-        // as what we asked for and then explicitly check lengths, so can skip the
-        // additional bounds checking from BinaryPrimitives.ReadUInt16BigEndian etc
-        ref byte firstElement = ref MemoryMarshal.GetReference(Peek(offset, lengthOfLength));
-
-        return DeserializeLengthRef(ref firstElement, lengthOfLength);
-    }
-
-    private static int DeserializeLengthRef(ref byte firstElement, int lengthOfLength) => RlpHelpers.DeserializeLengthRef(ref firstElement, lengthOfLength);
-
 
 
     public byte ReadByte() => Data[_position++];

@@ -74,7 +74,10 @@ namespace Nethermind.Consensus.Validators
         public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
             Validate<OffFlag>(header, parent, isUncle, out error);
 
-        protected virtual bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) where TOrphaned : struct, IFlag
+#if !ZK_EVM
+        virtual
+#endif
+        protected bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) where TOrphaned : struct, IFlag
         {
             IReleaseSpec spec;
             error = null;
@@ -388,7 +391,7 @@ namespace Nethermind.Consensus.Validators
             return BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
         }
 
-        protected virtual bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        private bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
             if (spec.IsEip7928Enabled)
             {

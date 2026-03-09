@@ -396,7 +396,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                             ErrorCodes.LimitExceeded,
                             jsonRpcRequest.Method,
                             jsonRpcRequest.Id,
-                            $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB()}KB exceeded"),
+                            $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded"),
                         RpcReport.Error)
                     : await HandleSingleRequest(jsonRpcRequest, context);
 
