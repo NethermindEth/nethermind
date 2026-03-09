@@ -1295,6 +1295,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             goto DataReturn;
 
         // If no return data is produced, return an empty call result.
+#if DEBUG
+        debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
+#endif
         return CallResult.Empty(codeInfo.Version);
 
     DataReturn:
