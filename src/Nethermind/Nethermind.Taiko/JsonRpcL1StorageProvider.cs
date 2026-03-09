@@ -52,7 +52,7 @@ public class JsonRpcL1StorageProvider : IL1StorageProvider
         }
         catch (Exception ex)
         {
-            if (_logger.IsWarn) _logger.Warn($"L1SLOAD: eth_getStorageAt exception — contract={contractAddress}, key={storageKey}, block={blockNumber}, error={ex.Message}");
+            if (_logger.IsError) _logger.Error($"L1SLOAD: eth_getStorageAt exception — contract={contractAddress}, key={storageKey}, block={blockNumber}, error={ex}");
             return null;
         }
     }
