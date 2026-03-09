@@ -69,13 +69,7 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
         return AcceptTxResult.Accepted;
     }
 
-    private static bool IsEpochCandidate(Snapshot? snapshot, Address? senderAddress)
-    {
-        if (snapshot is null || senderAddress is null)
-        {
-            return false;
-        }
-
-        return snapshot.NextEpochCandidates.Contains(senderAddress);
-    }
+    private static bool IsEpochCandidate(Snapshot? snapshot, Address? senderAddress) =>
+        snapshot is not null && senderAddress is not null &&
+        snapshot.NextEpochCandidates.Contains(senderAddress);
 }
