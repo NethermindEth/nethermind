@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Processing
                 long? gasRemaining = _balBuilder?.GasUsed();
                 if (gasRemaining is not null)
                 {
-                    _balBuilder.ValidateBlockAccessList(0, gasRemaining!.Value);
+                    _balBuilder.ValidateBlockAccessList(block.Header, 0, gasRemaining!.Value);
                 }
 
                 for (int i = 0; i < block.Transactions.Length; i++)
@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.Processing
                     if (gasRemaining is not null)
                     {
                         gasRemaining -= currentTx.SpentGas;
-                        _balBuilder.ValidateBlockAccessList((ushort)(i + 1), gasRemaining!.Value);
+                        _balBuilder.ValidateBlockAccessList(block.Header, (ushort)(i + 1), gasRemaining!.Value);
                     }
                 }
                 _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();

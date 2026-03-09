@@ -144,15 +144,7 @@ public partial class BlockProcessor
         _blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        TxReceipt[] receipts;
-        try
-        {
-            receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
-        }
-        catch (ParallelWorldState.InvalidBlockLevelAccessListException e)
-        {
-            throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
-        }
+        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below

@@ -20,7 +20,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     public PreBlockCaches? Caches => (_innerWorldState as IPreBlockCaches)?.Caches;
 
     public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
-    public class InvalidBlockLevelAccessListException(string message) : Exception(message);
+    public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, message);
 
     private BlockAccessList _suggestedBlockAccessList;
     private long _gasUsed;
@@ -236,7 +236,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     public long GasUsed()
         => _gasUsed;
 
-    public void ValidateBlockAccessList(ushort index, long gasRemaining)
+    public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining)
     {
         if (_suggestedBlockAccessList is null)
         {
@@ -276,7 +276,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
                     AdvanceGenerated();
                     continue;
                 }
-                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
+                throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
             }
             else if (generatedHead is null)
             {
@@ -285,7 +285,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
                     AdvanceSuggested();
                     continue;
                 }
-                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+                throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
             }
 
             int cmp = generatedHead.Value.Address.CompareTo(suggestedHead.Value.Address);
@@ -297,7 +297,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
                     generatedHead.Value.CodeChange != suggestedHead.Value.CodeChange ||
                     !Enumerable.SequenceEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
                 {
-                    throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
+                    throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
                 }
             }
             else if (cmp > 0)
@@ -307,7 +307,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
                     AdvanceSuggested();
                     continue;
                 }
-                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+                throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
             }
             else
             {
@@ -316,7 +316,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
                     AdvanceGenerated();
                     continue;
                 }
-                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
+                throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
             }
 
             AdvanceGenerated();
@@ -325,7 +325,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
 
         if (gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
         {
-            throw new InvalidBlockLevelAccessListException("Suggested block-level access list contained invalid storage reads.");
+            throw new InvalidBlockLevelAccessListException(block, "Suggested block-level access list contained invalid storage reads.");
         }
     }
 

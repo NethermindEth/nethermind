@@ -13,5 +13,5 @@ public interface IBlockAccessListBuilder
     public void AddAccountRead(Address address);
     public void LoadSuggestedBlockAccessList(BlockAccessList suggested, long gasUsed);
     public long GasUsed();
-    public void ValidateBlockAccessList(ushort index, long gasRemaining);
+    public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining);
 }
