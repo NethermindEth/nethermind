@@ -40,7 +40,7 @@ namespace Nethermind.Core.Extensions
             HashSet<IDriveInfo> driveInfos = new();
             //the following processing is to overcome specific behaviour on linux where creating DriveInfo for multiple paths on same logical drive
             //gives instances with these paths (and not logical drive)
-            // DriveInfo.GetDrives() crashes with an uncatchable AccessViolationException
+            // DriveInfo.GetDrives() crashes with a fatal AccessViolationException
             // on macOS ARM64 in native GetAllMountPoints().
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                 return [];
