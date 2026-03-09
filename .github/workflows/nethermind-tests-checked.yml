@@ -1,4 +1,4 @@
-name: Nethermind/Ethereum tests
+name: Nethermind checked tests
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -9,15 +9,8 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
-    inputs:
-      coverage:
-        default: false
-        description: Collect coverage
-        required: false
-        type: boolean
 
 env:
-  COLLECT_COVERAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event.inputs.coverage }}
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
 
@@ -26,31 +19,13 @@ defaults:
     shell: bash
 
 jobs:
-  setup:
-    name: Setup matrix
-    runs-on: ubuntu-latest
-    outputs:
-      os-matrix: >-
-        [
-          {"runner":"ubuntu-latest",    "label":"ubuntu-latest"},
-          {"runner":"ubuntu-24.04-arm", "label":"ubuntu-24.04-arm"},
-          {"runner":"windows-latest",   "label":"windows-latest"},
-          {"runner":"macos-latest",     "label":"macos-latest"}
-        ]
-    steps:
-      - run: echo "OS matrix defined in outputs"
-
   tests:
-    name: Run ${{ matrix.project }} [${{ matrix.os.label }}]
-    needs: setup
-    runs-on: ${{ matrix.os.runner }}
+    name: Run ${{ matrix.project }} [checked]
+    runs-on: ubuntu-latest
     continue-on-error: true
-    outputs:
-      collect_coverage: ${{ env.COLLECT_COVERAGE }}
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(needs.setup.outputs.os-matrix) }}
         project:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
@@ -125,7 +100,7 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         run: |
           dotnet test --project ${{ matrix.project }}.csproj -c release \
-            ${{ matrix.os.label == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}
+            -p:DefineConstants=TRACE%3BDEBUG
 
       - name: Save test outcome
         if: success() || failure()
@@ -135,27 +110,17 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.project }}-${{ matrix.os.label }}-outcome
+          name: ${{ matrix.project }}-checked-outcome
           path: test.outcome
           retention-days: 1
 
-      - name: Upload coverage report
-        if: matrix.os.label == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.project }}-coverage
-          path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/TestResults/*.cobertura.xml
-          retention-days: 1
-
   tests-chunked:
-    name: Run Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }}) [${{ matrix.os.label }}]
-    needs: setup
-    runs-on: ${{ matrix.os.runner }}
+    name: Run Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }}) [checked]
+    runs-on: ubuntu-latest
     continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(needs.setup.outputs.os-matrix) }}
         chunk: [1of4, 2of4, 3of4, 4of4]
     steps:
       - name: Check out repository
@@ -172,7 +137,8 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
-          dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release
+          dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release \
+            -p:DefineConstants=TRACE%3BDEBUG
 
       - name: Save test outcome
         if: success() || failure()
@@ -182,7 +148,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Ethereum.Legacy.Blockchain.Test-${{ matrix.chunk }}-${{ matrix.os.label }}-outcome
+          name: Ethereum.Legacy.Blockchain.Test-${{ matrix.chunk }}-checked-outcome
           path: test.outcome
           retention-days: 1
 
@@ -202,22 +168,3 @@ jobs:
           data=$(cat .outcomes/*/test.outcome) && data=${data%?}
           passed=$(echo "[$data]" | jq -r 'all')
           [[ "$passed" == "true" ]] && exit 0 || exit 1
-
-  codecov-upload:
-    name: Upload Codecov reports
-    needs: [tests-summary]
-    if: needs.tests.outputs.collect_coverage == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download coverage reports
-        uses: actions/download-artifact@v4
-        with:
-          path: .coverage
-          pattern: '*-coverage'
-
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          name: codecov-nethermind
-          directory: .coverage
