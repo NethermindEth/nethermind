@@ -24,6 +24,7 @@ using Nethermind.Logging;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Api.Steps;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -68,6 +69,7 @@ public class XdcModule : Module
             // penalty handler
 
             // reward handler
+            .AddSingleton<ITrc21StateReader, IStateReader, ISpecProvider>((stateReader, specProvider) => new Trc21StateReader(stateReader, specProvider))
             .AddSingleton<IRewardCalculator, XdcRewardCalculator>()
 
             // forensics handler

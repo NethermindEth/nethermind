@@ -31,6 +31,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public Address TradingStateAddressBinary { get; set; }
 
     public Address MasternodeVotingContract { get; set; }
+    public Address Trc21IssuerContract { get; set; }
 
 
     private List<V2ConfigParams> _v2Configs = new();
@@ -85,4 +86,3 @@ public sealed class V2ConfigParams
     public int TimeoutPeriod { get; init; }
     public int MinePeriod { get; init; }
 }
-
