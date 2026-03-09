@@ -3,7 +3,7 @@
 
 using System;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Core
 {
     public class BlockchainException : Exception
     {

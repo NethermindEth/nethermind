@@ -448,6 +448,12 @@ namespace Nethermind.Core.Specs
         public bool IsRip7728Enabled { get; }
 
         /// <summary>
+        /// EIP-7928: Block-Level Access Lists
+        /// </summary>
+        public bool IsEip7928Enabled { get; }
+
+        bool BlockLevelAccessListsEnabled => IsEip7928Enabled;
+
         /// Precomputed gas cost and refund constants derived from this spec.
         /// Values are cached per spec instance (singletons per fork) to avoid
         /// repeated interface dispatch on the EVM opcode hot path.

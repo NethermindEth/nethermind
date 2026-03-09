@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Block = Nethermind.Core.Block;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.Facade
@@ -53,5 +54,8 @@ namespace Nethermind.Facade
         bool HasStateForBlock(BlockHeader? baseBlock);
 
         Witness GenerateExecutionWitness(BlockHeader parent, Block block);
+
+        BlockAccessList? GetBlockAccessList(Hash256 blockHash);
+        void DeleteBlockAccessList(Hash256 blockHash);
     }
 }

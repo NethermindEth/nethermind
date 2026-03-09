@@ -219,7 +219,8 @@ internal static partial class EvmInstructions
         // If Shanghai DDoS protection is active, charge the appropriate gas cost.
         if (spec.UseShanghaiDDosProtection)
         {
-            TGasPolicy.ConsumeSelfDestructGas(ref gas);
+            if (!TGasPolicy.ConsumeSelfDestructGas(ref gas))
+                goto OutOfGas;
         }
 
         // Pop the inheritor address from the stack; signal underflow if missing.

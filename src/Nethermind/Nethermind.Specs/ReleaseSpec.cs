@@ -164,6 +164,7 @@ public class ReleaseSpec : IReleaseSpec
 
         return cache.ToFrozenSet();
     }
+    public bool IsEip7928Enabled { get; set; }
 
     private ReleaseSpec? _systemSpec;
 

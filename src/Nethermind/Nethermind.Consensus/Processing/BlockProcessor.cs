@@ -15,6 +15,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -23,6 +24,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
@@ -44,8 +46,8 @@ public partial class BlockProcessor(
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
     protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
-    private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -58,6 +60,13 @@ public partial class BlockProcessor(
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
+
+        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+        {
+            _balBuilder.TracingEnabled = true;
+            _balBuilder.GeneratedBlockAccessList.Clear();
+            _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
+        }
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
@@ -120,7 +129,7 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
 
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
@@ -130,6 +139,8 @@ public partial class BlockProcessor(
         _stateProvider.Commit(spec, commitRoots: false);
 
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+
+        _balBuilder?.SetBlockAccessList(block, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
@@ -146,6 +157,7 @@ public partial class BlockProcessor(
             _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
         }
+
 
         header.Hash = header.CalculateHash();
 
@@ -223,7 +235,10 @@ public partial class BlockProcessor(
             headerForProcessing.StateRoot = bh.StateRoot;
         }
 
-        return suggestedBlock.WithReplacedHeader(headerForProcessing);
+        Block block = suggestedBlock.WithReplacedHeader(headerForProcessing);
+        block.BlockAccessList = suggestedBlock.BlockAccessList;
+
+        return block;
     }
 
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
