@@ -220,7 +220,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
 
     public BlockHeaderBuilder WithSlotNumber(ulong? slotNumber)
     {
-        TestObjectInternal.ExcessBlobGas = slotNumber;
+        TestObjectInternal.SlotNumber = slotNumber;
         return this;
     }
 }
