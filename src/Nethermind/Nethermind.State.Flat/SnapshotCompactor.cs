@@ -132,8 +132,8 @@ public class SnapshotCompactor : ISnapshotCompactor
         ConcurrentDictionary<HashedKey<AddressAsKey>, Account?> accounts = snapshot.Content.Accounts;
         ConcurrentDictionary<HashedKey<(AddressAsKey, UInt256)>, SlotValue?> storages = snapshot.Content.Storages;
         ConcurrentDictionary<HashedKey<AddressAsKey>, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
-        ShardedDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> storageNodes = snapshot.Content.StorageNodes;
-        ShardedDictionary<HashedKey<TreePath>, TrieNode> stateNodes = snapshot.Content.StateNodes;
+        ConcurrentDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> storageNodes = snapshot.Content.StorageNodes;
+        ConcurrentDictionary<HashedKey<TreePath>, TrieNode> stateNodes = snapshot.Content.StateNodes;
 
         using ArrayPoolListRef<Task> compactTask = new ArrayPoolListRef<Task>(2);
 
@@ -187,43 +187,32 @@ public class SnapshotCompactor : ISnapshotCompactor
             }
         }));
 
-        // State tries — merge per shard in parallel
-        Parallel.For(0, ShardedDictionary<HashedKey<TreePath>, TrieNode>.NumShards, shard =>
-        {
-            for (int i = 0; i < snapshots.Count; i++)
-                stateNodes.AddOrUpdateFromShard(shard, snapshots[i].Content.StateNodes);
-        });
+        // State tries
+        for (int i = 0; i < snapshots.Count; i++)
+            stateNodes.AddOrUpdateRange(snapshots[i].StateNodes);
 
-        // Storage tries — pre-build clear sets, then merge per shard in parallel
-        PooledSet<Hash256AsKey>?[] clearSets = new PooledSet<Hash256AsKey>?[snapshots.Count];
+        // Storage tries
         for (int i = 0; i < snapshots.Count; i++)
         {
-            PooledSet<Hash256AsKey>? set = null;
+            // Clear storage nodes for self-destructed accounts
+            using PooledSet<Hash256AsKey> addressHashToClear = new();
             foreach ((HashedKey<AddressAsKey> address, var isNewAccount) in snapshots[i].SelfDestructedStorageAddresses)
             {
                 if (!isNewAccount)
+                    addressHashToClear.Add(address.Key.Value.ToAccountPath.ToCommitment());
+            }
+
+            if (addressHashToClear.Count > 0)
+            {
+                foreach (KeyValuePair<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> kv in storageNodes)
                 {
-                    set ??= new PooledSet<Hash256AsKey>();
-                    set.Add(address.Key.Value.ToAccountPath.ToCommitment());
+                    if (addressHashToClear.Contains(kv.Key.Key.Item1))
+                        storageNodes.TryRemove(kv.Key, out _);
                 }
             }
-            clearSets[i] = set;
+
+            storageNodes.AddOrUpdateRange(snapshots[i].StorageNodes);
         }
-
-        Parallel.For(0, ShardedDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode>.NumShards, shard =>
-        {
-            for (int i = 0; i < snapshots.Count; i++)
-            {
-                PooledSet<Hash256AsKey>? addressHashToClear = clearSets[i];
-                if (addressHashToClear is not null)
-                    storageNodes.RemoveFromShard(shard, key => addressHashToClear.Contains(key.Key.Item1));
-
-                storageNodes.AddOrUpdateFromShard(shard, snapshots[i].Content.StorageNodes);
-            }
-        });
-
-        foreach (PooledSet<Hash256AsKey>? set in clearSets)
-            set?.Dispose();
 
         Task.WaitAll(compactTask.AsSpan());
 

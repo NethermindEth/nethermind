@@ -73,9 +73,8 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<HashedKey<(AddressAsKey, UInt256)>, SlotValue?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<AddressAsKey>, bool> SelfDestructedStorageAddresses = new();
 
-    // ShardedDictionary: sharded locks, best parallel write throughput for trie nodes
-    public readonly ShardedDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new();
-    public readonly ShardedDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> StorageNodes = new();
+    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new();
+    public readonly ConcurrentDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> StorageNodes = new();
 
     public void Reset()
     {
@@ -115,18 +114,6 @@ public sealed class SnapshotContent : IDisposable, IResettable
             SelfDestructedStorageAddresses.Count * 60 +    // Key (8B) + Value (4B) + CD overhead (48)
             StateNodes.Count * 72 +                        // Key (36B TreePath) + Value ref (8B) + dictionary overhead (28)
             StorageNodes.Count * 80;                       // Key (44B) + Value ref (8B) + dictionary overhead (28)
-    }
-
-    public void DisableLocks()
-    {
-        StateNodes.DisableLock();
-        StorageNodes.DisableLock();
-    }
-
-    public void EnableLocks()
-    {
-        StateNodes.EnableLock();
-        StorageNodes.EnableLock();
     }
 
     public void Dispose()

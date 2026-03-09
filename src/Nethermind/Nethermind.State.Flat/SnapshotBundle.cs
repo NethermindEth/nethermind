@@ -26,13 +26,13 @@ public sealed class SnapshotBundle : IDisposable
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<HashedKey<AddressAsKey>, Account?> _changedAccounts = null!;
     private ConcurrentDictionary<HashedKey<(AddressAsKey, UInt256)>, SlotValue?> _changedSlots = null!;
-    private ShardedDictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
-    private ShardedDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> _changedStorageNodes = null!;
+    private ConcurrentDictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
+    private ConcurrentDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<AddressAsKey>, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
-    private ShardedDictionary<HashedKey<TreePath>, TrieNode> _readStateNodes = null!;
-    private ShardedDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> _readStorageNodes = null!;
+    private ConcurrentDictionary<HashedKey<TreePath>, TrieNode> _readStateNodes = null!;
+    private ConcurrentDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> _readStorageNodes = null!;
 
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
@@ -70,7 +70,6 @@ public sealed class SnapshotBundle : IDisposable
 
     private void ExpandCurrentPooledContent()
     {
-        _currentPooledContent.EnableLocks();
         _changedAccounts = _currentPooledContent.Accounts;
         _changedSlots = _currentPooledContent.Storages;
         _changedStorageNodes = _currentPooledContent.StorageNodes;
@@ -415,7 +414,6 @@ public sealed class SnapshotBundle : IDisposable
             resourcePool: _resourcePool,
             usage: _usage);
 
-        _currentPooledContent.DisableLocks();
         snapshot.AcquireLease(); // For this SnapshotBundle.
         _snapshots.Add(snapshot); // Now later reads are correct
 
