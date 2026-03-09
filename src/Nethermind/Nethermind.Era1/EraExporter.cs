@@ -152,9 +152,19 @@ public class EraExporter(
             string rename = Path.Combine(
                 destinationPath,
                 EraPathUtils.Filename(_networkName, epoch, new Hash256(accumulator)));
-            fileSystem.File.Move(
-                filePath,
-                rename, true);
+            // Retry to handle transient file locks on Windows (e.g. antivirus scanning).
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    fileSystem.File.Move(filePath, rename, true);
+                    break;
+                }
+                catch (IOException) when (attempt < 3)
+                {
+                    await Task.Delay(100 * (attempt + 1), cancellation);
+                }
+            }
         }
     }
 

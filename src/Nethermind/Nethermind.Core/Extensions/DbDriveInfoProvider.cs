@@ -39,7 +39,17 @@ namespace Nethermind.Core.Extensions
             HashSet<IDriveInfo> driveInfos = new();
             //the following processing is to overcome specific behaviour on linux where creating DriveInfo for multiple paths on same logical drive
             //gives instances with these paths (and not logical drive)
-            IDriveInfo[] allDrives = fileSystem.DriveInfo.GetDrives();
+            IDriveInfo[] allDrives;
+            try
+            {
+                allDrives = fileSystem.DriveInfo.GetDrives();
+            }
+            catch
+            {
+                // DriveInfo.GetDrives() can crash on some platforms (e.g. macOS ARM64)
+                // with an AccessViolationException in native GetAllMountPoints().
+                return [];
+            }
             IDriveInfo? topLevelDrive = FindDriveForDirectory(allDrives, topDir);
             if (topLevelDrive is not null)
             {
