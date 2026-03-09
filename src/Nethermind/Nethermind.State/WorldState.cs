@@ -307,16 +307,22 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _stateProvider.AccountExists(address);
         }
+
+        public bool IsNonZeroAccount(Address address, out bool accountExists)
+        {
+            DebugGuardInScope();
+            Account? account = _stateProvider.GetThroughCache(address);
+            accountExists = account is not null;
+            return accountExists && (account!.IsContract || !account.Nonce.IsZero || !_persistentStorageProvider.IsStorageEmpty(address));
+        }
+
         public bool IsDeadAccount(Address address)
         {
             DebugGuardInScope();
             return _stateProvider.IsDeadAccount(address);
         }
 
-        public bool HasStateForBlock(BlockHeader? header)
-        {
-            return ScopeProvider.HasRoot(header);
-        }
+        public bool HasStateForBlock(BlockHeader? header) => ScopeProvider.HasRoot(header);
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {

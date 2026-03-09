@@ -141,4 +141,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
     void ResetTransient();
+
+    // See https://eips.ethereum.org/EIPS/eip-7610
+    bool IsNonZeroAccount(Address address, out bool accountExists)
+    {
+        accountExists = AccountExists(address);
+        return accountExists
+            && (IsContract(address) || !GetNonce(address).IsZero || !IsStorageEmpty(address));
+    }
+
 }
