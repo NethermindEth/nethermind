@@ -207,7 +207,7 @@ internal static partial class EvmInstructions
         Snapshot snapshot = state.TakeSnapshot();
 
         // EIP-7610: If the account already exists and is non-zero, then the creation fails.
-        if (state.IsNonZeroAccount(contractAddress, out bool accountExists))
+        if (state.IsNonZeroAccount(contractAddress))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
@@ -243,7 +243,7 @@ internal static partial class EvmInstructions
             outputLength: 0,
             executionType: TOpCreate.ExecutionType,
             isStatic: vm.VmState.IsStatic,
-            isCreateOnPreExistingAccount: accountExists,
+            isCreateOnPreExistingAccount: state.AccountExists(contractAddress),
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);

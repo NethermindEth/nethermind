@@ -90,10 +90,7 @@ namespace Nethermind.State
             return account is not null && account.IsContract;
         }
 
-        public bool AccountExists(Address address) =>
-            _intraTxCache.TryGetValue(address, out StackList<int> value)
-                ? _changes[value.Peek()]!.ChangeType != ChangeType.Delete
-                : GetAndAddToCache(address) is not null;
+        public bool AccountExists(Address address) => GetThroughCache(address) is not null;
 
         public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
 
@@ -436,7 +433,7 @@ namespace Nethermind.State
             {
                 //we only want to persist empty accounts if they were deleted or created as empty
                 //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
-                var lastChange = _changes[value.Peek()];
+                Change lastChange = _changes[value.Peek()];
                 if (lastChange.ChangeType == ChangeType.Delete ||
                     (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.Account.IsEmpty))
                 {

@@ -900,7 +900,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected bool PrepareAccountForContractDeployment(Address contractAddress, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec)
         {
-            if (WorldState.IsNonZeroAccount(contractAddress, out _))
+            if (WorldState.IsNonZeroAccount(contractAddress))
             {
                 if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
 

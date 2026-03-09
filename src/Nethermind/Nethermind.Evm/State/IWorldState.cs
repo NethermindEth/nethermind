@@ -143,8 +143,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void ResetTransient();
 
     // See https://eips.ethereum.org/EIPS/eip-7610
-    bool IsNonZeroAccount(Address address, out bool accountExists) =>
-        (accountExists = AccountExists(address))
-        && (IsContract(address) || !GetNonce(address).IsZero || !IsStorageEmpty(address));
+    bool IsNonZeroAccount(Address address) => IsContract(address) || !GetNonce(address).IsZero || !IsStorageEmpty(address);
 
 }

@@ -308,17 +308,11 @@ namespace Nethermind.State
             return _stateProvider.AccountExists(address);
         }
 
-        public bool IsNonZeroAccount(Address address, out bool accountExists)
+        public bool IsNonZeroAccount(Address address)
         {
             DebugGuardInScope();
-            accountExists = _stateProvider.AccountExists(address);
-            if (accountExists)
-            {
-                Account account = _stateProvider.GetAccount(address);
-                return account.IsContract || !account.Nonce.IsZero || !_persistentStorageProvider.IsStorageEmpty(address);
-            }
-
-            return false;
+            Account account = _stateProvider.GetAccount(address);
+            return account.IsContract || !account.Nonce.IsZero || !_persistentStorageProvider.IsStorageEmpty(address);
         }
         public bool IsDeadAccount(Address address)
         {
