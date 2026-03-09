@@ -112,6 +112,7 @@ public class MainnetSpecProvider : ISpecProvider
         OsakaActivation,
         BPO1Activation,
         BPO2Activation,
+        AmsterdamActivation
     };
 
     public static MainnetSpecProvider Instance { get; } = new();
