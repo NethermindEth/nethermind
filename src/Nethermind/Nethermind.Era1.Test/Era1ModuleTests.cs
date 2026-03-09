@@ -299,7 +299,7 @@ public class Era1ModuleTests
     [TestCase(true, 0, 0, 0, null, 0)]
     [TestCase(false, 0, 0, 0, 1, 9999)]
     [TestCase(false, 0, 0, 2000, 2001, 9999)]
-    [CancelAfter(10000)]
+    [CancelAfter(120_000)] // macOS ARM runners need more time for 10k-block chain
     public async Task EraExportAndImport(bool fastSync, long start, long end, long headBlockNumber, long? expectedMinSuggestedBlock, long expectedMaxSuggestedBlock, CancellationToken cancellationToken)
     {
         const int ChainLength = 10000;
