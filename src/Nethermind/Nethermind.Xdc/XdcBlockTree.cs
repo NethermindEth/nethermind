@@ -82,7 +82,7 @@ internal class XdcBlockTree : BlockTree
             return true;
 
         return header is XdcBlockHeader newBlock && Head?.Header is XdcBlockHeader headBlock &&
-            IsSameTdButGreaterNumber(newBlock, headBlock);
+            IsSameTdButSelfMined(newBlock, headBlock);
     }
 
     protected override bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
@@ -91,13 +91,12 @@ internal class XdcBlockTree : BlockTree
             return true;
 
         return header is XdcBlockHeader newBlock && BestSuggestedBody?.Header is XdcBlockHeader bestBlock &&
-            IsSameTdButGreaterNumber(newBlock, bestBlock);
+            IsSameTdButSelfMined(newBlock, bestBlock);
     }
 
-    // XDPoS orders blocks by round, not total difficulty (all blocks use Difficulty=1).
-    // A block with a higher round should become the canonical head.
-    private static bool IsSameTdButGreaterNumber(XdcBlockHeader newHeader, XdcBlockHeader oldHeader)
+    // Allow overriding head with self-mined blocks with the same TD
+    private static bool IsSameTdButSelfMined(XdcBlockHeader newHeader, XdcBlockHeader oldHeader)
     {
-        return newHeader.TotalDifficulty == oldHeader.TotalDifficulty && newHeader.Number > oldHeader.Number;
+        return newHeader.TotalDifficulty == oldHeader.TotalDifficulty && newHeader.IsSelfMined;
     }
 }
