@@ -562,7 +562,7 @@ public partial class EngineModuleTests
 
         if (withIncorrectChange)
         {
-            newContractAccount = newContractAccount.WithBalanceChanges([new(3, 1.GWei())]); // incorrect change
+            newContractAccount = newContractAccount.WithBalanceChanges([new(3, 1.GWei)]); // incorrect change
         }
 
         if (withSurplusReads)
@@ -613,7 +613,7 @@ public partial class EngineModuleTests
         {
             expectedBalBuilder.WithAccountChanges([Build.An.AccountChanges
                 .WithAddress(TestItem.AddressD)
-                .WithBalanceChanges([new(4, 1.GWei())])
+                .WithBalanceChanges([new(4, 1.GWei)])
                 .TestObject]);
         }
 

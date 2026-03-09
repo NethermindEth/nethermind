@@ -47,7 +47,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// Consume gas for SelfDestruct operation.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
-    static abstract void ConsumeSelfDestructGas(ref TSelf gas);
+    static abstract bool ConsumeSelfDestructGas(ref TSelf gas);
 
     /// <summary>
     /// Refund gas from a child call frame.

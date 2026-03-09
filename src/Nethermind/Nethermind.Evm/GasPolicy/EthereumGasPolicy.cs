@@ -29,8 +29,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static void Consume(ref EthereumGasPolicy gas, long cost) =>
         gas.Value -= cost;
 
-    public static void ConsumeSelfDestructGas(ref EthereumGasPolicy gas)
-        => Consume(ref gas, GasCostOf.SelfDestructEip150);
+    public static bool ConsumeSelfDestructGas(ref EthereumGasPolicy gas)
+        => UpdateGas(ref gas, GasCostOf.SelfDestructEip150);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Refund(ref EthereumGasPolicy gas, in EthereumGasPolicy childGas) =>

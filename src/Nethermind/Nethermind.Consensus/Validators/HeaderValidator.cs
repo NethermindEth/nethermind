@@ -386,7 +386,7 @@ namespace Nethermind.Consensus.Validators
             return BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
         }
 
-        protected virtual bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        private bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
             if (spec.IsEip7928Enabled)
             {
