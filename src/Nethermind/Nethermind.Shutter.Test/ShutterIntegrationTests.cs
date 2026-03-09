@@ -54,7 +54,9 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         // late block arrives, then next block should contain loaded transactions
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 2, lastPayload, true, null, 5);
         lastPayload = payloads[^1];
-        Block? b = lastPayload.TryGetBlock().Block;
+        Result<Block> blockResult = lastPayload.TryGetBlock();
+        Assert.That(blockResult.IsSuccess, Is.True, blockResult.Error);
+        Block? b = blockResult.Data;
         Assert.That(b!.Transactions, Has.Length.EqualTo(20));
     }
 
@@ -89,7 +91,9 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
 
         payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
-        Block? b = lastPayload.TryGetBlock().Block;
+        Result<Block> blockResult = lastPayload.TryGetBlock();
+        Assert.That(blockResult.IsSuccess, Is.True, blockResult.Error);
+        Block? b = blockResult.Data;
         Assert.That(b!.Transactions, Has.Length.EqualTo(20));
     }
 

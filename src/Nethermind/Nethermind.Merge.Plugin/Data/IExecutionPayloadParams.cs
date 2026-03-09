@@ -82,14 +82,14 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return result;
         }
 
-        TransactionDecodingResult transactionDecodingResult = executionPayload.TryGetTransactions();
-        if (transactionDecodingResult.Error is not null)
+        Result<Transaction[]> transactionDecodingResult = executionPayload.TryGetTransactions();
+        if (transactionDecodingResult.IsError)
         {
             error = transactionDecodingResult.Error;
             return ValidationResult.Invalid;
         }
 
-        if (!FlattenedHashesEqual(transactionDecodingResult.Transactions, blobVersionedHashes))
+        if (!FlattenedHashesEqual(transactionDecodingResult.Data, blobVersionedHashes))
         {
             error = "Blob versioned hashes do not match";
             return ValidationResult.Invalid;

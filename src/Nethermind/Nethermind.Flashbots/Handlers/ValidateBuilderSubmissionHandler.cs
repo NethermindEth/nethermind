@@ -78,13 +78,13 @@ public class ValidateSubmissionHandler
         if (_logger.IsInfo)
             _logger.Info($"blobs bundle blobs {blobsBundle.Blobs.Length} commits {blobsBundle.Commitments.Length} proofs {blobsBundle.Proofs.Length} commitments");
 
-        BlockDecodingResult decodingResult = payload.TryGetBlock();
-        Block? block = decodingResult.Block;
-        if (block is null)
+        Result<Block> decodingResult = payload.TryGetBlock();
+        if (decodingResult.IsError)
         {
             if (_logger.IsTrace) _logger.Trace($"Invalid block: {decodingResult.Error}. Result of {payloadStr}.");
             return FlashbotsResult.Invalid($"Block {payload} could not be parsed as a block: {decodingResult.Error}");
         }
+        Block block = decodingResult.Data;
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
 
