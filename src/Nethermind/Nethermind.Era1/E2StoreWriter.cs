@@ -66,8 +66,7 @@ public class E2StoreWriter : IDisposable
 
     public Task Flush(CancellationToken cancellation = default)
     {
-        _stream.Flush();
-        return Task.CompletedTask;
+        return _stream.FlushAsync(cancellation);
     }
 
     public void Dispose() => _stream.Dispose();

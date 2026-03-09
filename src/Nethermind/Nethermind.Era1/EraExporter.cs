@@ -130,7 +130,7 @@ public class EraExporter(
 
                     if (block.TotalDifficulty is null)
                     {
-                        throw new EraException($"Block {block.ToString(Block.Format.FullHashAndNumber)} does  not have total difficulty specified");
+                        throw new EraException($"Block {block.ToString(Block.Format.FullHashAndNumber)} does not have total difficulty specified");
                     }
 
                     await eraWriter.Add(block, receipts, cancellation);

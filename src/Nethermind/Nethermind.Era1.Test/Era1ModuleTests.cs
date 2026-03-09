@@ -30,7 +30,6 @@ public class Era1ModuleTests
     public async Task ExportAndImportTwoBlocksAndReceipts()
     {
         using var tmpFile = TempPath.GetTempFile();
-        using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block
             .WithNumber(0)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
@@ -51,10 +50,12 @@ public class Era1ModuleTests
             .WithAllFieldsFilled
             .TestObject;
 
-        await builder.Add(block0, new[] { receipt0 });
-        await builder.Add(block1, new[] { receipt1 });
-        await builder.Finalize();
-        builder.Dispose();
+        using (EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>()))
+        {
+            await builder.Add(block0, new[] { receipt0 });
+            await builder.Add(block1, new[] { receipt1 });
+            await builder.Finalize();
+        }
 
         using EraReader reader = new EraReader(tmpFile.Path);
 
