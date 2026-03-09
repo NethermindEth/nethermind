@@ -129,7 +129,7 @@ public partial class EngineModuleTests
 
         getPayloadResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
 
-        Transaction[] transactionsInBlock = getPayloadResult.TryGetTransactions().Transactions;
+        Transaction[] transactionsInBlock = getPayloadResult.TryGetTransactions().Data!;
         transactionsInBlock.Should().BeEquivalentTo(transactions, o => o
             .Excluding(t => t.ChainId)
             .Excluding(t => t.SenderAddress)
@@ -423,7 +423,7 @@ public partial class EngineModuleTests
             .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 
         transactionsLength.Should().Equal(3, 6, 11);
-        Transaction[] txs = getPayloadResult.TryGetTransactions().Transactions;
+        Transaction[] txs = getPayloadResult.TryGetTransactions().Data!;
 
         txs.Should().HaveCount(11);
     }
@@ -477,7 +477,7 @@ public partial class EngineModuleTests
 
         transactionsLength.Should().Equal(1, 2);
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
-        Transaction[] txs = getPayloadResult.TryGetTransactions().Transactions;
+        Transaction[] txs = getPayloadResult.TryGetTransactions().Data!;
 
         txs.Should().HaveCount(2);
     }
@@ -513,7 +513,7 @@ public partial class EngineModuleTests
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
-        getPayloadResult.TryGetTransactions().Transactions.Should().HaveCount(3);
+        getPayloadResult.TryGetTransactions().Data!.Should().HaveCount(3);
         cancelledContext?.Disposed.Should().BeTrue();
     }
 

@@ -12,8 +12,8 @@ namespace Nethermind.Optimism;
 
 [Decoder(RlpDecoderKey.Storage)]
 public class OptimismCompactReceiptStorageDecoder :
-    IRlpStreamEncoder<OptimismTxReceipt>, IRlpValueDecoder<OptimismTxReceipt>, IRlpObjectDecoder<OptimismTxReceipt>, IReceiptRefDecoder,
-    IRlpStreamEncoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>
+    IRlpStreamEncoder<OptimismTxReceipt>, IRlpValueDecoder<OptimismTxReceipt>, IReceiptRefDecoder,
+    IRlpStreamEncoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
 {
     public OptimismTxReceipt Decode(ref ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -140,13 +140,6 @@ public class OptimismCompactReceiptStorageDecoder :
     // Refstruct decode does not generate bloom
     public bool CanDecodeBloom => false;
 
-    public Rlp Encode(OptimismTxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        RlpStream rlpStream = new(GetLength(item!, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray()!);
-    }
-
     public void Encode(RlpStream rlpStream, OptimismTxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
@@ -260,10 +253,5 @@ public class OptimismCompactReceiptStorageDecoder :
     TxReceipt IRlpValueDecoder<TxReceipt>.Decode(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
     {
         return Decode(ref decoderContext, rlpBehaviors);
-    }
-
-    public Rlp Encode(TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Encode((OptimismTxReceipt?)item, rlpBehaviors);
     }
 }

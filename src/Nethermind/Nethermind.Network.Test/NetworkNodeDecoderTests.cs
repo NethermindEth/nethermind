@@ -20,7 +20,7 @@ namespace Nethermind.Network.Test
         {
             NetworkNodeDecoder networkNodeDecoder = new();
             NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, 100L);
-            Rlp encoded = networkNodeDecoder.Encode(node);
+            Rlp encoded = EncodeNode(networkNodeDecoder, node);
             NetworkNode decoded = networkNodeDecoder.Decode((ReadOnlySpan<byte>)encoded.Bytes);
             Assert.That(decoded.Host, Is.EqualTo(node.Host));
             Assert.That(decoded.NodeId, Is.EqualTo(node.NodeId));
@@ -33,7 +33,7 @@ namespace Nethermind.Network.Test
         {
             NetworkNodeDecoder networkNodeDecoder = new();
             NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, -100L);
-            Rlp encoded = networkNodeDecoder.Encode(node);
+            Rlp encoded = EncodeNode(networkNodeDecoder, node);
             NetworkNode decoded = networkNodeDecoder.Decode((ReadOnlySpan<byte>)encoded.Bytes);
             Assert.That(decoded.Host, Is.EqualTo(node.Host));
             Assert.That(decoded.NodeId, Is.EqualTo(node.NodeId));
@@ -58,12 +58,19 @@ namespace Nethermind.Network.Test
         {
             NetworkNodeDecoder networkNodeDecoder = new();
             NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", -1, -100L);
-            Rlp encoded = networkNodeDecoder.Encode(node);
+            Rlp encoded = EncodeNode(networkNodeDecoder, node);
             NetworkNode decoded = networkNodeDecoder.Decode((ReadOnlySpan<byte>)encoded.Bytes);
             Assert.That(decoded.Host, Is.EqualTo(node.Host));
             Assert.That(decoded.NodeId, Is.EqualTo(node.NodeId));
             Assert.That(decoded.Port, Is.EqualTo(node.Port));
             Assert.That(decoded.Reputation, Is.EqualTo(node.Reputation));
+        }
+
+        private static Rlp EncodeNode(NetworkNodeDecoder decoder, NetworkNode node)
+        {
+            RlpStream stream = new(decoder.GetLength(node, RlpBehaviors.None));
+            decoder.Encode(stream, node);
+            return new Rlp(stream.Data.ToArray()!);
         }
     }
 }

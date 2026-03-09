@@ -33,22 +33,6 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public static Rlp Encode<T>(this IRlpObjectDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            if (items is null)
-            {
-                return Rlp.OfEmptyList;
-            }
-
-            Rlp[] rlpSequence = new Rlp[items.Length];
-            for (int i = 0; i < items.Length; i++)
-            {
-                rlpSequence[i] = items[i] is null ? Rlp.OfEmptyList : decoder.Encode(items[i], behaviors);
-            }
-
-            return Rlp.Encode(rlpSequence);
-        }
-
         public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamEncoder<T> decoder, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             NettyRlpStream rlpStream;
@@ -189,23 +173,6 @@ namespace Nethermind.Serialization.Rlp
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowSpanSourceNotCappedArray() => throw new InvalidOperationException("Encode to SpanSource failed to get a CappedArray.");
-
-        public static Rlp Encode<T>(this IRlpObjectDecoder<T> decoder, IReadOnlyCollection<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            if (items is null)
-            {
-                return Rlp.OfEmptyList;
-            }
-
-            Rlp[] rlpSequence = new Rlp[items.Count];
-            int i = 0;
-            foreach (T? item in items)
-            {
-                rlpSequence[i++] = item is null ? Rlp.OfEmptyList : decoder.Encode(item, behaviors);
-            }
-
-            return Rlp.Encode(rlpSequence);
-        }
 
         public static void Encode<T>(this IRlpStreamEncoder<T> decoder, RlpStream stream, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {

@@ -158,7 +158,6 @@ namespace Nethermind.Serialization.Rlp
 
         public static IRlpValueDecoder<T>? GetValueDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpValueDecoder<T> : null;
         public static IRlpStreamEncoder<T>? GetStreamEncoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpStreamEncoder<T> : null;
-        public static IRlpObjectDecoder<T> GetObjectDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.GetValueOrDefault(new(typeof(T), key)) as IRlpObjectDecoder<T> ?? throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
@@ -199,7 +198,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static Rlp Encode(Account item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => AccountDecoder.Instance.Encode(item, behaviors);
+            => Encode<Account>(item, behaviors);
 
         public static Rlp Encode(LogEntry item, RlpBehaviors behaviors = RlpBehaviors.None)
             => LogEntryDecoder.Instance.Encode(item, behaviors);
@@ -220,7 +219,7 @@ namespace Nethermind.Serialization.Rlp
                 return new Rlp(stream.Data.ToArray());
             }
 
-            return GetObjectDecoder<T>().Encode(item, behaviors);
+            throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
         }
 
         public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
@@ -239,7 +238,7 @@ namespace Nethermind.Serialization.Rlp
                 return new Rlp(stream.Data.ToArray());
             }
 
-            return GetObjectDecoder<T>().Encode(items, behaviors);
+            throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
         }
 
         public static Rlp Encode(int[] integers)

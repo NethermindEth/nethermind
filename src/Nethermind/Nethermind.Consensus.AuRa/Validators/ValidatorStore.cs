@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 Rlp.ValueDecoderContext ctx = new(_db.Get(PendingValidatorsKey) ?? Rlp.OfEmptyList.Bytes);
                 return PendingValidatorsDecoder.Decode(ref ctx);
             }
-            set => _db.Set(PendingValidatorsKey, PendingValidatorsDecoder.Encode(value).Bytes);
+            set => _db.Set(PendingValidatorsKey, Rlp.Encode(value).Bytes);
         }
 
         private ValidatorInfo FindValidatorInfo(in long blockNumber)

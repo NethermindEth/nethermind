@@ -135,13 +135,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
     /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
-    public virtual BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
+    public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         byte[][] encodedTransactions = Transactions;
-        TransactionDecodingResult transactions = TryGetTransactions();
-        if (transactions.Error is not null)
+        Result<Transaction[]> transactions = TryGetTransactions();
+        if (transactions.IsError)
         {
-            return new BlockDecodingResult(transactions.Error);
+            return Result<Block>.Fail(transactions.Error);
         }
 
         BlockHeader header = new(
@@ -169,11 +169,11 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
-        Block block = new(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals)
+        Block block = new(header, transactions.Data, Array.Empty<BlockHeader>(), Withdrawals)
         {
             EncodedTransactions = encodedTransactions
         };
-        return new BlockDecodingResult(block);
+        return Result<Block>.Success(block);
     }
 
     protected virtual Hash256? BuildWithdrawalsRoot()
@@ -187,12 +187,12 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
-    public TransactionDecodingResult TryGetTransactions()
+    public Result<Transaction[]> TryGetTransactions()
     {
-        if (_transactions is not null) return new TransactionDecodingResult(_transactions);
+        if (_transactions is not null) return Result<Transaction[]>.Success(_transactions);
 
         IRlpValueDecoder<Transaction>? rlpDecoder = Rlp.GetValueDecoder<Transaction>();
-        if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
+        if (rlpDecoder is null) return Result<Transaction[]>.Fail($"{nameof(Transaction)} decoder is not registered");
 
         int i = 0;
         try
@@ -206,15 +206,15 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
                 transactions[i] = rlpDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
             }
 
-            return new TransactionDecodingResult(_transactions = transactions);
+            return Result<Transaction[]>.Success(_transactions = transactions);
         }
         catch (RlpException e)
         {
-            return new TransactionDecodingResult($"Transaction {i} is not valid: {e.Message}");
+            return Result<Transaction[]>.Fail($"Transaction {i} is not valid: {e.Message}");
         }
         catch (ArgumentException)
         {
-            return new TransactionDecodingResult($"Transaction {i} is not valid");
+            return Result<Transaction[]>.Fail($"Transaction {i} is not valid");
         }
     }
 
@@ -264,36 +264,4 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public virtual bool ValidateFork(ISpecProvider specProvider) =>
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
-}
-
-public struct TransactionDecodingResult
-{
-    public readonly string? Error;
-    public readonly Transaction[] Transactions = [];
-
-    public TransactionDecodingResult(Transaction[] transactions)
-    {
-        Transactions = transactions;
-    }
-
-    public TransactionDecodingResult(string error)
-    {
-        Error = error;
-    }
-}
-
-public struct BlockDecodingResult
-{
-    public readonly string? Error;
-    public readonly Block? Block;
-
-    public BlockDecodingResult(Block block)
-    {
-        Block = block;
-    }
-
-    public BlockDecodingResult(string error)
-    {
-        Error = error;
-    }
 }

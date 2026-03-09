@@ -31,7 +31,7 @@ public class TaikoExecutionPayload : ExecutionPayload
         _ => 1
     };
 
-    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
+    public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         if (Withdrawals is null && Transactions is null)
         {
@@ -60,7 +60,7 @@ public class TaikoExecutionPayload : ExecutionPayload
                 WithdrawalsRoot = WithdrawalsHash,
             };
 
-            return new BlockDecodingResult(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>()));
+            return Result<Block>.Success(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>()));
         }
         return base.TryGetBlock(totalDifficulty);
     }
