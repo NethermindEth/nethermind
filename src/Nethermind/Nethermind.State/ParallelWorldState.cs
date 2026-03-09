@@ -21,7 +21,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     public PreBlockCaches? Caches => (_innerWorldState as IPreBlockCaches)?.Caches;
 
     public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
-    public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, message);
+    public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, "InvalidBlockLevelAccessList: " + message);
 
     private BlockAccessList _suggestedBlockAccessList;
     private long _gasUsed;
@@ -148,14 +148,17 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     }
 
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        => SubtractFromBalance(address, balanceChange, spec, out _);
+
+    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
+        _innerWorldState.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
+
         if (TracingEnabled)
         {
-            UInt256 before = _innerWorldState.GetBalance(address);
-            UInt256 after = before - balanceChange;
-            GeneratedBlockAccessList.AddBalanceChange(address, before, after);
+            UInt256 newBalance = oldBalance - balanceChange;
+            GeneratedBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
         }
-        _innerWorldState.SubtractFromBalance(address, balanceChange, spec);
     }
 
     public override void DeleteAccount(Address address)
@@ -360,6 +363,9 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
         }
     }
+
+    // for testing
+    internal IWorldState Inner => _innerWorldState;
 
     private static bool HasNoChanges(in ChangeAtIndex c)
         => c.BalanceChange is null &&
