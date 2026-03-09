@@ -410,9 +410,8 @@ namespace Nethermind.Xdc
                 return false;
             }
 
-            // TODO: discuss better period value
-            var fallbackPeriod = (spec.TimeoutPeriod + spec.MinePeriod) / 2;
-            if ((long)parent.Timestamp + fallbackPeriod > DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+            var fallbackPeriod = spec.TimeoutPeriod / 2;
+            if ((long)parent.Timestamp + fallbackPeriod < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
             {
                 // fallback to mining without accumulating enough votes
                 return true;
