@@ -286,10 +286,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, Hash256 storageRoot, Account? account) =>
                 logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static Account ThrowNullAccount(Address address) =>
-                throw new InvalidOperationException($"Account {address} is null when updating storage hash");
         }
     }
 }
