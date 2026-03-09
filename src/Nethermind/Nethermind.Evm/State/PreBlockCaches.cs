@@ -10,7 +10,7 @@ using Nethermind.Trie;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
-namespace Nethermind.State;
+namespace Nethermind.Evm.State;
 
 public class PreBlockCaches
 {
