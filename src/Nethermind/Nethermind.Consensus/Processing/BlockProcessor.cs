@@ -170,6 +170,8 @@ public partial class BlockProcessor
 
         _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
+        _balBuilder?.SetBlockAccessList(block, spec);
+
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec, commitRoots: true);
@@ -186,19 +188,6 @@ public partial class BlockProcessor
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
-        {
-            if (block.IsGenesis)
-            {
-                header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
-            }
-            else
-            {
-                block.GeneratedBlockAccessList = _balBuilder.GeneratedBlockAccessList;
-                block.EncodedBlockAccessList = Rlp.Encode(_balBuilder.GeneratedBlockAccessList).Bytes;
-                header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
-            }
-        }
 
         header.Hash = header.CalculateHash();
 

@@ -9,6 +9,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Evm.State;
 
@@ -338,6 +339,25 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         if (gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
         {
             throw new InvalidBlockLevelAccessListException(block, "Suggested block-level access list contained invalid storage reads.");
+        }
+    }
+
+    public void SetBlockAccessList(Block block, IReleaseSpec spec)
+    {
+        if (!spec.BlockLevelAccessListsEnabled)
+        {
+            return;
+        }
+
+        if (block.IsGenesis)
+        {
+            block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+        }
+        else
+        {
+            block.GeneratedBlockAccessList = GeneratedBlockAccessList;
+            block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
+            block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
         }
     }
 
