@@ -1322,7 +1322,7 @@ namespace Nethermind.Trie.Test
             ctx.ExitScope();
 
             // Make sure prune task started and its snapshotting
-            Thread.Sleep(100);
+            Thread.Sleep(500);
 
             Task blockTask = Task.Run(() =>
             {
@@ -1347,7 +1347,7 @@ namespace Nethermind.Trie.Test
             }
             else
             {
-                await Task.Delay(1000);
+                await Task.Delay(3000);
                 blockTask.IsCompleted.Should().BeFalse();
 
                 ctx.UnblockDatabase();
