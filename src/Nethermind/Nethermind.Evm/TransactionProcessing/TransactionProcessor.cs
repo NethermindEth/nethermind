@@ -130,13 +130,7 @@ namespace Nethermind.Evm.TransactionProcessing
             _balBuilder = worldState as IBlockAccessListBuilder;
             _blobBaseFeeCalculator = blobBaseFeeCalculator;
 
-            Ecdsa = new
-#if ZK_EVM
-                ZkEvmEcdsa
-#else
-                EthereumEcdsa
-#endif
-                (specProvider.ChainId);
+            Ecdsa = new EthereumEcdsa(specProvider.ChainId);
 
             _logManager = logManager;
         }

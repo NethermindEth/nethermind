@@ -25,7 +25,7 @@ public static class StatelessExecutor
         {
             ISpecProvider specProvider = GetSpecProvider(chainId);
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            ZkEvmEcdsa ecdsa = new(chainId);
+            EthereumEcdsa ecdsa = new(chainId);
 
             // Recover sender addresses for transactions,
             // as RLP-deserialized blocks don't have them

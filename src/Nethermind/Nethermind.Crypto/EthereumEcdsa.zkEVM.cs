@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto;
 
-public sealed class ZkEvmEcdsa(ulong chainId) : IEthereumEcdsa
+public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
 {
     public ulong ChainId => chainId;
 

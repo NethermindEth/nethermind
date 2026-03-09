@@ -72,7 +72,7 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
 #if ZK_EVM
         Span<byte> result = stackalloc byte[32];
 
-        return ZkEvmEcdsa.RecoverAddressRaw(signature, recoveryId, message, result)
+        return EthereumEcdsa.RecoverAddressRaw(signature, recoveryId, message, result)
             ? result.ToArray() : Empty;
 #else
         Span<byte> publicKey = stackalloc byte[65];
