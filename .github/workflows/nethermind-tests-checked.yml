@@ -28,7 +28,7 @@ jobs:
       matrix:
         variant:
           - label: checked
-            dotnet-args: "-p:DefineConstants=TRACE;DEBUG"
+            dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
             hw-intrinsic: ""
           - label: no-intrinsics
             dotnet-args: ""
@@ -132,7 +132,7 @@ jobs:
       matrix:
         variant:
           - label: checked
-            dotnet-args: "-p:DefineConstants=TRACE;DEBUG"
+            dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
             hw-intrinsic: ""
           - label: no-intrinsics
             dotnet-args: ""
