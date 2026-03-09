@@ -245,7 +245,7 @@ public partial class BlockProcessor(
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
     {
         if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
-        BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
+        BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
         if (tracer.IsTracingRewards)
         {
             for (int i = 0; i < rewards.Length; i++)
