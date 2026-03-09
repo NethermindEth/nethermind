@@ -145,6 +145,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     // See https://eips.ethereum.org/EIPS/eip-7610
     bool IsNonZeroAccount(Address address, out bool accountExists) =>
         (accountExists = AccountExists(address))
-        && (IsContract(address) || GetNonce(address) != 0 || !IsStorageEmpty(address));
+        && (IsContract(address) || !GetNonce(address).IsZero || !IsStorageEmpty(address));
 
 }

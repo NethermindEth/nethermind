@@ -315,7 +315,7 @@ namespace Nethermind.State
             if (accountExists)
             {
                 Account account = _stateProvider.GetAccount(address);
-                return account.IsContract || account.Nonce != 0 || !_persistentStorageProvider.IsStorageEmpty(address);
+                return account.IsContract || !account.Nonce.IsZero || !_persistentStorageProvider.IsStorageEmpty(address);
             }
 
             return false;
