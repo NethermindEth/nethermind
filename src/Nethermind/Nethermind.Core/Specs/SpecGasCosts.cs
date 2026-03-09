@@ -23,28 +23,31 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
     public readonly long TxDataNonZeroMultiplier;
 
 #if DEBUG
+    private readonly long _netMeteredSStoreCost;
     public long NetMeteredSStoreCost
     {
-        get => GetWithFreeGuard(field);
-        init;
+        get => GetWithFreeGuard(_netMeteredSStoreCost);
+        init => _netMeteredSStoreCost = value;
     }
 
+    private readonly long _clearReversalRefund;
     public long ClearReversalRefund
     {
-        get => GetWithFreeGuard(field);
-        init;
+        get => GetWithFreeGuard(_clearReversalRefund);
+        init => _clearReversalRefund = value;
     }
 
+    private readonly long _setReversalRefund;
     public long SetReversalRefund
     {
-        get => GetWithFreeGuard(field);
-        init;
+        get => GetWithFreeGuard(_setReversalRefund);
+        init => _setReversalRefund = value;
     }
 
-    private static long GetWithFreeGuard(long field) =>
-        field == GasCostOf.Free
+    private static long GetWithFreeGuard(long value) =>
+        value == GasCostOf.Free
             ? throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled")
-            : field;
+            : value;
 
 #else
     public readonly long NetMeteredSStoreCost;
@@ -145,17 +148,24 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
     {
         if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
-        return SLoadCost == other.SLoadCost
+        return _hashCode == other._hashCode
+            && SLoadCost == other.SLoadCost
             && BalanceCost == other.BalanceCost
             && ExtCodeCost == other.ExtCodeCost
             && ExtCodeHashCost == other.ExtCodeHashCost
             && CallCost == other.CallCost
             && ExpByteCost == other.ExpByteCost
             && SStoreResetCost == other.SStoreResetCost
-            && NetMeteredSStoreCost == other.NetMeteredSStoreCost
             && TxDataNonZeroMultiplier == other.TxDataNonZeroMultiplier
+#if DEBUG
+            && _netMeteredSStoreCost == other._netMeteredSStoreCost
+            && _clearReversalRefund == other._clearReversalRefund
+            && _setReversalRefund == other._setReversalRefund
+#else
+            && NetMeteredSStoreCost == other.NetMeteredSStoreCost
             && ClearReversalRefund == other.ClearReversalRefund
             && SetReversalRefund == other.SetReversalRefund
+#endif
             && SClearRefund == other.SClearRefund
             && DestroyRefund == other.DestroyRefund
             && MaxBlobGasPerBlock == other.MaxBlobGasPerBlock
