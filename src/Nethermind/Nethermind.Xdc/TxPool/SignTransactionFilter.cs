@@ -7,21 +7,27 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Nethermind.Xdc.TxPool;
 
-internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IBlockTree blockTree, ISpecProvider specProvider) : IIncomingTxFilter
+internal sealed class SignTransactionFilter(
+    ISnapshotManager snapshotManager,
+    IBlockTree blockTree,
+    ISpecProvider specProvider,
+    ITrc21StateReader trc21StateReader) : IIncomingTxFilter
 {
-    private (long, IXdcReleaseSpec) GetSpecAndHeader()
+    private (XdcBlockHeader, long, IXdcReleaseSpec) GetSpecAndHeader()
     {
         XdcBlockHeader header = (XdcBlockHeader)blockTree.Head.Header;
         long currentHeaderNumber = header.Number + 1;
         IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(currentHeaderNumber);
 
-        return (currentHeaderNumber, xdcSpec);
+        return (header, currentHeaderNumber, xdcSpec);
     }
 
     private AcceptTxResult ValidateSignTransaction(Transaction tx, long headerNumber, IXdcReleaseSpec xdcSpec)
@@ -43,27 +49,35 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        (long headerNumber, IXdcReleaseSpec spec) = GetSpecAndHeader();
+        (XdcBlockHeader currentHead, long headerNumber, IXdcReleaseSpec spec) = GetSpecAndHeader();
 
-        if (!tx.IsSpecialTransaction(spec))
+        if (tx.IsSpecialTransaction(spec))
         {
-            return AcceptTxResult.Accepted;
-        }
-
-        if (tx.IsSignTransaction(spec))
-        {
-            AcceptTxResult result = ValidateSignTransaction(tx, headerNumber, spec);
-            if (result != AcceptTxResult.Accepted)
+            if (tx.IsSignTransaction(spec))
             {
-                return result;
+                AcceptTxResult result = ValidateSignTransaction(tx, headerNumber, spec);
+                if (result != AcceptTxResult.Accepted)
+                {
+                    return result;
+                }
+            }
+
+            Snapshot? snapshot = snapshotManager.GetSnapshotByBlockNumber(headerNumber, spec);
+
+            if (!IsEpochCandidate(snapshot, tx.SenderAddress))
+            {
+                return AcceptTxResult.Invalid.WithMessage("Special transaction sender is not an epoch candidate");
             }
         }
 
-        Snapshot? snapshot = snapshotManager.GetSnapshotByBlockNumber(headerNumber, spec);
-
-        if (!IsEpochCandidate(snapshot, tx.SenderAddress))
+        if (spec.IsTipTrc21FeeEnabled && tx.To is not null && tx.SenderAddress is not null)
         {
-            return AcceptTxResult.Invalid.WithMessage("Special transaction sender is not an epoch candidate");
+            Dictionary<Address, UInt256> feeCapacities = trc21StateReader.GetFeeCapacities(currentHead);
+            if (feeCapacities.ContainsKey(tx.To) &&
+                !trc21StateReader.ValidateTransaction(currentHead, tx.SenderAddress, tx.To, tx.Data))
+            {
+                return AcceptTxResult.InsufficientFunds;
+            }
         }
 
         return AcceptTxResult.Accepted;

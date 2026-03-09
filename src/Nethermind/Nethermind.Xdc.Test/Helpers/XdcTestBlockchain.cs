@@ -31,6 +31,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Types;
@@ -39,7 +40,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core.Test.Modules;
 
 namespace Nethermind.Xdc.Test.Helpers;
 
@@ -217,6 +217,8 @@ public class XdcTestBlockchain : TestBlockchain
                 }
 
                 compoundPolicy.Policies.Add(new XdcTxGossipPolicy(SpecProvider, ctx.Resolve<IChainHeadInfoProvider>()));
+                ITrc21StateReader trc21StateReader = ctx.Resolve<ITrc21StateReader>();
+                IAccountFundsAugmentor accountFundsAugmentor = new Trc21AccountFundsAugmentor(BlockTree, SpecProvider, trc21StateReader);
 
                 Nethermind.TxPool.TxPool txPool = new(ctx.Resolve<IEthereumEcdsa>()!,
                     ctx.Resolve<IBlobTxStorage>() ?? NullBlobTxStorage.Instance,
@@ -226,8 +228,10 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<ILogManager>(),
                     new XdcTransactionComparerProvider(SpecProvider, BlockTree).GetDefaultComparer(),
                     compoundPolicy,
-                    new SignTransactionFilter(SnapshotManager, BlockTree, SpecProvider),
-                    ctx.Resolve<ITxValidator>()
+                    new SignTransactionFilter(SnapshotManager, BlockTree, SpecProvider, trc21StateReader),
+                    ctx.Resolve<ITxValidator>(),
+                    false,
+                    accountFundsAugmentor
                 );
 
                 return txPool;

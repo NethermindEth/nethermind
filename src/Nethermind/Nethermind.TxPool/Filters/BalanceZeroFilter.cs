@@ -13,18 +13,28 @@ namespace Nethermind.TxPool.Filters
     internal sealed class BalanceZeroFilter : IIncomingTxFilter
     {
         private readonly bool _thereIsPriorityContract;
+        private readonly IAccountFundsAugmentor _accountFundsAugmentor;
         private readonly ILogger _logger;
 
-        public BalanceZeroFilter(bool thereIsPriorityContract, ILogger logger)
+        public BalanceZeroFilter(bool thereIsPriorityContract, ILogger logger, IAccountFundsAugmentor? accountFundsAugmentor = null)
         {
             _thereIsPriorityContract = thereIsPriorityContract;
+            _accountFundsAugmentor = accountFundsAugmentor ?? NullAccountFundsAugmentor.Instance;
             _logger = logger;
         }
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             AccountStruct account = state.SenderAccount;
-            UInt256 balance = account.Balance;
+            UInt256 additionalFunds = _accountFundsAugmentor.GetAdditionalFunds(tx);
+            bool overflow = UInt256.AddOverflow(account.Balance, additionalFunds, out UInt256 balance);
+            if (overflow)
+            {
+                Metrics.PendingTransactionsBalanceBelowValue++;
+                if (_logger.IsTrace)
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
+                return AcceptTxResult.Int256Overflow;
+            }
 
             bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
             if (!_thereIsPriorityContract && !tx.IsFree() && balance.IsZero)
