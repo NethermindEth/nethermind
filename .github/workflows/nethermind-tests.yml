@@ -126,7 +126,7 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         run: |
           dotnet test --project ${{ matrix.project }}.csproj -c release \
-            ${{ matrix.os.checked && '-p:DefineConstants="TRACE;DEBUG"' || '' }} \
+            ${{ matrix.os.checked && '-p:DefineConstants=TRACE%3BDEBUG' || '' }} \
             ${{ matrix.os.label == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}
 
       - name: Save test outcome
@@ -175,7 +175,7 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release \
-            ${{ matrix.os.checked && '-p:DefineConstants="TRACE;DEBUG"' || '' }}
+            ${{ matrix.os.checked && '-p:DefineConstants=TRACE%3BDEBUG' || '' }}
 
       - name: Save test outcome
         if: success() || failure()
