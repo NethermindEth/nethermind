@@ -17,6 +17,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Test;
@@ -377,9 +378,13 @@ public partial class EngineModuleTests
             new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
         await waitForImprovement;
 
-        while (improvementContextFactory.CreatedContexts.Count < 3)
+        if (improvementContextFactory.CreatedContexts.Count < 3)
         {
-            await improvementContextFactory.WaitForNextImprovementContext(chain.CancellationToken);
+            await Wait.ForEventCondition<ImprovementStartedEventArgs>(
+                chain.CancellationToken,
+                e => improvementContextFactory.ImprovementStarted += e,
+                e => improvementContextFactory.ImprovementStarted -= e,
+                _ => improvementContextFactory.CreatedContexts.Count >= 3);
         }
 
         cts.Cancel();

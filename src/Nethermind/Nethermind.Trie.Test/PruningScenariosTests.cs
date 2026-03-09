@@ -438,6 +438,11 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public Task StartSyncPruneInBackground()
+            {
+                return Task.Run(() => _trieStore.SyncPruneQueue());
+            }
+
             public PruningContext DisposeAndRecreate()
             {
                 _worldStateCloser!.Dispose();
@@ -1329,6 +1334,9 @@ namespace Nethermind.Trie.Test
             }
             ctx.ExitScope();
 
+            // Start pruning explicitly on background thread (avoids relying on async prune delay timing)
+            Task pruneTask = ctx.StartSyncPruneInBackground();
+
             // Wait until pruning actually hits the blocked database write
             ctx.WaitForBlockedWrite();
 
@@ -1362,6 +1370,9 @@ namespace Nethermind.Trie.Test
 
                 await blockTask;
             }
+
+            ctx.UnblockDatabase();
+            await pruneTask;
 
         }
 
