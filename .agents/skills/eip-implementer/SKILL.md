@@ -147,13 +147,13 @@ Your EIP may share validation logic, gas accounting, or data structures with pre
 
 ### Step 7 — Self-Review
 
-Before claiming the implementation is complete, launch a **subagent** to review your changes with fresh eyes. Provide it with:
+Before claiming the implementation is complete, launch **two subagent reviews**:
 
-- The EIP spec (and prerequisite specs from Step 1)
-- The diff of all changed files
-- The `review` skill
+1. **Spec compliance** — provide the EIP number, spec text (and prerequisites from Step 1), diff of all changed files, and the `eip-reviewer` skill. This checks that the implementation matches the spec and tests cover all mandated behaviors.
 
-The subagent should review as if reviewing a PR from someone else — checking for spec compliance, backward compatibility, consensus correctness, and test coverage. If it finds issues, fix them and re-run Step 6.
+2. **Code quality** — provide the diff and the `review` skill. This checks consensus correctness, security, robustness, performance, DI patterns, and breaking changes.
+
+If either review finds CRITICAL or HIGH severity issues, fix them and re-run Step 6.
 
 ## Edge cases
 
