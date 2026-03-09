@@ -11,13 +11,12 @@ public class EraStoreTests
     [TestCase(1000, 16, 32)]
     [TestCase(1000, 16, 64)]
     [TestCase(1000, 50, 100)]
-    [Retry(3)] // Windows: antivirus can briefly lock newly-created .era1 files
     public async Task SmallestAndLowestBlock_ShouldBeCorrect(int chainLength, int start, int end)
     {
         await using IContainer ctx = await EraTestModule.CreateExportedEraEnv(chainLength, start, end);
         string tmpDirectory = ctx.ResolveTempDirPath();
 
-        IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
+        using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
 
         eraStore.FirstBlock.Should().Be(start);
         eraStore.LastBlock.Should().Be(end);

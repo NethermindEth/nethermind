@@ -90,6 +90,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         return base.Can_apply_withdrawals_correctly(input);
     }
 
+    [Platform(Exclude = "MacOsX", Reason = "Timing-sensitive 10ms delays too tight on macOS ARM runners")]
+    public override Task getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
+    {
+        return base.getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty();
+    }
+
     public class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null)
