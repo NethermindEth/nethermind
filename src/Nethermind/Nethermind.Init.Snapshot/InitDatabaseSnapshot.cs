@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using System.Security.Cryptography;
 using Nethermind.Api;
 using Nethermind.Core.Extensions;
@@ -72,7 +73,14 @@ public class InitDatabaseSnapshot : InitDatabase
 
         bool checksumPassed = await VerifyChecksumAsync(snapshotPath, snapshotConfig, checkpoint, cancellationToken).ConfigureAwait(false);
         if (!checksumPassed)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"Deleting invalid snapshot file '{snapshotPath}' and resetting checkpoint for re-download on next run.");
+            if (File.Exists(snapshotPath))
+                File.Delete(snapshotPath);
+            checkpoint.Advance(SnapshotStage.Started);
             return;
+        }
 
         await ExtractAsync(snapshotPath, dbPath, snapshotConfig.StripComponents, checkpoint, cancellationToken).ConfigureAwait(false);
 
@@ -100,6 +108,14 @@ public class InitDatabaseSnapshot : InitDatabase
             {
                 await downloader.DownloadAsync(url, destinationPath, cancellationToken).ConfigureAwait(false);
                 break;
+            }
+            catch (HttpRequestException e) when (
+                e.StatusCode is >= HttpStatusCode.BadRequest and < HttpStatusCode.InternalServerError
+                    and not HttpStatusCode.TooManyRequests)
+            {
+                if (_logger.IsError)
+                    _logger.Error($"Snapshot download failed with permanent HTTP error {(int?)e.StatusCode}. Aborting.");
+                throw;
             }
             catch (Exception e) when (e is IOException or HttpRequestException)
             {

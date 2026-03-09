@@ -96,7 +96,7 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
 
         for (int redirects = 0; redirects < MaxRedirects; redirects++)
         {
-            HttpRequestMessage request = new(HttpMethod.Get, currentUri);
+            using HttpRequestMessage request = new(HttpMethod.Get, currentUri);
             if (existingSize > 0)
                 request.Headers.Range = new RangeHeaderValue(existingSize, null);
 
@@ -111,10 +111,11 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
                     or HttpStatusCode.TemporaryRedirect
                     or HttpStatusCode.PermanentRedirect:
                     {
-                        Uri location = response.Headers.Location
-                                       ?? throw new IOException("Redirect response missing Location header.");
-                        currentUri = new Uri(currentUri, location); // resolve relative redirects
+                        Uri? location = response.Headers.Location;
                         response.Dispose();
+                        if (location is null)
+                            throw new IOException("Redirect response missing Location header.");
+                        currentUri = new Uri(currentUri, location); // resolve relative redirects
                         continue;
                     }
                 // Let the caller handle 416 — it means the file is already complete.

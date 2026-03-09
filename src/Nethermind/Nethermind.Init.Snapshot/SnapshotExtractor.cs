@@ -21,9 +21,9 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
     /// are stripped (equivalent to <c>tar --strip-components</c>).
     /// </summary>
     public Task ExtractAsync(string archivePath, string destinationPath, int stripComponents, CancellationToken cancellationToken) =>
-        Task.Run(() => Extract(archivePath, destinationPath, stripComponents), cancellationToken);
+        Task.Run(() => Extract(archivePath, destinationPath, stripComponents, cancellationToken), cancellationToken);
 
-    private void Extract(string archivePath, string destinationPath, int stripComponents)
+    private void Extract(string archivePath, string destinationPath, int stripComponents, CancellationToken cancellationToken)
     {
         if (_logger.IsInfo)
             _logger.Info($"Extracting snapshot to {destinationPath}. Do not interrupt!");
@@ -34,7 +34,7 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         if (IsZip(extension))
             ExtractZip(archivePath, destinationPath);
         else if (IsTarArchive(extension, innerExtension))
-            ExtractTar(archivePath, destinationPath, extension, stripComponents);
+            ExtractTar(archivePath, destinationPath, extension, stripComponents, cancellationToken);
         else
             throw new NotSupportedException($"Unsupported snapshot archive format: {archivePath}");
     }
@@ -43,12 +43,12 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         extension is ".zip";
 
     private static bool IsTarArchive(string extension, string innerExtension) =>
-        extension is ".zst" or ".zstd" or ".gz" or ".bz2" or ".xz" || innerExtension == ".tar";
+        extension is ".tar" or ".zst" or ".zstd" or ".gz" || innerExtension == ".tar";
 
     private static void ExtractZip(string archivePath, string destinationPath) =>
         ZipFile.ExtractToDirectory(archivePath, destinationPath);
 
-    private static void ExtractTar(string archivePath, string destinationPath, string extension, int stripComponents)
+    private static void ExtractTar(string archivePath, string destinationPath, string extension, int stripComponents, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(destinationPath);
 
@@ -61,6 +61,8 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         TarEntry? entry;
         while ((entry = tarReader.GetNextEntry()) is not null)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             string? strippedPath = StripLeadingComponents(entry.Name, stripComponents);
             if (strippedPath is null)
                 continue;
