@@ -1,4 +1,4 @@
-name: Nethermind checked tests
+name: Nethermind extra test variants
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,12 +20,19 @@ defaults:
 
 jobs:
   tests:
-    name: Run ${{ matrix.project }} [checked]
+    name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
     continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
+        variant:
+          - label: checked
+            dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
+            hw-intrinsic: ""
+          - label: no-intrinsics
+            dotnet-args: ""
+            hw-intrinsic: "0"
         project:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
@@ -98,9 +105,11 @@ jobs:
       - name: ${{ matrix.project }}
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
+        env:
+          DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
         run: |
           dotnet test --project ${{ matrix.project }}.csproj -c release \
-            -p:DefineConstants=TRACE%3BDEBUG
+            ${{ matrix.variant.dotnet-args }}
 
       - name: Save test outcome
         if: success() || failure()
@@ -110,17 +119,24 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.project }}-checked-outcome
+          name: ${{ matrix.project }}-${{ matrix.variant.label }}-outcome
           path: test.outcome
           retention-days: 1
 
   tests-chunked:
-    name: Run Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }}) [checked]
+    name: Run Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }}) [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
     continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
+        variant:
+          - label: checked
+            dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
+            hw-intrinsic: ""
+          - label: no-intrinsics
+            dotnet-args: ""
+            hw-intrinsic: "0"
         chunk: [1of4, 2of4, 3of4, 4of4]
     steps:
       - name: Check out repository
@@ -136,9 +152,10 @@ jobs:
         working-directory: src/Nethermind/Ethereum.Legacy.Blockchain.Test
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
+          DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
         run: |
           dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release \
-            -p:DefineConstants=TRACE%3BDEBUG
+            ${{ matrix.variant.dotnet-args }}
 
       - name: Save test outcome
         if: success() || failure()
@@ -148,7 +165,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Ethereum.Legacy.Blockchain.Test-${{ matrix.chunk }}-checked-outcome
+          name: Ethereum.Legacy.Blockchain.Test-${{ matrix.chunk }}-${{ matrix.variant.label }}-outcome
           path: test.outcome
           retention-days: 1
 
