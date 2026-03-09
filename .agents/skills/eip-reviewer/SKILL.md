@@ -49,7 +49,7 @@ Launch up to 3 sub-checks with the EIP spec text and diff.
 
 ### A: Spec Fidelity
 - **Constants**: Named constants with exact spec values — no magic numbers
-- **Formulas**: Implementation matches spec pseudocode. Watch: off-by-one in `ceil()`, `long` truncation of `UInt256`, rounding direction
+- **Formulas**: Implementation matches spec pseudocode. Watch: off-by-one in `ceil()`, `long` truncation of `UInt256`, rounding direction. When the spec describes the same value in multiple places (parameter table + pseudocode), verify they are the same charge before reporting as missing — cross-reference the parameter table breakdown against pseudocode line items
 - **Conditionals**: Every "MUST revert if..." has a branch. Missing revert = CRITICAL
 
 ### B: Tests + Backward Compat
