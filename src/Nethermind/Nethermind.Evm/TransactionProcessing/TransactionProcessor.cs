@@ -764,11 +764,13 @@ namespace Nethermind.Evm.TransactionProcessing
                         }
                     }
 
+                    bool eip7708Enabled = spec.IsEip7708Enabled;
+                    bool tracingRefunds = tracer.IsTracingRefunds;
                     foreach (Address toBeDestroyed in substate.DestroyList)
                     {
                         if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
 
-                        if (spec.IsEip7708Enabled)
+                        if (eip7708Enabled)
                         {
                             UInt256 balance = WorldState.GetBalance(toBeDestroyed);
                             if (!balance.IsZero)
@@ -780,8 +782,11 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.ClearStorage(toBeDestroyed);
                         WorldState.DeleteAccount(toBeDestroyed);
 
-                        if (tracer.IsTracingRefunds)
+
+                        if (tracingRefunds)
+                        {
                             tracer.ReportRefund(spec.GasCosts.DestroyRefund);
+                        }
                     }
 
                     statusCode = StatusCode.Success;
