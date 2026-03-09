@@ -229,11 +229,6 @@ namespace Nethermind.Xdc
 
             // Get XDC spec for this round
             IXdcReleaseSpec spec = _specProvider.GetXdcSpec(roundParent, currentRound);
-            if (spec == null)
-            {
-                _logger.Error($"Round {currentRound}: Failed to get XDC spec, skipping");
-                return;
-            }
 
             // Get epoch info and check for epoch switch
             EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(roundParent);
@@ -411,7 +406,7 @@ namespace Nethermind.Xdc
             }
 
             var fallbackPeriod = spec.TimeoutPeriod / 2;
-            if ((long)parent.Timestamp + fallbackPeriod < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+            if ((long)parent.Timestamp + fallbackPeriod < now)
             {
                 // fallback to mining without accumulating enough votes
                 return true;
