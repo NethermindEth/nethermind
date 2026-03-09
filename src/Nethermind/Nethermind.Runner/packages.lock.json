@@ -716,7 +716,6 @@
           "Autofac": "[9.0.0, )",
           "Autofac.Extensions.DependencyInjection": "[10.0.0, )",
           "FastEnum": "[2.0.6, )",
-          "Faster.Map": "[8.1.1, )",
           "Microsoft.IO.RecyclableMemoryStream": "[3.0.1, )",
           "Microsoft.IdentityModel.JsonWebTokens": "[8.15.0, )",
           "Nethermind.Crypto.SecP256k1": "[1.5.0, )",
@@ -1295,15 +1294,6 @@
         "dependencies": {
           "FastEnum.Core": "2.0.6",
           "FastEnum.Generators": "2.0.6"
-        }
-      },
-      "Faster.Map": {
-        "type": "CentralTransitive",
-        "requested": "[8.1.1, )",
-        "resolved": "8.1.1",
-        "contentHash": "x20BLFApZ/vzpmQsvsUC9PpDPqZp0s+pHsRdzFjlikGUPksMuGv8tPcnzlxHHy4Tbey46vjoe/P6LV65JFryQA==",
-        "dependencies": {
-          "System.IO.Hashing": "10.0.3"
         }
       },
       "Google.Protobuf": {
