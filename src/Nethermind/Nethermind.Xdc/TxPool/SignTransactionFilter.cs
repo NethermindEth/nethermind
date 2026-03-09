@@ -9,6 +9,7 @@ using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
+using System.Linq;
 
 namespace Nethermind.Xdc.TxPool;
 
@@ -42,12 +43,12 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (!tx.IsSpecialTransaction((IXdcReleaseSpec)specProvider.GetFinalSpec()))
+        (long headerNumber, IXdcReleaseSpec spec) = GetSpecAndHeader();
+
+        if (!tx.IsSpecialTransaction(spec))
         {
             return AcceptTxResult.Accepted;
         }
-
-        (long headerNumber, IXdcReleaseSpec spec) = GetSpecAndHeader();
 
         if (tx.IsSignTransaction(spec))
         {
@@ -75,14 +76,6 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
             return false;
         }
 
-        foreach (Address candidate in snapshot.NextEpochCandidates)
-        {
-            if (candidate == senderAddress)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return snapshot.NextEpochCandidates.Contains(senderAddress);
     }
 }
