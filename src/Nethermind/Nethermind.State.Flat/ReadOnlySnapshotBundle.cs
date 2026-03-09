@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -81,18 +82,18 @@ public sealed class ReadOnlySnapshotBundle(
         return -1;
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
+    [SkipLocalsInit]
+    public StorageValue? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
     {
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorage(address, index, out SlotValue? slotValue))
+            if (snapshots[i].TryGetStorage(address, index, out StorageValue? slotValue))
             {
-                byte[]? res = slotValue?.ToEvmBytes();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
-                return res;
+                return slotValue;
             }
 
             if (i <= selfDestructStateIdx)
@@ -101,15 +102,14 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        SlotValue outSlotValue = new();
+        Unsafe.SkipInit(out StorageValue outStorageValue);
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        persistenceReader.TryGetSlot(address, index, ref outSlotValue);
-        byte[]? value = outSlotValue.ToEvmBytes();
+        bool found = persistenceReader.TryGetSlot(address, index, ref outStorageValue);
 
         if (recordDetailedMetrics)
         {
-            if (value is null || value.IsZero())
+            if (!found || outStorageValue.IsZero)
             {
                 Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceNullLabel);
             }
@@ -119,7 +119,7 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        return value;
+        return (!found || outStorageValue.IsZero) ? null : outStorageValue;
     }
 
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)

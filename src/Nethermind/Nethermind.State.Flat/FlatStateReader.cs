@@ -45,7 +45,8 @@ public class FlatStateReader(
             return Array.Empty<byte>();
         }
 
-        return reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address)) ?? [];
+        StorageValue? slot = reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address));
+        return slot?.ToEvmBytes() ?? [];
     }
 
     public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb[codeHash.Bytes];

@@ -296,8 +296,8 @@ public class PersistenceManagerTests
         snapshot.Content.Accounts[TestItem.AddressB] = new Account(2, 200);
 
         // Add storage
-        snapshot.Content.Storages[(TestItem.AddressA, (UInt256)1)] = SlotValue.FromSpanWithoutLeadingZero([42]);
-        snapshot.Content.Storages[(TestItem.AddressA, (UInt256)2)] = SlotValue.FromSpanWithoutLeadingZero([99]);
+        snapshot.Content.Storages[(TestItem.AddressA, (UInt256)1)] = StorageValue.FromSpanWithoutLeadingZero([42]);
+        snapshot.Content.Storages[(TestItem.AddressA, (UInt256)2)] = StorageValue.FromSpanWithoutLeadingZero([99]);
 
         // Add trie nodes
         TreePath path = TreePath.Empty;
@@ -313,8 +313,8 @@ public class PersistenceManagerTests
         // Assert
         writeBatch.Received().SetAccount(TestItem.AddressA, Arg.Any<Account?>());
         writeBatch.Received().SetAccount(TestItem.AddressB, Arg.Any<Account?>());
-        writeBatch.Received().SetStorage(TestItem.AddressA, (UInt256)1, Arg.Any<SlotValue?>());
-        writeBatch.Received().SetStorage(TestItem.AddressA, (UInt256)2, Arg.Any<SlotValue?>());
+        writeBatch.Received().SetStorage(TestItem.AddressA, (UInt256)1, Arg.Any<StorageValue?>());
+        writeBatch.Received().SetStorage(TestItem.AddressA, (UInt256)2, Arg.Any<StorageValue?>());
         writeBatch.Received().SetStateTrieNode(Arg.Any<TreePath>(), Arg.Any<TrieNode>());
         Assert.That(node.IsPersisted, Is.True);
     }

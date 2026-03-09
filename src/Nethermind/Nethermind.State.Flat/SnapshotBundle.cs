@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -24,7 +25,7 @@ public sealed class SnapshotBundle : IDisposable
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<AddressAsKey, Account?> _changedAccounts = null!;
-    private ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> _changedSlots = null!;
+    private ConcurrentDictionary<(AddressAsKey, UInt256), StorageValue?> _changedSlots = null!;
     private ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes = null!;
     private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes = null!;
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses = null!;
@@ -108,13 +109,14 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.DetermineSelfDestructSnapshotIdx(address);
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
+    [SkipLocalsInit]
+    public StorageValue? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
     {
         GuardDispose();
 
-        if (_changedSlots.TryGetValue((address, index), out SlotValue? slotValue))
+        if (_changedSlots.TryGetValue((address, index), out StorageValue? slotValue))
         {
-            return slotValue?.ToEvmBytes();
+            return slotValue;
         }
 
         // Self-destructed at the point of the latest change
@@ -128,7 +130,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             if (_snapshots[i].TryGetStorage(address, index, out slotValue))
             {
-                return slotValue?.ToEvmBytes();
+                return slotValue;
             }
 
             if (i <= currentBundleSelfDestructIdx)
@@ -325,19 +327,12 @@ public sealed class SnapshotBundle : IDisposable
 
     public void SetAccount(AddressAsKey addr, Account? account) => _changedAccounts[addr] = account;
 
-    public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
+    public void SetChangedSlot(AddressAsKey address, in UInt256 index, in StorageValue value)
     {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
         // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
         // lower down.
-        if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
-        {
-            _changedSlots[(address, index)] = null;
-        }
-        else
-        {
-            _changedSlots[(address, index)] = SlotValue.FromSpanWithoutLeadingZero(value);
-        }
+        _changedSlots[(address, index)] = value.IsZero ? null : value;
     }
 
     // Also called SelfDestruct
@@ -370,7 +365,7 @@ public sealed class SnapshotBundle : IDisposable
             }
 
             using ArrayPoolListRef<(AddressAsKey, UInt256)> slotKeysToRemove = new(16);
-            foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in _changedSlots)
+            foreach (KeyValuePair<(AddressAsKey, UInt256), StorageValue?> kv in _changedSlots)
             {
                 if (kv.Key.Item1.Value == address)
                 {

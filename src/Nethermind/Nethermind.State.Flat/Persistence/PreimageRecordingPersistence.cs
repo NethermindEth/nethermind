@@ -59,7 +59,7 @@ public class PreimageRecordingPersistence : IPersistence
             inner.SetAccount(addr, account);
         }
 
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
+        public void SetStorage(Address addr, in UInt256 slot, in StorageValue? value)
         {
             RecordAddressPreimage(addr);
             RecordSlotPreimage(slot);
@@ -70,7 +70,7 @@ public class PreimageRecordingPersistence : IPersistence
 
         public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) => inner.SetStorageTrieNode(address, path, tnValue);
 
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value)
+        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in StorageValue? value)
         {
             byte[]? addrPreimage = preimageDb.Get(addrHash.Bytes[..PreimageLookupSize]);
             byte[]? slotPreimage = preimageDb.Get(slotHash.Bytes[..PreimageLookupSize]);

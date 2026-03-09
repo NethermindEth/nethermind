@@ -123,10 +123,10 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
     {
         public void SelfDestruct(Address addr) => inner.SelfDestruct(addr);
         public void SetAccount(Address addr, Account? account) => inner.SetAccount(addr, account);
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) => inner.SetStorage(addr, slot, value);
+        public void SetStorage(Address addr, in UInt256 slot, in StorageValue? value) => inner.SetStorage(addr, slot, value);
         public void SetStateTrieNode(in TreePath path, TrieNode tnValue) => inner.SetStateTrieNode(path, tnValue);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) => inner.SetStorageTrieNode(address, path, tnValue);
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value) => inner.SetStorageRaw(addrHash, slotHash, value);
+        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in StorageValue? value) => inner.SetStorageRaw(addrHash, slotHash, value);
         public void SetAccountRaw(Hash256 addrHash, Account account) => inner.SetAccountRaw(addrHash, account);
 
         public void Dispose()

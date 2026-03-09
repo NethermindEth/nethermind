@@ -152,31 +152,31 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         return ref inner.GetCodeHash(address);
     }
 
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public StorageValue GetOriginal(in StorageCell storageCell)
     {
         RecordSlot(storageCell);
         return inner.GetOriginal(in storageCell);
     }
 
-    public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public StorageValue Get(in StorageCell storageCell)
     {
         RecordSlot(storageCell);
         return inner.Get(in storageCell);
     }
 
-    public void Set(in StorageCell storageCell, byte[] newValue)
+    public void Set(in StorageCell storageCell, in StorageValue newValue)
     {
         RecordSlot(storageCell);
-        inner.Set(in storageCell, newValue);
+        inner.Set(in storageCell, in newValue);
     }
 
     // Transient state does not need trie node capture as it's purely in-memory storage, no trie representation whatsoever
-    public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
+    public StorageValue GetTransientState(in StorageCell storageCell)
         => inner.GetTransientState(in storageCell);
 
     // Transient state does not need trie node capture as it's purely in-memory storage, no trie representation whatsoever
-    public void SetTransientState(in StorageCell storageCell, byte[] newValue)
-        => inner.SetTransientState(in storageCell, newValue);
+    public void SetTransientState(in StorageCell storageCell, in StorageValue newValue)
+        => inner.SetTransientState(in storageCell, in newValue);
 
     public void Reset(bool resetBlockChanges = true) => inner.Reset(resetBlockChanges);
 

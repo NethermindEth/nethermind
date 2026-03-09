@@ -73,7 +73,7 @@ public class WorldStateBenchmarks
             Address account = _contracts[rand.Next(0, _contracts.Length)];
             UInt256 slot = (UInt256)rand.NextLong();
             rand.NextBytes(randomBuffer);
-            worldState.Set(new StorageCell(account, slot), randomBuffer.ToArray());
+            worldState.Set(new StorageCell(account, slot), new StorageValue(randomBuffer));
             _slots[i] = (account, slot);
         }
 
@@ -86,7 +86,7 @@ public class WorldStateBenchmarks
             UInt256 slot = (UInt256)rand.NextLong();
             rand.NextBytes(randomBuffer);
             _bigContractSlots[i] = slot;
-            worldState.Set(new StorageCell(_bigContract, slot), randomBuffer.ToArray());
+            worldState.Set(new StorageCell(_bigContract, slot), new StorageValue(randomBuffer));
         }
 
         worldState.Commit(_releaseSpec);
@@ -174,7 +174,7 @@ public class WorldStateBenchmarks
             else
             {
                 rand.NextBytes(randomBuffer);
-                worldState.Set(new StorageCell(slot.Account, slot.Slot), randomBuffer.ToArray());
+                worldState.Set(new StorageCell(slot.Account, slot.Slot), new StorageValue(randomBuffer));
             }
         }
 
@@ -217,7 +217,7 @@ public class WorldStateBenchmarks
             else
             {
                 rand.NextBytes(randomBuffer);
-                worldState.Set(new StorageCell(_bigContract, slot), randomBuffer.ToArray());
+                worldState.Set(new StorageCell(_bigContract, slot), new StorageValue(randomBuffer));
             }
         }
 

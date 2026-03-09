@@ -115,7 +115,7 @@ public partial class DebugRpcModuleTests
             // the slot beforehand via GetOriginal for gas computation).
             // Set() records the slot in _storageSlots but does NOT cause trie traversal.
             StorageCell storageCell = new(contractAddress, storageSlot);
-            witnessState.Set(in storageCell, [99]); // some random value (does not matter)
+            witnessState.Set(in storageCell, new StorageValue([99])); // some random value (does not matter)
 
             // Verify no new trie nodes were captured by the trie store during Set()
             capturingTrieStore.TouchedNodesRlp.Count().Should().Be(capturedNodesBefore,

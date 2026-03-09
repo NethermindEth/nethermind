@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -62,26 +63,24 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     }
 
     public Hash256 RootHash => _tree.RootHash;
-    public byte[] Get(in UInt256 index)
+    [SkipLocalsInit]
+    public StorageValue Get(in UInt256 index)
     {
-        byte[]? value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx);
-        if (value is null || value.Length == 0)
-        {
-            value = StorageTree.ZeroBytes;
-        }
+        StorageValue value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx)
+                             ?? StorageValue.Zero;
 
         if (_config.VerifyWithTrie)
         {
-            byte[] treeValue = _tree.Get(index);
-            if (!Bytes.AreEqual(treeValue, value))
+            StorageValue treeValue = _tree.GetStorageValue(index);
+            if (treeValue != value)
             {
-                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
+                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue.ToEvmBytes().ToHexString()} vs Flat: {value.ToEvmBytes().ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
             }
         }
 
-        HintGet(index, value);
+        HintGet(index, null);
 
-        return value!;
+        return value;
     }
 
     // Note: VERY hot code.
@@ -116,9 +115,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         return true;
     }
 
-    public byte[] Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
+    public StorageValue Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
 
-    private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
+    private void Set(in UInt256 slot, in StorageValue value) => _bundle.SetChangedSlot(_address, in slot, in value);
 
     public void SelfDestruct()
     {
@@ -147,10 +146,10 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch,
         FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, in StorageValue value)
         {
-            storageTreeBulkWriteBatch.Set(in index, value);
-            storageTree.Set(index, value);
+            storageTreeBulkWriteBatch.Set(in index, in value);
+            storageTree.Set(in index, in value);
         }
 
         public void Clear()

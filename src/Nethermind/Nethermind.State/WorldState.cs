@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -118,30 +119,33 @@ namespace Nethermind.State
             return _stateProvider.IsContract(address);
         }
 
-        public byte[] GetOriginal(in StorageCell storageCell)
+        [SkipLocalsInit]
+        public StorageValue GetOriginal(in StorageCell storageCell)
         {
             DebugGuardInScope();
             return _persistentStorageProvider.GetOriginal(storageCell);
         }
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        [SkipLocalsInit]
+        public StorageValue Get(in StorageCell storageCell)
         {
             DebugGuardInScope();
             return _persistentStorageProvider.Get(storageCell);
         }
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, in StorageValue newValue)
         {
             DebugGuardInScope();
-            _persistentStorageProvider.Set(storageCell, newValue);
+            _persistentStorageProvider.Set(in storageCell, in newValue);
         }
-        public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
+        [SkipLocalsInit]
+        public StorageValue GetTransientState(in StorageCell storageCell)
         {
             DebugGuardInScope();
             return _transientStorageProvider.Get(storageCell);
         }
-        public void SetTransientState(in StorageCell storageCell, byte[] newValue)
+        public void SetTransientState(in StorageCell storageCell, in StorageValue newValue)
         {
             DebugGuardInScope();
-            _transientStorageProvider.Set(storageCell, newValue);
+            _transientStorageProvider.Set(in storageCell, in newValue);
         }
         public void Reset(bool resetBlockChanges = true)
         {

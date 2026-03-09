@@ -61,7 +61,7 @@ public class TrieStoreScopeProviderTests
 
                 using (var storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
                 {
-                    storageSet.Set(1, [1, 2, 3]);
+                    storageSet.Set(1, StorageValue.FromSpanWithoutLeadingZero([1, 2, 3]));
                 }
             }
 
@@ -75,7 +75,7 @@ public class TrieStoreScopeProviderTests
         using (var scope = scopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             var storage = scope.CreateStorageTree(TestItem.AddressA);
-            storage.Get(1).Should().BeEquivalentTo([1, 2, 3]);
+            storage.Get(1).ToEvmBytes().Should().BeEquivalentTo((byte[])[1, 2, 3]);
         }
     }
 
@@ -112,7 +112,7 @@ public class TrieStoreScopeProviderTests
         {
             using (var storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
             {
-                storageSet.Set(1, [1, 2, 3]);
+                storageSet.Set(1, StorageValue.FromSpanWithoutLeadingZero([1, 2, 3]));
             }
 
             writeBatch.Set(TestItem.AddressA, null);
