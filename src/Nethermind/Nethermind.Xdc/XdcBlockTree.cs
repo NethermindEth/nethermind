@@ -95,8 +95,6 @@ internal class XdcBlockTree : BlockTree
     }
 
     // Allow overriding head with self-mined blocks with the same TD
-    private static bool IsSameTdButSelfMined(XdcBlockHeader newHeader, XdcBlockHeader oldHeader)
-    {
-        return newHeader.TotalDifficulty == oldHeader.TotalDifficulty && newHeader.IsSelfMined;
-    }
+    private static bool IsSameTdButSelfMined(XdcBlockHeader newHeader, XdcBlockHeader oldHeader) =>
+        newHeader.TotalDifficulty == oldHeader.TotalDifficulty && newHeader.IsSelfMined;
 }
