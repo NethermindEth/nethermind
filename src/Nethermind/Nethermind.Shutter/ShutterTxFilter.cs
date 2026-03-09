@@ -40,6 +40,6 @@ public class ShutterTxFilter(
             return AcceptTxResult.Invalid;
         }
 
-        return wellFormed ? AcceptTxResult.Accepted : AcceptTxResult.Invalid;
+        return AcceptTxResult.Accepted;
     }
 }
