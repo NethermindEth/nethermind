@@ -15,11 +15,10 @@ namespace Nethermind.Core.Buffers;
 /// underlying array can be null and this struct is meant to be non nullable, checking the `IsNull` property to check
 /// if it represent null.
 /// </summary>
-public readonly struct CappedArray<T>
-    where T : struct
+public readonly struct CappedArray<T> where T : struct
 {
-    private readonly static CappedArray<T> _null = default;
-    private readonly static CappedArray<T> _empty = new CappedArray<T>([]);
+    private static readonly CappedArray<T> _null = default;
+    private static readonly CappedArray<T> _empty = new([]);
     public static ref readonly CappedArray<T> Null => ref _null;
     public static ref readonly CappedArray<T> Empty => ref _empty;
     public static object NullBoxed { get; } = _null;
@@ -43,16 +42,9 @@ public readonly struct CappedArray<T>
         }
     }
 
-    public static implicit operator ReadOnlySpan<T>(in CappedArray<T> array)
-    {
-        return array.AsSpan();
-    }
+    public static implicit operator ReadOnlySpan<T>(in CappedArray<T> array) => array.AsSpan();
 
-    public static implicit operator CappedArray<T>(T[]? array)
-    {
-        if (array is null) return default;
-        return new CappedArray<T>(array);
-    }
+    public static implicit operator CappedArray<T>(T[]? array) => array is null ? default : new CappedArray<T>(array);
 
     public T this[int index]
     {
@@ -79,32 +71,20 @@ public readonly struct CappedArray<T>
     }
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowArgumentOutOfRangeException()
-    {
-        throw new ArgumentOutOfRangeException();
-    }
+    private static void ThrowArgumentOutOfRangeException() => throw new ArgumentOutOfRangeException();
 
-    public readonly int Length => _length;
-    public readonly int UnderlyingLength => _array?.Length ?? 0;
+    public int Length => _length;
+    public int UnderlyingLength => _array?.Length ?? 0;
+    public T[]? UnderlyingArray => _array;
+    public bool IsUncapped => _length == _array?.Length;
+    public bool IsNull => _array is null;
+    public bool IsNotNull => _array is not null;
+    public bool IsNullOrEmpty => _length == 0;
+    public bool IsNotNullOrEmpty => _length > 0;
+    public Span<T> AsSpan() => _array.AsSpan(0, _length);
+    public Span<T> AsSpan(int start, int length) => _array.AsSpan(start, length);
 
-    public readonly T[]? UnderlyingArray => _array;
-    public readonly bool IsUncapped => _length == _array?.Length;
-    public readonly bool IsNull => _array is null;
-    public readonly bool IsNotNull => _array is not null;
-    public readonly bool IsNullOrEmpty => _length == 0;
-    public readonly bool IsNotNullOrEmpty => _length > 0;
-
-    public readonly Span<T> AsSpan()
-    {
-        return _array.AsSpan(0, _length);
-    }
-
-    public readonly Span<T> AsSpan(int start, int length)
-    {
-        return _array.AsSpan(start, length);
-    }
-
-    public readonly T[]? ToArray()
+    public T[]? ToArray()
     {
         T[]? array = _array;
 
@@ -114,18 +94,10 @@ public readonly struct CappedArray<T>
         return AsSpan().ToArray();
     }
 
-    public override string? ToString() =>
-        typeof(T) == typeof(byte) ?
-            MemoryMarshal.AsBytes(AsSpan()).ToHexString(withZeroX: true) :
-            base.ToString();
+    public override string? ToString() => typeof(T) == typeof(byte)
+        ? MemoryMarshal.AsBytes(AsSpan()).ToHexString(withZeroX: true)
+        : base.ToString();
 
-    public readonly ArraySegment<T> AsArraySegment()
-    {
-        return AsArraySegment(0, _length);
-    }
-
-    public readonly ArraySegment<T> AsArraySegment(int start, int length)
-    {
-        return new ArraySegment<T>(_array!, start, length);
-    }
+    public ArraySegment<T> AsArraySegment() => AsArraySegment(0, _length);
+    public ArraySegment<T> AsArraySegment(int start, int length) => new(_array!, start, length);
 }
