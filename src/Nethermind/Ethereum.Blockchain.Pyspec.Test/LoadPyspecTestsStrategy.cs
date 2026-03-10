@@ -53,7 +53,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         DirectoryInfo dir = new(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            if (dir.Parent != null && string.Equals(dir.Name, "bin", StringComparison.OrdinalIgnoreCase)
+            if (dir.Parent is not null && string.Equals(dir.Name, "bin", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(dir.Parent.Name, "artifacts", StringComparison.OrdinalIgnoreCase))
             {
                 return Path.Combine(dir.Parent.FullName, "eest");
