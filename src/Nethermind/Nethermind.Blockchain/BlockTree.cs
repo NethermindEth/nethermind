@@ -1764,6 +1764,13 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Resets internal in-memory state for testing purposes.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Thread Safety:</b> This method is NOT thread-safe. Callers MUST ensure no concurrent
+        /// block processing or sync operations are occurring. In test scenarios, this typically means
+        /// stopping the node before calling this method.
+        /// </para>
+        /// </remarks>
         void IResettableBlockTree.ResetInternalState()
         {
             Head = null;
@@ -1771,6 +1778,10 @@ namespace Nethermind.Blockchain
             BestSuggestedBody = null;
             BestKnownNumber = 0;
             BestKnownBeaconNumber = 0;
+            BestSuggestedBeaconHeader = null;
+            BestSuggestedBeaconBody = null;
+            FinalizedHash = null;
+            SafeHash = null;
         }
     }
 }
