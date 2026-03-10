@@ -256,17 +256,19 @@ internal static partial class EvmInstructions
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
         // For certain specs, charge gas if transferring to a dead account.
+        // Use ConsumeNewAccountCreation to track StorageGrowth (matching Nitro's CreateBySelfdestructGas)
         if (clearEmpty && !result.IsZero && state.IsDeadAccount(inheritor))
         {
-            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
+            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas))
                 goto OutOfGas;
         }
 
         // If account creation rules apply, ensure gas is charged for new accounts.
+        // Use ConsumeNewAccountCreation to track StorageGrowth (matching Nitro's CreateBySelfdestructGas)
         bool inheritorAccountExists = state.AccountExists(inheritor);
         if (!clearEmpty && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
         {
-            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
+            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas))
                 goto OutOfGas;
         }
 
