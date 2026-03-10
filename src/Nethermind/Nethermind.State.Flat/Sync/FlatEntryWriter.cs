@@ -123,7 +123,7 @@ internal static class FlatEntryWriter
         public BranchInlineChildLeafEnumerator(ref TreePath path, TrieNode node)
         {
             _path = ref path;
-            _rlp = node.FullRlp;
+            _rlp = node.FullRlp.AsSpan();
             _originalPathLength = path.Length;
             _index = -1;
             _currentFullPath = default;
