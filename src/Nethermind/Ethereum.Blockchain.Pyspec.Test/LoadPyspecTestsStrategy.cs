@@ -42,27 +42,10 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
 
     /// <summary>
     /// Returns a stable cache directory for EEST fixtures that survives dotnet rebuilds.
-    /// Walks up from <see cref="AppContext.BaseDirectory"/> (artifacts/bin/Project/config/)
-    /// to the artifacts directory and uses an <c>eest</c> subfolder instead of <c>bin</c>.
-    /// Falls back to <see cref="AppContext.BaseDirectory"/> if the expected layout is not found.
+    /// Uses the system temp directory with a stable subfolder name.
     /// </summary>
-    private static string GetFixturesCacheDirectory()
-    {
-        // AppContext.BaseDirectory is typically: .../artifacts/bin/Ethereum.Blockchain.Pyspec.Test/release/
-        // We want:                              .../artifacts/eest/
-        DirectoryInfo dir = new(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            if (dir.Parent is not null && string.Equals(dir.Name, "bin", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(dir.Parent.Name, "artifacts", StringComparison.OrdinalIgnoreCase))
-            {
-                return Path.Combine(dir.Parent.FullName, "eest");
-            }
-            dir = dir.Parent;
-        }
-
-        return AppContext.BaseDirectory;
-    }
+    private static string GetFixturesCacheDirectory() =>
+        Path.Combine(Path.GetTempPath(), "nethermind-eest");
 
     private static readonly string s_completedMarker = ".completed";
 
