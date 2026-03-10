@@ -49,6 +49,8 @@ public class BlockchainProcessorTests
 
             private readonly HashSet<Hash256> _rootProcessed = new();
 
+            private readonly SemaphoreSlim _signal = new(0);
+
             public BranchProcessorMock(ILogManager logManager, IStateReader stateReader)
             {
                 _logger = logManager.GetClassLogger();
@@ -59,12 +61,14 @@ public class BlockchainProcessorTests
             {
                 _logger.Info($"Allowing {hash} to process");
                 _allowed.Add(hash);
+                _signal.Release();
             }
 
             public void AllowToFail(Hash256 hash)
             {
                 _logger.Info($"Allowing {hash} to fail");
                 _allowedToFail.Add(hash);
+                _signal.Release();
             }
 
             public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
@@ -102,7 +106,7 @@ public class BlockchainProcessorTests
 
                     if (notYet)
                     {
-                        Thread.Sleep(20);
+                        _signal.Wait(ProcessingWait);
                     }
                     else
                     {
@@ -131,6 +135,7 @@ public class BlockchainProcessorTests
             private readonly ILogger _logger;
             private readonly ConcurrentDictionary<Hash256, object> _allowed = new();
             private readonly ConcurrentDictionary<Hash256, object> _allowedToFail = new();
+            private readonly SemaphoreSlim _signal = new(0);
 
             public RecoveryStepMock(ILogManager logManager)
             {
@@ -141,6 +146,7 @@ public class BlockchainProcessorTests
             {
                 _logger.Info($"Allowing {hash} to recover");
                 _allowed[hash] = new object();
+                _signal.Release();
             }
 
             public void RecoverData(Block block)
@@ -163,7 +169,7 @@ public class BlockchainProcessorTests
                             throw new Exception();
                         }
 
-                        Thread.Sleep(20);
+                        _signal.Wait(ProcessingWait);
                         continue;
                     }
 
