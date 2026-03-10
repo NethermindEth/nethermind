@@ -219,7 +219,8 @@ internal static partial class EvmInstructions
         // If Shanghai DDoS protection is active, charge the appropriate gas cost.
         if (spec.UseShanghaiDDosProtection)
         {
-            TGasPolicy.ConsumeSelfDestructGas(ref gas);
+            if (!TGasPolicy.ConsumeSelfDestructGas(ref gas))
+                goto OutOfGas;
         }
 
         // Pop the inheritor address from the stack; signal underflow if missing.
@@ -233,17 +234,29 @@ internal static partial class EvmInstructions
 
         Address executingAccount = vmState.Env.ExecutingAccount;
         bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
+        bool selfdestructOnlyOnSameTx = spec.SelfdestructOnlyOnSameTransaction;
+        bool clearEmpty = spec.ClearEmptyAccountWhenTouched;
         // Mark the executing account for destruction if allowed.
-        if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
+        if (!selfdestructOnlyOnSameTx || createInSameTx)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
         // Retrieve the current balance for transfer.
         UInt256 result = state.GetBalance(executingAccount);
+
+        if (executingAccount == inheritor)
+        {
+            vm.AddSelfDestructLog(executingAccount, result);
+        }
+        else
+        {
+            vm.AddTransferLog(executingAccount, inheritor, result);
+        }
+
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
         // For certain specs, charge gas if transferring to a dead account.
-        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
+        if (clearEmpty && !result.IsZero && state.IsDeadAccount(inheritor))
         {
             if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
                 goto OutOfGas;
@@ -251,7 +264,7 @@ internal static partial class EvmInstructions
 
         // If account creation rules apply, ensure gas is charged for new accounts.
         bool inheritorAccountExists = state.AccountExists(inheritor);
-        if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
+        if (!clearEmpty && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
         {
             if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
                 goto OutOfGas;
@@ -268,7 +281,7 @@ internal static partial class EvmInstructions
         }
 
         // Special handling when SELFDESTRUCT is limited to the same transaction.
-        if (spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount))
+        if (selfdestructOnlyOnSameTx && !createInSameTx && inheritor.Equals(executingAccount))
             goto Stop; // Avoid burning ETH if contract is not destroyed per EIP clarification
 
         // Subtract the balance from the executing account.

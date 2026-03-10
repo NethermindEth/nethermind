@@ -138,9 +138,9 @@ public partial class EngineModuleTests
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithMaxFeePerBlobGas(1000.Wei())
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
@@ -167,9 +167,9 @@ public partial class EngineModuleTests
         // we are not adding this tx
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfRequestedBlobs)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithMaxFeePerBlobGas(1000.Wei())
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         // requesting hashes that are not present in TxPool
@@ -192,9 +192,9 @@ public partial class EngineModuleTests
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithMaxFeePerBlobGas(1000.Wei())
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
@@ -238,9 +238,9 @@ public partial class EngineModuleTests
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithMaxFeePerBlobGas(1000.Wei())
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);

@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             SnapProvider snapProvider = container.Resolve<SnapProvider>();
 
             var storageRange = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, Keccak.Zero);
-            var result = snapProvider.AddStorageRangeForAccount(storageRange, 0, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result = snapProvider.AddStorageRangeForAccount(storageRange, 0, TestItem.Tree.SlotsWithPaths, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             SnapProvider snapProvider = container.Resolve<SnapProvider>();
 
             var storageRange = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, Keccak.Zero);
-            var result = snapProvider.AddStorageRangeForAccount(storageRange, 0, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result = snapProvider.AddStorageRangeForAccount(storageRange, 0, TestItem.Tree.SlotsWithPaths, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
@@ -120,21 +120,21 @@ namespace Nethermind.Synchronization.Test.SnapSync
             var proof = accountProofCollector.BuildResult();
 
             var storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, Keccak.Zero);
-            var result1 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result1 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[0..2], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, [TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[3].Path]);
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
             storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, TestItem.Tree.SlotsWithPaths[2].Path);
-            var result2 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[2..4], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result2 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[2..4], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, [TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[5].Path]);
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
             storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, TestItem.Tree.SlotsWithPaths[4].Path);
-            var result3 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[4..6], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result3 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
@@ -155,21 +155,21 @@ namespace Nethermind.Synchronization.Test.SnapSync
             var proof = accountProofCollector.BuildResult();
 
             var storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, Keccak.Zero);
-            var result1 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result1 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[0..2], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, [TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[3].Path]);
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
             storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, TestItem.Tree.SlotsWithPaths[2].Path);
-            var result2 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[3..4], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result2 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[3..4], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, [TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[5].Path]);
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
             storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, TestItem.Tree.SlotsWithPaths[4].Path);
-            var result3 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[4..6], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result3 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof!.StorageProofs![0].Proof!.Length + proof!.StorageProofs![1].Proof!.Length, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!))));
 
             Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));
@@ -194,10 +194,11 @@ namespace Nethermind.Synchronization.Test.SnapSync
                 ],
                 Keccak.Zero,
                 null,
-                proofs: [
+                proofs: new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2)
+                {
                     Bytes.FromHexString("f838a120290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e5639594654f75e491acf8c380d2a6906e67e2e56813665e"),
                     Bytes.FromHexString("f838a120290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e5639594654f75e491acf8c380d2a6906e67e2e56813665e"),
-                ]);
+                }));
 
             result.Should().Be(AddRangeResult.OK);
             moreChildrenToRight.Should().BeFalse();

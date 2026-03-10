@@ -135,7 +135,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, optimize);
+                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, token, optimize);
 
                 var rpcAccessListResult = new AccessListResultForRpc(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),

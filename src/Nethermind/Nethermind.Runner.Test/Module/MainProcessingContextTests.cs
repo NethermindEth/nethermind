@@ -13,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -28,7 +29,7 @@ public class MainProcessingContextTests
             .AddModule(new TestNethermindModule(Cancun.Instance))
             .WithGenesisPostProcessor((_, state) =>
             {
-                state.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 10.Ether(), Osaka.Instance);
+                state.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 10.Ether, Osaka.Instance);
             })
             .Build();
 

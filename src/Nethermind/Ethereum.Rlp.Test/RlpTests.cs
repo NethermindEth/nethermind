@@ -108,7 +108,7 @@ namespace Ethereum.Rlp.Test
         public void TestEmpty()
         {
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(Array.Empty<byte>()), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyByteArray));
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(Array.Empty<Nethermind.Serialization.Rlp.Rlp>()), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptySequence));
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(Array.Empty<Nethermind.Serialization.Rlp.Rlp>()), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyList));
         }
 
         [Test]
@@ -209,7 +209,7 @@ namespace Ethereum.Rlp.Test
             for (int i = 0; i < iterations; i++)
             {
                 block = Nethermind.Serialization.Rlp.Rlp.Decode<Block>(new Nethermind.Serialization.Rlp.Rlp(bytes));
-                perfBlock = Nethermind.Serialization.Rlp.Rlp.Decode<Block>(bytes?.AsRlpStream());
+                perfBlock = Nethermind.Serialization.Rlp.Rlp.Decode<Block>(bytes.AsSpan());
             }
 
             Stopwatch stopwatch = new Stopwatch();
@@ -225,7 +225,7 @@ namespace Ethereum.Rlp.Test
             stopwatch.Restart();
             for (int i = 0; i < iterations; i++)
             {
-                perfBlock = Nethermind.Serialization.Rlp.Rlp.Decode<Block>(bytes?.AsRlpStream());
+                perfBlock = Nethermind.Serialization.Rlp.Rlp.Decode<Block>(bytes.AsSpan());
             }
 
             stopwatch.Stop();

@@ -551,7 +551,7 @@ internal static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct gas cost for balance operation as per specification.
-        TGasPolicy.Consume(ref gas, spec.GetBalanceCost());
+        TGasPolicy.Consume(ref gas, spec.GasCosts.BalanceCost);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
@@ -615,7 +615,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
-        TGasPolicy.Consume(ref gas, spec.GetExtCodeHashCost());
+        TGasPolicy.Consume(ref gas, spec.GasCosts.ExtCodeHashCost);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
@@ -663,7 +663,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
-        TGasPolicy.Consume(ref gas, spec.GetExtCodeHashCost());
+        TGasPolicy.Consume(ref gas, spec.GasCosts.ExtCodeHashCost);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
@@ -846,4 +846,36 @@ internal static partial class EvmInstructions
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
+
+    /// <summary>
+    /// Implements the SLOTNUM opcode.
+    /// Returns the slot number from the block header.
+    /// </summary>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack.</param>
+    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="programCounter">The program counter.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/>, or <see cref="EvmExceptionType.BadInstruction"/> if slot number not set.
+    /// </returns>
+    public static EvmExceptionType InstructionSlotNum<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        ref readonly BlockExecutionContext context = ref vm.BlockExecutionContext;
+
+        ulong? slotNumber = context.Header.SlotNumber;
+        // If the slot number is missing this opcode is invalid.
+        if (!slotNumber.HasValue) goto BadInstruction;
+
+        // Charge the base gas cost for this opcode.
+        TGasPolicy.Consume(ref gas, GasCostOf.Base);
+        stack.PushUInt64<TTracingInst>(slotNumber.Value);
+
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor.
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
+    }
+
 }

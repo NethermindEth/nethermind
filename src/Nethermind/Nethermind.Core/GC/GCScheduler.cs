@@ -190,7 +190,7 @@ public sealed class GCScheduler
         _countToGC = MaxBlocksWithoutGC;
         System.GC.Collect(generation, mode, blocking: blocking, compacting: compacting);
         // Also trim native memory used by Db
-        MallocHelper.Instance.MallocTrim((uint)1.MiB());
+        MallocHelper.Instance.MallocTrim((uint)1.MiB);
         // Indicate that GC has finished
         MarkGCResumed();
 

@@ -97,7 +97,7 @@ public partial class EthRpcModuleTests
             test.JsonSerializer.Deserialize<AccessListTransactionForRpc>(
                 $"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
         string serializedCreateAccessList = await test.TestEthRpc("eth_createAccessList",
-            transaction, "0x0", optimize.ToString().ToLower());
+            transaction, "0x0", null, optimize.ToString().ToLower());
 
         transaction.AccessList = test.JsonSerializer.Deserialize<AccessListForRpc>(JToken.Parse(serializedCreateAccessList).SelectToken("result.accessList")!.ToString());
         string serializedEstimateGas =
