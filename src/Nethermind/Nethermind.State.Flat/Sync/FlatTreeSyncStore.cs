@@ -73,7 +73,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
         if (existingData is null) return null;
 
-        TrieNode existingNode = new TrieNode(NodeType.Unknown, existingData);
+        TrieNode existingNode = new(NodeType.Unknown, existingData);
         existingNode.ResolveNode(NullTrieNodeResolver.Instance, path);
         return existingNode;
     }
@@ -183,10 +183,8 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     /// </summary>
     private static void ComputeToLeafDeletionRanges(TreePath path, TrieNode newNode, TrieNode? existingNode, ref RefList16<DeletionRange> ranges)
     {
-        if (existingNode is { NodeType: NodeType.Leaf } && newNode.Key.SequenceEqual(existingNode.Key))
-            return;
-
-        ranges.Add(ComputeSubtreeRange(path));
+        if (existingNode is not { NodeType: NodeType.Leaf } || !newNode.Key.SequenceEqual(existingNode.Key))
+            ranges.Add(ComputeSubtreeRange(path));
     }
 
     /// <summary>
@@ -232,7 +230,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         StateId from = reader.CurrentState;
-        StateId to = new StateId(pivotHeader);
+        StateId to = new(pivotHeader);
 
         // Create and immediately dispose to increment state ID
         // This pattern is used by Importer - the from->to transition updates the current state pointer
@@ -256,8 +254,10 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         public FlatVerificationContext(IPersistence persistence, byte[] rootNodeData, ILogManager logManager)
         {
             _reader = persistence.CreateReader();
-            _stateTree = new StateTree(new FlatSyncTrieStore(_reader), logManager);
-            _stateTree.RootRef = new TrieNode(NodeType.Unknown, rootNodeData);
+            _stateTree = new StateTree(new FlatSyncTrieStore(_reader), logManager)
+            {
+                RootRef = new TrieNode(NodeType.Unknown, rootNodeData)
+            };
         }
 
         public Account? GetAccount(Hash256 addressHash)

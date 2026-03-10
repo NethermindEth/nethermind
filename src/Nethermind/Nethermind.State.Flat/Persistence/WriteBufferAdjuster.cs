@@ -37,12 +37,16 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
         {
             if (!_syncBufferSet)
             {
-                db.GetColumnDb(FlatDbColumns.Account).SetWriteBuffer(32L * 1024 * 1024);
-                db.GetColumnDb(FlatDbColumns.Storage).SetWriteBuffer(64L * 1024 * 1024);
-                db.GetColumnDb(FlatDbColumns.StateNodes).SetWriteBuffer(64L * 1024 * 1024);
-                db.GetColumnDb(FlatDbColumns.StorageNodes).SetWriteBuffer(64L * 1024 * 1024);
+                SetWriteBuffer(db, FlatDbColumns.Account, 32L * 1024 * 1024);
+                SetWriteBuffer(db, FlatDbColumns.Storage, 64L * 1024 * 1024);
+                SetWriteBuffer(db, FlatDbColumns.StateNodes, 64L * 1024 * 1024);
+                SetWriteBuffer(db, FlatDbColumns.StorageNodes, 64L * 1024 * 1024);
                 _syncBufferSet = true;
+
+                static void SetWriteBuffer(IColumnsDb<FlatDbColumns> columnsDb, FlatDbColumns column, long size) =>
+                    columnsDb.GetColumnDb(column).SetWriteBuffer(size);
             }
+
             return batch.GetColumnBatch(column);
         }
 

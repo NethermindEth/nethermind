@@ -209,23 +209,11 @@ public static class BaseFlatPersistence
         [SkipLocalsInit]
         public void SelfDestruct(in ValueHash256 accountPath)
         {
-            Span<byte> firstKey = stackalloc byte[StoragePrefixPortion]; // Because slot 0 is a thing, it's just the address prefix.
-            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1]; // The +1 is because the upper bound is exclusive
+            Span<byte> firstKey = stackalloc byte[StoragePrefixPortion];
+            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
             BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey, lastKey);
-
-            using ISortedView storageReader = storageSnap.GetViewBetween(firstKey, lastKey);
-            IWriteOnlyKeyValueStore storageWriter = storage;
-            while (storageReader.MoveNext())
-            {
-                // FlatInTrie
-                if (storageReader.CurrentKey.Length != StorageKeyLength) continue;
-
-                // If we have a storage prefix portion, we need to double-check that the last 16 bytes match.
-                if (Bytes.AreEqual(storageReader.CurrentKey[(StoragePrefixPortion + StorageSlotKeySize)..], accountPath.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]))
-                {
-                    storageWriter.Remove(storageReader.CurrentKey);
-                }
-            }
+            BasePersistence.DeleteMatchingKeys(storageSnap, storage, firstKey, lastKey,
+                StoragePrefixPortion + StorageSlotKeySize, accountPath.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]);
         }
 
         public void RemoveAccount(in ValueHash256 addrHash)
@@ -255,44 +243,27 @@ public static class BaseFlatPersistence
             state.PutSpan(key, account, flags);
         }
 
+        [SkipLocalsInit]
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
         {
-            // Account keys are the first 20 bytes of the address hash
             Span<byte> firstKey = stackalloc byte[AccountKeyLength];
             Span<byte> lastKey = stackalloc byte[AccountKeyLength + 1]; // +1 for exclusive upper bound
             fromPath.Bytes[..AccountKeyLength].CopyTo(firstKey);
             toPath.Bytes[..AccountKeyLength].CopyTo(lastKey);
-            lastKey[AccountKeyLength] = 0; // Exclusive upper bound
-
-            using ISortedView view = stateSnap.GetViewBetween(firstKey, lastKey);
-            while (view.MoveNext())
-            {
-                if (view.CurrentKey.Length != AccountKeyLength) continue;
-                state.Remove(view.CurrentKey);
-            }
+            lastKey[AccountKeyLength] = 0;
+            BasePersistence.DeleteMatchingKeys(stateSnap, state, firstKey, lastKey, AccountKeyLength);
         }
 
+        [SkipLocalsInit]
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
         {
-            // Storage key layout: <4-byte-addr><32-byte-slot><16-byte-addr>
-            // We need to iterate all keys in the slot range with the same address
             Span<byte> firstKey = stackalloc byte[StorageKeyLength];
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
             EncodeStorageKeyHashedWithShortPrefix(firstKey, addressHash, fromPath);
             EncodeStorageKeyHashedWithShortPrefix(lastKey[..StorageKeyLength], addressHash, toPath);
-            lastKey[StorageKeyLength] = 0; // Exclusive upper bound
-
-            using ISortedView view = storageSnap.GetViewBetween(firstKey, lastKey);
-            while (view.MoveNext())
-            {
-                if (view.CurrentKey.Length != StorageKeyLength) continue;
-
-                // Verify the 16-byte address suffix matches
-                if (Bytes.AreEqual(view.CurrentKey[(StoragePrefixPortion + StorageSlotKeySize)..], addressHash.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]))
-                {
-                    storage.Remove(view.CurrentKey);
-                }
-            }
+            lastKey[StorageKeyLength] = 0;
+            BasePersistence.DeleteMatchingKeys(storageSnap, storage, firstKey, lastKey,
+                StoragePrefixPortion + StorageSlotKeySize, addressHash.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]);
         }
     }
 }

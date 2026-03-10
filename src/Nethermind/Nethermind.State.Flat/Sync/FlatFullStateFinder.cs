@@ -7,9 +7,5 @@ namespace Nethermind.State.Flat.Sync;
 
 public class FlatFullStateFinder(PersistenceManager persistenceManager) : IFullStateFinder
 {
-    public long FindBestFullState()
-    {
-        long blockNumber = persistenceManager.GetCurrentPersistedStateId().BlockNumber;
-        return blockNumber < 0 ? 0 : blockNumber;
-    }
+    public long FindBestFullState() => Math.Max(0, persistenceManager.GetCurrentPersistedStateId().BlockNumber);
 }

@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -26,6 +29,37 @@ public static class BasePersistence
 {
     public const int StoragePrefixPortion = 4;
 
+    private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
+
+    internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
+    {
+        byte[]? bytes = kv.Get(CurrentStateKey);
+        return bytes is null || bytes.Length == 0
+            ? new StateId(-1, ValueKeccak.EmptyTreeHash)
+            : new StateId(BinaryPrimitives.ReadInt64BigEndian(bytes), new ValueHash256(bytes[8..]));
+    }
+
+    internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, in StateId stateId)
+    {
+        Span<byte> bytes = stackalloc byte[8 + 32];
+        BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.BlockNumber);
+        stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
+        kv.PutSpan(CurrentStateKey, bytes);
+    }
+
+    internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
+    {
+        using IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
+        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        {
+            IWriteBatch columnBatch = batch.GetColumnBatch(column);
+            foreach (byte[] key in db.GetColumnDb(column).GetAllKeys())
+            {
+                columnBatch.Remove(key);
+            }
+        }
+    }
+
     internal static void CreateStorageRange(
         ReadOnlySpan<byte> accountPath,
         Span<byte> firstKey,
@@ -35,6 +69,44 @@ public static class BasePersistence
         accountPath[..StoragePrefixPortion].CopyTo(lastKey);
         firstKey[StoragePrefixPortion..].Clear();
         lastKey[StoragePrefixPortion..].Fill(0xff);
+    }
+
+    /// <summary>
+    /// Scan a key range and delete all entries matching the expected key length.
+    /// </summary>
+    internal static void DeleteMatchingKeys(
+        ISortedKeyValueStore snap,
+        IWriteBatch batch,
+        ReadOnlySpan<byte> firstKey,
+        ReadOnlySpan<byte> lastKey,
+        int expectedKeyLength)
+    {
+        using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
+        while (view.MoveNext())
+        {
+            if (view.CurrentKey.Length == expectedKeyLength)
+                batch.Remove(view.CurrentKey);
+        }
+    }
+
+    /// <summary>
+    /// Scan a key range and delete entries matching the address suffix at the given offset.
+    /// </summary>
+    internal static void DeleteMatchingKeys(
+        ISortedKeyValueStore snap,
+        IWriteBatch batch,
+        ReadOnlySpan<byte> firstKey,
+        ReadOnlySpan<byte> lastKey,
+        int suffixOffset,
+        ReadOnlySpan<byte> expectedSuffix)
+    {
+        using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
+        while (view.MoveNext())
+        {
+            ReadOnlySpan<byte> key = view.CurrentKey;
+            if (key.Length >= suffixOffset + expectedSuffix.Length && Bytes.AreEqual(key[suffixOffset..], expectedSuffix))
+                batch.Remove(view.CurrentKey);
+        }
     }
 
     public interface IHashedFlatReader

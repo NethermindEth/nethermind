@@ -29,7 +29,7 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
     private readonly IPersistence.IPersistenceReader _reader;
     private readonly IPersistence.IWriteBatch _writeBatch;
     private readonly bool _enableDoubleWriteCheck;
-    private SnapUpperBoundAdapter _adapter;
+    private readonly SnapUpperBoundAdapter _adapter;
     private readonly StateTree _tree;
     private IReadOnlyList<PathWithAccount>? _pendingEntries;
 
@@ -55,20 +55,7 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries)
     {
         _pendingEntries = entries;
-
-        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
-        long totalBytes = 0;
-        for (int i = 0; i < entries.Count; i++)
-        {
-            PathWithAccount account = entries[i];
-            Rlp rlp = account.Account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account.Account);
-            bulkEntries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp.Bytes));
-            totalBytes += rlp.Bytes.Length;
-        }
-        Interlocked.Add(ref Nethermind.Synchronization.Metrics.SnapStateSynced, totalBytes);
-
-        _tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
-        _tree.UpdateRootHash();
+        ISnapTree<PathWithAccount>.DoBulkSetAndUpdateRootHash(_tree, entries);
     }
 
     public void Commit(ValueHash256 upperBound)

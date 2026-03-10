@@ -15,18 +15,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
     private readonly WriteBufferAdjuster _adjuster = new(db);
     public void Flush() => db.Flush();
 
-    public void Clear()
-    {
-        using IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
-        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
-        {
-            IWriteBatch columnBatch = batch.GetColumnBatch(column);
-            foreach (byte[] key in db.GetColumnDb(column).GetAllKeys())
-            {
-                columnBatch.Remove(key);
-            }
-        }
-    }
+    public void Clear() => BasePersistence.ClearAllColumns(db);
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
@@ -40,7 +29,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
                 snapshot.GetColumn(FlatDbColumns.FallbackNodes)
             );
 
-            StateId currentState = RocksDbPersistence.ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
+            StateId currentState = BasePersistence.ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
 
             return new BasePersistence.Reader<BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>, BaseTriePersistence.Reader>(
                 new BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>(
@@ -68,7 +57,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
     {
         IColumnDbSnapshot<FlatDbColumns> dbSnap = db.CreateSnapshot();
-        StateId currentState = RocksDbPersistence.ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
+        StateId currentState = BasePersistence.ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
         if (from != StateId.Sync && to != StateId.Sync && currentState != from)
         {
             dbSnap.Dispose();
@@ -109,7 +98,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
             new Reactive.AnonymousDisposable(() =>
             {
                 if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
-                    RocksDbPersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
+                    BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                 batch.Dispose();
                 dbSnap.Dispose();
                 _adjuster.OnBatchDisposed();

@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
@@ -22,23 +19,8 @@ public class PatriciaSnapStateTree(StateTree tree, SnapUpperBoundAdapter adapter
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
         nodeStorage.KeyExists(null, path, keccak);
 
-    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries)
-    {
-        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
-        long totalBytes = 0;
-        for (int i = 0; i < entries.Count; i++)
-        {
-            PathWithAccount account = entries[i];
-            Account accountValue = account.Account;
-            Rlp rlp = accountValue.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(accountValue);
-            bulkEntries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp.Bytes));
-            totalBytes += rlp.Bytes.Length;
-        }
-        Interlocked.Add(ref Metrics.SnapStateSynced, totalBytes);
-
-        tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
-        tree.UpdateRootHash();
-    }
+    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries) =>
+        ISnapTree<PathWithAccount>.DoBulkSetAndUpdateRootHash(tree, entries);
 
     public void Commit(ValueHash256 upperBound)
     {

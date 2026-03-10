@@ -95,10 +95,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         if (!spec.DepositsEnabled)
             return;
 
-        using ArrayPoolList<byte> depositRequests = new(receipts.Length * 2 + 1)
-        {
-            (byte)ExecutionRequestType.Deposit
-        };
+        using ArrayPoolListRef<byte> depositRequests = new(receipts.Length * 2 + 1, (byte)ExecutionRequestType.Deposit);
 
         for (int i = 0; i < receipts.Length; i++)
         {

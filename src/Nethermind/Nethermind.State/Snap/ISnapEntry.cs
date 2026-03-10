@@ -8,4 +8,5 @@ namespace Nethermind.State.Snap;
 public interface ISnapEntry
 {
     ValueHash256 Path { get; }
+    byte[] ToRlpValue();
 }

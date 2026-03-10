@@ -13,6 +13,8 @@ namespace Nethermind.State.Snap
         public ValueHash256 Path { get; } = keyHash;
         public byte[] SlotRlpValue { get; } = slotRlpValue;
 
+        public byte[] ToRlpValue() => SlotRlpValue;
+
         public bool Equals(in PathWithStorageSlot other)
         {
             return Path == other.Path && SlotRlpValue.AsSpan().SequenceEqual(other.SlotRlpValue);
