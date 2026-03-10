@@ -145,15 +145,26 @@ Your EIP may share validation logic, gas accounting, or data structures with pre
 - If that takes too long, at minimum also run tests whose names match EIPs listed in the `Requires` header from Step 1.
 - If any pre-existing test fails, do NOT skip or modify it without understanding why. A failing prerequisite-EIP test means you broke backward compatibility — fix your implementation, not the old test.
 
-### Step 7 — Self-Review
+### Step 7 — Self-Review Loop
 
-Before claiming the implementation is complete, launch **two subagent reviews**:
+Before claiming the implementation is complete, launch **two subagent reviews in parallel**:
 
 1. **Spec compliance** — provide the EIP number, spec text (and prerequisites from Step 1), diff of all changed files, and the `eip-reviewer` skill. This checks that the implementation matches the spec and tests cover all mandated behaviors.
 
 2. **Code quality** — provide the diff and the `review` skill. This checks consensus correctness, security, robustness, performance, DI patterns, and breaking changes.
 
-If either review finds CRITICAL or HIGH severity issues, fix them and re-run Step 6.
+**Fix-and-verify loop (mandatory):**
+
+If either review returns CRITICAL or HIGH findings:
+
+1. For each finding: apply the fix in code
+2. Re-run Step 6 (build + tests) to verify the fix doesn't break anything
+3. Re-launch **only the review that produced the finding** with a fresh diff
+4. Repeat until both reviews return APPROVE or APPROVE WITH CONDITIONS (MEDIUM/LOW only)
+
+**Do NOT** claim the implementation is complete while any CRITICAL or HIGH finding is unresolved. Do NOT skip the re-review — fixing code without re-reviewing is the same as not reviewing at all.
+
+**Max iterations:** 3. If findings persist after 3 fix-and-verify cycles, stop and present the remaining findings to the user for guidance.
 
 ## Edge cases
 
