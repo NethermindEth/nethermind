@@ -65,6 +65,37 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ulong[]? Fixed2 { get; set; }
     }
 
+    [SszSerializable]
+    public struct SingleListContainer
+    {
+        [SszList(4)]
+        public ulong[]? Items { get; set; }
+    }
+
+    [SszSerializable]
+    public struct DoubleListContainer
+    {
+        [SszList(4)]
+        public ulong[]? First { get; set; }
+
+        [SszList(4)]
+        public ulong[]? Second { get; set; }
+    }
+
+    [SszSerializable]
+    public struct BitVectorContainer
+    {
+        [SszVector(10)]
+        public BitArray? Bits { get; set; }
+    }
+
+    [SszSerializable]
+    public struct FixedVectorContainer
+    {
+        [SszVector(2)]
+        public FixedC[]? Items { get; set; }
+    }
+
     //// Does not compile
     //[SszSerializable]
     //public struct NoProps
