@@ -344,9 +344,11 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     {
         foreach (AccountChanges accountChanges in AccountChanges)
         {
-            bool isPostExecutionSystemContract =
+            bool isSystemContract =
                 accountChanges.Address == Eip7002Constants.WithdrawalRequestPredeployAddress ||
-                accountChanges.Address == Eip7251Constants.ConsolidationRequestPredeployAddress;
+                accountChanges.Address == Eip7251Constants.ConsolidationRequestPredeployAddress ||
+                accountChanges.Address == Eip2935Constants.BlockHashHistoryAddress ||
+                accountChanges.Address == Eip4788Constants.BeaconRootsAddress;
 
             yield return
                 new(
@@ -355,7 +357,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     accountChanges.NonceChangeAtIndex(index),
                     accountChanges.CodeChangeAtIndex(index),
                     accountChanges.SlotChangesAtIndex(index),
-                    isPostExecutionSystemContract ? 0 : accountChanges.StorageReads.Count
+                    isSystemContract ? 0 : accountChanges.StorageReads.Count
                 );
         }
     }

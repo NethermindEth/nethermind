@@ -933,9 +933,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
         // if (validateStorageReads && gasRemaining < (suggestedReads - generatedReads) * Eip7928Constants.ItemCost)
         if (validateStorageReads && gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
         {
-            // throw new InvalidBlockLevelAccessListException("Suggested block-level access list contained invalid storage reads.");
-            // if (gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
-            // {
+            Console.WriteLine($"Remaining: {gasRemaining}, SuggestedReads: {suggestedReads}, GeneratedReads: {generatedReads}\n`Suggested: {_suggestedBlockAccessList}\nGenerated: {GeneratedBlockAccessList}");
             throw new InvalidBlockLevelAccessListException(block, "Suggested block-level access list contained invalid storage reads.");
         }
     }
