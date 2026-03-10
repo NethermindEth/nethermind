@@ -61,7 +61,7 @@ public class SnapProviderTests
                 Keccak.Zero,
                 Keccak.Zero,
                 Array.Empty<PathWithAccount>(),
-                Array.Empty<byte[]>().AsReadOnly()), Throws.ArgumentException);
+                EmptyByteArrayList.Instance), Throws.ArgumentException);
     }
 
     [Test]
@@ -74,7 +74,7 @@ public class SnapProviderTests
         using AccountsAndProofs accountsAndProofs = new();
         AccountRange accountRange = new(Keccak.Zero, Keccak.Zero, Keccak.MaxValue);
         accountsAndProofs.PathAndAccounts = new List<PathWithAccount>().ToPooledList();
-        accountsAndProofs.Proofs = new List<byte[]> { new byte[] { 0x0 } }.ToPooledList();
+        accountsAndProofs.Proofs = new ByteArrayListAdapter(new List<byte[]> { new byte[] { 0x0 } }.ToPooledList());
 
         snapProvider.AddAccountRange(accountRange, accountsAndProofs).Should().Be(AddRangeResult.ExpiredRootHash);
     }
@@ -181,7 +181,7 @@ public class SnapProviderTests
 
         snapProvider.AddStorageRangeForAccount(
             storageRange, 0, slots,
-            proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray())
+            new ByteArrayListAdapter(proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray().ToPooledList()))
             .Should().Be(AddRangeResult.OK);
     }
 
@@ -211,8 +211,8 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) = ss.GetAccountRanges(
-            root, Keccak.Zero, entries[3].Item1, 1.MB(), default);
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = ss.GetAccountRanges(
+            root, Keccak.Zero, entries[3].Item1, 1.MB, default);
 
         progressTracker.IsFinished(out SnapSyncBatch? batch).Should().Be(false);
 
@@ -254,8 +254,8 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) = ss.GetAccountRanges(
-            root, Keccak.Zero, Keccak.MaxValue, 1.MB(), default);
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = ss.GetAccountRanges(
+            root, Keccak.Zero, Keccak.MaxValue, 1.MB, default);
 
         // The range given out here should be half.
         progressTracker.IsFinished(out SnapSyncBatch? batch).Should().Be(false);
@@ -282,7 +282,7 @@ public class SnapProviderTests
                 CompressionMode.Decompress);
         BadReq asReq = JsonSerializer.Deserialize<BadReq>(decompressor)!;
         AccountDecoder acd = new AccountDecoder();
-        Account[] accounts = asReq.Accounts.Select((bt) => acd.Decode(new RlpStream(Bytes.FromHexString(bt)))!).ToArray();
+        Account[] accounts = asReq.Accounts.Select((bt) => acd.Decode((ReadOnlySpan<byte>)Bytes.FromHexString(bt))!).ToArray();
         ValueHash256[] paths = asReq.Paths.Select((bt) => new ValueHash256(Bytes.FromHexString(bt))).ToArray();
         List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
@@ -299,7 +299,7 @@ public class SnapProviderTests
                 new ValueHash256(asReq.StartingHash),
                 new ValueHash256(asReq.LimitHash),
                 pathWithAccounts,
-                proofs).result.Should().Be(AddRangeResult.OK);
+                new ByteArrayListAdapter(proofs.ToPooledList())).result.Should().Be(AddRangeResult.OK);
     }
 
     private record BadReq(

@@ -58,7 +58,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip2929Enabled { get; set; }
     public bool IsEip2930Enabled { get; set; }
     public bool IsEip1559Enabled { get => field || IsEip4844Enabled; set; }
-    public bool IsEip158IgnoredAccount(Address address) => false;
+    public Address? Eip158IgnoredAccount { get; set; }
     public bool IsEip3198Enabled { get; set; }
     public bool IsEip3529Enabled { get; set; }
     public bool IsEip3607Enabled { get; set; }
@@ -112,6 +112,7 @@ public class ReleaseSpec : IReleaseSpec
     [MemberNotNullWhen(true, nameof(IsEip4788Enabled))]
     public Address? Eip4788ContractAddress { get => IsEip4788Enabled ? field : null; set; }
     public bool IsEofEnabled { get; set; }
+    public bool IsEip8024Enabled { get; set; }
     public bool IsEip6110Enabled { get; set; }
     [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
     public Address? DepositContractAddress { get => IsEip6110Enabled ? field : null; set; }
@@ -126,6 +127,8 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsRip7728Enabled { get; set; }
     private FrozenSet<AddressAsKey>? _precompiles;
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
+    private SpecGasCosts? _gasCosts;
+    SpecGasCosts IReleaseSpec.GasCosts => _gasCosts ??= new SpecGasCosts(this);
     public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
     public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
     {
@@ -161,6 +164,23 @@ public class ReleaseSpec : IReleaseSpec
         if (IsRip7728Enabled) cache.Add(PrecompiledAddresses.L1Sload);
 
         return cache.ToFrozenSet();
+    }
+
+    public bool IsEip7928Enabled { get; set; }
+    public bool IsEip7778Enabled { get; set; }
+    public bool IsEip7843Enabled { get; set; }
+
+    public bool IsEip7708Enabled { get; set; }
+
+    private ReleaseSpec? _systemSpec;
+
+    internal ReleaseSpec SystemSpec => _systemSpec ??= CreateSystemSpec();
+
+    private ReleaseSpec CreateSystemSpec()
+    {
+        ReleaseSpec clone = Clone();
+        clone.IsEip158Enabled = false;
+        return clone;
     }
 
     // used only in testing

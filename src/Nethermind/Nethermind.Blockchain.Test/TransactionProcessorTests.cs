@@ -50,7 +50,7 @@ public class TransactionProcessorTests
         _specProvider = MainnetSpecProvider.Instance;
     }
 
-    private static readonly UInt256 AccountBalance = 1.Ether();
+    private static readonly UInt256 AccountBalance = 1.Ether;
 
     [SetUp]
     public void Setup()
@@ -211,8 +211,8 @@ public class TransactionProcessorTests
     public void Can_handle_quick_fail_when_balance_is_lower_than_fee_cap_times_gas(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
-            .WithMaxPriorityFeePerGas(5.GWei())
-            .WithMaxFeePerGas(10.Ether())
+            .WithMaxPriorityFeePerGas(5.GWei)
+            .WithMaxFeePerGas(10.Ether)
             .WithType(TxType.EIP1559)
             .WithGasLimit(100000).TestObject;
 
@@ -246,7 +246,7 @@ public class TransactionProcessorTests
 
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether());
+        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether);
     }
 
     [Test]
@@ -254,7 +254,7 @@ public class TransactionProcessorTests
     {
         long gasLimit = 100000;
         Transaction tx = Build.A.Transaction
-            .WithValue(0.Ether())
+            .WithValue(0.Ether)
             .WithGasPrice(1)
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyD, _isEip155Enabled)
@@ -270,7 +270,7 @@ public class TransactionProcessorTests
     public void Nonce_is_not_changed_on_call_and_restore()
     {
         long gasLimit = 100000;
-        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(1.Ether() - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
+        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(1.Ether - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
@@ -616,7 +616,7 @@ public class TransactionProcessorTests
     {
         long blockNumber = MainnetSpecProvider.SpuriousDragonBlockNumber + 1;
 
-        _stateProvider.CreateAccount(TestItem.PrivateKeyA.Address, 0.Ether());
+        _stateProvider.CreateAccount(TestItem.PrivateKeyA.Address, 0.Ether);
         IReleaseSpec spec = _specProvider.GetSpec((ForkActivation)blockNumber);
         _stateProvider.Commit(spec);
         Transaction tx = Build.A.SystemTransaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
@@ -651,7 +651,7 @@ public class TransactionProcessorTests
     {
         long gasLimit = 100000;
         Transaction tx = Build.A.Transaction
-            .WithValue(0.Ether())
+            .WithValue(0.Ether)
             .WithGasPrice(1)
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyD, _isEip155Enabled)
@@ -756,5 +756,49 @@ public class TransactionProcessorTests
         }
 
         return result;
+    }
+
+    [Test]
+    public void Warmup_does_not_update_SpentGas()
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+            .WithGasLimit(100000).TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+        // Use a sentinel value because the SpentGas getter returns GasLimit when _spentGas is 0
+        const long sentinel = 42;
+        tx.SpentGas = sentinel;
+
+        _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        tx.SpentGas.Should().Be(sentinel, "Warmup must not modify tx.SpentGas");
+    }
+
+    [Test]
+    public void Warmup_does_not_modify_sender_nonce()
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+            .WithGasLimit(100000).TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+        UInt256 nonceBefore = _stateProvider.GetNonce(TestItem.AddressA);
+
+        _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        _stateProvider.GetNonce(TestItem.AddressA).Should().Be(nonceBefore, "Warmup must not increment sender nonce");
+    }
+
+    [Test]
+    public void Warmup_does_not_deduct_sender_balance()
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+            .WithGasLimit(100000).TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+        UInt256 balanceBefore = _stateProvider.GetBalance(TestItem.AddressA);
+
+        _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        _stateProvider.GetBalance(TestItem.AddressA).Should().Be(balanceBefore, "Warmup must not deduct sender balance (should use SystemTransactionProcessor path)");
     }
 }

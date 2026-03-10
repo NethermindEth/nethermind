@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Processing
             public BlockProductionTransactionPicker(ISpecProvider specProvider, long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes, bool ignoreEip3607 = false)
             {
                 _specProvider = specProvider;
-                _maxTxLengthBytes = maxTxLengthKilobytes.KiB();
+                _maxTxLengthBytes = maxTxLengthKilobytes.KiB;
                 _ignoreEip3607 = ignoreEip3607;
             }
 

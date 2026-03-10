@@ -210,9 +210,8 @@ namespace Ethereum.Test.Base
                         storageItem.Value.WithoutLeadingZeros().ToArray());
                 }
 
-                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
+                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
                 stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
-                stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);

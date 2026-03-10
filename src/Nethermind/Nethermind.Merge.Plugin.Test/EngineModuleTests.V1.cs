@@ -753,7 +753,7 @@ public partial class EngineModuleTests
             .WithTransactions(
                 Build.A.Transaction
                     .WithTo(TestItem.AddressD)
-                    .WithValue(100.GWei())
+                    .WithValue(100.GWei)
                     .SignedAndResolved(TestItem.PrivateKeyA)
                     .TestObject
             )
@@ -1535,7 +1535,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_return_capabilities()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(static m => m.Name)
