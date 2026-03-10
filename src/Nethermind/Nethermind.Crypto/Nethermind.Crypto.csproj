@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -27,11 +27,13 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(EnableZkEvm)' == 'true'">
-    <Compile Remove="EthereumEcdsa.Standard.cs" />
+    <Compile Remove="EthereumEcdsa.std.cs" />
+    <None Include="EthereumEcdsa.std.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(EnableZkEvm)' != 'true'">
-    <Compile Remove="EthereumEcdsa.zkEVM.cs" />
+    <Compile Remove="EthereumEcdsa.zkvm.cs" />
+    <None Include="EthereumEcdsa.zkvm.cs" />
   </ItemGroup>
 
 </Project>
