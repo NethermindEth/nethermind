@@ -147,6 +147,11 @@ public class PayloadAttributes
             }
 
             error = $"{methodName}{apiVersion} expected";
+            if (apiVersion == EngineApiVersions.Shanghai)
+            {
+                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            }
+
             return actualVersion <= EngineApiVersions.Paris ? PayloadAttributesValidationResult.InvalidParams : PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
@@ -154,6 +159,11 @@ public class PayloadAttributes
         if (timestampVersion != apiVersion)
         {
             error = $"{methodName}{timestampVersion} expected";
+            if (apiVersion == EngineApiVersions.Shanghai)
+            {
+                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            }
+
             return timestampVersion <= EngineApiVersions.Paris ? PayloadAttributesValidationResult.InvalidParams : PayloadAttributesValidationResult.UnsupportedFork;
         }
 

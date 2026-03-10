@@ -635,13 +635,13 @@ public partial class EngineModuleTests
             "{0}V2 expected",
             null,
             "0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576",
-            ErrorCodes.InvalidParams);
+            MergeErrorCodes.InvalidPayloadAttributes);
         yield return (
             London.Instance,
             "{0}V1 expected",
             Array.Empty<Withdrawal>(),
             "0xaa4aa15951a28e6adab430a795e36a84649bbafb1257eda23e38b9131cbd3b98",
-            ErrorCodes.InvalidParams);
+            MergeErrorCodes.InvalidPayloadAttributes);
     }
 
     [TestCaseSource(nameof(ZeroWithdrawalsTestCases))]
