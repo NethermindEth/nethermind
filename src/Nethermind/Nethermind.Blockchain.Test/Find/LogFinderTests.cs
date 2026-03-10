@@ -482,6 +482,7 @@ public class LogFinderTests
         return new PersistentReceiptStorage(
             receiptsDb, _specProvider!, _receiptsRecovery, _rawBlockTree, new BlockStore(new MemDb()),
             new ReceiptConfig(), new ReceiptArrayStorageDecoder(true)
-        ) {MigratedBlockNumber = 0};
+        )
+        { MigratedBlockNumber = 0 };
     }
 }
