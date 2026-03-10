@@ -327,6 +327,30 @@ jobs:
           NETWORK: ${{ matrix.config.network }}
         run: |
           python scripts/wait-for-sync.py
+
+      - name: Report to CI Dashboard
+        if: always()
+        uses: ./.github/actions/report-dashboard
+        with:
+          api-url: ${{ secrets.DASHBOARD_API_URL }}
+          api-key: ${{ secrets.DASHBOARD_API_KEY }}
+          endpoint: sync
+          payload: >-
+            {
+              "run_id": ${{ github.run_id }},
+              "run_attempt": ${{ github.run_attempt }},
+              "branch": "${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}",
+              "commit_sha": "${{ github.sha }}",
+              "trigger_event": "${{ github.event_name }}",
+              "status": "${{ steps.wait.outcome }}",
+              "github_run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "timestamp": "${{ github.event.repository.pushed_at }}",
+              "chain": "${{ matrix.config.network }}",
+              "cl_client": "${{ matrix.config.cl }}",
+              "machine_type": "${{ matrix.config.agent }}",
+              "checkpoint_sync_url": "${{ matrix.config.checkpoint-sync-url }}"
+            }
+
       - name: Get Nethermind Debug Logs
         if: ${{ failure() || cancelled() }}
         id: find-and-upload

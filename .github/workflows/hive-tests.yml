@@ -129,3 +129,70 @@ jobs:
         run: |
           rm -f hive/workspace/logs/hive.json
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+
+      - name: Prepare Hive dashboard payload
+        id: hive-payload
+        if: always() && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/'))
+        env:
+          GH_RUN_ID: ${{ github.run_id }}
+          GH_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GH_REF_NAME: ${{ github.ref_name }}
+          GH_SHA: ${{ github.sha }}
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TEST_SUITE: ${{ matrix.test-suite }}
+        run: |
+          # Parse hive JSON results to extract test counts
+          RESULTS_FILE=$(ls hive/workspace/logs/*.json 2>/dev/null | head -n1)
+          if [ -z "$RESULTS_FILE" ] || [ ! -f "$RESULTS_FILE" ]; then
+            echo "No hive results file found"
+            TOTAL=0; PASSED=0; FAILED=0
+          else
+            TOTAL=$(jq '[.testCases | to_entries[]] | length' "$RESULTS_FILE" 2>/dev/null || echo 0)
+            PASSED=$(jq '[.testCases | to_entries[] | select(.value.summaryResult.pass == true)] | length' "$RESULTS_FILE" 2>/dev/null || echo 0)
+            FAILED=$(( TOTAL - PASSED ))
+          fi
+
+          STATUS="failure"
+          if [ "$FAILED" -eq 0 ] && [ "$TOTAL" -gt 0 ]; then
+            STATUS="success"
+          fi
+
+          PAYLOAD=$(jq -nc \
+            --argjson run_id "$GH_RUN_ID" \
+            --argjson run_attempt "$GH_RUN_ATTEMPT" \
+            --arg branch "$GH_REF_NAME" \
+            --arg commit_sha "$GH_SHA" \
+            --arg trigger_event "$GH_EVENT_NAME" \
+            --arg status "$STATUS" \
+            --arg github_run_url "$GH_RUN_URL" \
+            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg test_suite "$TEST_SUITE" \
+            --argjson total_tests "$TOTAL" \
+            --argjson passed "$PASSED" \
+            --argjson failed "$FAILED" \
+            '{
+              run_id: $run_id,
+              run_attempt: $run_attempt,
+              branch: $branch,
+              commit_sha: $commit_sha,
+              trigger_event: $trigger_event,
+              status: $status,
+              github_run_url: $github_run_url,
+              timestamp: $timestamp,
+              test_suite: $test_suite,
+              total_tests: $total_tests,
+              passed: $passed,
+              failed: $failed
+            }')
+
+          echo "payload=$PAYLOAD" >> $GITHUB_OUTPUT
+
+      - name: Report to CI Dashboard
+        if: always() && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/'))
+        uses: ./.github/actions/report-dashboard
+        with:
+          api-url: ${{ secrets.DASHBOARD_API_URL }}
+          api-key: ${{ secrets.DASHBOARD_API_KEY }}
+          endpoint: hive
+          payload: ${{ steps.hive-payload.outputs.payload }}
