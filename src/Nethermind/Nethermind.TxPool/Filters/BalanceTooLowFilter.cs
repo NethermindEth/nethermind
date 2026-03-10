@@ -15,14 +15,14 @@ namespace Nethermind.TxPool.Filters
     {
         private readonly TxDistinctSortedPool _txs;
         private readonly TxDistinctSortedPool _blobTxs;
-        private readonly IAccountFundsAugmentor _accountFundsAugmentor;
+        private readonly IAdditionalFundsProvider _additionalFundsProvider;
         private readonly ILogger _logger;
 
-        public BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger, IAccountFundsAugmentor? accountFundsAugmentor = null)
+        public BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger, IAdditionalFundsProvider? additionalFundsProvider = null)
         {
             _txs = txs;
             _blobTxs = blobTxs;
-            _accountFundsAugmentor = accountFundsAugmentor ?? NullAccountFundsAugmentor.Instance;
+            _additionalFundsProvider = additionalFundsProvider ?? NullAdditionalFundsProvider.Instance;
             _logger = logger;
         }
 
@@ -34,9 +34,8 @@ namespace Nethermind.TxPool.Filters
             }
 
             AccountStruct account = state.SenderAccount;
-            UInt256 additionalFunds = _accountFundsAugmentor.GetAdditionalFunds(tx);
-            bool initialOverflow = UInt256.AddOverflow(account.Balance, additionalFunds, out UInt256 balance);
-            if (initialOverflow)
+            UInt256 additionalFunds = _additionalFundsProvider.GetAdditionalFunds(tx);
+            if (UInt256.AddOverflow(account.Balance, additionalFunds, out UInt256 balance))
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");

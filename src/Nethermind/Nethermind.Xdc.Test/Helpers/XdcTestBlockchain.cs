@@ -218,7 +218,7 @@ public class XdcTestBlockchain : TestBlockchain
 
                 compoundPolicy.Policies.Add(new XdcTxGossipPolicy(SpecProvider, ctx.Resolve<IChainHeadInfoProvider>()));
                 ITrc21StateReader trc21StateReader = ctx.Resolve<ITrc21StateReader>();
-                IAccountFundsAugmentor accountFundsAugmentor = new Trc21AccountFundsAugmentor(BlockTree, SpecProvider, trc21StateReader);
+                IAdditionalFundsProvider additionalFundsProvider = new Trc21AdditionalFundsProvider(BlockTree, SpecProvider, trc21StateReader);
 
                 Nethermind.TxPool.TxPool txPool = new(ctx.Resolve<IEthereumEcdsa>()!,
                     ctx.Resolve<IBlobTxStorage>() ?? NullBlobTxStorage.Instance,
@@ -231,7 +231,7 @@ public class XdcTestBlockchain : TestBlockchain
                     new XdcIncomingTxFilter(SnapshotManager, BlockTree, SpecProvider, trc21StateReader),
                     ctx.Resolve<ITxValidator>(),
                     false,
-                    accountFundsAugmentor
+                    additionalFundsProvider
                 );
 
                 return txPool;

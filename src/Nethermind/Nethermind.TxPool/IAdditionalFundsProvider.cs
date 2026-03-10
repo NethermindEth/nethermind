@@ -6,16 +6,16 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
-public interface IAccountFundsAugmentor
+public interface IAdditionalFundsProvider
 {
     UInt256 GetAdditionalFunds(Transaction tx);
 }
 
-public sealed class NullAccountFundsAugmentor : IAccountFundsAugmentor
+public sealed class NullAdditionalFundsProvider : IAdditionalFundsProvider
 {
-    public static IAccountFundsAugmentor Instance { get; } = new NullAccountFundsAugmentor();
+    public static IAdditionalFundsProvider Instance { get; } = new NullAdditionalFundsProvider();
 
-    private NullAccountFundsAugmentor() { }
+    private NullAdditionalFundsProvider() { }
 
     public UInt256 GetAdditionalFunds(Transaction tx) => UInt256.Zero;
 }

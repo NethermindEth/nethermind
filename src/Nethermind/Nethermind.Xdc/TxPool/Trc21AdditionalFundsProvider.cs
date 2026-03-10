@@ -12,20 +12,18 @@ using System.Collections.Generic;
 
 namespace Nethermind.Xdc.TxPool;
 
-internal sealed class Trc21AccountFundsAugmentor(
+internal sealed class Trc21AdditionalFundsProvider(
     IBlockTree blockTree,
     ISpecProvider specProvider,
-    ITrc21StateReader trc21StateReader) : IAccountFundsAugmentor
+    ITrc21StateReader trc21StateReader) : IAdditionalFundsProvider
 {
     public UInt256 GetAdditionalFunds(Transaction tx)
     {
         if (tx.To is null)
             return UInt256.Zero;
 
-        if (blockTree.Head?.Header is not XdcBlockHeader currentHead)
-            return UInt256.Zero;
-
-        IXdcReleaseSpec spec = specProvider.GetXdcSpec(currentHead.Number + 1);
+        XdcBlockHeader currentHead = (XdcBlockHeader)blockTree.Head?.Header;
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(currentHead!);
         if (!spec.IsTipTrc21FeeEnabled)
             return UInt256.Zero;
 
