@@ -61,8 +61,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
             return;
         }
 
-        Address coinbase = header.GasBeneficiary!;
-        Address owner = _masternodeVotingContract.GetCandidateOwner(this, header, coinbase);
+        Address owner = _masternodeVotingContract.GetCandidateOwner(WorldState, header.GasBeneficiary!);
 
         if (owner is null || owner == Address.Zero)
             return;

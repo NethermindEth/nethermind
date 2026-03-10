@@ -175,11 +175,27 @@ public sealed class SeqlockCache<TKey, TValue>
     public delegate TValue? ValueFactory(in TKey key);
 
     /// <summary>
+    /// Delegate-based factory with state parameter to avoid closure/delegate allocations.
+    /// Cache the delegate in a static field and pass instance state via <paramref name="state"/>.
+    /// </summary>
+    public delegate TValue? ValueFactory<TState>(in TKey key, TState state);
+
+    /// <summary>
     /// Gets a value from the cache, or adds it using the factory if not present.
+    /// Delegates to the state-based overload to avoid code duplication.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public TValue? GetOrAdd(in TKey key, ValueFactory valueFactory)
+        => GetOrAdd(in key, valueFactory, static (in TKey k, ValueFactory f) => f(in k));
+
+    /// <summary>
+    /// Gets a value from the cache, or adds it using the factory with state if not present.
+    /// Use this overload to avoid per-call delegate allocations by passing a static method
+    /// and the required state separately.
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public TValue? GetOrAdd(in TKey key, ValueFactory valueFactory)
+    public TValue? GetOrAdd<TState>(in TKey key, TState state, ValueFactory<TState> valueFactory)
     {
         long hashCode = key.GetHashCode64();
         int idx0 = (int)hashCode & SetMask;
@@ -191,7 +207,7 @@ public sealed class SeqlockCache<TKey, TValue>
             return value;
         }
 
-        return GetOrAddMiss(in key, valueFactory, idx0, idx1, hashPart);
+        return GetOrAddMiss(in key, state, valueFactory, idx0, idx1, hashPart);
     }
 
     /// <summary>
@@ -200,9 +216,9 @@ public sealed class SeqlockCache<TKey, TValue>
     /// with minimal register saves and stack frame.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private TValue? GetOrAddMiss(in TKey key, ValueFactory valueFactory, int idx0, int idx1, long hashPart)
+    private TValue? GetOrAddMiss<TState>(in TKey key, TState state, ValueFactory<TState> valueFactory, int idx0, int idx1, long hashPart)
     {
-        TValue? value = valueFactory(in key);
+        TValue? value = valueFactory(in key, state);
         SetCore(in key, value, idx0, idx1, hashPart);
         return value;
     }
