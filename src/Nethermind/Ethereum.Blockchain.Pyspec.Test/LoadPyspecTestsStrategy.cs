@@ -90,11 +90,14 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
 
         using HttpClient httpClient = new();
         // Stream directly from network → GZip → Tar to avoid buffering the entire archive in memory.
-        using Stream contentStream = httpClient.GetStreamAsync(
-            string.Format(Constants.ARCHIVE_URL_TEMPLATE, archiveVersion, archiveName)).GetAwaiter().GetResult();
+        using HttpRequestMessage request = new(HttpMethod.Get,
+            string.Format(Constants.ARCHIVE_URL_TEMPLATE, archiveVersion, archiveName));
+        using HttpResponseMessage response = httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+        using Stream contentStream = response.Content.ReadAsStream();
         using GZipStream gzStream = new(contentStream, CompressionMode.Decompress);
 
-        TarFile.ExtractToDirectory(gzStream, testsDirectoryName, true);
+        TarFile.ExtractToDirectory(gzStream, testsDirectoryName, overwriteFiles: true);
     }
 
     private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard, TestType testType)
