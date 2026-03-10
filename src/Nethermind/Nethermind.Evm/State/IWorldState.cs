@@ -154,7 +154,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     {
         accountExists = AccountExists(address, blockAccessIndex);
         return accountExists
-            && (IsContract(address) || !GetNonce(address).IsZero || !IsStorageEmpty(address));
+            && (IsContract(address, blockAccessIndex) || !GetNonce(address, blockAccessIndex).IsZero || !IsStorageEmpty(address, blockAccessIndex));
     }
 
 }
