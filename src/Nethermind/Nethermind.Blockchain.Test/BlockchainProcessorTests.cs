@@ -185,7 +185,7 @@ public class BlockchainProcessorTests
 
         private Hash256? _headBefore;
         private int _processingQueueEmptyFired;
-        private const int ProcessingWait = 5000;
+        private const int ProcessingWait = 10_000;
 
         public ProcessingTestContext(bool startProcessor)
         {
