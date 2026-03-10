@@ -15,7 +15,7 @@ using System.Linq;
 
 namespace Nethermind.Xdc.TxPool;
 
-internal sealed class SignTransactionFilter(
+internal sealed class XdcIncomingTxFilter(
     ISnapshotManager snapshotManager,
     IBlockTree blockTree,
     ISpecProvider specProvider,

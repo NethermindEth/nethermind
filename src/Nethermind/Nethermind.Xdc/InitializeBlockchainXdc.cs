@@ -31,7 +31,7 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
                 _api.TxGossipPolicy,
-                new SignTransactionFilter(snapshotManager, _api.BlockTree, _api.SpecProvider, trc21StateReader),
+                new XdcIncomingTxFilter(snapshotManager, _api.BlockTree, _api.SpecProvider, trc21StateReader),
                 _api.HeadTxValidator,
                 true,
                 accountFundsAugmentor

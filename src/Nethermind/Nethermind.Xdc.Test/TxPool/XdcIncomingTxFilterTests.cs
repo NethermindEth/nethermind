@@ -18,7 +18,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test.TxPool;
 
-internal class SignTransactionFilterTests
+internal class XdcIncomingTxFilterTests
 {
     [Test]
     public void Accept_ShouldRejectTrc21Transfer_WhenReaderValidationFails()
@@ -27,7 +27,7 @@ internal class SignTransactionFilterTests
         Address token = new("0x00000000000000000000000000000000000000a1");
 
         Transaction tx = BuildTx(sender, token);
-        (SignTransactionFilter sut, FakeTrc21StateReader trc21Reader) = CreateSut(100, true);
+        (XdcIncomingTxFilter sut, FakeTrc21StateReader trc21Reader) = CreateSut(100, true);
         trc21Reader.FeeCapacities[token] = 1;
         trc21Reader.IsValid = false;
 
@@ -45,7 +45,7 @@ internal class SignTransactionFilterTests
         Address recipient = new("0x00000000000000000000000000000000000000b2");
 
         Transaction tx = BuildTx(sender, recipient);
-        (SignTransactionFilter sut, FakeTrc21StateReader trc21Reader) = CreateSut(100, true);
+        (XdcIncomingTxFilter sut, FakeTrc21StateReader trc21Reader) = CreateSut(100, true);
 
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>());
         AcceptTxResult result = sut.Accept(tx, ref state, TxHandlingOptions.None);
@@ -61,7 +61,7 @@ internal class SignTransactionFilterTests
         Address token = new("0x00000000000000000000000000000000000000a1");
 
         Transaction tx = BuildTx(sender, token);
-        (SignTransactionFilter sut, FakeTrc21StateReader trc21Reader) = CreateSut(100, false);
+        (XdcIncomingTxFilter sut, FakeTrc21StateReader trc21Reader) = CreateSut(100, false);
         trc21Reader.FeeCapacities[token] = 1;
         trc21Reader.IsValid = false;
 
@@ -72,7 +72,7 @@ internal class SignTransactionFilterTests
         Assert.That(trc21Reader.ValidateCalls, Is.EqualTo(0));
     }
 
-    private static (SignTransactionFilter, FakeTrc21StateReader) CreateSut(long headNumber, bool isTipTrc21FeeEnabled)
+    private static (XdcIncomingTxFilter, FakeTrc21StateReader) CreateSut(long headNumber, bool isTipTrc21FeeEnabled)
     {
         XdcBlockHeader headHeader = (XdcBlockHeader)Build.A.XdcBlockHeader().WithNumber(headNumber).TestObject;
         Block headBlock = Build.A.Block.WithHeader(headHeader).TestObject;
@@ -93,7 +93,7 @@ internal class SignTransactionFilterTests
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         FakeTrc21StateReader trc21Reader = new();
-        return (new SignTransactionFilter(signer, blockTree, specProvider, trc21Reader), trc21Reader);
+        return (new XdcIncomingTxFilter(signer, blockTree, specProvider, trc21Reader), trc21Reader);
     }
 
     private static Transaction BuildTx(Address sender, Address to)

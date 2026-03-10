@@ -228,7 +228,7 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<ILogManager>(),
                     new XdcTransactionComparerProvider(SpecProvider, BlockTree).GetDefaultComparer(),
                     compoundPolicy,
-                    new SignTransactionFilter(SnapshotManager, BlockTree, SpecProvider, trc21StateReader),
+                    new XdcIncomingTxFilter(SnapshotManager, BlockTree, SpecProvider, trc21StateReader),
                     ctx.Resolve<ITxValidator>(),
                     false,
                     accountFundsAugmentor
