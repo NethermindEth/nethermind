@@ -38,9 +38,9 @@ public sealed class ReadOnlySnapshotBundle(
     private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
     private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
 
-    public Account? GetAccount(Address address) => GetAccount(address, new HashedKey<AddressAsKey>(address));
+    public Account? GetAccount(Address address) => GetAccount(new HashedKey<AddressAsKey>(address));
 
-    public Account? GetAccount(Address address, HashedKey<AddressAsKey> key)
+    public Account? GetAccount(HashedKey<AddressAsKey> key)
     {
         GuardDispose();
 
@@ -55,7 +55,7 @@ public sealed class ReadOnlySnapshotBundle(
         }
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        Account? account = persistenceReader.GetAccount(address);
+        Account? account = persistenceReader.GetAccount(key.Key.Value);
         if (account == null)
         {
             if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceNullLabel);

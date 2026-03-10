@@ -95,7 +95,7 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.GetAccount(address, key);
+        return _readOnlySnapshotBundle.GetAccount(key);
     }
 
     public int DetermineSelfDestructSnapshotIdx(Address address)
