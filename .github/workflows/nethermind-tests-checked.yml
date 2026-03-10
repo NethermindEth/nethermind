@@ -37,7 +37,6 @@ jobs:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
           - Ethereum.Blockchain.Block.Test
-          - Ethereum.Blockchain.Pyspec.Test
           - Ethereum.Difficulty.Test
           - Ethereum.HexPrefix.Test
           - Ethereum.KeyAddress.Test
@@ -124,7 +123,7 @@ jobs:
           retention-days: 1
 
   tests-chunked:
-    name: Run Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }}) [${{ matrix.variant.label }}]
+    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
     continue-on-error: true
     strategy:
@@ -137,7 +136,13 @@ jobs:
           - label: no-intrinsics
             dotnet-args: ""
             hw-intrinsic: "0"
-        chunk: [1of4, 2of4, 3of4, 4of4]
+        test:
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of4 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of4 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of4 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 4of4 }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of2 }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of2 }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -147,14 +152,14 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Ethereum.Legacy.Blockchain.Test
+      - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
-        working-directory: src/Nethermind/Ethereum.Legacy.Blockchain.Test
+        working-directory: src/Nethermind/${{ matrix.test.project }}
         env:
-          TEST_CHUNK: ${{ matrix.chunk }}
+          TEST_CHUNK: ${{ matrix.test.chunk }}
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
         run: |
-          dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release \
+          dotnet test --project ${{ matrix.test.project }}.csproj -c release \
             ${{ matrix.variant.dotnet-args }}
 
       - name: Save test outcome
@@ -165,7 +170,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Ethereum.Legacy.Blockchain.Test-${{ matrix.chunk }}-${{ matrix.variant.label }}-outcome
+          name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.variant.label }}-outcome
           path: test.outcome
           retention-days: 1
 

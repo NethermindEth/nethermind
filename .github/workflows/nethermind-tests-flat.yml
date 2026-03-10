@@ -26,7 +26,6 @@ jobs:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
           - Ethereum.Blockchain.Block.Test
-          - Ethereum.Blockchain.Pyspec.Test
           - Ethereum.Difficulty.Test
           - Ethereum.HexPrefix.Test
           - Ethereum.KeyAddress.Test
@@ -52,6 +51,10 @@ jobs:
             chunk: 3of4
           - project: Ethereum.Legacy.Blockchain.Test
             chunk: 4of4
+          - project: Ethereum.Blockchain.Pyspec.Test
+            chunk: 1of2
+          - project: Ethereum.Blockchain.Pyspec.Test
+            chunk: 2of2
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
