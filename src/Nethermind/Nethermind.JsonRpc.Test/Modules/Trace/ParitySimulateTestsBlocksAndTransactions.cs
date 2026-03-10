@@ -38,7 +38,7 @@ public class TraceSimulateTestsBlocksAndTransactions
         Assert.That(data, Has.Count.EqualTo(7));
 
         SimulateBlockResult<ParityLikeTxTrace> blockResult = data.Last();
-        Assert.That(blockResult.Traces.Select(static c => c.BlockNumber), Is.Not.Null.Or.Empty);
+        Assert.That(blockResult.Traces.Select(static c => c.BlockNumber), Is.Not.Null.And.Not.Empty);
     }
 
     [Test(Description = """
