@@ -109,7 +109,7 @@ public class DbPersistingBlockTracerTests
     public void check_depth(int depth)
     {
         // ParityTraceActionConverter.Read() recurses per nesting level during STJ deserialization.
-        // Windows default 1MB stack overflows at ~600 depth, so run on a thread with 2MB stack.
+        // Windows default 1MB stack overflows at ~600 depth, so run on a thread with 4MB stack.
         Exception? caught = null;
         Thread thread = new(() =>
         {
@@ -144,7 +144,7 @@ public class DbPersistingBlockTracerTests
             {
                 caught = ex;
             }
-        }, maxStackSize: 2 * 1024 * 1024);
+        }, maxStackSize: 4 * 1024 * 1024);
         thread.Start();
         thread.Join();
         if (caught is not null) throw caught;
