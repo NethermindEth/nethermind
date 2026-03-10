@@ -9,31 +9,31 @@ namespace Nethermind.Core
 {
     public interface IAccountStateProvider
     {
-        bool TryGetAccount(Address address, out AccountStruct account);
+        bool TryGetAccount(Address address, out AccountStruct account, int? blockAccessIndex = null);
 
         [SkipLocalsInit]
-        UInt256 GetNonce(Address address)
+        UInt256 GetNonce(Address address, int? blockAccessIndex = null)
         {
             TryGetAccount(address, out AccountStruct account);
             return account.Nonce;
         }
 
         [SkipLocalsInit]
-        UInt256 GetBalance(Address address)
+        UInt256 GetBalance(Address address, int? blockAccessIndex = null)
         {
             TryGetAccount(address, out AccountStruct account);
             return account.Balance;
         }
 
         [SkipLocalsInit]
-        bool IsStorageEmpty(Address address)
+        bool IsStorageEmpty(Address address, int? blockAccessIndex = null)
         {
             TryGetAccount(address, out AccountStruct account);
             return account.IsStorageEmpty;
         }
 
         [SkipLocalsInit]
-        ValueHash256 GetCodeHash(Address address)
+        ValueHash256 GetCodeHash(Address address, int? blockAccessIndex = null)
         {
             TryGetAccount(address, out AccountStruct account);
             return account.CodeHash;

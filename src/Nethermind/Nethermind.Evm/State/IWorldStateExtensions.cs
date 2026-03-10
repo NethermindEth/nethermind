@@ -16,7 +16,7 @@ public static class WorldStateExtensions
         IReleaseSpec spec, bool isGenesis = false)
     {
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
-        worldState.InsertCode(address, codeHash, code, spec, isGenesis);
+        worldState.InsertCode(address, codeHash, code, spec, isGenesis, -1); // used for setting prestate in tests, so use -1 index
     }
 
     public static void Commit(this IWorldState worldState, IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
@@ -37,6 +37,6 @@ public static class WorldStateExtensions
     public static void IncrementNonce(this IWorldState worldState, Address address)
         => worldState.IncrementNonce(address, UInt256.One);
 
-    public static void AddAccountRead(this IWorldState worldState, Address address)
-        => (worldState as IBlockAccessListBuilder)?.AddAccountRead(address);
+    public static void AddAccountRead(this IWorldState worldState, Address address, int? blockAccessIndex)
+        => (worldState as IBlockAccessListBuilder)?.AddAccountRead(address, blockAccessIndex);
 }

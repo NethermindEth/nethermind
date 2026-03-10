@@ -59,9 +59,9 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction());
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        var result = await ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
-        result.Data.First().First().Should().NotBeNull();
+        (await (await result.Data.FirstAsync()).FirstAsync()).Should().NotBeNull();
     }
 
     [Test]
@@ -69,9 +69,14 @@ public partial class DebugRpcModuleTests
     {
         using Context ctx = await CreateContext();
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([CreateBundle(CreateTransaction()), CreateBundle(CreateTransaction(to: TestItem.AddressD))], BlockParameter.Latest);
+        var result = await ctx.DebugRpcModule.debug_traceCallMany([CreateBundle(CreateTransaction()), CreateBundle(CreateTransaction(to: TestItem.AddressD))], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
+        List<int> l = [];
+        await foreach (IAsyncEnumerable<GethLikeTxTrace> bundle in result.Data)
+        {
+            l.Add(await bundle.CountAsync());
+        }
+        l.Should().BeEquivalentTo([1, 1]);
     }
 
     [Test]
@@ -80,9 +85,15 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction(), CreateTransaction(to: TestItem.AddressD));
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        ResultWrapper<IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>>> result = await ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([2]);
+        List<int> l = [];
+        await foreach (ValueTask<int> vt in result.Data.Select(r => r.CountAsync()))
+        {
+            l.Add(await vt);
+        }
+
+        l.Should().BeEquivalentTo([2]);
     }
 
     [Test]
@@ -91,10 +102,16 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction(value: 200.Ether));
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
+        var result = await ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        List<int> l = [];
+        await foreach (IAsyncEnumerable<GethLikeTxTrace> b in result.Data)
+        {
+            l.Add(await b.CountAsync());
+        }
+        l.Should().BeEquivalentTo([1]);
 
-        GethLikeTxTrace trace = result.Data.First().First();
+        GethLikeTxTrace trace = await (await result.Data.FirstAsync()).FirstAsync();
+        trace.Should().NotBeNull();
         trace.Gas.Should().BeGreaterThan(0);
     }
 
@@ -104,9 +121,9 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction(gas: long.MaxValue));
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        var result = await ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
-        result.Data.Should().HaveCount(1);
+        (await result.Data.CountAsync()).Should().Be(1);
     }
 
     [Test]
@@ -117,9 +134,14 @@ public partial class DebugRpcModuleTests
 
         GethTraceOptions options = new() { DisableStorage = true, DisableStack = true };
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest, options);
+        var result = await ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest, options);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
+        List<int> l = [];
+        await foreach (IAsyncEnumerable<GethLikeTxTrace> b in result.Data)
+        {
+            l.Add(await b.CountAsync());
+        }
+        l.Should().BeEquivalentTo([1]);
     }
 
     [Test]
@@ -132,9 +154,14 @@ public partial class DebugRpcModuleTests
             [TestItem.AddressD] = new() { Balance = 100.Ether }
         };
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
-        result.Data.First().First().Should().NotBeNull();
+        var result = await ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        List<int> l = [];
+        await foreach (IAsyncEnumerable<GethLikeTxTrace> b in result.Data)
+        {
+            l.Add(await b.CountAsync());
+        }
+        l.Should().BeEquivalentTo([1]);
+        (await (await result.Data.FirstAsync()).FirstAsync()).Should().NotBeNull();
     }
 
     [Test]
@@ -149,10 +176,15 @@ public partial class DebugRpcModuleTests
             [TestItem.AddressD] = new() { Balance = 100.Ether }
         };
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        var result = await ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
-        result.Data.First().First().Should().NotBeNull();
+        List<int> l = [];
+        await foreach (IAsyncEnumerable<GethLikeTxTrace> b in result.Data)
+        {
+            l.Add(await b.CountAsync());
+        }
+        l.Should().BeEquivalentTo([1]);
+        (await (await result.Data.FirstAsync()).FirstAsync()).Should().NotBeNull();
     }
 
     [Test]
@@ -162,8 +194,8 @@ public partial class DebugRpcModuleTests
         TransactionBundle bundle = CreateBundle(CreateTransaction(gas: 25_000_000));
         bundle.BlockOverride = new BlockOverride { GasLimit = 50_000_000 };
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
-        result.Data.First().First().Failed.Should().BeFalse();
+        var result = await ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        (await (await result.Data.FirstAsync()).FirstAsync()).Failed.Should().BeFalse();
     }
 
     [Test]
@@ -173,8 +205,13 @@ public partial class DebugRpcModuleTests
         TransactionBundle simple = CreateBundle(CreateTransaction(gas: 4_000_000));
         TransactionBundle withOverride = CreateBundle(CreateTransaction(gas: 25_000_000));
         withOverride.BlockOverride = new BlockOverride { GasLimit = 30_000_000 };
-        var result = ctx.DebugRpcModule.debug_traceCallMany([simple, withOverride], BlockParameter.Latest);
+        var result = await ctx.DebugRpcModule.debug_traceCallMany([simple, withOverride], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
+        List<int> l = [];
+        await foreach (IAsyncEnumerable<GethLikeTxTrace> bundle in result.Data)
+        {
+            l.Add(await bundle.CountAsync());
+        }
+        l.Should().BeEquivalentTo([1, 1]);
     }
 }

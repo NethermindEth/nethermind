@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -27,7 +28,7 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         event Action? TransactionsExecuted;
 
-        public (Block Block, TxReceipt[] Receipts) ProcessOne(
+        public Task<(Block Block, TxReceipt[] Receipts)> ProcessOne(
             Block suggestedBlock,
             ProcessingOptions options,
             IBlockTracer blockTracer,

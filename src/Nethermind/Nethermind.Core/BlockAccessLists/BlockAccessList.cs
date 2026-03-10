@@ -13,22 +13,25 @@ namespace Nethermind.Core.BlockAccessLists;
 public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 {
     [JsonIgnore]
-    public ushort Index = 0;
-    public IEnumerable<AccountChanges> AccountChanges => _accountChanges.Values;
+    public int Index = 0;
 
-    private readonly SortedDictionary<Address, AccountChanges> _accountChanges;
-    private readonly Stack<Change> _changes;
+    /// storage keys across all accounts + addresses
+    [JsonIgnore]
+    public int ItemCount { get; set; }
+
+    public IEnumerable<AccountChanges> AccountChanges => _accountChanges.Values;
+    public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
+
+    private readonly SortedDictionary<Address, AccountChanges> _accountChanges = [];
+    private readonly Stack<Change> _changes = new();
 
     public BlockAccessList()
     {
-        _accountChanges = [];
-        _changes = new();
     }
 
     public BlockAccessList(SortedDictionary<Address, AccountChanges> accountChanges)
     {
         _accountChanges = accountChanges;
-        _changes = new();
     }
 
     public bool Equals(BlockAccessList? other) =>
@@ -45,6 +48,21 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     public static bool operator !=(BlockAccessList left, BlockAccessList right) =>
         !(left == right);
+
+    public void Merge(BlockAccessList other)
+    {
+        foreach (AccountChanges otherAccountChange in other.AccountChanges)
+        {
+            if (_accountChanges.TryGetValue(otherAccountChange.Address, out AccountChanges? accountChange))
+            {
+                accountChange.Merge(otherAccountChange);
+            }
+            else
+            {
+                _accountChanges.Add(otherAccountChange.Address, otherAccountChange);
+            }
+        }
+    }
 
     public AccountChanges? GetAccountChanges(Address address) => _accountChanges.TryGetValue(address, out AccountChanges? value) ? value : null;
 
@@ -119,6 +137,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             Type = ChangeType.CodeChange,
             PreviousValue = oldCodeChange,
             PreTxCode = before
+            // N.B. don't need PreTxCode as SELFDESTRUCT cannot be first code change of tx
         });
 
         if (changedDuringTx)
@@ -190,7 +209,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
         {
             // Push changes in reverse order so they restore in original order
-            foreach (KeyValuePair<ushort, StorageChange> change in slotChanges.Changes)
+            foreach (KeyValuePair<int, StorageChange> change in slotChanges.Changes)
             {
                 _changes.Push(new()
                 {
@@ -254,7 +273,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         if (changedDuringTx)
         {
-            slotChanges.Changes.Add(Index, new(Index, after));
+            slotChanges.AddStorageChange(new(Index, after));
             accountChanges.RemoveStorageRead(key);
         }
         else
@@ -266,7 +285,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public int TakeSnapshot()
         => _changes.Count;
 
-    public void Restore(int snapshot)
+    public void Restore(int snapshot, int? blockAccessIndex = null)
     {
         snapshot = int.Max(0, snapshot);
         while (_changes.Count > snapshot)
@@ -311,7 +330,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     slotChanges.TryPopStorageChange(Index, out _);
                     if (previousStorage is not null)
                     {
-                        slotChanges.Changes.Add(previousStorage.Value.BlockAccessIndex, previousStorage.Value);
+                        slotChanges.AddStorageChange(previousStorage.Value);
                         accountChanges.RemoveStorageRead(change.Slot.Value);
                     }
 
@@ -325,9 +344,11 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     {
         foreach (AccountChanges accountChanges in AccountChanges)
         {
-            bool isPostExecutionSystemContract =
+            bool isSystemContract =
                 accountChanges.Address == Eip7002Constants.WithdrawalRequestPredeployAddress ||
-                accountChanges.Address == Eip7251Constants.ConsolidationRequestPredeployAddress;
+                accountChanges.Address == Eip7251Constants.ConsolidationRequestPredeployAddress ||
+                accountChanges.Address == Eip2935Constants.BlockHashHistoryAddress ||
+                accountChanges.Address == Eip4788Constants.BeaconRootsAddress;
 
             yield return
                 new(
@@ -336,7 +357,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     accountChanges.NonceChangeAtIndex(index),
                     accountChanges.CodeChangeAtIndex(index),
                     accountChanges.SlotChangesAtIndex(index),
-                    isPostExecutionSystemContract ? 0 : accountChanges.StorageReads.Count
+                    isSystemContract ? 0 : accountChanges.StorageReads.Count
                 );
         }
     }
@@ -461,7 +482,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             }
         }
 
-        // storage only changed within this transaction
+        // code only changed within this transaction
         foreach (Change change in _changes)
         {
             if (change.Type == ChangeType.CodeChange && change.Address == address && change.PreviousValue is null)
@@ -503,8 +524,20 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         public UInt256? PreTxBalance { get; init; }
         public UInt256? PreTxStorage { get; init; }
         public byte[]? PreTxCode { get; init; }
-        public ushort BlockAccessIndex { get; init; }
+        public int BlockAccessIndex { get; init; }
     }
 }
 
-public record struct ChangeAtIndex(Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads);
+public record struct ChangeAtIndex(Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads)
+{
+    public override string ToString()
+    {
+        int slotChangeCount = 0;
+        foreach (SlotChanges _ in SlotChanges)
+        {
+            slotChangeCount++;
+        }
+
+        return $"{nameof(ChangeAtIndex)}({Address}, Balance={BalanceChange?.PostBalance}, Nonce={NonceChange?.NewNonce}, Code={CodeChange is not null}, Slots={slotChangeCount}, Reads={Reads})";
+    }
+}

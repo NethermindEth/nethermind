@@ -297,7 +297,7 @@ public partial class EngineModuleTests
             blockHash,
             receiptsRoot,
             stateRoot,
-            "InvalidBlockLevelAccessList: Suggested block-level access list missing account changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 2.",
+            "InvalidBlockLevelAccessList: Account 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 not found in block access list when checking existence at index 2.",
             withMissingChange: true);
 
     [TestCase(

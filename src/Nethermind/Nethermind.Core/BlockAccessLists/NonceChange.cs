@@ -3,7 +3,7 @@
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly record struct NonceChange(ushort BlockAccessIndex, ulong NewNonce) : IIndexedChange
+public readonly record struct NonceChange(int BlockAccessIndex, ulong NewNonce) : IIndexedChange
 {
     public override string ToString() => $"{BlockAccessIndex}:{NewNonce}";
 }

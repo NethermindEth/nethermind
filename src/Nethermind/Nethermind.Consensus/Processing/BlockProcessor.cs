@@ -4,7 +4,9 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -15,6 +17,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -48,6 +51,7 @@ public partial class BlockProcessor(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
     protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
+    private Hash256 _lastLoadedBal;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -57,7 +61,7 @@ public partial class BlockProcessor(
 
     public event Action? TransactionsExecuted;
 
-    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
+    public async Task<(Block Block, TxReceipt[] Receipts)> ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
@@ -65,12 +69,12 @@ public partial class BlockProcessor(
         {
             _balBuilder.TracingEnabled = true;
             _balBuilder.GeneratedBlockAccessList.Clear();
-            _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
+            SetupBlockAccessLists(spec, suggestedBlock);
         }
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
+        TxReceipt[] receipts = await ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -96,25 +100,37 @@ public partial class BlockProcessor(
     protected bool ShouldComputeStateRoot(BlockHeader header) =>
         !header.IsGenesis || !specProvider.GenesisStateUnavailable;
 
-    protected virtual TxReceipt[] ProcessBlock(
+    protected virtual async Task<TxReceipt[]> ProcessBlock(
         Block block,
         IBlockTracer blockTracer,
         ProcessingOptions options,
         IReleaseSpec spec,
         CancellationToken token)
     {
+        BlockBody body = block.Body;
         BlockHeader header = block.Header;
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
+        bool shouldComputeStateRoot = ShouldComputeStateRoot(header);
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
         StoreBeaconRoot(block, spec);
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        _balBuilder?.MergeIntermediateBalsUpTo(0);
+
+        TxReceipt[] receipts;
+        try
+        {
+            receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        }
+        catch (ParallelWorldState.InvalidBlockLevelAccessListException e)
+        {
+            throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
+        }
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
@@ -152,12 +168,11 @@ public partial class BlockProcessor(
             block.AccountChanges = _stateProvider.GetAccountChanges();
         }
 
-        if (ShouldComputeStateRoot(header))
+        if (shouldComputeStateRoot)
         {
             _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
         }
-
 
         header.Hash = header.CalculateHash();
 
@@ -303,6 +318,30 @@ public partial class BlockProcessor(
                 UInt256 balance = _stateProvider.GetBalance(daoAccount);
                 _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
                 _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
+            }
+        }
+    }
+
+    private void SetupBlockAccessLists(IReleaseSpec spec, Block suggested)
+    {
+        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+        {
+            _balBuilder.TracingEnabled = true;
+            _balBuilder.IsGenesis = suggested.IsGenesis;
+
+            if (_lastLoadedBal != suggested.Hash)
+            {
+                _balBuilder.LoadSuggestedBlockAccessList(suggested.BlockAccessList, suggested.GasUsed);
+            }
+            _lastLoadedBal = suggested.Hash;
+
+            if (_balBuilder.ParallelExecutionEnabled)
+            {
+                _balBuilder.SetupGeneratedAccessLists(logManager, suggested.Transactions.Length);
+            }
+            else
+            {
+                _balBuilder.GeneratedBlockAccessList = new();
             }
         }
     }
