@@ -101,6 +101,13 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
       - name: ${{ matrix.project }}
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
@@ -137,12 +144,18 @@ jobs:
             dotnet-args: ""
             hw-intrinsic: "0"
         test:
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of4 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of4 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of4 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 4of4 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of2 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of2 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 4of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 5of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of4 }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of4 }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of4 }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of4 }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -151,6 +164,13 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
