@@ -265,8 +265,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         timeoutMsg.Signer = _signer.Address;
 
         HandleTimeoutVote(timeoutMsg);
-
-        //TODO: Broadcast _ctx.HighestTC
     }
 
     // Returns true if the signer is within the master node list
