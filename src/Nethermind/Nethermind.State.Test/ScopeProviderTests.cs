@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,16 +16,42 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
 
-public class TrieStoreScopeProviderTests
+[TestFixture(false)]
+[TestFixture(true)]
+[Parallelizable(ParallelScope.All)]
+public class ScopeProviderTests(bool useFlat)
 {
+    private class Context : IDisposable
+    {
+        public IWorldStateScopeProvider ScopeProvider { get; }
+        public TestMemDb Kv { get; }
+        public TestMemDb CodeKv { get; }
+        private readonly IContainer _container;
+
+        public Context(bool useFlat, TestMemDb kv = null, TestMemDb codeKv = null)
+        {
+            if (useFlat)
+            {
+                (ScopeProvider, _container) = TestWorldStateFactory.CreateFlatScopeProvider();
+            }
+            else
+            {
+                Kv = kv ?? new TestMemDb();
+                CodeKv = codeKv ?? new TestMemDb();
+                ScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(Kv), CodeKv, LimboLogs.Instance);
+            }
+        }
+
+        public void Dispose() => _container?.Dispose();
+    }
+
     [Test]
     public void Test_CanSaveToState()
     {
-        TestMemDb kv = new TestMemDb();
-        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), new MemDb(), LimboLogs.Instance);
+        using Context ctx = new(useFlat);
 
         Hash256 stateRoot;
-        using (var scope = scopeProvider.BeginScope(null))
+        using (var scope = ctx.ScopeProvider.BeginScope(null))
         {
             scope.Get(TestItem.AddressA).Should().Be(null);
             using (var writeBatch = scope.StartWriteBatch(1))
@@ -36,9 +64,9 @@ public class TrieStoreScopeProviderTests
         }
 
         stateRoot.Should().NotBe(Keccak.EmptyTreeHash);
-        kv.WritesCount.Should().Be(1);
+        if (!useFlat) ctx.Kv.WritesCount.Should().Be(1);
 
-        using (var scope = scopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        using (var scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             scope.Get(TestItem.AddressA).Balance.Should().Be(100);
         }
@@ -47,11 +75,10 @@ public class TrieStoreScopeProviderTests
     [Test]
     public void Test_CanSaveToStorage()
     {
-        TestMemDb kv = new TestMemDb();
-        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), new MemDb(), LimboLogs.Instance);
+        using Context ctx = new(useFlat);
 
         Hash256 stateRoot;
-        using (var scope = scopeProvider.BeginScope(null))
+        using (var scope = ctx.ScopeProvider.BeginScope(null))
         {
             scope.Get(TestItem.AddressA).Should().Be(null);
 
@@ -70,9 +97,9 @@ public class TrieStoreScopeProviderTests
         }
 
         stateRoot.Should().NotBe(Keccak.EmptyTreeHash);
-        kv.WritesCount.Should().Be(2);
+        if (!useFlat) ctx.Kv.WritesCount.Should().Be(2);
 
-        using (var scope = scopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        using (var scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             var storage = scope.CreateStorageTree(TestItem.AddressA);
             storage.Get(1).Should().BeEquivalentTo([1, 2, 3]);
@@ -82,11 +109,9 @@ public class TrieStoreScopeProviderTests
     [Test]
     public void Test_CanSaveToCode()
     {
-        TestMemDb kv = new TestMemDb();
-        TestMemDb codeKv = new TestMemDb();
-        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), codeKv, LimboLogs.Instance);
+        using Context ctx = new(useFlat);
 
-        using (var scope = scopeProvider.BeginScope(null))
+        using (var scope = ctx.ScopeProvider.BeginScope(null))
         {
             using (var writer = scope.CodeDb.BeginCodeWrite())
             {
@@ -94,16 +119,22 @@ public class TrieStoreScopeProviderTests
             }
         }
 
-        codeKv.WritesCount.Should().Be(1);
+        if (!useFlat)
+        {
+            ctx.CodeKv.WritesCount.Should().Be(1);
+        }
+        else
+        {
+            using var scope = ctx.ScopeProvider.BeginScope(null);
+            scope.CodeDb.GetCode(TestItem.KeccakA).Should().BeEquivalentTo([1, 2, 3]);
+        }
     }
 
     [Test]
     public void Test_NullAccountWithNonEmptyStorageDoesNotThrow()
     {
-        TestMemDb kv = new TestMemDb();
-        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), new MemDb(), LimboLogs.Instance);
-
-        using var scope = scopeProvider.BeginScope(null);
+        using Context ctx = new(useFlat);
+        using var scope = ctx.ScopeProvider.BeginScope(null);
 
         // Simulates the EIP-161 scenario: storage is flushed for an account that was
         // then deleted (set to null) during state commit. The write batch Dispose should

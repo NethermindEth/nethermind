@@ -71,14 +71,22 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api?.SpecProvider);
 
         var taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GetFinalSpec();
+        var logger = _api.Context.Resolve<ILogManager>().GetClassLogger<TaikoPlugin>();
 
         if (!taikoSpec.IsRip7728Enabled)
+        {
+            if (logger.IsInfo) logger.Info("L1SLOAD (RIP-7728) is disabled in chainspec");
             return;
+        }
+
+        if (logger.IsInfo) logger.Info("L1SLOAD (RIP-7728) is enabled in chainspec");
 
         ISurgeConfig surgeConfig = _api.Context.Resolve<ISurgeConfig>();
 
         if (string.IsNullOrEmpty(surgeConfig.L1EthApiEndpoint))
             throw new ArgumentException($"{nameof(surgeConfig.L1EthApiEndpoint)} must be provided in the Surge configuration to use L1SLOAD precompile");
+
+        if (logger.IsInfo) logger.Info($"L1SLOAD: using L1 endpoint: {surgeConfig.L1EthApiEndpoint}");
 
         var storageProvider = new JsonRpcL1StorageProvider(
             surgeConfig.L1EthApiEndpoint,
@@ -86,6 +94,8 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _api.Context.Resolve<ILogManager>());
 
         L1SloadPrecompile.L1StorageProvider = storageProvider;
+        L1SloadPrecompile.Logger = _api.Context.Resolve<ILogManager>().GetClassLogger<L1SloadPrecompile>();
+        if (logger.IsInfo) logger.Info("L1SLOAD: precompile fully initialized");
     }
 
     public bool MustInitialize => true;
