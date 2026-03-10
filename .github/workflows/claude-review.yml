@@ -1,4 +1,4 @@
-name: Claude Code
+name: Claude Code Review
 
 on:
   issue_comment:
@@ -27,8 +27,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
 
       - name: Run Claude Code
         id: claude
