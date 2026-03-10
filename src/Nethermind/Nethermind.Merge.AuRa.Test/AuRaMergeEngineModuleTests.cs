@@ -181,9 +181,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     [Retry(3)]
     [Platform(Exclude = "MacOsX", Reason = "Timing-sensitive 10ms delays too tight on macOS ARM runners")]
     public new Task getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
-    {
-        return base.getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty();
-    }
+        => base.getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty();
 
     public class MergeAuRaTestBlockchain : MergeTestBlockchain
     {

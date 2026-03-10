@@ -204,11 +204,7 @@ public partial class BlockDownloaderTests
             0,
             CancellationToken.None);
 
-#if DEBUG
-        await act.Should().ThrowAsync<Exception>();
-#else
         await act.Should().NotThrowAsync();
-#endif
     }
 
     [Test]

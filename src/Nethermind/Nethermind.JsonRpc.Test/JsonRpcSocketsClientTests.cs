@@ -165,7 +165,6 @@ public class JsonRpcSocketsClientTests
         }
 
         [Test]
-        [Platform(Exclude = "MacOsX", Reason = "macOS IPC socket framing differs from Linux/Windows")]
         public async Task Does_not_process_partial_message_without_delimiter()
         {
             using UnixSocketPair pair = await UnixSocketPair.CreateAsync();

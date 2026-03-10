@@ -22,39 +22,9 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
     public readonly long SStoreResetCost;
     public readonly long TxDataNonZeroMultiplier;
 
-#if DEBUG
-    private readonly long _netMeteredSStoreCost;
-    public long NetMeteredSStoreCost
-    {
-        get => GetWithFreeGuard(_netMeteredSStoreCost);
-        init => _netMeteredSStoreCost = value;
-    }
-
-    private readonly long _clearReversalRefund;
-    public long ClearReversalRefund
-    {
-        get => GetWithFreeGuard(_clearReversalRefund);
-        init => _clearReversalRefund = value;
-    }
-
-    private readonly long _setReversalRefund;
-    public long SetReversalRefund
-    {
-        get => GetWithFreeGuard(_setReversalRefund);
-        init => _setReversalRefund = value;
-    }
-
-    private static long GetWithFreeGuard(long value) =>
-        value == GasCostOf.Free
-            ? throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled")
-            : value;
-
-#else
     public readonly long NetMeteredSStoreCost;
-
     public readonly long ClearReversalRefund;
     public readonly long SetReversalRefund;
-#endif
     public readonly long SClearRefund;
     public readonly long DestroyRefund;
 
@@ -157,15 +127,9 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             && ExpByteCost == other.ExpByteCost
             && SStoreResetCost == other.SStoreResetCost
             && TxDataNonZeroMultiplier == other.TxDataNonZeroMultiplier
-#if DEBUG
-            && _netMeteredSStoreCost == other._netMeteredSStoreCost
-            && _clearReversalRefund == other._clearReversalRefund
-            && _setReversalRefund == other._setReversalRefund
-#else
             && NetMeteredSStoreCost == other.NetMeteredSStoreCost
             && ClearReversalRefund == other.ClearReversalRefund
             && SetReversalRefund == other.SetReversalRefund
-#endif
             && SClearRefund == other.SClearRefund
             && DestroyRefund == other.DestroyRefund
             && MaxBlobGasPerBlock == other.MaxBlobGasPerBlock
