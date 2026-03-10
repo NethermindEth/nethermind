@@ -1,5 +1,5 @@
 ---
-name: eip-reviewer
+name: eip-implementation-reviewer
 description: Use when reviewing an EIP implementation for spec compliance, missing tests, or EIP interaction gaps. Complements the generic review skill — run both, not one or the other.
 allowed-tools: [Bash(git diff*), Bash(git merge-base*), Bash(git log*), Bash(git status*), Read, Grep, Glob, WebFetch]
 ---
@@ -26,6 +26,7 @@ Fallback: https://eips.ethereum.org/EIPS/eip-{number}
 ```
 
 Fetch all EIPs listed in the `Requires` header — specs are deltas. Extract as bullet points (quote directly when referencing later):
+
 - Numeric constants, pseudocode/formulas, conditional logic, revert conditions
 - Backward compatibility and security considerations
 
@@ -38,6 +39,7 @@ If diff not provided: `git diff $(git merge-base HEAD origin/master) HEAD`
 Check for prior work: `git log --all --oneline --grep="IsEip{number}"` — diff may be part 2 of N.
 
 Map each changed code section to a spec requirement. Flag:
+
 - **Unmapped code** — no spec requirement (over-implementation?)
 - **Unmapped spec** — no code change (gap? check prior PRs)
 
@@ -48,33 +50,59 @@ Triage if >30 files: prioritize `Nethermind.Evm/`, `Nethermind.Specs/`, `Netherm
 Launch up to 3 sub-checks with the EIP spec text and diff.
 
 ### A: Spec Fidelity
+
 - **Constants**: Named constants with exact spec values — no magic numbers
 - **Formulas**: Implementation matches spec pseudocode. Watch: off-by-one in `ceil()`, `long` truncation of `UInt256`, rounding direction. When the spec describes the same value in multiple places (parameter table + pseudocode), verify they are the same charge before reporting as missing — cross-reference the parameter table breakdown against pseudocode line items
 - **Conditionals**: Every "MUST revert if..." has a branch. Missing revert = CRITICAL
 
 ### B: Tests + Backward Compat
+
 - **Flag gating**: New behavior behind `IsEip{number}Enabled`. Flag-off path unchanged. No re-gating prerequisites
 - **Test checklist**: flag-off test (`OverridableReleaseSpec`), boundary tests (exact gas / off-by-1), revert tests per "MUST revert"
 - For gaps: suggest tests using project patterns — `VirtualMachineTestsBase` for EVM opcodes/gas, `BlockchainTestBase` for block-level behavior (withdrawals, tx types, state changes), `OverridableReleaseSpec` for flag toggling, `Prepare.EvmCode` for bytecode construction
 
 ### C: Interactions + Pipeline
-- **Flag pipeline**: All files updated per `implementation-patterns.md` Layer 1-5 (IReleaseSpec → ReleaseSpec → Decorator → OverridableReleaseSpec → fork → ChainSpec*). Missing = breaks non-mainnet
-- **Pattern completeness**: Check which patterns from `implementation-patterns.md` apply (new opcode, new header field, new tx type, etc.) and verify all listed files for each applicable pattern are addressed in the diff. Missing = incomplete implementation
+
+- **Flag pipeline**: All files updated per `implementation-patterns.md` Layer 1-5 (IReleaseSpec → ReleaseSpec → Decorator → OverridableReleaseSpec → fork → ChainSpec\*). Missing = breaks non-mainnet
 - **Siblings**: Other EIPs in same fork sharing code paths. Compound conditions with new flag
 - **Gas composition**: If gas-related, check that the new gas logic composes correctly with existing gas-related EIPs already active in the target fork
 
 See `references/common-pitfalls.md` for general patterns.
 
+### D: Pattern Completeness (mandatory — must appear in report)
+
+This check is **not optional**. You must include a pattern checklist table in your report.
+
+1. Read `references/implementation-patterns.md`
+2. Identify which patterns apply to this EIP (new opcode, new header field, new tx type, etc.)
+3. For each applicable pattern, list **every numbered item** and whether the **diff modifies** that file. A pre-existing file that is not modified by the diff counts as MISSING — the EIP's changes need to reach it:
+
+```
+Pattern: "New header field" (items 1-12)
+ 1. BlockHeader.cs — PRESENT in diff
+ 2. Block.cs — PRESENT in diff
+ 3. HeaderDecoder.cs — PRESENT in diff
+ ...
+ 8. EngineRpcModule.{ForkName}.cs — MISSING ← finding
+ 9. IEngineRpcModule.{ForkName}.cs — MISSING ← finding
+```
+
+**Severity guide:**
+
+- Missing Engine API modules, spec provider, or capability registration = **HIGH** (breaks CL communication or non-mainnet)
+- Missing test infrastructure or test base class updates = **MEDIUM**
+- Missing L2 plugins or config = **LOW**
+
 ## Step 4 — Score + Report
 
 Score each candidate finding (0-100):
 
-| Score | Meaning |
-|---|---|
-| 0 | False positive, pre-existing, or unmodified lines |
-| 50 | Real but unlikely in practice |
-| 75 | Likely real, violates MUST |
-| 100 | Confirmed with concrete proof |
+| Score | Meaning                                           |
+| ----- | ------------------------------------------------- |
+| 0     | False positive, pre-existing, or unmodified lines |
+| 50    | Real but unlikely in practice                     |
+| 75    | Likely real, violates MUST                        |
+| 100   | Confirmed with concrete proof                     |
 
 **Discard below 80.** Do NOT report: pre-existing issues, unmodified lines, compiler/CI-catchable issues, intentional EIP changes, SHOULD non-compliance.
 

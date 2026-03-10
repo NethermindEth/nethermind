@@ -2,57 +2,64 @@
 
 ## EIP Category → Primary Modules
 
-| EIP Category | Primary Modules | Key Files |
-|---|---|---|
-| New opcode (Core/EVM) | `Nethermind.Evm`, `Nethermind.Specs` | `Instruction.cs`, `EvmInstructions.*.cs`, `GasCostOf.cs`, `IReleaseSpec.cs` |
-| New precompile (Core) | `Nethermind.Evm.Precompiles`, `Nethermind.Specs` | New precompile class, `Extensions.cs`, `ReleaseSpec.cs`, `IReleaseSpec.cs` |
-| New transaction type (Core) | `Nethermind.Core`, `Nethermind.Serialization.Rlp`, `Nethermind.TxPool` | `TxType.cs`, `Transaction.cs`, new decoder in `TxDecoders/`, `TxDecoder.cs` |
-| Gas cost / accounting change | `Nethermind.Evm`, `Nethermind.Evm.Tracing` | `GasCostOf.cs`, `IGasPolicy.cs`, `TransactionProcessor.cs`, `ITxTracer.cs` + ~20 tracers |
-| Receipt format change | `Nethermind.Serialization.Rlp`, `Nethermind.State` | `RlpBehaviors.cs`, receipt decoders, `ReceiptTrie.cs` (consensus-critical) |
-| New header field | `Nethermind.Core`, `Nethermind.Serialization.Rlp`, `Nethermind.Merge.Plugin` | `BlockHeader.cs`, `HeaderDecoder.cs`, `ExecutionPayload*.cs` |
-| Hard fork / consensus rule | `Nethermind.Specs`, `Nethermind.Core` | `IReleaseSpec.cs`, `ReleaseSpec.cs`, fork file in `Forks/`, `MainnetSpecProvider.cs` |
-| New JSON-RPC method | `Nethermind.JsonRpc`, `Nethermind.Facade` | Module interface + implementation in `Modules/<Name>/` |
-| p2p / networking | `Nethermind.Network`, `Nethermind.Network.Discovery` | Protocol handler classes |
-| State / storage rule | `Nethermind.State`, `Nethermind.Trie` | `WorldState.cs`, trie node files |
-| PoS / Engine API | `Nethermind.Merge.Plugin` | `EngineRpcModule.cs`, execution payload classes |
-| Blob / EIP-4844 style | `Nethermind.Core`, `Nethermind.Evm`, `Nethermind.TxPool` | Blob tx fields, validation |
+| EIP Category                 | Primary Modules                                                              | Key Files                                                                                |
+| ---------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| New opcode (Core/EVM)        | `Nethermind.Evm`, `Nethermind.Specs`                                         | `Instruction.cs`, `EvmInstructions.*.cs`, `GasCostOf.cs`, `IReleaseSpec.cs`              |
+| New precompile (Core)        | `Nethermind.Evm.Precompiles`, `Nethermind.Specs`                             | New precompile class, `Extensions.cs`, `ReleaseSpec.cs`, `IReleaseSpec.cs`               |
+| New transaction type (Core)  | `Nethermind.Core`, `Nethermind.Serialization.Rlp`, `Nethermind.TxPool`       | `TxType.cs`, `Transaction.cs`, new decoder in `TxDecoders/`, `TxDecoder.cs`              |
+| Gas cost / accounting change | `Nethermind.Evm`, `Nethermind.Evm.Tracing`                                   | `GasCostOf.cs`, `IGasPolicy.cs`, `TransactionProcessor.cs`, `ITxTracer.cs` + ~20 tracers |
+| Receipt format change        | `Nethermind.Serialization.Rlp`, `Nethermind.State`                           | `RlpBehaviors.cs`, receipt decoders, `ReceiptTrie.cs` (consensus-critical)               |
+| New header field             | `Nethermind.Core`, `Nethermind.Serialization.Rlp`, `Nethermind.Merge.Plugin` | `BlockHeader.cs`, `HeaderDecoder.cs`, `ExecutionPayload*.cs`                             |
+| Hard fork / consensus rule   | `Nethermind.Specs`, `Nethermind.Core`                                        | `IReleaseSpec.cs`, `ReleaseSpec.cs`, fork file in `Forks/`, `MainnetSpecProvider.cs`     |
+| New JSON-RPC method          | `Nethermind.JsonRpc`, `Nethermind.Facade`                                    | Module interface + implementation in `Modules/<Name>/`                                   |
+| p2p / networking             | `Nethermind.Network`, `Nethermind.Network.Discovery`                         | Protocol handler classes                                                                 |
+| State / storage rule         | `Nethermind.State`, `Nethermind.Trie`                                        | `WorldState.cs`, trie node files                                                         |
+| PoS / Engine API             | `Nethermind.Merge.Plugin`                                                    | `EngineRpcModule.cs`, execution payload classes                                          |
+| Blob / EIP-4844 style        | `Nethermind.Core`, `Nethermind.Evm`, `Nethermind.TxPool`                     | Blob tx fields, validation                                                               |
 
 ## Key File Paths
 
 ### Specs
+
 - `Nethermind.Core/Specs/IReleaseSpec.cs` — EIP feature flags interface
 - `Nethermind.Specs/ReleaseSpec.cs` — mutable implementation; `BuildPrecompilesCache()` here
 - `Nethermind.Specs/Forks/` — one file per fork (e.g., `18_Prague.cs`, `17_Cancun.cs`)
 - `Nethermind.Specs/MainnetSpecProvider.cs` — maps timestamps/block numbers to fork specs
 
 ### EVM
+
 - `Nethermind.Evm/Instruction.cs` — `enum Instruction : byte` + `InstructionExtensions`
 - `Nethermind.Evm/Instructions/EvmInstructions.cs` — opcode dispatch table
 - `Nethermind.Evm/Instructions/EvmInstructions.*.cs` — partial classes by category (Math, Storage, Call, Bitwise, Stack, etc.)
 - `Nethermind.Evm/GasCostOf.cs` — gas cost constants
 
 ### Precompiles
+
 - `Nethermind.Evm/Precompiles/IPrecompile.cs` — interface
 - `Nethermind.Evm.Precompiles/*.cs` — one file per precompile
 - `Nethermind.Evm.Precompiles/Extensions.cs` — `ListPrecompiles()` registration
 
 ### Transactions
+
 - `Nethermind.Core/TxType.cs` — `enum TxType : byte`
 - `Nethermind.Core/Transaction.cs` — transaction fields
 - `Nethermind.Serialization.Rlp/TxDecoder.cs` — top-level decoder with type routing
 - `Nethermind.Serialization.Rlp/TxDecoders/` — per-type decoders (`LegacyTxDecoder.cs`, `EIP1559TxDecoder.cs`, `BlobTxDecoder.cs`, `SetCodeTxDecoder.cs`, etc.)
 
 ### JSON-RPC
+
 - `Nethermind.JsonRpc/Modules/` — one subdirectory per module (Eth, Debug, Trace, etc.)
 - `Nethermind.Facade/` — high-level facades called by RPC modules
 
 ### Tests
+
 - `Nethermind.Evm.Test/` — EVM opcode and precompile tests
 - `Nethermind.Specs.Test/` — spec/fork configuration tests
 - `Nethermind.JsonRpc.Test/` — RPC module tests
 - `Nethermind.TxPool.Test/` — transaction pool tests
 
 ### Test infrastructure (update when adding new opcodes, header fields, or tx types)
+
 - `Nethermind.Evm/ByteCodeBuilderExtensions.cs` — fluent bytecode builder; add a method for each new opcode (e.g., `SLOTNUM()`)
 - `Nethermind.Core.Test/Builders/BlockBuilder.cs` — add `With{FieldName}()` for each new header field
 - `Nethermind.Evm.Test/InvalidOpcodeTests.cs` — update fork opcode validation when adding new opcodes
@@ -64,29 +71,23 @@
 Every consensus EIP that needs a feature flag requires changes in **10 files** across 5 layers:
 
 **Layer 1 — Core interface + implementations (3 files):**
+
 1. `Nethermind.Core/Specs/IReleaseSpec.cs` — add `bool IsEipXXXXEnabled { get; }` with XML doc
 2. `Nethermind.Specs/ReleaseSpec.cs` — add `public bool IsEipXXXXEnabled { get; set; }`
 3. `Nethermind.Core/Specs/ReleaseSpecDecorator.cs` — add `public virtual bool IsEipXXXXEnabled => spec.IsEipXXXXEnabled;`
 
-**Layer 2 — Test infrastructure (1 file):**
-4. `Nethermind.Specs.Test/OverridableReleaseSpec.cs` — add `public bool IsEipXXXXEnabled { get; set; } = spec.IsEipXXXXEnabled;`
+**Layer 2 — Test infrastructure (1 file):** 4. `Nethermind.Specs.Test/OverridableReleaseSpec.cs` — add `public bool IsEipXXXXEnabled { get; set; } = spec.IsEipXXXXEnabled;`
 
-**Layer 3 — Fork definition (1 file):**
-5. `Nethermind.Specs/Forks/XX_ForkName.cs` — set `IsEipXXXXEnabled = true;` in fork constructor
+**Layer 3 — Fork definition (1 file):** 5. `Nethermind.Specs/Forks/XX_ForkName.cs` — set `IsEipXXXXEnabled = true;` in fork constructor
 
-**Layer 4 — Chain spec pipeline (4 files):**
-6. `Nethermind.Specs/ChainSpecStyle/Json/ChainSpecParamsJson.cs` — add `public ulong? EipXXXXTransitionTimestamp { get; set; }`
-7. `Nethermind.Specs/ChainSpecStyle/ChainParameters.cs` — add `public ulong? EipXXXXTransitionTimestamp { get; set; }`
-8. `Nethermind.Specs/ChainSpecStyle/ChainSpecLoader.cs` — map: `EipXXXXTransitionTimestamp = chainSpecJson.Params.EipXXXXTransitionTimestamp,`
-9. `Nethermind.Specs/ChainSpecStyle/ChainSpecBasedSpecProvider.cs` — activate: `releaseSpec.IsEipXXXXEnabled = (chainSpec.Parameters.EipXXXXTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;`
+**Layer 4 — Chain spec pipeline (4 files):** 6. `Nethermind.Specs/ChainSpecStyle/Json/ChainSpecParamsJson.cs` — add `public ulong? EipXXXXTransitionTimestamp { get; set; }` 7. `Nethermind.Specs/ChainSpecStyle/ChainParameters.cs` — add `public ulong? EipXXXXTransitionTimestamp { get; set; }` 8. `Nethermind.Specs/ChainSpecStyle/ChainSpecLoader.cs` — map: `EipXXXXTransitionTimestamp = chainSpecJson.Params.EipXXXXTransitionTimestamp,` 9. `Nethermind.Specs/ChainSpecStyle/ChainSpecBasedSpecProvider.cs` — activate: `releaseSpec.IsEipXXXXEnabled = (chainSpec.Parameters.EipXXXXTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;`
 
-**Layer 5 — Spec provider test (1 file):**
-10. `Nethermind.Specs.Test/MainnetSpecProviderTests.cs` — update the fork's EIP test method to cover the new flag
+**Layer 5 — Spec provider tests (1-2 files):** 10. `Nethermind.Specs.Test/MainnetSpecProviderTests.cs` — update the fork's EIP test method to cover the new flag 11. `Nethermind.Specs.Test/ChainSpecStyle/ChainSpecBasedSpecProviderTests.cs` — if the EIP overrides a spec **value** (e.g., `MaxCodeSize`, gas constants) in `ChainSpecBasedSpecProvider`, add a test here verifying the value is set correctly when the flag activates
 
-**If the EIP is the first in a new fork**, also update:
-11. `Nethermind.Specs/MainnetSpecProvider.cs` — add activation timestamp, `TransitionActivations` entry, and spec switch expression for the new fork
+**If the EIP is the first in a new fork**, also update: 11. `Nethermind.Specs/MainnetSpecProvider.cs` — add activation timestamp, `TransitionActivations` entry, and spec switch expression for the new fork
 
 **Exceptions:**
+
 - Receipt-only EIPs may use `IReceiptSpec` instead of `IReleaseSpec`
 - Networking protocol versions (e.g., eth/70) skip `IReleaseSpec` entirely — use dynamic capability registration in `MergePlugin.cs`
 

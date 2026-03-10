@@ -75,7 +75,9 @@ Based on the key specification changes from Step 1, determine the primary change
 | New RPC method                | "Adding new JSON-RPC methods" in reference doc                                   |
 | Consensus/fork rule only      | "Adding an EIP flag to a fork" in reference doc                                  |
 
-If the EIP spans multiple categories, combine the relevant patterns.
+If the EIP spans multiple categories, combine the relevant patterns. **Check every numbered item** in each applicable pattern — items near the end (Engine API modules, capability providers, genesis JSON) are easy to miss but critical.
+
+**Cross-reference with Step 2:** The similar EIP's `git log --name-only` output shows files the patterns doc may not list — especially test infrastructure, test base classes, and spec tests. Any file the similar EIP touched that relates to the same subsystem (EVM tests, spec tests, chain spec tests) should be in your plan too.
 
 ### Step 4 — Present Implementation Plan
 
@@ -151,7 +153,7 @@ Your EIP may share validation logic, gas accounting, or data structures with pre
 
 Before claiming the implementation is complete, launch **two subagent reviews in parallel**:
 
-1. **Spec compliance** — provide the EIP number, spec text (and prerequisites from Step 1), diff of all changed files, and the `eip-reviewer` skill. This checks that the implementation matches the spec and tests cover all mandated behaviors.
+1. **Spec compliance** — provide the EIP number, spec text (and prerequisites from Step 1), diff of all changed files, and the `eip-implementation-reviewer` skill. This checks that the implementation matches the spec and tests cover all mandated behaviors.
 
 2. **Code quality** — provide the diff and the `review` skill. This checks consensus correctness, security, robustness, performance, DI patterns, and breaking changes.
 
@@ -182,8 +184,8 @@ If either review returns CRITICAL or HIGH findings:
 | Skipping build verification            | Always run Step 6 before claiming implementation is complete                                                                                             |
 | Breaking unrelated tests               | If your EIP changes gas costs or tx validation, **check whether existing tests break** — disable the flag in affected tests via `OverridableReleaseSpec` |
 | Breaking behavior when new flag is off | New code must be fully gated behind `IsEip{number}Enabled` — test the flag-off path to confirm existing behavior is unchanged                            |
-| Only running new test file             | Run the full test project for each touched module; prerequisite EIP tests can break silently                                                              |
-| Skipping self-review                   | Always run Step 7 — the implementation author misses spec gaps that a fresh review catches                                                                |
+| Only running new test file             | Run the full test project for each touched module; prerequisite EIP tests can break silently                                                             |
+| Skipping self-review                   | Always run Step 7 — the implementation author misses spec gaps that a fresh review catches                                                               |
 
 ## References
 
