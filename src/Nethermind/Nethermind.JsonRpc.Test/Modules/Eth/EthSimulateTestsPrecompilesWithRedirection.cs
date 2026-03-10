@@ -33,7 +33,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
             Data = Bytes.FromHexString("0xee82ac5e0000000000000000000000000000000000000000000000000000000000000001"),
             To = TestItem.AddressA,
             GasLimit = 3_500_000,
-            GasPrice = 20.GWei()
+            GasPrice = 20.GWei
         };
 
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(systemTransactionForModifiedVm);
@@ -148,7 +148,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
             To = contractAddress,
             SenderAddress = TestItem.AddressA,
             GasLimit = 3_500_000,
-            GasPrice = 20.GWei()
+            GasPrice = 20.GWei
         });
         ((LegacyTransactionForRpc)transactionForRpc).Nonce = null;
 

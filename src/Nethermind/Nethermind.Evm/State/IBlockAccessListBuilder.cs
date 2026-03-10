@@ -20,5 +20,6 @@ public interface IBlockAccessListBuilder
     public void AddAccountRead(Address address, int? blockAccessIndex = null);
     public void LoadSuggestedBlockAccessList(BlockAccessList? suggestedBal, long gasUsed);
     public long GasUsed();
-    public void ValidateBlockAccessList(ushort index, long gasRemaining, bool validateStorageReads = true);
+    public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining, bool validateStorageReads = true);
+    public void SetBlockAccessList(Block block, IReleaseSpec spec);
 }

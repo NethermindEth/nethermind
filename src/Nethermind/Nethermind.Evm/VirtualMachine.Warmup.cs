@@ -36,7 +36,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         address[^1] = 0x1;
         Address addressOne = new(address);
 
-        state.CreateAccount(addressOne, 1000.Ether());
+        state.CreateAccount(addressOne, 1000.Ether);
         state.Commit(spec);
         BlockHeader header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
 
@@ -77,7 +77,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         Address sender = Address.SystemUser;
         Address recipient = new("0x0000000000000000000000000000000000000100");
 
-        state.CreateAccountIfNotExists(recipient, 100.Ether());
+        state.CreateAccountIfNotExists(recipient, 100.Ether);
 
         List<byte> bytes = [(byte)Instruction.JUMPDEST];
 

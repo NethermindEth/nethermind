@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
@@ -48,10 +47,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource))
         {
-            if (_balBuilder is not null && _balBuilder.TracingEnabled)
-            {
-                _balBuilder.AddAccountRead(codeSource, blockAccessIndex);
-            }
+            _worldState.AddAccountRead(codeSource, blockAccessIndex);
             return _localPrecompiles[codeSource];
         }
 

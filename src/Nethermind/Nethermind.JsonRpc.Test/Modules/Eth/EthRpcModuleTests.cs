@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -106,7 +107,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_raw_transaction_by_hash_for_typed_transaction()
     {
         using Context ctx = await Context.CreateWithCancunEnabled();
-        await ctx.Test.AddBlock(Build.A.Transaction.WithMaxPriorityFeePerGas(6.GWei()).WithMaxFeePerGas(11.GWei()).WithType(TxType.EIP1559).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
+        await ctx.Test.AddBlock(Build.A.Transaction.WithMaxPriorityFeePerGas(6.GWei).WithMaxFeePerGas(11.GWei).WithType(TxType.EIP1559).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
         string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", ctx.Test.BlockTree.FindHeadBlock()!.Transactions.Last().Hash!.ToString());
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"02f86c0180850165a0bc0085028fa6ae008252089400000000000000000000000000000000000000000180c080a063b08cc0a06c88fb1dd79f273736b3463af12c6754f9df764aa222d2693a5d43a0606b869eab1c9d01ff462f887826cb8f349ea8f1b59d0635ae77155b3b84ad86\",\"id\":67}"), serialized.Replace("\"", "\\\""));
     }
@@ -115,7 +116,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_raw_transaction_by_hash_from_pool()
     {
         using Context ctx = await Context.CreateWithCancunEnabled();
-        Transaction sent = Build.A.Transaction.WithShardBlobTxTypeAndFields().WithMaxPriorityFeePerGas(6.GWei()).WithMaxFeePerGas(11.GWei()).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+        Transaction sent = Build.A.Transaction.WithShardBlobTxTypeAndFields().WithMaxPriorityFeePerGas(6.GWei).WithMaxFeePerGas(11.GWei).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
         ctx.Test.TxPool.SubmitTx(sent, TxHandlingOptions.None);
 
         string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", sent.Hash);
@@ -148,7 +149,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_pending_transactions_1559_tx()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
-        ctx.Test.AddTransactions(Build.A.Transaction.WithMaxPriorityFeePerGas(6.GWei()).WithMaxFeePerGas(11.GWei()).WithType(TxType.EIP1559).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
+        ctx.Test.AddTransactions(Build.A.Transaction.WithMaxPriorityFeePerGas(6.GWei).WithMaxFeePerGas(11.GWei).WithType(TxType.EIP1559).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
         string serialized = await ctx.Test.TestEthRpc("eth_pendingTransactions");
         JToken.Parse(serialized).Should().ContainSubtree("""{"result": [{"hash":"0x7544f95c68426cb8a8a5a54889c60849ed96ff317835beb63b4d745cbc078cec","nonce":"0x0","blockHash":"0x0000000000000000000000000000000000000000000000000000000000000000","blockNumber":null,"transactionIndex":null,"from":"0x76e68a8696537e4141926f3e528733af9e237d69","to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x28fa6ae00","maxPriorityFeePerGas":"0x165a0bc00","maxFeePerGas":"0x28fa6ae00","gas":"0x5208","input":"0x","chainId":"0x1","type":"0x2","accessList":[],"v":"0x0","s":"0x606b869eab1c9d01ff462f887826cb8f349ea8f1b59d0635ae77155b3b84ad86","r":"0x63b08cc0a06c88fb1dd79f273736b3463af12c6754f9df764aa222d2693a5d43","yParity":"0x0"}]}""");
     }
@@ -157,7 +158,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_pending_transactions_2930_tx()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
-        ctx.Test.AddTransactions(Build.A.Transaction.WithMaxPriorityFeePerGas(6.GWei()).WithMaxFeePerGas(11.GWei()).WithType(TxType.AccessList).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
+        ctx.Test.AddTransactions(Build.A.Transaction.WithMaxPriorityFeePerGas(6.GWei).WithMaxFeePerGas(11.GWei).WithType(TxType.AccessList).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
         string serialized = await ctx.Test.TestEthRpc("eth_pendingTransactions");
         JToken.Parse(serialized).Should().ContainSubtree("""{"result": [{"hash":"0x4eabe360dc515aadc8e35f75b23803bb86e7186ebf2e58412555b3d0c7750dcc","nonce":"0x0","blockHash":"0x0000000000000000000000000000000000000000000000000000000000000000","blockNumber":null,"transactionIndex":null,"from":"0x76e68a8696537e4141926f3e528733af9e237d69","to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x165a0bc00","gas":"0x5208","input":"0x","chainId":"0x1","type":"0x1","accessList":[],"v":"0x0","s":"0x27e3dde7b07d6d6b50e0d11b29085036e9c8adc12dea52f6f07dd7a0551ff22a","r":"0x619cb31fd4aa1c38ae36b31c5d8310f74d9f8ddd94389db91a68deb26737f2dc","yParity":"0x0"}]}""");
     }
@@ -254,9 +255,9 @@ public partial class EthRpcModuleTests
 
         // Add two transactions, one with the next nonce (nonce=3) and the second one with a gap in nonce (nonce=5, skipping nonce=4)
         Transaction txWithNextNonce = Build.A.Transaction.To(TestItem.AddressB)
-            .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether()).WithNonce(3).TestObject;
+            .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether).WithNonce(3).TestObject;
         Transaction txWithFutureNonce = Build.A.Transaction.To(TestItem.AddressB)
-            .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether()).WithNonce(5).TestObject;
+            .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether).WithNonce(5).TestObject;
         ValueTask<(Hash256? Hash, AcceptTxResult? AddTxResult)> resultNextNonce =
             ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None)!;
         ValueTask<(Hash256? Hash, AcceptTxResult? AddTxResult)> resultFutureNonce =
@@ -283,7 +284,7 @@ public partial class EthRpcModuleTests
         string serializedPendingBefore = await ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressB.Bytes.ToHexString(true), "pending");
         Assert.That(serializedPendingBefore, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}"));
         Transaction txWithNextNonce = Build.A.Transaction.To(TestItem.AddressA)
-            .SignedAndResolved(TestItem.PrivateKeyB).WithValue(0.Ether()).WithNonce(0).TestObject;
+            .SignedAndResolved(TestItem.PrivateKeyB).WithValue(0.Ether).WithNonce(0).TestObject;
         ValueTask<(Hash256? Hash, AcceptTxResult? AddTxResult)> resultNextNonce =
             ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None)!;
         Assert.That(AcceptTxResult.Accepted, Is.EqualTo(resultNextNonce.Result.AddTxResult));
@@ -358,9 +359,9 @@ public partial class EthRpcModuleTests
         Transaction createCodeTx = Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA).WithChainId(TestBlockchainIds.ChainId).WithGasPrice(2)
             .WithCode(logCreateCode)
-            .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
+            .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei).TestObject;
 
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
+        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether);
 
         Hash256? blockHash = Keccak.Zero;
         void handleNewBlock(object? sender, BlockEventArgs e)
@@ -565,9 +566,9 @@ public partial class EthRpcModuleTests
         Transaction createCodeTx = Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA).WithChainId(TestBlockchainIds.ChainId).WithGasPrice(2)
             .WithCode(logCreateCode)
-            .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
+            .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei).TestObject;
 
-        TestRpcBlockchain? test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
+        TestRpcBlockchain? test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether);
 
         Hash256? blockHash = Keccak.Zero;
 
@@ -1078,9 +1079,9 @@ public partial class EthRpcModuleTests
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
 
-        await ctx.Test.AddFunds(new Address("0x723847c97bc651c7e8c013dbbe65a70712f02ad3"), 1.Ether());
+        await ctx.Test.AddFunds(new Address("0x723847c97bc651c7e8c013dbbe65a70712f02ad3"), 1.Ether);
         Transaction tx = Build.A.Transaction.WithData(new byte[] { 0, 1 })
-            .SignedAndResolved().WithChainId(TestBlockchainIds.ChainId).WithGasPrice(0).WithValue(0).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
+            .SignedAndResolved().WithChainId(TestBlockchainIds.ChainId).WithGasPrice(0).WithValue(0).WithGasLimit(210200).WithGasPrice(20.GWei).TestObject;
 
         ulong timestamp = 10;
         Block block = Build.A.Block.WithNumber(1).WithTimestamp(timestamp)
@@ -1115,10 +1116,10 @@ public partial class EthRpcModuleTests
     public async Task Eth_getTransactionReceipt_return_info_about_mined_1559tx()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
-        await ctx.Test.AddFundsAfterLondon((new Address("0x723847c97bc651c7e8c013dbbe65a70712f02ad3"), 1.Ether()));
+        await ctx.Test.AddFundsAfterLondon((new Address("0x723847c97bc651c7e8c013dbbe65a70712f02ad3"), 1.Ether));
         Transaction tx = Build.A.Transaction.WithData(new byte[] { 0, 1 })
             .SignedAndResolved().WithChainId(TestBlockchainIds.ChainId).WithGasPrice(0).WithValue(0).WithGasLimit(210200)
-            .WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei()).WithMaxPriorityFeePerGas(1.GWei()).TestObject;
+            .WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei).WithMaxPriorityFeePerGas(1.GWei).TestObject;
         await ctx.Test.AddBlock(tx);
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionReceipt", tx.Hash!.ToString());
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x31501f80bf2ec493c368a519cb8ed6f132f0be26202304bbf1e1728642affb7f\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0x54515a11aa6c392ee2e1071fca3a579bc9a520930ef757dbf9b7d85fe155c691\",\"blockNumber\":\"0x5\",\"cumulativeGasUsed\":\"0x521c\",\"gasUsed\":\"0x521c\",\"effectiveGasPrice\":\"0x5e91eb5d\",\"from\":\"0x723847c97bc651c7e8c013dbbe65a70712f02ad3\",\"to\":\"0x0000000000000000000000000000000000000000\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x2\"},\"id\":67}"));
@@ -1129,10 +1130,10 @@ public partial class EthRpcModuleTests
     public async Task Eth_getTransactionByHash_return_info_about_mined_1559tx()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
-        await ctx.Test.AddFundsAfterLondon((new Address("0x723847c97bc651c7e8c013dbbe65a70712f02ad3"), 1.Ether()));
+        await ctx.Test.AddFundsAfterLondon((new Address("0x723847c97bc651c7e8c013dbbe65a70712f02ad3"), 1.Ether));
         Transaction tx = Build.A.Transaction.WithData(new byte[] { 0, 1 })
             .SignedAndResolved().WithChainId(TestBlockchainIds.ChainId).WithGasPrice(0).WithValue(0).WithGasLimit(210200)
-            .WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei()).WithMaxPriorityFeePerGas(1.GWei()).TestObject;
+            .WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei).WithMaxPriorityFeePerGas(1.GWei).TestObject;
         await ctx.Test.AddBlock(tx);
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByHash", tx.Hash!.ToString());
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"hash\":\"0x31501f80bf2ec493c368a519cb8ed6f132f0be26202304bbf1e1728642affb7f\",\"nonce\":\"0x0\",\"blockHash\":\"0x54515a11aa6c392ee2e1071fca3a579bc9a520930ef757dbf9b7d85fe155c691\",\"blockNumber\":\"0x5\",\"transactionIndex\":\"0x0\",\"from\":\"0x723847c97bc651c7e8c013dbbe65a70712f02ad3\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x0\",\"gasPrice\":\"0x5e91eb5d\",\"maxPriorityFeePerGas\":\"0x3b9aca00\",\"maxFeePerGas\":\"0x4a817c800\",\"gas\":\"0x33518\",\"data\":\"0x0001\",\"input\":\"0x0001\",\"chainId\":\"0x1\",\"type\":\"0x2\",\"v\":\"0x0\",\"s\":\"0x6b82095065a599e6b5e52bed0043702baf3411418af679ac483f9fc75a8f6aef\",\"r\":\"0x8654517f7822e7a4e10e79f3f5a4136703c7d1b51d98e47686e201c3c2845f92\"},\"id\":67}"));
@@ -1263,8 +1264,31 @@ public partial class EthRpcModuleTests
             transaction.AccessList = GetTestAccessList(2, accessListProvided == AccessListProvided.Full).AccessList;
         }
 
-        string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "0x0", optimize);
+        string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "0x0", null, optimize);
         Assert.That(serialized, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Eth_create_access_list_with_state_override()
+    {
+        using Context ctx = await Context.Create();
+
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""")!;
+
+        // PUSH1 0x01, SLOAD, POP, STOP — reads storage slot 1
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x6001545000"}}""")!;
+
+        string withOverride = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, false);
+        string withoutOverride = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", null, false);
+
+        JToken withOverrideResult = JToken.Parse(withOverride);
+        JToken withoutOverrideResult = JToken.Parse(withoutOverride);
+
+        withOverrideResult.Should().NotBeEquivalentTo(withoutOverrideResult);
+        withOverrideResult.SelectToken("result.accessList")!.ToString()
+            .Should().Contain("0x0000000000000000000000000000000000000000000000000000000000000001");
     }
 
     [TestCase(null)]
@@ -1361,8 +1385,8 @@ public partial class EthRpcModuleTests
         Transaction testTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(Test.ReadOnlyState.GetNonce(TestItem.AddressA))
-          .WithMaxFeePerGas(9.GWei())
-          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithMaxFeePerGas(9.GWei)
+          .WithMaxPriorityFeePerGas(9.GWei)
           .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)
           .WithAuthorizationCodeIfAuthorizationListTx()
           .WithTo(TestItem.AddressA)
@@ -1385,8 +1409,8 @@ public partial class EthRpcModuleTests
         Transaction setCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
-          .WithMaxFeePerGas(9.GWei())
-          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithMaxFeePerGas(9.GWei)
+          .WithMaxPriorityFeePerGas(9.GWei)
           .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)
           .WithAuthorizationCode(test.EthereumEcdsa.Sign(TestItem.PrivateKeyB, 0, TestItem.AddressC, (ulong)test.ReadOnlyState.GetNonce(TestItem.AddressB) + 1))
           .WithTo(TestItem.AddressA)
@@ -1400,8 +1424,8 @@ public partial class EthRpcModuleTests
 
         Transaction normalTx = Build.A.Transaction
           .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
-          .WithMaxFeePerGas(9.GWei())
-          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithMaxFeePerGas(9.GWei)
+          .WithMaxPriorityFeePerGas(9.GWei)
           .WithGasLimit(GasCostOf.Transaction)
           .WithTo(TestItem.AddressA)
           .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
@@ -1422,8 +1446,8 @@ public partial class EthRpcModuleTests
         Transaction invalidSetCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
-          .WithMaxFeePerGas(9.GWei())
-          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithMaxFeePerGas(9.GWei)
+          .WithMaxPriorityFeePerGas(9.GWei)
           .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)
           .WithAuthorizationCode(new AllowNullAuthorizationTuple(0, null, 0, new Signature(new byte[65])))
           .WithTo(TestItem.AddressA)
@@ -1450,8 +1474,8 @@ public partial class EthRpcModuleTests
         Transaction setCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
-          .WithMaxFeePerGas(9.GWei())
-          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithMaxFeePerGas(9.GWei)
+          .WithMaxPriorityFeePerGas(9.GWei)
           .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)
           .WithAuthorizationCode(authTuple)
           .WithTo(TestItem.AddressA)

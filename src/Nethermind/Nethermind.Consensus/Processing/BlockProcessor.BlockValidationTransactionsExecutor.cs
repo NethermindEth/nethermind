@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.Processing
                         _logger.Info("[parallel] running gas validation");
 
                         long gasRemaining = _balBuilder.GasUsed();
-                        _balBuilder.ValidateBlockAccessList(0, gasRemaining);
+                        _balBuilder.ValidateBlockAccessList(block.Header, 0, gasRemaining);
 
                         long totalGas = 0;
                         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
@@ -95,7 +95,7 @@ namespace Nethermind.Consensus.Processing
                                 bool validateStorageReads = j == chunkEnd - 1;
                                 _balBuilder.MergeIntermediateBalsUpTo((ushort)(j + 1));
                                 _logger.Info($"[parallel] validating block access list at index {j + 1} (storage read check: {validateStorageReads})");
-                                _balBuilder.ValidateBlockAccessList((ushort)(j + 1), gasRemaining, validateStorageReads);
+                                _balBuilder.ValidateBlockAccessList(block.Header, (ushort)(j + 1), gasRemaining, validateStorageReads);
                             }
 
                             if (totalGas > block.Header.GasLimit)
@@ -150,7 +150,7 @@ namespace Nethermind.Consensus.Processing
                     long? gasRemaining = _balBuilder?.GasUsed();
                     if (gasRemaining is not null)
                     {
-                        _balBuilder!.ValidateBlockAccessList(0, gasRemaining.Value);
+                        _balBuilder!.ValidateBlockAccessList(block.Header, 0, gasRemaining.Value);
                     }
 
                     for (int i = 0; i < block.Transactions.Length; i++)
@@ -162,7 +162,7 @@ namespace Nethermind.Consensus.Processing
                         if (gasRemaining is not null)
                         {
                             gasRemaining -= currentTx.SpentGas;
-                            _balBuilder!.ValidateBlockAccessList((ushort)(i + 1), gasRemaining!.Value);
+                            _balBuilder!.ValidateBlockAccessList(block.Header, (ushort)(i + 1), gasRemaining!.Value);
                         }
                     }
                     _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();

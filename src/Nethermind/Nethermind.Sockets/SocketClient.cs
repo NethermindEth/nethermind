@@ -10,24 +10,21 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Sockets;
 
-public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMessageBorderPreservingStream
+public class SocketClient<TStream>(
+    string clientName,
+    TStream stream,
+    IJsonSerializer jsonSerializer,
+    int maxRequestSize = SocketClient<TStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API)
+    : ISocketsClient
+    where TStream : Stream, IMessageBorderPreservingStream
 {
     public const int MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API = 128 * 1024 * 1024;
 
-    protected readonly TStream _stream;
-    protected readonly IJsonSerializer _jsonSerializer;
-    private readonly int _maxRequestSize;
+    protected readonly TStream _stream = stream;
+    protected readonly IJsonSerializer _jsonSerializer = jsonSerializer;
 
     public string Id { get; } = Guid.NewGuid().ToString("N");
-    public string ClientName { get; }
-
-    public SocketClient(string clientName, TStream stream, IJsonSerializer jsonSerializer, int maxRequestSize = MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API)
-    {
-        ClientName = clientName;
-        _stream = stream;
-        _jsonSerializer = jsonSerializer;
-        _maxRequestSize = maxRequestSize;
-    }
+    public string ClientName { get; } = clientName;
 
     public virtual Task ProcessAsync(ArraySegment<byte> data, CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -54,11 +51,11 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
         try
         {
             ReceiveResult result = await _stream.ReceiveAsync(buffer, cancellationToken);
-            while (!result.IsNull && result.Closed == false)
+            while (result is { IsNull: false, Closed: false })
             {
                 currentMessageLength += result.Read;
 
-                if (currentMessageLength >= _maxRequestSize)
+                if (currentMessageLength >= maxRequestSize)
                 {
                     throw new InvalidOperationException("Message too long");
                 }

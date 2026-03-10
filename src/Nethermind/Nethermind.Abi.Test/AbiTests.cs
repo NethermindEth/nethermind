@@ -378,7 +378,7 @@ public class AbiTests
     {
         Hash256 assetId = Keccak.Compute("assetId");
         uint expiryTime = (uint)Timestamper.Default.UnixTime.Seconds + 86000;
-        UInt256 value = 1.Ether();
+        UInt256 value = 1.Ether;
         uint units = 10U;
         byte[] salt = new byte[16];
 

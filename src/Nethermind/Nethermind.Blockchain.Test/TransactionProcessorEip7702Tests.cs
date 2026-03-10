@@ -59,7 +59,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
         //Save caller in storage slot 0
         byte[] code = Prepare.EvmCode
             .Op(Instruction.CALLER)
@@ -100,7 +100,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
         //Save caller in storage slot 0
         byte[] code = Prepare.EvmCode
             .Op(Instruction.CALLER)
@@ -140,7 +140,7 @@ internal class TransactionProcessorEip7702Tests
     public void Execute_SenderAndSignerIsTheSameOrNotWithCodeThatSavesCallerAddress_SenderAddressIsSaved(PrivateKey sender, PrivateKey signer, ulong nonce)
     {
         Address codeSource = TestItem.AddressC;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
         //Save caller in storage slot 0
         byte[] code = Prepare.EvmCode
             .Op(Instruction.CALLER)
@@ -186,7 +186,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
         //Save caller in storage slot 0
         byte[] code = Prepare.EvmCode
             .Op(Instruction.CALLER)
@@ -220,7 +220,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
         _stateProvider.CreateAccount(signer.Address, 0, nonce);
 
         Transaction tx = Build.A.Transaction
@@ -249,7 +249,7 @@ internal class TransactionProcessorEip7702Tests
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
 
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
@@ -279,7 +279,7 @@ internal class TransactionProcessorEip7702Tests
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
 
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
@@ -326,7 +326,7 @@ internal class TransactionProcessorEip7702Tests
 
         _stateProvider.CreateAccount(codeSource, 0);
         _stateProvider.InsertCode(codeSource, executionErrorCode, Prague.Instance);
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
 
         const long gasLimit = 10_000_000;
         Transaction tx = Build.A.Transaction
@@ -360,7 +360,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
 
         byte[] code = Prepare.EvmCode
             .PushData(signer.Address)
@@ -391,7 +391,7 @@ internal class TransactionProcessorEip7702Tests
         //Tx should only be charged for warm state read
         Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction
             + GasCostOf.NewAccount
-            + Prague.Instance.GetBalanceCost()
+            + Prague.Instance.GasCosts.BalanceCost
             + GasCostOf.WarmStateRead
             + GasCostOf.VeryLow));
     }
@@ -404,7 +404,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey signer = TestItem.PrivateKeyB;
         Address firstCodeSource = TestItem.AddressC;
         Address secondCodeSource = TestItem.AddressD;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
 
         byte[] firstCode = Prepare.EvmCode
             .PushData(0)
@@ -455,7 +455,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
         // Increment by 1 every time it's called
         byte[] code = Prepare.EvmCode
             .Op(Instruction.PUSH0)
@@ -550,7 +550,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey signer = TestItem.PrivateKeyA;
         PrivateKey sender = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
 
         DeployCode(codeSource, code);
 
@@ -621,7 +621,7 @@ internal class TransactionProcessorEip7702Tests
 
         setupAccount(_stateProvider, signer.Address);
 
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
 
         byte[] code = Prepare.EvmCode
             .PushData(signer.Address)
@@ -788,7 +788,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey sender = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
         Address secondDelegation = TestItem.AddressD;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
         _stateProvider.CreateAccount(signer.Address, 0);
         if (isDelegated)
         {
@@ -867,7 +867,7 @@ internal class TransactionProcessorEip7702Tests
     public void Execute_CombinationOfValidAndInvalidTuples_AddsTheCorrectAddressesToAccessedAddresses(AuthorizationTuple[] tuples, Address[] shouldCountAsAccessed)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
 
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
@@ -895,7 +895,7 @@ internal class TransactionProcessorEip7702Tests
 
         if (accountExists)
             _stateProvider.CreateAccount(authority.Address, 0);
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
 
         AuthorizationTuple[] tuples =
         {
@@ -926,7 +926,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey sender = TestItem.PrivateKeyB;
 
         _stateProvider.CreateAccount(authority.Address, 0);
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
 
         AuthorizationTuple[] tuples =
         {
@@ -979,7 +979,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey sender = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
 
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
 
         byte[] code = Prepare.EvmCode
             .Op(Instruction.PUSH0)

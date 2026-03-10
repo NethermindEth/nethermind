@@ -101,7 +101,7 @@ public class EthRpcSimulateTestsBase
             GasLimit = 3_000_000,
             SenderAddress = privateKey.Address,
             To = null,
-            GasPrice = 20.GWei()
+            GasPrice = 20.GWei
         };
 
         TxPoolSender txSender = new(chain.TxPool,

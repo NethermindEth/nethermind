@@ -88,9 +88,9 @@ public abstract class BlockchainTestBase
         bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
 
         List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
-            isEngineTest ?
-            [((ForkActivation)0, test.Network)] :
-            [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
+        isEngineTest ?
+        [((ForkActivation)0, test.Network)] :
+        [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
         if (test.NetworkAfterTransition is not null)
         {
@@ -128,7 +128,6 @@ public abstract class BlockchainTestBase
         }
 
         IConfigProvider configProvider = new ConfigProvider();
-        // configProvider.GetConfig<IBlocksConfig>().PreWarmStateOnBlockProcessing = false;
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton(specProvider)

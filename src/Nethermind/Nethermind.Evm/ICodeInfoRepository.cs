@@ -41,4 +41,11 @@ public static class CodeInfoRepositoryExtensions
         => codeInfoRepository.GetCachedCodeInfo(codeSource, vmSpec, out _, blockAccessIndex);
     public static CodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress, int? blockAccessIndex = null)
         => codeInfoRepository.GetCachedCodeInfo(codeSource, true, vmSpec, out delegationAddress, blockAccessIndex);
+    // extension(ICodeInfoRepository codeInfoRepository)
+    // {
+    //     public CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec vmSpec)
+    //         => codeInfoRepository.GetCachedCodeInfo(codeSource, vmSpec, out _);
+    //     public CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
+    //         => codeInfoRepository.GetCachedCodeInfo(codeSource, true, vmSpec, out delegationAddress);
+    // }
 }

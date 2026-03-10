@@ -18,13 +18,7 @@ public readonly record struct CodeChange(int BlockAccessIndex, [property: JsonCo
         HashCode.Combine(BlockAccessIndex, NewCode);
 
     private static bool CompareByteArrays(byte[]? left, byte[]? right) =>
-        left switch
-        {
-            null when right == null => true,
-            null => false,
-            _ when right == null => false,
-            _ => left.SequenceEqual(right)
-        };
+        ReferenceEquals(left, right) || (left is not null && right is not null && left.SequenceEqual(right));
 
     public override string ToString() => $"{BlockAccessIndex}:0x{Convert.ToHexString(NewCode ?? [])}";
 }

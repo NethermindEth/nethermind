@@ -33,7 +33,7 @@ public partial class DebugRpcModuleTests
         {
             From = from ?? TestItem.AddressD,
             To = to ?? TestItem.AddressC,
-            Value = value ?? 1.Ether(),
+            Value = value ?? 1.Ether,
             Gas = gas
         };
 
@@ -42,7 +42,7 @@ public partial class DebugRpcModuleTests
         Context ctx = await Context.Create();
         try
         {
-            await ctx.Blockchain.AddFunds(TestItem.AddressD, 100.Ether());
+            await ctx.Blockchain.AddFunds(TestItem.AddressD, 100.Ether);
         }
         catch
         {
@@ -100,7 +100,7 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceCallMany_fails_when_not_enough_balance()
     {
         using Context ctx = await CreateContext();
-        TransactionBundle bundle = CreateBundle(CreateTransaction(value: 200.Ether()));
+        TransactionBundle bundle = CreateBundle(CreateTransaction(value: 200.Ether));
 
         var result = await ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
         List<int> l = [];
@@ -151,7 +151,7 @@ public partial class DebugRpcModuleTests
         TransactionBundle bundle = CreateBundle(CreateTransaction());
         bundle.StateOverrides = new Dictionary<Address, AccountOverride>
         {
-            [TestItem.AddressD] = new() { Balance = 100.Ether() }
+            [TestItem.AddressD] = new() { Balance = 100.Ether }
         };
 
         var result = await ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
@@ -173,7 +173,7 @@ public partial class DebugRpcModuleTests
         bundle.BlockOverride = new BlockOverride { GasLimit = 50000000 };
         bundle.StateOverrides = new Dictionary<Address, AccountOverride>
         {
-            [TestItem.AddressD] = new() { Balance = 100.Ether() }
+            [TestItem.AddressD] = new() { Balance = 100.Ether }
         };
 
         var result = await ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);

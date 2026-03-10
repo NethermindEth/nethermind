@@ -94,32 +94,32 @@ internal class TransactionProcessorEip4844Tests
             TestName = "Blob gas consumed for 1 blob, minimal balance",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), 1, 1ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether, 1, 1ul, 0ul, 0ul)
         {
             TestName = "Blob gas consumed for 1 blob",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), 2, 1ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether, 2, 1ul, 0ul, 0ul)
         {
             TestName = "Blob gas consumed for 2 blobs",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + 2 * Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), (int)Cancun.Instance.MaxBlobCount, 1ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether, (int)Cancun.Instance.MaxBlobCount, 1ul, 0ul, 0ul)
         {
             TestName = "Blob gas consumed for max blobs",
-            ExpectedResult = (UInt256)(GasCostOf.Transaction + Cancun.Instance.GetMaxBlobGasPerBlock()),
+            ExpectedResult = (UInt256)(GasCostOf.Transaction + Cancun.Instance.GasCosts.MaxBlobGasPerBlock),
         };
-        yield return new TestCaseData(1.Ether(), 1, 10ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether, 1, 10ul, 0ul, 0ul)
         {
             TestName = $"Blob gas consumed for 1 blob, with {nameof(Transaction.MaxFeePerBlobGas)} more than needed",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 0ul)
+        yield return new TestCaseData(1.Ether, 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 0ul)
         {
             TestName = $"Blob gas consumed for 1 blob, with blob gas price hiking",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob * 2),
         };
-        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 2ul)
+        yield return new TestCaseData(1.Ether, 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 2ul)
         {
             TestName = $"Blob gas consumed for 1 blob, with blob gas price hiking and some {nameof(Transaction.Value)}",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob * 2 + 2),

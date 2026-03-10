@@ -91,6 +91,7 @@ public readonly struct CappedArray<T>
     public readonly bool IsUncapped => _length == _array?.Length;
     public readonly bool IsNull => _array is null;
     public readonly bool IsNotNull => _array is not null;
+    public readonly bool IsNullOrEmpty => _length == 0;
     public readonly bool IsNotNullOrEmpty => _length > 0;
 
     public readonly Span<T> AsSpan()

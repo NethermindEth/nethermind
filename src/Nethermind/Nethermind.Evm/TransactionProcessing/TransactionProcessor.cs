@@ -313,11 +313,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (authorizationResult != AuthorizationTupleResult.Valid)
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
-
-                    if (_balBuilder is not null && _balBuilder.TracingEnabled && IncludeAccountRead(authorizationResult))
-                    {
-                        _balBuilder.AddAccountRead(authority, VirtualMachine.TxExecutionContext.BlockAccessIndex);
-                    }
                 }
                 else
                 {
@@ -337,9 +332,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return refunds;
         }
-
-        private static bool IncludeAccountRead(in AuthorizationTupleResult res)
-            => res is AuthorizationTupleResult.IncorrectNonce or AuthorizationTupleResult.InvalidAsCodeDeployed;
 
         private enum AuthorizationTupleResult
         {
@@ -776,11 +768,13 @@ namespace Nethermind.Evm.TransactionProcessing
                         }
                     }
 
+                    bool eip7708Enabled = spec.IsEip7708Enabled;
+                    bool tracingRefunds = tracer.IsTracingRefunds;
                     foreach (Address toBeDestroyed in substate.DestroyList)
                     {
                         if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
 
-                        if (spec.IsEip7708Enabled)
+                        if (eip7708Enabled)
                         {
                             UInt256 balance = WorldState.GetBalance(toBeDestroyed, VirtualMachine.TxExecutionContext.BlockAccessIndex);
                             if (!balance.IsZero)
@@ -792,8 +786,11 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.ClearStorage(toBeDestroyed, VirtualMachine.TxExecutionContext.BlockAccessIndex);
                         WorldState.DeleteAccount(toBeDestroyed, VirtualMachine.TxExecutionContext.BlockAccessIndex);
 
-                        if (tracer.IsTracingRefunds)
-                            tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
+
+                        if (tracingRefunds)
+                        {
+                            tracer.ReportRefund(spec.GasCosts.DestroyRefund);
+                        }
                     }
 
                     statusCode = StatusCode.Success;
@@ -841,7 +838,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     accessedItems.WarmUpLargeContract(codeOwner);
                 }
 
-                TGasPolicy.Consume(ref unspentGas, codeDepositGasCost);
+                TGasPolicy.ConsumeCodeDeposit(ref unspentGas, codeDepositGasCost);
             }
 
             return true;
@@ -892,7 +889,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     accessedItems.WarmUpLargeContract(codeOwner);
                 }
-                TGasPolicy.Consume(ref unspentGas, codeDepositGasCost);
+                TGasPolicy.ConsumeCodeDeposit(ref unspentGas, codeDepositGasCost);
             }
 
             return true;
@@ -935,7 +932,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected bool PrepareAccountForContractDeployment(Address contractAddress, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec)
         {
-            if (WorldState.AccountExists(contractAddress, VirtualMachine.TxExecutionContext.BlockAccessIndex) && contractAddress.IsNonZeroAccount(spec, codeInfoRepository, WorldState, VirtualMachine.TxExecutionContext.BlockAccessIndex))
+            if (WorldState.IsNonZeroAccount(contractAddress, out _, VirtualMachine.TxExecutionContext.BlockAccessIndex))
             {
                 if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
 
@@ -964,7 +961,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 long totalToRefund = codeInsertRefund;
                 if (!substate.ShouldRevert)
-                    totalToRefund += substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled);
+                    totalToRefund += substate.Refund + substate.DestroyList.Count * spec.GasCosts.DestroyRefund;
                 actualRefund = CalculateClaimableRefund(spentGas, totalToRefund, spec);
 
                 if (Logger.IsTrace)

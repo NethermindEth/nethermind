@@ -16,6 +16,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State;
 
@@ -33,7 +34,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
 
     public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
-    public class InvalidBlockLevelAccessListException(string message) : Exception(message);
+    public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, message);
 
     private long _gasUsed;
     private readonly bool _isAura = specProvider.SealEngine == SealEngineType.AuRa;
@@ -646,7 +647,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return accountChanges.GetBalance(blockAccessIndex.Value);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Balance access for {address} not in block access list at index {blockAccessIndex.Value}.");
+            throw new InvalidBlockLevelAccessListException(new(), $"Balance access for {address} not in block access list at index {blockAccessIndex.Value}.");
         }
         else
         {
@@ -672,7 +673,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return accountChanges.GetNonce(blockAccessIndex.Value);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Nonce access for {address} not in block access list at index {blockAccessIndex.Value}.");
+            throw new InvalidBlockLevelAccessListException(new(), $"Nonce access for {address} not in block access list at index {blockAccessIndex.Value}.");
         }
         else
         {
@@ -698,7 +699,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return accountChanges.GetCode(blockAccessIndex.Value);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Code access for {address} not in block access list at index {blockAccessIndex.Value}.");
+            throw new InvalidBlockLevelAccessListException(new(), $"Code access for {address} not in block access list at index {blockAccessIndex.Value}.");
         }
         else
         {
@@ -732,7 +733,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return slotChanges.Get(blockAccessIndex.Value);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex.Value}.");
+            throw new InvalidBlockLevelAccessListException(new(), $"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex.Value}.");
         }
         else
         {
@@ -752,7 +753,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return slotChanges.Get(blockAccessIndex.Value);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex.Value}.");
+            throw new InvalidBlockLevelAccessListException(new(), $"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex.Value}.");
         }
         else
         {
@@ -779,7 +780,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return accountChanges.AccountExists(blockAccessIndex.Value);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Account {address} not found in block access list when checking existence at index {blockAccessIndex.Value}.");
+            throw new InvalidBlockLevelAccessListException(new(), $"Account {address} not found in block access list when checking existence at index {blockAccessIndex.Value}.");
         }
         else
         {
@@ -823,7 +824,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return allSlots.SetEquals(zeroedSlots);
             }
 
-            throw new InvalidBlockLevelAccessListException($"Storage empty check for {address} not in block access list at index {blockAccessIndex.Value}.");
+            throw new InvalidBlockLevelAccessListException(new(), $"Storage empty check for {address} not in block access list at index {blockAccessIndex.Value}.");
         }
         else
         {
@@ -841,7 +842,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     public long GasUsed()
         => _gasUsed;
 
-    public void ValidateBlockAccessList(ushort index, long gasRemaining, bool validateStorageReads = true)
+    public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining, bool validateStorageReads = true)
     {
         if (_suggestedBlockAccessList is null)
         {
@@ -881,7 +882,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                     AdvanceGenerated();
                     continue;
                 }
-                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
+                throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
             }
             else if (generatedHead is null)
             {
@@ -890,7 +891,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                     AdvanceSuggested();
                     continue;
                 }
-                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+                throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
             }
 
             int cmp = generatedHead.Value.Address.CompareTo(suggestedHead.Value.Address);
@@ -902,7 +903,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                     generatedHead.Value.CodeChange != suggestedHead.Value.CodeChange ||
                     !Enumerable.SequenceEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
                 {
-                    throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
+                    throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
                 }
             }
             else if (cmp > 0)
@@ -912,7 +913,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                     AdvanceSuggested();
                     continue;
                 }
-                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+                throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
             }
             else
             {
@@ -921,7 +922,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                     AdvanceGenerated();
                     continue;
                 }
-                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
+                throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
             }
 
             AdvanceGenerated();
@@ -932,7 +933,30 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
         // if (validateStorageReads && gasRemaining < (suggestedReads - generatedReads) * Eip7928Constants.ItemCost)
         if (validateStorageReads && gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
         {
-            throw new InvalidBlockLevelAccessListException("Suggested block-level access list contained invalid storage reads.");
+            // throw new InvalidBlockLevelAccessListException("Suggested block-level access list contained invalid storage reads.");
+        // if (gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
+        // {
+            throw new InvalidBlockLevelAccessListException(block, "Suggested block-level access list contained invalid storage reads.");
+        }
+    }
+
+    public void SetBlockAccessList(Block block, IReleaseSpec spec)
+    {
+        if (!spec.BlockLevelAccessListsEnabled)
+        {
+            return;
+        }
+
+        if (block.IsGenesis)
+        {
+            block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+        }
+        else
+        {
+            MergeIntermediateBalsUpTo((ushort)(block.Transactions.Length + 1));
+            block.GeneratedBlockAccessList = GeneratedBlockAccessList;
+            block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
+            block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
         }
     }
 

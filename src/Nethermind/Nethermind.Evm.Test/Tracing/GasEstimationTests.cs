@@ -442,7 +442,7 @@ namespace Nethermind.Evm.Test.Tracing
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(100000)
                 .WithSenderAddress(Address.Zero)
-                .WithValue(1.Ether()) // Value transfer with zero balance
+                .WithValue(1.Ether) // Value transfer with zero balance
                 .TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -463,7 +463,7 @@ namespace Nethermind.Evm.Test.Tracing
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(100000)
                 .WithSenderAddress(Address.Zero)
-                .WithValue(1.Ether())
+                .WithValue(1.Ether)
                 .TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -485,7 +485,7 @@ namespace Nethermind.Evm.Test.Tracing
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(100000)
                 .WithSenderAddress(Address.Zero)
-                .WithValue(1.Ether())
+                .WithValue(1.Ether)
                 .TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -1276,7 +1276,7 @@ namespace Nethermind.Evm.Test.Tracing
                 _specProvider = MainnetSpecProvider.Instance;
                 _stateProvider = TestWorldStateFactory.CreateForTest();
                 _closer = _stateProvider.BeginScope(IWorldState.PreGenesis);
-                _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+                _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
 
