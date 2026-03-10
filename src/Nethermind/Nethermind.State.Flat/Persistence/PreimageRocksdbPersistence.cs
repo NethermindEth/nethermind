@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -23,45 +22,11 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
-    private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
     private readonly WriteBufferAdjuster _adjuster = new(db);
 
     public void Flush() => db.Flush();
 
-    public void Clear()
-    {
-        using IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
-        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
-        {
-            IWriteBatch columnBatch = batch.GetColumnBatch(column);
-            foreach (byte[] key in db.GetColumnDb(column).GetAllKeys())
-            {
-                columnBatch.Remove(key);
-            }
-        }
-    }
-
-    internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
-    {
-        byte[]? bytes = kv.Get(CurrentStateKey);
-        if (bytes is null || bytes.Length == 0)
-        {
-            return new StateId(-1, Keccak.EmptyTreeHash);
-        }
-
-        long blockNumber = BinaryPrimitives.ReadInt64BigEndian(bytes);
-        ValueHash256 stateHash = new(bytes[8..]);
-        return new StateId(blockNumber, stateHash);
-    }
-
-    internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, StateId stateId)
-    {
-        Span<byte> bytes = stackalloc byte[8 + 32];
-        BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.BlockNumber);
-        stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
-
-        kv.PutSpan(CurrentStateKey, bytes);
-    }
+    public void Clear() => BasePersistence.ClearAllColumns(db);
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
@@ -73,7 +38,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             snapshot.GetColumn(FlatDbColumns.FallbackNodes)
         );
 
-        StateId currentState = ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
+        StateId currentState = BasePersistence.ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
 
         ISortedKeyValueStore state = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Account);
         ISortedKeyValueStore storage = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage);
@@ -101,7 +66,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
     {
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
         IColumnDbSnapshot<FlatDbColumns> dbSnap = db.CreateSnapshot();
-        StateId currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
+        StateId currentState = BasePersistence.ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
         if (from != StateId.Sync && to != StateId.Sync && currentState != from)
         {
             dbSnap.Dispose();
@@ -145,7 +110,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             new Reactive.AnonymousDisposable(() =>
             {
                 if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
-                    SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
+                    BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                 batch.Dispose();
                 dbSnap.Dispose();
                 _adjuster.OnBatchDisposed();
