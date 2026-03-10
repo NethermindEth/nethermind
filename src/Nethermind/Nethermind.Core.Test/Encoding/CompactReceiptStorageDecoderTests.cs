@@ -273,5 +273,6 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(deserialized.Recipient, Is.EqualTo(txReceipt.Recipient), "recipient");
             Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
         }
+
     }
 }

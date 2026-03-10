@@ -966,7 +966,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new CappedArray<byte>(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
@@ -1009,7 +1009,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new CappedArray<byte>(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
@@ -1049,7 +1049,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new CappedArray<byte>(new byte[2]));
                 using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
@@ -1140,7 +1140,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new CappedArray<byte>(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
@@ -1178,7 +1178,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 2; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new CappedArray<byte>(new byte[2]));
                 using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i + 1, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
@@ -1416,9 +1416,11 @@ namespace Nethermind.Trie.Test.Pruning
             int pruningBoundary = 4;
 
             ManualResetEvent writeBlocker = new ManualResetEvent(true);
+            ManualResetEventSlim writeReached = new ManualResetEventSlim(false);
             TestMemDb memDb = new();
             memDb.WriteFunc = (k, v) =>
             {
+                writeReached.Set();
                 writeBlocker.WaitOne();
                 return true;
             };
@@ -1483,6 +1485,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             // Block writes
             writeBlocker.Reset();
+            writeReached.Reset();
 
             // Background pruning
             Task persistTask = Task.Run(() =>
@@ -1491,7 +1494,7 @@ namespace Nethermind.Trie.Test.Pruning
                 fullTrieStore.SyncPruneQueue();
                 testPruningStrategy.ShouldPruneEnabled = false;
             });
-            Thread.Sleep(100);
+            Assert.That(writeReached.Wait(1000), Is.True, "Pruning task did not reach database write");
 
             // Bring block 5's node to block 12
             // This is done in commit buffer.

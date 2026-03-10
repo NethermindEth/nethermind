@@ -17,10 +17,10 @@ namespace Nethermind.Synchronization.SnapSync
         public SlotsAndProofs? StorageRangeResponse { get; set; }
 
         public IOwnedReadOnlyList<ValueHash256>? CodesRequest { get; set; }
-        public IOwnedReadOnlyList<byte[]>? CodesResponse { get; set; }
+        public IByteArrayList? CodesResponse { get; set; }
 
         public AccountsToRefreshRequest? AccountsToRefreshRequest { get; set; }
-        public IOwnedReadOnlyList<byte[]>? AccountsToRefreshResponse { get; set; }
+        public IByteArrayList? AccountsToRefreshResponse { get; set; }
 
         public override string ToString()
         {

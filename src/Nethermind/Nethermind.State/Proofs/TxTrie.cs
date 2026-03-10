@@ -32,27 +32,19 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         foreach (Transaction? transaction in list)
         {
             ref readonly Memory<byte> rlp = ref transaction.PreHash;
-            SpanSource buffer = (rlp.Length > 0) ?
+            CappedArray<byte> buffer = (rlp.Length > 0) ?
                 CopyExistingRlp(rlp.Span, _bufferPool) :
-                _txDecoder.EncodeToSpanSource(transaction, rlpBehaviors: RlpBehaviors.SkipTypedWrapping, bufferPool: _bufferPool);
-            SpanSource keyBuffer = key.EncodeToSpanSource(_bufferPool);
+                _txDecoder.EncodeToCappedArray(transaction, rlpBehaviors: RlpBehaviors.SkipTypedWrapping, bufferPool: _bufferPool);
+            CappedArray<byte> keyBuffer = key.EncodeToCappedArray(_bufferPool);
             key++;
 
-            Set(keyBuffer.Span, buffer);
+            Set(keyBuffer.AsSpan(), buffer);
         }
 
-        static SpanSource CopyExistingRlp(ReadOnlySpan<byte> rlp, ICappedArrayPool? bufferPool)
+        static CappedArray<byte> CopyExistingRlp(ReadOnlySpan<byte> rlp, ICappedArrayPool? bufferPool)
         {
-            // If we still have the tx rlp (usually case on new payload), just copy that rather than re-encoding
-            SpanSource buffer = bufferPool.SafeRentBuffer(rlp.Length);
-            if (buffer.TryGetCappedArray(out CappedArray<byte> capped))
-            {
-                rlp.CopyTo(capped.AsSpan());
-            }
-            else
-            {
-                ThrowSpanSourceNotCappedArray();
-            }
+            CappedArray<byte> buffer = bufferPool.SafeRent(rlp.Length);
+            rlp.CopyTo(buffer.AsSpan());
             return buffer;
         }
     }
@@ -61,13 +53,10 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
     {
         for (int key = 0; key < list.Length; key++)
         {
-            SpanSource keyBuffer = key.EncodeToSpanSource(_bufferPool);
-            Set(keyBuffer.Span, list[key]);
+            CappedArray<byte> keyBuffer = key.EncodeToCappedArray(_bufferPool);
+            Set(keyBuffer.AsSpan(), list[key]);
         }
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowSpanSourceNotCappedArray() => throw new InvalidOperationException("Encode to SpanSource failed to get a CappedArray.");
 
     public static byte[][] CalculateProof(ReadOnlySpan<Transaction> transactions, int index)
     {
