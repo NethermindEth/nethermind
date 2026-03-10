@@ -126,8 +126,6 @@ Do not comment on anything below. CI will block the merge if any of it fails.
 | Ethereum Foundation hive tests (consensus, RPC, Engine API) | `hive-tests.yml`, `hive-consensus-tests.yml`       |
 | JSON-RPC output correctness                                 | `rpc-comparison.yml`                               |
 
-**Note:** CI does **not** run Roslyn analyzers or `dotnet format --style`/`--analyzers`. Code style diagnostics are not enforced by any pipeline — flag these in review if they appear in changed code.
-
 Also skip: naming conventions, missing XML docs on `internal`/`private` members, minor grammar, refactoring suggestions that don't fix a real bug, logging improvements (unless security-related), build warnings that have no behavioural impact.
 
 ---
