@@ -9,6 +9,18 @@ public class SszSerializableAttribute(bool isCollectionItself = false) : Attribu
     public bool IsCollectionItself { get; } = isCollectionItself;
 }
 
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
+public class SszProgressiveContainerAttribute : Attribute;
+
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
+public class SszCompatibleUnionAttribute : Attribute;
+
+[AttributeUsage(AttributeTargets.Property)]
+public class SszFieldAttribute(int index) : Attribute
+{
+    public int Index { get; } = index;
+}
+
 [AttributeUsage(AttributeTargets.Property)]
 public class SszListAttribute(int limit) : Attribute
 {
@@ -16,7 +28,13 @@ public class SszListAttribute(int limit) : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Property)]
+public class SszProgressiveListAttribute : Attribute;
+
+[AttributeUsage(AttributeTargets.Property)]
 public class SszVectorAttribute(int length) : Attribute
 {
     public int Length { get; } = length;
 }
+
+[AttributeUsage(AttributeTargets.Property)]
+public class SszProgressiveBitlistAttribute : Attribute;

@@ -9,7 +9,7 @@ public class CollectionTypeAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "SSZ002";
     private static readonly LocalizableString Title = "Property with a collection type should be marked as SszList or SszVector";
-    private static readonly LocalizableString MessageFormat = "Property {0} should be marked as SszList or SszVector";
+    private static readonly LocalizableString MessageFormat = "Property {0} should be marked as SszList, SszVector, SszProgressiveList, or SszProgressiveBitlist";
     private const string Category = "Design";
 
     private static readonly DiagnosticDescriptor Rule = new(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Error, isEnabledByDefault: true);
@@ -65,7 +65,15 @@ public class CollectionTypeAnalyzer : DiagnosticAnalyzer
                 .Any(attr =>
                 {
                     var name = attr.Name.ToString();
-                    return name == "SszList" || name == "SszVector" || name == "SszListAttribute" || name == "SszVectorAttribute" || name == "BitArray";
+                    return name == "SszList"
+                        || name == "SszVector"
+                        || name == "SszListAttribute"
+                        || name == "SszVectorAttribute"
+                        || name == "SszProgressiveList"
+                        || name == "SszProgressiveListAttribute"
+                        || name == "SszProgressiveBitlist"
+                        || name == "SszProgressiveBitlistAttribute"
+                        || name == "BitArray";
                 });
 
             if (!hasRequiredAttribute)

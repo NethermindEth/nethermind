@@ -243,6 +243,50 @@ public partial class SszEncoding
         Merkle.Merkleize(out root, MemoryMarshal.AsBytes(values.AsSpan()), chunkCount);
         Merkle.MixIn(ref root, values.Length);
     }
+
+    private static void MerkleizeProgressiveBytes(ReadOnlySpan<byte> value, out UInt256 root)
+    {
+        if (value.Length is 0)
+        {
+            root = UInt256.Zero;
+            return;
+        }
+
+        int chunkCount = (value.Length + 31) / 32;
+        UInt256[] chunks = new UInt256[chunkCount];
+        int fullByteLength = value.Length / 32 * 32;
+        if (fullByteLength > 0)
+        {
+            MemoryMarshal.Cast<byte, UInt256>(value[..fullByteLength]).CopyTo(chunks);
+        }
+
+        if (fullByteLength != value.Length)
+        {
+            Span<byte> lastChunk = stackalloc byte[32];
+            value[fullByteLength..].CopyTo(lastChunk);
+            chunks[^1] = new UInt256(lastChunk);
+        }
+
+        Merkle.MerkleizeProgressive(out root, chunks);
+    }
+
+    private static void MerkleizeProgressiveBasicList<T>(IEnumerable<T>? value, out UInt256 root)
+        where T : struct
+    {
+        T[] values = value as T[] ?? (value is null ? [] : [.. value]);
+        MerkleizeProgressiveBytes(MemoryMarshal.AsBytes(values.AsSpan()), out root);
+        Merkle.MixIn(ref root, values.Length);
+    }
+
+    private static void MerkleizeProgressiveBitList(BitArray? value, out UInt256 root)
+    {
+        BitArray bits = value ?? new BitArray(0);
+        int byteLength = (bits.Length + 7) / 8;
+        byte[] bytes = new byte[byteLength];
+        bits.CopyTo(bytes, 0);
+        MerkleizeProgressiveBytes(bytes, out root);
+        Merkle.MixIn(ref root, bits.Length);
+    }
 }
 """;
 
@@ -270,7 +314,7 @@ public partial class SszEncoding
     }
 
     private static string EncodeValueExpression(SszProperty property, string expression) =>
-        property.Kind == Kind.BitList ? $"{expression} ?? new BitArray(0)" : expression;
+        property.Kind is Kind.BitList or Kind.ProgressiveBitList ? $"{expression} ?? new BitArray(0)" : expression;
 
     private static IEnumerable<string> ValidationStatements(SszType decl, IEnumerable<SszProperty> properties, string expressionPrefix)
     {
@@ -289,7 +333,7 @@ public partial class SszEncoding
         string variableName = VarName(property.Name);
         string outType = property.Kind switch
         {
-            Kind.BitVector or Kind.BitList => "BitArray",
+            Kind.BitVector or Kind.BitList or Kind.ProgressiveBitList => "BitArray",
             _ when property.IsCollection => property.HandledByStd ? $"ReadOnlySpan<{property.Type.Name}>" : $"{property.Type.Name}[]",
             _ => property.Type.Name,
         };
@@ -297,7 +341,7 @@ public partial class SszEncoding
         string decode = property.Kind switch
         {
             Kind.BitVector => $"DecodeSszBitVector({sliceExpression}, {property.Length}, out {outType} {variableName});",
-            Kind.BitList => $"DecodeSszBitList({sliceExpression}, nameof({decl.Name}), out {outType} {variableName});",
+            Kind.BitList or Kind.ProgressiveBitList => $"DecodeSszBitList({sliceExpression}, nameof({decl.Name}), out {outType} {variableName});",
             _ when property.HandledByStd => $"SszLib.Decode({sliceExpression}, out {outType} {variableName});",
             _ => $"Decode({sliceExpression}, out {outType} {variableName});",
         };
@@ -314,10 +358,13 @@ public partial class SszEncoding
             Kind.Basic => $"Merkle.Merkleize(out {rootName}, {expression});",
             Kind.BitVector => $"Merkle.Merkleize(out {rootName}, {expression}!);",
             Kind.BitList => $"Merkle.Merkleize(out {rootName}, {expression} ?? new BitArray(0), {property.Limit});",
+            Kind.ProgressiveBitList => $"MerkleizeProgressiveBitList({expression}, out {rootName});",
             Kind.Vector when property.Type.Kind == Kind.Basic => $"MerkleizeBasicVector({expression}, {property.Type.StaticLength}, {property.Length}, out {rootName});",
             Kind.List when property.Type.Kind == Kind.Basic => $"MerkleizeBasicList({expression}, {property.Type.StaticLength}, {property.Limit}, out {rootName});",
+            Kind.ProgressiveList when property.Type.Kind == Kind.Basic => $"MerkleizeProgressiveBasicList({expression}, out {rootName});",
             Kind.Vector => $"MerkleizeVector({expression}, out {rootName});",
             Kind.List => $"MerkleizeList({expression}, {property.Limit}, out {rootName});",
+            Kind.ProgressiveList => $"MerkleizeProgressiveList({expression}, out {rootName});",
             _ => $"Merkleize({expression}, out {rootName});",
         };
     }
@@ -329,21 +376,57 @@ public partial class SszEncoding
             Kind.Basic => $"merkleizer.Feed({expression});",
             Kind.BitVector => $"merkleizer.Feed({expression});",
             Kind.BitList => $"merkleizer.Feed({expression} ?? new BitArray(0), {property.Limit});",
+            Kind.ProgressiveBitList => $"{MerkleizeRootStatement(property, expression, $"UInt256 {VarName(property.Name)}Root")} merkleizer.Feed({VarName(property.Name)}Root);",
             _ => $"{MerkleizeRootStatement(property, expression, $"UInt256 {VarName(property.Name)}Root")} merkleizer.Feed({VarName(property.Name)}Root);",
         };
     }
 
     private static string DynamicLength(SszType container, SszProperty m)
     {
-        if ((m.Kind & (Kind.Collection | Kind.BitList)) != Kind.None && m.Type.Kind == Kind.Basic)
+        if ((m.Kind & (Kind.Collection | Kind.BitList | Kind.ProgressiveBitList)) != Kind.None && m.Type.Kind == Kind.Basic)
         {
-            return m.Kind == Kind.BitList
+            return m.Kind is Kind.BitList or Kind.ProgressiveBitList
                 ? $"(container.{m.Name} is not null ? container.{m.Name}.Length / 8 + 1 : 1)"
                 : $"(container.{m.Name} is not null ? {m.Type.StaticLength} * ((ICollection<{m.Type.Name}>)container.{m.Name}).Count : 0)";
         }
 
         return $"GetLength(container.{m.Name})";
     }
+
+    private static string ByteArrayLiteral(byte[] value) => $"[{string.Join(", ", value)}]";
+
+    private static string ProgressiveContainerMerkleizeBody(SszType decl)
+    {
+        string activeFields = ByteArrayLiteral(decl.ActiveFieldsBytes ?? []);
+        IEnumerable<string> memberRoots = decl.Members!.Select((m, index) =>
+        {
+            string validation = ValidationStatement(decl, m, $"container.{m.Name}");
+            string merkleize = MerkleizeRootStatement(m, $"container.{m.Name}", $"subRoots[{index}]");
+            return string.IsNullOrEmpty(validation) ? merkleize : $"{validation} {merkleize}";
+        });
+
+        return $@"UInt256[] subRoots = new UInt256[{decl.Members!.Length}];
+{Shift(2, memberRoots)}
+        Merkle.MerkleizeProgressive(out root, subRoots);
+        Merkle.MixInActiveFields(ref root, {activeFields});";
+    }
+
+    private static string EncodeStatement(string target, SszProperty property, string expression)
+    {
+        string arguments = $"{target}, {EncodeValueExpression(property, expression)}";
+        if (property.Kind == Kind.BitList)
+        {
+            arguments += $", {property.Limit}";
+        }
+        else if (property.Kind == Kind.ProgressiveBitList)
+        {
+            arguments += ", 0";
+        }
+
+        return $"{(property.HandledByStd ? "SszLib.Encode" : "Encode")}({arguments});";
+    }
+
+    private static bool RequiresNullGuard(SszProperty property) => !(property.Type.IsStruct || property.Kind is Kind.BitList or Kind.ProgressiveBitList);
 
     private static string GenerateClassCode(SszType decl, List<SszType> foundTypes)
     {
@@ -352,6 +435,11 @@ public partial class SszEncoding
             List<SszProperty> variables = decl.Members.Where(m => m.IsVariable).ToList();
             int encodeOffsetIndex = 0, encodeStaticOffset = 0;
             int offsetIndex = 0, offset = 0;
+            string containerMerkleizeBody = decl.Kind == Kind.ProgressiveContainer
+                ? ProgressiveContainerMerkleizeBody(decl)
+                : $@"Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members!.Length}));
+{Shift(2, decl.Members.Select(m => MerkleizeFeedStatement(m, $"container.{m.Name}")))}
+        merkleizer.CalculateRoot(out root);";
             string result = FixWhitespace(decl.IsSszListItself ?
 $@"using Nethermind.Merkleization;
 using System.Collections.Generic;
@@ -410,7 +498,7 @@ public partial class SszEncoding
         }")}
 {Whitespace}
         {ValidationStatement(decl, variables[0], $"container.{variables[0].Name}")}
-        if (container.{variables[0].Name} is not null) {(variables[0].HandledByStd ? "SszLib.Encode" : "Encode")}(data, container.{variables[0].Name});
+        {(RequiresNullGuard(variables[0]) ? $"if (container.{variables[0].Name} is not null) " : string.Empty)}{EncodeStatement("data", variables[0], $"container.{variables[0].Name}")}
     }}
 {Whitespace}
     public static byte[] Encode(ICollection<{decl.Name}>? items)
@@ -520,9 +608,22 @@ public partial class SszEncoding
         Merkle.Merkleize(out root, subRoots, limit);
         Merkle.MixIn(ref root, count);
     }}
+{Whitespace}
+    public static void MerkleizeProgressiveList(IList<{decl.Name}>? container, out UInt256 root)
+    {{
+        int count = container?.Count ?? 0;
+        UInt256[] subRoots = new UInt256[count];
+        for(int i = 0; i < count; i++)
+        {{
+            Merkleize(container![i], out subRoots[i]);
+        }}
+{Whitespace}
+        Merkle.MerkleizeProgressive(out root, subRoots);
+        Merkle.MixIn(ref root, count);
+    }}
 }}
 " :
-decl.Kind == Kind.Container ? $@"using Nethermind.Merkleization;
+(decl.Kind == Kind.Container || decl.Kind == Kind.ProgressiveContainer) ? $@"using Nethermind.Merkleization;
 using System.Collections.Generic;
 using System.Linq;
 {string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
@@ -594,7 +695,7 @@ public partial class SszEncoding
     return result;
 }))}
 {Whitespace}
-{Shift(2, variables.Select((m, i) => (m.Type.IsStruct || m.Kind == Kind.BitList ? "" : $"if (container.{m.Name} is not null) ") + $"{(m.HandledByStd ? "SszLib.Encode" : "Encode")}(data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1}), {EncodeValueExpression(m, $"container.{m.Name}")}{(m.Kind == Kind.BitList ? $", {m.Limit}" : "")});"))}
+{Shift(2, variables.Select((m, i) => (RequiresNullGuard(m) ? $"if (container.{m.Name} is not null) " : "") + EncodeStatement($"data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1})", m, $"container.{m.Name}")))}
     }}
 {Whitespace}
     public static byte[] Encode(ICollection<{decl.Name}>? items)
@@ -692,15 +793,7 @@ public partial class SszEncoding
         }")}
 {Shift(2, ValidationStatements(decl, decl.Members!, "container"))}
 {Whitespace}
-        Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members!.Length}));
-{Shift(2, decl.Members.Select(m =>
-            {
-                if (m.IsVariable) offsetIndex++;
-                string result = MerkleizeFeedStatement(m, $"container.{m.Name}");
-                offset += m.StaticLength;
-                return result;
-            }))}
-        merkleizer.CalculateRoot(out root);
+{Shift(2, containerMerkleizeBody.Split('\n'))}
     }}
 {Whitespace}
     public static void MerkleizeVector(IList<{decl.Name}>? container, out UInt256 root)
@@ -732,9 +825,22 @@ public partial class SszEncoding
         Merkle.Merkleize(out root, subRoots, limit);
         Merkle.MixIn(ref root, count);
     }}
+{Whitespace}
+    public static void MerkleizeProgressiveList(IList<{decl.Name}>? container, out UInt256 root)
+    {{
+        int count = container?.Count ?? 0;
+        UInt256[] subRoots = new UInt256[count];
+        for(int i = 0; i < count; i++)
+        {{
+            Merkleize(container![i], out subRoots[i]);
+        }}
+{Whitespace}
+        Merkle.MerkleizeProgressive(out root, subRoots);
+        Merkle.MixIn(ref root, count);
+    }}
 }}
 " :
-// Unions
+// Compatible unions
 $@"using Nethermind.Merkleization;
 using System.Collections.Generic;
 using System.Linq;
@@ -754,8 +860,7 @@ public partial class SszEncoding
         }")}
         switch(container.Selector)
         {{
-{(decl.HasNone ? Shift(3, $"case {decl.Selector!.Type.Name}.None: return 1;") : string.Empty)}
-{Shift(3, decl.UnionMembers.Select(m =>
+{Shift(3, decl.CompatibleUnionMembers!.Select(m =>
 {
     string validation = ValidationStatement(decl, m, $"container.{m.Name}");
     string length = m.IsVariable ? DynamicLength(decl, m) : m.StaticLength.ToString();
@@ -805,10 +910,7 @@ public partial class SszEncoding
         SszLib.Encode(data.Slice(0, 1), (byte)container.Selector);
 {Whitespace}
         switch(container.Selector) {{
-{(decl.HasNone ? Shift(3, $"case {decl.Selector!.Type.Name}.None: return;") : string.Empty)}
-{Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.IsVariable ? $"{(m.HandledByStd ? "SszLib.Encode" : "Encode")}(data.Slice(1), {EncodeValueExpression(m, $"container.{m.Name}")}{(m.Kind == Kind.BitList ? $", {m.Limit}" : "")});"
-                                                : m.HandledByStd ? $"SszLib.Encode(data.Slice(1), container.{m.Name});"
-                                                                 : $"Encode(data.Slice(1), container.{m.Name});")} break;"))}
+{Shift(3, decl.CompatibleUnionMembers!.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {EncodeStatement("data.Slice(1)", m, $"container.{m.Name}")} break;"))}
             default:
                 ThrowInvalidSszData(nameof({decl.Name}), $""unsupported union selector {{(byte)container.Selector}}."");
                 break;
@@ -873,10 +975,7 @@ public partial class SszEncoding
         ValidateSszMinimumLength(data.Length, 1, nameof({decl.Name}));
         container.Selector = ({decl.Selector!.Type.Name})data[0];
         switch(container.Selector) {{
-{(decl.HasNone ? Shift(3, $@"case {decl.Selector!.Type.Name}.None:
-                ValidateSszExactLength(data.Length, 1, nameof({decl.Name}));
-                break;") : string.Empty)}
-{Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {DecodeAndAssign(decl, m, "data.Slice(1)")} break;"))}
+{Shift(3, decl.CompatibleUnionMembers!.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {DecodeAndAssign(decl, m, "data.Slice(1)")} break;"))}
             default:
                 ThrowInvalidSszData(nameof({decl.Name}), $""unsupported union selector {{data[0]}}."");
                 break;
@@ -891,10 +990,7 @@ public partial class SszEncoding
             return;
         }")}
         switch(container.Selector) {{
-{(decl.HasNone ? Shift(3, $@"case {decl.Selector!.Type.Name}.None:
-                root = 0;
-                break;") : string.Empty)}
-{Shift(3, decl.UnionMembers.Select(m =>
+{Shift(3, decl.CompatibleUnionMembers!.Select(m =>
 {
     string validation = ValidationStatement(decl, m, $"container.{m.Name}");
     string merkleize = MerkleizeRootStatement(m, $"container.{m.Name}", "root");
@@ -936,6 +1032,19 @@ public partial class SszEncoding
         }}
 {Whitespace}
         Merkle.Merkleize(out root, subRoots, limit);
+        Merkle.MixIn(ref root, count);
+    }}
+{Whitespace}
+    public static void MerkleizeProgressiveList(IList<{decl.Name}>? container, out UInt256 root)
+    {{
+        int count = container?.Count ?? 0;
+        UInt256[] subRoots = new UInt256[count];
+        for(int i = 0; i < count; i++)
+        {{
+            Merkleize(container![i], out subRoots[i]);
+        }}
+{Whitespace}
+        Merkle.MerkleizeProgressive(out root, subRoots);
         Merkle.MixIn(ref root, count);
     }}
 }}

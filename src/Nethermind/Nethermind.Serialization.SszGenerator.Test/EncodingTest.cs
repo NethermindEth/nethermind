@@ -4,9 +4,12 @@
 using Nethermind.Int256;
 using Nethermind.Merkleization;
 using NUnit.Framework;
+using System;
 using System.Collections;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 
 namespace Nethermind.Serialization.SszGenerator.Test;
 
@@ -19,26 +22,26 @@ public class EncodingTest
         {
             VariableC = new VariableC { Fixed1 = 2, Fixed2 = [1, 2, 3, 4] },
             Test2 = Enumerable.Range(0, 10).Select(i => (ulong)i).ToArray(),
-            FixedCVec = Enumerable.Range(0, 10).Select(i => new FixedC()).ToArray(),
-            VariableCVec = Enumerable.Range(0, 10).Select(i => new VariableC()).ToArray(),
-            Test2UnionVec = Enumerable.Range(0, 10).Select(i => new UnionTest3()
+            FixedCVec = Enumerable.Range(0, 10).Select(_ => new FixedC()).ToArray(),
+            VariableCVec = Enumerable.Range(0, 10).Select(_ => new VariableC()).ToArray(),
+            Test2Union = new CompatibleNumberUnion { Selector = CompatibleNumberUnionSelector.PreviousValue, PreviousValue = 7 },
+            Test2UnionVec = Enumerable.Range(0, 10).Select(i => new CompatibleNumberUnion
             {
-                VariableC = new VariableC { Fixed1 = 2, Fixed2 = [1, 2, 3, 4] },
-                Test2 = Enumerable.Range(0, 10).Select(i => (ulong)i).ToArray(),
-                FixedCVec = Enumerable.Range(0, 10).Select(i => new FixedC()).ToArray(),
-                VariableCVec = Enumerable.Range(0, 10).Select(i => new VariableC()).ToArray(),
-                BitVec = new System.Collections.BitArray(10),
+                Selector = CompatibleNumberUnionSelector.CurrentValue,
+                CurrentValue = (ulong)i,
             }).ToArray(),
-            BitVec = new System.Collections.BitArray(10),
+            BitVec = new BitArray(10),
         };
 
-        var encoded = SszEncoding.Encode(test);
+        byte[] encoded = SszEncoding.Encode(test);
         SszEncoding.Merkleize(test, out UInt256 root);
         SszEncoding.Decode(encoded, out ComplexStruct decodedTest);
+        SszEncoding.Merkleize(decodedTest, out UInt256 decodedRoot);
 
         Assert.That(decodedTest.VariableC.Fixed1, Is.EqualTo(test.VariableC.Fixed1));
         Assert.That(decodedTest.VariableC.Fixed2, Is.EqualTo(test.VariableC.Fixed2));
-        SszEncoding.Merkleize(test, out UInt256 decodedRoot);
+        Assert.That(decodedTest.Test2Union.Selector, Is.EqualTo(test.Test2Union.Selector));
+        Assert.That(decodedTest.Test2Union.PreviousValue, Is.EqualTo(test.Test2Union.PreviousValue));
         Assert.That(root, Is.EqualTo(decodedRoot));
     }
 
@@ -83,24 +86,117 @@ public class EncodingTest
     }
 
     [Test]
-    public void Merkleize_union_matches_the_selected_value_root()
+    public void Merkleize_compatible_union_matches_the_selected_value_root()
     {
-        Test2 container = new() { Selector = Test2Union.Type1, Type1 = 123L };
+        CompatibleNumberUnion container = new() { Selector = CompatibleNumberUnionSelector.PreviousValue, PreviousValue = 123UL };
 
         SszEncoding.Merkleize(container, out UInt256 actual);
 
-        Merkle.Merkleize(out UInt256 expected, container.Type1);
+        Merkle.Merkleize(out UInt256 expected, container.PreviousValue);
         Merkle.MixIn(ref expected, (byte)container.Selector);
 
         Assert.That(actual, Is.EqualTo(expected));
     }
 
     [Test]
-    public void Decode_rejects_unknown_union_selector()
+    public void Decode_rejects_unknown_compatible_union_selector()
     {
         Assert.That(
-            () => SszEncoding.Decode([99], out Test2 _),
+            () => SszEncoding.Decode([99], out CompatibleNumberUnion _),
             Throws.InstanceOf<InvalidDataException>());
+    }
+
+    [Test]
+    public void Encode_and_decode_progressive_container_uses_field_indices()
+    {
+        ProgressiveContainerSample container = new() { Head = 1, Tail = 2 };
+
+        byte[] encoded = SszEncoding.Encode(container);
+        SszEncoding.Decode(encoded, out ProgressiveContainerSample decoded);
+
+        byte[] expected = new byte[16];
+        BitConverter.TryWriteBytes(expected.AsSpan(0, 8), container.Head);
+        BitConverter.TryWriteBytes(expected.AsSpan(8, 8), container.Tail);
+
+        Assert.That(encoded, Is.EqualTo(expected));
+        Assert.That(decoded.Head, Is.EqualTo(container.Head));
+        Assert.That(decoded.Tail, Is.EqualTo(container.Tail));
+    }
+
+    [Test]
+    public void Merkleize_progressive_container_mixes_in_active_fields()
+    {
+        ProgressiveContainerSample container = new() { Head = 1, Tail = 2 };
+
+        SszEncoding.Merkleize(container, out UInt256 actual);
+
+        Merkle.Merkleize(out UInt256 headRoot, container.Head);
+        Merkle.Merkleize(out UInt256 tailRoot, container.Tail);
+        MerkleizeProgressiveSpec([headRoot, tailRoot], out UInt256 expected);
+        expected = MixInActiveFieldsSpec(expected, 0b00000101);
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Encode_and_decode_progressive_list_round_trip()
+    {
+        ProgressiveListContainer container = new() { Items = [1UL, 2UL, 3UL] };
+
+        byte[] encoded = SszEncoding.Encode(container);
+        SszEncoding.Decode(encoded, out ProgressiveListContainer decoded);
+
+        Assert.That(decoded.Items, Is.EqualTo(container.Items));
+    }
+
+    [Test]
+    public void Merkleize_progressive_list_uses_progressive_merkleization()
+    {
+        ProgressiveListContainer container = new() { Items = [1UL, 2UL, 3UL] };
+
+        SszEncoding.Merkleize(container, out UInt256 actual);
+
+        ulong[] items = container.Items!;
+        UInt256 expected = ProgressiveMerkleizeBytes(MemoryMarshal.AsBytes(items.AsSpan()));
+        Merkle.MixIn(ref expected, items.Length);
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Encode_and_decode_progressive_bitlist_round_trip()
+    {
+        BitArray bits = new BitArray(10);
+        bits[0] = true;
+        bits[3] = true;
+        bits[9] = true;
+        ProgressiveBitlistContainer container = new() { Bits = bits };
+
+        byte[] encoded = SszEncoding.Encode(container);
+        SszEncoding.Decode(encoded, out ProgressiveBitlistContainer decoded);
+
+        Assert.That(decoded.Bits, Is.Not.Null);
+        Assert.That(decoded.Bits!.Length, Is.EqualTo(bits.Length));
+        Assert.That(decoded.Bits.Cast<bool>(), Is.EqualTo(bits.Cast<bool>()));
+    }
+
+    [Test]
+    public void Merkleize_progressive_bitlist_uses_progressive_merkleization()
+    {
+        BitArray bits = new BitArray(10);
+        bits[0] = true;
+        bits[3] = true;
+        bits[9] = true;
+        ProgressiveBitlistContainer container = new() { Bits = bits };
+
+        SszEncoding.Merkleize(container, out UInt256 actual);
+
+        byte[] bytes = new byte[(bits.Length + 7) / 8];
+        bits.CopyTo(bytes, 0);
+        UInt256 expected = ProgressiveMerkleizeBytes(bytes);
+        Merkle.MixIn(ref expected, bits.Length);
+
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     [Test]
@@ -131,5 +227,65 @@ public class EncodingTest
         Assert.That(
             () => SszEncoding.Encode(container),
             Throws.InstanceOf<InvalidDataException>());
+    }
+
+    private static UInt256 MixInActiveFieldsSpec(UInt256 root, byte activeFields)
+    {
+        Span<byte> chunk = stackalloc byte[32];
+        chunk[0] = activeFields;
+        return HashConcat(root, new UInt256(chunk));
+    }
+
+    private static UInt256 ProgressiveMerkleizeBytes(ReadOnlySpan<byte> bytes)
+    {
+        MerkleizeProgressiveSpec(PackToChunks(bytes), out UInt256 root);
+        return root;
+    }
+
+    private static UInt256[] PackToChunks(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length is 0)
+        {
+            return [];
+        }
+
+        int chunkCount = (bytes.Length + 31) / 32;
+        UInt256[] chunks = new UInt256[chunkCount];
+        int fullByteLength = bytes.Length / 32 * 32;
+        if (fullByteLength > 0)
+        {
+            MemoryMarshal.Cast<byte, UInt256>(bytes[..fullByteLength]).CopyTo(chunks);
+        }
+
+        if (fullByteLength != bytes.Length)
+        {
+            Span<byte> lastChunk = stackalloc byte[32];
+            bytes[fullByteLength..].CopyTo(lastChunk);
+            chunks[^1] = new UInt256(lastChunk);
+        }
+
+        return chunks;
+    }
+
+    private static void MerkleizeProgressiveSpec(ReadOnlySpan<UInt256> chunks, out UInt256 root, ulong numLeaves = 1)
+    {
+        if (chunks.Length is 0)
+        {
+            root = UInt256.Zero;
+            return;
+        }
+
+        int leftCount = (int)Math.Min((ulong)chunks.Length, numLeaves);
+        Merkle.Merkleize(out UInt256 left, chunks[..leftCount], numLeaves);
+        MerkleizeProgressiveSpec(chunks[leftCount..], out UInt256 right, numLeaves * 4);
+        root = HashConcat(left, right);
+    }
+
+    private static UInt256 HashConcat(UInt256 left, UInt256 right)
+    {
+        Span<UInt256> values = stackalloc UInt256[2];
+        values[0] = left;
+        values[1] = right;
+        return new UInt256(SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(values)));
     }
 }
