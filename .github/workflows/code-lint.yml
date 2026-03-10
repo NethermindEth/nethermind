@@ -1,13 +1,12 @@
-name: Code Quality
+name: Code Lint
 
 on:
   pull_request:
-    branches: [master]
-    paths: ["src/Nethermind/**/*.cs"]
+  workflow_dispatch:
 
 jobs:
   code-quality:
-    name: Check code style
+    name: Check code lint
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -46,9 +45,6 @@ jobs:
             echo "No C# files changed."
           fi
 
-      # Single command runs both style (IDE) and analyzer (CA) rules.
-      # .editorconfig is the single source of truth — any rule at warning
-      # severity gets enforced. No --diagnostics filter needed.
       - name: Check code quality
         if: steps.changed.outputs.count != '0'
         run: |

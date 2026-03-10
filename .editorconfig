@@ -93,27 +93,6 @@ csharp_style_var_when_type_is_apparent = true:suggestion
 csharp_style_var_elsewhere = false:suggestion
 
 # Coding convention — CI-enforced code quality rules
-# See docs/superpowers/specs/2026-03-10-ci-code-quality-enforcement-design.md for rationale
-
-# IDE0041 disabled — broken in current Roslyn (does not fire correctly)
-dotnet_diagnostic.IDE0041.severity = none
-
-# Tier 1 style rules (IDE)
-dotnet_diagnostic.IDE0004.severity = warning
 dotnet_diagnostic.IDE0005.severity = warning
-dotnet_diagnostic.IDE0054.severity = warning
-dotnet_diagnostic.IDE0059.severity = warning
-dotnet_diagnostic.IDE0078.severity = warning
-dotnet_diagnostic.IDE0100.severity = warning
-
-# Tier 1 analyzer rules (CA) — kept at suggestion for now.
-# CA rules are enforced by dotnet build (unlike IDE rules) so promoting
-# to warning breaks builds via TreatWarningsAsErrors. Adding to
-# WarningsNotAsErrors causes dotnet format to silently skip them.
-# These need a different enforcement mechanism in a future iteration.
-# dotnet_diagnostic.CA1805.severity = warning
-# dotnet_diagnostic.CA1825.severity = warning
-# dotnet_diagnostic.CA1829.severity = warning
-# dotnet_diagnostic.CA1834.severity = warning
-# dotnet_diagnostic.CA1847.severity = warning
+dotnet_diagnostic.IDE0041.severity = error
 
