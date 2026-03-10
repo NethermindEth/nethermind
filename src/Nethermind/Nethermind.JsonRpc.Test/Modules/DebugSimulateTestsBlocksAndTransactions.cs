@@ -209,7 +209,7 @@ public class DebugSimulateTestsBlocksAndTransactions
                 {
                     From = TestItem.AddressA,
                     To = TestItem.AddressB,
-                    Value = 1000.Ether()
+                    Value = 1000.Ether
                 }]
             }]
         };

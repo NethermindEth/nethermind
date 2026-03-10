@@ -26,6 +26,8 @@ public class PayloadAttributes
 
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    public ulong? SlotNumber { get; set; }
+
     public virtual long? GetGasLimit() => null;
 
     public override string ToString() => ToString(string.Empty);
@@ -45,6 +47,11 @@ public class PayloadAttributes
         if (ParentBeaconBlockRoot is not null)
         {
             sb.Append($", {nameof(ParentBeaconBlockRoot)} : {ParentBeaconBlockRoot}");
+        }
+
+        if (SlotNumber is not null)
+        {
+            sb.Append($", {nameof(SlotNumber)}: {SlotNumber}");
         }
 
         sb.Append('}');
@@ -71,7 +78,8 @@ public class PayloadAttributes
         + Keccak.Size // prev randao
         + Address.Size // suggested fee recipient
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
-        + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size); // parent beacon block root
+        + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
+        + (SlotNumber is null ? 0 : sizeof(ulong)); // slot number
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -110,6 +118,12 @@ public class PayloadAttributes
             position += Keccak.Size;
         }
 
+        if (SlotNumber is not null)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), SlotNumber.Value);
+            position += sizeof(ulong);
+        }
+
         return position;
     }
 
@@ -124,7 +138,8 @@ public class PayloadAttributes
         if (actualVersion != apiVersion)
         {
             // except of Shanghai api handling Paris fork
-            if (apiVersion == EngineApiVersions.Shanghai && timestampVersion < apiVersion)
+            if (apiVersion == EngineApiVersions.Shanghai && timestampVersion == PayloadAttributesVersions.Paris ||
+                apiVersion == EngineApiVersions.Amsterdam && timestampVersion == PayloadAttributesVersions.Amsterdam)
             {
 
                 error = null;
@@ -166,16 +181,26 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
-            { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
-            { Withdrawals: not null } => EngineApiVersions.Shanghai,
-            _ => EngineApiVersions.Paris
+            { SlotNumber: not null } => PayloadAttributesVersions.Amsterdam,
+            { ParentBeaconBlockRoot: not null, Withdrawals: not null } => PayloadAttributesVersions.Cancun,
+            { Withdrawals: not null } => PayloadAttributesVersions.Shanghai,
+            _ => PayloadAttributesVersions.Paris
         };
 
     public static int ExpectedPayloadAttributesVersion(this IReleaseSpec spec) =>
         spec switch
         {
-            { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
-            { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
-            _ => EngineApiVersions.Paris
+            { IsEip7843Enabled: true } => PayloadAttributesVersions.Amsterdam,
+            { IsEip4844Enabled: true } => PayloadAttributesVersions.Cancun,
+            { WithdrawalsEnabled: true } => PayloadAttributesVersions.Shanghai,
+            _ => PayloadAttributesVersions.Paris
         };
+}
+
+public static class PayloadAttributesVersions
+{
+    public const int Paris = 1;
+    public const int Shanghai = 2;
+    public const int Cancun = 3;
+    public const int Amsterdam = 4;
 }

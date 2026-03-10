@@ -33,7 +33,7 @@ public class ExecutionProcessorTests
     private IWorldState _stateProvider;
     private IReleaseSpec _spec;
     private IDisposable _worldStateCloser;
-    private static readonly UInt256 AccountBalance = 1.Ether();
+    private static readonly UInt256 AccountBalance = 1.Ether;
     private static readonly Address DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
     private static readonly Address eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
     private static readonly Address eip7251Account = Eip7251Constants.ConsolidationRequestPredeployAddress;
@@ -76,7 +76,7 @@ public class ExecutionProcessorTests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        _spec = Substitute.For<IReleaseSpec>();
+        _spec = ReleaseSpecSubstitute.Create();
 
         _spec.RequestsEnabled.Returns(true);
         _spec.DepositsEnabled.Returns(true);

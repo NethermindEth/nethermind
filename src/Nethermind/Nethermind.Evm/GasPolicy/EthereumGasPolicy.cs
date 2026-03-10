@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -30,8 +28,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static void Consume(ref EthereumGasPolicy gas, long cost) =>
         gas.Value -= cost;
 
-    public static void ConsumeSelfDestructGas(ref EthereumGasPolicy gas)
-        => Consume(ref gas, GasCostOf.SelfDestructEip150);
+    public static bool ConsumeSelfDestructGas(ref EthereumGasPolicy gas)
+        => UpdateGas(ref gas, GasCostOf.SelfDestructEip150);
+
+    /// <summary>
+    /// Consume gas for code deposit. For standard Ethereum, this is equivalent to Consume.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void ConsumeCodeDeposit(ref EthereumGasPolicy gas, long cost)
+        => Consume(ref gas, cost);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Refund(ref EthereumGasPolicy gas, in EthereumGasPolicy childGas) =>
@@ -53,9 +58,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             return true;
 
         bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, chargeForWarm);
-        return notOutOfGas
-               && (delegated is null
-                   || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated, chargeForWarm));
+        return notOutOfGas && (delegated is null || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated, chargeForWarm));
     }
 
     public static bool ConsumeAccountAccessGas(ref EthereumGasPolicy gas,
@@ -146,7 +149,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeStorageWrite(ref EthereumGasPolicy gas, bool isSlotCreation, IReleaseSpec spec)
     {
-        long cost = isSlotCreation ? GasCostOf.SSet : spec.GetSStoreResetCost();
+        long cost = isSlotCreation ? GasCostOf.SSet : spec.GasCosts.SStoreResetCost;
         return UpdateGas(ref gas, cost);
     }
 
@@ -179,14 +182,16 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static EthereumGasPolicy Max(in EthereumGasPolicy a, in EthereumGasPolicy b) =>
         a.Value >= b.Value ? a : b;
 
-    public static EthereumGasPolicy CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
+    public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
     {
-        long gas = GasCostOf.Transaction
-            + DataCost(tx, spec)
-            + CreateCost(tx, spec)
-            + IntrinsicGasCalculator.AccessListCost(tx, spec)
-            + AuthorizationListCost(tx, spec);
-        return new() { Value = gas };
+        long tokensInCallData = IGasPolicy<EthereumGasPolicy>.CalculateTokensInCallData(tx, spec);
+        long standard = GasCostOf.Transaction
+                        + DataCost(tx, spec, tokensInCallData)
+                        + CreateCost(tx, spec)
+                        + IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec)
+                        + AuthorizationListCost(tx, spec);
+        long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, spec);
+        return new IntrinsicGas<EthereumGasPolicy>(FromLong(standard), FromLong(floorCost));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -196,39 +201,21 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     private static long CreateCost(Transaction tx, IReleaseSpec spec) =>
         tx.IsContractCreation && spec.IsEip2Enabled ? GasCostOf.TxCreate : 0;
 
-    private static long DataCost(Transaction tx, IReleaseSpec spec)
-    {
-        long baseDataCost = tx.IsContractCreation && spec.IsEip3860Enabled
-            ? EvmCalculations.Div32Ceiling((UInt256)tx.Data.Length) * GasCostOf.InitCodeWord
-            : 0;
-
-        long tokensInCallData = CalculateTokensInCallData(tx, spec);
-        return baseDataCost + tokensInCallData * GasCostOf.TxDataZero;
-    }
-
-    private static long CalculateTokensInCallData(Transaction tx, IReleaseSpec spec)
-    {
-        long txDataNonZeroMultiplier = spec.IsEip2028Enabled
-            ? GasCostOf.TxDataNonZeroMultiplierEip2028
-            : GasCostOf.TxDataNonZeroMultiplier;
-        ReadOnlySpan<byte> data = tx.Data.Span;
-        int totalZeros = data.CountZeros();
-        return totalZeros + (data.Length - totalZeros) * txDataNonZeroMultiplier;
-    }
+    private static long DataCost(Transaction tx, IReleaseSpec spec, long tokensInCallData) =>
+        spec.GetBaseDataCost(tx) + tokensInCallData * GasCostOf.TxDataZero;
 
     private static long AuthorizationListCost(Transaction tx, IReleaseSpec spec)
     {
         AuthorizationTuple[]? authList = tx.AuthorizationList;
         if (authList is not null)
         {
-            if (!spec.IsAuthorizationListEnabled)
-                ThrowAuthorizationListNotEnabled(spec);
+            if (!spec.IsAuthorizationListEnabled) ThrowAuthorizationListNotEnabled(spec);
             return authList.Length * GasCostOf.NewAccount;
         }
         return 0;
-    }
 
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowAuthorizationListNotEnabled(IReleaseSpec spec) =>
-        throw new InvalidDataException($"Transaction with an authorization list received within the context of {spec.Name}. EIP-7702 is not enabled.");
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowAuthorizationListNotEnabled(IReleaseSpec spec) =>
+            throw new InvalidDataException($"Transaction with an authorization list received within the context of {spec.Name}. EIP-7702 is not enabled.");
+    }
 }

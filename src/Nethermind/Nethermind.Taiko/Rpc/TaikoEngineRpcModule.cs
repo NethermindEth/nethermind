@@ -40,6 +40,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IAsyncHandler<byte[], GetPayloadV3Result?> getPayloadHandlerV3,
         IAsyncHandler<byte[], GetPayloadV4Result?> getPayloadHandlerV4,
         IAsyncHandler<byte[], GetPayloadV5Result?> getPayloadHandlerV5,
+        IAsyncHandler<byte[], GetPayloadV6Result?> getPayloadHandlerV6,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
         IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
@@ -48,6 +49,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
         IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> getBlobsHandlerV2,
+        IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
+        IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
@@ -55,7 +58,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ITxPool txPool,
         IBlockFinder blockFinder,
         IShareableTxProcessorSource txProcessorSource,
-        IRlpStreamDecoder<Transaction> txDecoder,
+        IRlpStreamEncoder<Transaction> txDecoder,
         IL1OriginStore l1OriginStore,
         ISurgeConfig surgeConfig) :
             EngineRpcModule(getPayloadHandlerV1,
@@ -63,6 +66,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 getPayloadHandlerV3,
                 getPayloadHandlerV4,
                 getPayloadHandlerV5,
+                getPayloadHandlerV6,
                 newPayloadV1Handler,
                 forkchoiceUpdatedV1Handler,
                 executionGetPayloadBodiesByHashV1Handler,
@@ -71,6 +75,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 capabilitiesHandler,
                 getBlobsHandler,
                 getBlobsHandlerV2,
+                getPayloadBodiesByHashV2Handler,
+                getPayloadBodiesByRangeV2Handler,
                 engineRequestsTracker,
                 specProvider,
                 gcKeeper,
@@ -270,7 +276,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return [.. Batches];
     }
 
-    struct Batch(ulong maxBytes, int transactionsListCapacity, IRlpStreamDecoder<Transaction> txDecoder) : IDisposable
+    struct Batch(ulong maxBytes, int transactionsListCapacity, IRlpStreamEncoder<Transaction> txDecoder) : IDisposable
     {
         private readonly ulong _maxBytes = maxBytes;
         private ulong _length;
@@ -295,7 +301,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         public readonly ulong GetCompressedTxsLength()
         {
             int contentLength = Transactions.Sum(GetTxLength);
-            byte[] data = ArrayPool<byte>.Shared.Rent(contentLength);
+            byte[] data = ArrayPool<byte>.Shared.Rent(Rlp.LengthOfSequence(contentLength));
 
             try
             {
@@ -370,8 +376,13 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return ResultWrapper<UInt256>.Success(batchId);
     }
 
-    public ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, int[] signature)
+    public ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, byte[] signature)
     {
+        if (signature.Length != L1OriginDecoder.SignatureLength)
+        {
+            return ResultWrapper<L1Origin>.Fail($"signature must be exactly {L1OriginDecoder.SignatureLength} bytes, got {signature.Length}");
+        }
+
         L1Origin? l1Origin = l1OriginStore.ReadL1Origin(blockId);
         if (l1Origin is null)
         {

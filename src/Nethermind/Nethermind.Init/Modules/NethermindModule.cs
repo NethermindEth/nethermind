@@ -15,6 +15,8 @@ using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Db.LogIndex;
 using Nethermind.Era1;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -22,7 +24,9 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.TxPool;
+using Testably.Abstractions;
 
 namespace Nethermind.Init.Modules;
 
@@ -54,7 +58,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
-            .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>()))
+            .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>(), configProvider.GetConfig<ILogIndexConfig>()))
             .AddModule(new MonitoringModule(configProvider.GetConfig<IMetricsConfig>()))
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
@@ -67,20 +71,24 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .Bind<IEcdsa, IEthereumEcdsa>()
 
             .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
-            .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()
+            .AddSingleton<IChainHeadInfoProvider, IChainHeadSpecProvider, IBlockTree, IStateReader>(
+                (specProvider, blockTree, stateReader) => new ChainHeadInfoProvider(specProvider, blockTree, stateReader))
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
 
             .AddSingleton<IHardwareInfo, HardwareInfo>()
 
             .AddSingleton<ITimestamper>(_ => Core.Timestamper.Default)
             .AddSingleton<ITimerFactory>(_ => Core.Timers.TimerFactory.Default)
-            .AddSingleton<IFileSystem>(_ => new FileSystem())
+            .AddSingleton<IFileSystem>(_ => new RealFileSystem())
             ;
 
         if (!configProvider.GetConfig<ITxPoolConfig>().BlobsSupport.IsPersistentStorage())
         {
             builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
         }
+
+        if (configProvider.GetConfig<IFlatDbConfig>().Enabled)
+            builder.AddModule(new FlatWorldStateModule(configProvider.GetConfig<IFlatDbConfig>()));
     }
 
     // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.

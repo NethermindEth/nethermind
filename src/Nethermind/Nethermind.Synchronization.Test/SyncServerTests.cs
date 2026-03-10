@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -666,7 +667,7 @@ public class SyncServerTests
         int count = 0;
         remoteServer
             .When(r => r.AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>()))
-            .Do(_ => count++);
+            .Do(_ => Interlocked.Increment(ref count));
         PeerInfo[] peers = Enumerable.Range(0, peerCount).Take(peerCount)
             .Select(_ => new PeerInfo(new SyncPeerMock(remoteBlockTree, remoteSyncServer: remoteServer)))
             .ToArray();
@@ -741,7 +742,7 @@ public class SyncServerTests
         BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
         ISealValidator sealValidator = Substitute.For<ISealValidator>();
         MemDb stateDb = new();
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, Prune.WhenCacheReaches(10.MB()), NoPersistence.Instance, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, Prune.WhenCacheReaches(10.MB), NoPersistence.Instance, LimboLogs.Instance);
 
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         worldStateManager.HashServer.Returns(trieStore.TrieNodeRlpStore);
@@ -774,7 +775,9 @@ public class SyncServerTests
         }
 
         stateDb.KeyExists(nodeKey).Should().BeFalse();
-        ctx.SyncServer.GetNodeData(new[] { nodeKey }, CancellationToken.None, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.BytesToArray() });
+        using IByteArrayList nodeData = ctx.SyncServer.GetNodeData(new[] { nodeKey }, CancellationToken.None, NodeDataType.All);
+        nodeData.Count.Should().Be(1);
+        nodeData[0].ToArray().Should().BeEquivalentTo(TestItem.KeccakB.BytesToArray());
     }
 
     [Test]

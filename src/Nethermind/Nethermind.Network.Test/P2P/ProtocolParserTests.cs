@@ -62,16 +62,6 @@ public class ProtocolParserTests
     }
 
     [Test]
-    public void TryGetProtocolCode_Ndm_ReturnsTrue()
-    {
-        byte[] protocolBytes = Encoding.UTF8.GetBytes("ndm");
-        bool result = ProtocolParser.TryGetProtocolCode(protocolBytes, out string? protocol);
-
-        Assert.That(result, Is.True);
-        Assert.That(protocol, Is.EqualTo(Protocol.Ndm));
-    }
-
-    [Test]
     public void TryGetProtocolCode_Snap_ReturnsTrue()
     {
         byte[] protocolBytes = Encoding.UTF8.GetBytes("snap");
@@ -204,15 +194,6 @@ public class ProtocolParserTests
         uint parValue = CalculateThreeByteKey(parBytes);
 
         Assert.That(parValue, Is.EqualTo(0x726170u), "Hex constant for 'par' should match");
-    }
-
-    [Test]
-    public void TryGetProtocolCode_ValidatesHexConstants_Ndm()
-    {
-        byte[] ndmBytes = Encoding.UTF8.GetBytes("ndm");
-        uint ndmValue = CalculateThreeByteKey(ndmBytes);
-
-        Assert.That(ndmValue, Is.EqualTo(0x6D646Eu), "Hex constant for 'ndm' should match");
     }
 
     [Test]

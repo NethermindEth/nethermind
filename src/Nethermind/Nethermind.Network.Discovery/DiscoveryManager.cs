@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
@@ -28,7 +29,7 @@ public class DiscoveryManager : IDiscoveryManager
     private readonly ConcurrentDictionary<Hash256, INodeLifecycleManager> _nodeLifecycleManagers = new();
     private readonly INodeTable _nodeTable;
     private readonly INetworkStorage _discoveryStorage;
-    public NodeFilter NodesFilter { get; }
+    private readonly NodeFilter _nodesFilter;
 
     private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMsg>> _waitingEvents = new();
     private readonly Func<Hash256, Node, INodeLifecycleManager> _createNodeLifecycleManager;
@@ -40,7 +41,7 @@ public class DiscoveryManager : IDiscoveryManager
         INodeTable? nodeTable,
         [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage? discoveryStorage,
         IDiscoveryConfig? discoveryConfig,
-        INetworkConfig? networkConfig,
+        INetworkConfig networkConfig,
         ILogManager? logManager)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -52,8 +53,8 @@ public class DiscoveryManager : IDiscoveryManager
         _outgoingMessageRateLimiter = new RateLimiter(discoveryConfig.MaxOutgoingMessagePerSecond);
         _createNodeLifecycleManager = GetLifecycleManagerFunc(isPersisted: false);
         _createNodeLifecycleManagerPersisted = GetLifecycleManagerFunc(isPersisted: true);
-
-        NodesFilter = new((networkConfig?.MaxActivePeers * 4) ?? 200);
+        IPAddress? currentIp = IPAddress.TryParse(networkConfig.ExternalIp ?? networkConfig.LocalIp, out IPAddress? ip) ? ip : null;
+        _nodesFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterDiscoveryNodesByRecentIp, networkConfig.FilterDiscoveryNodesBySameSubnet, currentIp);
     }
 
     public NodeRecord SelfNodeRecord => _nodeLifecycleManagerFactory.SelfNodeRecord;
@@ -338,6 +339,9 @@ public class DiscoveryManager : IDiscoveryManager
 
         return false;
     }
+
+    public bool ShouldContact(IPAddress address)
+        => _nodesFilter.TryAccept(address);
 
     private readonly struct MessageTypeKey : IEquatable<MessageTypeKey>
     {

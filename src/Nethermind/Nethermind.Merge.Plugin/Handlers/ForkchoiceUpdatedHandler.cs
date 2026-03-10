@@ -288,7 +288,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         return null;
     }
 
-    protected virtual bool IsPayloadAttributesTimestampValid(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,
+    protected bool ArePayloadAttributesTimestampAndSlotNumberValid(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,
         [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
         if (newHeadBlock.Timestamp >= payloadAttributes.Timestamp)
@@ -298,6 +298,12 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return false;
         }
 
+        if (newHeadBlock.SlotNumber >= payloadAttributes.SlotNumber)
+        {
+            string error = $"Payload slot number {payloadAttributes.SlotNumber} must be greater than block slot number {newHeadBlock.SlotNumber}.";
+            errorResult = ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+            return false;
+        }
         errorResult = null;
         return true;
     }
@@ -314,7 +320,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (payloadAttributes is not null)
         {
-            if (!IsPayloadAttributesTimestampValid(newHeadBlock, forkchoiceState, payloadAttributes, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
+            if (!ArePayloadAttributesTimestampAndSlotNumberValid(newHeadBlock, forkchoiceState, payloadAttributes, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {errorResult.Result.Error}");
                 return errorResult;

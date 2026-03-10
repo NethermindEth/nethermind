@@ -337,7 +337,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = code.ToHexString();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"type\": \"0x2\", \"value\":\"{1.Ether()}\", \"data\": \"{dataStr}\"}}");
+            $"{{\"type\": \"0x2\", \"value\":\"{1.Ether}\", \"data\": \"{dataStr}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Console.WriteLine(serialized);
         Assert.That(
