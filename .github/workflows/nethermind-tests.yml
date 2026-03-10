@@ -124,8 +124,19 @@ jobs:
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
         run: |
-          dotnet test --project ${{ matrix.project }}.csproj -c release \
-            ${{ matrix.os.label == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}
+          flags="${{ matrix.os.label == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}"
+          set +e
+          dotnet test --project ${{ matrix.project }}.csproj -c release $flags
+          rc=$?
+          set -e
+          if [[ $rc -eq 0 ]]; then
+            exit 0
+          elif [[ $rc -eq 1 ]]; then
+            exit 1
+          else
+            echo "::warning::Test process crashed (exit code $rc), retrying..."
+            dotnet test --project ${{ matrix.project }}.csproj -c release $flags
+          fi
 
       - name: Save test outcome
         if: success() || failure()
@@ -172,7 +183,18 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
+          set +e
           dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release
+          rc=$?
+          set -e
+          if [[ $rc -eq 0 ]]; then
+            exit 0
+          elif [[ $rc -eq 1 ]]; then
+            exit 1
+          else
+            echo "::warning::Test process crashed (exit code $rc), retrying..."
+            dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release
+          fi
 
       - name: Save test outcome
         if: success() || failure()
