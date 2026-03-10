@@ -47,7 +47,7 @@ Triage if >30 files: prioritize `Nethermind.Evm/`, `Nethermind.Specs/`, `Netherm
 
 ## Step 3 — Parallel Spec Compliance Checks
 
-Launch up to 3 sub-checks with the EIP spec text and diff.
+Launch up to 4 sub-checks with the EIP spec text and diff.
 
 ### A: Spec Fidelity
 
@@ -67,13 +67,13 @@ Launch up to 3 sub-checks with the EIP spec text and diff.
 - **Siblings**: Other EIPs in same fork sharing code paths. Compound conditions with new flag
 - **Gas composition**: If gas-related, check that the new gas logic composes correctly with existing gas-related EIPs already active in the target fork
 
-See `references/common-pitfalls.md` for general patterns.
+See `../references/eip/common-pitfalls.md` for general patterns.
 
 ### D: Pattern Completeness (mandatory — must appear in report)
 
 This check is **not optional**. You must include a pattern checklist table in your report.
 
-1. Read `references/implementation-patterns.md`
+1. Read `../references/eip/implementation-patterns.md`
 2. Identify which patterns apply to this EIP (new opcode, new header field, new tx type, etc.)
 3. For each applicable pattern, list **every numbered item** and whether the **diff modifies** that file. A pre-existing file that is not modified by the diff counts as MISSING — the EIP's changes need to reach it:
 
@@ -86,12 +86,6 @@ Pattern: "New header field" (items 1-12)
  8. EngineRpcModule.{ForkName}.cs — MISSING ← finding
  9. IEngineRpcModule.{ForkName}.cs — MISSING ← finding
 ```
-
-**Severity guide:**
-
-- Missing Engine API modules, spec provider, or capability registration = **HIGH** (breaks CL communication or non-mainnet)
-- Missing test infrastructure or test base class updates = **MEDIUM**
-- Missing L2 plugins or config = **LOW**
 
 ## Step 4 — Score + Report
 

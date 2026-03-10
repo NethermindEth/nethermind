@@ -60,7 +60,7 @@ Before planning, ground yourself in the current state:
 
 ### Step 3 — Route to Implementation Patterns
 
-Read `references/implementation-patterns.md` for full patterns and file paths.
+Read `../references/eip/implementation-patterns.md` for full patterns and file paths.
 
 Based on the key specification changes from Step 1, determine the primary change type and follow the corresponding pattern:
 
@@ -121,6 +121,8 @@ Follow the plan step by step. For each file:
 2. Make the minimal, focused change needed.
 
 **Completion gate:** After implementing, cross-check every file listed in Step 4's plan against your actual changes. If a planned file was not touched, either implement it now or explain why it was dropped. Do not proceed to Step 6 with unimplemented plan items — the plan exists because those files are needed.
+
+**Pattern verification (mandatory):** For every file in the applicable pattern checklist from `../references/eip/implementation-patterns.md`, you must **read the file** and confirm your changes are present. Do not mark any item as "pre-existing," "not applicable," or "already handled" without opening the file and verifying. Dismissing pattern items without reading the file is the #1 cause of incomplete implementations — missing Engine API methods, capability registration, or payload versioning will break CL↔EL communication.
 
 #### Backward compatibility with prerequisite EIPs
 
@@ -189,4 +191,4 @@ If either review returns CRITICAL or HIGH findings:
 
 ## References
 
-- **Implementation patterns + file paths**: See `references/implementation-patterns.md`
+- **Implementation patterns + file paths**: See `../references/eip/implementation-patterns.md`
