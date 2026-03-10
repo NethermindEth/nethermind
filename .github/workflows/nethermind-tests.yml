@@ -40,10 +40,6 @@ jobs:
           - { runner: ubuntu-latest, label: ubuntu-latest }
           - { runner: ubuntu-24.04-arm, label: ubuntu-24.04-arm }
           - { runner: windows-latest, label: windows-latest }
-          - { runner: macos-latest, label: macos-latest }
-        exclude:
-          - os: { label: macos-latest }
-            project: Nethermind.Trie.Test
         project:
           - Nethermind.Abi.Test
           - Nethermind.Api.Test
@@ -89,6 +85,17 @@ jobs:
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
+        include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
+          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Db.Test }
+          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.JsonRpc.Test }
+          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.KeyStore.Test }
+          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Network.Discovery.Test }
+          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Network.Dns.Test }
+          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Network.Enr.Test }
+          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Network.Test }
+          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Runner.Test }
+          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Sockets.Test }
+          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Synchronization.Test }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
