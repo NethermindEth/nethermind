@@ -153,7 +153,7 @@ public static class BaseTriePersistence
             // Technically, this is kinda not needed for nodes as it's always traversed so orphaned trie just get skipped.
             // Delete from StorageNodes
             BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)]);
-            DeleteMatchingKeys(storageNodesSnap, storageNodes,
+            BasePersistence.DeleteMatchingKeys(storageNodesSnap, storageNodes,
                 firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)],
                 StoragePrefixPortion + ShortenedPathLength, addressSuffix);
 
@@ -161,7 +161,7 @@ public static class BaseTriePersistence
             firstKey[0] = 1;
             lastKey[0] = 1;
             BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[1..], lastKey[1..]);
-            DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes, firstKey, lastKey,
+            BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes, firstKey, lastKey,
                 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
         }
 
@@ -209,7 +209,7 @@ public static class BaseTriePersistence
             EncodeStateTopNodeKey(firstKeyBuf[..StateNodesTopPathLength], fromPath);
             EncodeStateTopNodeKey(lastKeyBuf[..StateNodesTopPathLength], toPath);
             lastKeyBuf[StateNodesTopPathLength] = 0;
-            DeleteMatchingKeys(stateTopNodesSnap, stateTopNodes,
+            BasePersistence.DeleteMatchingKeys(stateTopNodesSnap, stateTopNodes,
                 firstKeyBuf[..StateNodesTopPathLength], lastKeyBuf[..(StateNodesTopPathLength + 1)],
                 StateNodesTopPathLength);
 
@@ -217,7 +217,7 @@ public static class BaseTriePersistence
             EncodeShortenedStateNodeKey(firstKeyBuf[..ShortenedPathLength], fromPath);
             EncodeShortenedStateNodeKey(lastKeyBuf[..ShortenedPathLength], toPath);
             lastKeyBuf[ShortenedPathLength] = 0;
-            DeleteMatchingKeys(stateNodesSnap, stateNodes,
+            BasePersistence.DeleteMatchingKeys(stateNodesSnap, stateNodes,
                 firstKeyBuf[..ShortenedPathLength], lastKeyBuf[..(ShortenedPathLength + 1)],
                 ShortenedPathLength);
 
@@ -225,7 +225,7 @@ public static class BaseTriePersistence
             EncodeFullStateNodeKey(firstKeyBuf, fromPath);
             EncodeFullStateNodeKey(lastKeyBuf[..FullStateNodesKeyLength], toPath);
             lastKeyBuf[FullStateNodesKeyLength] = 0;
-            DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,
+            BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,
                 firstKeyBuf, lastKeyBuf[..(FullStateNodesKeyLength + 1)], FullStateNodesKeyLength);
         }
 
@@ -246,7 +246,7 @@ public static class BaseTriePersistence
             EncodeShortenedStorageNodeKey(firstKeyBuf[..ShortenedStorageNodesKeyLength], address, fromPath);
             EncodeShortenedStorageNodeKey(lastKeyBuf[..ShortenedStorageNodesKeyLength], address, toPath);
             lastKeyBuf[ShortenedStorageNodesKeyLength] = 0;
-            DeleteMatchingKeys(storageNodesSnap, storageNodes,
+            BasePersistence.DeleteMatchingKeys(storageNodesSnap, storageNodes,
                 firstKeyBuf[..ShortenedStorageNodesKeyLength], lastKeyBuf[..(ShortenedStorageNodesKeyLength + 1)],
                 StoragePrefixPortion + ShortenedPathLength, addressSuffix);
 
@@ -254,50 +254,11 @@ public static class BaseTriePersistence
             EncodeFullStorageNodeKey(firstKeyBuf, address, fromPath);
             EncodeFullStorageNodeKey(lastKeyBuf[..FullStorageNodesKeyLength], address, toPath);
             lastKeyBuf[FullStorageNodesKeyLength] = 0;
-            DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,
+            BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,
                 firstKeyBuf, lastKeyBuf[..(FullStorageNodesKeyLength + 1)],
                 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
         }
-
-        /// <summary>
-        /// Scan a key range and delete all entries matching the expected key length.
-        /// </summary>
-        private static void DeleteMatchingKeys(
-            ISortedKeyValueStore snap,
-            IWriteBatch batch,
-            ReadOnlySpan<byte> firstKey,
-            ReadOnlySpan<byte> lastKey,
-            int expectedKeyLength)
-        {
-            using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
-            while (view.MoveNext())
-            {
-                if (view.CurrentKey.Length == expectedKeyLength)
-                    batch.Remove(view.CurrentKey);
-            }
-        }
-
-        /// <summary>
-        /// Scan a key range and delete entries matching the expected key length and address suffix.
-        /// </summary>
-        private static void DeleteMatchingKeys(
-            ISortedKeyValueStore snap,
-            IWriteBatch batch,
-            ReadOnlySpan<byte> firstKey,
-            ReadOnlySpan<byte> lastKey,
-            int suffixOffset,
-            ReadOnlySpan<byte> expectedSuffix)
-        {
-            using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
-            while (view.MoveNext())
-            {
-                ReadOnlySpan<byte> key = view.CurrentKey;
-                if (Bytes.AreEqual(key[suffixOffset..], expectedSuffix))
-                    batch.Remove(view.CurrentKey);
-            }
-        }
     }
-
 
     public readonly struct Reader(
         IReadOnlyKeyValueStore stateTopNodes,

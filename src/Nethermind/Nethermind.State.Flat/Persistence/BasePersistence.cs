@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -35,6 +36,44 @@ public static class BasePersistence
         accountPath[..StoragePrefixPortion].CopyTo(lastKey);
         firstKey[StoragePrefixPortion..].Clear();
         lastKey[StoragePrefixPortion..].Fill(0xff);
+    }
+
+    /// <summary>
+    /// Scan a key range and delete all entries matching the expected key length.
+    /// </summary>
+    internal static void DeleteMatchingKeys(
+        ISortedKeyValueStore snap,
+        IWriteBatch batch,
+        ReadOnlySpan<byte> firstKey,
+        ReadOnlySpan<byte> lastKey,
+        int expectedKeyLength)
+    {
+        using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
+        while (view.MoveNext())
+        {
+            if (view.CurrentKey.Length == expectedKeyLength)
+                batch.Remove(view.CurrentKey);
+        }
+    }
+
+    /// <summary>
+    /// Scan a key range and delete entries matching the address suffix at the given offset.
+    /// </summary>
+    internal static void DeleteMatchingKeys(
+        ISortedKeyValueStore snap,
+        IWriteBatch batch,
+        ReadOnlySpan<byte> firstKey,
+        ReadOnlySpan<byte> lastKey,
+        int suffixOffset,
+        ReadOnlySpan<byte> expectedSuffix)
+    {
+        using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
+        while (view.MoveNext())
+        {
+            ReadOnlySpan<byte> key = view.CurrentKey;
+            if (key.Length >= suffixOffset + expectedSuffix.Length && Bytes.AreEqual(key[suffixOffset..], expectedSuffix))
+                batch.Remove(view.CurrentKey);
+        }
     }
 
     public interface IHashedFlatReader
