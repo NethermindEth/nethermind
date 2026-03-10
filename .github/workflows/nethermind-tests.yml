@@ -29,6 +29,7 @@ jobs:
   tests:
     name: Run ${{ matrix.project }} [${{ matrix.os.label }}]
     runs-on: ${{ matrix.os.runner }}
+    timeout-minutes: 15
     continue-on-error: true
     outputs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
@@ -140,6 +141,7 @@ jobs:
   tests-spec:
     name: Run ${{ matrix.project }} [${{ matrix.os.label }}]
     runs-on: ${{ matrix.os.runner }}
+    timeout-minutes: 15
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -219,6 +221,7 @@ jobs:
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.os.label }}]
     runs-on: ${{ matrix.os.runner }}
+    timeout-minutes: 20
     continue-on-error: true
     strategy:
       fail-fast: false
