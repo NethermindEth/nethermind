@@ -135,53 +135,34 @@ public static class BaseTriePersistence
         ISortedKeyValueStore stateNodesSnap,
         ISortedKeyValueStore storageNodesSnap,
         ISortedKeyValueStore fallbackNodesSnap,
-        Nethermind.Core.IWriteBatch stateTopNodes,
-        Nethermind.Core.IWriteBatch stateNodes,
-        Nethermind.Core.IWriteBatch storageNodes,
-        Nethermind.Core.IWriteBatch fallbackNodes,
+        IWriteBatch stateTopNodes,
+        IWriteBatch stateNodes,
+        IWriteBatch storageNodes,
+        IWriteBatch fallbackNodes,
         WriteFlags flags
     ) : BasePersistence.ITrieWriteBatch
     {
         [SkipLocalsInit]
         public void SelfDestruct(in ValueHash256 accountPath)
         {
-            Span<byte> firstKeyAlloc = stackalloc byte[1 + StoragePrefixPortion];
-            Span<byte> lastKeyAlloc = stackalloc byte[FullStorageNodesKeyLength + 1];
+            ReadOnlySpan<byte> addressSuffix = accountPath.Bytes[StoragePrefixPortion..StorageHashPrefixLength];
+
+            Span<byte> firstKey = stackalloc byte[1 + StoragePrefixPortion];
+            Span<byte> lastKey = stackalloc byte[FullStorageNodesKeyLength + 1];
 
             // Technically, this is kinda not needed for nodes as it's always traversed so orphaned trie just get skipped.
-            {
-                Span<byte> firstKey = firstKeyAlloc[..StoragePrefixPortion];
-                Span<byte> lastKey = lastKeyAlloc[..(ShortenedStorageNodesKeyLength + 1)];
-                BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey, lastKey);
+            // Delete from StorageNodes
+            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)]);
+            DeleteMatchingKeys(storageNodesSnap, storageNodes,
+                firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)],
+                StoragePrefixPortion + ShortenedPathLength, addressSuffix);
 
-                using ISortedView storageNodeReader = storageNodesSnap.GetViewBetween(firstKey, lastKey);
-                while (storageNodeReader.MoveNext())
-                {
-                    // Double-check the end portion
-                    if (Bytes.AreEqual(storageNodeReader.CurrentKey[(StoragePrefixPortion + ShortenedPathLength)..], accountPath.Bytes[StoragePrefixPortion..(StorageHashPrefixLength)]))
-                    {
-                        storageNodes.Remove(storageNodeReader.CurrentKey);
-                    }
-                }
-            }
-
-            {
-                Span<byte> firstKey = firstKeyAlloc;
-                Span<byte> lastKey = lastKeyAlloc;
-                // Do the same for the fallback nodes, except that the key must be prefixed `1` also
-                firstKey[0] = 1;
-                lastKey[0] = 1;
-                BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[1..], lastKey[1..]);
-                using ISortedView storageNodeReader = fallbackNodesSnap.GetViewBetween(firstKey, lastKey);
-                while (storageNodeReader.MoveNext())
-                {
-                    // Double-check the end portion
-                    if (Bytes.AreEqual(storageNodeReader.CurrentKey[(1 + StoragePrefixPortion + FullPathLength + PathLengthLength)..], accountPath.Bytes[StoragePrefixPortion..(StorageHashPrefixLength)]))
-                    {
-                        fallbackNodes.Remove(storageNodeReader.CurrentKey);
-                    }
-                }
-            }
+            // Delete from FallbackNodes (prefix 0x01)
+            firstKey[0] = 1;
+            lastKey[0] = 1;
+            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[1..], lastKey[1..]);
+            DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes, firstKey, lastKey,
+                1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
         }
 
         public void SetStateTrieNode(in TreePath path, TrieNode tn)
@@ -221,56 +202,31 @@ public static class BaseTriePersistence
             // - StateNodes: path length 6-15 (8 byte keys)
             // - FallbackNodes: path length 16+ (34 byte keys with 0x00 prefix)
 
-            // Allocate two buffers at the largest key size and slice for each column
             Span<byte> firstKeyBuf = stackalloc byte[FullStateNodesKeyLength];
             Span<byte> lastKeyBuf = stackalloc byte[FullStateNodesKeyLength + 1];
 
             // Delete from StateNodesTop (path length 0-5)
-            {
-                Span<byte> firstKey = firstKeyBuf[..StateNodesTopPathLength];
-                Span<byte> lastKey = lastKeyBuf[..(StateNodesTopPathLength + 1)];
-                EncodeStateTopNodeKey(firstKey, fromPath);
-                EncodeStateTopNodeKey(lastKey[..StateNodesTopPathLength], toPath);
-                lastKey[StateNodesTopPathLength] = 0; // Exclusive upper bound
-
-                using ISortedView view = stateTopNodesSnap.GetViewBetween(firstKey, lastKey);
-                while (view.MoveNext())
-                {
-                    if (view.CurrentKey.Length != StateNodesTopPathLength) continue;
-                    stateTopNodes.Remove(view.CurrentKey);
-                }
-            }
+            EncodeStateTopNodeKey(firstKeyBuf[..StateNodesTopPathLength], fromPath);
+            EncodeStateTopNodeKey(lastKeyBuf[..StateNodesTopPathLength], toPath);
+            lastKeyBuf[StateNodesTopPathLength] = 0;
+            DeleteMatchingKeys(stateTopNodesSnap, stateTopNodes,
+                firstKeyBuf[..StateNodesTopPathLength], lastKeyBuf[..(StateNodesTopPathLength + 1)],
+                StateNodesTopPathLength);
 
             // Delete from StateNodes (path length 6-15)
-            {
-                Span<byte> firstKey = firstKeyBuf[..ShortenedPathLength];
-                Span<byte> lastKey = lastKeyBuf[..(ShortenedPathLength + 1)];
-                EncodeShortenedStateNodeKey(firstKey, fromPath);
-                EncodeShortenedStateNodeKey(lastKey[..ShortenedPathLength], toPath);
-                lastKey[ShortenedPathLength] = 0; // Exclusive upper bound
-
-                using ISortedView view = stateNodesSnap.GetViewBetween(firstKey, lastKey);
-                while (view.MoveNext())
-                {
-                    if (view.CurrentKey.Length != ShortenedPathLength) continue;
-                    stateNodes.Remove(view.CurrentKey);
-                }
-            }
+            EncodeShortenedStateNodeKey(firstKeyBuf[..ShortenedPathLength], fromPath);
+            EncodeShortenedStateNodeKey(lastKeyBuf[..ShortenedPathLength], toPath);
+            lastKeyBuf[ShortenedPathLength] = 0;
+            DeleteMatchingKeys(stateNodesSnap, stateNodes,
+                firstKeyBuf[..ShortenedPathLength], lastKeyBuf[..(ShortenedPathLength + 1)],
+                ShortenedPathLength);
 
             // Delete from FallbackNodes (path length 16+, prefix 0x00)
-            {
-                EncodeFullStateNodeKey(firstKeyBuf, fromPath);
-                EncodeFullStateNodeKey(lastKeyBuf[..FullStateNodesKeyLength], toPath);
-                lastKeyBuf[FullStateNodesKeyLength] = 0; // Exclusive upper bound
-
-                using ISortedView view = fallbackNodesSnap.GetViewBetween(firstKeyBuf, lastKeyBuf);
-                while (view.MoveNext())
-                {
-                    if (view.CurrentKey.Length != FullStateNodesKeyLength) continue;
-                    if (view.CurrentKey[0] != 0) continue; // State nodes have 0x00 prefix
-                    fallbackNodes.Remove(view.CurrentKey);
-                }
-            }
+            EncodeFullStateNodeKey(firstKeyBuf, fromPath);
+            EncodeFullStateNodeKey(lastKeyBuf[..FullStateNodesKeyLength], toPath);
+            lastKeyBuf[FullStateNodesKeyLength] = 0;
+            DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,
+                firstKeyBuf, lastKeyBuf[..(FullStateNodesKeyLength + 1)], FullStateNodesKeyLength);
         }
 
         [SkipLocalsInit]
@@ -280,49 +236,64 @@ public static class BaseTriePersistence
             // - StorageNodes: path length 0-15 (28 byte keys)
             // - FallbackNodes: path length 16+ (54 byte keys with 0x01 prefix)
 
-            Hash256 address = new Hash256(addressHash);
+            Hash256 address = new(addressHash);
+            ReadOnlySpan<byte> addressSuffix = addressHash.Bytes[StoragePrefixPortion..StorageHashPrefixLength];
 
-            // Allocate two buffers at the largest key size and slice for each column
             Span<byte> firstKeyBuf = stackalloc byte[FullStorageNodesKeyLength];
             Span<byte> lastKeyBuf = stackalloc byte[FullStorageNodesKeyLength + 1];
 
             // Delete from StorageNodes (path length 0-15)
-            {
-                Span<byte> firstKey = firstKeyBuf[..ShortenedStorageNodesKeyLength];
-                Span<byte> lastKey = lastKeyBuf[..(ShortenedStorageNodesKeyLength + 1)];
-                EncodeShortenedStorageNodeKey(firstKey, address, fromPath);
-                EncodeShortenedStorageNodeKey(lastKey[..ShortenedStorageNodesKeyLength], address, toPath);
-                lastKey[ShortenedStorageNodesKeyLength] = 0; // Exclusive upper bound
-
-                using ISortedView view = storageNodesSnap.GetViewBetween(firstKey, lastKey);
-                while (view.MoveNext())
-                {
-                    if (view.CurrentKey.Length != ShortenedStorageNodesKeyLength) continue;
-                    // Verify the 16-byte address suffix matches
-                    if (Bytes.AreEqual(view.CurrentKey[(StoragePrefixPortion + ShortenedPathLength)..], addressHash.Bytes[StoragePrefixPortion..StorageHashPrefixLength]))
-                    {
-                        storageNodes.Remove(view.CurrentKey);
-                    }
-                }
-            }
+            EncodeShortenedStorageNodeKey(firstKeyBuf[..ShortenedStorageNodesKeyLength], address, fromPath);
+            EncodeShortenedStorageNodeKey(lastKeyBuf[..ShortenedStorageNodesKeyLength], address, toPath);
+            lastKeyBuf[ShortenedStorageNodesKeyLength] = 0;
+            DeleteMatchingKeys(storageNodesSnap, storageNodes,
+                firstKeyBuf[..ShortenedStorageNodesKeyLength], lastKeyBuf[..(ShortenedStorageNodesKeyLength + 1)],
+                StoragePrefixPortion + ShortenedPathLength, addressSuffix);
 
             // Delete from FallbackNodes (path length 16+, prefix 0x01)
-            {
-                EncodeFullStorageNodeKey(firstKeyBuf, address, fromPath);
-                EncodeFullStorageNodeKey(lastKeyBuf[..FullStorageNodesKeyLength], address, toPath);
-                lastKeyBuf[FullStorageNodesKeyLength] = 0; // Exclusive upper bound
+            EncodeFullStorageNodeKey(firstKeyBuf, address, fromPath);
+            EncodeFullStorageNodeKey(lastKeyBuf[..FullStorageNodesKeyLength], address, toPath);
+            lastKeyBuf[FullStorageNodesKeyLength] = 0;
+            DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,
+                firstKeyBuf, lastKeyBuf[..(FullStorageNodesKeyLength + 1)],
+                1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
+        }
 
-                using ISortedView view = fallbackNodesSnap.GetViewBetween(firstKeyBuf, lastKeyBuf);
-                while (view.MoveNext())
-                {
-                    if (view.CurrentKey.Length != FullStorageNodesKeyLength) continue;
-                    if (view.CurrentKey[0] != 1) continue; // Storage nodes have 0x01 prefix
-                    // Verify the 16-byte address suffix matches
-                    if (Bytes.AreEqual(view.CurrentKey[(1 + StoragePrefixPortion + FullPathLength + PathLengthLength)..], addressHash.Bytes[StoragePrefixPortion..StorageHashPrefixLength]))
-                    {
-                        fallbackNodes.Remove(view.CurrentKey);
-                    }
-                }
+        /// <summary>
+        /// Scan a key range and delete all entries matching the expected key length.
+        /// </summary>
+        private static void DeleteMatchingKeys(
+            ISortedKeyValueStore snap,
+            IWriteBatch batch,
+            ReadOnlySpan<byte> firstKey,
+            ReadOnlySpan<byte> lastKey,
+            int expectedKeyLength)
+        {
+            using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
+            while (view.MoveNext())
+            {
+                if (view.CurrentKey.Length == expectedKeyLength)
+                    batch.Remove(view.CurrentKey);
+            }
+        }
+
+        /// <summary>
+        /// Scan a key range and delete entries matching the expected key length and address suffix.
+        /// </summary>
+        private static void DeleteMatchingKeys(
+            ISortedKeyValueStore snap,
+            IWriteBatch batch,
+            ReadOnlySpan<byte> firstKey,
+            ReadOnlySpan<byte> lastKey,
+            int suffixOffset,
+            ReadOnlySpan<byte> expectedSuffix)
+        {
+            using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
+            while (view.MoveNext())
+            {
+                ReadOnlySpan<byte> key = view.CurrentKey;
+                if (Bytes.AreEqual(key[suffixOffset..], expectedSuffix))
+                    batch.Remove(view.CurrentKey);
             }
         }
     }
