@@ -334,9 +334,9 @@ public class DebugModuleTests
         }
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        ResultWrapper<IEnumerable<string>> actual = await isBadBlock
+        ResultWrapper<IEnumerable<string>> actual = await (isBadBlock
             ? rpcModule.debug_standardTraceBadBlockToFile(blockHash)
-            : rpcModule.debug_standardTraceBlockToFile(blockHash);
+            : rpcModule.debug_standardTraceBlockToFile(blockHash));
 
         actual.Should().BeEquivalentTo(ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash)));
     }
@@ -350,9 +350,9 @@ public class DebugModuleTests
         _blockFinder.FindHeader(blockHash).ReturnsNull();
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        ResultWrapper<IEnumerable<string>> actual = await isBadBlock
+        ResultWrapper<IEnumerable<string>> actual = await (isBadBlock
             ? rpcModule.debug_standardTraceBadBlockToFile(blockHash)
-            : rpcModule.debug_standardTraceBlockToFile(blockHash);
+            : rpcModule.debug_standardTraceBlockToFile(blockHash));
 
         actual.Result.ResultType.Should().Be(ResultType.Failure);
         actual.ErrorCode.Should().Be(ErrorCodes.ResourceNotFound);
@@ -361,7 +361,7 @@ public class DebugModuleTests
 
     [TestCase(false)]
     [TestCase(true)]
-    public void StandardTraceBlockToFile_returns_error_when_state_unavailable(bool isBadBlock)
+    public async Task StandardTraceBlockToFile_returns_error_when_state_unavailable(bool isBadBlock)
     {
         Hash256 blockHash = TestItem.KeccakA;
         BlockHeader header = Build.A.BlockHeader.WithHash(blockHash).WithNumber(100).TestObject;
@@ -370,9 +370,9 @@ public class DebugModuleTests
         _blockchainBridge.HasStateForBlock(Arg.Is(header)).Returns(false);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        ResultWrapper<IEnumerable<string>> actual = isBadBlock
+        ResultWrapper<IEnumerable<string>> actual = await (isBadBlock
             ? rpcModule.debug_standardTraceBadBlockToFile(blockHash)
-            : rpcModule.debug_standardTraceBlockToFile(blockHash);
+            : rpcModule.debug_standardTraceBlockToFile(blockHash));
 
         actual.Result.ResultType.Should().Be(ResultType.Failure);
         actual.ErrorCode.Should().Be(ErrorCodes.ResourceUnavailable);
