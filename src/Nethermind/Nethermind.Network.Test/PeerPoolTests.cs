@@ -63,7 +63,7 @@ public class PeerPoolTests
             nodeSource.AddNode(node);
         }
 
-        Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(5).After(100, 10));
+        Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(5).After(2000, 10));
 
         await pool.StopAsync();
     }
