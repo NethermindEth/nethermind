@@ -55,12 +55,12 @@ Launch up to 3 sub-checks with the EIP spec text and diff.
 ### B: Tests + Backward Compat
 - **Flag gating**: New behavior behind `IsEip{number}Enabled`. Flag-off path unchanged. No re-gating prerequisites
 - **Test checklist**: flag-off test (`OverridableReleaseSpec`), boundary tests (exact gas / off-by-1), revert tests per "MUST revert"
-- For gaps: suggest tests using `Prepare.EvmCode`, `VirtualMachineTestsBase`, `OverridableReleaseSpec`
+- For gaps: suggest tests using project patterns — `VirtualMachineTestsBase` for EVM opcodes/gas, `BlockchainTestBase` for block-level behavior (withdrawals, tx types, state changes), `OverridableReleaseSpec` for flag toggling, `Prepare.EvmCode` for bytecode construction
 
 ### C: Interactions + Pipeline
 - **Pipeline**: All files updated per `implementation-patterns.md` Layer 1-5 (IReleaseSpec → ReleaseSpec → Decorator → OverridableReleaseSpec → fork → ChainSpec*). Missing = breaks non-mainnet
 - **Siblings**: Other EIPs in same fork sharing code paths. Compound conditions with new flag
-- **Gas composition**: If gas-related, verify 63/64 rule (EIP-150) and floor cost (EIP-7623) compose correctly
+- **Gas composition**: If gas-related, check that the new gas logic composes correctly with existing gas-related EIPs already active in the target fork
 
 See `references/common-pitfalls.md` for general patterns.
 
