@@ -82,14 +82,17 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
 
     private static void DownloadAndExtract(string archiveVersion, string archiveName, string testsDirectoryName)
     {
-        using HttpClient httpClient = new();
-        HttpResponseMessage response = httpClient.GetAsync(string.Format(Constants.ARCHIVE_URL_TEMPLATE, archiveVersion, archiveName)).GetAwaiter().GetResult();
-        response.EnsureSuccessStatusCode();
-        using Stream contentStream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
-        using GZipStream gzStream = new(contentStream, CompressionMode.Decompress);
+        // Clean up any partial extraction from a previous interrupted attempt.
+        if (Directory.Exists(testsDirectoryName))
+            Directory.Delete(testsDirectoryName, true);
 
-        if (!Directory.Exists(testsDirectoryName))
-            Directory.CreateDirectory(testsDirectoryName);
+        Directory.CreateDirectory(testsDirectoryName);
+
+        using HttpClient httpClient = new();
+        // Stream directly from network → GZip → Tar to avoid buffering the entire archive in memory.
+        using Stream contentStream = httpClient.GetStreamAsync(
+            string.Format(Constants.ARCHIVE_URL_TEMPLATE, archiveVersion, archiveName)).GetAwaiter().GetResult();
+        using GZipStream gzStream = new(contentStream, CompressionMode.Decompress);
 
         TarFile.ExtractToDirectory(gzStream, testsDirectoryName, true);
     }
