@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Facade\Nethermind.Facade.csproj" />
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Consensus\Nethermind.Consensus.csproj" />
   </ItemGroup>
 
 </Project>
