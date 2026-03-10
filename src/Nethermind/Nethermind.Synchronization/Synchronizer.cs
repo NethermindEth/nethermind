@@ -6,8 +6,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Network.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -346,7 +348,9 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed), ConfigureFastSync)
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed), ConfigureFullSync)
 
-            .AddSingleton<SyncPeerPool>()
+            .AddSingleton<SyncPeerPool, IBlockTree, INodeStatsManager, IBetterPeerStrategy, INetworkConfig, ILogManager>(
+                    (blockTree, stats, betterPeerStrategy, networkConfig, logManager) =>
+                        new SyncPeerPool(blockTree, stats, betterPeerStrategy, networkConfig, logManager))
                 .Bind<ISyncPeerPool, SyncPeerPool>()
                 .Bind<IPeerDifficultyRefreshPool, SyncPeerPool>()
 

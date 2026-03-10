@@ -1196,7 +1196,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             GetDirtyNodeShard(key).GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(currentNode, blockNumber));
 
             if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
-            writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.Span, writeFlags);
+            writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.AsSpan(), writeFlags);
             currentNode.IsPersisted = true;
             IncrementPersistedNodesCount();
         }
