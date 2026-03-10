@@ -1,0 +1,59 @@
+name: Code Quality
+
+on:
+  pull_request:
+    branches: [master]
+    paths: ["src/Nethermind/**/*.cs"]
+
+jobs:
+  code-quality:
+    name: Check code style
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore src/Nethermind/Nethermind.slnx
+
+      - name: Register problem matcher
+        run: echo "::add-matcher::.github/problem-matchers/dotnet-format.json"
+
+      - name: Get changed C# files
+        id: changed
+        run: |
+          git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.cs' > changed-files.txt
+          count=$(wc -l < changed-files.txt | tr -d ' ')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -gt 0 ]; then
+            echo "Changed C# files ($count):"
+            cat changed-files.txt
+          else
+            echo "No C# files changed."
+          fi
+
+      # Single command runs both style (IDE) and analyzer (CA) rules.
+      # .editorconfig is the single source of truth — any rule at warning
+      # severity gets enforced. No --diagnostics filter needed.
+      - name: Check code quality
+        if: steps.changed.outputs.count != '0'
+        run: |
+          dotnet format src/Nethermind/Nethermind.slnx \
+            --no-restore \
+            --verify-no-changes \
+            --verbosity diagnostic \
+            --include $(cat changed-files.txt | tr '\n' ' ')
