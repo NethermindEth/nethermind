@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Xdc.Types;
 using Nethermind.Xdc.Test.Helpers;
 using NUnit.Framework;
 using System.Threading.Tasks;
@@ -86,4 +87,46 @@ internal class XdcReorgModuleTests
         blockChain.BlockTree.SuggestBlock(forkBlock!).Should().Be(Blockchain.AddBlockResult.InvalidBlock);
     }
 
+    [Test]
+    public async Task AfterReorgSnapshotManagerReturnsSnapshotForNewChainGapBlock()
+    {
+        using var blockChain = await XdcTestBlockchain.Create(3);
+        blockChain.ChangeReleaseSpec(spec => { spec.EpochLength = 10; spec.Gap = 5; });
+        await blockChain.AddBlocks(3);
+
+        const long gapBlockNumber = 5;
+
+
+        XdcBlockHeader originalChainGapBlock = (XdcBlockHeader)blockChain.BlockTree.FindHeader(gapBlockNumber)!;
+
+        Snapshot? snapshotBeforeReorg = blockChain.SnapshotManager.GetSnapshotByGapNumber(gapBlockNumber);
+        snapshotBeforeReorg.Should().NotBeNull();
+        snapshotBeforeReorg.HeaderHash.Should().Be(originalChainGapBlock.Hash!);
+
+
+        var finalizedBlockInfo = blockChain.XdcContext.HighestCommitBlock;
+        finalizedBlockInfo.Round.Should().Be(blockChain.XdcContext.CurrentRound - 2); // Finalization is 2 rounds behind
+
+        XdcBlockHeader finalizedBlock = (XdcBlockHeader)blockChain.BlockTree.FindHeader(finalizedBlockInfo.Hash)!;
+
+        var newHeadWaitHandle = new TaskCompletionSource();
+        blockChain.BlockTree.NewHeadBlock += (_, _) => newHeadWaitHandle.SetResult();
+
+        XdcBlockHeader forkParent = finalizedBlock;
+        for (int i = 0; i < 3; i++)
+        {
+            //Build a fork on finalized block, which should result in fork becoming new head
+            forkParent = (XdcBlockHeader)(await blockChain.AddBlockFromParent(forkParent)).Header;
+        }
+
+        if (blockChain.BlockTree.Head!.Hash != forkParent.Hash)
+            await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(5_000));
+
+        blockChain.BlockTree.Head!.Hash.Should().Be(forkParent.Hash!);
+
+        XdcBlockHeader newChainGapBlock = (XdcBlockHeader)blockChain.BlockTree.FindHeader(gapBlockNumber)!;
+        Snapshot? snapshotAfterReorg = blockChain.SnapshotManager.GetSnapshotByGapNumber(gapBlockNumber);
+        snapshotAfterReorg.Should().NotBeNull();
+        snapshotAfterReorg.HeaderHash.Should().Be(newChainGapBlock.Hash!);
+    }
 }

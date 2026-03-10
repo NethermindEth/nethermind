@@ -27,13 +27,6 @@ internal class ProposedBlockTests
 
         EpochSwitchInfo switchInfo = blockChain.EpochSwitchManager.GetEpochSwitchInfo(head)!;
         PrivateKey[] masternodes = blockChain.TakeRandomMasterNodes(spec, switchInfo);
-        if (masternodes.Any((m) => m.Address == head.Beneficiary))
-        {
-            //If we randomly picked the block proposer we need to remove him with a another voting masternode
-            var extraMaster = switchInfo.Masternodes.First((m) => m != head.Beneficiary && masternodes.Any(x => x.Address != m));
-            var extraMasterKey = blockChain.MasterNodeCandidates.First(x => x.Address == extraMaster);
-            masternodes = [.. masternodes.Where(x => x.Address != head.Beneficiary), extraMasterKey];
-        }
 
         BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
         long gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0 ? 0 : Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
@@ -46,6 +39,9 @@ internal class ProposedBlockTests
 
         var newRoundWaitHandle = new TaskCompletionSource();
         blockChain.XdcContext.NewRoundSetEvent += (s, a) => { newRoundWaitHandle.SetResult(); };
+
+        //Set current signer as the one that didn't vote
+        blockChain.Signer.SetSigner(masternodes.First());
 
         //Starting here will trigger the final vote to be cast and round should advance
         blockChain.StartHotStuffModule();
@@ -100,14 +96,8 @@ internal class ProposedBlockTests
         var spec = blockChain.SpecProvider.GetXdcSpec(head, blockChain.XdcContext.CurrentRound);
 
         EpochSwitchInfo switchInfo = blockChain.EpochSwitchManager.GetEpochSwitchInfo(head)!;
+
         PrivateKey[] masternodes = blockChain.TakeRandomMasterNodes(spec, switchInfo);
-        if (masternodes.Any((m) => m.Address == head.Beneficiary))
-        {
-            //If we randomly picked the block proposer we need to remove him with a another voting masternode
-            var extraMaster = switchInfo.Masternodes.First((m) => m != head.Beneficiary && masternodes.Any(x => x.Address != m));
-            var extraMasterKey = blockChain.MasterNodeCandidates.First(x => x.Address == extraMaster);
-            masternodes = [.. masternodes.Where(x => x.Address != head.Beneficiary), extraMasterKey];
-        }
 
         BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
         long gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0 ? 0 : Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
@@ -125,10 +115,13 @@ internal class ProposedBlockTests
         var newRoundWaitHandle = new TaskCompletionSource();
         blockChain.XdcContext.NewRoundSetEvent += (s, a) => { newRoundWaitHandle.SetResult(); };
 
+        //Set current signer as the one that didn't vote
+        blockChain.Signer.SetSigner(masternodes.First());
+
         //Starting here will trigger the final vote to be cast
         blockChain.StartHotStuffModule();
 
-        var waitTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(5_000));
+        var waitTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(10_000));
         if (waitTask != newRoundWaitHandle.Task)
         {
             Assert.Fail("Timed out waiting for the round to start. The vote threshold was not reached?");

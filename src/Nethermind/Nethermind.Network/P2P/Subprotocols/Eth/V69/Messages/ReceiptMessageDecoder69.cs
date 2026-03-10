@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -12,19 +14,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 [Rlp.SkipGlobalRegistration] // Created explicitly
 public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : RlpValueDecoder<TxReceipt>
 {
-    protected override TxReceipt? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new(span);
-        TxReceipt response = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return response;
-    }
-
     protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (ctx.IsNextItemNull())
+        if (ctx.IsNextItemEmptyList())
         {
             ctx.ReadByte();
             return null;
@@ -32,7 +24,8 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         TxReceipt txReceipt = new();
 
-        _ = ctx.ReadSequenceLength();
+        int sequenceLength = ctx.ReadSequenceLength();
+        int receiptEnd = ctx.Position + sequenceLength;
 
         txReceipt.TxType = (TxType)ctx.DecodeByte();
 
@@ -40,16 +33,16 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
         {
             txReceipt.StatusCode = firstItem[0];
-            txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+            txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
         }
         else if (firstItem.Length is >= 1 and <= 4)
         {
-            txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
+            txReceipt.GasUsedTotal = firstItem.ToPositiveLong();
         }
         else
         {
             txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-            txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+            txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
         }
 
         int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
@@ -64,7 +57,25 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         txReceipt.Logs = entries;
 
+        // Handle any remaining extra bytes
+        bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
+        if (ctx.Position != receiptEnd)
+        {
+            if (allowExtraBytes)
+            {
+                ctx.Position = receiptEnd;
+            }
+            else
+            {
+                ThrowUnexpectedReceiptField();
+            }
+        }
+
         return txReceipt;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowUnexpectedReceiptField()
+            => throw new RlpException("Unexpected receipt field");
     }
 
     private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)

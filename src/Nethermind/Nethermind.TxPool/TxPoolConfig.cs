@@ -21,8 +21,8 @@ public class TxPoolConfig : ITxPoolConfig
     public int MaxPendingBlobTxsPerSender { get; set; } = 16;
     public int HashCacheSize { get; set; } = 512 * 1024;
     public long? GasLimit { get; set; } = null;
-    public long? MaxTxSize { get; set; } = 128.KiB();
-    public long? MaxBlobTxSize { get; set; } = 1.MiB();
+    public long? MaxTxSize { get; set; } = 128.KiB;
+    public long? MaxBlobTxSize { get; set; } = 1.MiB;
     public bool ProofsTranslationEnabled { get; set; } = false;
     public int? ReportMinutes { get; set; } = null;
     public bool AcceptTxWhenNotSynced { get; set; } = false;

@@ -254,9 +254,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 {
                     (AddressAsKey key, Hash256 storageRoot) = entry;
                     if (!_dirtyAccounts.TryGetValue(key, out Account? account)) account = scope.Get(key);
-                    if (account == null && storageRoot == Keccak.EmptyTreeHash) continue;
-                    account ??= ThrowNullAccount(key);
-                    account = account!.WithChangedStorageRoot(storageRoot);
+                    if (account is null)
+                    {
+                        if (storageRoot == Keccak.EmptyTreeHash) continue;
+                        using var wb = CreateStorageWriteBatch(entry.Item1, 0);
+                        wb.Clear();
+                        continue;
+                    }
+                    account = account.WithChangedStorageRoot(storageRoot);
                     _dirtyAccounts[key] = account;
 
                     scope._snapshotBundle.SetAccount(key, account);
@@ -281,10 +286,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, Hash256 storageRoot, Account? account) =>
                 logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static Account ThrowNullAccount(Address address) =>
-                throw new InvalidOperationException($"Account {address} is null when updating storage hash");
         }
     }
 }

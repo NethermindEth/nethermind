@@ -78,7 +78,7 @@ public class BlockInfoDecoderTests
     {
         if (item is null)
         {
-            return Rlp.OfEmptySequence;
+            return Rlp.OfEmptyList;
         }
 
         int contentLength = 0;

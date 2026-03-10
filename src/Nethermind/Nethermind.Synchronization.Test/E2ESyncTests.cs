@@ -106,11 +106,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
         // Set basefeepergas in genesis or it will fail 1559 validation.
-        spec.Genesis.Header.BaseFeePerGas = 10.Wei();
+        spec.Genesis.Header.BaseFeePerGas = 10.Wei;
 
         // Needed for generating spam state.
         spec.Genesis.Header.GasLimit = 1_000_000_000;
-        spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(300.Ether());
+        spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(300.Ether);
 
         spec.Allocations[Eip7002Constants.WithdrawalRequestPredeployAddress] = new ChainSpecAllocation
         {
@@ -212,6 +212,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         {
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
+            // Disable IP filtering for E2E tests as all nodes run on localhost
+            networkConfig.FilterPeersByRecentIp = false;
+            networkConfig.FilterDiscoveryNodesByRecentIp = false;
             return Task.CompletedTask;
         });
 
@@ -260,6 +263,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         {
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
+            // Disable IP filtering for E2E tests as all nodes run on localhost
+            networkConfig.FilterPeersByRecentIp = false;
+            networkConfig.FilterDiscoveryNodesByRecentIp = false;
             return Task.CompletedTask;
         });
 
@@ -284,6 +290,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
+            // Disable IP filtering for E2E tests as all nodes run on localhost
+            networkConfig.FilterPeersByRecentIp = false;
+            networkConfig.FilterDiscoveryNodesByRecentIp = false;
         });
 
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
@@ -321,6 +330,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
+            // Disable IP filtering for E2E tests as all nodes run on localhost
+            networkConfig.FilterPeersByRecentIp = false;
+            networkConfig.FilterDiscoveryNodesByRecentIp = false;
         });
 
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
@@ -504,7 +516,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     .WithCode(byteCode)
                     .WithNonce(currentNonce++)
                     .WithGasLimit(gasLimit)
-                    .WithGasPrice(10.GWei())
+                    .WithGasPrice(10.GWei)
                     .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject)
                 .ToArray();
             nonces[nodeKey.Address] = currentNonce;

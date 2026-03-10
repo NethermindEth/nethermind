@@ -9,47 +9,42 @@ namespace Nethermind.Core.Extensions;
 
 public static class IntExtensions
 {
-    public static string ToHexString(this int @this)
+    extension(int @this)
     {
-        return $"0x{@this:x}";
-    }
-
-    public static UInt256 Ether(this int @this)
-    {
-        return (uint)@this * Unit.Ether;
-    }
-
-    public static UInt256 Wei(this int @this)
-    {
-        return (uint)@this * Unit.Wei;
-    }
-
-    public static UInt256 GWei(this int @this)
-    {
-        return (uint)@this * Unit.GWei;
-    }
-
-    public static byte[] ToBigEndianByteArray(this uint value)
-    {
-        byte[] bytes = BitConverter.GetBytes(value);
-        if (BitConverter.IsLittleEndian)
+        public string ToHexString()
         {
-            Array.Reverse(bytes);
+            return $"0x{@this:x}";
         }
 
-        return bytes;
+        public UInt256 Ether => (uint)@this * Unit.Ether;
+        public UInt256 Wei => (uint)@this * Unit.Wei;
+        public UInt256 GWei => (uint)@this * Unit.GWei;
+
+        public byte[] ToBigEndianByteArray()
+            => ((uint)@this).ToBigEndianByteArray();
+
+        public byte[] ToLittleEndianByteArray()
+            => ((uint)@this).ToLittleEndianByteArray();
     }
 
-    public static byte[] ToBigEndianByteArray(this int value)
-        => ToBigEndianByteArray((uint)value);
-
-    public static byte[] ToLittleEndianByteArray(this uint value)
+    extension(uint @this)
     {
-        byte[] bytes = new byte[sizeof(uint)];
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes, value);
-        return bytes;
-    }
+        public byte[] ToBigEndianByteArray()
+        {
+            byte[] bytes = BitConverter.GetBytes(@this);
+            if (BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(bytes);
+            }
 
-    public static byte[] ToLittleEndianByteArray(this int value)
-        => ToLittleEndianByteArray((uint)value);
+            return bytes;
+        }
+
+        public byte[] ToLittleEndianByteArray()
+        {
+            byte[] bytes = new byte[sizeof(uint)];
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes, @this);
+            return bytes;
+        }
+    }
 }

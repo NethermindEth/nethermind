@@ -57,7 +57,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
         return (Address)result[0]!;
     }
 
-    public Address GetCandidateOwnerDuringProcessing(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
+    public Address GetCandidateOwner(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
     {
         byte[] result = base.CallCore(transactionProcessor, blockHeader, "getCandidateOwner", GenerateTransaction<Transaction>(ContractAddress, "getCandidateOwner", Address.SystemUser, candidate), true);
         if (result.Length != 32)
@@ -65,6 +65,23 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
         return new Address(result.AsSpan().Slice(32 - Address.Size));
     }
 
+
+    public Address GetCandidateOwner(IWorldState worldState, Address candidate)
+    {
+        const int ValidatorsStateSlot = (byte)CandidateContractSlots.ValidatorsState;
+        Span<byte> mappingKeyInput = stackalloc byte[64];
+        mappingKeyInput.Clear();
+        candidate.Bytes.CopyTo(mappingKeyInput.Slice(12, Address.Size));
+        mappingKeyInput[63] = ValidatorsStateSlot;
+        ValueHash256 slotHash = ValueKeccak.Compute(mappingKeyInput);
+        UInt256 slot = new(slotHash.Bytes, isBigEndian: true);
+
+        StorageCell cell = new(ContractAddress!, slot);
+        ReadOnlySpan<byte> storageValue = worldState.Get(cell);
+        if (storageValue.Length != 21 || storageValue[0] != 0x01)
+            throw new InvalidOperationException($"Unexpected storage value for validatorsState owner");
+        return new Address(storageValue.Slice(1, Address.Size));
+    }
 
     public Address[] GetCandidates(BlockHeader blockHeader)
     {

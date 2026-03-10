@@ -188,17 +188,6 @@
           "Microsoft.CodeAnalysis.Analyzers": "3.3.3"
         }
       },
-      "Microsoft.CodeAnalysis.CSharp.Workspaces": {
-        "type": "Transitive",
-        "resolved": "4.5.0",
-        "contentHash": "h74wTpmGOp4yS4hj+EvNzEiPgg/KVs2wmSfTZ81upJZOtPkJsVkgfsgtxxqmAeapjT/vLKfmYV0bS8n5MNVP+g==",
-        "dependencies": {
-          "Humanizer.Core": "2.14.1",
-          "Microsoft.CodeAnalysis.CSharp": "[4.5.0]",
-          "Microsoft.CodeAnalysis.Common": "[4.5.0]",
-          "Microsoft.CodeAnalysis.Workspaces.Common": "[4.5.0]"
-        }
-      },
       "Microsoft.CodeAnalysis.Workspaces.Common": {
         "type": "Transitive",
         "resolved": "4.5.0",
@@ -605,8 +594,16 @@
       },
       "Testably.Abstractions.FileSystem.Interface": {
         "type": "Transitive",
-        "resolved": "10.0.0",
-        "contentHash": "tZOXFLGjkh8TxgMgKeEcM2HAlz9DwndGl6TFLo6ISHcszFX3FkuPMrtVbmqVjhooWNXrgJ/a9cH9ym5MZL1LAg=="
+        "resolved": "10.1.0",
+        "contentHash": "0R+m7DvS2QuDcFOfDGtyGErRrgXOl4/z2tbNLX2RfvlYJjlVcKG+wMIBfZO8vxGtTNwNxffTG4ibFRwd0jkM7w=="
+      },
+      "Testably.Abstractions.Interface": {
+        "type": "Transitive",
+        "resolved": "10.1.0",
+        "contentHash": "syfu5XadpGDjhDWTh1vh/6HUFgamCaU1KhRwsHk6HyMeJLz5Jncm99H87NiEO73JihQ7yE3APlEbAXjlMyKBSg==",
+        "dependencies": {
+          "Testably.Abstractions.FileSystem.Interface": "10.1.0"
+        }
       },
       "Tmds.LibC": {
         "type": "Transitive",
@@ -663,12 +660,13 @@
         "dependencies": {
           "Nethermind.Core": "[1.37.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
-"System.Configuration.ConfigurationManager": "[10.0.3, )"
+          "System.Configuration.ConfigurationManager": "[10.0.3, )"
         }
       },
       "nethermind.consensus": {
         "type": "Project",
         "dependencies": {
+          "Collections.Pooled": "[1.0.82, )",
           "Nethermind.Blockchain": "[1.37.0-unstable, )",
           "Nethermind.Config": "[1.37.0-unstable, )",
           "Nethermind.Core": "[1.37.0-unstable, )",
@@ -724,14 +722,14 @@
           "Nethermind.Logging": "[1.37.0-unstable, )",
           "Nethermind.Numerics.Int256": "[1.5.0, )",
           "NonBlocking": "[2.1.2, )",
-          "TestableIO.System.IO.Abstractions.Wrappers": "[22.1.0, )"
+          "Testably.Abstractions": "[10.1.0, )"
         }
       },
       "nethermind.crypto": {
         "type": "Project",
         "dependencies": {
           "BouncyCastle.Cryptography": "[2.6.2, )",
-          "Ckzg.Bindings": "[2.1.5.1551, )",
+          "Ckzg.Bindings": "[2.1.6.1589, )",
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.Crypto.Bls": "[1.0.5, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
@@ -801,7 +799,8 @@
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.Crypto": "[1.37.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
-          "Nethermind.Specs": "[1.37.0-unstable, )"
+          "Nethermind.Specs": "[1.37.0-unstable, )",
+          "Nethermind.Trie": "[1.37.0-unstable, )"
         }
       },
       "nethermind.evm.precompiles": {
@@ -1251,9 +1250,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Collections.Pooled": {
         "type": "CentralTransitive",
@@ -1393,6 +1392,18 @@
         "contentHash": "cM59oMKAOxvdv76bdmaKPy5hfj+oR+zxikWoueEB7CwTko7mt9sVKZI8Qxlov0C/LuKEG+WQwifepqL3vuTiBQ==",
         "dependencies": {
           "Microsoft.CodeAnalysis.Common": "[4.5.0]"
+        }
+      },
+      "Microsoft.CodeAnalysis.CSharp.Workspaces": {
+        "type": "CentralTransitive",
+        "requested": "[5.0.0, )",
+        "resolved": "4.5.0",
+        "contentHash": "h74wTpmGOp4yS4hj+EvNzEiPgg/KVs2wmSfTZ81upJZOtPkJsVkgfsgtxxqmAeapjT/vLKfmYV0bS8n5MNVP+g==",
+        "dependencies": {
+          "Humanizer.Core": "2.14.1",
+          "Microsoft.CodeAnalysis.CSharp": "[4.5.0]",
+          "Microsoft.CodeAnalysis.Common": "[4.5.0]",
+          "Microsoft.CodeAnalysis.Workspaces.Common": "[4.5.0]"
         }
       },
       "Microsoft.IdentityModel.JsonWebTokens": {
@@ -1607,13 +1618,13 @@
         "resolved": "10.0.3",
         "contentHash": "JCKbH/CN5l0CSoJBILEvJmNQVp5vV+FY3q2ue4K9p4eDT4mFEv0bjTQCV+MD6Qk1b/qk9fWmZZKhG1TklbXw1Q=="
       },
-      "TestableIO.System.IO.Abstractions.Wrappers": {
+      "Testably.Abstractions": {
         "type": "CentralTransitive",
-        "requested": "[22.1.0, )",
-        "resolved": "22.1.0",
-        "contentHash": "IsW3jQqIiTN4GwdWFx+dzgRL5XR75UDTFVGuuIackPf2d7eH0KKyrx4wuIoASa1XnS9zhgLP39FKwJq6nbbx1w==",
+        "requested": "[10.1.0, )",
+        "resolved": "10.1.0",
+        "contentHash": "8hjpc/vjNNJpHYrcuZTfKkcojS+pwyQtviTFdVBedqGOMlCrG+X2CjY2lW+ZavDYlw3TCi7zrMVqW674PkAqVQ==",
         "dependencies": {
-          "Testably.Abstractions.FileSystem.Interface": "10.0.0"
+          "Testably.Abstractions.Interface": "10.1.0"
         }
       },
       "Websocket.Client": {
@@ -1654,9 +1665,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1752,9 +1763,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1850,9 +1861,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1948,9 +1959,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -2046,9 +2057,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1551, )",
-        "resolved": "2.1.5.1551",
-        "contentHash": "85AS5t3IMR/3Mco1dGSdqH+AST9STLX0TYNEeWJtmswsOD/A4hkkfuJzOxe+7/PiYdK+PNC2zK3Y8AXXAzv2bA=="
+        "requested": "[2.1.6.1589, )",
+        "resolved": "2.1.6.1589",
+        "contentHash": "1NCiJXE8IMSMh6mOcbF043ddbVWyTI0GzdJR/aeYVkVo+swQ/cJvnI5IshVkpPf9o346sAJ4E3lo4En8ZvCOyQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",

@@ -272,7 +272,7 @@ namespace Nethermind.PerfTest
             var receiptsDb = dbProvider.ReceiptsDb;
 
             /* state & storage */
-            var trieStore = new TrieStore(stateDb, new DepthAndMemoryBased(8192, 1.GB()), new ConstantInterval(8192), _logManager);
+            var trieStore = new TrieStore(stateDb, new DepthAndMemoryBased(8192, 1.GB), new ConstantInterval(8192), _logManager);
             var stateProvider = new StateProvider(trieStore, codeDb, _logManager);
             var storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
 

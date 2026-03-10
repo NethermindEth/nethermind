@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO.Abstractions;
 using Ethereum.Test.Base;
 using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
@@ -10,7 +9,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
@@ -20,8 +18,8 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.Blockchain;
+using Testably.Abstractions;
 
 namespace Evm.T8n;
 
@@ -66,7 +64,7 @@ public static class T8nExecutor
         compositeBlockTracer.Add(storageTxTracer);
         if (test.IsTraceEnabled)
         {
-            compositeBlockTracer.Add(new GethLikeBlockFileTracer(block, test.GethTraceOptions, new FileSystem()));
+            compositeBlockTracer.Add(new GethLikeBlockFileTracer(block, test.GethTraceOptions, new RealFileSystem()));
         }
 
         BlockReceiptsTracer blockReceiptsTracer = new();

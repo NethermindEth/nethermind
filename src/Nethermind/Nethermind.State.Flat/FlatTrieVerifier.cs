@@ -389,7 +389,7 @@ public class FlatTrieVerifier
         ChannelWriter<StorageVerificationJob> storageWriter,
         CancellationToken cancellationToken)
     {
-        ReadOnlySpan<byte> trieAccountRlp = trieLeaf.Value.Span;
+        ReadOnlySpan<byte> trieAccountRlp = trieLeaf.Value.AsSpan();
 
         Rlp.ValueDecoderContext flatCtx = new(flatAccountRlp);
         Account? flatAccount = AccountDecoder.Slim.Decode(ref flatCtx);
@@ -579,7 +579,7 @@ public class FlatTrieVerifier
 
     private void VerifySlotMatch(ReadOnlySpan<byte> flatValue, TrieNode trieLeaf, in ValueHash256 accountKey, in ValueHash256 slotKey)
     {
-        ReadOnlySpan<byte> trieValue = trieLeaf.Value.Span;
+        ReadOnlySpan<byte> trieValue = trieLeaf.Value.AsSpan();
         if (trieValue.IsEmpty)
         {
             if (IsZeroValue(flatValue)) return;
