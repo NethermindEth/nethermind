@@ -199,10 +199,10 @@ namespace Nethermind.Core.Specs
         bool IsEip2930Enabled { get; }
 
         /// <summary>
-        /// Should EIP158 be ignored for this account.
+        /// Account for which EIP-158 state clearing should be ignored.
         /// </summary>
-        /// <remarks>This is needed for SystemUser account compatibility with Parity.</remarks>
-        bool IsEip158IgnoredAccount(Address address);
+        /// <remarks>This is needed for SystemUser account compatibility with Parity on AuRa chains.</remarks>
+        Address? Eip158IgnoredAccount => null;
 
         /// <summary>
         /// BaseFee opcode
@@ -319,6 +319,11 @@ namespace Nethermind.Core.Specs
         /// Eof execution env in EVM
         /// </summary>
         bool IsEofEnabled { get; }
+
+        /// <summary>
+        /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE for legacy (non-EOF) code
+        /// </summary>
+        bool IsEip8024Enabled { get; }
 
         /// <summary>
         /// Transactions that allows code delegation for EOA
@@ -446,5 +451,26 @@ namespace Nethermind.Core.Specs
         /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
         /// </summary>
         public bool IsRip7728Enabled { get; }
+
+        /// <summary>
+        /// EIP-7928: Block-Level Access Lists
+        /// </summary>
+        public bool IsEip7928Enabled { get; }
+        bool BlockLevelAccessListsEnabled => IsEip7928Enabled;
+
+        /// <summary>
+        /// EIP-7708: ETH transfers emit a log
+        /// </summary>
+        public bool IsEip7708Enabled { get; }
+
+        /// <summary>
+        /// EIP-7843: SLOTNUM opcode
+        /// </summary>
+        public bool IsEip7843Enabled { get; }
+        /// Precomputed gas cost and refund constants derived from this spec.
+        /// Values are cached per spec instance (singletons per fork) to avoid
+        /// repeated interface dispatch on the EVM opcode hot path.
+        /// </summary>
+        SpecGasCosts GasCosts { get; }
     }
 }

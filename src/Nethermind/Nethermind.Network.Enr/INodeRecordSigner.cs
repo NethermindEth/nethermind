@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
@@ -20,6 +19,13 @@ public interface INodeRecordSigner
     /// <param name="rlpStream">A stream to read the serialized data from.</param>
     /// <returns>A deserialized <see cref="NodeRecord"/></returns>
     NodeRecord Deserialize(RlpStream rlpStream);
+
+    /// <summary>
+    /// Deserializes a <see cref="NodeRecord"/> from a <see cref="Rlp.ValueDecoderContext"/>.
+    /// </summary>
+    /// <param name="ctx">A value decoder context to read the serialized data from.</param>
+    /// <returns>A deserialized <see cref="NodeRecord"/></returns>
+    NodeRecord Deserialize(ref Rlp.ValueDecoderContext ctx);
 
     /// <summary>
     /// Verifies if the public key recovered from the <see cref="Signature"/> of this record matches

@@ -60,8 +60,8 @@ public class BlobTxStorageTests
         {
             txs[i] = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithMaxFeePerGas(1.GWei())
-                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce((UInt256)i)
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
 
@@ -92,8 +92,8 @@ public class BlobTxStorageTests
         {
             txs[i] = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithMaxFeePerGas(1.GWei())
-                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce((UInt256)i)
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
 

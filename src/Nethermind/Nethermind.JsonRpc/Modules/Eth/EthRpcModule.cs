@@ -5,10 +5,12 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Db.LogIndex;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
@@ -65,6 +67,7 @@ public partial class EthRpcModule(
     IFeeHistoryOracle feeHistoryOracle,
     IProtocolsManager protocolsManager,
     IForkInfo forkInfo,
+    ILogIndexConfig? logIndexConfig,
     ulong? secondsPerSlot) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
@@ -197,7 +200,7 @@ public partial class EthRpcModule(
         }
     }
 
-    public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
+    public virtual Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
     {
         if (blockParameter == BlockParameter.Pending)
         {
@@ -355,9 +358,9 @@ public partial class EthRpcModule(
         new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter, stateOverride);
 
-    public virtual ResultWrapper<AccessListResultForRpc?> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true) =>
+    public virtual ResultWrapper<AccessListResultForRpc?> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, bool optimize = true) =>
         new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, optimize)
-            .ExecuteTx(transactionCall, blockParameter);
+            .ExecuteTx(transactionCall, blockParameter, stateOverride);
 
     public ResultWrapper<BlockForRpc> eth_getBlockByHash(Hash256 blockHash, bool returnFullTransactionObjects)
     {
@@ -420,7 +423,7 @@ public partial class EthRpcModule(
         return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(false));
     }
 
-    public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
+    public virtual ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
     {
         Transaction[] transactions = _txPool.GetPendingTransactions();
         TransactionForRpc[] transactionsModels = new TransactionForRpc[transactions.Length];
@@ -645,6 +648,10 @@ public partial class EthRpcModule(
         {
             LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
 
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalse - can be null in tests
+            if (logFilter is not null && filter is not null)
+                logFilter.UseIndex = filter.UseIndex;
+
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 
             ArrayPoolList<FilterLog> logs = new(_rpcConfig.MaxLogsPerResponse);
@@ -660,6 +667,9 @@ public partial class EthRpcModule(
                     return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
                 }
             }
+
+            if (logIndexConfig?.VerifyRpcResponse is true && logFilter.UseIndex)
+                VerifyLogsResponse(logs, logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 
             return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
         }
@@ -837,6 +847,53 @@ public partial class EthRpcModule(
         }
     }
 
+    public ResultWrapper<BlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash)
+        => GetBlockAccessList(blockHash, null);
+
+    public ResultWrapper<BlockAccessList?> eth_getBlockAccessListByNumber(long blockNumber)
+        => GetBlockAccessList(null, blockNumber);
+    private ResultWrapper<BlockAccessList?> GetBlockAccessList(Hash256? blockHash, long? blockNumber)
+    {
+        Block block = blockHash is null ? _blockFinder.FindBlock(blockNumber.Value) : _blockFinder.FindBlock(blockHash);
+        if (block is null)
+        {
+            return ResultWrapper<BlockAccessList?>.Fail("Cannot return block access list, block not found.");
+        }
+        else if (block.BlockAccessListHash is null)
+        {
+            return ResultWrapper<BlockAccessList?>.Fail("Cannot return block access list for block from before Amsterdam fork.", ErrorCodes.UnavailableBeforeFork);
+        }
+
+        BlockAccessList? bal = blockchainBridge.GetBlockAccessList(block.Hash);
+
+        return bal is null ?
+            ResultWrapper<BlockAccessList?>.Fail("Cannot return pruned historical block access list.", ErrorCodes.PrunedHistoryUnavailable)
+            : ResultWrapper<BlockAccessList?>.Success(bal);
+    }
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();
+
+    private void VerifyLogsResponse(IList<FilterLog> response, LogFilter filter, BlockHeader from, BlockHeader to, CancellationToken cancellation)
+    {
+        filter.UseIndex = false;
+        IEnumerable<FilterLog>? expectedResponse = _blockchainBridge.GetLogs(filter, from, to, cancellation);
+
+        using IEnumerator<FilterLog> expectedEnum = expectedResponse.GetEnumerator();
+
+        var i = -1;
+        while (++i < response.Count | expectedEnum.MoveNext())
+        {
+            FilterLog? actual = i < response.Count ? response[i] : null;
+            FilterLog? expected = expectedEnum.Current;
+
+            if ((actual?.BlockNumber, actual?.LogIndex) != (expected?.BlockNumber, expected?.LogIndex))
+            {
+                throw new LogIndexStateException(
+                    $"Incorrect result from log index at position #{i}. " +
+                    $"Expected: block {expected?.BlockNumber}, log #{expected?.LogIndex}. " +
+                    $"Actual: block {actual?.BlockNumber}, log #{actual?.LogIndex}."
+                );
+            }
+        }
+    }
 }

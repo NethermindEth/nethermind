@@ -29,8 +29,12 @@ public static unsafe partial class Bytes
         }
     }
 
-    public static void Avx2Reverse256InPlace(Span<byte> bytes)
+    // Internal method that requires AVX2 support - caller must check Avx2.IsSupported before calling
+    internal static void Avx2Reverse256InPlace(Span<byte> bytes)
     {
+        Debug.Assert(Avx2.IsSupported, "AVX2 must be supported to call Avx2Reverse256InPlace");
+        Debug.Assert(bytes.Length == 32, "Input must be exactly 32 bytes");
+
         fixed (byte* inputPointer = bytes)
         {
             Vector256<byte> inputVector = Avx2.LoadVector256(inputPointer);

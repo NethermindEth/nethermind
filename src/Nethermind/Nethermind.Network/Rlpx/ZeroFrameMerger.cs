@@ -9,6 +9,7 @@ using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -72,32 +73,32 @@ namespace Nethermind.Network.Rlpx
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
         {
-            byte packetTypeRlp = input.ReadByte();
+            Rlp.ValueDecoderContext rlpContext = new(input.AsSpan());
+            ulong rlpPacketType = rlpContext.DecodeULong();
+            int read = rlpContext.Position;
+            input.SkipBytes(read);
             IByteBuffer content;
             if (frame.IsChunked)
             {
-                content = context.Allocator.Buffer(frame.TotalPacketSize - 1);
+                content = context.Allocator.Buffer(frame.TotalPacketSize - read);
             }
             else
             {
-                content = input.ReadRetainedSlice(frame.Size - 1);
+                content = input.ReadRetainedSlice(frame.Size - read);
             }
 
             _zeroPacket = new ZeroPacket(content)
             {
-                PacketType = GetPacketType(packetTypeRlp)
+                PacketType = (byte)rlpPacketType
             };
 
             // If not chunked, then we already used a slice of the input,
             // otherwise we need to read into the freshly allocated buffer.
             if (frame.IsChunked)
             {
-                input.ReadBytes(_zeroPacket.Content, frame.Size - 1);
+                input.ReadBytes(_zeroPacket.Content, frame.Size - read);
                 // do not call Release since the input buffer is managed by
             }
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static byte GetPacketType(byte packetTypeRlp) => packetTypeRlp == 128 ? (byte)0 : packetTypeRlp;
     }
 }

@@ -55,8 +55,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             try
             {
                 if (logger.IsInfo) logger.Info($"Loading assembly {pluginAssembly}");
-                string assemblyPath = _fileSystem.Path.Combine(pluginAssembliesDir, assemblyName);
-                Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
+                Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyName);
                 AssemblyLoadContext.Default.Resolving += (_, name) =>
                 {
                     string fileName = name.Name + ".dll";

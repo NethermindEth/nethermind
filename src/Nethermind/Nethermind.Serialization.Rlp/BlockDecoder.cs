@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using System;
 using System.Buffers;
-using Nethermind.Core;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -12,27 +13,8 @@ namespace Nethermind.Serialization.Rlp
         private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? throw new ArgumentNullException(nameof(headerDecoder));
         private readonly BlockBodyDecoder _blockBodyDecoder = new BlockBodyDecoder(headerDecoder);
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockDecoder))]
         public BlockDecoder() : this(new HeaderDecoder()) { }
-
-        protected override Block? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (rlpStream.Length == 0)
-            {
-                throw new RlpException($"Received a 0 length stream when decoding a {nameof(Block)}");
-            }
-
-            if (rlpStream.IsNextItemNull())
-            {
-                rlpStream.ReadByte();
-                return null;
-            }
-
-            Span<byte> contentSpan = rlpStream.PeekNextItem();
-            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(contentSpan);
-            Block? decoded = Decode(ref ctx, rlpBehaviors);
-            rlpStream.Position += contentSpan.Length;
-            return decoded;
-        }
 
         private (int Total, int Txs, int Uncles, int? Withdrawals) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
         {
@@ -68,7 +50,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return 1;
+                return Rlp.OfEmptyList.Length;
             }
 
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
@@ -76,7 +58,7 @@ namespace Nethermind.Serialization.Rlp
 
         protected override Block? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyList())
             {
                 decoderContext.ReadByte();
                 return null;
@@ -100,7 +82,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence;
+                return Rlp.OfEmptyList;
             }
 
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
@@ -158,7 +140,7 @@ namespace Nethermind.Serialization.Rlp
         {
             Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory, true);
 
-            if (decoderContext.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyList())
             {
                 decoderContext.ReadByte();
                 return null;

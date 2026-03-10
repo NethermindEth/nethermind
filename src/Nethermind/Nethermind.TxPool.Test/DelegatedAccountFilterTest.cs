@@ -213,8 +213,8 @@ internal class DelegatedAccountFilterTest
         Transaction setCodeTransaction = Build.A.Transaction
             .WithNonce(0)
             .WithType(TxType.SetCode)
-            .WithMaxFeePerGas(9.GWei())
-            .WithMaxPriorityFeePerGas(9.GWei())
+            .WithMaxFeePerGas(9.GWei)
+            .WithMaxPriorityFeePerGas(9.GWei)
                 .WithGasLimit(100_000)
             .WithAuthorizationCode(new AuthorizationTuple(0, TestItem.AddressC, 0, new Core.Crypto.Signature(new byte[64], 0), TestItem.AddressA))
             .WithTo(TestItem.AddressB)

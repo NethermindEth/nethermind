@@ -34,6 +34,9 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
+using Nethermind.Blockchain.Headers;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.Facade
 {
@@ -41,6 +44,7 @@ namespace Nethermind.Facade
     public class BlockchainBridge(
         IOverridableEnv<BlockchainBridge.BlockProcessingComponents> processingEnv,
         Lazy<ISimulateReadOnlyBlocksProcessingEnv> lazySimulateProcessingEnv,
+        Lazy<IWitnessGeneratingBlockProcessingEnvFactory> witnessGeneratingBlockProcessingEnvFactory,
         IBlockTree blockTree,
         IStateReader stateReader,
         ITxPool txPool,
@@ -50,6 +54,7 @@ namespace Nethermind.Facade
         IEthereumEcdsa ecdsa,
         ITimestamper timestamper,
         ILogFinder logFinder,
+        IBlockAccessListStore balStore,
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
         IMiningConfig miningConfig)
@@ -166,7 +171,7 @@ namespace Nethermind.Facade
         {
             using SimulateReadOnlyBlocksProcessingScope env = lazySimulateProcessingEnv.Value.Begin(header);
             env.SimulateRequestState.Validate = payload.Validation;
-            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, specProvider, header);
+            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, env.SpecProvider, header);
             return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
         }
 
@@ -199,7 +204,7 @@ namespace Nethermind.Facade
             };
         }
 
-        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize)
+        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken, bool optimize)
         {
             AccessTxTracer accessTxTracer = optimize
                 ? new(tx.SenderAddress,
@@ -208,7 +213,7 @@ namespace Nethermind.Facade
 
             CallOutputTracer callOutputTracer = new();
 
-            using var scope = processingEnv.BuildAndOverride(header);
+            using var scope = processingEnv.BuildAndOverride(header, stateOverride);
             var components = scope.Component;
 
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,
@@ -288,7 +293,9 @@ namespace Nethermind.Facade
                     ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec)
                     : blockHeader.ExcessBlobGas;
 
-                if (transaction.Type is TxType.Blob && transaction.MaxFeePerBlobGas is null && BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, releaseSpec.BlobBaseFeeUpdateFraction, out blobBaseFee))
+                BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, releaseSpec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+
+                if (transaction.Type is TxType.Blob && transaction.MaxFeePerBlobGas is null)
                 {
                     transaction.MaxFeePerBlobGas = blobBaseFee;
                 }
@@ -405,7 +412,7 @@ namespace Nethermind.Facade
             stateReader.RunTreeVisitor(treeVisitor, baseBlock);
         }
 
-        public bool HasStateForBlock(BlockHeader baseBlock)
+        public bool HasStateForBlock(BlockHeader? baseBlock)
         {
             return stateReader.HasStateForBlock(baseBlock);
         }
@@ -420,6 +427,13 @@ namespace Nethermind.Facade
             return logFinder.FindLogs(filter, cancellationToken);
         }
 
+        public BlockAccessList? GetBlockAccessList(Hash256 blockHash)
+            => balStore.Get(blockHash);
+
+        // for testing
+        public void DeleteBlockAccessList(Hash256 blockHash)
+            => balStore.Delete(blockHash);
+
         private static string? ConstructError(TransactionResult txResult, string? tracerError)
         {
             var error = txResult switch
@@ -431,6 +445,14 @@ namespace Nethermind.Facade
             };
 
             return error;
+        }
+
+        public Witness GenerateExecutionWitness(BlockHeader parent, Block block)
+        {
+            RecoverTxSenders(block);
+            using IWitnessGeneratingBlockProcessingEnvScope scope = witnessGeneratingBlockProcessingEnvFactory.Value.CreateScope();
+            IExistingBlockWitnessCollector witnessCollector = scope.Env.CreateExistingBlockWitnessCollector();
+            return witnessCollector.GetWitnessForExistingBlock(parent, block);
         }
 
         public record BlockProcessingComponents(

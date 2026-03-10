@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -28,8 +29,7 @@ namespace Nethermind.Xdc.Test
             var (original, encodedBytes) = BuildHeaderAndDefaultEncode(codec);
 
             // Decode
-            var stream = new RlpStream(encodedBytes);
-            BlockHeader? decodedBase = codec.Decode(stream);
+            BlockHeader? decodedBase = codec.Decode((ReadOnlySpan<byte>)encodedBytes);
             Assert.That(decodedBase, Is.Not.Null, "The decoded header should not be null.");
             Assert.That(decodedBase, Is.InstanceOf<XdcSubnetBlockHeader>(), "The decoded header should be an instance of XdcSubnetBlockHeader.");
 
@@ -69,7 +69,7 @@ namespace Nethermind.Xdc.Test
             var (original, encodedBytes) = BuildHeaderAndDefaultEncode(decoder, true);
 
             // ForSealing encoding
-            XdcSubnetBlockHeader unencoded = (XdcSubnetBlockHeader)decoder.Decode(new RlpStream(encodedBytes), RlpBehaviors.ForSealing)!;
+            XdcSubnetBlockHeader unencoded = (XdcSubnetBlockHeader)decoder.Decode((ReadOnlySpan<byte>)encodedBytes, RlpBehaviors.ForSealing)!;
 
             Assert.That(unencoded.Validator, Is.Null, "ForSealing encoding should not contain Validator field.");
             Assert.That(unencoded.NextValidators, Is.Null, "ForSealing encoding should not contain NextValidators field.");
