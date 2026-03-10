@@ -17,7 +17,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Test;
@@ -344,7 +343,7 @@ public partial class EngineModuleTests
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 10 * delay;
+        TimeSpan timePerSlot = 50 * delay;
         long txPoolPendingTransactionsAdded = 0;
         ITxPool txPool = Substitute.For<ITxPool>();
         txPool.PendingTransactionsAdded.Returns((_) => txPoolPendingTransactionsAdded);
@@ -378,14 +377,8 @@ public partial class EngineModuleTests
             new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
         await waitForImprovement;
 
-        if (improvementContextFactory.CreatedContexts.Count < 3)
-        {
-            await Wait.ForEventCondition<ImprovementStartedEventArgs>(
-                chain.CancellationToken,
-                e => improvementContextFactory.ImprovementStarted += e,
-                e => improvementContextFactory.ImprovementStarted -= e,
-                _ => improvementContextFactory.CreatedContexts.Count >= 3);
-        }
+        SpinWait.SpinUntil(() => improvementContextFactory.CreatedContexts.Count >= 3, TimeSpan.FromSeconds(10));
+        improvementContextFactory.CreatedContexts.Count.Should().BeGreaterOrEqualTo(3);
 
         cts.Cancel();
         await addingTx;
