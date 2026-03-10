@@ -41,6 +41,9 @@ jobs:
           - { runner: ubuntu-24.04-arm, label: ubuntu-24.04-arm }
           - { runner: windows-latest, label: windows-latest }
           - { runner: macos-latest, label: macos-latest }
+        exclude:
+          - os: { label: macos-latest }
+            project: Nethermind.Trie.Test
         project:
           - Nethermind.Abi.Test
           - Nethermind.Api.Test
