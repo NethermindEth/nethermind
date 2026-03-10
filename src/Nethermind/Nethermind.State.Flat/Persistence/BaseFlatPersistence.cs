@@ -247,7 +247,7 @@ public static class BaseFlatPersistence
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
         {
             Span<byte> firstKey = stackalloc byte[AccountKeyLength];
-            Span<byte> lastKey = stackalloc byte[AccountKeyLength + 1];
+            Span<byte> lastKey = stackalloc byte[AccountKeyLength + 1]; // +1 for exclusive upper bound
             fromPath.Bytes[..AccountKeyLength].CopyTo(firstKey);
             toPath.Bytes[..AccountKeyLength].CopyTo(lastKey);
             lastKey[AccountKeyLength] = 0;
