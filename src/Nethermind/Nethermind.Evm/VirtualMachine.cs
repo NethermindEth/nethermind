@@ -158,6 +158,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _txTracer = txTracer;
         _worldState = worldState;
 
+        // Reset Parity touch bug state to prevent cross-transaction leakage.
+        _parityTouchBugAccount.ShouldDelete = false;
+
         // Prepare the specification and opcode mapping based on the current block header.
         IReleaseSpec spec = BlockExecutionContext.Spec;
         PrepareOpcodes<TTracingInst>(spec);
@@ -196,10 +199,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 }
                 else
                 {
-                    // Start transaction tracing for non-continuation frames if tracing is enabled.
-                    if (_txTracer.IsTracingActions && !_currentState.IsContinuation)
+                    if (!_currentState.IsContinuation)
                     {
-                        TraceTransactionActionStart(_currentState);
+                        AddTransferLog(_currentState);
+
+                        // Start transaction tracing for non-continuation frames if tracing is enabled.
+                        if (_txTracer.IsTracingActions)
+                        {
+                            TraceTransactionActionStart(_currentState);
+                        }
                     }
 
                     // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
@@ -412,7 +420,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // 4 - set state[new_address].code to the updated deploy container
             // push new_address onto the stack (already done before the ifs)
             _codeInfoRepository.InsertCode(bytecodeResultArray, callCodeOwner, spec);
-            TGasPolicy.Consume(ref _currentState.Gas, codeDepositGasCost);
+            TGasPolicy.ConsumeCodeDeposit(ref _currentState.Gas, codeDepositGasCost);
 
             if (_txTracer.IsTracingActions)
             {
@@ -457,9 +465,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// <param name="gasAvailableForCodeDeposit">
     /// The amount of gas available for covering the cost of code deposit.
     /// </param>
-    /// <param name="spec">
-    /// The release specification containing the rules and parameters that affect code deposit behavior.
-    /// </param>
     /// <param name="previousStateSucceeded">
     /// A reference flag indicating whether the previous call frame executed successfully. This flag is set to false if the deposit fails.
     /// </param>
@@ -490,7 +495,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
 
             // Deduct the gas cost for the code deposit from the current state's available gas.
-            TGasPolicy.Consume(ref _currentState.Gas, codeDepositGasCost);
+            TGasPolicy.ConsumeCodeDeposit(ref _currentState.Gas, codeDepositGasCost);
 
             // If tracing is enabled, report the successful code deposit operation.
             if (isTracing)
@@ -785,6 +790,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// </returns>
     protected virtual CallResult ExecutePrecompile(VmState<TGasPolicy> currentState, bool isTracingActions, out Exception? failure, out string? substateError)
     {
+        AddTransferLog(currentState);
+
         // Report the precompile action if tracing is enabled.
         if (isTracingActions)
         {
@@ -833,7 +840,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Return the default CallResult to signal failure, with the failure exception set via the out parameter.
         return default;
     }
-
 
     protected void TraceTransactionActionStart(VmState<TGasPolicy> currentState)
     {
@@ -1396,7 +1402,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
     }
 
-    private unsafe static int GetAlignmentOffset(byte[] array, uint alignment)
+    private static int GetAlignmentOffset(byte[] array, uint alignment)
     {
         ArgumentNullException.ThrowIfNull(array);
         ArgumentOutOfRangeException.ThrowIfNotEqual(BitOperations.IsPow2(alignment), true, nameof(alignment));
@@ -1406,19 +1412,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
 
         uint mask = alignment - 1;
-        // address & mask is misalignment, so (–address) & mask is exactly the adjustment
-        uint adjustment = (uint)((-(nint)address) & mask);
+        // address & mask is misalignment, so (-address) & mask is exactly the adjustment
+        uint adjustment = (uint)(-(nint)address & mask);
 
         return (int)adjustment;
     }
 
-    private unsafe static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)
+    private static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)
     {
         int offset = GetAlignmentOffset(array, alignment);
         return array.AsSpan(offset, size);
     }
 
-    private unsafe static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
+    private static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
     {
         int offset = GetAlignmentOffset(array, alignment);
         return array.AsMemory(offset, size);
@@ -1435,6 +1441,44 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         _txTracer.ReportOperationRemainingGas(gasAvailable);
         _txTracer.ReportOperationError(evmExceptionType);
+    }
+
+    internal void AddLog(LogEntry logEntry)
+    {
+        VmState.AccessTracker.Logs.Add(logEntry);
+
+        // Optionally report the log if tracing is enabled.
+        if (TxTracer.IsTracingLogs)
+        {
+            TxTracer.ReportLog(logEntry);
+        }
+    }
+
+    private void AddTransferLog(VmState<TGasPolicy> currentState)
+    {
+        // DELEGATECALL: no value transfer (inherits from parent)
+        // CALLCODE: value is transferred from ExecutingAccount to ExecutingAccount (self-transfer), so no log
+        if (currentState.ExecutionType is not (ExecutionType.DELEGATECALL or ExecutionType.CALLCODE))
+        {
+            AddTransferLog(currentState.From, currentState.To, currentState.Env.Value);
+        }
+    }
+
+    internal void AddTransferLog(Address from, Address to, in UInt256 value)
+    {
+        // Self-transfers don't change balances, so don't log them
+        if (Spec.IsEip7708Enabled && !value.IsZero && from != to)
+        {
+            AddLog(TransferLog.CreateTransfer(from, to, value));
+        }
+    }
+
+    internal void AddSelfDestructLog(Address contract, in UInt256 value)
+    {
+        if (Spec.IsEip7708Enabled && !value.IsZero)
+        {
+            AddLog(TransferLog.CreateSelfDestruct(contract, value));
+        }
     }
 }
 
