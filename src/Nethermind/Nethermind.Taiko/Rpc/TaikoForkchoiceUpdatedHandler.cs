@@ -59,20 +59,6 @@ internal class TaikoForkchoiceUpdatedHandler(
         return true;
     }
 
-    protected override bool IsPayloadAttributesTimestampValid(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,
-        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
-    {
-        if (newHeadBlock.Timestamp > payloadAttributes.Timestamp)
-        {
-            string error = $"Payload timestamp {payloadAttributes.Timestamp} must be greater or equal to head block timestamp {newHeadBlock.Timestamp}.";
-            errorResult = ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
-            return false;
-        }
-
-        errorResult = null;
-        return true;
-    }
-
     protected override BlockHeader? ValidateBlockHash(ref Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)
     {
         errorMessage = null;

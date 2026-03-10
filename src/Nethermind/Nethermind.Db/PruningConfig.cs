@@ -59,7 +59,7 @@ namespace Nethermind.Db
         }
 
         public double PrunePersistedNodePortion { get; set; } = 0.05;
-        public long PrunePersistedNodeMinimumTarget { get; set; } = 50.MiB();
+        public long PrunePersistedNodeMinimumTarget { get; set; } = 50.MiB;
         public long MaxUnpersistedBlockCount { get; set; } = 300; // About 1 hour on mainnet
         public long MinUnpersistedBlockCount { get; set; } = 8; // About slightly more than 1 minute
         public int MaxBufferedCommitCount { get; set; } = 128;

@@ -6,6 +6,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Core.Test.Builders;
@@ -18,139 +19,88 @@ namespace Nethermind.Evm.Test
     {
         protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
-        private void AssertEip1014(Address address, byte[] code)
+        private static readonly byte[] _defaultSalt = [4, 5, 6];
+        private static readonly byte[] _defaultDeployedCode = [1, 2, 3];
+        private static readonly byte[] _defaultInitCode = Prepare.EvmCode.ForInitOf(_defaultDeployedCode).Done;
+
+        private void AssertEip1014(Address address, byte[] code) => AssertCodeHash(address, Keccak.Compute(code));
+
+        /// <summary>
+        /// Sets up a CREATE2 deployer contract at <see cref="VirtualMachineTestsBase.TestItem.AddressC"/>
+        /// and returns the deterministic deployment address together with the outer call bytecode.
+        /// </summary>
+        private (Address expectedAddress, byte[] callCode) PrepareCreate2(byte[] salt, byte[] initCode, long callGas = 50000)
         {
-            AssertCodeHash(address, Keccak.Compute(code));
+            byte[] createCode = Prepare.EvmCode.Create2(initCode, salt, 0).Done;
+            Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
+
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+
+            byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, callGas).Done;
+            return (expectedAddress, callCode);
         }
 
         [Test]
-        public void TestHive()
-        {
-            byte[] code = Prepare.EvmCode
+        public void TestHive() =>
+            Execute(Prepare.EvmCode
                 .FromCode("0x73095e7baea6a6c7c4c2dfeb977efac326af552d873173095e7baea6a6c7c4c2dfeb977efac326af552d873173095e7baea6a6c7c4c2dfeb977efac326af552d87313700")
-                .Done;
-
-            Execute(code);
-        }
+                .Done);
 
         [Test]
         public void Test()
         {
-            byte[] salt = { 4, 5, 6 };
-
-            byte[] deployedCode = { 1, 2, 3 };
-
-            byte[] initCode = Prepare.EvmCode
-                .ForInitOf(deployedCode).Done;
-
-            byte[] createCode = Prepare.EvmCode
-                .Create2(initCode, salt, 0).Done;
-
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
-
-            byte[] code = Prepare.EvmCode
-                .Call(TestItem.AddressC, 50000)
-                .Done;
-
-            Execute(code);
-
-            Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
-            AssertEip1014(expectedAddress, deployedCode);
+            (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode);
+            Execute(callCode);
+            AssertEip1014(expectedAddress, _defaultDeployedCode);
         }
 
-        [Test]
-        public void Test_out_of_gas_existing_account()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Test_out_of_gas_existing_account(bool withStorage)
         {
-            byte[] salt = { 4, 5, 6 };
-            byte[] deployedCode = { 1, 2, 3 };
+            (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode, callGas: 32100);
 
-            byte[] initCode = Prepare.EvmCode
-                .ForInitOf(deployedCode).Done;
+            TestState.CreateAccount(expectedAddress, 1.Ether);
 
-            byte[] createCode = Prepare.EvmCode
-                .Create2(initCode, salt, 0).Done;
+            if (withStorage)
+            {
+                TestState.Set(new StorageCell(expectedAddress, 1), [1, 2, 3, 4, 5]);
+                TestState.Commit(Spec);
+                TestState.CommitTree(0);
+                TestState.IsStorageEmpty(expectedAddress).Should().BeFalse();
+            }
 
-            Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
-
-            TestState.CreateAccount(expectedAddress, 1.Ether());
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-
-            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
-
-            byte[] code = Prepare.EvmCode
-                .Call(TestItem.AddressC, 32100)
-                .Done;
-
-            Execute(code);
+            Execute(callCode);
 
             TestState.TryGetAccount(expectedAddress, out AccountStruct account).Should().BeTrue();
-            account.Balance.Should().Be(1.Ether());
-            AssertEip1014(expectedAddress, []);
-        }
-
-        [Test]
-        public void Test_out_of_gas_existing_account_with_storage()
-        {
-            byte[] salt = { 4, 5, 6 };
-            byte[] deployedCode = { 1, 2, 3 };
-
-            byte[] initCode = Prepare.EvmCode
-                .ForInitOf(deployedCode).Done;
-
-            byte[] createCode = Prepare.EvmCode
-                .Create2(initCode, salt, 0).Done;
-
-            Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
-
-            TestState.CreateAccount(expectedAddress, 1.Ether());
-            TestState.Set(new StorageCell(expectedAddress, 1), new byte[] { 1, 2, 3, 4, 5 });
-            TestState.Commit(Spec);
-            TestState.CommitTree(0);
-
-            TestState.IsStorageEmpty(expectedAddress).Should().BeFalse();
-
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-
-            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
-
-            byte[] code = Prepare.EvmCode
-                .Call(TestItem.AddressC, 32100)
-                .Done;
-
-            Execute(code);
-
-            TestState.TryGetAccount(expectedAddress, out AccountStruct account).Should().BeTrue();
-            account.Balance.Should().Be(1.Ether());
+            account.Balance.Should().Be(1.Ether);
             AssertEip1014(expectedAddress, []);
         }
 
         [Test]
         public void Test_out_of_gas_non_existing_account()
         {
-            byte[] salt = [4, 5, 6];
-            byte[] deployedCode = [1, 2, 3];
-
-            byte[] initCode = Prepare.EvmCode
-                .ForInitOf(deployedCode).Done;
-
-            byte[] createCode = Prepare.EvmCode
-                .Create2(initCode, salt, 0).Done;
-
-            Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
-
-            // TestState.CreateAccount(expectedAddress, 1.Ether()); <-- non-existing
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-
-            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
-
-            byte[] code = Prepare.EvmCode
-                .Call(TestItem.AddressC, 32100)
-                .Done;
-
-            Execute(code);
-
+            (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode, callGas: 32100);
+            Execute(callCode);
             TestState.AccountExists(expectedAddress).Should().BeFalse();
+        }
+
+        [Test]
+        public void Test_collision_with_7702_delegated_account_is_rejected()
+        {
+            byte[] salt = [0];
+            byte[] initCode = [0x00];
+            (Address expectedAddress, byte[] callCode) = PrepareCreate2(salt, initCode);
+
+            Address delegateTarget = new("0x0000000000000000000000000000000000000042");
+            TestState.CreateAccount(expectedAddress, UInt256.Zero);
+            CodeInfoRepository.SetDelegation(delegateTarget, expectedAddress, SpecProvider.GetSpec(MainnetSpecProvider.OsakaActivation));
+            TestState.Commit(SpecProvider.GenesisSpec);
+            TestState.CommitTree(0);
+            Execute(MainnetSpecProvider.OsakaActivation, callCode);
+            TestState.GetCode(expectedAddress).Should().NotBeEmpty("delegation code should be preserved");
+            Eip7702Constants.IsDelegatedCode(TestState.GetCode(expectedAddress)).Should().BeTrue("original delegation should remain");
         }
 
         /// <summary>
@@ -165,26 +115,9 @@ namespace Nethermind.Evm.Test
         [TestCase("0x0000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000000", "0x", 32000, "0xE33C0C7F7df4809055C3ebA6c09CFe4BaF1BD9e0")]
         public void Examples_from_eip_spec_are_executed_correctly(string addressHex, string saltHex, string initCodeHex, long gas, string resultHex)
         {
-            byte[] salt = Bytes.FromHexString(saltHex);
-
-            byte[] deployedCode = [];
-
-            byte[] initCode = Bytes.FromHexString(initCodeHex);
-
-            byte[] createCode = Prepare.EvmCode
-                .Create2(initCode, salt, 0).Done;
-
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
-
-            byte[] code = Prepare.EvmCode
-                .Call(TestItem.AddressC, 50000)
-                .Done;
-            _ = ExecuteAndTrace(code);
-
-            Address expectedAddress = new(resultHex);
-            AssertEip1014(expectedAddress, deployedCode);
-            //            Assert.AreEqual(gas, trace.Entries.Single(e => e.Operation == Instruction.CREATE2.ToString()).GasCost);
+            (_, byte[] callCode) = PrepareCreate2(Bytes.FromHexString(saltHex), Bytes.FromHexString(initCodeHex));
+            ExecuteAndTrace(callCode);
+            AssertEip1014(new(resultHex), []);
         }
     }
 }

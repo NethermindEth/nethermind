@@ -205,8 +205,8 @@ namespace Nethermind.Blockchain.Test
                 Transaction txAboveTheLimit = Build.A.Transaction
                     .WithSignature(signature)
                     .WithGasLimit(10000000)
-                    .WithMaxFeePerGas(100.GWei())
-                    .WithGasPrice(100.GWei())
+                    .WithMaxFeePerGas(100.GWei)
+                    .WithGasPrice(100.GWei)
                     .WithNonce(1)
                     .WithChainId(TestBlockchainIds.ChainId)
                     .To(null)
@@ -215,8 +215,8 @@ namespace Nethermind.Blockchain.Test
                 Transaction txAboveTheLimitNoContract = Build.A.Transaction
                     .WithSignature(signature)
                     .WithGasLimit(10000000)
-                    .WithMaxFeePerGas(100.GWei())
-                    .WithGasPrice(100.GWei())
+                    .WithMaxFeePerGas(100.GWei)
+                    .WithGasPrice(100.GWei)
                     .WithNonce(1)
                     .WithChainId(TestBlockchainIds.ChainId)
                     .To(TestItem.AddressB)
@@ -225,8 +225,8 @@ namespace Nethermind.Blockchain.Test
                 Transaction txBelowTheLimit = Build.A.Transaction
                     .WithSignature(signature)
                     .WithGasLimit(10000000)
-                    .WithMaxFeePerGas(100.GWei())
-                    .WithGasPrice(100.GWei())
+                    .WithMaxFeePerGas(100.GWei)
+                    .WithGasPrice(100.GWei)
                     .WithNonce(2)
                     .WithChainId(TestBlockchainIds.ChainId)
                     .To(null)
@@ -237,7 +237,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     ReleaseSpec = Shanghai.Instance,
                     BaseFee = 5,
-                    AccountStates = { { TestItem.AddressA, (30000000.Ether(), 1) } },
+                    AccountStates = { { TestItem.AddressA, (30000000.Ether, 1) } },
                     Transactions = new List<Transaction>() { txAboveTheLimit, txAboveTheLimitNoContract, txBelowTheLimit },
                     GasLimit = 10000000
                 };
@@ -249,7 +249,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     ReleaseSpec = London.Instance,
                     BaseFee = 5,
-                    AccountStates = { { TestItem.AddressA, (30000000.Ether(), 1) } },
+                    AccountStates = { { TestItem.AddressA, (30000000.Ether, 1) } },
                     Transactions = new List<Transaction>() { txAboveTheLimit },
                     GasLimit = 10000000
                 };
@@ -354,7 +354,7 @@ namespace Nethermind.Blockchain.Test
             IReleaseSpec spec = Osaka.Instance;
             ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
 
-            BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, mempoolLength / 1.KiB() - 1);
+            BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, mempoolLength / 1.KiB - 1);
             BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, txPicker, LimboLogs.Instance);
 
             txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));

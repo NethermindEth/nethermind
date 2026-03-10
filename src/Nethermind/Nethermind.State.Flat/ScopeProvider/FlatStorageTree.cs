@@ -124,6 +124,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     {
         _bundle.Clear(_address, _addressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
+        _tree.RootHash = Keccak.EmptyTreeHash;
     }
 
     public void CommitTree() => _tree.Commit();

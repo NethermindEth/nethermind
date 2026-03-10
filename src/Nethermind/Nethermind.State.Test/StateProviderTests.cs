@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+
 using System;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,18 +22,43 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
 
+[TestFixture(false)]
+[TestFixture(true)]
 [Parallelizable(ParallelScope.All)]
-public class StateProviderTests
+public class StateProviderTests(bool useFlat)
 {
     private static readonly Hash256 Hash1 = Keccak.Compute("1");
     private static readonly Hash256 Hash2 = Keccak.Compute("2");
     private readonly Address _address1 = new(Hash1);
     private static readonly ILogManager Logger = LimboLogs.Instance;
 
+    private class Context : IDisposable
+    {
+        public IWorldState WorldState { get; }
+        private readonly IContainer? _container;
+
+        public Context(bool useFlat)
+        {
+            if (useFlat)
+            {
+                (IWorldStateScopeProvider scopeProvider, IContainer container) = TestWorldStateFactory.CreateFlatScopeProvider();
+                _container = container;
+                WorldState = new WorldState(scopeProvider, Logger);
+            }
+            else
+            {
+                WorldState = TestWorldStateFactory.CreateForTest();
+            }
+        }
+
+        public void Dispose() => _container?.Dispose();
+    }
+
     [Test]
     public void Eip_158_zero_value_transfer_deletes()
     {
-        IWorldState frontierProvider = TestWorldStateFactory.CreateForTest();
+        using Context ctx = new(useFlat);
+        IWorldState frontierProvider = ctx.WorldState;
         BlockHeader baseBlock;
         using (var _ = frontierProvider.BeginScope(IWorldState.PreGenesis))
         {
@@ -52,7 +80,9 @@ public class StateProviderTests
     [Test]
     public void Eip_158_touch_zero_value_system_account_is_not_deleted()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        using Context ctx = new(useFlat);
+        ParallelWorldState? parallelWorldState = ctx.WorldState as ParallelWorldState;
+        IWorldState provider = parallelWorldState is null ? ctx.WorldState : parallelWorldState.Inner;
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         var systemUser = Address.SystemUser;
 
@@ -69,7 +99,8 @@ public class StateProviderTests
     [Test]
     public void Empty_commit_restore()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.Commit(Frontier.Instance);
         provider.Restore(Snapshot.Empty);
@@ -78,15 +109,17 @@ public class StateProviderTests
     [Test]
     public void Update_balance_on_non_existing_account_throws()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
-        Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
+        Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether, Olympic.Instance));
     }
 
     [Test]
     public void Is_empty_account()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
@@ -97,16 +130,18 @@ public class StateProviderTests
     [Test]
     public void Returns_empty_byte_code_for_non_existing_accounts()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
-        byte[] code = provider.GetCode(TestItem.AddressA);
+        byte[] code = provider.GetCode(TestItem.AddressA)!;
         code.Should().BeEmpty();
     }
 
     [Test]
     public void Restore_update_restore()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -133,7 +168,8 @@ public class StateProviderTests
     [Test]
     public void Keep_in_cache()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
@@ -152,7 +188,8 @@ public class StateProviderTests
     {
         byte[] code = [1];
 
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 1);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -187,8 +224,8 @@ public class StateProviderTests
     {
         ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
 
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
-
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
 
         provider.CreateAccount(_address1, 0);
@@ -206,8 +243,8 @@ public class StateProviderTests
     [Test]
     public void Does_not_allow_calling_stateroot_after_scope()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
-
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
         Action action = () => { _ = provider.StateRoot; };
         {
             using var _ = provider.BeginScope(IWorldState.PreGenesis);

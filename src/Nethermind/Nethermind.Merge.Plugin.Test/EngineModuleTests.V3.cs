@@ -377,23 +377,26 @@ public partial class EngineModuleTests
                                          .Success(new PayloadStatusV1() { Status = FurtherValidationStatus })));
 
             return (chain, new EngineRpcModule(
-                 Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
-                 Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
-                 Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
-                 Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
-                 Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
-                 newPayloadHandlerMock,
-                 Substitute.For<IForkchoiceUpdatedHandler>(),
-                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
-                 Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
-                 Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-                 Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
-                 Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
-                 Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
-                 Substitute.For<IEngineRequestsTracker>(),
-                 chain.SpecProvider,
-                 new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
-                 Substitute.For<ILogManager>()));
+                Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>(),
+                newPayloadHandlerMock,
+                Substitute.For<IForkchoiceUpdatedHandler>(),
+                Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
+                Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
+                Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
+                Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
+                Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
+                Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
+                Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(),
+                Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+                Substitute.For<IEngineRequestsTracker>(),
+                chain.SpecProvider,
+                new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
+                Substitute.For<ILogManager>()));
         }
 
 
@@ -428,13 +431,13 @@ public partial class EngineModuleTests
                     .WithType(TxType.Blob)
                     .WithTimestamp(Timestamper.UnixTime.Seconds)
                     .WithTo(TestItem.AddressB)
-                    .WithValue(1.GWei())
-                    .WithGasPrice(1.GWei())
-                    .WithMaxFeePerBlobGas(1.GWei())
+                    .WithValue(1.GWei)
+                    .WithGasPrice(1.GWei)
+                    .WithMaxFeePerBlobGas(1.GWei)
                     .WithChainId(chainId)
                     .WithSenderAddress(TestItem.AddressA)
                     .WithBlobVersionedHashes(txBlobVersionedHashes)
-                    .WithMaxFeePerGasIfSupports1559(1.GWei())
+                    .WithMaxFeePerGasIfSupports1559(1.GWei)
                     .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
                 txIndex++;
             }
@@ -596,9 +599,9 @@ public partial class EngineModuleTests
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithMaxFeePerBlobGas(1000.Wei())
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
@@ -622,9 +625,9 @@ public partial class EngineModuleTests
         // we are not adding this tx
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfRequestedBlobs)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithMaxFeePerBlobGas(1000.Wei())
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         // requesting hashes that are not present in TxPool
@@ -647,9 +650,9 @@ public partial class EngineModuleTests
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithMaxFeePerBlobGas(1000.Wei())
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
