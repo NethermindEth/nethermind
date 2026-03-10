@@ -25,8 +25,8 @@ public class ReceiptTrieEip7778Tests
         IReceiptSpec specWithout7778 = new ReleaseSpec { IsEip658Enabled = true, IsEip7778Enabled = false };
         IReceiptSpec specWith7778 = new ReleaseSpec { IsEip658Enabled = true, IsEip7778Enabled = true };
 
-        Hash256 root1 = ReceiptTrie.CalculateRoot(specWithout7778, new[] { receipt }, Rlp.GetStreamDecoder<TxReceipt>()!);
-        Hash256 root2 = ReceiptTrie.CalculateRoot(specWith7778, new[] { receipt }, Rlp.GetStreamDecoder<TxReceipt>()!);
+        Hash256 root1 = ReceiptTrie.CalculateRoot(specWithout7778, new[] { receipt }, Rlp.GetStreamEncoder<TxReceipt>()!);
+        Hash256 root2 = ReceiptTrie.CalculateRoot(specWith7778, new[] { receipt }, Rlp.GetStreamEncoder<TxReceipt>()!);
 
         Assert.That(root2, Is.EqualTo(root1));
     }

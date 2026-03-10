@@ -86,7 +86,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         // Deploy the contract with some ETH
         Transaction deployTx = Build.A.Transaction
             .WithCode(initCode)
-            .WithValue(10.Ether())
+            .WithValue(10.Ether)
             .WithNonce(senderNonce)
             .WithGasLimit(1_000_000)
             .SignedAndResolved(TestItem.PrivateKeyA)
@@ -245,7 +245,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         // Deploy Contract B with enough ETH
         Transaction deployBTx = Build.A.Transaction
             .WithCode(initCodeB)
-            .WithValue(10.Ether())
+            .WithValue(10.Ether)
             .WithNonce(senderNonce)
             .WithGasLimit(2_000_000)
             .SignedAndResolved(TestItem.PrivateKeyA)

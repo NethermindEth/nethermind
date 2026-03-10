@@ -9,6 +9,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public class BlockAccessListBuilder : BuilderBase<BlockAccessList>
     {
+
         public BlockAccessListBuilder()
         {
             TestObjectInternal = new BlockAccessList();

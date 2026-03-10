@@ -34,7 +34,8 @@ public class TimeoutCertificateDecoderTests
         TimeoutCertificate decoded;
         if (useRlpStream)
         {
-            decoded = decoder.Decode(stream);
+            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+            decoded = decoder.Decode(ref decoderContext);
         }
         else
         {

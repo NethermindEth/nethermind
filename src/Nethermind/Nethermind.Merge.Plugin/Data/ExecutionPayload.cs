@@ -101,7 +101,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     /// <summary>
     /// Gets or sets <see cref="Block.BlockAccessList"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7928">EIP-4844</see>.
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7928">EIP-7928</see>.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public virtual byte[]? BlockAccessList { get; set; }
@@ -204,7 +204,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     {
         if (_transactions is not null) return new TransactionDecodingResult(_transactions);
 
-        IRlpStreamDecoder<Transaction>? rlpDecoder = Rlp.GetStreamDecoder<Transaction>();
+        IRlpValueDecoder<Transaction>? rlpDecoder = Rlp.GetValueDecoder<Transaction>();
         if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
 
         int i = 0;
@@ -215,7 +215,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
             for (i = 0; i < transactions.Length; i++)
             {
-                transactions[i] = Rlp.Decode(txData[i].AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping);
+                Rlp.ValueDecoderContext ctx = new(txData[i]);
+                transactions[i] = rlpDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
             }
 
             return new TransactionDecodingResult(_transactions = transactions);

@@ -1,15 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Filters;
 using Nethermind.Xdc.TxPool;
-using System;
 using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc;
 
@@ -20,6 +18,7 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
     protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
     {
         _api.TxGossipPolicy.Policies.Add(new XdcTxGossipPolicy(_api.SpecProvider, chainHeadInfoProvider));
+        ISnapshotManager snapshotManager = _api.Context.Resolve<ISnapshotManager>();
 
         Nethermind.TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
@@ -29,8 +28,9 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
                 _api.TxGossipPolicy,
-                new SignTransactionFilter(_api.EngineSigner, _api.BlockTree, _api.SpecProvider),
-                _api.HeadTxValidator
+                new SignTransactionFilter(snapshotManager, _api.BlockTree, _api.SpecProvider),
+                _api.HeadTxValidator,
+                true
             );
 
         _api.DisposeStack.Push(txPool);

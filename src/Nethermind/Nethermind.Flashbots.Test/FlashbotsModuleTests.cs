@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Flashbots.Data;
 using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Int256;
@@ -51,7 +50,7 @@ public partial class FlashbotsModuleTests
             expectedPayload.BlobsBundle,
             [],
             block.Header.GasLimit,
-            block.Header.ParentBeaconBlockRoot!
+            new Hash256("0x0000000000000000000000000000000000000000000000000000000000000042")
         );
 
         ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(BlockRequest);
@@ -79,8 +78,8 @@ public partial class FlashbotsModuleTests
         ];
 
         Transaction[] transactions = [
-            Build.A.Transaction.WithShardBlobTxTypeAndFields(1, spec: Prague.Instance).WithMaxFeePerGas(1.GWei()).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-            Build.A.Transaction.WithShardBlobTxTypeAndFields(2, spec: Osaka.Instance).WithMaxFeePerGas(1.GWei()).WithMaxPriorityFeePerGas(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            Build.A.Transaction.WithShardBlobTxTypeAndFields(1, spec: Prague.Instance).WithMaxFeePerGas(1.GWei).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithShardBlobTxTypeAndFields(2, spec: Osaka.Instance).WithMaxFeePerGas(1.GWei).WithMaxPriorityFeePerGas(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
             Build.A.Transaction
                 .WithMaxFeePerGas(0)
                 .WithMaxPriorityFeePerGas(0)
@@ -92,9 +91,10 @@ public partial class FlashbotsModuleTests
 
         Hash256 prevRandao = Keccak.Zero;
 
+        Hash256 expectedBlockHash = new("0x5444e83525cda76e1de787ad6a2b81918efdaf0f7ab18b446cf59f57a9479d42");
         string stateRoot = "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154";
 
-        Block block = new(
+        return new(
             new(
                 currentHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
@@ -111,6 +111,7 @@ public partial class FlashbotsModuleTests
                 BaseFeePerGas = 0,
                 Bloom = Bloom.Empty,
                 GasUsed = 0,
+                Hash = expectedBlockHash,
                 MixHash = prevRandao,
                 ParentBeaconBlockRoot = Keccak.Zero,
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
@@ -120,16 +121,5 @@ public partial class FlashbotsModuleTests
             Array.Empty<BlockHeader>(),
             withdrawals
         );
-
-        ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
-        BlockDecodingResult decodingResult = payload.TryGetBlock();
-        if (decodingResult.Block is null)
-        {
-            throw new InvalidOperationException($"Unable to decode block payload: {decodingResult.Error}");
-        }
-        block = decodingResult.Block;
-        block.Header.Hash = block.CalculateHash();
-
-        return block;
     }
 }

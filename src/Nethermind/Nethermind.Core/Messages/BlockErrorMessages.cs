@@ -162,19 +162,18 @@ public static class BlockErrorMessages
 
     public const string BlockLevelAccessListHashNotEnabled =
         "BlockLevelAccessListHashNotEnabled: Block header cannot have block level access list hash.";
-
     public static string InvalidBlockLevelAccessListHash(Hash256 expected, Hash256 actual) =>
         $"InvalidBlockLevelAccessListHash: Expected {expected}, got {actual}";
 
     public static string ReceiptCountMismatch(int expectedCount, int actualCount) =>
         $"ReceiptCountMismatch: Expected {expectedCount} receipts to match transaction count, but got {actualCount}.";
 
-    public const string MissingSlotNumber = "MissingSlotNumber: Must be present in block body.";
+    public const string MissingSlotNumber = "MissingSlotNumber: Must be present in block header.";
     public const string InvalidSlotNumber =
         "InvalidSlotNumber: Slot number in header must exceed parent.";
 
     public const string SlotNumberNotEnabled =
-        "SlotNumberNotEnabled: Block body cannot have block level access list.";
+        "SlotNumberNotEnabled: Block header cannot have slot number.";
 
     public static string SlotNumberMismatch(ulong? expected, ulong? actual) =>
         $"SlotNumberMismatch: Slot number in header does not match calculated. Expected {expected}, got {actual}";

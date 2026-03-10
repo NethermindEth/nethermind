@@ -65,7 +65,6 @@ namespace Nethermind.Consensus.Processing
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
-                    _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
                     if (action == TxAction.Stop) break;
 
@@ -80,7 +79,6 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
                 _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
-                // Console.WriteLine($"Built block {i}, balIndex={(_tracedAccessWorldState is null ? "null" : _tracedAccessWorldState.BlockAccessList.Index)}");
 
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
                 if (blockToProduce is not null)
@@ -106,6 +104,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
+                    _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
@@ -115,6 +114,7 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
+                        _balBuilder?.GeneratedBlockAccessList.RollbackCurrentIndex();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
                     }
                 }

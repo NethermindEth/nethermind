@@ -217,7 +217,7 @@ public class BlockValidator(
         {
             if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
             error ??= BlockErrorMessages.InvalidBlockLevelAccessListHash(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
-            if (_logger.IsWarn) _logger.Warn($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
+            if (_logger.IsDebug) _logger.Debug($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
             suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
         }
 
@@ -352,9 +352,9 @@ public class BlockValidator(
 
         ulong blobGasUsed = BlobGasCalculator.CalculateBlobGas(blobsInBlock);
 
-        if (blobGasUsed > spec.GetMaxBlobGasPerBlock())
+        if (blobGasUsed > spec.GasCosts.MaxBlobGasPerBlock)
         {
-            error = BlockErrorMessages.BlobGasUsedAboveBlockLimit(spec.GetMaxBlobGasPerBlock(), blobsInBlock, blobGasUsed);
+            error = BlockErrorMessages.BlobGasUsedAboveBlockLimit(spec.GasCosts.MaxBlobGasPerBlock, blobsInBlock, blobGasUsed);
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
             return false;
         }
@@ -398,14 +398,7 @@ public class BlockValidator(
 
     public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {
-        if (spec.BlockLevelAccessListsEnabled && block.BlockAccessList is null)
-        {
-            error = BlockErrorMessages.MissingBlockLevelAccessList;
-
-            if (_logger.IsWarn) _logger.Warn($"Block level access list cannot be null in block {block.Hash} when EIP-7928 activated.");
-
-            return false;
-        }
+        // n.b. block BAL could be null if it doesn't come from engine API eg. RLP tests
 
         if (!spec.BlockLevelAccessListsEnabled && block.BlockAccessList is not null)
         {
@@ -433,8 +426,6 @@ public class BlockValidator(
 
     }
 
-    // public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
-    //     ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
     private bool ValidateTxRootMatchesTxs(Block block, bool validateHashes, [NotNullWhen(false)] ref string? errorMessage)
     {
         if (validateHashes && !ValidateTxRootMatchesTxs(block.Header, block.Body, out Hash256 txRoot))

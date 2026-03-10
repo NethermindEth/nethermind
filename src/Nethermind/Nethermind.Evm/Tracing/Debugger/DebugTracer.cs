@@ -229,6 +229,12 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
     public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
         => InnerTracer.LoadOperationStorage(address, storageIndex, value);
 
+    public void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+        => InnerTracer.SetOperationTransientStorage(address, storageIndex, newValue, currentValue);
+
+    public void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        => InnerTracer.LoadOperationTransientStorage(address, storageIndex, value);
+
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         => InnerTracer.ReportSelfDestruct(address, balance, refundAddress);
 

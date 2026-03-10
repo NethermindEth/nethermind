@@ -120,7 +120,7 @@ namespace Ethereum.Test.Base
                     ExcessBlobGas = executionPayload.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(executionPayload.ExcessBlobGas).ToUnsignedBigInteger(),
                     ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot),
                     Withdrawals = executionPayload.Withdrawals is null ? null : [.. executionPayload.Withdrawals.Select(x => Rlp.Decode<Withdrawal>(Bytes.FromHexString(x)))],
-                    SlotNumber = (ulong)Bytes.FromHexString(executionPayload.SlotNumber).ToUnsignedBigInteger(),
+                    SlotNumber = executionPayload.SlotNumber is null ? null : (ulong)Bytes.FromHexString(executionPayload.SlotNumber).ToUnsignedBigInteger(),
                     Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))],
                     ExecutionRequests = []
                 }, blobVersionedHashes, validationError, int.Parse(engineNewPayload.NewPayloadVersion ?? "4"), int.Parse(engineNewPayload.ForkChoiceUpdatedVersion ?? "3"));
@@ -418,9 +418,8 @@ namespace Ethereum.Test.Base
             {
                 testsInFile = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                Console.WriteLine(e);
                 Dictionary<string, HalfBlockchainTestJson> half =
                     _serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json);
                 testsInFile = [];
@@ -453,12 +452,11 @@ namespace Ethereum.Test.Base
         private static IReleaseSpec LoadSpec(string name, Dictionary<string, BlobScheduleEntryJson>? blobSchedule)
         {
             IReleaseSpec spec = SpecNameParser.Parse(name);
-            if (blobSchedule is null)
+            if (blobSchedule is null || !blobSchedule.TryGetValue(name, out BlobScheduleEntryJson? blobCount))
             {
                 return spec;
             }
 
-            BlobScheduleEntryJson blobCount = blobSchedule[name];
             return new OverridableReleaseSpec(spec)
             {
                 MaxBlobCount = System.Convert.ToUInt64(blobCount.Max, 16),

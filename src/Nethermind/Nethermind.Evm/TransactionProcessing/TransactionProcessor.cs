@@ -167,7 +167,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
+            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                 return _systemTransactionProcessor.Execute(tx, tracer, opts);
@@ -306,15 +306,10 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple))!;
 
-                AuthorizationTupleResult res = IsValidForExecution(authTuple, accessTracker, spec, out string? error);
-                if (res != AuthorizationTupleResult.Valid)
+                AuthorizationTupleResult authorizationResult = IsValidForExecution(authTuple, accessTracker, spec, out string? error);
+                if (authorizationResult != AuthorizationTupleResult.Valid)
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
-
-                    if (_balBuilder is not null && _balBuilder.TracingEnabled && IncludeAccountRead(res))
-                    {
-                        _balBuilder.AddAccountRead(authority);
-                    }
                 }
                 else
                 {
@@ -335,9 +330,6 @@ namespace Nethermind.Evm.TransactionProcessing
             return refunds;
         }
 
-        private bool IncludeAccountRead(AuthorizationTupleResult res)
-            => res == AuthorizationTupleResult.IncorrectNonce || res == AuthorizationTupleResult.InvalidAsCodeDeployed;
-
         private enum AuthorizationTupleResult
         {
             Valid,
@@ -350,7 +342,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private AuthorizationTupleResult IsValidForExecution(
             AuthorizationTuple authorizationTuple,
-            StackAccessTracker accessTracker,
+            in StackAccessTracker accessTracker,
             IReleaseSpec spec,
             [NotNullWhen(false)] out string? error)
         {
@@ -772,11 +764,13 @@ namespace Nethermind.Evm.TransactionProcessing
                         }
                     }
 
+                    bool eip7708Enabled = spec.IsEip7708Enabled;
+                    bool tracingRefunds = tracer.IsTracingRefunds;
                     foreach (Address toBeDestroyed in substate.DestroyList)
                     {
                         if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
 
-                        if (spec.IsEip7708Enabled)
+                        if (eip7708Enabled)
                         {
                             UInt256 balance = WorldState.GetBalance(toBeDestroyed);
                             if (!balance.IsZero)
@@ -788,8 +782,11 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.ClearStorage(toBeDestroyed);
                         WorldState.DeleteAccount(toBeDestroyed);
 
-                        if (tracer.IsTracingRefunds)
-                            tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
+
+                        if (tracingRefunds)
+                        {
+                            tracer.ReportRefund(spec.GasCosts.DestroyRefund);
+                        }
                     }
 
                     statusCode = StatusCode.Success;
@@ -837,7 +834,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     accessedItems.WarmUpLargeContract(codeOwner);
                 }
 
-                TGasPolicy.Consume(ref unspentGas, codeDepositGasCost);
+                TGasPolicy.ConsumeCodeDeposit(ref unspentGas, codeDepositGasCost);
             }
 
             return true;
@@ -888,7 +885,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     accessedItems.WarmUpLargeContract(codeOwner);
                 }
-                TGasPolicy.Consume(ref unspentGas, codeDepositGasCost);
+                TGasPolicy.ConsumeCodeDeposit(ref unspentGas, codeDepositGasCost);
             }
 
             return true;
@@ -931,7 +928,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected bool PrepareAccountForContractDeployment(Address contractAddress, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec)
         {
-            if (WorldState.AccountExists(contractAddress) && contractAddress.IsNonZeroAccount(spec, codeInfoRepository, WorldState))
+            if (WorldState.IsNonZeroAccount(contractAddress, out _))
             {
                 if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
 
@@ -960,7 +957,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 long totalToRefund = codeInsertRefund;
                 if (!substate.ShouldRevert)
-                    totalToRefund += substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled);
+                    totalToRefund += substate.Refund + substate.DestroyList.Count * spec.GasCosts.DestroyRefund;
                 actualRefund = CalculateClaimableRefund(spentGas, totalToRefund, spec);
 
                 if (Logger.IsTrace)

@@ -30,6 +30,9 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong OsakaBlockTimestamp = 0x6930b057;
     public const ulong BPO1BlockTimestamp = 0x69383057;
     public const ulong BPO2BlockTimestamp = 0x695db057;
+    public const ulong BPO3BlockTimestamp = ulong.MaxValue - 3;
+    public const ulong BPO4BlockTimestamp = ulong.MaxValue - 2;
+    public const ulong BPO5BlockTimestamp = ulong.MaxValue - 1;
     public const ulong AmsterdamBlockTimestamp = ulong.MaxValue;
 
     public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
@@ -54,7 +57,10 @@ public class MainnetSpecProvider : ISpecProvider
             { Timestamp: < OsakaBlockTimestamp } => Prague.Instance,
             { Timestamp: < BPO1BlockTimestamp } => Osaka.Instance,
             { Timestamp: < BPO2BlockTimestamp } => BPO1.Instance,
-            { Timestamp: < AmsterdamBlockTimestamp } => BPO2.Instance,
+            { Timestamp: < BPO3BlockTimestamp } => BPO2.Instance,
+            { Timestamp: < BPO4BlockTimestamp } => BPO3.Instance,
+            { Timestamp: < BPO5BlockTimestamp } => BPO4.Instance,
+            { Timestamp: < AmsterdamBlockTimestamp } => BPO5.Instance,
             _ => Amsterdam.Instance
         };
 
@@ -82,7 +88,10 @@ public class MainnetSpecProvider : ISpecProvider
     public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
     public static ForkActivation BPO1Activation { get; } = (ParisBlockNumber + 5, BPO1BlockTimestamp);
     public static ForkActivation BPO2Activation { get; } = (ParisBlockNumber + 6, BPO2BlockTimestamp);
-    public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 7, AmsterdamBlockTimestamp);
+    public static ForkActivation BPO3Activation { get; } = (ParisBlockNumber + 7, BPO3BlockTimestamp);
+    public static ForkActivation BPO4Activation { get; } = (ParisBlockNumber + 8, BPO4BlockTimestamp);
+    public static ForkActivation BPO5Activation { get; } = (ParisBlockNumber + 9, BPO5BlockTimestamp);
+    public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 10, AmsterdamBlockTimestamp);
     public ForkActivation[] TransitionActivations { get; } =
     {
         (ForkActivation)HomesteadBlockNumber,

@@ -15,23 +15,17 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.JsonRpc;
 using Nethermind.Merge.AuRa.Contracts;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
@@ -42,21 +36,12 @@ namespace Nethermind.Merge.AuRa.Test;
 
 public class AuRaMergeEngineModuleTests : EngineModuleTests
 {
-    private static readonly Address AuraWithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003");
-    private static readonly Address AuraSystemAddress = new("0xfffffffffffffffffffffffffffffffffffffffe");
-
     protected override MergeTestBlockchain CreateBaseBlockchain(
         IMergeConfig? mergeConfig = null)
         => new MergeAuRaTestBlockchain(mergeConfig);
 
     protected override Hash256 ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
-    protected override int ExpectedPayloadBodiesV2BlockAccessListByteLength => 364;
-
-    protected override AccountChanges[] GetAdditionalPrecompileAccountChanges() =>
-    [
-        Build.An.AccountChanges.WithAddress(AuraWithdrawalContractAddress).TestObject,
-        Build.An.AccountChanges.WithAddress(AuraSystemAddress).TestObject
-    ];
+    private const string _auraWithdrawalContractAddress = "0xbabe2bed00000000000000000000000000000003";
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
     public override Task forkchoiceUpdatedV2_should_validate_withdrawals((IReleaseSpec Spec,
@@ -76,69 +61,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => base.Should_process_block_as_expected_V4(latestValidHash, blockHash, stateRoot, payloadId);
 
     [TestCase(
-        "0xec6f5611ce3652fefd669e8d7e6d63bd8cdefdcdfe9a0a44eb61355084831da4",
-        "0xf382f220de54b57ac9355d4eeb114f9e6bc4d25e307cdac0347b43d5534ac68e",
-        "0xb8a1a0780980ab4e20a46237a3c533af8cd0386cf4c74d05c8ec5e9bf5cbc482",
-        "0x2802e8a8c34cd1ea")]
-    public override Task Should_process_block_as_expected_V6(string latestValidHash, string blockHash, string stateRoot, string payloadId)
-        => base.Should_process_block_as_expected_V6(latestValidHash, blockHash, stateRoot, payloadId);
-
-    [TestCase(
-        "0x8d8fa83b6c3adb40b8f2e1f4798e9d900564b8548e209a65c8cd29fde02e7a32",
-        "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-        "0x3e98244425fbc5413150a01fd823bece9ae66ef182f11597f0abdfd251d9aa16")]
-    public override async Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
-    {
-        _ = blockHash;
-        _ = receiptsRoot;
-        _ = stateRoot;
-
-        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 headHash = chain.BlockTree.HeadHash;
-
-        ForkchoiceStateV1 forkchoiceState = new(headHash, headHash, Keccak.Zero);
-        PayloadAttributes payloadAttributes = new()
-        {
-            Timestamp = chain.BlockTree.Head!.Timestamp + 999,
-            PrevRandao = Keccak.Zero,
-            SuggestedFeeRecipient = TestItem.AddressC,
-            Withdrawals = [],
-            ParentBeaconBlockRoot = Keccak.Zero,
-            SlotNumber = chain.BlockTree.Head!.SlotNumber + 1,
-        };
-
-        ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceResponse = await rpc.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes);
-        Assert.That(forkchoiceResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(forkchoiceResponse.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(forkchoiceResponse.Data.PayloadId, Is.Not.Null);
-
-        ResultWrapper<GetPayloadV6Result?> payloadResponse =
-            await rpc.engine_getPayloadV6(Bytes.FromHexString(forkchoiceResponse.Data.PayloadId!));
-        Assert.That(payloadResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(payloadResponse.Data, Is.Not.Null);
-        Assert.That(payloadResponse.Data!.ExecutionPayload.BlockAccessList, Is.Not.Null);
-
-        ResultWrapper<PayloadStatusV1> newPayloadResponse = await rpc.engine_newPayloadV5(
-            payloadResponse.Data.ExecutionPayload,
-            payloadResponse.Data.BlobsBundle.Blobs,
-            Keccak.Zero,
-            []);
-
-        Assert.That(newPayloadResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(newPayloadResponse.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(newPayloadResponse.Data.LatestValidHash, Is.EqualTo(payloadResponse.Data.ExecutionPayload.BlockHash));
-        Assert.That(newPayloadResponse.Data.ValidationError, Is.Null);
-    }
-
-    [TestCase(
-        "0xcb284697c29b108d9820ab65ca8b44c6abc50f2598f9412dbfc88d84db5e6fc5",
-        "0x914892da85e1a085a90e8a02f9a9cf0777d73c5798047c7324859b1c5ad9b67f",
-        "0x7255eb3f45136fccaa3449d2787f80e33e197b4fbc417f1d62423a72a76b5d43")]
-    public override Task NewPayloadV5_rejects_invalid_BAL(string blockHash, string stateRoot, string balHash)
-        => base.NewPayloadV5_rejects_invalid_BAL(blockHash, stateRoot, balHash);
-
-    [TestCase(
         "0xca2fbb93848df6500fcc33f9036f43f33db9844719f0a5fc69079d8d90dbb28f",
         "0x4b8e5a6567229461665f1475a39665a3df55b367ca5fd9cc861fe70d4d5836c3",
         "0xd4ab6af74f5566d54b164115a9b00726bd35e2170d206e466c4be30ebfe23894",
@@ -152,6 +74,92 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         "0xb22228e153345f9b")]
     public override Task processing_block_should_serialize_valid_responses(string blockHash, string latestValidHash, string payloadId)
         => base.processing_block_should_serialize_valid_responses(blockHash, latestValidHash, payloadId);
+
+    [TestCase(
+        "0xec6f5611ce3652fefd669e8d7e6d63bd8cdefdcdfe9a0a44eb61355084831da4",
+        "0xf382f220de54b57ac9355d4eeb114f9e6bc4d25e307cdac0347b43d5534ac68e",
+        "0xb8a1a0780980ab4e20a46237a3c533af8cd0386cf4c74d05c8ec5e9bf5cbc482",
+        "0x2802e8a8c34cd1ea",
+        _auraWithdrawalContractAddress)]
+    public override async Task Should_process_block_as_expected_V6(string latestValidHash, string blockHash, string stateRoot, string payloadId, string? auraWithdrawalContractAddress)
+        => await base.Should_process_block_as_expected_V6(latestValidHash, blockHash, stateRoot, payloadId, auraWithdrawalContractAddress);
+
+    [TestCase(
+        "0x14d7d22cfaa851f3b79a790d6f961f0cc4da2e714cd15b16bce8468f25152911",
+        "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
+        "0x3e98244425fbc5413150a01fd823bece9ae66ef182f11597f0abdfd251d9aa16")]
+    public override Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
+        => NewPayloadV5(
+            blockHash,
+            receiptsRoot,
+            stateRoot,
+            auraWithdrawalContractAddress: _auraWithdrawalContractAddress);
+
+    [TestCase(
+        "0x0f125b68c09e5dc3b57cc47e93189d431fbb2d02d0aceb001eda8938ae933e21",
+        "0x914892da85e1a085a90e8a02f9a9cf0777d73c5798047c7324859b1c5ad9b67f",
+        "0x7255eb3f45136fccaa3449d2787f80e33e197b4fbc417f1d62423a72a76b5d43",
+        "0xcf205144eb1991b718be9c4694f22d6b0937740c17e2d811c8fc3c999d596fcf",
+        _auraWithdrawalContractAddress)]
+    public override Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? auraWithdrawalContractAddress)
+        => base.NewPayloadV5_rejects_invalid_BAL_after_processing(blockHash, stateRoot, invalidBalHash, expectedBalHash, auraWithdrawalContractAddress);
+
+    [TestCase(
+        "0x5ab84199bdbe0d5806de6bffbbd52cf31ede2248f842395aa9a850a45ad9f4db",
+        "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
+    public override Task NewPayloadV5_rejects_invalid_BAL_with_incorrect_changes_early(string blockHash, string receiptsRoot, string stateRoot)
+        => NewPayloadV5(
+            blockHash,
+            receiptsRoot,
+            stateRoot,
+            "InvalidBlockLevelAccessList: Suggested block-level access list contained incorrect changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 3.",
+            withIncorrectChange: true,
+            auraWithdrawalContractAddress: _auraWithdrawalContractAddress);
+
+    [TestCase(
+        "0x56f188e232e95462ad7235ca53b336f5f73cc208992d307033210c085ea6f959",
+        "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
+    public override Task NewPayloadV5_rejects_invalid_BAL_with_missing_changes_early(string blockHash, string receiptsRoot, string stateRoot)
+        => NewPayloadV5(
+            blockHash,
+            receiptsRoot,
+            stateRoot,
+            "InvalidBlockLevelAccessList: Suggested block-level access list missing account changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 2.",
+            withMissingChange: true,
+            auraWithdrawalContractAddress: _auraWithdrawalContractAddress);
+
+    [TestCase(
+        "0x1625b8215c5d6ab493105efb8cc20b7409d4957ca46d98996c6cc01e50b69ab3",
+        "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
+    public override Task NewPayloadV5_rejects_invalid_BAL_with_surplus_changes_early(string blockHash, string receiptsRoot, string stateRoot)
+        => NewPayloadV5(
+            blockHash,
+            receiptsRoot,
+            stateRoot,
+            "InvalidBlockLevelAccessList: Suggested block-level access list contained surplus changes for 0x65942aaf2c32a1aca4f14e82e94fce91960893a2 at index 2.",
+            withSurplusChange: true,
+            auraWithdrawalContractAddress: _auraWithdrawalContractAddress);
+
+    [TestCase(
+        "0x91e03d0f1b756f6577cab73c9f910f9b18fbe45ac27bb346ada0fa912a71dac8",
+        "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
+    public override Task NewPayloadV5_rejects_invalid_BAL_with_surplus_reads_early(string blockHash, string receiptsRoot, string stateRoot)
+        => NewPayloadV5(
+            blockHash,
+            receiptsRoot,
+            stateRoot,
+            "InvalidBlockLevelAccessList: Suggested block-level access list contained invalid storage reads.",
+            withSurplusReads: true,
+            auraWithdrawalContractAddress: _auraWithdrawalContractAddress);
+
+    [Test]
+    [TestCase(_auraWithdrawalContractAddress)]
+    public override async Task GetPayloadV6_builds_block_with_BAL(string? auraWithdrawalContractAddress)
+        => await base.GetPayloadV6_builds_block_with_BAL(auraWithdrawalContractAddress);
 
     [Test]
     [TestCase(
@@ -232,7 +240,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             baseChainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
                 new AuRaChainSpecEngineParameters
                 {
-                    WithdrawalContractAddress = AuraWithdrawalContractAddress,
+                    WithdrawalContractAddress = new(_auraWithdrawalContractAddress),
                     StepDuration = { { 0, 3 } }
                 });
             baseChainSpec.Parameters = new ChainParameters();

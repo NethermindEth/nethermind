@@ -86,9 +86,10 @@ public abstract class BlockchainTestBase
 
         bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
 
-        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = isEngineTest
-            ? [((ForkActivation)0, test.Network)]
-            : [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
+        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
+        isEngineTest ?
+        [((ForkActivation)0, test.Network)] :
+        [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
         if (test.NetworkAfterTransition is not null)
         {
@@ -97,7 +98,7 @@ public abstract class BlockchainTestBase
 
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
 
-        // Assert.That(isEngineTest || test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance, "Expected genesis spec to be Frontier for blockchain tests");
+        Assert.That(isEngineTest || test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance, "Expected genesis spec to be Frontier for blockchain tests");
 
         if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
         {
@@ -126,7 +127,6 @@ public abstract class BlockchainTestBase
         }
 
         IConfigProvider configProvider = new ConfigProvider();
-        // configProvider.GetConfig<IBlocksConfig>().PreWarmStateOnBlockProcessing = false;
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton(specProvider)
@@ -349,8 +349,8 @@ public abstract class BlockchainTestBase
             TestBlockJson testBlockJson = test.Blocks[i];
             try
             {
-                RlpStream rlpContext = Bytes.FromHexString(testBlockJson.Rlp!).AsRlpStream();
-                Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
+                byte[] rlpBytes = Bytes.FromHexString(testBlockJson.Rlp!);
+                Block suggestedBlock = Rlp.Decode<Block>(rlpBytes);
 
                 if (testBlockJson.BlockHeader is not null)
                 {

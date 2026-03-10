@@ -144,7 +144,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-#if !ZKVM
+#if !ZK_EVM
     virtual
 #endif
     public TransactionSubstate ExecuteTransaction<TTracingInst>(
@@ -420,7 +420,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // 4 - set state[new_address].code to the updated deploy container
             // push new_address onto the stack (already done before the ifs)
             _codeInfoRepository.InsertCode(bytecodeResultArray, callCodeOwner, spec);
-            TGasPolicy.Consume(ref _currentState.Gas, codeDepositGasCost);
+            TGasPolicy.ConsumeCodeDeposit(ref _currentState.Gas, codeDepositGasCost);
 
             if (_txTracer.IsTracingActions)
             {
@@ -495,7 +495,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
 
             // Deduct the gas cost for the code deposit from the current state's available gas.
-            TGasPolicy.Consume(ref _currentState.Gas, codeDepositGasCost);
+            TGasPolicy.ConsumeCodeDeposit(ref _currentState.Gas, codeDepositGasCost);
 
             // If tracing is enabled, report the successful code deposit operation.
             if (isTracing)
@@ -1181,7 +1181,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
     [SkipLocalsInit]
-#if !ZKVM
+#if !ZK_EVM
     virtual
 #endif
     protected CallResult RunByteCode<TTracingInst, TCancelable>(

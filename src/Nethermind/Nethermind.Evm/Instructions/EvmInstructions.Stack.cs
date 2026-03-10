@@ -688,9 +688,9 @@ internal static partial class EvmInstructions
         int mask = (q - r) >> 31;
 
         // EIP-8024 base mapping (0-based stack): if (q < r) n=q+1, m=r+1 else n=r+1, m=29-q
-        // Add +1 for 1-indexed stack positions used by Exchange: if (q < r) final_n=q+2, final_m=r+2; else final_n=r+2, final_m=31-q
+        // Add +1 for 1-indexed stack positions used by Exchange: if (q < r) final_n=q+2, final_m=r+2; else final_n=r+2, final_m=30-q
         n = ((q & mask) | (r & ~mask)) + 2;
-        m = ((r & mask) | ((29 - q) & ~mask)) + 2;
+        m = (((r + 1) & mask) | ((29 - q) & ~mask)) + 1;
 
         if ((uint)(imm - 0x50) <= 0x2F)
             return false;

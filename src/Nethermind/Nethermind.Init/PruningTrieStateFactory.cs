@@ -123,7 +123,7 @@ public class PruningTrieStateFactory(
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
-            long threshold = pruningConfig.FullPruningThresholdMb.MB();
+            long threshold = pruningConfig.FullPruningThresholdMb.MB;
 
             switch (pruningConfig.FullPruningTrigger)
             {
@@ -214,8 +214,8 @@ public class MainPruningTrieStoreFactory
         }
 
         IPruningStrategy pruningStrategy = Prune
-            .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB())
-            .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB() - pruningConfig.DirtyCacheMb.MB())
+            .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB)
+            .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB - pruningConfig.DirtyCacheMb.MB)
             .WhenLastPersistedBlockIsTooOld(pruningConfig.MaxUnpersistedBlockCount, pruningConfig.PruningBoundary)
             .UnlessLastPersistedBlockIsTooNew(pruningConfig.MinUnpersistedBlockCount, pruningConfig.PruningBoundary);
 
