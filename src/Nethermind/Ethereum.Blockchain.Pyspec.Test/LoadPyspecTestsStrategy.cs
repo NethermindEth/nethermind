@@ -59,20 +59,29 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
     {
         string markerPath = Path.Combine(testsDirectoryName, s_completedMarker);
         if (File.Exists(markerPath))
+        {
+            Console.WriteLine($"EEST fixtures already cached at {testsDirectoryName}");
             return;
+        }
 
         // Named mutex keyed by target path to synchronize across processes.
         string mutexName = $"Global\\eest_{archiveVersion}_{archiveName}".Replace('/', '_').Replace('\\', '_');
         using Mutex mutex = new(false, mutexName);
+        Console.WriteLine($"Waiting for EEST fixture lock ({archiveName} {archiveVersion})...");
         mutex.WaitOne();
         try
         {
             // Re-check after acquiring the mutex — another process may have finished.
             if (File.Exists(markerPath))
+            {
+                Console.WriteLine("EEST fixtures were downloaded by another process.");
                 return;
+            }
 
+            Console.WriteLine($"Downloading EEST fixtures ({archiveName} {archiveVersion})...");
             DownloadAndExtract(archiveVersion, archiveName, testsDirectoryName);
             File.WriteAllText(markerPath, archiveVersion);
+            Console.WriteLine($"EEST fixtures extracted to {testsDirectoryName}");
         }
         finally
         {
