@@ -52,6 +52,11 @@
 - `Nethermind.JsonRpc.Test/` — RPC module tests
 - `Nethermind.TxPool.Test/` — transaction pool tests
 
+### Test infrastructure (update when adding new opcodes, header fields, or tx types)
+- `Nethermind.Evm/ByteCodeBuilderExtensions.cs` — fluent bytecode builder; add a method for each new opcode (e.g., `SLOTNUM()`)
+- `Nethermind.Core.Test/Builders/BlockBuilder.cs` — add `With{FieldName}()` for each new header field
+- `Nethermind.Evm.Test/InvalidOpcodeTests.cs` — update fork opcode validation when adding new opcodes
+
 ## Implementation Patterns
 
 ### Adding an EIP flag to a fork
@@ -78,10 +83,12 @@ Every consensus EIP that needs a feature flag requires changes in **10 files** a
 **Layer 5 — Spec provider test (1 file):**
 10. `Nethermind.Specs.Test/MainnetSpecProviderTests.cs` — update the fork's EIP test method to cover the new flag
 
+**If the EIP is the first in a new fork**, also update:
+11. `Nethermind.Specs/MainnetSpecProvider.cs` — add activation timestamp, `TransitionActivations` entry, and spec switch expression for the new fork
+
 **Exceptions:**
 - Receipt-only EIPs may use `IReceiptSpec` instead of `IReleaseSpec`
 - Networking protocol versions (e.g., eth/70) skip `IReleaseSpec` entirely — use dynamic capability registration in `MergePlugin.cs`
-- New forks also need `MainnetSpecProvider.cs` updates (activation timestamp, `TransitionActivations`, spec switch expression)
 
 ### Adding a new opcode
 
@@ -89,6 +96,8 @@ Every consensus EIP that needs a feature flag requires changes in **10 files** a
 2. Implement handler in the appropriate `Nethermind.Evm/Instructions/EvmInstructions.*.cs` partial class
 3. Add gas cost constant to `Nethermind.Evm/GasCostOf.cs` if needed
 4. Update `InstructionExtensions.StackRequirements()` in `Instruction.cs`
+5. Add fluent method to `Nethermind.Evm/ByteCodeBuilderExtensions.cs` (e.g., `.SLOTNUM()`)
+6. Update `Nethermind.Evm.Test/InvalidOpcodeTests.cs` — add new opcode to the fork's valid opcode set
 
 ### Adding a new precompile
 
@@ -138,13 +147,17 @@ Consensus-critical — changes the receipt Merkle root.
 
 ### New header field
 
-Adds an optional field to the block header RLP encoding.
+Adds an optional field to the block header RLP encoding. If the new field is introduced by a new fork, it typically also requires a new Engine API payload version — see items 5-8.
 
 1. `Nethermind.Core/BlockHeader.cs` — add property
 2. `Nethermind.Core/Block.cs` — add read-only proxy
 3. `Nethermind.Serialization.Rlp/HeaderDecoder.cs` — add to encode/decode paths. Uses `requiredItems` bool array with back-propagation for field ordering
 4. `Nethermind.Consensus/Validators/HeaderValidator.cs` — validate presence (when enabled) and absence (when disabled)
-5. `Nethermind.Merge.Plugin/Data/ExecutionPayload*.cs` — add to Engine API payloads
+5. `Nethermind.Merge.Plugin/Data/ExecutionPayload*.cs` — add to Engine API payloads (may need a new `ExecutionPayloadVN.cs`)
 6. `Nethermind.Consensus/Producers/PayloadAttributes.cs` — add to payload attributes, include in payload ID hash
 7. `Nethermind.Facade/Eth/BlockForRpc.cs` — conditionally include in JSON-RPC responses
-8. **Test:** add encode→decode roundtrip in `HeaderDecoderTests.cs` with the new field present and absent
+8. `Nethermind.Merge.Plugin/EngineRpcModule.{ForkName}.cs` — new `engine_newPayloadVN` / `engine_getPayloadVN` methods (partial class per fork)
+9. `Nethermind.Merge.Plugin/IEngineRpcModule.{ForkName}.cs` — interface for the new engine API methods
+10. `Nethermind.Merge.Plugin/Handlers/EngineRpcCapabilitiesProvider.cs` — register the new engine API method capabilities
+11. `Nethermind.Specs/ChainSpecStyle/Json/ChainSpecGenesisJson.cs` — add genesis JSON field if the header field appears in genesis
+12. **Test:** add encode→decode roundtrip in `HeaderDecoderTests.cs` with the new field present and absent
