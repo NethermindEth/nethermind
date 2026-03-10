@@ -8,7 +8,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
-    public interface IProtocolsManager
+    public interface IProtocolsManager : IDisposable
     {
         void AddSupportedCapability(Capability capability);
         void RemoveSupportedCapability(Capability capability);

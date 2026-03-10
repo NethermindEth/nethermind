@@ -9,7 +9,7 @@ using Nethermind.Network.P2P.Subprotocols;
 
 namespace Nethermind.Network.P2P
 {
-    public class MessageQueue<TMsg, TData>(Action<TMsg> send)
+    public class MessageQueue<TMsg, TData>(IMessageSender<TMsg> sender)
         where TMsg : MessageBase
     {
         private bool _isClosed;
@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P
                 {
                     _currentRequest = request;
                     _currentRequest.StartMeasuringTime();
-                    send(_currentRequest.Message);
+                    sender.Send(_currentRequest.Message);
                 }
                 else
                 {
@@ -60,7 +60,7 @@ namespace Nethermind.Network.P2P
                 if (_requestQueue.TryDequeue(out _currentRequest))
                 {
                     _currentRequest!.StartMeasuringTime();
-                    send(_currentRequest.Message);
+                    sender.Send(_currentRequest.Message);
                 }
             }
         }

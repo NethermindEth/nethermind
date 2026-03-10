@@ -585,18 +585,8 @@ public class Eth70ProtocolHandlerTests
     }
 
     private void HandleIncomingStatusMessage()
-    {
-        using var statusMsg = new StatusMessage69 { ProtocolVersion = 70, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
-
-        IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
-        statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
-    }
+        => EthProtocolTestHelper.HandleIncomingStatusMessage69(_svc, _handler, _genesisBlock, 70);
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
-    {
-        IByteBuffer packet = _svc!.ZeroSerialize(msg);
-        packet.ReadByte();
-        _handler!.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
-    }
+        => EthProtocolTestHelper.HandleZeroMessage(_svc, _handler, msg, messageCode);
 }

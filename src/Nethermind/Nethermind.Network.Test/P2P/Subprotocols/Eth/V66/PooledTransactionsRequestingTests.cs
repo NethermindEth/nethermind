@@ -176,20 +176,8 @@ public class PooledTransactionsRequestingTests
     }
 
     private void HandleIncomingStatusMessage(Eth66ProtocolHandler handler)
-    {
-        using var statusMsg = new StatusMessage();
-        statusMsg.GenesisHash = _genesisBlock.Hash;
-        statusMsg.BestHash = _genesisBlock.Hash;
-
-        IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
-        statusPacket.ReadByte();
-        handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
-    }
+        => EthProtocolTestHelper.HandleIncomingStatusMessage(_svc, handler, _genesisBlock);
 
     private void HandleZeroMessage<T>(Eth66ProtocolHandler handler, T msg, int messageCode) where T : MessageBase
-    {
-        IByteBuffer packet = _svc.ZeroSerialize(msg);
-        packet.ReadByte();
-        handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
-    }
+        => EthProtocolTestHelper.HandleZeroMessage(_svc, handler, msg, messageCode);
 }

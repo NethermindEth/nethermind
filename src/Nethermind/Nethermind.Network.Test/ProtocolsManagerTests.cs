@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Numerics;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
@@ -19,6 +20,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
@@ -70,6 +72,7 @@ public class ProtocolsManagerTests
         private readonly IGossipPolicy _gossipPolicy;
         private readonly IPeerManager _peerManager;
         private readonly INetworkConfig _networkConfig;
+        private TestProtocolHandler? _customProtocolHandler;
 
         public Context()
         {
@@ -171,6 +174,23 @@ public class ProtocolsManagerTests
             return this;
         }
 
+        public Context VerifyPingSenderNotSet()
+        {
+            Assert.That(_currentSession.PingSender, Is.Null);
+            return this;
+        }
+
+        public Context AddCustomProtocol(string protocolCode = "zzz", int version = 1)
+        {
+            _manager.AddSupportedCapability(new Capability(protocolCode, version));
+            _manager.AddProtocol(protocolCode, (_, _) =>
+            {
+                _customProtocolHandler = new TestProtocolHandler(protocolCode, (byte)version);
+                return _customProtocolHandler;
+            });
+            return this;
+        }
+
         public Context VerifyDisconnected()
         {
             Assert.That(_currentSession.State, Is.EqualTo(SessionState.Disconnected));
@@ -191,6 +211,19 @@ public class ProtocolsManagerTests
         public Context VerifyInitialized()
         {
             Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
+            return this;
+        }
+
+        public Context VerifyCustomProtocolHandlerUnsubscribed()
+        {
+            Assert.That(_customProtocolHandler, Is.Not.Null);
+            Assert.That(_customProtocolHandler!.SubprotocolRequestedSubscriberCount, Is.EqualTo(0));
+            return this;
+        }
+
+        public Context DisposeManager()
+        {
+            _manager.Dispose();
             return this;
         }
 
@@ -274,6 +307,24 @@ public class ProtocolsManagerTests
             return ReceiveHello(msg);
         }
 
+        public Context ReceiveHello(params Capability[] capabilities)
+        {
+            using HelloMessage msg = new();
+            ArrayPoolList<Capability> capabilityList = new(capabilities.Length);
+            foreach (Capability capability in capabilities)
+            {
+                capabilityList.Add(capability);
+            }
+
+            msg.Capabilities = capabilityList;
+            msg.NodeId = TestItem.PublicKeyB;
+            msg.ClientId = "other client v1";
+            msg.P2PVersion = 5;
+            msg.ListenPort = 30314;
+
+            return ReceiveHello(msg);
+        }
+
         public Context ReceiveHelloNoEth()
         {
             using HelloMessage msg = new();
@@ -337,6 +388,44 @@ public class ProtocolsManagerTests
             .Init()
             .ReceiveHello()
             .VerifyPingSenderSet();
+    }
+
+    [Test]
+    public void Stops_initializing_new_sessions_after_dispose()
+    {
+        When
+            .DisposeManager()
+            .CreateIncomingSession()
+            .ActivateChannel()
+            .Handshake()
+            .Init()
+            .VerifyPingSenderNotSet();
+    }
+
+    [Test]
+    public void Stops_initializing_existing_sessions_after_dispose()
+    {
+        When
+            .CreateIncomingSession()
+            .ActivateChannel()
+            .Handshake()
+            .DisposeManager()
+            .Init()
+            .VerifyPingSenderNotSet();
+    }
+
+    [Test]
+    public void Removes_custom_protocol_subscriptions_on_disconnect()
+    {
+        When
+            .AddCustomProtocol()
+            .CreateIncomingSession()
+            .ActivateChannel()
+            .Handshake()
+            .Init()
+            .ReceiveHello(new Capability(Protocol.Eth, 68), new Capability("zzz", 1))
+            .Disconnect()
+            .VerifyCustomProtocolHandlerUnsubscribed();
     }
 
     [Test]
@@ -495,5 +584,62 @@ public class ProtocolsManagerTests
             .Handshake()
             .Init()
             .VerifyProtocolVersion(Protocol.Eth, 68);
+    }
+
+    private sealed class TestProtocolHandler : IProtocolHandler
+    {
+        private EventHandler<ProtocolEventArgs>? _subprotocolRequested;
+
+        public TestProtocolHandler(string protocolCode, byte protocolVersion)
+        {
+            ProtocolCode = protocolCode;
+            ProtocolVersion = protocolVersion;
+        }
+
+        public string Name => $"{ProtocolCode}.{ProtocolVersion}";
+
+        public byte ProtocolVersion { get; }
+
+        public string ProtocolCode { get; }
+
+        public int MessageIdSpaceSize => 1;
+
+        public int SubprotocolRequestedSubscriberCount { get; private set; }
+
+        public event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<ProtocolEventArgs>? SubprotocolRequested
+        {
+            add
+            {
+                _subprotocolRequested += value;
+                SubprotocolRequestedSubscriberCount++;
+            }
+            remove
+            {
+                _subprotocolRequested -= value;
+                SubprotocolRequestedSubscriberCount--;
+            }
+        }
+
+        public void Init()
+        {
+        }
+
+        public void HandleMessage(Packet message)
+        {
+        }
+
+        public void DisconnectProtocol(DisconnectReason disconnectReason, string details)
+        {
+        }
+
+        public void Dispose()
+        {
+        }
     }
 }

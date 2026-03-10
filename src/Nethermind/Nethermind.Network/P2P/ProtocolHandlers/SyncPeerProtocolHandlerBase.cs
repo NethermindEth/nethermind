@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,7 +30,7 @@ using MemoryAllowance = Nethermind.TxPool.MemoryAllowance;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
-    public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
+    public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer, IMessageSender<GetBlockHeadersMessage>, IMessageSender<GetBlockBodiesMessage>
     {
         internal static ulong SoftOutgoingMessageSizeLimit = (ulong)9_500.KB;
         public Node Node => Session?.Node;
@@ -66,8 +67,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _timestamper = Timestamper.Default;
-            _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
-            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
+            _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(this);
+            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(this);
         }
 
         public void Disconnect(DisconnectReason reason, string details)
@@ -294,9 +295,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<BlockHeadersMessage> FulfillBlockHeadersRequest(GetBlockHeadersMessage msg, CancellationToken cancellationToken)
         {
             if (msg.MaxHeaders > 1024)
-            {
-                throw new EthSyncException("Incoming headers request for more than 1024 headers");
-            }
+                ThrowTooManyHeaders(msg.MaxHeaders);
 
             Hash256 startingHash = msg.StartBlockHash;
             startingHash ??= SyncServer.FindHash(msg.StartBlockNumber);
@@ -355,6 +354,10 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             _bodiesRequests.Handle((blockBodiesMessage.Bodies, size), size);
         }
+
+        void IMessageSender<GetBlockHeadersMessage>.Send(GetBlockHeadersMessage message) => Send(message);
+
+        void IMessageSender<GetBlockBodiesMessage>.Send(GetBlockBodiesMessage message) => Send(message);
 
         protected async Task<ReceiptsMessage> Handle(GetReceiptsMessage msg, CancellationToken cancellationToken)
         {
@@ -480,5 +483,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         }
 
         #endregion
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowTooManyHeaders(long maxHeaders)
+            => throw new RlpLimitException($"Incoming headers request for more than 1024 headers: {maxHeaders}");
     }
 }

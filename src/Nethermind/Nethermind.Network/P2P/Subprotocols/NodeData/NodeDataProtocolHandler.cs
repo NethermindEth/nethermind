@@ -22,7 +22,7 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.Subprotocols.NodeData;
 
-public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
+public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer, IMessageSender<GetNodeDataMessage>
 {
     private readonly ISyncServer _syncServer;
     private readonly MessageQueue<GetNodeDataMessage, IByteArrayList> _nodeDataRequests;
@@ -42,7 +42,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         : base(session, statsManager, serializer, backgroundTaskScheduler, logManager)
     {
         _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-        _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(Send);
+        _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(this);
     }
     public override void Init()
     {
@@ -131,4 +131,6 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
 
         return await HandleResponse(request, TransferSpeedType.NodeData, static _ => $"{nameof(GetNodeDataMessage)}", token);
     }
+
+    void IMessageSender<GetNodeDataMessage>.Send(GetNodeDataMessage message) => Send(message);
 }

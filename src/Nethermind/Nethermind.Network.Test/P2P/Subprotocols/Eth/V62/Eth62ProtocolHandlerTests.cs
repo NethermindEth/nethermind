@@ -276,6 +276,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public void Disconnects_when_headers_request_exceeds_limit()
+        {
+            using GetBlockHeadersMessage msg = new();
+            msg.StartBlockHash = TestItem.KeccakA;
+            msg.MaxHeaders = 1025;
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
+
+            _session.Received(1).InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+            _session.DidNotReceive().DeliverMessage(Arg.Any<BlockHeadersMessage>());
+        }
+
+        [Test]
         public void Can_handle_new_block_message()
         {
             using NewBlockMessage newBlockMessage = new();
@@ -624,11 +638,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
-        {
-            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
-            getBlockHeadersPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
-        }
+            => EthProtocolTestHelper.HandleZeroMessage(_svc, _handler, msg, messageCode);
 
         [Test]
         public void Throws_if_new_block_message_received_before_status()
@@ -645,12 +655,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         private void HandleIncomingStatusMessage()
-        {
-            using var statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
-
-            IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
-            statusPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
-        }
+            => EthProtocolTestHelper.HandleIncomingStatusMessage(_svc, _handler, _genesisBlock);
     }
 }

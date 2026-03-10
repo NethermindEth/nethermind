@@ -288,22 +288,10 @@ public class Eth68ProtocolHandlerTests
     }
 
     private void HandleIncomingStatusMessage()
-    {
-        var statusMsg = new StatusMessage();
-        statusMsg.GenesisHash = _genesisBlock.Hash;
-        statusMsg.BestHash = _genesisBlock.Hash;
-
-        IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
-        statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
-    }
+        => EthProtocolTestHelper.HandleIncomingStatusMessage(_svc, _handler, _genesisBlock);
 
     private void HandleZeroMessage<T>(T msg, byte messageCode) where T : MessageBase
-    {
-        IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
-        getBlockHeadersPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = messageCode });
-    }
+        => EthProtocolTestHelper.HandleZeroMessage(_svc, _handler, msg, messageCode);
 
     private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes)
     {

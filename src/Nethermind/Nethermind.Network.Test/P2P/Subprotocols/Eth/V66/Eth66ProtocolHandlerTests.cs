@@ -339,20 +339,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
-        {
-            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
-            getBlockHeadersPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
-        }
+            => EthProtocolTestHelper.HandleZeroMessage(_svc, _handler, msg, messageCode);
         private void HandleIncomingStatusMessage()
-        {
-            using var statusMsg = new StatusMessage();
-            statusMsg.GenesisHash = _genesisBlock.Hash;
-            statusMsg.BestHash = _genesisBlock.Hash;
-
-            IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
-            statusPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
-        }
+            => EthProtocolTestHelper.HandleIncomingStatusMessage(_svc, _handler, _genesisBlock);
     }
 }

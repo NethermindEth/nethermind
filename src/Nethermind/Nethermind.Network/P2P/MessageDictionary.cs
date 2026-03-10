@@ -14,7 +14,12 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 
 namespace Nethermind.Network.P2P;
 
-public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? oldRequestThreshold = null) where T66Msg : IEth66Message
+public interface IMessageSender<in TMessage>
+{
+    void Send(TMessage message);
+}
+
+public class MessageDictionary<T66Msg, TData>(IMessageSender<T66Msg> sender, TimeSpan? oldRequestThreshold = null) where T66Msg : IEth66Message
 {
     // The limit is largely to prevent unexpected OOM.
     // But the side effect is that if the peer did not respond with the message, eventually it will throw
@@ -47,7 +52,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         {
             _requestCount++;
             request.StartMeasuringTime();
-            send(request.Message);
+            sender.Send(request.Message);
 
             if (_cleanOldRequestTask.IsCompleted)
             {
