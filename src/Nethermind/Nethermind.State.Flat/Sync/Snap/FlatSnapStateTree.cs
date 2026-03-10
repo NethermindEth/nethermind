@@ -29,7 +29,7 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
     private readonly IPersistence.IPersistenceReader _reader;
     private readonly IPersistence.IWriteBatch _writeBatch;
     private readonly bool _enableDoubleWriteCheck;
-    private SnapUpperBoundAdapter _adapter;
+    private readonly SnapUpperBoundAdapter _adapter;
     private readonly StateTree _tree;
     private IReadOnlyList<PathWithAccount>? _pendingEntries;
 

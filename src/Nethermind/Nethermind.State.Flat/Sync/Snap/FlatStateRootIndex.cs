@@ -55,7 +55,7 @@ public class FlatStateRootIndex : IFlatStateRootIndex, IDisposable
         }
 
         // Reset the queue and rebuild from scratch
-        using ArrayPoolList<(Hash256 stateRoot, StateId stateId)> stateRoots = new(128);
+        using ArrayPoolListRef<(Hash256 stateRoot, StateId stateId)> stateRoots = new(128);
         NonBlocking.ConcurrentDictionary<Hash256AsKey, StateId> newStateRootSet = new();
         newStateRootSet[newHead.StateRoot] = new StateId(newHead);
         stateRoots.Add((newHead.StateRoot, new StateId(newHead)));

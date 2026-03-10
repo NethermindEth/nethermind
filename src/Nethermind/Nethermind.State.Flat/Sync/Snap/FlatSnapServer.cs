@@ -102,8 +102,7 @@ public class FlatSnapServer(
                 }
             }
 
-            if (response.Count == 0) return EmptyByteArrayList.Instance;
-            return new ByteArrayListAdapter(response);
+            return response.Count == 0 ? EmptyByteArrayList.Instance : new ByteArrayListAdapter(response);
         }
     }
 
@@ -214,8 +213,8 @@ public class FlatSnapServer(
                     break;
                 }
 
-                Account? accountNeth = GetAccountByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes);
-                if (accountNeth is null)
+                Account? account = GetAccountByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes);
+                if (account is null)
                 {
                     break;
                 }
@@ -230,7 +229,7 @@ public class FlatSnapServer(
                     limitHash1,
                     byteLimit - responseSize,
                     storagePath,
-                    accountNeth.StorageRoot,
+                    account.StorageRoot,
                     pathWithStorageCollector,
                     cancellationToken);
 

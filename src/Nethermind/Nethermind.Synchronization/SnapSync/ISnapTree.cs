@@ -12,7 +12,7 @@ namespace Nethermind.Synchronization.SnapSync;
 /// <summary>
 /// Base interface for snap sync tree operations used in FillBoundaryTree.
 /// </summary>
-public interface ISnapTree<TEntry> : IDisposable where TEntry : ISnapEntry
+public interface ISnapTree<in TEntry> : IDisposable where TEntry : ISnapEntry
 {
     Hash256 RootHash { get; }
 
