@@ -43,10 +43,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 BlockHeader clonedHeader = header.Clone();
+
                 if (NoBaseFee)
                 {
                     clonedHeader.BaseFeePerGas = 0;
                 }
+
+                clonedHeader.GasUsed = 0;
+
                 return ExecuteTx(clonedHeader, tx, stateOverride, token);
             }
 
