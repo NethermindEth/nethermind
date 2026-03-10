@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -21,21 +19,8 @@ public class PatriciaSnapStorageTree(StorageTree tree, SnapUpperBoundAdapter ada
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
         nodeStorage.KeyExists(address, path, keccak);
 
-    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries)
-    {
-        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
-        long totalBytes = 0;
-        for (int i = 0; i < entries.Count; i++)
-        {
-            PathWithStorageSlot slot = entries[i];
-            bulkEntries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
-            totalBytes += slot.SlotRlpValue.Length;
-        }
-        Interlocked.Add(ref Metrics.SnapStateSynced, totalBytes);
-
-        tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
-        tree.UpdateRootHash();
-    }
+    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries) =>
+        ISnapTree<PathWithStorageSlot>.DoBulkSetAndUpdateRootHash(tree, entries);
 
     public void Commit(ValueHash256 upperBound)
     {

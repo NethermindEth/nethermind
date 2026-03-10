@@ -56,19 +56,7 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries)
     {
         _pendingEntries = entries;
-
-        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
-        long totalBytes = 0;
-        for (int i = 0; i < entries.Count; i++)
-        {
-            PathWithStorageSlot slot = entries[i];
-            bulkEntries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
-            totalBytes += slot.SlotRlpValue.Length;
-        }
-        Interlocked.Add(ref Nethermind.Synchronization.Metrics.SnapStateSynced, totalBytes);
-
-        _tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
-        _tree.UpdateRootHash();
+        ISnapTree<PathWithStorageSlot>.DoBulkSetAndUpdateRootHash(_tree, entries);
     }
 
     public void Commit(ValueHash256 upperBound)
