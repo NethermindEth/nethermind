@@ -150,6 +150,8 @@ Consensus-critical — changes the receipt Merkle root.
 
 Adds an optional field to the block header RLP encoding. If the new field is introduced by a new fork, it typically also requires a new Engine API payload version — see items 5-8.
 
+> **Every item below is required unless proven otherwise by reading the file.** Do not skip items 8-11 because the files already exist — a pre-existing file that does not handle your new field is incomplete. Open each file end-to-end; grep-and-insert misses version methods, capability registration, and payload schema changes.
+
 1. `Nethermind.Core/BlockHeader.cs` — add property
 2. `Nethermind.Core/Block.cs` — add read-only proxy
 3. `Nethermind.Serialization.Rlp/HeaderDecoder.cs` — add to encode/decode paths. Uses `requiredItems` bool array with back-propagation for field ordering
