@@ -288,7 +288,7 @@ public class BlockchainBridgeTests
     [
         (bridge, header, tx) => bridge.Call(header, tx),
         (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
-        (bridge, header, tx) => bridge.CreateAccessList(header, tx, default, false),
+        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, default, false),
     ];
 
     [Test, Combinatorial]
@@ -737,5 +737,36 @@ public class BlockchainBridgeTests
         _stateReader.HasStateForBlock(header).Returns(false);
 
         _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
+    }
+
+    [Test]
+    public void Simulate_adapter_uses_block_gas_used_for_budget()
+    {
+        SimulateRequestState simulateRequestState = new()
+        {
+            TotalGasLeft = 100_000,
+            BlockGasLeft = 80_000,
+            Validate = true,
+            TxsWithExplicitGas = new[] { true }
+        };
+
+        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+        processor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(ci =>
+            {
+                Transaction tx = ci.Arg<Transaction>();
+                tx.SpentGas = 10_000;
+                tx.BlockGasUsed = 50_000;
+                return TransactionResult.Ok;
+            });
+
+        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
+        Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+            .WithGasLimit(60_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+        adapter.Execute(transaction, Substitute.For<ITxTracer>());
+
+        simulateRequestState.TotalGasLeft.Should().Be(50_000);
+        simulateRequestState.BlockGasLeft.Should().Be(30_000);
     }
 }

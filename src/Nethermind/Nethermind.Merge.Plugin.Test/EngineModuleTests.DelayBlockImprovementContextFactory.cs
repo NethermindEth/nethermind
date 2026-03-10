@@ -33,6 +33,29 @@ public partial class EngineModuleTests
             new DelayBlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, _delay, startDateTime, cts);
     }
 
+    /// <summary>
+    /// Only the first improvement context builds a block (with zero delay).
+    /// Subsequent contexts block indefinitely until cancelled, making tests
+    /// deterministic without artificial time delays.
+    /// </summary>
+    private class FirstOnlyBlockImprovementContextFactory(
+        IBlockProducer blockProducer, TimeSpan timeout) : IBlockImprovementContextFactory
+    {
+        private int _callCount;
+
+        public IBlockImprovementContext StartBlockImprovementContext(
+            Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
+            DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts)
+        {
+            TimeSpan delay = Interlocked.Increment(ref _callCount) == 1
+                ? TimeSpan.Zero
+                : Timeout.InfiniteTimeSpan;
+            return new DelayBlockImprovementContext(
+                currentBestBlock, blockProducer, timeout, parentHeader, payloadAttributes,
+                delay, startDateTime, cts);
+        }
+    }
+
     private class DelayBlockImprovementContext : IBlockImprovementContext
     {
         private readonly CancellationTokenSource _improvementCancellation;

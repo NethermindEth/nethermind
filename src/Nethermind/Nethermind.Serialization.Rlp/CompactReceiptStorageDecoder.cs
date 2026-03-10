@@ -33,7 +33,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             TxReceipt txReceipt = new();
-            decoderContext.ReadSequenceLength();
+            int receiptEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
 
             byte[] firstItem = decoderContext.DecodeByteArray();
             if (firstItem.Length == 1)
@@ -46,7 +46,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             txReceipt.Sender = decoderContext.DecodeAddress();
-            txReceipt.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+            txReceipt.GasUsedTotal = decoderContext.DecodePositiveLong();
 
             int sequenceLength = decoderContext.ReadSequenceLength();
             int lastCheck = sequenceLength + decoderContext.Position;
@@ -66,6 +66,12 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
+            // Handle any remaining extra bytes
+            if (decoderContext.Position < receiptEnd && allowExtraBytes)
+            {
+                decoderContext.Position = receiptEnd;
+            }
+
             txReceipt.Bloom = new Bloom(txReceipt.Logs);
 
             return txReceipt;
@@ -83,6 +89,8 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
+            (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
+            int receiptEnd = decoderContext.Position + prefixLength + contentLength;
             decoderContext.SkipLength();
 
             ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
@@ -97,13 +105,20 @@ namespace Nethermind.Serialization.Rlp
             }
 
             decoderContext.DecodeAddressStructRef(out item.Sender);
-            item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+            item.GasUsedTotal = decoderContext.DecodePositiveLong();
 
             (int PrefixLength, int ContentLength) =
                 decoderContext.PeekPrefixAndContentLength();
             int logsBytes = ContentLength + PrefixLength;
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
+
+            // Handle any remaining extra bytes
+            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
+            if (decoderContext.Position < receiptEnd && allowExtraBytes)
+            {
+                decoderContext.Position = receiptEnd;
+            }
         }
 
         public void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors none,

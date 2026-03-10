@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+
 using System;
 using Autofac;
 using FluentAssertions;
@@ -33,7 +35,7 @@ public class StateProviderTests(bool useFlat)
     private class Context : IDisposable
     {
         public IWorldState WorldState { get; }
-        private readonly IContainer _container;
+        private readonly IContainer? _container;
 
         public Context(bool useFlat)
         {
@@ -79,7 +81,8 @@ public class StateProviderTests(bool useFlat)
     public void Eip_158_touch_zero_value_system_account_is_not_deleted()
     {
         using Context ctx = new(useFlat);
-        IWorldState provider = ctx.WorldState;
+        ParallelWorldState? parallelWorldState = ctx.WorldState as ParallelWorldState;
+        IWorldState provider = parallelWorldState is null ? ctx.WorldState : parallelWorldState.Inner;
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         var systemUser = Address.SystemUser;
 
@@ -130,7 +133,7 @@ public class StateProviderTests(bool useFlat)
         using Context ctx = new(useFlat);
         IWorldState provider = ctx.WorldState;
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
-        byte[] code = provider.GetCode(TestItem.AddressA);
+        byte[] code = provider.GetCode(TestItem.AddressA)!;
         code.Should().BeEmpty();
     }
 
