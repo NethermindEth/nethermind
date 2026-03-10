@@ -1,7 +1,7 @@
 ---
 name: eip-implementer
 description: Use when the user says "implement EIP-XXXX", "add support for EIP-XXXX", "/eip-implementer XXXX", or asks to plan an EIP implementation in the Nethermind codebase.
-allowed-tools: [Read, Grep, Glob]
+allowed-tools: [Bash(git diff*), Bash(git merge-base*), Bash(git log*), Bash(git status*), Read, Grep, Glob, WebFetch]
 ---
 
 # EIP Implementer
@@ -51,7 +51,7 @@ The raw GitHub URL returns full markdown with formulas and pseudocode intact. Th
 
 Before planning, ground yourself in the current state:
 
-1. **Find a similar EIP** — search for a recently implemented EIP in the same category (e.g., if implementing a new opcode, look at how `MCOPY` or `TLOAD` was added). Read its spec flag, EVM handler, and tests to understand the real pattern.
+1. **Find a similar EIP** — search for a recently implemented EIP in the same category (e.g., if implementing a new opcode, look at how `MCOPY` or `TLOAD` was added). Read its spec flag, EVM handler, and tests to understand the real pattern. **Critically: run `git log --oneline --all --grep="IsEip{similar_number}" --name-only` to see the full list of files that similar EIP touched** — this reveals test infrastructure files (builders, base classes, bytecode extensions) that `implementation-patterns.md` may not list.
 2. **Determine the target fork** — check whether the EIP spec names a target fork. If it does, verify the fork exists in `Nethermind.Specs/Forks/` and `MainnetSpecProvider.cs`. If the EIP **does not specify a fork** (common for Draft/Review status), list the available forks and **WAIT to ask the user** which fork to target — do not guess. The user can choose to:
    - Target an existing fork
    - Use the `fork-creator` skill to create a new one
@@ -118,6 +118,8 @@ Follow the plan step by step. For each file:
 1. Read the file first to understand existing patterns.
 2. Make the minimal, focused change needed.
 
+**Completion gate:** After implementing, cross-check every file listed in Step 4's plan against your actual changes. If a planned file was not touched, either implement it now or explain why it was dropped. Do not proceed to Step 6 with unimplemented plan items — the plan exists because those files are needed.
+
 #### Backward compatibility with prerequisite EIPs
 
 EIPs build on prerequisites — e.g., an EIP may assume EIP-1559 base fee fields already exist. The new EIP's feature flag controls **only the new behavior**. When implementing:
@@ -130,7 +132,7 @@ EIPs build on prerequisites — e.g., an EIP may assume EIP-1559 base fee fields
 After all code changes, add or update tests:
 
 - **ALWAYS** use `Prepare.EvmCode` fluent builder for test bytecode — never construct byte arrays manually
-- **ALWAYS** match the test base class to the EIP category: `VirtualMachineTestsBase` for opcodes/gas, `PrecompileTests<T>` for precompiles — follow the similar EIP's test from Step 2
+- **ALWAYS** match the test base class to the EIP category: `VirtualMachineTestsBase` for opcodes/gas, `BlockchainTestBase` for block-level behavior (withdrawals, tx types, state changes), `PrecompileTests<T>` for precompiles — follow the similar EIP's test from Step 2
 - **If the EIP changes existing behavior** (gas costs, validation rules), you **MUST** test both enabled and disabled states using `OverridableReleaseSpec` — for new-only features (new opcode, new precompile), enabled-only is sufficient
 
 ### Step 6 — Verify

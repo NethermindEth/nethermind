@@ -58,7 +58,8 @@ Launch up to 3 sub-checks with the EIP spec text and diff.
 - For gaps: suggest tests using project patterns — `VirtualMachineTestsBase` for EVM opcodes/gas, `BlockchainTestBase` for block-level behavior (withdrawals, tx types, state changes), `OverridableReleaseSpec` for flag toggling, `Prepare.EvmCode` for bytecode construction
 
 ### C: Interactions + Pipeline
-- **Pipeline**: All files updated per `implementation-patterns.md` Layer 1-5 (IReleaseSpec → ReleaseSpec → Decorator → OverridableReleaseSpec → fork → ChainSpec*). Missing = breaks non-mainnet
+- **Flag pipeline**: All files updated per `implementation-patterns.md` Layer 1-5 (IReleaseSpec → ReleaseSpec → Decorator → OverridableReleaseSpec → fork → ChainSpec*). Missing = breaks non-mainnet
+- **Pattern completeness**: Check which patterns from `implementation-patterns.md` apply (new opcode, new header field, new tx type, etc.) and verify all listed files for each applicable pattern are addressed in the diff. Missing = incomplete implementation
 - **Siblings**: Other EIPs in same fork sharing code paths. Compound conditions with new flag
 - **Gas composition**: If gas-related, check that the new gas logic composes correctly with existing gas-related EIPs already active in the target fork
 
