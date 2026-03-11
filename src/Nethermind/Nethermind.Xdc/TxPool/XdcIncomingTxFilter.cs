@@ -21,6 +21,9 @@ internal sealed class XdcIncomingTxFilter(
     ISpecProvider specProvider,
     ITrc21StateReader trc21StateReader) : IIncomingTxFilter
 {
+    private static readonly UInt256 MinGasPrice = (UInt256)XdcConstants.Trc21GasPrice;
+    private static readonly UInt256 MinGasPrice50x = (UInt256)XdcConstants.Trc21GasPrice50x;
+
     private AcceptTxResult ValidateSignTransaction(Transaction tx, long headerNumber, IXdcReleaseSpec xdcSpec)
     {
         if (tx.Data.Length < XdcConstants.SignTransactionDataLength)
@@ -58,6 +61,16 @@ internal sealed class XdcIncomingTxFilter(
             if (!IsEpochCandidate(snapshot, tx.SenderAddress))
             {
                 return AcceptTxResult.Invalid.WithMessage("Special transaction sender is not an epoch candidate");
+            }
+        }
+        else
+        {
+            UInt256 minGasPrice = headerNumber >= spec.BlockNumberGas50x
+                ? MinGasPrice50x
+                : MinGasPrice;
+            if (tx.GasPrice < minGasPrice)
+            {
+                return AcceptTxResult.FeeTooLow;
             }
         }
 
