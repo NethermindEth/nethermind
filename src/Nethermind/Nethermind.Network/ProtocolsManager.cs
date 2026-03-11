@@ -47,15 +47,10 @@ namespace Nethermind.Network
             new();
 
         private readonly ISyncPeerPool _syncPool;
-        private readonly ISyncServer _syncServer;
         private readonly ITxPool _txPool;
         private readonly ILogManager _logManager;
-        private readonly ISpecProvider _specProvider;
         private readonly INodeStatsManager _stats;
         private readonly IMessageSerializationService _serializer;
-        private readonly ITxGossipPolicy _txGossipPolicy;
-        private readonly IForkInfo _forkInfo;
-        private readonly IGossipPolicy _gossipPolicy;
         private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
 
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
@@ -63,14 +58,12 @@ namespace Nethermind.Network
         private readonly IRlpxHost _rlpxHost;
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
-        private readonly ITxPoolConfig _txPoolConfig;
         private readonly ILogger _logger;
         private readonly IProtocolHandlerFactory[] _factories;
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
 
         public ProtocolsManager(
             ISyncPeerPool syncPeerPool,
-            ISyncServer syncServer,
             IBackgroundTaskScheduler backgroundTaskScheduler,
             ITxPool txPool,
             IDiscoveryApp discoveryApp,
@@ -80,15 +73,9 @@ namespace Nethermind.Network
             IProtocolValidator protocolValidator,
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
             IEnumerable<IProtocolHandlerFactory> factories,
-            IForkInfo forkInfo,
-            IGossipPolicy gossipPolicy,
-            ILogManager logManager,
-            ITxPoolConfig txPoolConfig,
-            ISpecProvider specProvider,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
+            ILogManager logManager)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _backgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
@@ -97,12 +84,7 @@ namespace Nethermind.Network
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
-            _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
-            _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
-            _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _txPoolConfig = txPoolConfig;
-            _specProvider = specProvider;
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             // Order is already set by OrderedComponents<T> (AddFirst/AddLast)

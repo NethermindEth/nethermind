@@ -296,10 +296,8 @@ public class InitializeNetwork : IStep
 
     protected virtual IProtocolsManager CreateProtocolManager()
     {
-        ISyncServer syncServer = _api.SyncServer!;
         return new ProtocolsManager(
             _api.SyncPeerPool!,
-            syncServer,
             _api.BackgroundTaskScheduler,
             _api.TxPool!,
             _discoveryApp,
@@ -309,11 +307,6 @@ public class InitializeNetwork : IStep
             _api.ProtocolValidator,
             _peerStorage,
             _protocolHandlerFactories,
-            _forkInfo,
-            _api.GossipPolicy,
-            _api.LogManager,
-            _api.Config<ITxPoolConfig>(),
-            _api.SpecProvider!,
-            _api.TxGossipPolicy);
+            _api.LogManager);
     }
 }

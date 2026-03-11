@@ -218,7 +218,6 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ProtocolsManager = new ProtocolsManager(
                 Substitute.For<ISyncPeerPool>(),
-                Substitute.For<ISyncServer>(),
                 Substitute.For<IBackgroundTaskScheduler>(),
                 TxPool,
                 Substitute.For<IDiscoveryApp>(),
@@ -228,12 +227,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IProtocolValidator>(),
                 Substitute.For<INetworkStorage>(),
                 Array.Empty<IProtocolHandlerFactory>(),
-                Container.Resolve<IForkInfo>(),
-                Substitute.For<IGossipPolicy>(),
-                LimboLogs.Instance,
-                Substitute.For<ITxPoolConfig>(),
-                Substitute.For<ISpecProvider>(),
-                Substitute.For<ITxGossipPolicy>()
+                LimboLogs.Instance
             );
 
             EthRpcModule = _ethRpcModuleBuilder(this);

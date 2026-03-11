@@ -123,7 +123,6 @@ public class ProtocolsManagerTests
             _specProvider = Substitute.For<ISpecProvider>();
             _manager = new ProtocolsManager(
                 _syncPeerPool,
-                _syncServer,
                 RunImmediatelyScheduler.Instance,
                 _txPool,
                 _discoveryApp,
@@ -133,11 +132,7 @@ public class ProtocolsManagerTests
                 _protocolValidator,
                 _peerStorage,
                 BuildProtocolHandlerFactories(),
-                _forkInfo,
-                _gossipPolicy,
-                LimboLogs.Instance,
-                _txPoolConfig,
-                _specProvider);
+                LimboLogs.Instance);
         }
 
         private IProtocolHandlerFactory[] BuildProtocolHandlerFactories()
