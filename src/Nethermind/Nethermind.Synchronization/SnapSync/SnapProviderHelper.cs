@@ -368,7 +368,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (child is TrieNode childNode)
             {
-                return childNode.IsBoundaryProofNode == false;
+                return !childNode.IsBoundaryProofNode;
             }
 
             ValueHash256 childKeccak;
