@@ -5,10 +5,8 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;

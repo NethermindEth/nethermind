@@ -7,7 +7,6 @@ using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State.Flat.Persistence;
 using NSubstitute;
 using NUnit.Framework;
 

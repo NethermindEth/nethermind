@@ -3,7 +3,6 @@
 
 
 using Nethermind.Abi;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;

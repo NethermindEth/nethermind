@@ -15,7 +15,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
