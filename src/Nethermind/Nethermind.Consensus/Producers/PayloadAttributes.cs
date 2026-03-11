@@ -131,12 +131,12 @@ public class PayloadAttributes
     /// Whether this FCU version supports the given fork (identified by its payload attributes version).
     /// General rule: FCU version must match the payload attributes version.
     /// </summary>
-    private static bool IsSupportedFcuForkCombination(int fcuVersion, int timestampVersion) =>
-        (fcuVersion, timestampVersion) switch
+    private static bool IsSupportedFcuForkCombination(int fcuVersion, int payloadVersion) =>
+        (fcuVersion, timestampVersion: payloadVersion) switch
         {
             // Exception: FCUv2 also accepts Paris (V1) attributes for backward compatibility.
             (EngineApiVersions.Fcu.V2, PayloadAttributesVersions.V1) => true,
-            _ => fcuVersion == timestampVersion
+            _ => fcuVersion == payloadVersion
         };
 
     /// <summary>
