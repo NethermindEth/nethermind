@@ -246,7 +246,10 @@ internal static partial class EvmInstructions
 
         if (executingAccount == inheritor)
         {
-            vm.AddSelfDestructLog(executingAccount, result);
+            if (TEip8037.IsActive)
+                vm.AddBurnLog(executingAccount, result);
+            else
+                vm.AddSelfDestructLog(executingAccount, result);
         }
         else
         {
