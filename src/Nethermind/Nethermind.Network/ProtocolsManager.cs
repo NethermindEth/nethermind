@@ -46,17 +46,17 @@ namespace Nethermind.Network
         private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols =
             new();
 
-        protected readonly ISyncPeerPool _syncPool;
-        protected readonly ISyncServer _syncServer;
-        protected readonly ITxPool _txPool;
-        protected readonly ILogManager _logManager;
-        protected readonly ISpecProvider _specProvider;
-        protected readonly INodeStatsManager _stats;
-        protected readonly IMessageSerializationService _serializer;
-        protected readonly ITxGossipPolicy _txGossipPolicy;
-        protected readonly IForkInfo _forkInfo;
-        protected readonly IGossipPolicy _gossipPolicy;
-        protected readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
+        private readonly ISyncPeerPool _syncPool;
+        private readonly ISyncServer _syncServer;
+        private readonly ITxPool _txPool;
+        private readonly ILogManager _logManager;
+        private readonly ISpecProvider _specProvider;
+        private readonly INodeStatsManager _stats;
+        private readonly IMessageSerializationService _serializer;
+        private readonly ITxGossipPolicy _txGossipPolicy;
+        private readonly IForkInfo _forkInfo;
+        private readonly IGossipPolicy _gossipPolicy;
+        private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
 
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         private readonly IDiscoveryApp _discoveryApp;
@@ -65,7 +65,6 @@ namespace Nethermind.Network
         private readonly INetworkStorage _peerStorage;
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly ILogger _logger;
-        private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly IProtocolHandlerFactory[] _factories;
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
 
@@ -108,7 +107,6 @@ namespace Nethermind.Network
 
             // Order is already set by OrderedComponents<T> (AddFirst/AddLast)
             _factories = factories.ToArray();
-            _protocolFactories = GetProtocolFactories();
             rlpxHost.SessionCreated += SessionCreated;
         }
 
@@ -176,6 +174,27 @@ namespace Nethermind.Network
 
             string code = protocolCode.ToLowerInvariant();
 
+            // Handle P2P inline (special case with capabilities)
+            if (code == Protocol.P2P)
+            {
+                P2PProtocolHandler p2pHandler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _backgroundTaskScheduler, _logManager);
+                session.PingSender = p2pHandler;
+                p2pHandler.SubprotocolRequested += (s, e) => InitProtocol(session, e.ProtocolCode, e.Version);
+                session.AddProtocolHandler(p2pHandler);
+
+                if (addCapabilities)
+                {
+                    foreach (Capability capability in _capabilities)
+                    {
+                        session.AddSupportedCapability(capability);
+                    }
+                }
+
+                InitP2PProtocol(session, p2pHandler);
+                p2pHandler.Init();
+                return;
+            }
+
             // Try DI-registered factories in reverse order (plugins registered last take priority)
             for (int i = _factories.Length - 1; i >= 0; i--)
             {
@@ -188,34 +207,7 @@ namespace Nethermind.Network
                 }
             }
 
-            // Fall back to inline factories (for P2P, Eth during migration)
-            if (!_protocolFactories.TryGetValue(code, out Func<ISession, int, IProtocolHandler> protocolFactory))
-            {
-                throw new NotSupportedException($"Protocol {code} {version} is not supported");
-            }
-
-            IProtocolHandler protocolHandler = protocolFactory(session, version);
-            protocolHandler.SubprotocolRequested += (s, e) => InitProtocol(session, e.ProtocolCode, e.Version);
-            session.AddProtocolHandler(protocolHandler);
-            if (addCapabilities)
-            {
-                foreach (Capability capability in _capabilities)
-                {
-                    session.AddSupportedCapability(capability);
-                }
-            }
-
-            protocolHandler.Init();
-        }
-
-        public void AddProtocol(string code, Func<ISession, int, IProtocolHandler> factory)
-        {
-            if (_protocolFactories.ContainsKey(code))
-            {
-                throw new InvalidOperationException($"Protocol {code} was already added.");
-            }
-
-            _protocolFactories[code] = (session, version) => factory(session, version);
+            throw new NotSupportedException($"Protocol {code} {version} is not supported");
         }
 
         private void InitHandler(ISession session, IProtocolHandler handler)
@@ -231,36 +223,7 @@ namespace Nethermind.Network
             handler.Init();
         }
 
-        protected virtual IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
-            => new Dictionary<string, Func<ISession, int, IProtocolHandler>>
-            {
-                [Protocol.P2P] = (session, _) =>
-                {
-                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _backgroundTaskScheduler, _logManager);
-                    session.PingSender = handler;
-                    InitP2PProtocol(session, handler);
-
-                    return handler;
-                },
-                // Fallback inline factory for Eth (primarily for tests without DI)
-                // In production, DI-registered factories (checked first) will be used instead
-                [Protocol.Eth] = (session, version) =>
-                {
-                    Eth66ProtocolHandler ethHandler = version switch
-                    {
-                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfig, _specProvider, _txGossipPolicy),
-                        69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfig, _specProvider, _txGossipPolicy),
-                        70 => new Eth70ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfig, _specProvider, _txGossipPolicy),
-                        _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
-                    };
-                    InitSyncPeerProtocol(session, ethHandler);
-                    return ethHandler;
-                }
-            };
-
-        protected void InitSatelliteProtocol(ISession session, ProtocolHandlerBase handler)
+        private void InitSatelliteProtocol(ISession session, ProtocolHandlerBase handler)
         {
             session.Node.EthDetails = handler.Name;
             handler.ProtocolInitialized += (sender, args) =>
@@ -340,7 +303,7 @@ namespace Nethermind.Network
             };
         }
 
-        protected void InitSyncPeerProtocol(ISession session, SyncPeerProtocolHandlerBase handler)
+        private void InitSyncPeerProtocol(ISession session, SyncPeerProtocolHandlerBase handler)
         {
             session.Node.EthDetails = handler.Name;
             handler.ProtocolInitialized += (sender, args) =>
