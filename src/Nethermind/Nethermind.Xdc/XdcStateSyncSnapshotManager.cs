@@ -55,6 +55,19 @@ public class XdcStateSyncSnapshotManager
             spec.EpochLength
          ) - spec.Gap;
 
+        if (gapBlockNum + spec.Gap == spec.SwitchBlock)
+        {
+            XdcBlockHeader checkpointHeader = (XdcBlockHeader)_blockTree.FindHeader(spec.SwitchBlock);
+            XdcBlockHeader gapBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(gapBlockNum);
+            if (checkpointHeader is null || gapBlockHeader is null)
+                throw new InvalidOperationException($"Switch block {spec.SwitchBlock} or gap block {gapBlockNum} not found in block tree");
+
+            Snapshot snapshot = new(gapBlockHeader.Number, gapBlockHeader.Hash, checkpointHeader.ExtraData.ParseV1Masternodes());
+            _snapshotManager.StoreSnapshot(snapshot);
+
+            gapBlockNum += spec.EpochLength;
+        }
+
         if (gapBlockNum > pivotHeader.Number)
         {
             return [];

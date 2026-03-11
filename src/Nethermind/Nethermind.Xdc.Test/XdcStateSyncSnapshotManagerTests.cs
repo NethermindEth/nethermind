@@ -5,6 +5,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Contracts;
+using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Xdc.Test.Helpers;
@@ -15,7 +16,6 @@ namespace Nethermind.Xdc.Test;
 
 internal class XdcStateSyncSnapshotManagerTests
 {
-
     [
         TestCase(24, 10, 5, new int[] { 0, 9, 18, 23 }, new int[] { 15 }),
         TestCase(25, 10, 5, new int[] { 0, 9, 18, 23 }, new int[] { 15, 25 }),
@@ -63,4 +63,49 @@ internal class XdcStateSyncSnapshotManagerTests
         resultNumbers.Should().BeEquivalentTo(expectedGapBlockNumbers);
     }
 
+    // gapBlockNum = Max(switchBlock - switchBlock%epochLength, epochLength) - gap
+    // V1 branch triggers when gapBlockNum + gap == switchBlock
+    [TestCase(27, 10, 10, 5, new int[] { 10, 19 }, new int[] { 15, 25 })]
+    [TestCase(14, 10, 10, 5, new int[] { 10 },     new int[] { })]
+    public async Task GetGapBlocks_WhenGapLandsOnSwitchBlock_StoresV1Snapshot(
+        int pivotNumber,
+        int switchBlock,
+        int epochLength,
+        int gap,
+        int[] epochSwitchNumbers,
+        int[] expectedGapBlockNumbers
+    )
+    {
+
+        XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create(pivotNumber);
+        xdcTestBlockchain.ChangeReleaseSpec(spec =>
+        {
+            spec.EpochLength = epochLength;
+            spec.Gap = gap;
+            spec.SwitchBlock = switchBlock;
+        });
+
+        XdcBlockHeader pivotHeader = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(pivotNumber)!;
+        pivotHeader.Number.Should().Be(pivotNumber);
+
+        ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+        IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(ci => epochSwitchNumbers.Contains((int)ci.Arg<XdcBlockHeader>().Number));
+
+        XdcStateSyncSnapshotManager manager = new XdcStateSyncSnapshotManager(
+            xdcTestBlockchain.SpecProvider,
+            epochSwitchManager,
+            xdcTestBlockchain.BlockTree,
+            snapshotManager,
+            masternodeVotingContract
+        );
+
+        XdcBlockHeader[] result = manager.GetGapBlocks(pivotHeader);
+        int[] resultNumbers = result.Select(r => (int)r.Number).ToArray();
+
+        resultNumbers.Should().BeEquivalentTo(expectedGapBlockNumbers);
+        // Masternodes may be parsed incorrectly from ExtraData in test context, but we verify the call was made with the correct block number
+        snapshotManager.Received(1).StoreSnapshot(Arg.Is<Snapshot>(s => s.BlockNumber == switchBlock - gap));
+    }
 }
