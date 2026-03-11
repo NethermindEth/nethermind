@@ -15,12 +15,18 @@ namespace Nethermind.TxPool.Filters
     {
         private readonly TxDistinctSortedPool _txs;
         private readonly TxDistinctSortedPool _blobTxs;
+        private readonly ITxPoolCostAndFundsProvider _costAndFundsProvider;
         private readonly ILogger _logger;
 
-        public BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger)
+        public BalanceTooLowFilter(
+            TxDistinctSortedPool txs,
+            TxDistinctSortedPool blobTxs,
+            ILogger logger,
+            ITxPoolCostAndFundsProvider? costAndFundsProvider = null)
         {
             _txs = txs;
             _blobTxs = blobTxs;
+            _costAndFundsProvider = costAndFundsProvider ?? DefaultTxPoolCostAndFundsProvider.Instance;
             _logger = logger;
         }
 
@@ -32,7 +38,13 @@ namespace Nethermind.TxPool.Filters
             }
 
             AccountStruct account = state.SenderAccount;
-            UInt256 balance = account.Balance;
+            UInt256 additionalFunds = _costAndFundsProvider.GetAdditionalFunds(tx);
+            if (UInt256.AddOverflow(account.Balance, additionalFunds, out UInt256 balance))
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
+                return AcceptTxResult.Int256Overflow;
+            }
 
             UInt256 cumulativeCost = UInt256.Zero;
             bool overflow = false;
@@ -51,7 +63,8 @@ namespace Nethermind.TxPool.Filters
 
                 if (otherTx.Nonce < tx.Nonce)
                 {
-                    overflow |= otherTx.IsOverflowWhenAddingTxCostToCumulative(cumulativeCost, out cumulativeCost);
+                    overflow |= !_costAndFundsProvider.TryGetTransactionCost(otherTx, out UInt256 otherTxCost)
+                        || UInt256.AddOverflow(cumulativeCost, otherTxCost, out cumulativeCost);
                 }
                 else
                 {
@@ -59,7 +72,8 @@ namespace Nethermind.TxPool.Filters
                 }
             }
 
-            overflow |= tx.IsOverflowWhenAddingTxCostToCumulative(cumulativeCost, out cumulativeCost);
+            overflow |= !_costAndFundsProvider.TryGetTransactionCost(tx, out UInt256 txCost)
+                || UInt256.AddOverflow(cumulativeCost, txCost, out cumulativeCost);
 
             if (overflow)
             {

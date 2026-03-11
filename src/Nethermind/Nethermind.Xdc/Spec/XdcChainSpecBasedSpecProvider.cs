@@ -39,6 +39,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.IsTIPXDCXMiner = chainSpecEngineParameters.TipXDCX <= releaseStartBlock && releaseStartBlock < chainSpecEngineParameters.TIPXDCXMinerDisable;
         releaseSpec.IsDynamicGasLimitBlock = chainSpecEngineParameters.DynamicGasLimitBlock <= releaseStartBlock;
         releaseSpec.IsTipUpgradePenaltyEnabled = (chainSpecEngineParameters.TipUpgradePenalty ?? long.MaxValue) <= releaseStartBlock;
+        releaseSpec.BlockNumberGas50x = chainSpecEngineParameters.BlockNumberGas50x ?? long.MaxValue;
 
         releaseSpec.MergeSignRange = chainSpecEngineParameters.MergeSignRange;
         releaseSpec.BlackListedAddresses = new(chainSpecEngineParameters.BlackListedAddresses ?? []);
