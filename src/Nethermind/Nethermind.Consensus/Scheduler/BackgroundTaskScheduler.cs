@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -19,7 +18,8 @@ namespace Nethermind.Consensus.Scheduler;
 /// <summary>
 /// Orchestrates background tasks at BelowNormal thread priority with a concurrency limit.
 /// Each task receives a CancellationToken that is cancelled during block processing or on deadline expiry.
-/// During block processing, tasks run with a cancelled token so handlers can bail out quickly.
+/// During block processing, task execution is paused — no tasks run until block processing finishes.
+/// Tasks that expire while waiting are executed with a cancelled token so handlers can clean up.
 /// Handlers must check the token and stop promptly. Exceptions should be handled at handler level.
 /// </summary>
 public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposable
@@ -37,6 +37,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private long _queueCount;
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
+    private volatile TaskCompletionSource? _blockProcessingDoneSignal;
     private long _lastDropLogTicks;
     private bool _disposed = false;
 
@@ -83,6 +84,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         {
             long depth = Volatile.Read(ref _queueCount);
             if (_logger.IsDebug) _logger.Debug($"Block processing starting, background queue depth: {depth}");
+            // Signal that block processing is in progress so StartChannel can async-wait
+            _blockProcessingDoneSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             // On block processing, cancel the block process CTS so running tasks can exit quickly
             _blockProcessorCancellationTokenSource.Cancel();
         }
@@ -94,6 +97,9 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         using CancellationTokenSource oldTokenSource = Interlocked.Exchange(
             ref _blockProcessorCancellationTokenSource,
             new CancellationTokenSource());
+
+        // Signal that block processing is done so the paused consumers can resume
+        Interlocked.Exchange(ref _blockProcessingDoneSignal, null)?.TrySetResult();
     }
 
     private async Task StartChannel()
@@ -112,14 +118,24 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                     Interlocked.Decrement(ref _queueCount);
                     UpdateQueueCount();
 
-                    await activity.Do(token);
-                    Evm.Metrics.IncrementTotalBackgroundTasksExecuted();
-
                     if (token.IsCancellationRequested)
                     {
-                        // Break to refresh linked CTS — block processing state may have changed
-                        break;
+                        // Block processing is active. If the task still has time left, put it back
+                        // and wait for block processing to finish before resuming.
+                        if (DateTimeOffset.UtcNow < activity.Deadline)
+                        {
+                            Interlocked.Increment(ref _queueCount);
+                            _taskQueue.Writer.TryWrite(activity);
+                            UpdateQueueCount();
+                            // Wait for block processing to complete before draining more tasks
+                            goto WaitForBlockProcessing;
+                        }
+
+                        // Task already expired — run it with cancelled token so the handler can clean up
                     }
+
+                    await activity.Do(token);
+                    Evm.Metrics.IncrementTotalBackgroundTasksExecuted();
                 }
             }
             catch (OperationCanceledException)
@@ -132,6 +148,17 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             finally
             {
                 cts.Dispose();
+            }
+
+            continue;
+
+        WaitForBlockProcessing:
+            cts.Dispose();
+            // Async-wait for block processing to finish instead of polling/re-queuing in a loop
+            TaskCompletionSource? signal = _blockProcessingDoneSignal;
+            if (signal is not null)
+            {
+                await signal.Task.WaitAsync(_mainCancellationTokenSource.Token);
             }
         }
     }
@@ -167,35 +194,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 $"dropped={Evm.Metrics.TotalBackgroundTasksDropped}");
         }
         Interlocked.Decrement(ref _queueCount);
-        DisposeDeep(request);
+        request.TryDispose();
         return false;
-    }
-
-    /// <summary>
-    /// Recursively disposes IDisposable members buried inside ValueTuples.
-    /// Requests are often wrapped as ((actualRequest, func), outerFunc) by BackgroundTaskSchedulerWrapper,
-    /// so a plain TryDispose() on the outer tuple is a no-op — the inner IOwnedReadOnlyList etc. would leak.
-    /// </summary>
-    private static void DisposeDeep<T>(T value)
-    {
-        if (value is IDisposable disposable)
-        {
-            disposable.Dispose();
-        }
-        else if (value is ITuple tuple)
-        {
-            for (int i = 0; i < tuple.Length; i++)
-            {
-                object? element = tuple[i];
-                if (element is IDisposable d)
-                    d.Dispose();
-                else if (element is ITuple nested)
-                {
-                    for (int j = 0; j < nested.Length; j++)
-                        (nested[j] as IDisposable)?.Dispose();
-                }
-            }
-        }
     }
 
     private void UpdateQueueCount() => Evm.Metrics.NumberOfBackgroundTasksScheduled = Volatile.Read(ref _queueCount);

@@ -15,9 +15,8 @@ using NUnit.Framework;
 namespace Nethermind.Consensus.Test.Scheduler;
 
 /// <summary>
-/// Regression tests for the burst bug: during block processing, tasks must be disposed (not executed)
-/// and the queue must remain healthy — no drops, no monotonic _queueCount growth.
-/// After block processing ends, new tasks should execute normally.
+/// Regression tests: during block processing, tasks are paused (not executed).
+/// After block processing ends, queued tasks should execute normally with no drops.
 /// </summary>
 public class BackgroundTaskSchedulerBurstTests
 {
@@ -43,15 +42,20 @@ public class BackgroundTaskSchedulerBurstTests
 
         int totalDropped = 0;
         int totalScheduled = 0;
+        int totalExecuted = 0;
 
         for (int cycle = 0; cycle < cycles; cycle++)
         {
-            // Tasks scheduled during block processing are disposed, not executed
+            // Start block processing — tasks should be paused, not executed
             _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
 
             for (int i = 0; i < tasksPerCycle; i++)
             {
-                bool accepted = scheduler.TryScheduleTask(i, (_, _) => Task.CompletedTask, TimeSpan.FromSeconds(5));
+                bool accepted = scheduler.TryScheduleTask(i, (_, _) =>
+                {
+                    Interlocked.Increment(ref totalExecuted);
+                    return Task.CompletedTask;
+                }, TimeSpan.FromSeconds(5));
 
                 if (accepted)
                     Interlocked.Increment(ref totalScheduled);
@@ -59,10 +63,9 @@ public class BackgroundTaskSchedulerBurstTests
                     Interlocked.Increment(ref totalDropped);
             }
 
-            // Let disposed tasks drain
-            await Task.Delay(150);
+            // End block processing — paused tasks should now resume and execute
             _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
-            await Task.Delay(100);
+            await Task.Delay(200);
         }
 
         totalDropped.Should().Be(0, $"no tasks should be dropped — {totalDropped} of {totalScheduled + totalDropped} were dropped");
