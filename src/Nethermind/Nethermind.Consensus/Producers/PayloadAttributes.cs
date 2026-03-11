@@ -34,7 +34,7 @@ public class PayloadAttributes
 
     public string ToString(string indentation)
     {
-        var sb = new StringBuilder($"{indentation}{nameof(PayloadAttributes)} {{")
+        StringBuilder sb = new StringBuilder($"{indentation}{nameof(PayloadAttributes)} {{")
             .Append($"{nameof(Timestamp)}: {Timestamp}, ")
             .Append($"{nameof(PrevRandao)}: {PrevRandao}, ")
             .Append($"{nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient}");
@@ -127,6 +127,39 @@ public class PayloadAttributes
         return position;
     }
 
+    /// <summary>
+    /// The matrix of valid (FCU version, timestamp fork) combinations.
+    /// Each entry maps to the PayloadAttributes version the caller must provide.
+    /// </summary>
+    /// <returns>
+    /// The expected PayloadAttributes version for the combination,
+    /// or null if this FCU version doesn't support the given fork
+    /// (e.g. FCUv3 at a Shanghai timestamp, or FCUv2 at a Cancun timestamp).
+    /// </returns>
+    private static int? ExpectedPayloadVersion(int apiVersion, int timestampVersion) =>
+        (EngineApiVersions.FcuVersion(apiVersion), timestampVersion) switch
+        {
+            (EngineApiVersions.Fcu.V1, PayloadAttributesVersions.Paris) => PayloadAttributesVersions.Paris,
+            (EngineApiVersions.Fcu.V2, PayloadAttributesVersions.Paris or PayloadAttributesVersions.Shanghai) => timestampVersion,
+            (EngineApiVersions.Fcu.V3, PayloadAttributesVersions.Cancun) => PayloadAttributesVersions.Cancun,
+            (EngineApiVersions.Fcu.V4, PayloadAttributesVersions.Amsterdam) => PayloadAttributesVersions.Amsterdam,
+            _ => null
+        };
+
+    /// <summary>
+    /// Validates that the payload attributes version is consistent with the engine API version and the fork indicated by the timestamp.
+    /// </summary>
+    /// <param name="apiVersion">The engine API version of the called method (e.g. <see cref="EngineApiVersions.Shanghai"/> for FCUv2).</param>
+    /// <param name="actualVersion">The payload attributes version inferred from the fields present in the request (see <see cref="PayloadAttributesExtensions.GetVersion"/>).</param>
+    /// <param name="timestampVersion">The payload attributes version expected for the fork active at the requested timestamp (see <see cref="PayloadAttributesExtensions.ExpectedPayloadAttributesVersion"/>).</param>
+    /// <param name="methodName">Prefix for error messages (e.g. "PayloadAttributesV").</param>
+    /// <param name="error">Set to a descriptive message on failure; null on success.</param>
+    /// <returns>
+    /// <see cref="PayloadAttributesValidationResult.Success"/> when the (FCU version, fork, attributes) combination is valid;
+    /// <see cref="PayloadAttributesValidationResult.UnsupportedFork"/> when the FCU version doesn't support the timestamp's fork (post-Paris only, since the error code was introduced after Paris);
+    /// <see cref="PayloadAttributesValidationResult.InvalidPayloadAttributes"/> when the attributes structure doesn't match what the fork expects (e.g. missing withdrawals at Shanghai),
+    /// or when an unsupported Paris-era combination is encountered (falls back from UnsupportedFork since that error code didn't exist at Paris).
+    /// </returns>
     private static PayloadAttributesValidationResult ValidateVersion(
         int apiVersion,
         int actualVersion,
@@ -134,37 +167,24 @@ public class PayloadAttributes
         string methodName,
         [NotNullWhen(false)] out string? error)
     {
-        // version calculated from parameters should match api version
-        if (actualVersion != apiVersion)
-        {
-            // except of Shanghai api handling Paris fork
-            if (apiVersion == EngineApiVersions.Shanghai && timestampVersion == PayloadAttributesVersions.Paris ||
-                apiVersion == EngineApiVersions.Amsterdam && timestampVersion == PayloadAttributesVersions.Amsterdam)
-            {
+        // Look up the matrix of PayloadVersion that corresponds to the FCU version.
+        int? expectedPayloadVersion = ExpectedPayloadVersion(apiVersion, timestampVersion);
 
-                error = null;
-                return PayloadAttributesValidationResult.Success;
-            }
-
-            error = $"{methodName}{apiVersion} expected";
-            if (apiVersion == EngineApiVersions.Shanghai)
-            {
-                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
-            }
-
-            return actualVersion <= EngineApiVersions.Paris ? PayloadAttributesValidationResult.InvalidParams : PayloadAttributesValidationResult.InvalidPayloadAttributes;
-        }
-
-        // timestamp should correspond to proper api version
-        if (timestampVersion != apiVersion)
+        // If null — this FCU version doesn't support this fork at all.
+        if (expectedPayloadVersion is null)
         {
             error = $"{methodName}{timestampVersion} expected";
-            if (apiVersion == EngineApiVersions.Shanghai)
-            {
-                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
-            }
+            return timestampVersion >= PayloadAttributesVersions.Shanghai
+                ? PayloadAttributesValidationResult.UnsupportedFork // error code added in Shanghai
+                : PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
 
-            return timestampVersion <= EngineApiVersions.Paris ? PayloadAttributesValidationResult.InvalidParams : PayloadAttributesValidationResult.UnsupportedFork;
+        // Compare the expected version to what the caller actually sent.
+        // If mismatch → InvalidPayloadAttributes (-38003): "wrong attributes structure for this fork (e.g., missing withdrawals at Shanghai, or extra withdrawals before Shanghai)
+        if (actualVersion != expectedPayloadVersion)
+        {
+            error = $"{methodName}{expectedPayloadVersion} expected";
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
         error = null;
@@ -178,8 +198,7 @@ public class PayloadAttributes
         ValidateVersion(
             apiVersion: apiVersion,
             actualVersion: this.GetVersion(),
-            timestampVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp))
-                .ExpectedPayloadAttributesVersion(),
+            timestampVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion(),
             "PayloadAttributesV",
             out error);
 }
