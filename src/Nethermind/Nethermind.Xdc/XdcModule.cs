@@ -23,6 +23,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -47,20 +48,13 @@ public class XdcModule : Module
         // Register custom RocksDb config factory that handles XdcSnapshots without validation
         builder.AddDecorator<IRocksDbConfigFactory, XdcRocksDbConfigFactory>();
 
-        // Register XDC ETH protocol factory (versions 62-65, 100)
-        builder.AddFirst<IProtocolHandlerFactory>(ctx => new P2P.XdcEthProtocolHandlerFactory(
-            ctx.Resolve<ITimeoutCertificateManager>(),
-            ctx.Resolve<IVotesManager>(),
-            ctx.Resolve<ISyncInfoManager>(),
-            ctx.Resolve<IMessageSerializationService>(),
-            ctx.Resolve<INodeStatsManager>(),
-            ctx.Resolve<ISyncServer>(),
-            ctx.Resolve<IBackgroundTaskScheduler>(),
-            ctx.Resolve<ITxPool>(),
-            ctx.Resolve<IGossipPolicy>(),
-            ctx.Resolve<IForkInfo>(),
-            ctx.Resolve<ILogManager>(),
-            ctx.Resolve<ITxGossipPolicy>()));
+        // Register XDC protocol handlers using clean DSL (intercepts ETH protocol versions 62-65 and 100)
+        builder
+            .AddProtocolHandler<P2P.XdcProtocolHandler>(Protocol.Eth, version: 100, first: true)
+            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V62.Eth62ProtocolHandler>(Protocol.Eth, version: 62, first: true)
+            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V63.Eth63ProtocolHandler>(Protocol.Eth, version: 63, first: true)
+            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V64.Eth64ProtocolHandler>(Protocol.Eth, version: 64, first: true)
+            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V65.Eth65ProtocolHandler>(Protocol.Eth, version: 65, first: true);
 
         builder
             .AddStep(typeof(InitializeBlockchainXdc))

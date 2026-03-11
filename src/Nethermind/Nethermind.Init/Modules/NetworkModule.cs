@@ -11,10 +11,12 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.State;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Handshake = Nethermind.Network.Rlpx.Handshake;
@@ -131,20 +133,9 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V70.GetReceiptsMessage70, V70.GetReceiptsMessageSerializer70>()
             .AddMessageSerializer<V70.ReceiptsMessage70, V70.ReceiptsMessageSerializer70>()
 
-            // Protocol handler factories (using OrderedComponents pattern)
-            .AddLast<IProtocolHandlerFactory>(ctx => new Network.P2P.Subprotocols.Snap.SnapProtocolHandlerFactory(
-                ctx.Resolve<INodeStatsManager>(),
-                ctx.Resolve<IMessageSerializationService>(),
-                ctx.Resolve<IBackgroundTaskScheduler>(),
-                ctx.Resolve<IWorldStateManager>(),
-                ctx.Resolve<ILogManager>()))
-
-            .AddLast<IProtocolHandlerFactory>(ctx => new Network.P2P.Subprotocols.NodeData.NodeDataProtocolHandlerFactory(
-                ctx.Resolve<IMessageSerializationService>(),
-                ctx.Resolve<INodeStatsManager>(),
-                ctx.Resolve<ISyncServer>(),
-                ctx.Resolve<IBackgroundTaskScheduler>(),
-                ctx.Resolve<ILogManager>()))
+            // Protocol handler factories (using clean DSL with Autofac Func auto-generation)
+            .AddProtocolHandler<Network.P2P.Subprotocols.Snap.SnapProtocolHandler>(Protocol.Snap, version: 1)
+            .AddProtocolHandler<Network.P2P.Subprotocols.NodeData.NodeDataProtocolHandler>(Protocol.NodeData, version: 1)
 
             ;
     }
