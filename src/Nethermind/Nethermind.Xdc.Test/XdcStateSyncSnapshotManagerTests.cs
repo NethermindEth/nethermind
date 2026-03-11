@@ -66,7 +66,7 @@ internal class XdcStateSyncSnapshotManagerTests
     // gapBlockNum = Max(switchBlock - switchBlock%epochLength, epochLength) - gap
     // V1 branch triggers when gapBlockNum + gap == switchBlock
     [TestCase(27, 10, 10, 5, new int[] { 10, 19 }, new int[] { 15, 25 })]
-    [TestCase(14, 10, 10, 5, new int[] { 10 },     new int[] { })]
+    [TestCase(14, 10, 10, 5, new int[] { 10 }, new int[] { })]
     public async Task GetGapBlocks_WhenGapLandsOnSwitchBlock_StoresV1Snapshot(
         int pivotNumber,
         int switchBlock,
