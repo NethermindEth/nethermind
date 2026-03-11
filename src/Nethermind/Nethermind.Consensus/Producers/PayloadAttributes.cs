@@ -186,7 +186,7 @@ public class PayloadAttributes
             out error);
 }
 
-public enum PayloadAttributesValidationResult : byte { Success, InvalidParams, InvalidPayloadAttributes, UnsupportedFork };
+public enum PayloadAttributesValidationResult : byte { Success, InvalidPayloadAttributes, UnsupportedFork };
 
 public static class PayloadAttributesExtensions
 {
