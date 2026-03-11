@@ -36,11 +36,11 @@ public class Snapshot(
 
     public StateId From => from;
     public StateId To => to;
-    public IEnumerable<KeyValuePair<HashedKey<AddressAsKey>, Account?>> Accounts => content.Accounts;
-    public IEnumerable<KeyValuePair<HashedKey<AddressAsKey>, bool>> SelfDestructedStorageAddresses => content.SelfDestructedStorageAddresses;
-    public IEnumerable<KeyValuePair<HashedKey<(AddressAsKey, UInt256)>, SlotValue?>> Storages => content.Storages;
-    public IEnumerable<KeyValuePair<HashedKey<(Hash256AsKey, TreePath)>, TrieNode>> StorageNodes => content.StorageNodes;
-    public IEnumerable<(Hash256AsKey, TreePath)> StorageTrieNodeKeys => content.StorageNodes.Keys.Select(k => k.Key);
+    public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => content.Accounts;
+    public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => content.SelfDestructedStorageAddresses;
+    public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?>> Storages => content.Storages;
+    public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => content.StorageNodes;
+    public IEnumerable<(Hash256, TreePath)> StorageTrieNodeKeys => content.StorageNodes.Keys.Select(k => k.Key);
     public IEnumerable<KeyValuePair<HashedKey<TreePath>, TrieNode>> StateNodes => content.StateNodes;
     public IEnumerable<TreePath> StateNodeKeys => content.StateNodes.Keys.Select(k => k.Key);
     public int AccountsCount => content.Accounts.Count;
@@ -49,15 +49,15 @@ public class Snapshot(
     public int StorageNodesCount => content.StorageNodes.Count;
     public SnapshotContent Content => content;
 
-    public bool TryGetAccount(HashedKey<AddressAsKey> key, out Account? acc) => content.Accounts.TryGetValue(key, out acc);
+    public bool TryGetAccount(HashedKey<Address> key, out Account? acc) => content.Accounts.TryGetValue(key, out acc);
 
-    public bool HasSelfDestruct(HashedKey<AddressAsKey> key) => content.SelfDestructedStorageAddresses.TryGetValue(key, out bool _);
+    public bool HasSelfDestruct(HashedKey<Address> key) => content.SelfDestructedStorageAddresses.TryGetValue(key, out bool _);
 
-    public bool TryGetStorage(HashedKey<(AddressAsKey, UInt256)> key, out SlotValue? value) => content.Storages.TryGetValue(key, out value);
+    public bool TryGetStorage(HashedKey<(Address, UInt256)> key, out SlotValue? value) => content.Storages.TryGetValue(key, out value);
 
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node) => content.StateNodes.TryGetValue(key, out node);
 
-    public bool TryGetStorageNode(HashedKey<(Hash256AsKey, TreePath)> key, [NotNullWhen(true)] out TrieNode? node) => content.StorageNodes.TryGetValue(key, out node);
+    public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node) => content.StorageNodes.TryGetValue(key, out node);
 
     protected override void CleanUp() => resourcePool.ReturnSnapshotContent(usage, content);
 
@@ -69,17 +69,17 @@ public sealed class SnapshotContent : IDisposable, IResettable
     private const int NodeSizeEstimate = 650; // Counting the node size one by one has a notable overhead. So we use estimate.
 
     // ConcurrentDictionary: lock-free reads, best read latency for accounts/slots
-    public readonly ConcurrentDictionary<HashedKey<AddressAsKey>, Account?> Accounts = new();
-    public readonly ConcurrentDictionary<HashedKey<(AddressAsKey, UInt256)>, SlotValue?> Storages = new();
-    public readonly ConcurrentDictionary<HashedKey<AddressAsKey>, bool> SelfDestructedStorageAddresses = new();
+    public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new();
+    public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new();
+    public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
     public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new();
-    public readonly ConcurrentDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> StorageNodes = new();
+    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes = new();
 
     public void Reset()
     {
         foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in StateNodes) kv.Value.PrunePersistedRecursively(1);
-        foreach (KeyValuePair<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> kv in StorageNodes) kv.Value.PrunePersistedRecursively(1);
+        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in StorageNodes) kv.Value.PrunePersistedRecursively(1);
 
         Accounts.NoResizeClear();
         Storages.NoResizeClear();
@@ -91,12 +91,17 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public long EstimateMemory()
     {
         // ConcurrentDictionary entry overhead ~48 bytes for Accounts/Storages/SelfDestruct
+        // HashedKey<T> size = sizeof(T) + 4B (_hashCode)
+        // HashedKey<Address>: 8B (ref) + 4B = 12B
+        // HashedKey<(Address, UInt256)>: 8B + 32B + 4B = 44B
+        // HashedKey<TreePath>: 36B (Path+Length) + 4B = 40B
+        // HashedKey<(Hash256, TreePath)>: 8B (ref) + 36B + 4B = 48B
         return
-            Accounts.Count * 168 +                         // Key (8B) + Value ref (8B) + CD overhead (48) + Account object (~104B)
-            Storages.Count * 128 +                         // Key (40B) + Value (40B SlotValue?) + CD overhead (48)
-            SelfDestructedStorageAddresses.Count * 60 +    // Key (8B) + Value (4B) + CD overhead (48)
-            StateNodes.Count * (NodeSizeEstimate + 72) +   // Key (36B) + Value ref (8B) + dictionary overhead (28) + TrieNode
-            StorageNodes.Count * (NodeSizeEstimate + 80);  // Key (44B) + Value ref (8B) + dictionary overhead (28) + TrieNode
+            Accounts.Count * 172 +                         // Key (12B HashedKey<Address>) + Value ref (8B) + CD overhead (48) + Account object (~104B)
+            Storages.Count * 132 +                         // Key (44B HashedKey<(Address, UInt256)>) + Value (40B SlotValue?) + CD overhead (48)
+            SelfDestructedStorageAddresses.Count * 64 +    // Key (12B HashedKey<Address>) + Value (4B) + CD overhead (48)
+            StateNodes.Count * (NodeSizeEstimate + 76) +   // Key (40B HashedKey<TreePath>) + Value ref (8B) + dictionary overhead (28) + TrieNode
+            StorageNodes.Count * (NodeSizeEstimate + 84);  // Key (48B HashedKey<(Hash256, TreePath)>) + Value ref (8B) + dictionary overhead (28) + TrieNode
     }
 
     /// <summary>
@@ -109,11 +114,11 @@ public sealed class SnapshotContent : IDisposable, IResettable
         // ConcurrentDictionary entry overhead ~48 bytes
         // Reference type values (Account, TrieNode) not counted - already accounted by non-compacted snapshot
         return
-            Accounts.Count * 64 +                          // Key (8B) + Value ref (8B) + CD overhead (48)
-            Storages.Count * 128 +                         // Key (40B) + Value (40B SlotValue?) + CD overhead (48)
-            SelfDestructedStorageAddresses.Count * 60 +    // Key (8B) + Value (4B) + CD overhead (48)
-            StateNodes.Count * 72 +                        // Key (36B TreePath) + Value ref (8B) + dictionary overhead (28)
-            StorageNodes.Count * 80;                       // Key (44B) + Value ref (8B) + dictionary overhead (28)
+            Accounts.Count * 68 +                          // Key (12B HashedKey<Address>) + Value ref (8B) + CD overhead (48)
+            Storages.Count * 132 +                         // Key (44B HashedKey<(Address, UInt256)>) + Value (40B SlotValue?) + CD overhead (48)
+            SelfDestructedStorageAddresses.Count * 64 +    // Key (12B HashedKey<Address>) + Value (4B) + CD overhead (48)
+            StateNodes.Count * 76 +                        // Key (40B HashedKey<TreePath>) + Value ref (8B) + dictionary overhead (28)
+            StorageNodes.Count * 84;                       // Key (48B HashedKey<(Hash256, TreePath)>) + Value ref (8B) + dictionary overhead (28)
     }
 
     public void Dispose()

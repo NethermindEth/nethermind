@@ -24,15 +24,15 @@ public sealed class SnapshotBundle : IDisposable
 
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
-    private ConcurrentDictionary<HashedKey<AddressAsKey>, Account?> _changedAccounts = null!;
-    private ConcurrentDictionary<HashedKey<(AddressAsKey, UInt256)>, SlotValue?> _changedSlots = null!;
+    private ConcurrentDictionary<HashedKey<Address>, Account?> _changedAccounts = null!;
+    private ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> _changedSlots = null!;
     private ConcurrentDictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
-    private ConcurrentDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> _changedStorageNodes = null!;
-    private ConcurrentDictionary<HashedKey<AddressAsKey>, bool> _selfDestructedAccountAddresses = null!;
+    private ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> _changedStorageNodes = null!;
+    private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
     private ConcurrentDictionary<HashedKey<TreePath>, TrieNode> _readStateNodes = null!;
-    private ConcurrentDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> _readStorageNodes = null!;
+    private ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> _readStorageNodes = null!;
 
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
@@ -83,7 +83,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        HashedKey<AddressAsKey> key = new(address);
+        HashedKey<Address> key = new(address);
 
         if (!excludeChanged && _changedAccounts.TryGetValue(key, out Account? acc)) return acc;
 
@@ -100,7 +100,7 @@ public sealed class SnapshotBundle : IDisposable
 
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
-        HashedKey<AddressAsKey> key = new(address);
+        HashedKey<Address> key = new(address);
 
         if (_selfDestructedAccountAddresses.ContainsKey(key)) return _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount;
 
@@ -116,7 +116,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        HashedKey<(AddressAsKey, UInt256)> key = new((address, index));
+        HashedKey<(Address, UInt256)> key = new((address, index));
 
         if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
         {
@@ -144,7 +144,7 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
+        return _readOnlySnapshotBundle.GetSlot(key, selfDestructStateIdx);
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
@@ -215,14 +215,14 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStateNodes(out node, key);
+        return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
     }
 
     public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash)
     {
         GuardDispose();
 
-        HashedKey<(Hash256AsKey, TreePath)> key = new(((Hash256AsKey)address, path));
+        HashedKey<(Hash256, TreePath)> key = new((address, path));
 
         if (_trieChanged && _changedStorageNodes.TryGetValue(key, out TrieNode? node))
         {
@@ -279,7 +279,7 @@ public sealed class SnapshotBundle : IDisposable
             return true;
         }
 
-        HashedKey<(Hash256AsKey, TreePath)> key = new((address, path));
+        HashedKey<(Hash256, TreePath)> key = new((address, path));
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStorageNode(key, out node))
@@ -289,7 +289,7 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStorageNodes(out node, key);
+        return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
     }
 
     public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
@@ -330,19 +330,19 @@ public sealed class SnapshotBundle : IDisposable
 
         // Note: Hot path
         _trieChanged = true;
-        _changedStorageNodes[new HashedKey<(Hash256AsKey, TreePath)>((addr, path))] = newNode;
+        _changedStorageNodes[(addr, path)] = newNode;
         _transientResource.UpdateStorageNode(addr, path, newNode);
     }
 
-    public void SetAccount(AddressAsKey addr, Account? account) =>
-        _changedAccounts[new HashedKey<AddressAsKey>(addr)] = account;
+    public void SetAccount(Address addr, Account? account) =>
+        _changedAccounts[addr] = account;
 
-    public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
+    public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
     {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
         // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
         // lower down.
-        HashedKey<(AddressAsKey, UInt256)> key = new((address, index));
+        HashedKey<(Address, UInt256)> key = new((address, index));
         if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
         {
             _changedSlots[key] = null;
@@ -354,7 +354,7 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     // Also called SelfDestruct
-    public void Clear(Address address, Hash256AsKey addressHash)
+    public void Clear(Address address, Hash256 addressHash)
     {
         GuardDispose();
 
@@ -363,35 +363,35 @@ public sealed class SnapshotBundle : IDisposable
         // it skips persistence, but probably need to make sure it does not send it at all in the first place.
         bool isNewAccount = account == null || account.StorageRoot == Keccak.EmptyTreeHash;
 
-        _selfDestructedAccountAddresses.TryAdd(new HashedKey<AddressAsKey>(address), isNewAccount);
+        _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
 
         if (!isNewAccount)
         {
             // Collect keys first to avoid modifying during iteration
-            using ArrayPoolListRef<HashedKey<(Hash256AsKey, TreePath)>> storageKeysToRemove = new(16);
-            foreach (KeyValuePair<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> kv in _changedStorageNodes)
+            using ArrayPoolListRef<HashedKey<(Hash256, TreePath)>> storageKeysToRemove = new(16);
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in _changedStorageNodes)
             {
-                if (kv.Key.Key.Item1.Value == addressHash)
+                if (kv.Key.Key.Item1 == addressHash)
                 {
                     storageKeysToRemove.Add(kv.Key);
                 }
             }
 
-            foreach (HashedKey<(Hash256AsKey, TreePath)> key in storageKeysToRemove)
+            foreach (HashedKey<(Hash256, TreePath)> key in storageKeysToRemove)
             {
                 _changedStorageNodes.TryRemove(key, out _);
             }
 
-            using ArrayPoolListRef<HashedKey<(AddressAsKey, UInt256)>> slotKeysToRemove = new(16);
-            foreach (KeyValuePair<HashedKey<(AddressAsKey, UInt256)>, SlotValue?> kv in _changedSlots)
+            using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
+            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in _changedSlots)
             {
-                if (kv.Key.Key.Item1.Value == address)
+                if (kv.Key.Key.Item1 == address)
                 {
                     slotKeysToRemove.Add(kv.Key);
                 }
             }
 
-            foreach (HashedKey<(AddressAsKey, UInt256)> key in slotKeysToRemove)
+            foreach (HashedKey<(Address, UInt256)> key in slotKeysToRemove)
             {
                 _changedSlots.TryRemove(key, out _);
             }

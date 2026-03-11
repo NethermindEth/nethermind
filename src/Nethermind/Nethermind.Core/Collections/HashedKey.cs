@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Core.Collections;
 
-public readonly struct HashedKey<T>(T key) : IEquatable<HashedKey<T>> where T : IEquatable<T>
+public readonly record struct HashedKey<T>(T Key) : IEquatable<HashedKey<T>> where T : IEquatable<T>
 {
-    public readonly T Key = key;
-    private readonly int _hashCode = key.GetHashCode();
+    private readonly int _hashCode = Key.GetHashCode();
     public bool Equals(HashedKey<T> other) => Key.Equals(other.Key);
-    public override bool Equals(object? obj) => obj is HashedKey<T> other && Equals(other);
     public override int GetHashCode() => _hashCode;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static implicit operator T(HashedKey<T> value) => value.Key;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static implicit operator HashedKey<T>(T value) => new(value);
 }

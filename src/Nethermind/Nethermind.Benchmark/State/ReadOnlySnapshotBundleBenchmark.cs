@@ -206,9 +206,9 @@ public class ReadOnlySnapshotBundleBenchmark
 
             if (storageNodesList.Count < ArraySize)
             {
-                foreach (KeyValuePair<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
                 {
-                    storageNodesList.Add((kv.Key.Key.Item1.Value, kv.Key.Key.Item2));
+                    storageNodesList.Add((kv.Key.Key.Item1, kv.Key.Key.Item2));
                     if (storageNodesList.Count >= ArraySize)
                         break;
                 }
@@ -229,11 +229,11 @@ public class ReadOnlySnapshotBundleBenchmark
         List<(Hash256, TreePath)> sameAccountNodesList = new List<(Hash256, TreePath)>(ArraySize);
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
-            foreach (KeyValuePair<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
             {
-                if (kv.Key.Key.Item1.Value == sameAddrHash)
+                if (kv.Key.Key.Item1 == sameAddrHash)
                 {
-                    sameAccountNodesList.Add((kv.Key.Key.Item1.Value, kv.Key.Key.Item2));
+                    sameAccountNodesList.Add((kv.Key.Key.Item1, kv.Key.Key.Item2));
                     if (sameAccountNodesList.Count >= ArraySize)
                         break;
                 }
@@ -289,6 +289,9 @@ public class ReadOnlySnapshotBundleBenchmark
         if (_hitStorageNodes.Length == 0)
             throw new InvalidOperationException(
                 "No storage trie nodes found — storage tree commit may have failed");
+        if (_sameAccountStorageNodes.Length == 0)
+            throw new InvalidOperationException(
+                "No storage trie nodes found for same-account (DeriveAddress(1)) — storage tree commit may have failed");
 
         // Verify miss keys are actually absent
         if (_bundle.GetAccount(_missAccounts[0]) is not null)
