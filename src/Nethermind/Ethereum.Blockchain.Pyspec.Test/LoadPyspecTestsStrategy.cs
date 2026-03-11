@@ -92,8 +92,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
     private static void DownloadAndExtract(string archiveVersion, string archiveName, string testsDirectoryName)
     {
         // Clean up any partial extraction from a previous interrupted attempt.
-        if (Directory.Exists(testsDirectoryName))
-            Directory.Delete(testsDirectoryName, true);
+        Directory.Delete(testsDirectoryName, true);
 
         Directory.CreateDirectory(testsDirectoryName);
 
