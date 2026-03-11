@@ -206,10 +206,10 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_not_ignore_insufficient_funds_for_eip1559_transactions()
+        public void should_not_ignore_insufficient_funds_for_eip1559_transactions()
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
-            var txPool = CreatePool(null, specProvider);
+            TxPool txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.EIP1559).WithMaxFeePerGas(20)
                 .WithChainId(TestBlockchainIds.ChainId)
@@ -220,15 +220,11 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(AcceptTxResult.InsufficientFunds);
             EnsureSenderBalance(tx.SenderAddress, tx.Value);
 
-            Block block = Build.A.Block.WithGasLimit(10000000).TestObject;
-            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
-            Task waitTask = Wait.ForEventCondition<Block>(
-                cts.Token,
-                e => txPool.TxPoolHeadChanged += e,
-                e => txPool.TxPoolHeadChanged -= e,
-                _ => true);
-            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(block));
-            await waitTask;
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.WithGasLimit(10000000).TestObject));
+
+            // Head processing runs async via Task.Run; poll for hash cache to be cleared
+            // (the observable side effect) rather than waiting for the TxPoolHeadChanged event
+            SpinWait.SpinUntil(() => !txPool.IsKnown(tx.Hash), TimeSpan.FromSeconds(30));
 
             result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.InsufficientFunds);
