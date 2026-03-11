@@ -131,7 +131,6 @@ public abstract class BlockchainTestBase
         }
 
         IConfigProvider configProvider = new ConfigProvider();
-        // configProvider.GetConfig<IBlocksConfig>().PreWarmStateOnBlockProcessing = false;
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton(specProvider)

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -151,9 +152,9 @@ public class Eip8024Tests : VirtualMachineTestsBase
 
         private static IEnumerable<TestCaseData> DisabledTestCases()
         {
-            yield return new TestCaseData(PushNValues(20).Op(Instruction.DUPN).Data(0x80).Done).SetName("DupN_WhenDisabled");
-            yield return new TestCaseData(PushNValues(20).Op(Instruction.SWAPN).Data(0x80).Done).SetName("SwapN_WhenDisabled");
-            yield return new TestCaseData(PushNValues(5).Op(Instruction.EXCHANGE).Data(0x9d).Done).SetName("Exchange_WhenDisabled");
+            yield return new TestCaseData(Prepare.EvmCode.For(20, static (p, i) => p.PushData(i + 1)).Op(Instruction.DUPN).Data(0x80).Done).SetName("DupN_WhenDisabled");
+            yield return new TestCaseData(Prepare.EvmCode.For(20, static (p, i) => p.PushData(i + 1)).Op(Instruction.SWAPN).Data(0x80).Done).SetName("SwapN_WhenDisabled");
+            yield return new TestCaseData(Prepare.EvmCode.For(5, static (p, i) => p.PushData(i + 1)).Op(Instruction.EXCHANGE).Data(0x9d).Done).SetName("Exchange_WhenDisabled");
         }
 
         [TestCaseSource(nameof(DisabledTestCases))]

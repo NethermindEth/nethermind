@@ -69,7 +69,7 @@ public partial class BlockProducerBaseTests
                         })
                     );
                 _testRpcBlockchain.TestWallet.UnlockAccount(_address, new SecureString());
-                await _testRpcBlockchain.AddFunds(_address, 1.Ether());
+                await _testRpcBlockchain.AddFunds(_address, 1.Ether);
                 return this;
             }
 
@@ -95,7 +95,7 @@ public partial class BlockProducerBaseTests
                     Value = 0,
                     Data = bytecode,
                     GasLimit = 1000000,
-                    GasPrice = 20.GWei(),
+                    GasPrice = 20.GWei,
                     SenderAddress = _address,
                 };
                 await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
@@ -104,13 +104,13 @@ public partial class BlockProducerBaseTests
 
             public ScenarioBuilder SendEip1559Transaction(long gasLimit = 1000000, UInt256? gasPremium = null, UInt256? feeCap = null, bool serviceTransaction = false)
             {
-                _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), feeCap ?? UInt256.Zero, serviceTransaction);
+                _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei, feeCap ?? UInt256.Zero, serviceTransaction);
                 return this;
             }
 
             public ScenarioBuilder SendLegacyTransaction(long gasLimit = 1000000, UInt256? gasPremium = null, bool serviceTransaction = false, UInt256? nonce = null)
             {
-                _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), UInt256.Zero, serviceTransaction, nonce);
+                _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei, UInt256.Zero, serviceTransaction, nonce);
                 return this;
             }
             private async Task<ScenarioBuilder> SendTransactionAsync(long gasLimit, UInt256 gasPrice, UInt256 feeCap, bool serviceTransaction, UInt256? nonce = null)
@@ -291,8 +291,8 @@ public partial class BlockProducerBaseTests
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
             .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
-            .SendLegacyTransaction(gasLimit / 3, 20.GWei())
-            .SendEip1559Transaction(gasLimit / 3, 1.GWei(), 20.GWei())
+            .SendLegacyTransaction(gasLimit / 3, 20.GWei)
+            .SendEip1559Transaction(gasLimit / 3, 1.GWei, 20.GWei)
             .AssertNewBlock(875000000)
             .AssertNewBlockWithDecreasedBaseFee()
             .AssertNewBlockWithDecreasedBaseFee();
@@ -309,8 +309,8 @@ public partial class BlockProducerBaseTests
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
             .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
-            .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei())
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei)
+            .SendEip1559Transaction(gasTarget / 2, 1.GWei, 20.GWei)
             .AssertNewBlock(875000000)
             .AssertNewBlock(875000000)
             .AssertNewBlockWithDecreasedBaseFee();
@@ -327,9 +327,9 @@ public partial class BlockProducerBaseTests
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
             .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
-            .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei())
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei)
+            .SendEip1559Transaction(gasTarget / 2, 1.GWei, 20.GWei)
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei)
             .AssertNewBlock(875000000)
             .AssertNewBlockWithIncreasedBaseFee()
             .AssertNewBlockWithDecreasedBaseFee();
@@ -345,7 +345,7 @@ public partial class BlockProducerBaseTests
             .CreateTestBlockchain(gasTarget)
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
             .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
-            .SendLegacyTransaction(gasTarget / 2, 7.GWei() / 10, nonce: UInt256.Zero)
+            .SendLegacyTransaction(gasTarget / 2, 7.GWei / 10, nonce: UInt256.Zero)
             .AssertNewBlock(875000000)
             .AssertNewBlock(765625000)
             .AssertNewBlock(669921875) // added tx in 9th block

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Tracing;
@@ -43,7 +43,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     {
         // This test verifies that block gas accounting uses pre-refund gas
         // when EIP-7778 is enabled
-        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.CreateAccount(Recipient, 1.Ether);
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
 
@@ -74,7 +74,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     {
         // After the revert (ethereum/execution-specs#2073), receipts show post-refund gas
         // This is what users pay, while block gas accounting uses pre-refund
-        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.CreateAccount(Recipient, 1.Ether);
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
 
@@ -155,7 +155,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     public void Legacy_behavior_unchanged_when_eip7778_disabled()
     {
         // Use block 0 where EIP-7778 is not enabled
-        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.CreateAccount(Recipient, 1.Ether);
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(SpecProvider.GetSpec((0, 0)));
 
@@ -182,7 +182,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     [Test]
     public void Receipt_gas_equals_block_gas_when_eip7778_disabled()
     {
-        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.CreateAccount(Recipient, 1.Ether);
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(SpecProvider.GetSpec((0, 0)));
 
@@ -245,7 +245,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         Assert.That(intrinsicGas.FloorGas, Is.GreaterThan(intrinsicGas.Standard));
 
         // Now test execution - the block gas should use the floor since standard < floor
-        TestState.CreateAccount(TestItem.AddressA, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressA, 1.Ether);
         TestState.Commit(provider.GetSpec((1, 0)));
 
         var processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
@@ -312,8 +312,8 @@ public class Eip7778Tests : VirtualMachineTestsBase
         Assert.That(intrinsicGas.FloorGas, Is.EqualTo(21000 + 10)); // 21010 floor
 
         // Set up sender and recipient accounts
-        TestState.CreateAccount(TestItem.AddressA, 1.Ether());
-        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressA, 1.Ether);
+        TestState.CreateAccount(Recipient, 1.Ether);
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(provider.GetSpec((1, 0)));
 
@@ -382,8 +382,8 @@ public class Eip7778Tests : VirtualMachineTestsBase
         };
 
         // Set up sender and storage to clear (triggers refund)
-        TestState.CreateAccount(TestItem.AddressA, 1.Ether());
-        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressA, 1.Ether);
+        TestState.CreateAccount(Recipient, 1.Ether);
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(provider.GetSpec((1, 0)));
 
@@ -440,7 +440,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     {
         // After the revert, cumulative receipt gas uses post-refund values
         // Set up storage slot that will be cleared for refund
-        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.CreateAccount(Recipient, 1.Ether);
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
 
@@ -504,7 +504,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     public void Restore_to_snapshot_zero_clears_all_receipts_and_gas()
     {
         // Test that Restore(0) properly clears all receipts and resets gas tracking
-        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.CreateAccount(Recipient, 1.Ether);
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
 
@@ -546,7 +546,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     public void Restore_after_multiple_transactions_maintains_correct_gas_tracking()
     {
         // Test restore after multiple transactions with varying refunds
-        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.CreateAccount(Recipient, 1.Ether);
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
 
@@ -608,7 +608,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     public void Double_restore_works_correctly()
     {
         // Test that multiple restore operations work correctly
-        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.CreateAccount(Recipient, 1.Ether);
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
 
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);

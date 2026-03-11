@@ -51,7 +51,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         ) input)
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
-    [TestCase("0x76d560a6eb4ea2dd6232cc7feb6f61393d9e955baffaf3a84b1c53d3dd0746b8", "0x2277308bcf798426afd925e4f67303af26c83f5c1832644c4de93893d41bdbf5", "0xae4bd586033cba409a0c6e58c4a0808ef798747cd55a781b972e6e00b9427af8", "0xf0954948630d827c")]
+    [TestCase(
+        "0x76d560a6eb4ea2dd6232cc7feb6f61393d9e955baffaf3a84b1c53d3dd0746b8",
+        "0x2277308bcf798426afd925e4f67303af26c83f5c1832644c4de93893d41bdbf5",
+        "0xae4bd586033cba409a0c6e58c4a0808ef798747cd55a781b972e6e00b9427af8",
+        "0xf0954948630d827c")]
     public override Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V4(latestValidHash, blockHash, stateRoot, payloadId);
 
@@ -63,7 +67,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override Task processing_block_should_serialize_valid_responses(string blockHash, string latestValidHash, string payloadId)
         => base.processing_block_should_serialize_valid_responses(blockHash, latestValidHash, payloadId);
 
-    [TestCase("0xec6f5611ce3652fefd669e8d7e6d63bd8cdefdcdfe9a0a44eb61355084831da4", "0xf382f220de54b57ac9355d4eeb114f9e6bc4d25e307cdac0347b43d5534ac68e", "0xb8a1a0780980ab4e20a46237a3c533af8cd0386cf4c74d05c8ec5e9bf5cbc482", "0x2802e8a8c34cd1ea", _auraWithdrawalContractAddress)]
+    [TestCase(
+        "0xec6f5611ce3652fefd669e8d7e6d63bd8cdefdcdfe9a0a44eb61355084831da4",
+        "0xf382f220de54b57ac9355d4eeb114f9e6bc4d25e307cdac0347b43d5534ac68e",
+        "0xb8a1a0780980ab4e20a46237a3c533af8cd0386cf4c74d05c8ec5e9bf5cbc482",
+        "0x2802e8a8c34cd1ea",
+        _auraWithdrawalContractAddress)]
     public override async Task Should_process_block_as_expected_V6(string latestValidHash, string blockHash, string stateRoot, string payloadId, string? customWithdrawalContractAddress)
         => await base.Should_process_block_as_expected_V6(latestValidHash, blockHash, stateRoot, payloadId, customWithdrawalContractAddress);
 
@@ -95,6 +104,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     [Ignore("Withdrawals are not withdrawn due to lack of Aura contract in tests")]
     public override Task Can_apply_withdrawals_correctly((Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input) =>
         base.Can_apply_withdrawals_correctly(input);
+
+    [Test]
+    [Retry(3)]
+    [Platform(Exclude = "MacOsX", Reason = "Timing-sensitive 10ms delays too tight on macOS ARM runners")]
+    public new Task getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
+        => base.getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty();
 
     public class MergeAuRaTestBlockchain : MergeTestBlockchain
     {

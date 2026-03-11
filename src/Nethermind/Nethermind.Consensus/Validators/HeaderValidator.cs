@@ -74,7 +74,10 @@ namespace Nethermind.Consensus.Validators
         public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
             Validate<OffFlag>(header, parent, isUncle, out error);
 
-        protected virtual bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) where TOrphaned : struct, IFlag
+#if !ZK_EVM
+        virtual
+#endif
+        protected bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) where TOrphaned : struct, IFlag
         {
             IReleaseSpec spec;
             error = null;
@@ -188,10 +191,7 @@ namespace Nethermind.Consensus.Validators
             else if (parent.Hash != header.ParentHash)
             {
                 error = BlockErrorMessages.MismatchedParent(header.Hash!, header.ParentHash!, parent.Hash!);
-                Console.WriteLine($"parent: {parent}");
                 parent.SlotNumber = 0;
-                parent.Hash = parent.CalculateHash();
-                Console.WriteLine($"alt: {parent}");
                 return false;
             }
 

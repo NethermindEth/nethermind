@@ -777,24 +777,29 @@ namespace Nethermind.Evm.TransactionProcessing
                         }
                     }
 
+                    bool eip7708Enabled = spec.IsEip7708Enabled;
+                    bool tracingRefunds = tracer.IsTracingRefunds;
                     foreach (Address toBeDestroyed in substate.DestroyList)
                     {
                         if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
 
-                        if (spec.IsEip7708Enabled)
+                        if (eip7708Enabled)
                         {
                             UInt256 balance = WorldState.GetBalance(toBeDestroyed);
                             if (!balance.IsZero)
                             {
-                                substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
+                                substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
                             }
                         }
 
                         WorldState.ClearStorage(toBeDestroyed);
                         WorldState.DeleteAccount(toBeDestroyed);
 
-                        if (tracer.IsTracingRefunds)
-                            tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
+
+                        if (tracingRefunds)
+                        {
+                            tracer.ReportRefund(spec.GasCosts.DestroyRefund);
+                        }
                     }
 
                     statusCode = StatusCode.Success;
@@ -935,7 +940,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected bool PrepareAccountForContractDeployment(Address contractAddress, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec)
         {
-            if (WorldState.AccountExists(contractAddress) && contractAddress.IsNonZeroAccount(spec, codeInfoRepository, WorldState))
+            if (WorldState.IsNonZeroAccount(contractAddress, out _))
             {
                 if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
 
@@ -966,7 +971,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 long totalToRefund = codeInsertRegularRefund;
                 if (!substate.ShouldRevert)
-                    totalToRefund += substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled);
+                    totalToRefund += substate.Refund + substate.DestroyList.Count * spec.GasCosts.DestroyRefund;
                 actualRefund = CalculateClaimableRefund(spentGas, totalToRefund, spec);
 
                 if (Logger.IsTrace)

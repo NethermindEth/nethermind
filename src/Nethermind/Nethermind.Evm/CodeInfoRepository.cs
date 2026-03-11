@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;

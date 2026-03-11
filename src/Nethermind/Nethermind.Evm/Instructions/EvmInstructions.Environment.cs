@@ -455,7 +455,7 @@ internal static partial class EvmInstructions
         stack.Push32Bytes<TTracingInst>(in context.BlobBaseFee);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -551,7 +551,7 @@ internal static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct gas cost for balance operation as per specification.
-        TGasPolicy.Consume(ref gas, spec.GetBalanceCost());
+        TGasPolicy.Consume(ref gas, spec.GasCosts.BalanceCost);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
@@ -563,7 +563,7 @@ internal static partial class EvmInstructions
         stack.PushUInt256<TTracingInst>(in result);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -615,7 +615,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
-        TGasPolicy.Consume(ref gas, spec.GetExtCodeHashCost());
+        TGasPolicy.Consume(ref gas, spec.GasCosts.ExtCodeHashCost);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
@@ -636,7 +636,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -663,7 +663,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
-        TGasPolicy.Consume(ref gas, spec.GetExtCodeHashCost());
+        TGasPolicy.Consume(ref gas, spec.GasCosts.ExtCodeHashCost);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
@@ -690,7 +690,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -747,7 +747,7 @@ internal static partial class EvmInstructions
         stack.PushUInt64<TTracingInst>((ulong)TGasPolicy.GetRemainingGas(in gas));
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     }
@@ -792,7 +792,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -842,7 +842,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -873,7 +873,7 @@ internal static partial class EvmInstructions
         stack.PushUInt64<TTracingInst>(slotNumber.Value);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }

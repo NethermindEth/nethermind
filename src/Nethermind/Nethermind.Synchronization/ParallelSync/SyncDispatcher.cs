@@ -81,7 +81,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
             finally
             {
-                _activeTasks.Signal();
+                SignalActiveTask();
             }
         }
 
@@ -147,7 +147,7 @@ namespace Nethermind.Synchronization.ParallelSync
                                     }
                                     finally
                                     {
-                                        _activeTasks.Signal();
+                                        SignalActiveTask();
                                     }
                                 });
 
@@ -321,6 +321,12 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
+        private void SignalActiveTask()
+        {
+            try { _activeTasks.Signal(); }
+            catch (ObjectDisposedException) { }
+        }
+
         public async ValueTask DisposeAsync()
         {
             if (Interlocked.CompareExchange(ref _disposed, true, false))
@@ -329,7 +335,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             await _cancellationTokenSource.CancelAsync();
-            _activeTasks.Signal();
+            SignalActiveTask();
             if (!_activeTasks.Wait(ActiveTaskDisposeTimeout))
             {
                 if (Logger.IsWarn) Logger.Warn($"Timeout on waiting for active tasks for feed {Feed.GetType().Name} {_activeTasks.CurrentCount}");

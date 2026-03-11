@@ -101,7 +101,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             MaxCodeSize = chainSpecJson.Params.MaxCodeSize,
             MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition,
             MaxCodeSizeTransitionTimestamp = chainSpecJson.Params.MaxCodeSizeTransitionTimestamp,
-            Registrar = chainSpecJson.Params.EnsRegistrar,
+            Registrar = chainSpecJson.Params.Registrar,
             ForkBlock = chainSpecJson.Params.ForkBlock,
             ForkCanonHash = chainSpecJson.Params.ForkCanonHash,
             Eip7Transition = chainSpecJson.Params.Eip7Transition,

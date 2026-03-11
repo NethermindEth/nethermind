@@ -206,9 +206,9 @@ public class ChainSpecBasedSpecProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
-            Assert.That(spec.GetMaxBlobGasPerBlock(), Is.EqualTo(786432));
-            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei()));
-            Assert.That(spec.GetTargetBlobGasPerBlock(), Is.EqualTo(393216));
+            Assert.That(spec.GasCosts.MaxBlobGasPerBlock, Is.EqualTo(786432));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei));
+            Assert.That(spec.GasCosts.TargetBlobGasPerBlock, Is.EqualTo(393216));
         }
     }
 
@@ -323,10 +323,9 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.CancunTimestamp)) { TestName = "Cancun" };
             yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.PragueTimestamp - 1)) { TestName = "Before Prague" };
             yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.PragueTimestamp)) { TestName = "Prague" };
-            yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.PragueTimestamp + 100000000)) { TestName = "Future" };
-            // yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.OsakaTimestamp - 1)) { TestName = "Before Osaka" };
-            // yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.OsakaTimestamp)) { TestName = "Osaka" };
-            // yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.OsakaTimestamp + 100000000)) { TestName = "Future" };
+            yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.OsakaTimestamp - 1)) { TestName = "Before Osaka" };
+            yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.OsakaTimestamp)) { TestName = "Osaka" };
+            yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.OsakaTimestamp + 100000000)) { TestName = "Future" };
         }
     }
 
@@ -352,12 +351,12 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec? postCancunSpec = provider.GetSpec((1, ChiadoSpecProvider.CancunTimestamp));
         IReleaseSpec? prePragueSpec = provider.GetSpec((1, ChiadoSpecProvider.PragueTimestamp - 1));
         IReleaseSpec? postPragueSpec = provider.GetSpec((1, ChiadoSpecProvider.PragueTimestamp));
-        // IReleaseSpec? postOsakaSpec = provider.GetSpec((1, ChiadoSpecProvider.OsakaTimestamp));
+        IReleaseSpec? postOsakaSpec = provider.GetSpec((1, ChiadoSpecProvider.OsakaTimestamp));
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics(postCancunSpec);
         VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, ChiadoSpecProvider.FeeCollector);
-        // VerifyGnosisOsakaSpecifics(postOsakaSpec, ChiadoSpecProvider.FeeCollector);
+        VerifyGnosisOsakaSpecifics(postOsakaSpec, ChiadoSpecProvider.FeeCollector);
 
         using (Assert.EnterMultipleScope())
         {
@@ -476,9 +475,9 @@ public class ChainSpecBasedSpecProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)1112826));
-            Assert.That(spec.GetMaxBlobGasPerBlock(), Is.EqualTo(262144));
-            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
-            Assert.That(spec.GetTargetBlobGasPerBlock(), Is.EqualTo(131072));
+            Assert.That(spec.GasCosts.MaxBlobGasPerBlock, Is.EqualTo(262144));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei));
+            Assert.That(spec.GasCosts.TargetBlobGasPerBlock, Is.EqualTo(131072));
         }
     }
 

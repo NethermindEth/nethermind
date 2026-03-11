@@ -3,21 +3,17 @@
 
 using Autofac;
 using FluentAssertions;
-using FluentAssertions.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -28,13 +24,9 @@ using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
@@ -490,7 +482,7 @@ internal class SpecialTransactionsTests
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
             spec.IsTipTrc21FeeEnabled = false;
         });
 
@@ -556,7 +548,7 @@ internal class SpecialTransactionsTests
 
         blockChain.MainWorldState.BeginScope(head);
 
-        UInt256 tooHighBlockNumber = (UInt256)head.Number + 1;
+        UInt256 tooHighBlockNumber = (UInt256)head.Number + 2;
         Transaction txTooHigh = SignTransactionManager.CreateTxSign(
             tooHighBlockNumber,
             head.Hash!,
@@ -641,6 +633,46 @@ internal class SpecialTransactionsTests
         var result = blockChain.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task SignTx_From_NonEpochCandidate_Fails_Validation(bool enableEip1559)
+    {
+        int epochLength = 10;
+        XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
+        blockChain.ChangeReleaseSpec((spec) =>
+        {
+            spec.IsEip1559Enabled = enableEip1559;
+            spec.EpochLength = epochLength;
+        });
+
+        XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
+        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
+
+        Address address = TestItem.AddressA;
+        PrivateKey privateKey = TestItem.PrivateKeyA;
+
+        Assert.That(spec.GenesisMasterNodes.Contains(address), Is.False);
+
+        Transaction tx = SignTransactionManager.CreateTxSign(
+            (UInt256)head.Number,
+            head.Hash!,
+            blockChain.TxPool.GetLatestPendingNonce(address),
+            spec.BlockSignerContract,
+            address);
+
+        Signer signer = new(
+            blockChain.SpecProvider.ChainId,
+            privateKey,
+            NullLogManager.Instance
+        );
+        await signer.Sign(tx);
+
+        AcceptTxResult result = blockChain.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+        Assert.That(result.ToString(), Does.Contain("Special transaction sender is not an epoch candidate"));
     }
 
     [TestCase(true)]

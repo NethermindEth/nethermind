@@ -217,7 +217,7 @@ public class RangeQueryVisitorTests
     {
         public ArrayPoolList<(ValueHash256, byte[]?)> Leafs { get; } = new(0);
 
-        public int Collect(in ValueHash256 path, SpanSource value)
+        public int Collect(in ValueHash256 path, CappedArray<byte> value)
         {
             Leafs.Add((path, value.ToArray()));
             return 32 + Rlp.LengthOfByteString(value.Length, 0);

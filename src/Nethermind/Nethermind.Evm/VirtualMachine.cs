@@ -324,7 +324,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Continue with the next iteration of the execution loop.
             continue;
 
-        // Failure handling: attempts to process and possibly finalize the transaction after an error.
+            // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
             TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutput, out bool shouldExit);
             if (shouldExit)
@@ -1289,6 +1289,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             goto DataReturn;
 
         // If no return data is produced, return an empty call result.
+#if DEBUG
+        debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
+#endif
         return CallResult.Empty(codeInfo.Version);
 
     DataReturn:
@@ -1469,6 +1472,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (Spec.IsEip7708Enabled && !value.IsZero)
         {
             AddLog(TransferLog.CreateBurn(account, value));
+        }
+    }
+
+    internal void AddSelfDestructLog(Address contract, in UInt256 value)
+    {
+        if (Spec.IsEip7708Enabled && !value.IsZero)
+        {
+            AddLog(TransferLog.CreateSelfDestruct(contract, value));
         }
     }
 }

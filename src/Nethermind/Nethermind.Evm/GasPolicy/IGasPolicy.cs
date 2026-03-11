@@ -83,7 +83,14 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// Consume gas for SelfDestruct operation.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
-    static abstract void ConsumeSelfDestructGas(ref TSelf gas);
+    static abstract bool ConsumeSelfDestructGas(ref TSelf gas);
+
+    /// <summary>
+    /// Consume gas for code deposit during CREATE/CREATE2.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="cost">The gas cost (GasCostOf.CodeDeposit * codeLength).</param>
+    static abstract void ConsumeCodeDeposit(ref TSelf gas, long cost);
 
     /// <summary>
     /// Refund gas from a child call frame.
@@ -336,7 +343,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     {
         ReadOnlySpan<byte> data = transaction.Data.Span;
         int totalZeros = data.CountZeros();
-        return totalZeros + (data.Length - totalZeros) * spec.GetTxDataNonZeroMultiplier();
+        return totalZeros + (data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
     public static long AccessListCost(Transaction transaction, IReleaseSpec spec)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -391,5 +392,182 @@ namespace Nethermind.Core.Test
             stream.Reset();
             return stream;
         }
+
+        [Test]
+        public void PeekNextRlpLength_all_short_form_prefixes()
+        {
+            // Prefix 0-127: single byte, total = 1
+            // Prefix 128-183: short string, total = 1 + (prefix - 128)
+            // Prefix 192-247: short list, total = 1 + (prefix - 192)
+            for (int prefix = 0; prefix <= 247; prefix++)
+            {
+                if (prefix >= 184 && prefix <= 191) continue;
+
+                int expected = prefix < 128 ? 1
+                    : prefix <= 183 ? 1 + (prefix - 128)
+                    : 1 + (prefix - 192);
+
+                byte[] data = new byte[Math.Max(expected, 1)];
+                data[0] = (byte)prefix;
+
+                Rlp.ValueDecoderContext ctx = new(data);
+                ctx.PeekNextRlpLength().Should().Be(expected, $"ValueDecoderContext prefix {prefix}");
+
+                ValueRlpStream vrs = new(data);
+                vrs.PeekNextRlpLength().Should().Be(expected, $"ValueRlpStream prefix {prefix}");
+            }
+        }
+
+        [TestCase(184, 56)]   // long string, lengthOfLength=1
+        [TestCase(185, 256)]  // long string, lengthOfLength=2
+        [TestCase(248, 56)]   // long list, lengthOfLength=1
+        [TestCase(249, 256)]  // long list, lengthOfLength=2
+        public void PeekNextRlpLength_long_form(int prefix, int contentLength)
+        {
+            byte[] data = BuildLongFormRlp(prefix, contentLength);
+
+            Rlp.ValueDecoderContext ctx = new(data);
+            ctx.PeekNextRlpLength().Should().Be(data.Length, $"ValueDecoderContext prefix {prefix}");
+
+            ValueRlpStream vrs = new(data);
+            vrs.PeekNextRlpLength().Should().Be(data.Length, $"ValueRlpStream prefix {prefix}");
+        }
+
+        [TestCase(0, 0, 1)]       // single byte: prefix=0, content=1
+        [TestCase(127, 0, 1)]     // single byte: prefix=127, content=1
+        [TestCase(128, 1, 0)]     // short string: empty
+        [TestCase(129, 1, 1)]     // short string: 1 byte content
+        [TestCase(183, 1, 55)]    // short string: max short (55 bytes)
+        [TestCase(192, 1, 0)]     // short list: empty
+        [TestCase(193, 1, 1)]     // short list: 1 byte content
+        [TestCase(247, 1, 55)]    // short list: max short (55 bytes)
+        public void PeekPrefixAndContentLength_short_form(int prefix, int expectedPrefixLen, int expectedContentLen)
+        {
+            byte[] data = new byte[1 + expectedContentLen];
+            data[0] = (byte)prefix;
+
+            Rlp.ValueDecoderContext ctx = new(data);
+            var (pLen, cLen) = ctx.PeekPrefixAndContentLength();
+            pLen.Should().Be(expectedPrefixLen, $"ValueDecoderContext prefix length for {prefix}");
+            cLen.Should().Be(expectedContentLen, $"ValueDecoderContext content length for {prefix}");
+
+            ValueRlpStream vrs = new(data);
+            var (pLen2, cLen2) = vrs.PeekPrefixAndContentLength();
+            pLen2.Should().Be(expectedPrefixLen, $"ValueRlpStream prefix length for {prefix}");
+            cLen2.Should().Be(expectedContentLen, $"ValueRlpStream content length for {prefix}");
+        }
+
+        [TestCase(184, 56)]   // long string, lengthOfLength=1
+        [TestCase(248, 56)]   // long list, lengthOfLength=1
+        public void PeekPrefixAndContentLength_long_form(int prefix, int contentLength)
+        {
+            int lengthOfLength = prefix < 192 ? prefix - 183 : prefix - 247;
+            byte[] data = BuildLongFormRlp(prefix, contentLength);
+
+            Rlp.ValueDecoderContext ctx = new(data);
+            var (pLen, cLen) = ctx.PeekPrefixAndContentLength();
+            pLen.Should().Be(1 + lengthOfLength, $"ValueDecoderContext prefix length for {prefix}");
+            cLen.Should().Be(contentLength, $"ValueDecoderContext content length for {prefix}");
+
+            ValueRlpStream vrs = new(data);
+            var (pLen2, cLen2) = vrs.PeekPrefixAndContentLength();
+            pLen2.Should().Be(1 + lengthOfLength, $"ValueRlpStream prefix length for {prefix}");
+            cLen2.Should().Be(contentLength, $"ValueRlpStream content length for {prefix}");
+        }
+
+        [Test]
+        public void PeekNumberOfItemsRemaining_mixed_items()
+        {
+            // [singleByte, shortString(2), emptyString, shortList(1), singleByte] = 5 items
+            byte[] rlp = [0xC8, 0x42, 0x82, 0xAB, 0xCD, 0x80, 0xC1, 0x05, 0x7F];
+            AssertItemCount(rlp, 5);
+        }
+
+        [Test]
+        public void PeekNumberOfItemsRemaining_with_nested_lists()
+        {
+            // [0x01, [0x02, 0x03], 0x04] = 3 items
+            byte[] rlp = [0xC5, 0x01, 0xC2, 0x02, 0x03, 0x04];
+            AssertItemCount(rlp, 3);
+        }
+
+        [Test]
+        public void PeekNumberOfItemsRemaining_with_long_string()
+        {
+            // [singleByte, longString(56 bytes), singleByte] = 3 items
+            byte[] items = new byte[60];
+            items[0] = 0x42;
+            items[1] = 184;
+            items[2] = 56;
+            items[3] = 0xFF; // non-zero first byte of long content
+            items[59] = 0x43;
+
+            byte[] rlp = new byte[2 + items.Length];
+            rlp[0] = 248;
+            rlp[1] = 60;
+            items.CopyTo(rlp.AsSpan(2));
+
+            AssertItemCount(rlp, 3);
+        }
+
+        private static void AssertItemCount(byte[] rlp, int expected)
+        {
+            Rlp.ValueDecoderContext ctx = new(rlp);
+            ctx.ReadSequenceLength();
+            ctx.PeekNumberOfItemsRemaining().Should().Be(expected);
+
+            ValueRlpStream vrs = new(rlp);
+            vrs.ReadSequenceLength();
+            vrs.PeekNumberOfItemsRemaining().Should().Be(expected);
+        }
+
+        [TestCase(184, 10)]  // long string with content < 56
+        [TestCase(184, 55)]  // long string with content = 55 (max short-form)
+        [TestCase(248, 10)]  // long list with content < 56
+        [TestCase(248, 55)]  // long list with content = 55 (max short-form)
+        public void NonCanonical_long_form_rejected(int prefix, int contentLength)
+        {
+            byte[] data = BuildLongFormRlp(prefix, contentLength);
+            AssertNonCanonicalThrows(data);
+        }
+
+        private static void AssertNonCanonicalThrows(byte[] data)
+        {
+            // Ref structs cannot be captured in lambdas, so use try/catch instead of Assert.Throws
+            try
+            {
+                Rlp.ValueDecoderContext ctx = new(data);
+                ctx.PeekPrefixAndContentLength();
+                Assert.Fail("Expected RlpException from ValueDecoderContext");
+            }
+            catch (RlpException) { }
+
+            try
+            {
+                ValueRlpStream vrs = new(data);
+                vrs.PeekPrefixAndContentLength();
+                Assert.Fail("Expected RlpException from ValueRlpStream");
+            }
+            catch (RlpException) { }
+
+            using IMemoryOwner<byte> owner = MemoryPool<byte>.Shared.Rent(data.Length);
+            data.CopyTo(owner.Memory.Span);
+            Assert.Throws<RlpException>(() => new RlpItemList(owner, owner.Memory[..data.Length]));
+        }
+
+        private static byte[] BuildLongFormRlp(int prefix, int contentLength)
+        {
+            int lengthOfLength = prefix < 192 ? prefix - 183 : prefix - 247;
+            byte[] data = new byte[1 + lengthOfLength + contentLength];
+            data[0] = (byte)prefix;
+            int remaining = contentLength;
+            for (int i = lengthOfLength; i >= 1; i--)
+            {
+                data[i] = (byte)(remaining & 0xFF);
+                remaining >>= 8;
+            }
+            return data;
+        }
+
     }
 }

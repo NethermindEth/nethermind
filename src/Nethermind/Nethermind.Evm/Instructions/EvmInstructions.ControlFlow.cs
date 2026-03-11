@@ -85,7 +85,7 @@ internal static partial class EvmInstructions
         if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
@@ -123,7 +123,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
@@ -189,7 +189,7 @@ internal static partial class EvmInstructions
         vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.Revert;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -236,8 +236,10 @@ internal static partial class EvmInstructions
 
         Address executingAccount = vmState.Env.ExecutingAccount;
         bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
+        bool selfdestructOnlyOnSameTx = spec.SelfdestructOnlyOnSameTransaction;
+        bool clearEmpty = spec.ClearEmptyAccountWhenTouched;
         // Mark the executing account for destruction if allowed.
-        if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
+        if (!selfdestructOnlyOnSameTx || createInSameTx)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
         // Retrieve the current balance for transfer.
@@ -282,13 +284,13 @@ internal static partial class EvmInstructions
         }
 
         // Special handling when SELFDESTRUCT is limited to the same transaction.
-        if (spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount))
+        if (selfdestructOnlyOnSameTx && !createInSameTx && inheritor.Equals(executingAccount))
             goto Stop; // Avoid burning ETH if contract is not destroyed per EIP clarification
 
         // Subtract the balance from the executing account.
         state.SubtractFromBalance(executingAccount, result, spec);
 
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     Stop:
         return EvmExceptionType.Stop;
     OutOfGas:

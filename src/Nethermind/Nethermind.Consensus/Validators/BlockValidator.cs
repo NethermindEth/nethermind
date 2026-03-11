@@ -217,7 +217,7 @@ public class BlockValidator(
         {
             if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
             error ??= BlockErrorMessages.InvalidBlockLevelAccessListHash(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
-            if (_logger.IsWarn) _logger.Warn($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
+            if (_logger.IsDebug) _logger.Debug($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
             suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
         }
 
@@ -352,9 +352,9 @@ public class BlockValidator(
 
         ulong blobGasUsed = BlobGasCalculator.CalculateBlobGas(blobsInBlock);
 
-        if (blobGasUsed > spec.GetMaxBlobGasPerBlock())
+        if (blobGasUsed > spec.GasCosts.MaxBlobGasPerBlock)
         {
-            error = BlockErrorMessages.BlobGasUsedAboveBlockLimit(spec.GetMaxBlobGasPerBlock(), blobsInBlock, blobGasUsed);
+            error = BlockErrorMessages.BlobGasUsedAboveBlockLimit(spec.GasCosts.MaxBlobGasPerBlock, blobsInBlock, blobGasUsed);
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
             return false;
         }

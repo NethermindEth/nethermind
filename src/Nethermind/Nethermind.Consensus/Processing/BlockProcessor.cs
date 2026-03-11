@@ -145,14 +145,7 @@ public partial class BlockProcessor
         _stateProvider.Commit(spec, commitRoots: false);
 
         TxReceipt[] receipts;
-        try
-        {
-            receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
-        }
-        catch (ParallelWorldState.InvalidBlockLevelAccessListException e)
-        {
-            throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
-        }
+        receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
@@ -167,7 +160,7 @@ public partial class BlockProcessor
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
 
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
@@ -177,6 +170,8 @@ public partial class BlockProcessor
         _stateProvider.Commit(spec, commitRoots: false);
 
         _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+
+        _balBuilder?.SetBlockAccessList(block, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
@@ -194,19 +189,6 @@ public partial class BlockProcessor
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
-        {
-            if (block.IsGenesis)
-            {
-                header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
-            }
-            else
-            {
-                block.GeneratedBlockAccessList = _balBuilder.GeneratedBlockAccessList;
-                block.EncodedBlockAccessList = Rlp.Encode(_balBuilder.GeneratedBlockAccessList).Bytes;
-                header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
-            }
-        }
 
         header.Hash = header.CalculateHash();
 

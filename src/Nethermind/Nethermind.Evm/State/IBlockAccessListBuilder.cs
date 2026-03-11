@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.State;
 
@@ -14,4 +15,6 @@ public interface IBlockAccessListBuilder
     public void LoadSuggestedBlockAccessList(BlockAccessList suggested, long gasUsed);
     public long GasUsed();
     public void ValidateBlockAccessList(ushort index, long gasRemaining);
+    public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining);
+    public void SetBlockAccessList(Block block, IReleaseSpec spec);
 }

@@ -72,8 +72,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return true;
     }
 
-    public static void ConsumeSelfDestructGas(ref EthereumGasPolicy gas)
-        => Consume(ref gas, GasCostOf.SelfDestructEip150);
+    public static bool ConsumeSelfDestructGas(ref EthereumGasPolicy gas)
+        => UpdateGas(ref gas, GasCostOf.SelfDestructEip150);
+
+    /// <summary>
+    /// Consume gas for code deposit. For standard Ethereum, this is equivalent to Consume.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void ConsumeCodeDeposit(ref EthereumGasPolicy gas, long cost)
+        => Consume(ref gas, cost);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Refund(ref EthereumGasPolicy gas, in EthereumGasPolicy childGas)

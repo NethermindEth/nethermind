@@ -535,16 +535,17 @@ namespace Nethermind.Core.Extensions
 
         public static long ToPositiveLong(this ReadOnlySpan<byte> bytes)
         {
-            int length = bytes.Length;
-            if (length == 0)
-                return 0;
+            return bytes.Length switch
+            {
+                0 => 0,
+                // 1-7 bytes can never exceed long.MaxValue (they are at most 56 bits).
+                < 8 => (long)ReadUInt64BigEndian1To7(bytes),
+                // 8 bytes - only overflow if the top bit is set.
+                8 => ReadInt64BigEndianChecked(bytes),
+                _ => ParseLargeSpan(bytes),
+            };
 
-            // 1-7 bytes can never exceed long.MaxValue (they are at most 56 bits).
-            if (length < 8)
-                return (long)ReadUInt64BigEndian1To7(bytes);
-
-            // 8 bytes - only overflow if the top bit is set.
-            if (length == 8)
+            static long ReadInt64BigEndianChecked(ReadOnlySpan<byte> bytes)
             {
                 ulong value = BinaryPrimitives.ReadUInt64BigEndian(bytes);
                 if (value > long.MaxValue)
@@ -552,8 +553,6 @@ namespace Nethermind.Core.Extensions
 
                 return (long)value;
             }
-
-            return ParseLargeSpan(bytes);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             static long ParseLargeSpan(ReadOnlySpan<byte> bytes)

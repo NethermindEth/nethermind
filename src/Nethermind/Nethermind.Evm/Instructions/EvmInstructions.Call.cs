@@ -160,7 +160,7 @@ internal static partial class EvmInstructions
         IWorldState state = vm.WorldState;
 
         // Update gas: call cost and memory expansion for input and output.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GetCallCost()) ||
+        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
@@ -191,6 +191,7 @@ internal static partial class EvmInstructions
         });
 
         if (newAccountOutOfGas) goto OutOfGas;
+
 
         // Retrieve code information for the call and schedule background analysis if needed.
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
@@ -319,7 +320,7 @@ internal static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
@@ -379,7 +380,7 @@ internal static partial class EvmInstructions
         vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:

@@ -447,7 +447,7 @@ public partial class EngineModuleTests
 
     private async Task<ExecutionPayloadV4> AddNewBlockV6(IEngineRpcModule rpcModule, MergeTestBlockchain chain, int transactionCount = 0)
     {
-        Transaction[] txs = BuildTransactions(chain, chain.BlockTree.Head!.Hash!, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _);
+        Transaction[] txs = BuildTransactions(chain, chain.BlockTree.Head!.Hash!, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _, 0);
         chain.AddTransactions(txs);
 
         PayloadAttributes payloadAttributes = new()
@@ -460,11 +460,11 @@ public partial class EngineModuleTests
             SlotNumber = chain.BlockTree.Head!.SlotNumber + 1
         };
         Hash256 currentHeadHash = chain.BlockTree.HeadHash;
-        ForkchoiceStateV1 forkChoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
+        ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
 
         Task blockImprovementWait = chain.WaitForImprovedBlock(currentHeadHash);
 
-        string payloadId = (await rpcModule.engine_forkchoiceUpdatedV4(forkChoiceState, payloadAttributes)).Data.PayloadId!;
+        string payloadId = (await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes)).Data.PayloadId!;
 
         await blockImprovementWait;
 
@@ -478,8 +478,8 @@ public partial class EngineModuleTests
         GetPayloadV6Result payload = payloadResult.Data;
         await rpcModule.engine_newPayloadV5(payload.ExecutionPayload, payload.BlobsBundle.Blobs, TestItem.KeccakE, []);
 
-        ForkchoiceStateV1 newForkChoiceState = new(payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash);
-        await rpcModule.engine_forkchoiceUpdatedV4(newForkChoiceState);
+        ForkchoiceStateV1 newForkchoiceState = new(payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash);
+        await rpcModule.engine_forkchoiceUpdatedV4(newForkchoiceState, null);
 
         return payload.ExecutionPayload;
     }
@@ -592,7 +592,7 @@ public partial class EngineModuleTests
 
             if (errorKind is BalErrorKind.IncorrectChange)
             {
-                newContractAccount = newContractAccount.WithBalanceChanges([new(3, 1.GWei())]); // incorrect change
+                newContractAccount = newContractAccount.WithBalanceChanges([new(3, 1.GWei)]); // incorrect change
             }
 
             if (errorKind is BalErrorKind.SurplusReads)
@@ -643,7 +643,7 @@ public partial class EngineModuleTests
             {
                 expectedBalBuilder.WithAccountChanges(Build.An.AccountChanges
                     .WithAddress(TestItem.AddressD)
-                    .WithBalanceChanges([new(4, 1.GWei())])
+                    .WithBalanceChanges([new(4, 1.GWei)])
                     .TestObject);
             }
 

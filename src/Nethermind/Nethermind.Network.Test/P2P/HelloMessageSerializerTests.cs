@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
 
@@ -82,5 +84,49 @@ public class HelloMessageSerializerTests
         HelloMessageSerializer serializer = new();
         using HelloMessage helloMessage = serializer.Deserialize(bytes);
         Assert.That(helloMessage.P2PVersion, Is.EqualTo(55));
+    }
+
+    private static IEnumerable<TestCaseData> CapabilitiesLimitCases()
+    {
+        yield return new TestCaseData(1, false).SetName("1 cap - accepted");
+        yield return new TestCaseData(32, false).SetName("32 caps - accepted");
+        yield return new TestCaseData(64, false).SetName("Max caps - accepted");
+        yield return new TestCaseData(65, true).SetName("Max+1 caps - rejected");
+    }
+
+    [TestCaseSource(nameof(CapabilitiesLimitCases))]
+    public void Validates_capabilities_count(int capCount, bool shouldThrow)
+    {
+        ArrayPoolList<Capability> CreateCapabilities(int count)
+        {
+            ArrayPoolList<Capability> caps = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                caps.Add(new Capability($"p{i:D3}", 1));
+            }
+            return caps;
+        }
+
+        using HelloMessage original = new()
+        {
+            P2PVersion = 5,
+            ClientId = "test",
+            ListenPort = 30303,
+            NodeId = NetTestVectors.StaticKeyA.PublicKey,
+            Capabilities = CreateCapabilities(capCount),
+        };
+
+        HelloMessageSerializer serializer = new();
+        byte[] serialized = serializer.Serialize(original);
+
+        if (shouldThrow)
+        {
+            Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
+        }
+        else
+        {
+            using HelloMessage deserialized = serializer.Deserialize(serialized);
+            Assert.That(deserialized.Capabilities.Count, Is.EqualTo(capCount));
+        }
     }
 }

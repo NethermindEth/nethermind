@@ -478,5 +478,12 @@ namespace Nethermind.Core.Specs
         /// EIP-7954: Increase Maximum Contract Size
         /// </summary>
         public bool IsEip7954Enabled { get; }
+
+        /// <summary>
+        /// Precomputed gas cost and refund constants derived from this spec.
+        /// Values are cached per spec instance (singletons per fork) to avoid
+        /// repeated interface dispatch on the EVM opcode hot path.
+        /// </summary>
+        SpecGasCosts GasCosts { get; }
     }
 }
