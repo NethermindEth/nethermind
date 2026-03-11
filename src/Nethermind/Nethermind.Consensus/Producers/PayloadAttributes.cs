@@ -18,9 +18,9 @@ public class PayloadAttributes
 {
     public ulong Timestamp { get; set; }
 
-    public Hash256 PrevRandao { get; set; }
+    public Hash256? PrevRandao { get; set; }
 
-    public Address SuggestedFeeRecipient { get; set; }
+    public Address? SuggestedFeeRecipient { get; set; }
 
     public Withdrawal[]? Withdrawals { get; set; }
 
@@ -97,10 +97,10 @@ public class PayloadAttributes
         BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), Timestamp);
         position += sizeof(ulong);
 
-        PrevRandao.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
+        (PrevRandao ?? Keccak.Zero).Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
         position += Keccak.Size;
 
-        SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(position, Address.Size));
+        (SuggestedFeeRecipient ?? Address.Zero).Bytes.CopyTo(inputSpan.Slice(position, Address.Size));
         position += Address.Size;
 
         if (Withdrawals is not null)
@@ -178,13 +178,41 @@ public class PayloadAttributes
     public virtual PayloadAttributesValidationResult Validate(
         ISpecProvider specProvider,
         int fcuVersion,
-        [NotNullWhen(false)] out string? error) =>
-        ValidateVersion(
+        [NotNullWhen(false)] out string? error)
+    {
+        int actualVersion = this.GetVersion();
+        PayloadAttributesValidationResult result = ValidateVersion(
             fcuVersion: fcuVersion,
-            actualVersion: this.GetVersion(),
+            actualVersion: actualVersion,
             timestampVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion(),
             "PayloadAttributesV",
             out error);
+
+        if (result == PayloadAttributesValidationResult.Success)
+        {
+            error = ValidateFields(actualVersion);
+            result = error is null
+                ? PayloadAttributesValidationResult.Success
+                : PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+
+        return result;
+    }
+
+    private string? ValidateFields(int actualVersion)
+    {
+        if (Timestamp == 0) return $"{nameof(Timestamp)} must be provided";
+        if (PrevRandao is null) return $"{nameof(PrevRandao)} must be provided";
+        if (SuggestedFeeRecipient is null) return $"{nameof(SuggestedFeeRecipient)} must be provided";
+
+        return actualVersion switch
+        {
+            >= PayloadAttributesVersions.V2 when Withdrawals is null => $"{nameof(Withdrawals)} must be provided",
+            >= PayloadAttributesVersions.V3 when ParentBeaconBlockRoot is null => $"{nameof(ParentBeaconBlockRoot)} must be provided",
+            >= PayloadAttributesVersions.V4 when SlotNumber is null => $"{nameof(SlotNumber)} must be provided",
+            _ => null
+        };
+    }
 }
 
 public enum PayloadAttributesValidationResult : byte { Success, InvalidPayloadAttributes, UnsupportedFork };
