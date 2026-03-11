@@ -132,7 +132,10 @@ namespace Nethermind.Consensus.Processing
                                     state.receiptsTracers[txIndex],
                                     state.processingOptions,
                                     state.logger);
-                                state.gasResults[txIndex].SetResult((state.txs[txIndex].BlockGasUsed, state.txs[txIndex].SpentGas, null));
+                                long spentGas = state.txs[txIndex].SpentGas;
+                                long blockGasUsed = state.txs[txIndex].BlockGasUsed;
+                                blockGasUsed = blockGasUsed == state.txs[txIndex].GasLimit ? spentGas : blockGasUsed;
+                                state.gasResults[txIndex].SetResult((blockGasUsed, spentGas, null));
                             }
                             catch (Exception ex)
                             {
