@@ -58,8 +58,10 @@ Launch up to 4 sub-checks with the EIP spec text and diff.
 ### B: Tests + Backward Compat
 
 - **Flag gating**: New behavior behind `IsEip{number}Enabled`. Flag-off path unchanged. No re-gating prerequisites
-- **Test checklist**: flag-off test (`OverridableReleaseSpec`), boundary tests (exact gas / off-by-1), revert tests per "MUST revert"
-- For gaps: suggest tests using project patterns — `VirtualMachineTestsBase` for EVM opcodes/gas, `BlockchainTestBase` for block-level behavior (withdrawals, tx types, state changes), `OverridableReleaseSpec` for flag toggling, `Prepare.EvmCode` for bytecode construction
+- **Test checklist**:
+  - For each MUST in the spec (including backward compat / security sections), verify a corresponding test exists — at the appropriate layer (unit, integration, or RPC)
+  - flag-off test (`OverridableReleaseSpec`), boundary tests (exact gas / off-by-1), revert tests per "MUST revert"
+  - For gaps: suggest tests using project patterns — `VirtualMachineTestsBase` for EVM opcodes/gas, `BlockchainTestBase` for block-level behavior (withdrawals, tx types, state changes), `OverridableReleaseSpec` for flag toggling, `Prepare.EvmCode` for bytecode construction
 
 ### C: Interactions + Pipeline
 
