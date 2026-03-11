@@ -61,6 +61,7 @@ public class TestBlockchain : IDisposable
     public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
     public IShareableTxProcessorSource ShareableTxProcessorSource => _fromContainer.ShareableTxProcessorSource;
     public IBranchProcessor BranchProcessor => _fromContainer.MainProcessingContext.BranchProcessor;
+    public IBlockProcessor BlockProcessor => _fromContainer.MainProcessingContext.BlockProcessor;
     public IBlockchainProcessor BlockchainProcessor => _fromContainer.MainProcessingContext.BlockchainProcessor;
     public IBlockProcessingQueue BlockProcessingQueue => _fromContainer.MainProcessingContext.BlockProcessingQueue;
     public IBlockPreprocessorStep BlockPreprocessorStep => _fromContainer.BlockPreprocessorStep;
@@ -318,12 +319,14 @@ public class TestBlockchain : IDisposable
             if (specProvider.GenesisSpec.IsBeaconBlockRootAvailable)
             {
                 state.CreateAccount(specProvider.GenesisSpec.Eip4788ContractAddress!, 1);
+                state.InsertCode(Eip4788Constants.BeaconRootsAddress, Eip4788TestConstants.CodeHash, Eip4788TestConstants.Code, specProvider.GenesisSpec);
             }
 
             // Eip2935
-            if (specProvider.GenesisSpec.IsBlockHashInStateAvailable)
+            if (specProvider.GenesisSpec.IsEip2935Enabled)
             {
                 state.CreateAccount(specProvider.GenesisSpec.Eip2935ContractAddress!, 1);
+                state.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, specProvider.GenesisSpec);
             }
 
             state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
@@ -331,7 +334,7 @@ public class TestBlockchain : IDisposable
             state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
 
             byte[] code = Bytes.FromHexString("0xabcd");
-            state.InsertCode(TestItem.AddressA, code, specProvider.GenesisSpec!);
+            state.InsertCode(TestItem.AddressA, code, specProvider.GenesisSpec);
             state.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
 
             IReleaseSpec? finalSpec = specProvider.GetFinalSpec();
@@ -339,13 +342,13 @@ public class TestBlockchain : IDisposable
             if (finalSpec?.WithdrawalsEnabled is true)
             {
                 state.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, specProvider.GenesisSpec!);
+                state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, specProvider.GenesisSpec);
             }
 
             if (finalSpec?.ConsolidationRequestsEnabled is true)
             {
                 state.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec!);
+                state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec);
             }
 
             BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
@@ -369,6 +372,16 @@ public class TestBlockchain : IDisposable
             if (specProvider.GenesisSpec.RequestsEnabled)
             {
                 genesisBlockBuilder.WithEmptyRequestsHash();
+            }
+
+            if (specProvider.GenesisSpec.BlockLevelAccessListsEnabled)
+            {
+                genesisBlockBuilder.WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp);
+            }
+
+            if (specProvider.GenesisSpec.IsEip7843Enabled)
+            {
+                genesisBlockBuilder.WithSlotNumber(0);
             }
 
             Block genesisBlock = genesisBlockBuilder.TestObject;

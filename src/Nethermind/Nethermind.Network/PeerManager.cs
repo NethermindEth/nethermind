@@ -128,7 +128,7 @@ namespace Nethermind.Network
 #pragma warning disable 4014
 
                 // TODO: hack related to not clearly separated peer pool and peer manager
-                if (!_nodesBeingAdded.ContainsKey(peer.Node.Id))
+                if (CanQuickConnect(peer))
                 {
                     // fire and forget - all the surrounding logic will be executed
                     // exceptions can be lost here without issues
@@ -225,7 +225,10 @@ namespace Nethermind.Network
                 {
                     try
                     {
-                        await SetupOutgoingPeerConnection(peer);
+                        if (ShouldContactPeer(peer))
+                        {
+                            await SetupOutgoingPeerConnection(peer);
+                        }
                     }
                     catch (TaskCanceledException)
                     {
@@ -753,6 +756,18 @@ namespace Nethermind.Network
         }
 
         #endregion
+
+        private bool ShouldContactPeer(Peer peer)
+            => _rlpxHost.ShouldContact(peer.Node.Address.Address, exactOnly: peer.Node.IsStatic || peer.Node.IsBootnode);
+
+        /// <summary>
+        /// Fast-path guard for the peer-added event: checks throttle before the IP filter
+        /// so a throttled no-op does not consume a filter entry and block the peer for the full timeout window.
+        /// </summary>
+        private bool CanQuickConnect(Peer peer)
+            => !_nodesBeingAdded.ContainsKey(peer.Node.Id)
+               && !_outgoingConnectionRateLimiter.IsThrottled()
+               && ShouldContactPeer(peer);
 
         private bool CanConnectToPeer(Peer peer)
         {

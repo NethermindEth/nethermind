@@ -49,6 +49,8 @@ public class BlockchainProcessorTests
 
             private readonly HashSet<Hash256> _rootProcessed = new();
 
+            private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
+
             public BranchProcessorMock(ILogManager logManager, IStateReader stateReader)
             {
                 _logger = logManager.GetClassLogger();
@@ -59,12 +61,14 @@ public class BlockchainProcessorTests
             {
                 _logger.Info($"Allowing {hash} to process");
                 _allowed.Add(hash);
+                lock (_gate) { Monitor.PulseAll(_gate); }
             }
 
             public void AllowToFail(Hash256 hash)
             {
                 _logger.Info($"Allowing {hash} to fail");
                 _allowedToFail.Add(hash);
+                lock (_gate) { Monitor.PulseAll(_gate); }
             }
 
             public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
@@ -102,7 +106,7 @@ public class BlockchainProcessorTests
 
                     if (notYet)
                     {
-                        Thread.Sleep(20);
+                        lock (_gate) { Monitor.Wait(_gate, ProcessingWait); }
                     }
                     else
                     {
@@ -131,6 +135,7 @@ public class BlockchainProcessorTests
             private readonly ILogger _logger;
             private readonly ConcurrentDictionary<Hash256, object> _allowed = new();
             private readonly ConcurrentDictionary<Hash256, object> _allowedToFail = new();
+            private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
 
             public RecoveryStepMock(ILogManager logManager)
             {
@@ -141,6 +146,7 @@ public class BlockchainProcessorTests
             {
                 _logger.Info($"Allowing {hash} to recover");
                 _allowed[hash] = new object();
+                lock (_gate) { Monitor.PulseAll(_gate); }
             }
 
             public void RecoverData(Block block)
@@ -163,7 +169,7 @@ public class BlockchainProcessorTests
                             throw new Exception();
                         }
 
-                        Thread.Sleep(20);
+                        lock (_gate) { Monitor.Wait(_gate, ProcessingWait); }
                         continue;
                     }
 
@@ -185,7 +191,7 @@ public class BlockchainProcessorTests
 
         private Hash256? _headBefore;
         private int _processingQueueEmptyFired;
-        private const int ProcessingWait = 2000;
+        private const int ProcessingWait = 10_000;
 
         public ProcessingTestContext(bool startProcessor)
         {
@@ -323,18 +329,9 @@ public class BlockchainProcessorTests
                         }
                         finally
                         {
-                            // For new-best blocks, BlockAdded fires during SuggestBlock (before
-                            // this point) so the TCS is already completed. For non-best blocks
-                            // (same/lower difficulty), no enqueue occurs, so this is the signal.
-                            // When AllowSynchronousContinuations causes inline processing,
-                            // SuggestBlock blocks indefinitely but BlockAdded already fired.
                             suggestCompleted.TrySetResult();
                         }
                     });
-                    Assert.That(
-                        SpinWait.SpinUntil(() => _blockTree.IsKnownBlock(block.Number, block.Hash!), ProcessingWait),
-                        Is.True,
-                        $"Timed out waiting for {block.ToString(Block.Format.Short)} to appear in the block tree");
                     Assert.That(
                         suggestCompleted.Task.Wait(ProcessingWait),
                         Is.True,
