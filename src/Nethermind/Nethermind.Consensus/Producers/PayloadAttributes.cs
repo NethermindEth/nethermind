@@ -154,20 +154,21 @@ public class PayloadAttributes
         string methodName,
         [NotNullWhen(false)] out string? error)
     {
-        // This FCU version doesn't support this fork at all.
-        if (!IsSupportedFcuForkCombination(fcuVersion, timestampVersion))
+        // This FCU version doesn't support this fork at all (e.g. V3 attrs sent to FCUv2).
+        if (!IsSupportedFcuForkCombination(fcuVersion, actualVersion))
         {
-            error = $"{methodName}{timestampVersion} expected";
-            return timestampVersion >= PayloadAttributesVersions.V2 // error code added in FCUv2 (Shanghai)
-                ? PayloadAttributesValidationResult.UnsupportedFork
-                : PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            error = $"{methodName}{fcuVersion} expected";
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
-        // Attributes structure doesn't match what the fork expects.
+        // Attributes structure doesn't match what the fork expects (e.g. V3 attrs sent to when FCUv3 not yet activated in spec).
         if (actualVersion != timestampVersion)
         {
             error = $"{methodName}{timestampVersion} expected";
-            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            // FCU also doesn't support this fork → UnsupportedFork (post-Paris only)
+            return fcuVersion != timestampVersion && timestampVersion >= PayloadAttributesVersions.V2
+                ? PayloadAttributesValidationResult.UnsupportedFork
+                : PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
         error = null;
