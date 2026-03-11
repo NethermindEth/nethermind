@@ -104,9 +104,9 @@ internal class XdcIncomingTxFilterTests
             XdcTxPoolTestHelper.SenderAddress,
             XdcTxPoolTestHelper.RecipientAddress,
             gasPrice: XdcConstants.Trc21GasPrice50x);
-        (XdcIncomingTxFilter after50xFilter, _) = CreateFilter(100, true, blockNumberGas50x: 10);
+        (XdcIncomingTxFilter afterBoundaryFilter, _) = CreateFilter(100, true, blockNumberGas50x: 10);
         TxFilteringState afterState = new(after50XTx, Substitute.For<IAccountStateProvider>());
-        AcceptTxResult afterResult = after50xFilter.Accept(after50XTx, ref afterState, TxHandlingOptions.None);
+        AcceptTxResult afterResult = afterBoundaryFilter.Accept(after50XTx, ref afterState, TxHandlingOptions.None);
 
         Assert.That(beforeResult, Is.EqualTo(AcceptTxResult.Accepted));
         Assert.That(afterResult, Is.EqualTo(AcceptTxResult.Accepted));
