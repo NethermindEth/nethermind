@@ -100,7 +100,7 @@ namespace Nethermind.TxPool
         /// <param name="incomingTxFilter"></param>
         /// <param name="thereIsPriorityContract"></param>
         /// <param name="headTxValidator"></param>
-        /// <param name="additionalFundsProvider"></param>
+        /// <param name="costAndFundsProvider"></param>
         public TxPool(IEthereumEcdsa ecdsa,
             IBlobTxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
@@ -112,7 +112,7 @@ namespace Nethermind.TxPool
             IIncomingTxFilter? incomingTxFilter = null,
             [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
             bool thereIsPriorityContract = false,
-            IAdditionalFundsProvider? additionalFundsProvider = null)
+            ITxPoolCostAndFundsProvider? costAndFundsProvider = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -165,8 +165,8 @@ namespace Nethermind.TxPool
                 new UnknownSenderFilter(ecdsa, _logger),
                 new TxTypeTxFilter(_transactions,
                     _blobTransactions), // has to be after UnknownSenderFilter as it uses sender
-                new BalanceZeroFilter(thereIsPriorityContract, _logger, additionalFundsProvider),
-                new BalanceTooLowFilter(_transactions, _blobTransactions, _logger, additionalFundsProvider),
+                new BalanceZeroFilter(thereIsPriorityContract, _logger, costAndFundsProvider),
+                new BalanceTooLowFilter(_transactions, _blobTransactions, _logger, costAndFundsProvider),
                 new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),

@@ -13,20 +13,23 @@ namespace Nethermind.TxPool.Filters
     internal sealed class BalanceZeroFilter : IIncomingTxFilter
     {
         private readonly bool _thereIsPriorityContract;
-        private readonly IAdditionalFundsProvider _additionalFundsProvider;
+        private readonly ITxPoolCostAndFundsProvider _costAndFundsProvider;
         private readonly ILogger _logger;
 
-        public BalanceZeroFilter(bool thereIsPriorityContract, ILogger logger, IAdditionalFundsProvider? additionalFundsProvider = null)
+        public BalanceZeroFilter(
+            bool thereIsPriorityContract,
+            ILogger logger,
+            ITxPoolCostAndFundsProvider? costAndFundsProvider = null)
         {
             _thereIsPriorityContract = thereIsPriorityContract;
-            _additionalFundsProvider = additionalFundsProvider ?? NullAdditionalFundsProvider.Instance;
+            _costAndFundsProvider = costAndFundsProvider ?? DefaultTxPoolCostAndFundsProvider.Instance;
             _logger = logger;
         }
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             AccountStruct account = state.SenderAccount;
-            UInt256 additionalFunds = _additionalFundsProvider.GetAdditionalFunds(tx);
+            UInt256 additionalFunds = _costAndFundsProvider.GetAdditionalFunds(tx);
             if (UInt256.AddOverflow(account.Balance, additionalFunds, out UInt256 balance))
             {
                 Metrics.PendingTransactionsBalanceBelowValue++;
@@ -52,7 +55,7 @@ namespace Nethermind.TxPool.Filters
                     AcceptTxResult.InsufficientFunds.WithMessage($"Balance is {balance} less than sending value {tx.Value}");
             }
 
-            if (tx.IsOverflowInTxCostAndValue(out UInt256 txCostAndValue))
+            if (!_costAndFundsProvider.TryGetTransactionCost(tx, out UInt256 txCostAndValue))
             {
                 Metrics.PendingTransactionsBalanceBelowValue++;
                 if (_logger.IsTrace)

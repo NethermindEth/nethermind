@@ -21,15 +21,6 @@ internal sealed class XdcIncomingTxFilter(
     ISpecProvider specProvider,
     ITrc21StateReader trc21StateReader) : IIncomingTxFilter
 {
-    private (XdcBlockHeader, long, IXdcReleaseSpec) GetSpecAndHeader()
-    {
-        XdcBlockHeader header = (XdcBlockHeader)blockTree.Head.Header;
-        long currentHeaderNumber = header.Number + 1;
-        IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(currentHeaderNumber);
-
-        return (header, currentHeaderNumber, xdcSpec);
-    }
-
     private AcceptTxResult ValidateSignTransaction(Transaction tx, long headerNumber, IXdcReleaseSpec xdcSpec)
     {
         if (tx.Data.Length < XdcConstants.SignTransactionDataLength)
@@ -49,7 +40,7 @@ internal sealed class XdcIncomingTxFilter(
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        (XdcBlockHeader currentHead, long headerNumber, IXdcReleaseSpec spec) = GetSpecAndHeader();
+        (XdcBlockHeader currentHead, long headerNumber, IXdcReleaseSpec spec) = XdcTxPoolHelper.GetSpecAndHeader(blockTree, specProvider);
 
         if (tx.IsSpecialTransaction(spec))
         {
@@ -74,7 +65,7 @@ internal sealed class XdcIncomingTxFilter(
         {
             Dictionary<Address, UInt256> feeCapacities = trc21StateReader.GetFeeCapacities(currentHead);
             if (feeCapacities.ContainsKey(tx.To) &&
-                !trc21StateReader.ValidateTransaction(currentHead, tx.SenderAddress, tx.To, tx.Data))
+                !trc21StateReader.ValidateTransaction(currentHead, tx.SenderAddress, tx.To, tx.Data.Span))
             {
                 return AcceptTxResult.InsufficientFunds;
             }

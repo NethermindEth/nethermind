@@ -218,7 +218,7 @@ public class XdcTestBlockchain : TestBlockchain
 
                 compoundPolicy.Policies.Add(new XdcTxGossipPolicy(SpecProvider, ctx.Resolve<IChainHeadInfoProvider>()));
                 ITrc21StateReader trc21StateReader = ctx.Resolve<ITrc21StateReader>();
-                IAdditionalFundsProvider additionalFundsProvider = new Trc21AdditionalFundsProvider(BlockTree, SpecProvider, trc21StateReader);
+                ITxPoolCostAndFundsProvider costAndFundsProvider = new Trc21TxPoolCostAndFundsProvider(BlockTree, SpecProvider, trc21StateReader);
 
                 Nethermind.TxPool.TxPool txPool = new(ctx.Resolve<IEthereumEcdsa>()!,
                     ctx.Resolve<IBlobTxStorage>() ?? NullBlobTxStorage.Instance,
@@ -231,7 +231,7 @@ public class XdcTestBlockchain : TestBlockchain
                     new XdcIncomingTxFilter(SnapshotManager, BlockTree, SpecProvider, trc21StateReader),
                     ctx.Resolve<ITxValidator>(),
                     false,
-                    additionalFundsProvider
+                    costAndFundsProvider
                 );
 
                 return txPool;
@@ -274,6 +274,7 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.GasLimitBoundDivisor = 1024;
         xdcSpec.LimitPenaltyEpoch = 4;
         xdcSpec.LimitPenaltyEpochV2 = 0;
+        xdcSpec.BlockNumberGas50x = long.MaxValue;
 
         xdcSpec.BlackListedAddresses =
             [
