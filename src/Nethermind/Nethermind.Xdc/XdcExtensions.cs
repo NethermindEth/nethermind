@@ -53,7 +53,7 @@ internal static partial class XdcExtensions
     {
         int length = (extraData.Length - XdcConstants.ExtraVanity - XdcConstants.ExtraSeal) / Address.Size;
         if (length <= 0)
-            throw new InvalidOperationException($"ExtraData too short to contain masternodes: length={extraData.Length}");
+            throw new ArgumentException($"ExtraData too short to contain masternodes: length={extraData.Length}", nameof(extraData));
         Address[] masternodes = new Address[length];
         for (int i = 0; i < length; i++)
             masternodes[i] = new Address(extraData.AsSpan(XdcConstants.ExtraVanity + i * Address.Size, Address.Size));
