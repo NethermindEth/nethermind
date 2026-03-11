@@ -698,6 +698,7 @@ public partial class EngineModuleTests
             else
             {
                 ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV5(payload, [], Keccak.Zero, []);
+                Assert.That(result.Data, Is.Not.Null, $"engine_newPayloadV5 returned error instead of payload status: {result.Result} (code {result.ErrorCode})");
                 if (expectedError is null)
                 {
                     Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
