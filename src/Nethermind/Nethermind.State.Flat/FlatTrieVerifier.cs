@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
-using System.Threading;
 using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

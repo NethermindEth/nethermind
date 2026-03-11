@@ -3,7 +3,6 @@
 
 using System;
 using System.ComponentModel;
-using System.Text.RegularExpressions; // TEST: remove after problem matcher validation
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
