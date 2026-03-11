@@ -31,6 +31,7 @@ namespace Ethereum.Test.Base
             public string[] Transactions { get; set; }
             public string[]? Withdrawals { get; set; }
             public string? BlockAccessList { get; set; }
+            public string? SlotNumber { get; set; }
         }
     }
 }

@@ -24,6 +24,7 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.TxPool;
 using Testably.Abstractions;
 
@@ -70,7 +71,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .Bind<IEcdsa, IEthereumEcdsa>()
 
             .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
-            .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()
+            .AddSingleton<IChainHeadInfoProvider, IChainHeadSpecProvider, IBlockTree, IStateReader>(
+                (specProvider, blockTree, stateReader) => new ChainHeadInfoProvider(specProvider, blockTree, stateReader))
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
 
             .AddSingleton<IHardwareInfo, HardwareInfo>()
