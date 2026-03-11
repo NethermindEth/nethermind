@@ -179,35 +179,6 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequestV3;
         }
 
-        private static ExecutionPayloadV3 CreateBlockRequestV4(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
-                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
-        {
-            ExecutionPayloadV3 blockRequestV4 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
-            Block? block = blockRequestV4.TryGetBlock().Block;
-
-            var beaconBlockRootHandler = new BeaconBlockRootHandler(chain.TxProcessor, chain.MainWorldState);
-
-            IReleaseSpec spec = chain.SpecProvider.GetSpec(block!.Header);
-            chain.TxProcessor.SetBlockExecutionContext(new BlockExecutionContext(block!.Header, spec));
-            beaconBlockRootHandler.StoreBeaconRoot(block!, spec, NullTxTracer.Instance);
-            IWorldState globalWorldState = chain.MainWorldState;
-            Snapshot before = globalWorldState.TakeSnapshot();
-            var blockHashStore = new BlockhashStore(globalWorldState);
-            blockHashStore.ApplyBlockhashStateChanges(block.Header, chain.SpecProvider.GetSpec(block.Header));
-
-            chain.TxProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, chain.SpecProvider.GenesisSpec));
-            chain.MainExecutionRequestsProcessor.ProcessExecutionRequests(block!, globalWorldState, [], chain.SpecProvider.GenesisSpec);
-
-            globalWorldState.Commit(chain.SpecProvider.GenesisSpec);
-            globalWorldState.RecalculateStateRoot();
-            blockRequestV4.StateRoot = globalWorldState.StateRoot;
-            globalWorldState.Restore(before);
-
-            TryCalculateHash(blockRequestV4, out Hash256? hash);
-            blockRequestV4.BlockHash = hash;
-            return blockRequestV4;
-        }
-
         private static T CreateBlockRequestInternal<T>(ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
                 ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null
                 ) where T : ExecutionPayload, new()
