@@ -26,14 +26,9 @@ public static class TestChunkFilter
         ICollection<T> testList = tests as ICollection<T> ?? [.. tests];
         (int chunkIndex, int totalChunks) = chunkConfig.Value;
 
-        int count = testList.Count;
-        int chunkSize = count / totalChunks;
-        int remainder = count % totalChunks;
-
-        int skip = (chunkIndex - 1) * chunkSize;
-        int take = chunkSize + (chunkIndex == totalChunks ? remainder : 0);
-
-        return testList.Skip(skip).Take(take);
+        // Interleaved distribution: test 0→chunk 1, test 1→chunk 2, etc.
+        // Spreads heavy tests evenly across chunks instead of clustering them.
+        return testList.Where((_, i) => i % totalChunks == chunkIndex - 1);
 
         static (int Index, int Total)? GetChunkConfig()
         {

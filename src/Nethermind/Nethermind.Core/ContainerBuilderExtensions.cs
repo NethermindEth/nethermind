@@ -497,8 +497,7 @@ public static class ContainerBuilderExtensions
     ) where TReflectionActivatorData : ReflectionActivatorData
     {
         return builder
-            .WithAttributeFiltering()
-            .FindConstructorsWith(NethermindConstructorFinder.Instance);
+            .WithAttributeFiltering();
     }
 
     private static Func<IComponentContext, T> CreateArgResolver<T>(MethodInfo methodInfo, int paramIndex) where T : notnull
