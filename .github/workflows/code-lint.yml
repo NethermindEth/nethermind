@@ -20,6 +20,8 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
