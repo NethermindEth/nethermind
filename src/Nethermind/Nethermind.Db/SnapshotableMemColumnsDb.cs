@@ -15,20 +15,20 @@ namespace Nethermind.Db
     {
         private readonly IDictionary<TKey, SnapshotableMemDb> _columnDbs = new Dictionary<TKey, SnapshotableMemDb>();
 
-        public SnapshotableMemColumnsDb() : this(Enum.GetValues<TKey>())
-        {
-        }
-
-        public SnapshotableMemColumnsDb(string _) : this(Enum.GetValues<TKey>())
-        {
-        }
-
         public SnapshotableMemColumnsDb(params TKey[] keys)
         {
             foreach (TKey key in keys)
             {
                 GetColumnDb(key);
             }
+        }
+
+        public SnapshotableMemColumnsDb() : this(Enum.GetValues<TKey>())
+        {
+        }
+
+        public SnapshotableMemColumnsDb(string _) : this(Enum.GetValues<TKey>())
+        {
         }
 
         public IDb GetColumnDb(TKey key)
@@ -82,14 +82,9 @@ namespace Nethermind.Db
         /// <summary>
         /// Snapshot of column database at a specific point in time.
         /// </summary>
-        private sealed class ColumnSnapshot : IColumnDbSnapshot<TKey>
+        private sealed class ColumnSnapshot(Dictionary<TKey, IKeyValueStoreSnapshot> snapshots) : IColumnDbSnapshot<TKey>
         {
-            private readonly Dictionary<TKey, IKeyValueStoreSnapshot> _snapshots;
-
-            public ColumnSnapshot(Dictionary<TKey, IKeyValueStoreSnapshot> snapshots)
-            {
-                _snapshots = snapshots;
-            }
+            private readonly Dictionary<TKey, IKeyValueStoreSnapshot> _snapshots = snapshots;
 
             public IReadOnlyKeyValueStore GetColumn(TKey key)
             {
