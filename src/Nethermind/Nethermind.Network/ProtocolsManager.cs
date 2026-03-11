@@ -72,7 +72,7 @@ namespace Nethermind.Network
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
-            IEnumerable<IProtocolHandlerFactory> factories,
+            IProtocolHandlerFactory[] factories,
             ILogManager logManager)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
@@ -88,7 +88,7 @@ namespace Nethermind.Network
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             // Order is already set by OrderedComponents<T> (AddFirst/AddLast)
-            _factories = factories.ToArray();
+            _factories = factories;
             rlpxHost.SessionCreated += SessionCreated;
         }
 
@@ -159,21 +159,7 @@ namespace Nethermind.Network
             // Handle P2P inline (special case with capabilities)
             if (code == Protocol.P2P)
             {
-                P2PProtocolHandler p2pHandler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _backgroundTaskScheduler, _logManager);
-                session.PingSender = p2pHandler;
-                p2pHandler.SubprotocolRequested += (s, e) => InitProtocol(session, e.ProtocolCode, e.Version);
-                session.AddProtocolHandler(p2pHandler);
-
-                if (addCapabilities)
-                {
-                    foreach (Capability capability in _capabilities)
-                    {
-                        session.AddSupportedCapability(capability);
-                    }
-                }
-
-                InitP2PProtocol(session, p2pHandler);
-                p2pHandler.Init();
+                InitP2PProtocol(session, addCapabilities);
                 return;
             }
 
@@ -252,21 +238,34 @@ namespace Nethermind.Network
             };
         }
 
-        private void InitP2PProtocol(ISession session, P2PProtocolHandler handler)
+        private void InitP2PProtocol(ISession session, bool addCapabilities)
         {
-            handler.ProtocolInitialized += (sender, args) =>
+            P2PProtocolHandler p2pHandler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _backgroundTaskScheduler, _logManager);
+            session.PingSender = p2pHandler;
+            p2pHandler.SubprotocolRequested += (s, e) => InitProtocol(session, e.ProtocolCode, e.Version);
+            session.AddProtocolHandler(p2pHandler);
+
+            if (addCapabilities)
+            {
+                foreach (Capability capability in _capabilities)
+                {
+                    session.AddSupportedCapability(capability);
+                }
+            }
+
+            p2pHandler.ProtocolInitialized += (sender, args) =>
             {
                 P2PProtocolInitializedEventArgs typedArgs = (P2PProtocolInitializedEventArgs)args;
-                if (!RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
+                if (!RunBasicChecks(session, Protocol.P2P, p2pHandler.ProtocolVersion)) return;
 
-                if (handler.ProtocolVersion >= 5)
+                if (p2pHandler.ProtocolVersion >= 5)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - enabling snappy");
+                    if (_logger.IsTrace) _logger.Trace($"{p2pHandler.ProtocolCode}.{p2pHandler.ProtocolVersion} established on {session} - enabling snappy");
                     session.EnableSnappy();
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - disabling snappy");
+                    if (_logger.IsTrace) _logger.Trace($"{p2pHandler.ProtocolCode}.{p2pHandler.ProtocolVersion} established on {session} - disabling snappy");
                 }
 
                 _stats.ReportP2PInitializationEvent(session.Node, new P2PNodeDetails
@@ -283,6 +282,8 @@ namespace Nethermind.Network
 
                 if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
             };
+
+            p2pHandler.Init();
         }
 
         private void InitSyncPeerProtocol(ISession session, SyncPeerProtocolHandlerBase handler)

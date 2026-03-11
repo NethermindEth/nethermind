@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -303,7 +304,7 @@ public class InitializeNetwork : IStep
             NodeStatsManager,
             _api.ProtocolValidator,
             _peerStorage,
-            _protocolHandlerFactories,
+            _protocolHandlerFactories.ToArray(),
             _api.LogManager);
     }
 }
