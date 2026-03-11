@@ -94,7 +94,7 @@ namespace Nethermind.Consensus.Processing
 
                                 bool validateStorageReads = j == chunkEnd - 1;
                                 _balBuilder.MergeIntermediateBalsUpTo((ushort)(j + 1));
-                                _logger.Info($"[parallel] validating block access list at index {j + 1} (storage read check: {validateStorageReads}), gas used: {txGasSpent!.Value}, remaining: {gasRemaining}, total: {totalGas}");
+                                _logger.Info($"[parallel] validating block access list at index {j + 1} (storage read check: {validateStorageReads}), gas spent: {txGasSpent!.Value}, block gas used: {blockGasUsed.Value}, remaining: {gasRemaining}, total: {totalGas}");
                                 _balBuilder.ValidateBlockAccessList(block.Header, (ushort)(j + 1), gasRemaining, validateStorageReads);
                             }
 

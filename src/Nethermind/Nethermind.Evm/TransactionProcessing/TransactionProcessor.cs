@@ -807,6 +807,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!opts.HasFlag(ExecutionOptions.SkipValidation) && _balBuilder is not { ParallelExecutionEnabled: true })
             {
                 header.GasUsed += gasConsumed.EffectiveBlockGas;
+                Console.WriteLine($"[sequential] header.GasUsed = {header.GasUsed}, txBlockGas = {gasConsumed.EffectiveBlockGas}");
             }
 
             return statusCode;
