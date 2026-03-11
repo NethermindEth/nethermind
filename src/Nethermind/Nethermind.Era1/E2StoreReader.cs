@@ -169,10 +169,19 @@ public class E2StoreReader : IDisposable
 
     public ValueHash256 CalculateChecksum()
     {
-        // Note: Don't close the stream
-        FileStream fileStream = new FileStream(_file, FileAccess.Read);
-        using SHA256 sha = SHA256.Create();
-        return new ValueHash256(sha.ComputeHash(fileStream));
+        using IncrementalHash sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        const int bufferSize = 81920;
+        byte[] buffer = new byte[bufferSize];
+        long offset = 0;
+        while (offset < _fileLength)
+        {
+            int toRead = (int)Math.Min(bufferSize, _fileLength - offset);
+            int read = RandomAccess.Read(_file, buffer.AsSpan(0, toRead), offset);
+            if (read == 0) break;
+            sha.AppendData(buffer, 0, read);
+            offset += read;
+        }
+        return new ValueHash256(sha.GetHashAndReset());
     }
 
     private ushort ReadUInt16(long position)

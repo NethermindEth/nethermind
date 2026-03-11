@@ -703,5 +703,99 @@ namespace Nethermind.Core.Test
                 .NotBe(SpanExtensions.FastHash(input, seed2),
                     $"seeds {seed1} vs {seed2} for {length} bytes");
         }
+
+        // ── CountZeros edge-case tests ──
+
+        /// <summary>
+        /// Validates CountZeros against a naive scalar count for sizes that exercise
+        /// every codepath boundary: exact multiples of Vector128 (16), Vector256 (32),
+        /// Vector512 (64), non-multiples with tails, and sizes below SIMD thresholds.
+        /// </summary>
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(7)]
+        [TestCase(8)]
+        [TestCase(15)]
+        [TestCase(16)] // Exactly one Vector128
+        [TestCase(17)] // One Vector128 + 1-byte scalar tail
+        [TestCase(20)] // One Vector128 + 4-byte tail
+        [TestCase(24)]
+        [TestCase(31)]
+        [TestCase(32)] // Exactly two Vector128 (or one Vector256 on x86)
+        [TestCase(33)]
+        [TestCase(48)] // Exactly three Vector128
+        [TestCase(64)] // Exactly four Vector128 (or one Vector512 on x86)
+        [TestCase(128)]
+        [TestCase(256)]
+        [TestCase(1024)]
+        public void CountZeros_matches_naive_for_all_sizes(int length)
+        {
+            Random rng = new(42);
+            byte[] data = new byte[length];
+            for (int i = 0; i < length; i++)
+            {
+                int roll = rng.Next(10);
+                data[i] = roll < 3 ? (byte)0 : roll < 6 ? (byte)1 : (byte)rng.Next(2, 256);
+            }
+
+            int expected = 0;
+            foreach (var t in data)
+            {
+                if (t == 0) expected++;
+            }
+
+            data.AsSpan().CountZeros().Should().Be(expected);
+        }
+
+        /// <summary>
+        /// All-zero input at exact vector-width boundaries — every byte should be counted.
+        /// Catches off-by-one bugs where the last SIMD chunk is skipped.
+        /// </summary>
+        [TestCase(16)]
+        [TestCase(32)]
+        [TestCase(64)]
+        [TestCase(128)]
+        [TestCase(256)]
+        [TestCase(512)]
+        public void CountZeros_all_zeros_exact_vector_multiples(int length)
+        {
+            byte[] data = new byte[length];
+            data.AsSpan().CountZeros().Should().Be(length);
+        }
+
+        /// <summary>
+        /// All non-zero input — result should be zero. Ensures no false positives
+        /// from SIMD comparison logic.
+        /// </summary>
+        [TestCase(16)]
+        [TestCase(32)]
+        [TestCase(64)]
+        [TestCase(128)]
+        [TestCase(256)]
+        [TestCase(512)]
+        public void CountZeros_no_zeros(int length)
+        {
+            byte[] data = new byte[length];
+            Array.Fill(data, (byte)0xFF);
+            data.AsSpan().CountZeros().Should().Be(0);
+        }
+
+        /// <summary>
+        /// Single zero at each position in a 32-byte buffer — verifies every lane
+        /// of the SIMD comparison is working. On x86 with AVX2, 32 bytes = one
+        /// Vector256 iteration; on ARM, two Vector128 iterations.
+        /// </summary>
+        [Test]
+        public void CountZeros_single_zero_per_position()
+        {
+            for (int pos = 0; pos < 32; pos++)
+            {
+                byte[] data = new byte[32];
+                Array.Fill(data, (byte)0xFF);
+                data[pos] = 0;
+                data.AsSpan().CountZeros().Should().Be(1,
+                    $"single zero at position {pos} should be counted");
+            }
+        }
     }
 }
