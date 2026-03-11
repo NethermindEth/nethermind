@@ -38,6 +38,9 @@ public interface IDbConfig : IConfig
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
 
+    string BlockAccessListsDbRocksDbOptions { get; set; }
+    string? BlockAccessListsDbAdditionalRocksDbOptions { get; set; }
+
     string BlobTransactionsDbRocksDbOptions { get; set; }
     string? BlobTransactionsDbAdditionalRocksDbOptions { get; set; }
 
@@ -145,7 +148,4 @@ public interface IDbConfig : IConfig
 
     string? PreimageDbRocksDbOptions { get; set; }
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
-
-    public string XdcSnapshotsDbRocksDbOptions { get; set; }
-    public string? XdcSnapshotsDbAdditionalRocksDbOptions { get; set; }
 }

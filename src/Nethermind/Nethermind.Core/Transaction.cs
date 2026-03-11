@@ -56,8 +56,15 @@ namespace Nethermind.Core
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
         public long GasLimit { get; set; }
         private long _spentGas;
+        private long _blockGasUsed;
         [JsonIgnore]
         public long SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
+        /// <summary>
+        /// Gas used for block accounting (pre-refund when EIP-7778 is enabled).
+        /// Defaults to <see cref="GasLimit"/> when unknown.
+        /// </summary>
+        [JsonIgnore]
+        public long BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
         public Address? To { get; set; }
         private UInt256 _value;
         public UInt256 Value { get => _value; set => _value = value; }
@@ -297,6 +304,7 @@ namespace Nethermind.Core
                 obj.DecodedMaxFeePerGas = default;
                 obj.GasLimit = default;
                 obj._spentGas = default;
+                obj._blockGasUsed = default;
                 obj.To = default;
                 obj.Value = default;
                 obj.Data = default;
