@@ -1,0 +1,247 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Buffers.Binary;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Era1;
+using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+
+namespace Nethermind.EraE;
+
+/// <summary>
+/// Writes EraE (.erae) archive files using the section-ordered layout:
+///   Version
+///   CompressedHeader[0..N-1]
+///   CompressedBody[0..N-1]
+///   CompressedSlimReceipts[0..N-1]   -- bloom filter stripped per EraE spec
+///   TotalDifficulty[0..N-1]          -- pre-merge and transition epochs only
+///   AccumulatorRoot                  -- pre-merge and transition epochs only
+///   ComponentIndex
+///
+/// Pre-merge epochs have component-count=4 (header, body, receipts, td).
+/// Post-merge epochs have component-count=3 (header, body, receipts).
+/// Transition epochs use component-count=4; post-merge blocks use TTD as TotalDifficulty.
+/// </summary>
+public sealed class EraWriter : IDisposable
+{
+    public const int MaxEraSize = 8192;
+
+    private readonly HeaderDecoder _headerDecoder = new();
+    private readonly BlockBodyDecoder _blockBodyDecoder = new();
+    private readonly ReceiptMessageDecoder _slimReceiptDecoder = new(skipBloom: true);
+    private readonly E2StoreWriter _e2StoreWriter;
+    private readonly ISpecProvider _specProvider;
+
+    // Buffered encoded sections held in memory until Finalize.
+    // ArrayPoolList gives pre-allocated backing storage; the byte[] elements themselves are GC-allocated
+    // since they come from NettyRlpStream.AsMemory().ToArray(). Kept simple: export is not a hot path.
+    private readonly ArrayPoolList<byte[]> _encodedHeaders = new(MaxEraSize);
+    private readonly ArrayPoolList<byte[]> _encodedBodies = new(MaxEraSize);
+    private readonly ArrayPoolList<byte[]> _encodedSlimReceipts = new(MaxEraSize);
+
+    // Per-block metadata
+    private readonly ArrayPoolList<UInt256> _totalDifficulties = new(MaxEraSize);
+    private readonly ArrayPoolList<Hash256> _blockHashes = new(MaxEraSize);
+
+    private long _startNumber;
+    private bool _firstBlock = true;
+    private bool _finalized;
+    private int _preMergeBlockCount;
+    private bool _hasPostMergeBlocks;
+    private UInt256 _lastPreMergeTD;
+
+    public EraWriter(string path, ISpecProvider specProvider)
+        : this(new E2StoreWriter(new FileStream(path, FileMode.Create)), specProvider)
+    {
+    }
+
+    public EraWriter(Stream outputStream, ISpecProvider specProvider)
+        : this(new E2StoreWriter(outputStream), specProvider)
+    {
+    }
+
+    private EraWriter(E2StoreWriter e2StoreWriter, ISpecProvider specProvider)
+    {
+        _e2StoreWriter = e2StoreWriter;
+        _specProvider = specProvider;
+    }
+
+    public Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
+    {
+        ArgumentNullException.ThrowIfNull(block);
+        ArgumentNullException.ThrowIfNull(receipts);
+        if (_finalized)
+            throw new EraException($"Finalize() has been called; no more blocks can be added.");
+        if (block.Header is null)
+            throw new ArgumentException("Block must have a header.", nameof(block));
+        if (block.Hash is null)
+            throw new ArgumentException("Block must have a hash.", nameof(block));
+        if (_encodedHeaders.Count >= MaxEraSize)
+            throw new ArgumentException($"Era file cannot contain more than {MaxEraSize} blocks.");
+
+        if (_firstBlock)
+        {
+            _startNumber = block.Number;
+            _firstBlock = false;
+        }
+        else if (block.Number != _startNumber + _encodedHeaders.Count)
+        {
+            throw new ArgumentException(
+                $"Blocks must be added in sequential order. Expected block {_startNumber + _encodedHeaders.Count}, got {block.Number}.",
+                nameof(block));
+        }
+
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        bool isPostMerge = block.Header.IsPostMerge;
+        RlpBehaviors rlpBehaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
+
+        using (NettyRlpStream headerRlp = _headerDecoder.EncodeToNewNettyStream(block.Header, rlpBehaviors))
+            _encodedHeaders.Add(headerRlp.AsMemory().ToArray());
+
+        using (NettyRlpStream bodyRlp = _blockBodyDecoder.EncodeToNewNettyStream(block.Body, rlpBehaviors))
+            _encodedBodies.Add(bodyRlp.AsMemory().ToArray());
+
+        using (NettyRlpStream receiptsRlp = _slimReceiptDecoder.EncodeToNewNettyStream(receipts, rlpBehaviors))
+            _encodedSlimReceipts.Add(receiptsRlp.AsMemory().ToArray());
+
+        _blockHashes.Add(block.Hash);
+
+        if (!isPostMerge)
+        {
+            if (block.TotalDifficulty is null)
+                throw new ArgumentException("Pre-merge block must have TotalDifficulty set.", nameof(block));
+            if (block.TotalDifficulty < block.Difficulty)
+                throw new ArgumentOutOfRangeException(nameof(block.TotalDifficulty), "Cannot be less than block difficulty.");
+            _totalDifficulties.Add(block.TotalDifficulty.Value);
+            _lastPreMergeTD = block.TotalDifficulty.Value;
+            _preMergeBlockCount++;
+        }
+        else
+        {
+            // Placeholder; replaced with TTD in Finalize for transition epochs
+            _totalDifficulties.Add(UInt256.Zero);
+            _hasPostMergeBlocks = true;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public async Task<(ValueHash256 AccumulatorRoot, ValueHash256 Checksum)> Finalize(CancellationToken cancellation = default)
+    {
+        if (_firstBlock)
+            throw new EraException("No blocks have been added.");
+        if (_finalized)
+            throw new EraException("Finalize has already been called.");
+
+        bool isTransitionEpoch = _preMergeBlockCount > 0 && _hasPostMergeBlocks;
+        bool needsTd = _preMergeBlockCount > 0; // pre-merge or transition
+        int componentCount = needsTd ? 4 : 3;
+        int blockCount = _encodedHeaders.Count;
+
+        // For transition epochs, fill TTD for all post-merge blocks
+        if (isTransitionEpoch)
+        {
+            for (int i = _preMergeBlockCount; i < blockCount; i++)
+                _totalDifficulties[i] = _lastPreMergeTD;
+        }
+
+        long totalWritten = 0;
+        long[] headerOffsets = new long[blockCount];
+        long[] bodyOffsets = new long[blockCount];
+        long[] receiptsOffsets = new long[blockCount];
+        long[] tdOffsets = needsTd ? new long[blockCount] : [];
+
+        // Version
+        totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>(), cancellation);
+
+        // All CompressedHeaders
+        for (int i = 0; i < blockCount; i++)
+        {
+            headerOffsets[i] = totalWritten;
+            totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedHeader, _encodedHeaders[i], cancellation);
+        }
+
+        // All CompressedBodies
+        for (int i = 0; i < blockCount; i++)
+        {
+            bodyOffsets[i] = totalWritten;
+            totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, _encodedBodies[i], cancellation);
+        }
+
+        // All CompressedSlimReceipts
+        for (int i = 0; i < blockCount; i++)
+        {
+            receiptsOffsets[i] = totalWritten;
+            totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedSlimReceipts, _encodedSlimReceipts[i], cancellation);
+        }
+
+        // All TotalDifficulty entries (pre-merge and transition epochs)
+        if (needsTd)
+        {
+            for (int i = 0; i < blockCount; i++)
+            {
+                tdOffsets[i] = totalWritten;
+                totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, _totalDifficulties[i].ToLittleEndian(), cancellation);
+            }
+        }
+
+        // AccumulatorRoot (SSZ hash_tree_root of pre-merge blocks only)
+        ValueHash256 accumulatorRoot = default;
+        if (needsTd)
+        {
+            using AccumulatorCalculator calculator = new();
+            for (int i = 0; i < _preMergeBlockCount; i++)
+                calculator.Add(_blockHashes[i], _totalDifficulties[i]);
+            accumulatorRoot = calculator.ComputeRoot();
+            totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.AccumulatorRoot, accumulatorRoot.ToByteArray(), cancellation);
+        }
+
+        // ComponentIndex
+        // Layout: starting_number | [header_off, body_off, receipts_off, [td_off]] * N | component_count | block_count
+        // Offsets are negative int64 LE, relative to start of the ComponentIndex TLV (including 8-byte header).
+        long componentIndexStart = totalWritten; // absolute position of the ComponentIndex entry header
+        int indexDataLength = 8 + blockCount * componentCount * 8 + 8 + 8;
+
+        using ArrayPoolList<byte> indexBytes = new(indexDataLength, indexDataLength);
+        Span<byte> span = indexBytes.AsSpan();
+
+        WriteInt64(span, 0, _startNumber);
+
+        for (int i = 0; i < blockCount; i++)
+        {
+            int baseOff = 8 + i * componentCount * 8;
+            WriteInt64(span, baseOff + 0, headerOffsets[i] - componentIndexStart);
+            WriteInt64(span, baseOff + 8, bodyOffsets[i] - componentIndexStart);
+            WriteInt64(span, baseOff + 16, receiptsOffsets[i] - componentIndexStart);
+            if (needsTd)
+                WriteInt64(span, baseOff + 24, tdOffsets[i] - componentIndexStart);
+        }
+
+        int tailOff = 8 + blockCount * componentCount * 8;
+        WriteInt64(span, tailOff, componentCount);
+        WriteInt64(span, tailOff + 8, blockCount);
+
+        await _e2StoreWriter.WriteEntry(EntryTypes.ComponentIndex, indexBytes.AsMemory(), cancellation);
+        await _e2StoreWriter.Flush(cancellation);
+
+        _finalized = true;
+        return (accumulatorRoot, _e2StoreWriter.FinalizeChecksum());
+    }
+
+    private static void WriteInt64(Span<byte> destination, int off, long value) =>
+        BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, 8), value);
+
+    public void Dispose()
+    {
+        _e2StoreWriter?.Dispose();
+        _encodedHeaders.Dispose();
+        _encodedBodies.Dispose();
+        _encodedSlimReceipts.Dispose();
+        _totalDifficulties.Dispose();
+        _blockHashes.Dispose();
+    }
+}
