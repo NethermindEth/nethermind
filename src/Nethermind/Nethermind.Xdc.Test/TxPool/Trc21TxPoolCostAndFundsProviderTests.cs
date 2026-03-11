@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.Xdc.TxPool;
@@ -98,7 +100,7 @@ internal class Trc21TxPoolCostAndFundsProviderTests
         bool isTipTrc21FeeEnabled,
         long blockNumberGas50X)
     {
-        var (blockTree, specProvider, _) = XdcTxPoolTestHelper.Create(
+        (IBlockTree blockTree, ISpecProvider specProvider) = XdcTxPoolTestHelper.Create(
             headNumber,
             isTipTrc21FeeEnabled,
             blockNumberGas50X);

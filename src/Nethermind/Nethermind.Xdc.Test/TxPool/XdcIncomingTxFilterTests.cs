@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus;
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.TxPool;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
+using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -88,21 +92,21 @@ internal class XdcIncomingTxFilterTests
     [Test]
     public void Accept_ShouldAcceptNonSpecialTx_AtBoundaryMinGasPrices()
     {
-        Transaction before50xTx = XdcTxPoolTestHelper.BuildTx(
+        Transaction before50XTx = XdcTxPoolTestHelper.BuildTx(
             XdcTxPoolTestHelper.SenderAddress,
             XdcTxPoolTestHelper.RecipientAddress,
             gasPrice: XdcConstants.Trc21GasPrice);
-        (XdcIncomingTxFilter before50xFilter, _) = CreateFilter(100, true, blockNumberGas50x: 1_000);
-        TxFilteringState beforeState = new(before50xTx, Substitute.For<IAccountStateProvider>());
-        AcceptTxResult beforeResult = before50xFilter.Accept(before50xTx, ref beforeState, TxHandlingOptions.None);
+        (XdcIncomingTxFilter before50XFilter, _) = CreateFilter(100, true, blockNumberGas50x: 1_000);
+        TxFilteringState beforeState = new(before50XTx, Substitute.For<IAccountStateProvider>());
+        AcceptTxResult beforeResult = before50XFilter.Accept(before50XTx, ref beforeState, TxHandlingOptions.None);
 
-        Transaction after50xTx = XdcTxPoolTestHelper.BuildTx(
+        Transaction after50XTx = XdcTxPoolTestHelper.BuildTx(
             XdcTxPoolTestHelper.SenderAddress,
             XdcTxPoolTestHelper.RecipientAddress,
             gasPrice: XdcConstants.Trc21GasPrice50x);
         (XdcIncomingTxFilter after50xFilter, _) = CreateFilter(100, true, blockNumberGas50x: 10);
-        TxFilteringState afterState = new(after50xTx, Substitute.For<IAccountStateProvider>());
-        AcceptTxResult afterResult = after50xFilter.Accept(after50xTx, ref afterState, TxHandlingOptions.None);
+        TxFilteringState afterState = new(after50XTx, Substitute.For<IAccountStateProvider>());
+        AcceptTxResult afterResult = after50xFilter.Accept(after50XTx, ref afterState, TxHandlingOptions.None);
 
         Assert.That(beforeResult, Is.EqualTo(AcceptTxResult.Accepted));
         Assert.That(afterResult, Is.EqualTo(AcceptTxResult.Accepted));
@@ -125,15 +129,16 @@ internal class XdcIncomingTxFilterTests
 
     private static (XdcIncomingTxFilter, XdcTxPoolTestHelper.FakeTrc21StateReader) CreateFilter(long headNumber, bool isTipTrc21FeeEnabled, long blockNumberGas50x = long.MaxValue)
     {
-        var (blockTree, specProvider, _) = XdcTxPoolTestHelper.Create(
+        (IBlockTree blockTree, ISpecProvider specProvider) = XdcTxPoolTestHelper.Create(
             headNumber,
             isTipTrc21FeeEnabled,
             blockNumberGas50x);
 
-        ISigner signer = Substitute.For<ISigner>();
-        signer.Address.Returns(XdcTxPoolTestHelper.SignerAddress);
+        ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+        Snapshot snapshot = new(headNumber, Keccak.Zero, [XdcTxPoolTestHelper.SignerAddress]);
+        snapshotManager.GetSnapshotByBlockNumber(Arg.Any<long>(), Arg.Any<IXdcReleaseSpec>()).Returns(snapshot);
 
         XdcTxPoolTestHelper.FakeTrc21StateReader trc21Reader = new();
-        return (new XdcIncomingTxFilter(signer, blockTree, specProvider, trc21Reader), trc21Reader);
+        return (new XdcIncomingTxFilter(snapshotManager, blockTree, specProvider, trc21Reader), trc21Reader);
     }
 }

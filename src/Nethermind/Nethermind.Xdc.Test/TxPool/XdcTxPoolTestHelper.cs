@@ -24,10 +24,10 @@ internal static class XdcTxPoolTestHelper
 
     private static readonly byte[] DefaultTransferData = [0xa9, 0x05, 0x9c, 0xbb];
 
-    public static (IBlockTree blockTree, ISpecProvider specProvider, IXdcReleaseSpec spec) Create(
+    public static (IBlockTree blockTree, ISpecProvider specProvider) Create(
         long headNumber,
         bool isTipTrc21FeeEnabled,
-        long blockNumberGas50x)
+        long blockNumberGas50X)
     {
         XdcBlockHeader headHeader = Build.A.XdcBlockHeader().WithNumber(headNumber).TestObject;
         Block headBlock = Build.A.Block.WithHeader(headHeader).TestObject;
@@ -38,7 +38,7 @@ internal static class XdcTxPoolTestHelper
         IXdcReleaseSpec spec = Substitute.For<IXdcReleaseSpec>();
         spec.IsTipTrc21FeeEnabled.Returns(isTipTrc21FeeEnabled);
         spec.EpochLength.Returns(900);
-        spec.BlockNumberGas50x.Returns(blockNumberGas50x);
+        spec.BlockNumberGas50x.Returns(blockNumberGas50X);
         spec.BlockSignerContract.Returns(new Address("0x0000000000000000000000000000000000000089"));
         spec.RandomizeSMCBinary.Returns(RandomizeContract);
 
@@ -46,7 +46,7 @@ internal static class XdcTxPoolTestHelper
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
         specProvider.GetFinalSpec().Returns(spec);
 
-        return (blockTree, specProvider, spec);
+        return (blockTree, specProvider);
     }
 
     public static Transaction BuildTx(
