@@ -58,7 +58,6 @@ public class ClefSigner : IHeaderSigner, ISignerStore
     private static Address GetSignerAddress(ClefWallet clefWallet, Address? blockAuthorAccount)
     {
         Address[] accounts = clefWallet.GetAccounts();
-        if (accounts.Length == 0) throw new InvalidOperationException("Remote signer has not been configured with any signers.");
         return blockAuthorAccount is not null
             ? accounts.Any(a => a == blockAuthorAccount)
                 ? blockAuthorAccount
