@@ -112,7 +112,7 @@ public static class PersistedSnapshotBuilder
         // Use a conservative multiplier on the snapshot memory estimate.
         // Clamp to 1 GiB so the buffer stays within ArrayPool's poolable range,
         // and all arithmetic is done in long to avoid int overflow for large snapshots.
-        return (int)Math.Min(1.GiB(), snapshot.EstimateMemory() + 1.KiB());
+        return (int)Math.Min(1.GiB, snapshot.EstimateMemory() + 1.KiB);
     }
 
     private static void WriteMetadataColumn<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
@@ -273,7 +273,7 @@ public static class PersistedSnapshotBuilder
             foreach ((TreePath path, TrieNode node) in stateNodes)
             {
                 path.EncodeWith3Byte(keyBuffer.AsSpan(0, 3));
-                inner.Add(keyBuffer.AsSpan(0, 3), node.FullRlp.Span);
+                inner.Add(keyBuffer.AsSpan(0, 3), node.FullRlp.AsSpan());
             }
 
             inner.Build();
@@ -290,7 +290,7 @@ public static class PersistedSnapshotBuilder
             foreach ((TreePath path, TrieNode node) in stateNodes)
             {
                 path.EncodeWith8Byte(keyBuffer.AsSpan());
-                inner.Add(keyBuffer.AsSpan(0, 8), node.FullRlp.Span);
+                inner.Add(keyBuffer.AsSpan(0, 8), node.FullRlp.AsSpan());
             }
 
             inner.Build();
@@ -308,7 +308,7 @@ public static class PersistedSnapshotBuilder
             {
                 path.Path.Bytes.CopyTo(keyBuffer.AsSpan());
                 keyBuffer[32] = (byte)path.Length;
-                inner.Add(keyBuffer.AsSpan(0, 33), node.FullRlp.Span);
+                inner.Add(keyBuffer.AsSpan(0, 33), node.FullRlp.AsSpan());
             }
 
             inner.Build();
@@ -335,7 +335,7 @@ public static class PersistedSnapshotBuilder
                 {
                     ((Hash256AsKey _, TreePath path) snKey, TrieNode node) = storageNodes[i];
                     snKey.path.EncodeWith8Byte(pathKey.AsSpan());
-                    inner.Add(pathKey.AsSpan(0, 8), node.FullRlp.Span);
+                    inner.Add(pathKey.AsSpan(0, 8), node.FullRlp.AsSpan());
                     i++;
                 }
 
@@ -368,7 +368,7 @@ public static class PersistedSnapshotBuilder
                     ((Hash256AsKey _, TreePath path) snKey, TrieNode node) = storageNodes[i];
                     snKey.path.Path.Bytes.CopyTo(pathKey.AsSpan());
                     pathKey[32] = (byte)snKey.path.Length;
-                    inner.Add(pathKey.AsSpan(0, 33), node.FullRlp.Span);
+                    inner.Add(pathKey.AsSpan(0, 33), node.FullRlp.AsSpan());
                     i++;
                 }
 

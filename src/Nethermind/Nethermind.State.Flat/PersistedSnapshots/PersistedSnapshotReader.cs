@@ -336,7 +336,7 @@ public static class PersistedSnapshotReader
                     Address addr = new(addrEntry.Key.ToArray());
                     Account? account = accountRlp.IsEmpty
                         ? null
-                        : AccountDecoder.Slim.Decode(new RlpStream(accountRlp.ToArray()));
+                        : AccountDecoder.Slim.Decode(accountRlp);
                     list.Add(new(addr, account));
                 }
             }

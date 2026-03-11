@@ -19,8 +19,8 @@ public class FlatDbConfig : IFlatDbConfig
     public int MinCompactSize { get; set; } = 2;
     public int MinReorgDepth { get; set; } = 128;
     public int TrieWarmerWorkerCount { get; set; } = -1;
-    public long BlockCacheSizeBudget { get; set; } = 1.GiB();
-    public long TrieCacheMemoryBudget { get; set; } = 512.MiB();
+    public long BlockCacheSizeBudget { get; set; } = 1.GiB;
+    public long TrieCacheMemoryBudget { get; set; } = 512.MiB;
     public bool EnableLongFinality { get; set; } = false;
     public int LongFinalityReorgDepth { get; set; } = 90000;
     public string PersistedSnapshotPath { get; set; } = "snapshots";

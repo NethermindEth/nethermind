@@ -57,7 +57,7 @@ internal static class PersistedSnapshotUtils
         {
             if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
             string key = $"{kv.Key.Span.ToHexString(false)}:{kv.Key.Length}";
-            stateNodes[key] = kv.Value.FullRlp.Span.ToHexString(false);
+            stateNodes[key] = kv.Value.FullRlp.AsSpan().ToHexString(false);
         }
         dump["stateNodes"] = stateNodes;
 
@@ -68,7 +68,7 @@ internal static class PersistedSnapshotUtils
             if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
             (Hash256AsKey hash, TreePath path) = kv.Key;
             string key = $"{hash.Value.Bytes.ToHexString(false)}:{path.Span.ToHexString(false)}:{path.Length}";
-            storageNodes[key] = kv.Value.FullRlp.Span.ToHexString(false);
+            storageNodes[key] = kv.Value.FullRlp.AsSpan().ToHexString(false);
         }
         dump["storageNodes"] = storageNodes;
 
@@ -217,7 +217,7 @@ internal static class PersistedSnapshotUtils
                 if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
                 if (!persisted.TryLoadStateNodeRlp(kv.Key, out ReadOnlySpan<byte> nodeRlp))
                     throw new InvalidOperationException($"StateNode at path length {kv.Key.Length} not found in persisted snapshot");
-                if (!nodeRlp.SequenceEqual(kv.Value.FullRlp.Span))
+                if (!nodeRlp.SequenceEqual(kv.Value.FullRlp.AsSpan()))
                     throw new InvalidOperationException($"StateNode at path length {kv.Key.Length} RLP mismatch");
             }
 
@@ -228,7 +228,7 @@ internal static class PersistedSnapshotUtils
                 (Hash256AsKey hash, TreePath path) = kv.Key;
                 if (!persisted.TryLoadStorageNodeRlp(hash, path, out ReadOnlySpan<byte> nodeRlp))
                     throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} not found in persisted snapshot");
-                if (!nodeRlp.SequenceEqual(kv.Value.FullRlp.Span))
+                if (!nodeRlp.SequenceEqual(kv.Value.FullRlp.AsSpan()))
                     throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} RLP mismatch");
             }
         }
