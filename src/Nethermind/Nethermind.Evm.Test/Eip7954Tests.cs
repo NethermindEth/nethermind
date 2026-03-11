@@ -39,11 +39,11 @@ public class Eip7954Tests : VirtualMachineTestsBase
     {
         byte[] initCode = new byte[initCodeSize];
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
 
         (Block block, Transaction transaction) = PrepareTx((BlockNumber, timestamp), 5_000_000, initCode);
 
-        transaction.GasPrice = 2.GWei();
+        transaction.GasPrice = 2.GWei;
         transaction.To = null;
         transaction.Data = initCode;
         return _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), NullTxTracer.Instance);
@@ -59,7 +59,7 @@ public class Eip7954Tests : VirtualMachineTestsBase
         byte[] calldata = new byte[100];
         for (int i = 0; i < calldata.Length; i++) calldata[i] = 0xFF;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
 
         (Block block, Transaction transaction) = PrepareTx(Activation, 23000, null);
         transaction.Data = calldata;
@@ -83,11 +83,11 @@ public class Eip7954Tests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
 
         (Block block, Transaction transaction) = PrepareTx((BlockNumber, timestamp), 7_500_000, initCode, blockGasLimit: 50_000_000);
 
-        transaction.GasPrice = 2.GWei();
+        transaction.GasPrice = 2.GWei;
         transaction.To = null;
         transaction.Data = initCode;
         TestAllTracerWithOutput tracer = CreateTracer();
