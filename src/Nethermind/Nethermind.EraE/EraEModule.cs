@@ -9,6 +9,7 @@ using Nethermind.EraE.Config;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Import;
 using Nethermind.EraE.JsonRpc;
+using Nethermind.EraE.Proofs;
 using Nethermind.EraE.Store;
 using Nethermind.JsonRpc.Modules;
 
@@ -26,6 +27,15 @@ public class EraEModule : Module
             .AddSingleton<IEraStoreFactory, EraStoreFactory>()
             .AddSingleton<EraCliRunner>()
             .AddSingleton<IAdminEraService, AdminEraService>()
+            .AddSingleton<Validator>(ctx =>
+            {
+                ISpecProvider spec = ctx.Resolve<ISpecProvider>();
+                IHistoricalSummariesProvider? summariesProvider =
+                    ctx.IsRegistered<IHistoricalSummariesProvider>()
+                        ? ctx.Resolve<IHistoricalSummariesProvider>()
+                        : null;
+                return new Validator(spec, trustedAccumulators: null, trustedHistoricalRoots: null, summariesProvider);
+            })
             .RegisterSingletonJsonRpcModule<IEraAdminRpcModule, EraAdminRpcModule>()
             .AddDecorator<IEraEConfig>((ctx, eraConfig) =>
             {

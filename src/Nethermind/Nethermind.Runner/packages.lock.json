@@ -1282,6 +1282,14 @@
           "Polly": "[8.6.6, )"
         }
       },
+      "nethermind.blockproofs": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[1.37.0-unstable, )",
+          "Nethermind.Merkleization": "[1.37.0-unstable, )",
+          "Nethermind.Serialization.Ssz": "[1.37.0-unstable, )"
+        }
+      },
       "nethermind.config": {
         "type": "Project",
         "dependencies": {
@@ -1417,6 +1425,7 @@
         "dependencies": {
           "CommunityToolkit.HighPerformance": "[8.4.0, )",
           "Nethermind.Api": "[1.37.0-unstable, )",
+          "Nethermind.BlockProofs": "[1.37.0-unstable, )",
           "Nethermind.Blockchain": "[1.37.0-unstable, )",
           "Nethermind.Consensus": "[1.37.0-unstable, )",
           "Nethermind.Core": "[1.37.0-unstable, )",
@@ -1712,6 +1721,7 @@
       "nethermind.serialization.rlp": {
         "type": "Project",
         "dependencies": {
+          "Nethermind.BlockProofs": "[1.37.0-unstable, )",
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.DotNetty.Buffers": "[1.0.2.76, )"
         }

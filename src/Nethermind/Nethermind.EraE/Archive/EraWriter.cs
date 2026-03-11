@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Era1;
 using Nethermind.EraE.E2Store;
+using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
@@ -54,6 +55,7 @@ public sealed class EraWriter : IDisposable
     private int _preMergeBlockCount;
     private bool _hasPostMergeBlocks;
     private UInt256 _lastPreMergeTD;
+    private BlocksRootContext? _blocksRootContext;
 
     public EraWriter(string path, ISpecProvider specProvider)
         : this(new E2StoreWriter(new FileStream(path, FileMode.Create)), specProvider)
@@ -87,6 +89,7 @@ public sealed class EraWriter : IDisposable
         if (_firstBlock)
         {
             _startNumber = block.Number;
+            _blocksRootContext = new BlocksRootContext(block.Number, block.Header.Timestamp);
             _firstBlock = false;
         }
         else if (block.Number != _startNumber + _encodedHeaders.Count)
@@ -110,6 +113,7 @@ public sealed class EraWriter : IDisposable
             _encodedSlimReceipts.Add(receiptsRlp.AsMemory().ToArray());
 
         _blockHashes.Add(block.Hash);
+        _blocksRootContext!.ProcessBlock(block);
 
         if (!isPostMerge)
         {
@@ -137,6 +141,8 @@ public sealed class EraWriter : IDisposable
             throw new EraException("No blocks have been added.");
         if (_finalized)
             throw new EraException("Finalize has already been called.");
+
+        _blocksRootContext!.FinalizeContext();
 
         bool isTransitionEpoch = _preMergeBlockCount > 0 && _hasPostMergeBlocks;
         bool needsTd = _preMergeBlockCount > 0; // pre-merge or transition
@@ -194,10 +200,7 @@ public sealed class EraWriter : IDisposable
         ValueHash256 accumulatorRoot = default;
         if (needsTd)
         {
-            using AccumulatorCalculator calculator = new();
-            for (int i = 0; i < _preMergeBlockCount; i++)
-                calculator.Add(_blockHashes[i], _totalDifficulties[i]);
-            accumulatorRoot = calculator.ComputeRoot();
+            accumulatorRoot = _blocksRootContext!.AccumulatorRoot;
             totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.AccumulatorRoot, accumulatorRoot.ToByteArray(), cancellation);
         }
 
@@ -238,6 +241,7 @@ public sealed class EraWriter : IDisposable
 
     public void Dispose()
     {
+        _blocksRootContext?.Dispose();
         _e2StoreWriter?.Dispose();
         _encodedHeaders.Dispose();
         _encodedBodies.Dispose();
