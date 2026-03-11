@@ -195,7 +195,7 @@ public static class PayloadAttributesExtensions
         executionPayload switch
         {
             { SlotNumber: not null } => PayloadAttributesVersions.V4,
-            { ParentBeaconBlockRoot: not null, Withdrawals: not null } => PayloadAttributesVersions.V3,
+            { ParentBeaconBlockRoot: not null } => PayloadAttributesVersions.V3,
             { Withdrawals: not null } => PayloadAttributesVersions.V2,
             _ => PayloadAttributesVersions.V1
         };

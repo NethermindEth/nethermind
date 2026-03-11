@@ -4,9 +4,9 @@
 namespace Nethermind.Consensus;
 
 /// <summary>
-/// Fork ordinals for ordering and range checks. These are NOT method version numbers —
-/// use the nested classes (<see cref="Fcu"/>, <see cref="NewPayload"/>, <see cref="GetPayload"/>)
-/// for actual method versions.
+/// Engine API method version constants, grouped by method.
+/// Use the nested classes (<see cref="Fcu"/>, <see cref="NewPayload"/>, <see cref="GetPayload"/>)
+/// to select the appropriate version when calling Execution Engine API methods.
 /// </summary>
 public static class EngineApiVersions
 {
