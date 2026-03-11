@@ -232,7 +232,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
-            tx.BlockGasUsed = spentGas.EffectiveBlockGas;
+            // tx.BlockGasUsed = spentGas.EffectiveBlockGas;
 
             //only main thread updates transaction
             if (!opts.HasFlag(ExecutionOptions.Warmup))
@@ -809,6 +809,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 header.GasUsed += gasConsumed.EffectiveBlockGas;
                 Console.WriteLine($"[sequential] header.GasUsed = {header.GasUsed}, txBlockGas = {gasConsumed.EffectiveBlockGas}");
             }
+            tx.BlockGasUsed = gasConsumed.EffectiveBlockGas;
 
             return statusCode;
         }
