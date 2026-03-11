@@ -14,9 +14,9 @@ namespace Nethermind.Db
     /// In-memory database with MVCC-based snapshot support.
     /// Uses Multi-Version Concurrency Control to enable O(1) snapshot creation.
     /// </summary>
-    public class SnapshotableMemDb : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot
+    public class SnapshotableMemDb(string name = nameof(SnapshotableMemDb)) : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot
     {
-        private readonly SortedDictionary<byte[], VersionedEntry> _db;
+        private readonly SortedDictionary<byte[], VersionedEntry> _db = new(Bytes.Comparer);
         private long _currentVersion = 0;
         private readonly HashSet<long> _activeSnapshotVersions = new();
         private readonly object _versionLock = new();
@@ -24,17 +24,7 @@ namespace Nethermind.Db
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
 
-        public SnapshotableMemDb(string name)
-        {
-            Name = name;
-            _db = new SortedDictionary<byte[], VersionedEntry>(Bytes.Comparer);
-        }
-
-        public SnapshotableMemDb() : this(nameof(SnapshotableMemDb))
-        {
-        }
-
-        public string Name { get; }
+        public string Name { get; } = name;
 
         public byte[]? this[ReadOnlySpan<byte> key]
         {
@@ -127,7 +117,7 @@ namespace Nethermind.Db
             }
         }
 
-        public IWriteBatch StartWriteBatch() => this.LikeABatch();
+        public IWriteBatch StartWriteBatch() => new MemDbWriteBatch(this);
 
         public void Flush(bool onlyWal = false) { }
 
@@ -394,16 +384,10 @@ namespace Nethermind.Db
         /// <summary>
         /// Read-only snapshot of SnapshotableMemDb at a specific version.
         /// </summary>
-        private sealed class MemDbSnapshot : IKeyValueStoreSnapshot, ISortedKeyValueStore
+        private sealed class MemDbSnapshot(SnapshotableMemDb db, long snapshotVersion) : IKeyValueStoreSnapshot, ISortedKeyValueStore
         {
-            private readonly SnapshotableMemDb _db;
-            private readonly long _snapshotVersion;
-
-            public MemDbSnapshot(SnapshotableMemDb db, long snapshotVersion)
-            {
-                _db = db;
-                _snapshotVersion = snapshotVersion;
-            }
+            private readonly SnapshotableMemDb _db = db;
+            private readonly long _snapshotVersion = snapshotVersion;
 
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
             {
@@ -472,23 +456,15 @@ namespace Nethermind.Db
         /// <summary>
         /// Sorted view iterator for a range of keys.
         /// </summary>
-        private sealed class MemDbSortedView : ISortedView
+        private sealed class MemDbSortedView(SnapshotableMemDb db, long version, byte[] firstKey, byte[] lastKey) : ISortedView
         {
-            private readonly SnapshotableMemDb _db;
-            private readonly long _version;
-            private readonly byte[] _firstKey;
-            private readonly byte[] _lastKey;
+            private readonly SnapshotableMemDb _db = db;
+            private readonly long _version = version;
+            private readonly byte[] _firstKey = firstKey;
+            private readonly byte[] _lastKey = lastKey;
             private IEnumerator<KeyValuePair<byte[], VersionedEntry>>? _enumerator;
             private byte[]? _currentKey;
             private byte[]? _currentValue;
-
-            public MemDbSortedView(SnapshotableMemDb db, long version, byte[] firstKey, byte[] lastKey)
-            {
-                _db = db;
-                _version = version;
-                _firstKey = firstKey;
-                _lastKey = lastKey;
-            }
 
             public bool StartBefore(ReadOnlySpan<byte> key)
             {
@@ -538,6 +514,83 @@ namespace Nethermind.Db
             public void Dispose()
             {
                 _enumerator?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Write batch that collects all operations and commits them atomically with a single lock.
+        /// </summary>
+        private sealed class MemDbWriteBatch(SnapshotableMemDb db) : IWriteBatch
+        {
+            private readonly SnapshotableMemDb _db = db;
+            private readonly List<(byte[] Key, byte[]? Value, WriteFlags Flags)> _operations = new();
+            private bool _disposed;
+
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            {
+                if (_disposed) throw new ObjectDisposedException(nameof(MemDbWriteBatch));
+                _operations.Add((key.ToArray(), value, flags));
+            }
+
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+            {
+                // For in-memory database, merge is the same as set
+                Set(key, value.ToArray(), flags);
+            }
+
+            public void Clear()
+            {
+                if (_disposed) throw new ObjectDisposedException(nameof(MemDbWriteBatch));
+                _operations.Clear();
+            }
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+
+                if (_operations.Count == 0) return;
+
+                lock (_db._versionLock)
+                {
+                    // Increment version once for the entire batch
+                    _db._currentVersion++;
+                    long batchVersion = _db._currentVersion;
+
+                    foreach ((byte[] key, byte[]? value, WriteFlags _) in _operations)
+                    {
+                        if (value is null)
+                        {
+                            // Removing: add a tombstone version
+                            if (_db._db.TryGetValue(key, out VersionedEntry? entry))
+                            {
+                                entry.AddVersion(batchVersion, null);
+                            }
+                            else
+                            {
+                                VersionedEntry newEntry = new();
+                                newEntry.AddVersion(batchVersion, null);
+                                _db._db[key] = newEntry;
+                            }
+                        }
+                        else
+                        {
+                            // Adding or updating
+                            if (_db._db.TryGetValue(key, out VersionedEntry? entry))
+                            {
+                                entry.AddVersion(batchVersion, value);
+                            }
+                            else
+                            {
+                                VersionedEntry newEntry = new();
+                                newEntry.AddVersion(batchVersion, value);
+                                _db._db[key] = newEntry;
+                            }
+                        }
+                    }
+
+                    _db.WritesCount += _operations.Count;
+                }
             }
         }
     }
