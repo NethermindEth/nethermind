@@ -3,20 +3,15 @@
 
 namespace Nethermind.Consensus;
 
+/// <summary>
+/// Fork ordinals for ordering and range checks. These are NOT method version numbers —
+/// use the nested classes (<see cref="Fcu"/>, <see cref="NewPayload"/>, <see cref="GetPayload"/>)
+/// for actual method versions.
+/// </summary>
 public static class EngineApiVersions
 {
-    public const int Paris = 1;
-    public const int Shanghai = 2;
-    public const int Cancun = 3;
-    public const int Prague = 4;
-    public const int Osaka = 5;
-    public const int Amsterdam = 6;
-
-    /// <summary>
-    /// forkchoiceUpdated method versions.
-    /// </summary>
-    /// <remarks>Multiple forks may share the same FCU version (e.g. Cancun/Prague/Osaka all use FCUv3).
-    /// </remarks>
+    /// <summary>forkchoiceUpdated method versions.</summary>
+    /// <remarks>Multiple forks may share the same version (e.g. Cancun/Prague/Osaka all use V3).</remarks>
     public static class Fcu
     {
         public const int V1 = 1; // Paris
@@ -25,14 +20,24 @@ public static class EngineApiVersions
         public const int V4 = 4; // Amsterdam
     }
 
-    /// <summary>
-    /// Maps a fork's engine API version to the forkchoiceUpdated method version it uses.
-    /// </summary>
-    public static int FcuVersion(int apiVersion) => apiVersion switch
+    /// <summary>engine_newPayload method versions.</summary>
+    public static class NewPayload
     {
-        >= Amsterdam => Fcu.V4,  // Amsterdam
-        >= Cancun => Fcu.V3, // Cancun/Prague/Osaka
-        >= Shanghai => Fcu.V2, // Shanghai
-        _ => Fcu.V1 // Paris
-    };
+        public const int V1 = 1; // Paris
+        public const int V2 = 2; // Shanghai
+        public const int V3 = 3; // Cancun
+        public const int V4 = 4; // Prague/Osaka
+        public const int V5 = 5; // Amsterdam
+    }
+
+    /// <summary>engine_getPayload method versions.</summary>
+    public static class GetPayload
+    {
+        public const int V1 = 1; // Paris
+        public const int V2 = 2; // Shanghai
+        public const int V3 = 3; // Cancun
+        public const int V4 = 4; // Prague
+        public const int V5 = 5; // Osaka
+        public const int V6 = 6; // Amsterdam
+    }
 }
