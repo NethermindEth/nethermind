@@ -48,13 +48,8 @@ public class XdcModule : Module
         // Register custom RocksDb config factory that handles XdcSnapshots without validation
         builder.AddDecorator<IRocksDbConfigFactory, XdcRocksDbConfigFactory>();
 
-        // Register XDC protocol handlers using clean DSL (intercepts ETH protocol versions 62-65 and 100)
-        builder
-            .AddProtocolHandler<P2P.XdcProtocolHandler>(Protocol.Eth, version: 100, first: true)
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V62.Eth62ProtocolHandler>(Protocol.Eth, version: 62, first: true)
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V63.Eth63ProtocolHandler>(Protocol.Eth, version: 63, first: true)
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V64.Eth64ProtocolHandler>(Protocol.Eth, version: 64, first: true)
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V65.Eth65ProtocolHandler>(Protocol.Eth, version: 65, first: true);
+        // Register XDC protocol handler using clean DSL (intercepts ETH protocol version 100)
+        builder.AddProtocolHandler<P2P.XdcProtocolHandler>(Protocol.Eth, version: 100);
 
         builder
             .AddStep(typeof(InitializeBlockchainXdc))

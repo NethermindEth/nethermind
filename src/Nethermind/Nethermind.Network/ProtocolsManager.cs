@@ -176,13 +176,14 @@ namespace Nethermind.Network
 
             string code = protocolCode.ToLowerInvariant();
 
-            // Try DI-registered factories (order preserved from OrderedComponents)
-            foreach (IProtocolHandlerFactory factory in _factories)
+            // Try DI-registered factories in reverse order (plugins registered last take priority)
+            for (int i = _factories.Length - 1; i >= 0; i--)
             {
+                IProtocolHandlerFactory factory = _factories[i];
                 if (factory.ProtocolCode != code) continue;
                 if (factory.TryCreate(session, version, out IProtocolHandler? handler))
                 {
-                    InitHandler(session, handler, addCapabilities);
+                    InitHandler(session, handler);
                     return;
                 }
             }
@@ -217,7 +218,7 @@ namespace Nethermind.Network
             _protocolFactories[code] = (session, version) => factory(session, version);
         }
 
-        private void InitHandler(ISession session, IProtocolHandler handler, bool addCapabilities = false)
+        private void InitHandler(ISession session, IProtocolHandler handler)
         {
             handler.SubprotocolRequested += (s, e) => InitProtocol(session, e.ProtocolCode, e.Version);
             session.AddProtocolHandler(handler);
@@ -226,14 +227,6 @@ namespace Nethermind.Network
                 InitSyncPeerProtocol(session, (SyncPeerProtocolHandlerBase)handler);
             else if (handler is ISatelliteProtocolHandler)
                 InitSatelliteProtocol(session, (ProtocolHandlerBase)handler);
-
-            if (addCapabilities)
-            {
-                foreach (Capability capability in _capabilities)
-                {
-                    session.AddSupportedCapability(capability);
-                }
-            }
 
             handler.Init();
         }

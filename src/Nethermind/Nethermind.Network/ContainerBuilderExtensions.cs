@@ -22,17 +22,13 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder AddProtocolHandler<THandler>(
         this ContainerBuilder builder,
         string protocolCode,
-        int version,
-        bool first = false) where THandler : class, IProtocolHandler
+        int version) where THandler : class, IProtocolHandler
     {
         // Register handler type using existing DSL
         builder.Add<THandler>();
 
-        // Register factory using AddFirst/AddLast for ordering
-        return first
-            ? builder.AddFirst<IProtocolHandlerFactory>(ctx =>
-                new ReusableProtocolHandlerFactory<THandler>(ctx.Resolve<Func<ISession, THandler>>(), protocolCode, version))
-            : builder.AddLast<IProtocolHandlerFactory>(ctx =>
-                new ReusableProtocolHandlerFactory<THandler>(ctx.Resolve<Func<ISession, THandler>>(), protocolCode, version));
+        // Register factory using AddLast for ordering
+        return builder.AddLast<IProtocolHandlerFactory>(ctx =>
+            new ReusableProtocolHandlerFactory<THandler>(ctx.Resolve<Func<ISession, THandler>>(), protocolCode, version));
     }
 }
