@@ -523,7 +523,7 @@ namespace Nethermind.Db
         private sealed class MemDbWriteBatch(SnapshotableMemDb db) : IWriteBatch
         {
             private readonly SnapshotableMemDb _db = db;
-            private readonly List<(byte[] Key, byte[]? Value, WriteFlags Flags)> _operations = new();
+            private readonly ArrayPoolList<(byte[] Key, byte[]? Value, WriteFlags Flags)> _operations = new(16);
             private bool _disposed;
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -549,48 +549,51 @@ namespace Nethermind.Db
                 if (_disposed) return;
                 _disposed = true;
 
-                if (_operations.Count == 0) return;
-
-                lock (_db._versionLock)
+                if (_operations.Count > 0)
                 {
-                    // Increment version once for the entire batch
-                    _db._currentVersion++;
-                    long batchVersion = _db._currentVersion;
-
-                    foreach ((byte[] key, byte[]? value, WriteFlags _) in _operations)
+                    lock (_db._versionLock)
                     {
-                        if (value is null)
-                        {
-                            // Removing: add a tombstone version
-                            if (_db._db.TryGetValue(key, out VersionedEntry? entry))
-                            {
-                                entry.AddVersion(batchVersion, null);
-                            }
-                            else
-                            {
-                                VersionedEntry newEntry = new();
-                                newEntry.AddVersion(batchVersion, null);
-                                _db._db[key] = newEntry;
-                            }
-                        }
-                        else
-                        {
-                            // Adding or updating
-                            if (_db._db.TryGetValue(key, out VersionedEntry? entry))
-                            {
-                                entry.AddVersion(batchVersion, value);
-                            }
-                            else
-                            {
-                                VersionedEntry newEntry = new();
-                                newEntry.AddVersion(batchVersion, value);
-                                _db._db[key] = newEntry;
-                            }
-                        }
-                    }
+                        // Increment version once for the entire batch
+                        _db._currentVersion++;
+                        long batchVersion = _db._currentVersion;
 
-                    _db.WritesCount += _operations.Count;
+                        foreach ((byte[] key, byte[]? value, WriteFlags _) in _operations)
+                        {
+                            if (value is null)
+                            {
+                                // Removing: add a tombstone version
+                                if (_db._db.TryGetValue(key, out VersionedEntry? entry))
+                                {
+                                    entry.AddVersion(batchVersion, null);
+                                }
+                                else
+                                {
+                                    VersionedEntry newEntry = new();
+                                    newEntry.AddVersion(batchVersion, null);
+                                    _db._db[key] = newEntry;
+                                }
+                            }
+                            else
+                            {
+                                // Adding or updating
+                                if (_db._db.TryGetValue(key, out VersionedEntry? entry))
+                                {
+                                    entry.AddVersion(batchVersion, value);
+                                }
+                                else
+                                {
+                                    VersionedEntry newEntry = new();
+                                    newEntry.AddVersion(batchVersion, value);
+                                    _db._db[key] = newEntry;
+                                }
+                            }
+                        }
+
+                        _db.WritesCount += _operations.Count;
+                    }
                 }
+
+                _operations.Dispose();
             }
         }
     }
