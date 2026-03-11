@@ -29,7 +29,7 @@ using MemoryAllowance = Nethermind.TxPool.MemoryAllowance;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
-    public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
+    public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer, ISyncPeerProtocolHandler
     {
         internal static ulong SoftOutgoingMessageSizeLimit = (ulong)9_500.KB;
         public Node Node => Session?.Node;
