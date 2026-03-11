@@ -110,6 +110,23 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         bool chargeForWarm = true);
 
     /// <summary>
+    /// Charges gas for accessing the SELFDESTRUCT beneficiary account.
+    /// For Arbitrum, cold access is charged as FULL StorageAccess (no Computation split).
+    /// This matches Nitro's makeSelfdestructGasFn behavior in operations_acl.go.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="spec">The release specification governing gas costs.</param>
+    /// <param name="accessTracker">The access tracker for cold/warm state.</param>
+    /// <param name="isTracingAccess">Whether access tracing is enabled.</param>
+    /// <param name="address">The beneficiary account address.</param>
+    /// <returns>True if the gas charge was successful; otherwise false.</returns>
+    static abstract bool ConsumeSelfDestructBeneficiaryAccessGas(ref TSelf gas,
+        IReleaseSpec spec,
+        ref readonly StackAccessTracker accessTracker,
+        bool isTracingAccess,
+        Address address);
+
+    /// <summary>
     /// Charges the appropriate gas cost for accessing a storage cell, taking into account whether the access is cold or warm.
     /// <para>
     /// For cold storage accesses (or if not previously warmed up), a higher gas cost is applied. For warm access during SLOAD,

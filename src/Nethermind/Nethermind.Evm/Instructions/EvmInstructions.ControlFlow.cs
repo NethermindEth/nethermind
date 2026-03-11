@@ -228,8 +228,10 @@ internal static partial class EvmInstructions
         if (inheritor is null)
             goto StackUnderflow;
 
-        // Charge gas for account access; if insufficient, signal out-of-gas.
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor, false))
+        // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
+        // Uses ConsumeSelfDestructBeneficiaryAccessGas which charges cold access as full StorageAccess
+        // (no Computation split) to match Nitro's makeSelfdestructGasFn behavior.
+        if (!TGasPolicy.ConsumeSelfDestructBeneficiaryAccessGas(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
