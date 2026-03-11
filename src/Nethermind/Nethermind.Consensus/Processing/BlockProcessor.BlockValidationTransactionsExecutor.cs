@@ -56,7 +56,7 @@ namespace Nethermind.Consensus.Processing
 
                     ITransactionProcessorAdapter[] transactionProcessors = new ITransactionProcessorAdapter[len];
                     BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len]; // n.b. other tracer not set
-                    TaskCompletionSource<(long? GasUsed, Exception? Exception)>[] gasResults = new TaskCompletionSource<(long? GasUsed, Exception? Exception)>[len];
+                    TaskCompletionSource<(long? BlockGasUsed, long? SpentGas, Exception? Exception)>[] gasResults = new TaskCompletionSource<(long? BlockGasUsed, long? SpentGas, Exception? Exception)>[len];
                     for (int i = 0; i < len; i++)
                     {
                         VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.Processing
                         BlockReceiptsTracer tracer = new();
                         tracer.StartNewBlockTrace(block);
                         receiptsTracers[i] = tracer;
-                        gasResults[i] = new TaskCompletionSource<(long? GasUsed, Exception? Exception)>();
+                        gasResults[i] = new TaskCompletionSource<(long? BlockGasUsed, long? SpentGas, Exception? Exception)>();
                     }
 
                     const int GasValidationChunkSize = 8;
@@ -85,16 +85,16 @@ namespace Nethermind.Consensus.Processing
                             int chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, len);
                             for (int j = chunkStart; j < chunkEnd; j++)
                             {
-                                (long? txGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
+                                (long? blockGasUsed, long? txGasSpent, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
                                 if (ex is not null)
                                     ExceptionDispatchInfo.Capture(ex).Throw();
 
-                                totalGas += txGasUsed!.Value;
-                                gasRemaining -= txGasUsed.Value;
+                                totalGas += blockGasUsed.Value;
+                                gasRemaining -= txGasSpent.Value;
 
                                 bool validateStorageReads = j == chunkEnd - 1;
                                 _balBuilder.MergeIntermediateBalsUpTo((ushort)(j + 1));
-                                _logger.Info($"[parallel] validating block access list at index {j + 1} (storage read check: {validateStorageReads}), gas used: {txGasUsed!.Value}");
+                                _logger.Info($"[parallel] validating block access list at index {j + 1} (storage read check: {validateStorageReads}), gas used: {txGasSpent!.Value}, remaining: {gasRemaining}, total: {totalGas}");
                                 _balBuilder.ValidateBlockAccessList(block.Header, (ushort)(j + 1), gasRemaining, validateStorageReads);
                             }
 
@@ -132,11 +132,11 @@ namespace Nethermind.Consensus.Processing
                                     state.receiptsTracers[txIndex],
                                     state.processingOptions,
                                     state.logger);
-                                state.gasResults[txIndex].SetResult((state.txs[txIndex].SpentGas, null));
+                                state.gasResults[txIndex].SetResult((state.txs[txIndex].BlockGasUsed, state.txs[txIndex].SpentGas, null));
                             }
                             catch (Exception ex)
                             {
-                                state.gasResults[txIndex].SetResult((null, ex));
+                                state.gasResults[txIndex].SetResult((null, null, ex));
                             }
 
                             return state;
