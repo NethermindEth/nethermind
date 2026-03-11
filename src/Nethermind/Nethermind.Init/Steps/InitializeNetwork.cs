@@ -55,7 +55,6 @@ public class InitializeNetwork : IStep
     protected readonly INodeStatsManager NodeStatsManager;
     protected readonly ISynchronizer _synchronizer;
     protected readonly ISyncPeerPool _syncPeerPool;
-    protected readonly IForkInfo _forkInfo;
     protected readonly IDiscoveryApp _discoveryApp;
     protected readonly Lazy<IPeerPool> _peerPool;
     protected readonly INetworkStorage _peerStorage;
@@ -77,7 +76,6 @@ public class InitializeNetwork : IStep
         NodeSourceToDiscV4Feeder enrDiscoveryAppFeeder,
         IDiscoveryApp discoveryApp,
         Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
-        IForkInfo forkInfo,
         [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
         IEnumerable<IProtocolHandlerFactory> protocolHandlerFactories,
         INetworkConfig networkConfig,
@@ -93,7 +91,6 @@ public class InitializeNetwork : IStep
         _enrDiscoveryAppFeeder = enrDiscoveryAppFeeder;
         _discoveryApp = discoveryApp;
         _peerPool = peerPool;
-        _forkInfo = forkInfo;
         _peerStorage = peerStorage;
         _protocolHandlerFactories = protocolHandlerFactories;
         _networkConfig = networkConfig;
