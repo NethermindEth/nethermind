@@ -24,7 +24,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
-    public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
+    public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer, ISatelliteProtocolHandler
     {
         private static readonly TrieNodesMessage EmptyTrieNodesMessage = new(EmptyByteArrayList.Instance);
 

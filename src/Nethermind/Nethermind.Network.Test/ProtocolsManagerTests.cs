@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Numerics;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
@@ -120,9 +121,9 @@ public class ProtocolsManagerTests
                 _nodeStatsManager,
                 _protocolValidator,
                 _peerStorage,
+                Array.Empty<IProtocolHandlerFactory>(),
                 forkInfo,
                 _gossipPolicy,
-                Substitute.For<IWorldStateManager>(),
                 LimboLogs.Instance,
                 Substitute.For<ITxPoolConfig>(),
                 Substitute.For<ISpecProvider>());

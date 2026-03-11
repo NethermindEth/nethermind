@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -16,6 +17,7 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -62,6 +64,7 @@ public class InitializeNetwork : IStep
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly ISyncConfig _syncConfig;
     private readonly IInitConfig _initConfig;
+    protected readonly IEnumerable<IProtocolHandlerFactory> _protocolHandlerFactories;
 
     private readonly ILogger _logger;
 
@@ -76,6 +79,7 @@ public class InitializeNetwork : IStep
         Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
         IForkInfo forkInfo,
         [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
+        IEnumerable<IProtocolHandlerFactory> protocolHandlerFactories,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
@@ -91,6 +95,7 @@ public class InitializeNetwork : IStep
         _peerPool = peerPool;
         _forkInfo = forkInfo;
         _peerStorage = peerStorage;
+        _protocolHandlerFactories = protocolHandlerFactories;
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
         _initConfig = initConfig;
@@ -303,9 +308,9 @@ public class InitializeNetwork : IStep
             NodeStatsManager,
             _api.ProtocolValidator,
             _peerStorage,
+            _protocolHandlerFactories,
             _forkInfo,
             _api.GossipPolicy,
-            _api.WorldStateManager!,
             _api.LogManager,
             _api.Config<ITxPoolConfig>(),
             _api.SpecProvider!,

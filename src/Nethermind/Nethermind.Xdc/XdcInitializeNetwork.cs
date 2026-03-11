@@ -10,11 +10,13 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Xdc;
 
@@ -29,10 +31,11 @@ internal class XdcInitializeNetwork(
     Lazy<IPeerPool> peerPool,
     IForkInfo forkInfo,
     [KeyFilter("peers")] INetworkStorage peerStorage,
+    IEnumerable<IProtocolHandlerFactory> protocolHandlerFactories,
     INetworkConfig networkConfig,
     ISyncConfig syncConfig,
     IInitConfig initConfig,
-    ILogManager logManager) : InitializeNetwork(api, nodeStatsManager, _, synchronizer, syncPeerPool, enrDiscoveryAppFeeder, discoveryApp, peerPool, forkInfo, peerStorage, networkConfig, syncConfig, initConfig, logManager)
+    ILogManager logManager) : InitializeNetwork(api, nodeStatsManager, _, synchronizer, syncPeerPool, enrDiscoveryAppFeeder, discoveryApp, peerPool, forkInfo, peerStorage, protocolHandlerFactories, networkConfig, syncConfig, initConfig, logManager)
 {
     protected override IProtocolsManager CreateProtocolManager()
     {
@@ -52,9 +55,9 @@ internal class XdcInitializeNetwork(
             NodeStatsManager,
             _api.ProtocolValidator,
             _peerStorage,
+            _protocolHandlerFactories,
             _forkInfo,
             _api.GossipPolicy,
-            _api.WorldStateManager!,
             _api.LogManager,
             _api.Config<ITxPoolConfig>(),
             _api.SpecProvider!,

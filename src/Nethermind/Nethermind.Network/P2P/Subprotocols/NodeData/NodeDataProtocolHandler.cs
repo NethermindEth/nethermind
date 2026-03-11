@@ -22,7 +22,7 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.Subprotocols.NodeData;
 
-public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
+public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer, ISatelliteProtocolHandler
 {
     private readonly ISyncServer _syncServer;
     private readonly MessageQueue<GetNodeDataMessage, IByteArrayList> _nodeDataRequests;

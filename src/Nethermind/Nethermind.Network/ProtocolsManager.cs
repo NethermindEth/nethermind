@@ -23,11 +23,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
-using Nethermind.Network.P2P.Subprotocols.NodeData;
-using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.Rlpx;
-using Nethermind.State;
-using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -70,8 +66,8 @@ namespace Nethermind.Network
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
+        private readonly IProtocolHandlerFactory[] _factories;
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
-        private readonly ISnapServer? _snapServer;
 
         public ProtocolsManager(
             ISyncPeerPool syncPeerPool,
@@ -84,9 +80,9 @@ namespace Nethermind.Network
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
+            IEnumerable<IProtocolHandlerFactory> factories,
             IForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
-            IWorldStateManager worldStateManager,
             ILogManager logManager,
             ITxPoolConfig txPoolConfig,
             ISpecProvider specProvider,
@@ -108,9 +104,10 @@ namespace Nethermind.Network
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _txPoolConfig = txPoolConfig;
             _specProvider = specProvider;
-            _snapServer = worldStateManager.SnapServer;
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
+            // Order is already set by OrderedComponents<T> (AddFirst/AddLast)
+            _factories = factories.ToArray();
             _protocolFactories = GetProtocolFactories();
             rlpxHost.SessionCreated += SessionCreated;
         }
@@ -178,6 +175,19 @@ namespace Nethermind.Network
             }
 
             string code = protocolCode.ToLowerInvariant();
+
+            // Try DI-registered factories (order preserved from OrderedComponents)
+            foreach (IProtocolHandlerFactory factory in _factories)
+            {
+                if (factory.ProtocolCode != code) continue;
+                if (factory.TryCreate(session, version, out IProtocolHandler? handler))
+                {
+                    InitHandler(session, handler, addCapabilities);
+                    return;
+                }
+            }
+
+            // Fall back to inline factories (for P2P, Eth during migration)
             if (!_protocolFactories.TryGetValue(code, out Func<ISession, int, IProtocolHandler> protocolFactory))
             {
                 throw new NotSupportedException($"Protocol {code} {version} is not supported");
@@ -207,6 +217,27 @@ namespace Nethermind.Network
             _protocolFactories[code] = (session, version) => factory(session, version);
         }
 
+        private void InitHandler(ISession session, IProtocolHandler handler, bool addCapabilities = false)
+        {
+            handler.SubprotocolRequested += (s, e) => InitProtocol(session, e.ProtocolCode, e.Version);
+            session.AddProtocolHandler(handler);
+
+            if (handler is ISyncPeerProtocolHandler)
+                InitSyncPeerProtocol(session, (SyncPeerProtocolHandlerBase)handler);
+            else if (handler is ISatelliteProtocolHandler)
+                InitSatelliteProtocol(session, (ProtocolHandlerBase)handler);
+
+            if (addCapabilities)
+            {
+                foreach (Capability capability in _capabilities)
+                {
+                    session.AddSupportedCapability(capability);
+                }
+            }
+
+            handler.Init();
+        }
+
         protected virtual IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
             => new Dictionary<string, Func<ISession, int, IProtocolHandler>>
             {
@@ -231,26 +262,6 @@ namespace Nethermind.Network
                     };
                     InitSyncPeerProtocol(session, ethHandler);
                     return ethHandler;
-                },
-                [Protocol.Snap] = (session, version) =>
-                {
-                    SnapProtocolHandler handler = version switch
-                    {
-                        1 => new SnapProtocolHandler(session, _stats, _serializer, _backgroundTaskScheduler, _logManager, _snapServer),
-                        _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
-                    };
-                    InitSatelliteProtocol(session, handler);
-                    return handler;
-                },
-                [Protocol.NodeData] = (session, version) =>
-                {
-                    NodeDataProtocolHandler handler = version switch
-                    {
-                        1 => new NodeDataProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _logManager),
-                        _ => throw new NotSupportedException($"{Protocol.NodeData}.{version} is not supported.")
-                    };
-                    InitSatelliteProtocol(session, handler);
-                    return handler;
                 }
             };
 

@@ -39,6 +39,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
@@ -226,9 +227,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<IProtocolValidator>(),
                 Substitute.For<INetworkStorage>(),
+                Array.Empty<IProtocolHandlerFactory>(),
                 Container.Resolve<IForkInfo>(),
                 Substitute.For<IGossipPolicy>(),
-                WorldStateManager,
                 LimboLogs.Instance,
                 Substitute.For<ITxPoolConfig>(),
                 Substitute.For<ISpecProvider>(),

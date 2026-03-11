@@ -47,13 +47,13 @@ internal class XdcProtocolManager : ProtocolsManager
     INodeStatsManager nodeStatsManager,
     IProtocolValidator protocolValidator,
     [KeyFilter("peers")] INetworkStorage peerStorage,
+    IEnumerable<IProtocolHandlerFactory> factories,
     IForkInfo forkInfo,
     IGossipPolicy gossipPolicy,
-    IWorldStateManager worldStateManager,
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
     ISpecProvider specProvider,
-    ITxGossipPolicy? transactionsGossipPolicy = null) : base(syncPeerPool, syncServer, backgroundTaskScheduler, txPool, discoveryApp, serializationService, rlpxHost, nodeStatsManager, protocolValidator, peerStorage, forkInfo, gossipPolicy, worldStateManager, logManager, txPoolConfig, specProvider, transactionsGossipPolicy)
+    ITxGossipPolicy? transactionsGossipPolicy = null) : base(syncPeerPool, syncServer, backgroundTaskScheduler, txPool, discoveryApp, serializationService, rlpxHost, nodeStatsManager, protocolValidator, peerStorage, factories, forkInfo, gossipPolicy, logManager, txPoolConfig, specProvider, transactionsGossipPolicy)
     {
         foreach (Capability item in DefaultCapabilities)
         {
