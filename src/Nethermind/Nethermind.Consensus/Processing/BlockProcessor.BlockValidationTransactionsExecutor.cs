@@ -132,7 +132,7 @@ namespace Nethermind.Consensus.Processing
                                     state.receiptsTracers[txIndex],
                                     state.processingOptions,
                                     state.logger);
-                                state.gasResults[txIndex].SetResult((state.txs[txIndex].BlockGasUsed, null));
+                                state.gasResults[txIndex].SetResult((state.txs[txIndex].SpentGas, null));
                             }
                             catch (Exception ex)
                             {

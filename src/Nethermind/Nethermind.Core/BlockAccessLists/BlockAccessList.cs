@@ -346,9 +346,9 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             bool isSystemContract =
                 accountChanges.Address == Eip7002Constants.WithdrawalRequestPredeployAddress ||
-                accountChanges.Address == Eip7251Constants.ConsolidationRequestPredeployAddress ||
-                accountChanges.Address == Eip2935Constants.BlockHashHistoryAddress ||
-                accountChanges.Address == Eip4788Constants.BeaconRootsAddress;
+                accountChanges.Address == Eip7251Constants.ConsolidationRequestPredeployAddress;
+                // accountChanges.Address == Eip2935Constants.BlockHashHistoryAddress ||
+                // accountChanges.Address == Eip4788Constants.BeaconRootsAddress;
 
             yield return
                 new(
