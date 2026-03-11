@@ -242,6 +242,8 @@ namespace Nethermind.Network
 
                     return handler;
                 },
+                // Fallback inline factory for Eth (primarily for tests without DI)
+                // In production, DI-registered factories (checked first) will be used instead
                 [Protocol.Eth] = (session, version) =>
                 {
                     Eth66ProtocolHandler ethHandler = version switch
