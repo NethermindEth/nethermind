@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Int256;
+using Nethermind.Merkleization;
 using NUnit.Framework;
 using System.Linq;
 
@@ -37,5 +38,18 @@ public class EncodingTest
         Assert.That(decodedTest.VariableC.Fixed2, Is.EqualTo(test.VariableC.Fixed2));
         SszEncoding.Merkleize(test, out UInt256 decodedRoot);
         Assert.That(root, Is.EqualTo(decodedRoot));
+    }
+
+    [Test]
+    public void MerkleizeList_UnionType_MixesInCountNotLimit()
+    {
+        var item = new UnionTest3 { Selector = Test3Union.Test1, Test1 = 0 };
+        var list = new UnionTest3[] { item };
+
+        SszEncoding.MerkleizeList(list, 100, out UInt256 rootWithLimit100);
+        SszEncoding.MerkleizeList(list, 200, out UInt256 rootWithLimit200);
+
+        Assert.That(rootWithLimit100, Is.EqualTo(rootWithLimit200), 
+            "Same list with different limits must have same root (limit affects tree depth, not mix-in)");
     }
 }
