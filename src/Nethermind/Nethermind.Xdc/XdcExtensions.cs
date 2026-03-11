@@ -51,11 +51,20 @@ internal static partial class XdcExtensions
 
     public static Address[] ParseV1Masternodes(this byte[] extraData)
     {
-        int length = (extraData.Length - XdcConstants.ExtraVanity - XdcConstants.ExtraSeal) / Address.Size;
-        if (length <= 0)
-            throw new ArgumentException($"ExtraData too short to contain masternodes: length={extraData.Length}", nameof(extraData));
-        Address[] masternodes = new Address[length];
-        for (int i = 0; i < length; i++)
+        int minLength = XdcConstants.ExtraVanity + XdcConstants.ExtraSeal;
+        if (extraData.Length < minLength)
+            throw new ArgumentException($"ExtraData too short: expected at least {minLength} bytes but got {extraData.Length}", nameof(extraData));
+
+        int remainingLength = extraData.Length - XdcConstants.ExtraVanity - XdcConstants.ExtraSeal;
+        if (remainingLength == 0)
+            throw new ArgumentException("ExtraData contains no masternode addresses", nameof(extraData));
+
+        if (remainingLength % Address.Size != 0)
+            throw new ArgumentException($"ExtraData masternode section has invalid length {remainingLength}: not divisible by address size {Address.Size}", nameof(extraData));
+
+        int count = remainingLength / Address.Size;
+        Address[] masternodes = new Address[count];
+        for (int i = 0; i < count; i++)
             masternodes[i] = new Address(extraData.AsSpan(XdcConstants.ExtraVanity + i * Address.Size, Address.Size));
         return masternodes;
     }
