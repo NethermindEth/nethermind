@@ -4,6 +4,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   code-quality:
     name: Check code lint
@@ -13,8 +17,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -32,24 +34,9 @@ jobs:
       - name: Register problem matcher
         run: echo "::add-matcher::.github/problem-matchers/dotnet-format.json"
 
-      - name: Get changed C# files
-        id: changed
-        run: |
-          git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.cs' > changed-files.txt
-          count=$(wc -l < changed-files.txt | tr -d ' ')
-          echo "count=$count" >> "$GITHUB_OUTPUT"
-          if [ "$count" -gt 0 ]; then
-            echo "Changed C# files ($count):"
-            cat changed-files.txt
-          else
-            echo "No C# files changed."
-          fi
-
       - name: Check code quality
-        if: steps.changed.outputs.count != '0'
         run: |
           dotnet format src/Nethermind/Nethermind.slnx \
             --no-restore \
             --verify-no-changes \
-            --verbosity diagnostic \
-            --include $(cat changed-files.txt | tr '\n' ' ')
+            --verbosity diagnostic
