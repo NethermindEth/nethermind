@@ -465,10 +465,13 @@ public class BlockchainProcessorTests
             public ProcessingTestContext IsDeletedAsInvalid()
             {
                 _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to be deleted");
+                // Drain any stale signal (no NewHeadBlock fires for invalid blocks, so this always times out).
                 _processingTestContext._resetEvent.WaitOne(IgnoreWait);
                 Assert.That(_processingTestContext._blockTree.Head!.Hash, Is.EqualTo(_processingTestContext._headBefore), "head");
+                // Poll until the block is actually deleted — the 200 ms drain above is not enough on slow CI.
+                Assert.That(() => _processingTestContext._blockTree.FindBlock(_block.Hash, BlockTreeLookupOptions.None),
+                    Is.Null.After(ProcessingWait, 50), $"block {_block.ToString(Block.Format.Short)} should be deleted as invalid");
                 _logger.Info($"Finished waiting for {_block.ToString(Block.Format.Short)} to be deleted");
-                Assert.That(_processingTestContext._blockTree.FindBlock(_block.Hash, BlockTreeLookupOptions.None), Is.Null);
                 return _processingTestContext;
             }
         }
