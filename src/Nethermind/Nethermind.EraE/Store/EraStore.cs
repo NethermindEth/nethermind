@@ -7,9 +7,13 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.EraE.Archive;
+using Nethermind.EraE.E2Store;
+using Nethermind.EraE.Exceptions;
+using Nethermind.EraE.Export;
 using NonBlocking;
 
-namespace Nethermind.EraE;
+namespace Nethermind.EraE.Store;
 
 public sealed class EraStore : IEraStore
 {
@@ -75,7 +79,7 @@ public sealed class EraStore : IEraStore
     {
         ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(blockValidator);
-        ArgumentNullException.ThrowIfNullOrEmpty(networkName);
+        ArgumentException.ThrowIfNullOrEmpty(networkName);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxEraSize, 0);
 
         _specProvider = specProvider;

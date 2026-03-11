@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.EraE.Exceptions;
+using Nethermind.EraE.Export;
+using Nethermind.EraE.Import;
 using Nethermind.Logging;
 
-namespace Nethermind.EraE;
+namespace Nethermind.EraE.Admin;
 
 public class AdminEraService : IAdminEraService
 {

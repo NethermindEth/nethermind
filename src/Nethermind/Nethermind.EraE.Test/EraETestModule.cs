@@ -6,11 +6,12 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using System.IO.Abstractions;
+using Nethermind.EraE.Config;
+using Nethermind.EraE.Export;
 using Testably.Abstractions;
 
 namespace Nethermind.EraE.Test;

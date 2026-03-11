@@ -8,9 +8,12 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.EraE.Archive;
+using Nethermind.EraE.Config;
+using Nethermind.EraE.Exceptions;
 using Nethermind.Logging;
 
-namespace Nethermind.EraE;
+namespace Nethermind.EraE.Export;
 
 public class EraExporter(
     IFileSystem fileSystem,

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.EraE.Export;
+using NUnit.Framework;
 
-namespace Nethermind.EraE.Test;
+namespace Nethermind.EraE.Test.Export;
 
 public class EraPathUtilsTests
 {

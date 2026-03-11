@@ -4,9 +4,10 @@
 using System.IO.Abstractions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.EraE.Exceptions;
 using Testably.Abstractions;
 
-namespace Nethermind.EraE;
+namespace Nethermind.EraE.Export;
 
 public static class EraPathUtils
 {

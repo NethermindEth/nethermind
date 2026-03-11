@@ -11,9 +11,12 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Era1;
+using Nethermind.EraE.Exceptions;
 using Snappier;
+using EraException = Nethermind.Era1.EraException;
+using EraWriter = Nethermind.EraE.Archive.EraWriter;
 
-namespace Nethermind.EraE;
+namespace Nethermind.EraE.E2Store;
 
 /// <summary>
 /// Random-access reader for EraE files. Parses the ComponentIndex to locate

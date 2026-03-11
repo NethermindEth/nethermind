@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.EraE.Archive;
+using NUnit.Framework;
 
-namespace Nethermind.EraE.Test;
+namespace Nethermind.EraE.Test.Archive;
 
 public class AccumulatorCalculatorTests
 {

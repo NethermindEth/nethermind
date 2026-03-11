@@ -9,13 +9,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.EraE.Archive;
+using Nethermind.EraE.Exceptions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
-using Nethermind.State.Proofs;
-using NSubstitute;
+using NUnit.Framework;
 
-namespace Nethermind.EraE.Test;
+namespace Nethermind.EraE.Test.Archive;
 
 internal class EraReaderTests
 {

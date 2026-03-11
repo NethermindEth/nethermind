@@ -4,7 +4,12 @@
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.EraE.Admin;
+using Nethermind.EraE.Config;
+using Nethermind.EraE.Export;
+using Nethermind.EraE.Import;
 using Nethermind.EraE.JsonRpc;
+using Nethermind.EraE.Store;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.EraE;

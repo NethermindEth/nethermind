@@ -3,7 +3,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.EraE;
+namespace Nethermind.EraE.Store;
 
 public interface IEraStore : IDisposable
 {

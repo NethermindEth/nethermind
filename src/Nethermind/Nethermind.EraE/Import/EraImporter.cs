@@ -11,9 +11,13 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.EraE.Config;
+using Nethermind.EraE.Exceptions;
+using Nethermind.EraE.Export;
+using Nethermind.EraE.Store;
 using Nethermind.Logging;
 
-namespace Nethermind.EraE;
+namespace Nethermind.EraE.Import;
 
 public class EraImporter(
     IFileSystem fileSystem,

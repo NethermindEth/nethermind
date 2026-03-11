@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Merkleization;
 
-namespace Nethermind.EraE;
+namespace Nethermind.EraE.Archive;
 
 // https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#algorithms
 // SSZ hash_tree_root of List(HeaderRecord, 8192) where HeaderRecord = (block_hash, total_difficulty)

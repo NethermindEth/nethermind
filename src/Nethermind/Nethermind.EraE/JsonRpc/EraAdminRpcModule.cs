@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.EraE.Admin;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.EraE.JsonRpc;

@@ -3,14 +3,17 @@
 
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.Era1;
 using Nethermind.Int256;
 using NSubstitute;
+using NUnit.Framework;
+using E2StoreReader = Nethermind.EraE.E2Store.E2StoreReader;
+using EraWriter = Nethermind.EraE.Archive.EraWriter;
 
-namespace Nethermind.EraE.Test;
+namespace Nethermind.EraE.Test.Archive;
 
 internal class EraWriterTests
 {
@@ -28,26 +31,28 @@ internal class EraWriterTests
     }
 
     [Test]
-    public async Task Add_NullBlock_ThrowsArgumentNullException()
+    public Task Add_NullBlock_ThrowsArgumentNullException()
     {
         using MemoryStream stream = new();
         using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
 
         Assert.That(async () => await sut.Add(null!, []), Throws.ArgumentNullException);
+        return Task.CompletedTask;
     }
 
     [Test]
-    public async Task Add_PreMergeBlockWithoutTotalDifficulty_ThrowsArgumentException()
+    public Task Add_PreMergeBlockWithoutTotalDifficulty_ThrowsArgumentException()
     {
         using MemoryStream stream = new();
         using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
 
         Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty((UInt256?)null).TestObject;
         Assert.That(async () => await sut.Add(block, []), Throws.ArgumentException);
+        return Task.CompletedTask;
     }
 
     [Test]
-    public async Task Add_PreMergeBlockWithTdLowerThanDifficulty_ThrowsArgumentOutOfRangeException()
+    public Task Add_PreMergeBlockWithTdLowerThanDifficulty_ThrowsArgumentOutOfRangeException()
     {
         using MemoryStream stream = new();
         using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
@@ -57,16 +62,18 @@ internal class EraWriterTests
         block.Header.TotalDifficulty = 0;
 
         Assert.That(async () => await sut.Add(block, []), Throws.TypeOf<ArgumentOutOfRangeException>());
+        return Task.CompletedTask;
     }
 
     [Test]
-    public async Task Add_PostMergeBlockWithoutTotalDifficulty_Succeeds()
+    public Task Add_PostMergeBlockWithoutTotalDifficulty_Succeeds()
     {
         using MemoryStream stream = new();
         using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
 
         Block block = Build.A.Block.WithNumber(0).WithPostMergeRules().TestObject;
         Assert.That(async () => await sut.Add(block, []), Throws.Nothing);
+        return Task.CompletedTask;
     }
 
     [Test]

@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.EraE;
+using Nethermind.EraE.Archive;
+
+namespace Nethermind.EraE.Config;
 
 public class EraEConfig : IEraEConfig
 {

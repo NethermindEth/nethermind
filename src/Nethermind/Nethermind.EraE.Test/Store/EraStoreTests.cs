@@ -5,8 +5,13 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.EraE.Config;
+using Nethermind.EraE.Exceptions;
+using Nethermind.EraE.Export;
+using Nethermind.EraE.Store;
+using NUnit.Framework;
 
-namespace Nethermind.EraE.Test;
+namespace Nethermind.EraE.Test.Store;
 
 public class EraStoreTests
 {

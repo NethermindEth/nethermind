@@ -5,6 +5,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
+using NUnit.Framework;
 
 namespace Nethermind.EraE.Test;
 

@@ -8,11 +8,13 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.EraE.E2Store;
+using Nethermind.EraE.Exceptions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 
-namespace Nethermind.EraE;
+namespace Nethermind.EraE.Archive;
 
 /// <summary>
 /// Main reader for EraE files. Thread-safe: multiple threads may read concurrently.
@@ -197,6 +199,6 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
     private TxReceipt[] DecodeSlimReceipts(Memory<byte> buffer)
     {
         Rlp.ValueDecoderContext ctx = new(buffer.Span);
-        return RlpDecoderExtensions.DecodeArray(_slimReceiptDecoder, ref ctx, RlpBehaviors.None);
+        return _slimReceiptDecoder.DecodeArray(ref ctx);
     }
 }

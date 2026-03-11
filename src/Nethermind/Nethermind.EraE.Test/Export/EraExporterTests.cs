@@ -7,9 +7,12 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
-using System.IO.Abstractions;
+using Nethermind.EraE.Config;
+using Nethermind.EraE.Exceptions;
+using Nethermind.EraE.Export;
+using NUnit.Framework;
 
-namespace Nethermind.EraE.Test;
+namespace Nethermind.EraE.Test.Export;
 
 public class EraExporterTests
 {

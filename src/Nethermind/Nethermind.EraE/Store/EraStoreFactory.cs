@@ -5,8 +5,9 @@ using System.IO.Abstractions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.EraE.Config;
 
-namespace Nethermind.EraE;
+namespace Nethermind.EraE.Store;
 
 public class EraStoreFactory(
     ISpecProvider specProvider,

@@ -6,15 +6,19 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.EraE.Config;
+using Nethermind.EraE.Exceptions;
+using Nethermind.EraE.Export;
+using Nethermind.EraE.Import;
+using NUnit.Framework;
 
-namespace Nethermind.EraE.Test;
+namespace Nethermind.EraE.Test.Import;
 
 public class EraImporterTests
 {
     [Test]
-    public async Task Import_DirectoryDoesNotExist_ThrowsArgumentException()
+    public Task Import_DirectoryDoesNotExist_ThrowsArgumentException()
     {
         using IContainer ctx = EraETestModule.BuildContainerBuilder().Build();
 
@@ -22,6 +26,7 @@ public class EraImporterTests
         Assert.That(
             () => sut.Import("/nonexistent/path", 0, 0, null),
             Throws.TypeOf<ArgumentException>());
+        return Task.CompletedTask;
     }
 
     [Test]

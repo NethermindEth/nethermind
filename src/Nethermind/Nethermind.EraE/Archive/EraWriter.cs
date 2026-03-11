@@ -7,10 +7,11 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Era1;
+using Nethermind.EraE.E2Store;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.EraE;
+namespace Nethermind.EraE.Archive;
 
 /// <summary>
 /// Writes EraE (.erae) archive files using the section-ordered layout:
