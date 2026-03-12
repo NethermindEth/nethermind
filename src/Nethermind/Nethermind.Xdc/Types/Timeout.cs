@@ -19,6 +19,6 @@ public class Timeout(ulong round, Signature? signature, ulong gapNumber, bool is
     public bool IsMyVote { get; } = isMyVote;
     public override string ToString() => $"{Round}:{GapNumber}";
     public (ulong Round, Hash256 hash) PoolKey() => (Round, Keccak.Compute(_decoder.Encode(this, RlpBehaviors.ForSealing).Bytes));
-    protected override void Encode(KeccakRlpStream stream) => 
-        _decoder.Encode(stream, this, RlpBehaviors.None);        
+    protected override void Encode(KeccakRlpStream stream) =>
+        _decoder.Encode(stream, this, RlpBehaviors.None);
 }
