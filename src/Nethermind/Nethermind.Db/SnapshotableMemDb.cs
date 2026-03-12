@@ -231,7 +231,12 @@ namespace Nethermind.Db
 
         public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
         {
-            return new MemDbSortedView(this, _currentVersion, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
+            int version;
+            lock (_versionLock)
+            {
+                version = _currentVersion;
+            }
+            return new MemDbSortedView(this, version, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
         }
 
         // IKeyValueStoreWithSnapshot implementation
@@ -529,7 +534,7 @@ namespace Nethermind.Db
                 while (++_currentIndex < _keysInRange!.Count)
                 {
                     byte[] key = _keysInRange[_currentIndex];
-                    byte[]? value = _db.GetValueAtVersion(key, _version);
+                    byte[]? value = _db.GetAtVersion(key, _version);
                     if (value is not null)
                     {
                         return true;
@@ -549,7 +554,7 @@ namespace Nethermind.Db
                     {
                         return ReadOnlySpan<byte>.Empty;
                     }
-                    byte[]? value = _db.GetValueAtVersion(_keysInRange[_currentIndex], _version);
+                    byte[]? value = _db.GetAtVersion(_keysInRange[_currentIndex], _version);
                     return value ?? ReadOnlySpan<byte>.Empty;
                 }
             }
