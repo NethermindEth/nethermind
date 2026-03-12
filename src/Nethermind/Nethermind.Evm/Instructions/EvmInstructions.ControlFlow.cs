@@ -236,7 +236,6 @@ internal static partial class EvmInstructions
         Address executingAccount = vmState.Env.ExecutingAccount;
         bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
         bool selfdestructOnlyOnSameTx = spec.SelfdestructOnlyOnSameTransaction;
-        bool clearEmpty = spec.ClearEmptyAccountWhenTouched;
         // Mark the executing account for destruction if allowed.
         if (!selfdestructOnlyOnSameTx || createInSameTx)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);

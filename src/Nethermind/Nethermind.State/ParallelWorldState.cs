@@ -46,9 +46,6 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         }
     }
 
-    public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-        => AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out _);
-
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         bool res = _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
@@ -73,9 +70,6 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         }
         return _innerWorldState.Get(storageCell);
     }
-
-    public override void IncrementNonce(Address address, UInt256 delta)
-        => IncrementNonce(address, delta, out _);
 
     public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
@@ -147,9 +141,6 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         AddAccountRead(address);
         return _innerWorldState.GetCode(address);
     }
-
-    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-        => SubtractFromBalance(address, balanceChange, spec, out _);
 
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
@@ -252,9 +243,6 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
 
     public long GasUsed()
         => _gasUsed;
-
-    public void ValidateBlockAccessList(ushort index, long gasRemaining)
-        => ValidateBlockAccessList(block: null!, index, gasRemaining);
 
     public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining)
     {

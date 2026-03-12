@@ -383,10 +383,8 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        protected virtual ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec)
-        {
-            return BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
-        }
+        protected virtual ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec) =>
+            BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
 
         protected virtual bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {

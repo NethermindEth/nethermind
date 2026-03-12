@@ -554,11 +554,7 @@ internal static partial class EvmInstructions
                 bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
                 if (newSameAsOriginal)
                 {
-                    long refundFromReversal = originalIsZero
-                        ? TEip8037.IsActive
-                            ? RefundOf.SSetReversedEip8037
-                            : gasCosts.SetReversalRefund
-                        : gasCosts.ClearReversalRefund;
+                    long refundFromReversal = gasCosts.RefundFromReversal<TEip8037>(originalIsZero);
 
                     vmState.Refund += refundFromReversal;
                     if (vm.TxTracer.IsTracingRefunds)
