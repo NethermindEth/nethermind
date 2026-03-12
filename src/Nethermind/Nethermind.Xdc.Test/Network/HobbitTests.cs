@@ -58,7 +58,7 @@ namespace Nethermind.Xdc.Test.Network
             Run(dataBuffer, msg, inbound, outbound, framingEnabled);
         }
 
-        private void Run<T>(IByteBuffer dataBuffer, T msg, StackType inbound, StackType outbound, bool framingEnabled) where T: P2PMessage
+        private void Run<T>(IByteBuffer dataBuffer, T msg, StackType inbound, StackType outbound, bool framingEnabled) where T : P2PMessage
         {
             try
             {
