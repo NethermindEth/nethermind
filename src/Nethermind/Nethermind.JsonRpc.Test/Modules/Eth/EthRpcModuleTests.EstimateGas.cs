@@ -480,9 +480,9 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 
-        const long expectedFloor = GasCostOf.Transaction
-                                   + dataLength * GasCostOf.TxDataNonZeroMultiplierEip2028 *
-                                   GasCostOf.TotalCostFloorPerTokenEip7976;
+        long expectedFloor = GasCostOf.Transaction
+                             + dataLength * releaseSpec.GasCosts.TxDataNonZeroMultiplier *
+                             GasCostOf.TotalCostFloorPerTokenEip7976;
         Assert.That(serialized,
             Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedFloor.ToHexString(true)}\",\"id\":67}}"));
     }
@@ -551,9 +551,9 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 
-        const long expectedFloor = GasCostOf.Transaction
-                                   + dataLength * GasCostOf.TxDataNonZeroMultiplierEip2028 *
-                                   GasCostOf.TotalCostFloorPerTokenEip7976;
+        long expectedFloor = GasCostOf.Transaction
+                             + dataLength * releaseSpec.GasCosts.TxDataNonZeroMultiplier *
+                             GasCostOf.TotalCostFloorPerTokenEip7976;
         Assert.That(serialized,
             Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedFloor.ToHexString(true)}\",\"id\":67}}"));
     }
