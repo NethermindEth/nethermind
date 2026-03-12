@@ -182,8 +182,8 @@ public class PayloadAttributes
     {
         int actualVersion = this.GetVersion();
         PayloadAttributesValidationResult result = ValidateVersion(
-            fcuVersion: fcuVersion,
-            actualVersion: actualVersion,
+            fcuVersion,
+            actualVersion,
             timestampVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion(),
             "PayloadAttributesV",
             out error);
