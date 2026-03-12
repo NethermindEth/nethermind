@@ -22,15 +22,17 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.Subprotocols.NodeData;
 
-public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
+public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer, IStaticProtocolInfo
 {
     private readonly ISyncServer _syncServer;
     private readonly MessageQueue<GetNodeDataMessage, IByteArrayList> _nodeDataRequests;
 
     public override string Name => "nodedata1";
     protected override TimeSpan InitTimeout => Timeouts.Eth;
-    public override byte ProtocolVersion => 1;
-    public override string ProtocolCode => Protocol.NodeData;
+    public static byte Version => 1;
+    public static string Code => Protocol.NodeData;
+    public override byte ProtocolVersion => Version;
+    public override string ProtocolCode => Code;
     public override int MessageIdSpaceSize => 2;
 
     public NodeDataProtocolHandler(ISession session,
