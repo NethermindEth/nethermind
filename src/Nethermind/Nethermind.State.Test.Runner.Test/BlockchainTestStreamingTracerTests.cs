@@ -20,8 +20,8 @@ public class BlockchainTestStreamingTracerTests
     [Test]
     public void Tracer_writes_to_provided_output()
     {
-        using var output = new MemoryStream();
-        var tracer = new BlockchainTestStreamingTracer(new GethTraceOptions(), output);
+        using MemoryStream output = new();
+        BlockchainTestStreamingTracer tracer = new(new GethTraceOptions(), output);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
         Transaction tx = Build.A.Transaction.WithValue(1).TestObject;
@@ -31,7 +31,7 @@ public class BlockchainTestStreamingTracerTests
         tracer.EndTxTrace();
         tracer.EndBlockTrace();
 
-        var result = Encoding.UTF8.GetString(output.ToArray());
+        string result = Encoding.UTF8.GetString(output.ToArray());
         Assert.That(result, Does.Contain("\"output\""));
         Assert.That(result, Does.Contain("\"gasUsed\""));
     }
@@ -40,8 +40,8 @@ public class BlockchainTestStreamingTracerTests
     [TestCase(2, 1, TestName = "Multiple_blocks_with_one_transaction_each")]
     public void Tracer_handles_blocks_and_transactions(int blockCount, int txPerBlock)
     {
-        using var output = new MemoryStream();
-        var tracer = new BlockchainTestStreamingTracer(new GethTraceOptions(), output);
+        using MemoryStream output = new();
+        BlockchainTestStreamingTracer tracer = new(new GethTraceOptions(), output);
 
         for (int b = 0; b < blockCount; b++)
         {
@@ -54,11 +54,9 @@ public class BlockchainTestStreamingTracerTests
             tracer.EndBlockTrace();
         }
 
-        var lines = Encoding.UTF8.GetString(output.ToArray())
-            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        string[] lines = Encoding.UTF8.GetString(output.ToArray()).Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         int expectedTxCount = blockCount * txPerBlock;
-        Assert.That(lines.Count(l => l.Contains("\"gasUsed\"")), Is.EqualTo(expectedTxCount),
-            $"Should have {expectedTxCount} transaction summary lines");
+        Assert.That(lines.Count(l => l.Contains("\"gasUsed\"")), Is.EqualTo(expectedTxCount), $"Should have {expectedTxCount} transaction summary lines");
     }
 
     [Test]

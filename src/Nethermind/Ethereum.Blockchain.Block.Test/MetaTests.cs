@@ -10,10 +10,7 @@ namespace Ethereum.Blockchain.Block.Test;
 
 public class MetaTests : DirectoryMetaTests<BcPrefix>
 {
-    protected override IEnumerable<string> FilterDirectories(IEnumerable<string> dirs)
-    {
-        string baseDir = GetTestsDirectory();
-        return dirs.Where(d => !new DirectoryInfo(Path.Combine(baseDir, d))
+    protected override IEnumerable<string> FilterDirectories(IEnumerable<string> dirs) =>
+        dirs.Where(d => !new DirectoryInfo(Path.Combine(GetTestsDirectory(), d))
             .GetFiles().Any(f => f.Name.Contains(".resources.")));
-    }
 }
