@@ -82,10 +82,11 @@ public class BlockchainProcessorTests
                 Processed.AddRange(suggestedBlocks.Select(x => x.Hash!));
 
                 _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
+                int nextBlock = 0;
                 while (true)
                 {
                     bool notYet = false;
-                    for (int i = 0; i < suggestedBlocks.Count; i++)
+                    for (int i = nextBlock; i < suggestedBlocks.Count; i++)
                     {
                         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
                         Block suggestedBlock = suggestedBlocks[i];
@@ -102,6 +103,9 @@ public class BlockchainProcessorTests
                             notYet = true;
                             break;
                         }
+
+                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
+                        nextBlock = i + 1;
                     }
 
                     if (notYet)
@@ -111,7 +115,6 @@ public class BlockchainProcessorTests
                     else
                     {
                         _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
-                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), []));
                         return suggestedBlocks.ToArray();
                     }
                 }
