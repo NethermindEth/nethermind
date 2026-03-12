@@ -452,8 +452,8 @@ public class BlockchainProcessorTests
                 processingTestContext._resetEvent.WaitOne(IgnoreWait);
                 Assert.That(processingTestContext._blockTree.Head!.Hash, Is.EqualTo(processingTestContext._headBefore), "head");
                 // Poll until the block is actually deleted — the 200 ms drain above is not enough on slow CI.
-                Assert.That(() => _processingTestContext._blockTree.FindBlock(_block.Hash, BlockTreeLookupOptions.None),
-                    Is.Null.After(ProcessingWait, 50), $"block {_block.ToString(Block.Format.Short)} should be deleted as invalid");
+                Assert.That(() => processingTestContext._blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None),
+                    Is.Null.After(ProcessingWait, 50), $"block {block.ToString(Block.Format.Short)} should be deleted as invalid");
                 _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to be deleted");
                 return processingTestContext;
             }
