@@ -18,7 +18,7 @@ public class EraStoreTests
     [TestCase(100, 16, 32)]
     [TestCase(100, 16, 64)]
     [TestCase(200, 50, 100)]
-    public async Task FirstBlock_LastBlock_AreCorrectAfterExport(int chainLength, int from, int to)
+    public async Task FirstAndLastBlock_AfterExport_MatchSpecifiedRange(int chainLength, int from, int to)
     {
         await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength, from, to);
         string tmpDirectory = ctx.ResolveTempDirPath();
@@ -30,7 +30,7 @@ public class EraStoreTests
     }
 
     [Test]
-    public async Task FindBlockAndReceipts_KnownBlock_ReturnsNonNull()
+    public async Task FindBlockAndReceipts_WithKnownBlockNumber_ReturnsBlock()
     {
         const int chainLength = 32;
         await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
@@ -46,7 +46,7 @@ public class EraStoreTests
     }
 
     [Test]
-    public async Task FindBlockAndReceipts_BlockOutOfRange_ReturnsNull()
+    public async Task FindBlockAndReceipts_WithOutOfRangeNumber_ReturnsNull()
     {
         const int chainLength = 32;
         await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
@@ -61,7 +61,7 @@ public class EraStoreTests
     }
 
     [Test]
-    public async Task FindBlockAndReceipts_CorrectBlockNumber_Returned()
+    public async Task FindBlockAndReceipts_WithValidBlockNumber_ReturnsCorrectBlock()
     {
         const int chainLength = 50;
         await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
@@ -76,7 +76,7 @@ public class EraStoreTests
     }
 
     [Test]
-    public async Task FindBlockAndReceipts_NegativeBlockNumber_ThrowsArgumentOutOfRangeException()
+    public async Task FindBlockAndReceipts_WithNegativeBlockNumber_ThrowsArgumentOutOfRangeException()
     {
         const int chainLength = 32;
         await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
@@ -90,7 +90,7 @@ public class EraStoreTests
     }
 
     [Test]
-    public async Task NextEraStart_CorrectBoundaryReturned()
+    public async Task NextEraStart_WhenCalled_ReturnsCorrectBoundary()
     {
         const int eraSize = 16;
         const int chainLength = 50;
@@ -111,13 +111,12 @@ public class EraStoreTests
     }
 
     [Test]
-    public void Constructor_DirectoryWithNoEraFiles_ThrowsEraException()
+    public void Constructor_WithDirectoryContainingNoEraFiles_ThrowsEraException()
     {
         using IContainer ctx = EraETestModule.BuildContainerBuilder().Build();
         string tmpDirectory = ctx.ResolveTempDirPath();
         System.IO.Directory.CreateDirectory(tmpDirectory);
 
-        // Write only the checksums file (no actual .erae files)
         System.IO.File.WriteAllText(System.IO.Path.Combine(tmpDirectory, EraExporter.ChecksumsFileName), "");
 
         Assert.That(
@@ -126,13 +125,12 @@ public class EraStoreTests
     }
 
     [Test]
-    public async Task EraStore_WithValidChecksumsTrustedAccumulators_DoesNotThrow()
+    public async Task FindBlockAndReceipts_WithValidTrustedAccumulators_Succeeds()
     {
         const int chainLength = 32;
         await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
         string tmpDirectory = ctx.ResolveTempDirPath();
 
-        // Read the accumulator hashes that were written by the exporter
         string accPath = System.IO.Path.Combine(tmpDirectory, EraExporter.AccumulatorFileName);
         ISet<ValueHash256> trusted = (await System.IO.File.ReadAllLinesAsync(accPath))
             .Select(EraPathUtils.ExtractHashFromChecksumEntry)
@@ -148,6 +146,5 @@ public class EraStoreTests
 
 file static class ContainerAsyncExtension
 {
-    /// <summary>Allows <c>await container.AsTask()</c> syntax for test readability.</summary>
     public static Task<IContainer> AsTask(this IContainer container) => Task.FromResult(container);
 }

@@ -18,7 +18,7 @@ namespace Nethermind.EraE.Test.Archive;
 internal class EraWriterTests
 {
     [Test]
-    public async Task Add_NonSequentialBlock_ThrowsArgumentException()
+    public async Task Add_WithNonSequentialBlock_ThrowsArgumentException()
     {
         using MemoryStream stream = new();
         using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
@@ -31,7 +31,7 @@ internal class EraWriterTests
     }
 
     [Test]
-    public Task Add_NullBlock_ThrowsArgumentNullException()
+    public Task Add_WithNullBlock_ThrowsArgumentNullException()
     {
         using MemoryStream stream = new();
         using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
@@ -90,7 +90,7 @@ internal class EraWriterTests
     }
 
     [Test]
-    public async Task Add_MoreThanMaxEraSize_ThrowsArgumentException()
+    public async Task Add_WhenExceedingMaxEraSize_ThrowsArgumentException()
     {
         using MemoryStream stream = new();
         using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
@@ -106,7 +106,7 @@ internal class EraWriterTests
     }
 
     [Test]
-    public void Finalize_NoBlocksAdded_ThrowsEraException()
+    public void Finalize_WithNoBlocksAdded_ThrowsEraException()
     {
         using MemoryStream stream = new();
         using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
@@ -115,7 +115,7 @@ internal class EraWriterTests
     }
 
     [Test]
-    public async Task Finalize_CalledTwice_ThrowsEraException()
+    public async Task Finalize_WhenCalledTwice_ThrowsEraException()
     {
         using MemoryStream stream = new();
         using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
@@ -188,7 +188,7 @@ internal class EraWriterTests
     }
 
     [Test]
-    public async Task Finalize_ComponentIndexOffsets_FirstBlockHeaderIsAtExpectedPosition()
+    public async Task Finalize_WithPreMergeBlock_HeaderOffsetStartsAfterVersionEntry()
     {
         using TempPath tmpFile = TempPath.GetTempFile();
         using (EraWriter sut = new(tmpFile.Path, Substitute.For<ISpecProvider>()))
@@ -199,12 +199,11 @@ internal class EraWriterTests
         }
 
         using E2StoreReader reader = new E2StoreReader(tmpFile.Path);
-        // Version entry is 8 bytes; header starts right after it.
         reader.HeaderOffset(0).Should().Be(8);
     }
 
     [Test]
-    public void Dispose_InnerStreamIsDisposed()
+    public void Dispose_WhenCalled_DisposesInnerStream()
     {
         MemoryStream stream = new();
         EraWriter sut = new(stream, Substitute.For<ISpecProvider>());

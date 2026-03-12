@@ -20,8 +20,8 @@ public class EraExporterTests
     [TestCase(3, 0, 2, 1, 3)]
     [TestCase(16, 0, 15, 16, 1)]
     [TestCase(32, 0, 31, 16, 2)]
-    [TestCase(48, 8, 39, 16, 2)]
-    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated(
+    [TestCase(48, 8, 39, 16, 3)]
+    public async Task Export_WithVaryingChainLength_CreatesCorrectNumberOfEpochFiles(
         int chainLength, int from, int to, int eraSize, int expectedEraFiles)
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength)
@@ -42,7 +42,7 @@ public class EraExporterTests
     }
 
     [Test]
-    public async Task Export_CreatesChecksumsFile()
+    public async Task Export_WhenCalled_CreatesChecksumsFile()
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(32).Build();
 
@@ -54,7 +54,7 @@ public class EraExporterTests
     }
 
     [Test]
-    public async Task Export_CreatesAccumulatorsFile()
+    public async Task Export_WhenCalled_CreatesAccumulatorsFile()
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(32).Build();
 
@@ -66,7 +66,7 @@ public class EraExporterTests
     }
 
     [Test]
-    public async Task Export_ChecksumsFile_HasCorrectFormat()
+    public async Task Export_WhenCalled_ChecksumsFileHasCorrectFormat()
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(32).Build();
 
@@ -86,7 +86,7 @@ public class EraExporterTests
     }
 
     [Test]
-    public async Task Export_EraFilesHaveCorrectExtension()
+    public async Task Export_WhenCalled_EraFilesHaveCorrectExtension()
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(16).Build();
 
@@ -99,7 +99,7 @@ public class EraExporterTests
     }
 
     [Test]
-    public async Task Export_BeyondHeadBlock_ThrowsArgumentException()
+    public async Task Export_WithToExceedingHeadBlock_ThrowsArgumentException()
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(5).Build();
 
@@ -110,7 +110,7 @@ public class EraExporterTests
     }
 
     [Test]
-    public async Task Export_FromAfterTo_ThrowsArgumentException()
+    public async Task Export_WithFromExceedingTo_ThrowsArgumentException()
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(32).Build();
 
@@ -121,7 +121,7 @@ public class EraExporterTests
     }
 
     [Test]
-    public async Task Export_NullReceipts_ThrowsEraException()
+    public async Task Export_WhenReceiptsStorageReturnsNull_ThrowsEraException()
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(10)
             .AddSingleton<IReceiptStorage>(Substitute.For<IReceiptStorage>())
@@ -138,7 +138,7 @@ public class EraExporterTests
     }
 
     [Test]
-    public async Task Export_ToZero_ExportsUpToHead()
+    public async Task Export_WithToZero_ExportsUpToHead()
     {
         const int chainLength = 32;
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
@@ -151,7 +151,7 @@ public class EraExporterTests
     }
 
     [Test]
-    public void Export_DestinationIsExistingFile_ThrowsArgumentException()
+    public void Export_WithDestinationAsExistingFile_ThrowsArgumentException()
     {
         using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(10).Build();
 

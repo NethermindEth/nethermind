@@ -14,7 +14,7 @@ namespace Nethermind.EraE.Test.Admin;
 public class AdminEraServiceTests
 {
     [Test]
-    public void ImportHistory_DelegatesToImporter()
+    public void ImportHistory_WhenCalled_DelegatesToImporter()
     {
         IEraImporter importer = Substitute.For<IEraImporter>();
         AdminEraService sut = new(
@@ -29,7 +29,7 @@ public class AdminEraServiceTests
     }
 
     [Test]
-    public void ImportHistory_ThrowsWhenImportAlreadyRunning()
+    public void ImportHistory_WhenImportAlreadyRunning_Throws()
     {
         IEraImporter importer = Substitute.For<IEraImporter>();
         TaskCompletionSource tcs = new();
@@ -47,12 +47,11 @@ public class AdminEraServiceTests
 
         tcs.TrySetResult();
 
-        // Should no longer throw once the previous task completes
         Assert.That(() => sut.ImportHistory("somewhere", 99, 999, null), Throws.Nothing);
     }
 
     [Test]
-    public void ExportHistory_DelegatesToExporter()
+    public void ExportHistory_WhenCalled_DelegatesToExporter()
     {
         IEraExporter exporter = Substitute.For<IEraExporter>();
         AdminEraService sut = new(
@@ -67,7 +66,7 @@ public class AdminEraServiceTests
     }
 
     [Test]
-    public void ExportHistory_ThrowsWhenExportAlreadyRunning()
+    public void ExportHistory_WhenExportAlreadyRunning_Throws()
     {
         IEraExporter exporter = Substitute.For<IEraExporter>();
         TaskCompletionSource tcs = new();
@@ -85,7 +84,6 @@ public class AdminEraServiceTests
 
         tcs.TrySetResult();
 
-        // Should no longer throw once the previous task completes
         Assert.That(() => sut.ExportHistory("somewhere", 99, 999), Throws.Nothing);
     }
 }

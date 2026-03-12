@@ -9,17 +9,13 @@ using NUnit.Framework;
 
 namespace Nethermind.EraE.Test;
 
-/// <summary>
-/// Verifies that <see cref="ReceiptMessageDecoder"/> with <c>skipBloom=true</c>
-/// encodes/decodes slim receipts correctly and that bloom is excluded from the stream.
-/// </summary>
 public class ReceiptMessageDecoderSlimTests
 {
     private static readonly ReceiptMessageDecoder SlimDecoder = new(skipBloom: true);
     private static readonly ReceiptMessageDecoder FullDecoder = new();
 
     [Test]
-    public void Encode_SkipBloom_ProducesSmallerPayloadThanFull()
+    public void Encode_WithSkipBloom_ProducesSmallerPayloadThanFull()
     {
         TxReceipt receipt = Build.A.Receipt
             .WithTxType(TxType.EIP1559)
@@ -34,7 +30,7 @@ public class ReceiptMessageDecoderSlimTests
     }
 
     [Test]
-    public void RoundTrip_SlimEncodeDecode_PreservesStatusAndGasAndLogs()
+    public void Decode_AfterSlimEncode_PreservesStatusGasAndLogs()
     {
         LogEntry log = Build.A.LogEntry
             .WithAddress(TestItem.AddressA)
@@ -60,7 +56,7 @@ public class ReceiptMessageDecoderSlimTests
     }
 
     [Test]
-    public void Decode_SlimReceipt_BloomIsAutoReconstructedFromLogs()
+    public void Decode_WithSlimEncodedReceipt_BloomIsReconstructedFromLogs()
     {
         LogEntry log = Build.A.LogEntry
             .WithAddress(TestItem.AddressA)
@@ -77,14 +73,13 @@ public class ReceiptMessageDecoderSlimTests
         Rlp.ValueDecoderContext ctx = new(encoded.AsSpan());
         TxReceipt decoded = SlimDecoder.Decode(ref ctx, RlpBehaviors.Eip658Receipts)!;
 
-        // Bloom is not stored in slim receipts; accessing it auto-calculates from Logs.
         decoded.Bloom.Should().NotBeNull();
         decoded.Bloom!.Should().Be(original.Bloom,
             "bloom must be identical to what the full receipt would have");
     }
 
     [Test]
-    public void Encode_EmptyLogs_RoundTripsWithoutError()
+    public void Encode_WithEmptyLogs_DecodesWithoutError()
     {
         TxReceipt receipt = Build.A.Receipt
             .WithTxType(TxType.Legacy)

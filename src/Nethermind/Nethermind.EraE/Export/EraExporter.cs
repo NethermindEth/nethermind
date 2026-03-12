@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.EraE.Archive;
 using Nethermind.EraE.Config;
 using Nethermind.EraE.Exceptions;
+using Nethermind.EraE.Proofs;
 using Nethermind.Logging;
 
 namespace Nethermind.EraE.Export;
@@ -21,7 +22,8 @@ public class EraExporter(
     IReceiptStorage receiptStorage,
     ISpecProvider specProvider,
     IEraEConfig eraConfig,
-    ILogManager logManager)
+    ILogManager logManager,
+    IBeaconRootsProvider? beaconRootsProvider = null)
     : IEraExporter
 {
     private readonly string _networkName = string.IsNullOrWhiteSpace(eraConfig.NetworkName)
@@ -103,7 +105,7 @@ public class EraExporter(
             ValueHash256 accumulator;
             ValueHash256 sha256;
 
-            using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider))
+            using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider, beaconRootsProvider))
             {
                 for (long y = writeFrom; y <= writeTo; y++)
                 {

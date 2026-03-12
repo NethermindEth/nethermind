@@ -22,6 +22,7 @@ public class EraEModule : Module
         base.Load(builder);
 
         builder
+            .AddSingleton<IBeaconRootsProvider>(_ => NullBeaconRootsProvider.Instance)
             .AddSingleton<IEraImporter, EraImporter>()
             .AddSingleton<IEraExporter, EraExporter>()
             .AddSingleton<IEraStoreFactory, EraStoreFactory>()

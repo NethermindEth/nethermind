@@ -13,7 +13,7 @@ namespace Nethermind.EraE.Test;
 public class EraCliRunnerTests
 {
     [Test]
-    public void WhenImportDirectoryIsSpecified_ThenCallEraImporter()
+    public void Run_WithImportDirectory_CallsEraImporter()
     {
         IEraImporter eraImporter = Substitute.For<IEraImporter>();
         IEraEConfig eraConfig = new EraEConfig
@@ -30,7 +30,7 @@ public class EraCliRunnerTests
     }
 
     [Test]
-    public void WhenExportDirectoryIsSpecified_ThenCallEraExporter()
+    public void Run_WithExportDirectory_CallsEraExporter()
     {
         IEraExporter eraExporter = Substitute.For<IEraExporter>();
         IEraEConfig eraConfig = new EraEConfig

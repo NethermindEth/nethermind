@@ -88,7 +88,7 @@ public sealed class EraWriter : IDisposable
         }
     }
 
-    public Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
+    public async Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(block);
         ArgumentNullException.ThrowIfNull(receipts);
@@ -116,6 +116,15 @@ public sealed class EraWriter : IDisposable
 
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         bool isPostMerge = block.Header.IsPostMerge;
+
+        if (!isPostMerge)
+        {
+            if (block.TotalDifficulty is null)
+                throw new ArgumentException("Pre-merge block must have TotalDifficulty set.", nameof(block));
+            if (block.TotalDifficulty < block.Difficulty)
+                throw new ArgumentOutOfRangeException(nameof(block.TotalDifficulty), "Cannot be less than block difficulty.");
+        }
+
         RlpBehaviors rlpBehaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
         using (NettyRlpStream headerRlp = _headerDecoder.EncodeToNewNettyStream(block.Header, rlpBehaviors))
@@ -143,11 +152,7 @@ public sealed class EraWriter : IDisposable
 
         if (!isPostMerge)
         {
-            if (block.TotalDifficulty is null)
-                throw new ArgumentException("Pre-merge block must have TotalDifficulty set.", nameof(block));
-            if (block.TotalDifficulty < block.Difficulty)
-                throw new ArgumentOutOfRangeException(nameof(block.TotalDifficulty), "Cannot be less than block difficulty.");
-            _totalDifficulties.Add(block.TotalDifficulty.Value);
+            _totalDifficulties.Add(block.TotalDifficulty!.Value);
             _lastPreMergeTD = block.TotalDifficulty.Value;
             _preMergeBlockCount++;
         }

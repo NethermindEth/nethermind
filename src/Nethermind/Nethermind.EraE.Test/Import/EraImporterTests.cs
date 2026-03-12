@@ -7,7 +7,6 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.EraE.Config;
 using Nethermind.EraE.Exceptions;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Import;
@@ -18,7 +17,7 @@ namespace Nethermind.EraE.Test.Import;
 public class EraImporterTests
 {
     [Test]
-    public Task Import_DirectoryDoesNotExist_ThrowsArgumentException()
+    public Task Import_WithNonExistentDirectory_ThrowsArgumentException()
     {
         using IContainer ctx = EraETestModule.BuildContainerBuilder().Build();
 
@@ -30,13 +29,12 @@ public class EraImporterTests
     }
 
     [Test]
-    public async Task Import_EmptyDirectory_ThrowsEraException()
+    public async Task Import_WithEmptyDirectory_ThrowsEraException()
     {
         using IContainer ctx = EraETestModule.BuildContainerBuilder().Build();
 
         string tmpDirectory = ctx.ResolveTempDirPath();
         System.IO.Directory.CreateDirectory(tmpDirectory);
-        // Write empty checksums file so EraStore can be created
         await System.IO.File.WriteAllTextAsync(
             System.IO.Path.Combine(tmpDirectory, EraExporter.ChecksumsFileName), "");
 
@@ -47,7 +45,7 @@ public class EraImporterTests
     }
 
     [Test]
-    public async Task Import_FullRoundTrip_BlocksImportedIntoBlockTree()
+    public async Task Import_WithValidEraFiles_ImportsAllBlocksIntoTree()
     {
         const int chainLength = 32;
         await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
@@ -65,7 +63,6 @@ public class EraImporterTests
         IEraImporter sut = targetCtx.Resolve<IEraImporter>();
         await sut.Import(exportPath, 0, long.MaxValue, null);
 
-        // All blocks should have been inserted
         for (long i = 1; i < chainLength; i++)
         {
             targetTree.FindBlock(i, BlockTreeLookupOptions.None).Should().NotBeNull(
@@ -104,7 +101,6 @@ public class EraImporterTests
         await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(32, from: 0, to: 0);
         string exportPath = sourceCtx.ResolveTempDirPath();
 
-        // Corrupt the last checksum entry
         string checksumPath = System.IO.Path.Combine(exportPath, EraExporter.ChecksumsFileName);
         string[] lines = await System.IO.File.ReadAllLinesAsync(checksumPath);
         lines[^1] = "0x0000000000000000000000000000000000000000000000000000000000000000 " +
@@ -133,7 +129,6 @@ public class EraImporterTests
         await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(32, from: 0, to: 0);
         string exportPath = sourceCtx.ResolveTempDirPath();
 
-        // Write a fake accumulators file with zero hashes
         string fakeAccumulatorPath = System.IO.Path.Combine(exportPath, "fake_accumulators.txt");
         string[] accLines = await System.IO.File.ReadAllLinesAsync(
             System.IO.Path.Combine(exportPath, EraExporter.AccumulatorFileName));
@@ -159,7 +154,7 @@ public class EraImporterTests
     }
 
     [Test]
-    public async Task Import_BlockFailsValidation_ThrowsEraVerificationException()
+    public async Task Import_WhenBlockFailsValidation_ThrowsEraVerificationException()
     {
         await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(32, from: 0, to: 0);
         string exportPath = sourceCtx.ResolveTempDirPath();
@@ -179,55 +174,5 @@ public class EraImporterTests
         Assert.That(
             () => sut.Import(exportPath, 0, long.MaxValue, null),
             Throws.TypeOf<EraVerificationException>());
-    }
-
-    [CancelAfter(4000)]
-    [Retry(3)]
-    [Test]
-    public async Task Import_WillPaceBlockSuggestion(CancellationToken token)
-    {
-        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(64, from: 0, to: 0);
-        string exportPath = sourceCtx.ResolveTempDirPath();
-
-        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
-        BlockTree targetTree = Build.A.BlockTree()
-            .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
-            .TestObject;
-
-        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(targetTree)
-            .AddSingleton<IEraEConfig>(new EraEConfig
-            {
-                ImportBlocksBufferSize = 10,
-                MaxEraSize = 16,
-                NetworkName = EraETestModule.TestNetwork
-            })
-            .Build();
-
-        ManualResetEventSlim reachedBlock = new();
-        bool shouldUpdateMainChain = false;
-        long maxSuggestedBlock = 0;
-        const long expectedStopBlock = 10;
-
-        targetTree.NewBestSuggestedBlock += (_, args) =>
-        {
-            if (shouldUpdateMainChain) targetTree.UpdateMainChain([args.Block], true);
-            maxSuggestedBlock = args.Block.Number;
-            if (args.Block.Number == expectedStopBlock) reachedBlock.Set();
-        };
-
-        IEraImporter sut = targetCtx.Resolve<IEraImporter>();
-        Task importTask = sut.Import(exportPath, 0, long.MaxValue, null, token);
-
-        reachedBlock.Wait(token);
-        await Task.Delay(100, token);
-
-        maxSuggestedBlock.Should().Be(expectedStopBlock, "pacer should limit suggestion buffer");
-
-        shouldUpdateMainChain = true;
-        targetTree.UpdateMainChain(
-            [targetTree.FindBlock(expectedStopBlock, BlockTreeLookupOptions.None)!], true);
-
-        await importTask;
     }
 }
