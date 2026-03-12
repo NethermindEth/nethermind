@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.E2Store;
 using Nethermind.EraE.Exceptions;
+using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -77,12 +78,15 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
     ///   <item>Block body matches header (transactions root, uncles hash).</item>
     ///   <item>Slim receipt root reconstructed from logs matches header ReceiptsRoot.</item>
     ///   <item>Computed accumulator root matches stored AccumulatorRoot (pre-merge epochs).</item>
+    ///   <item>If <paramref name="validator"/> is provided: computed accumulator root is verified
+    ///         against the trusted accumulator set (chain integrity check).</item>
     /// </list>
     /// </summary>
     public async Task<ValueHash256> VerifyContent(
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         int verifyConcurrency = 0,
+        Validator? validator = null,
         CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(specProvider);
@@ -141,6 +145,10 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
         ValueHash256 computedRoot = calculator.ComputeRoot();
         if (computedRoot != storedRoot)
             throw new EraVerificationException("Computed accumulator root does not match stored AccumulatorRoot.");
+
+        // Optional chain-integrity check: verify stored root against externally trusted accumulators.
+        if (validator is not null && !validator.VerifyAccumulator(startBlock, storedRoot))
+            throw new EraVerificationException("Stored AccumulatorRoot does not match trusted accumulator.");
 
         return storedRoot;
     }
