@@ -23,22 +23,12 @@ public class StateSyncAllocationStrategyTests
 {
     private static readonly IPeerAllocationStrategy _strategy = new StateSyncAllocationStrategyFactory.AllocationStrategy(new NoopAllocationStrategy());
 
-    [Test]
-    public void Can_allocate_node_with_snap()
+    [TestCase(EthVersions.Eth67, true, ExpectedResult = true)]
+    [TestCase(EthVersions.Eth66, false, ExpectedResult = true)]
+    [TestCase(EthVersions.Eth67, false, ExpectedResult = false)]
+    public bool Can_allocate_node(int ethVersion, bool hasSnap)
     {
-        IsNodeAllocated(EthVersions.Eth67, true).Should().BeTrue();
-    }
-
-    [Test]
-    public void Can_allocate_pre_eth67_node()
-    {
-        IsNodeAllocated(EthVersions.Eth66, false).Should().BeTrue();
-    }
-
-    [Test]
-    public void Cannot_allocated_eth67_with_no_snap()
-    {
-        IsNodeAllocated(EthVersions.Eth67, false).Should().BeFalse();
+        return IsNodeAllocated(ethVersion, hasSnap);
     }
 
     private bool IsNodeAllocated(int version, bool hasSnap)
