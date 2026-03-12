@@ -353,23 +353,22 @@ namespace Nethermind.Xdc
             // Check if we are in the masternode set
             if (!IsMasternode(epochInfo, _signer.Address))
             {
-                _highestVotedRound = votingRound;
+                SetHighestVotedRound(votingRound);
                 _logger.Info($"Round {votingRound}: Skipped voting (not in masternode set)");
                 return;
             }
 
-            // Check voting rule
-            bool canVote = _votesManager.VerifyVotingRules(head, out string error);
-            if (!canVote)   
+            // Check voting rule            
+            if (!head.IsSelfMined && !_votesManager.VerifyVotingRules(head, out string error))   
             {
                 _logger.Info($"Round {votingRound}: Voting rule not satisfied for block #{head.Number}, hash={head.Hash}: {error}");
                 return;
             }
-
+                
             try
             {
                 BlockRoundInfo voteInfo = new BlockRoundInfo(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
-                _highestVotedRound = votingRound;
+                SetHighestVotedRound(votingRound);
                 await _votesManager.CastVote(voteInfo);
                 _lastActivityTime = DateTime.UtcNow;
                 _logger.Info($"Round {votingRound}: Voted for block #{head.Number}, hash={head.Hash}");
@@ -377,6 +376,12 @@ namespace Nethermind.Xdc
             catch (Exception ex)
             {
                 _logger.Error($"Round {votingRound}: Failed to cast vote.", ex);
+            }
+
+            void SetHighestVotedRound(ulong votingRound)
+            {
+                if (votingRound > _highestVotedRound)
+                    _highestVotedRound = votingRound;
             }
         }
 
@@ -388,8 +393,8 @@ namespace Nethermind.Xdc
             if (e.Block.Header is not XdcBlockHeader xdcHead)
                 throw new InvalidOperationException($"Expected an XDC header, but got {e.Block.Header.GetType().FullName}");
 
-            if (_logger.IsDebug)
-                _logger.Debug($"New head block #{xdcHead.Number}, round={xdcHead.ExtraConsensusData?.BlockRound}, our round={_xdcContext.CurrentRound}");
+            if (_logger.IsInfo)
+                _logger.Info($"New head block #{xdcHead.Number}, round={xdcHead.ExtraConsensusData?.BlockRound}, hash={xdcHead.Hash}, our round={_xdcContext.CurrentRound}");
 
             if (xdcHead.ExtraConsensusData is null)
                 throw new InvalidOperationException("New head block missing ExtraConsensusData");

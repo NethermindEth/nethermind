@@ -36,7 +36,15 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private readonly ISigner _signer;
     private readonly XdcPool<Timeout> _timeouts = new();
 
-    public TimeoutCertificateManager(IXdcConsensusContext context, ITimeoutTimer timeoutTimer, ISyncPeerPool syncPeerPool, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISigner signer)
+    public TimeoutCertificateManager(
+        IXdcConsensusContext context,
+        ITimeoutTimer timeoutTimer,
+        ISyncPeerPool syncPeerPool,
+        ISnapshotManager snapshotManager,
+        IEpochSwitchManager epochSwitchManager,
+        ISpecProvider specProvider,
+        IBlockTree blockTree,
+        ISigner signer)
     {
         _consensusContext = context;
         this._timeoutTimer = timeoutTimer;
