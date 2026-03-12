@@ -31,6 +31,7 @@
   ],
   "words": [
     "accesslist",
+    "abff",
     "accnt",
     "adab",
     "addmod",
@@ -117,6 +118,7 @@
     "buterin",
     "bylica",
     "cacheline",
+    "cdef",
     "bytecodes",
     "callcode",
     "calldatacopy",
@@ -738,6 +740,7 @@
     "smod",
     "somelabel",
     "Spmc",
+    "snapsync",
     "spaceneth",
     "spammy",
     "sparkline",
