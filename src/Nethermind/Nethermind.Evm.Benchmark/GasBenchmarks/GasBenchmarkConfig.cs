@@ -32,6 +32,9 @@ public class GasBenchmarkConfig : ManualConfig
     /// <summary>Override for BDN launch count. Null = 1 (our default).</summary>
     internal static int? LaunchCount { get; set; }
 
+    /// <summary>Path to a subset list file. Null = run all scenarios.</summary>
+    internal static string SubsetFile { get; set; }
+
     public GasBenchmarkConfig()
     {
         // These benchmarks take 100-650ms per invocation. InvocationCount(1) + UnrollFactor(1)

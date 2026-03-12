@@ -38,6 +38,7 @@ if (inprocessIndex >= 0)
 
 args = ApplyModeFilter(args);
 args = ApplyChunkFilter(args);
+args = ApplySubsetFilter(args);
 args = ApplyBdnOverrides(args);
 
 ConfigureTimingFilePath();
@@ -253,6 +254,51 @@ static string[] ApplyChunkFilter(string[] args)
     GasBenchmarkConfig.ChunkIndex = n;
     GasBenchmarkConfig.ChunkTotal = m;
     return RemoveArguments(args, chunkIndex, removeCount);
+}
+
+static string[] ApplySubsetFilter(string[] args)
+{
+    int subsetIndex = -1;
+    for (int i = 0; i < args.Length; i++)
+    {
+        if (args[i].StartsWith("--subset=", StringComparison.OrdinalIgnoreCase)
+            || args[i].StartsWith("--subset:", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(args[i], "--subset", StringComparison.OrdinalIgnoreCase))
+        {
+            subsetIndex = i;
+            break;
+        }
+    }
+
+    if (subsetIndex < 0)
+    {
+        return args;
+    }
+
+    (string subsetValue, int removeCount) = GetOptionValue(args, subsetIndex, "--subset");
+
+    if (string.Equals(subsetValue, "quick", StringComparison.OrdinalIgnoreCase))
+    {
+        string repoRoot = GasPayloadBenchmarks.FindRepoRoot();
+        string subsetPath = Path.Combine(repoRoot, "scripts", "benchmarks", "quick-subset.txt");
+        if (!File.Exists(subsetPath))
+        {
+            throw new FileNotFoundException($"Quick subset file not found: {subsetPath}");
+        }
+
+        GasBenchmarkConfig.SubsetFile = subsetPath;
+    }
+    else
+    {
+        if (!File.Exists(subsetValue))
+        {
+            throw new FileNotFoundException($"Subset file not found: {subsetValue}");
+        }
+
+        GasBenchmarkConfig.SubsetFile = subsetValue;
+    }
+
+    return RemoveArguments(args, subsetIndex, removeCount);
 }
 
 /// <summary>

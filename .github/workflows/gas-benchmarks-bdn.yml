@@ -19,6 +19,14 @@ on:
           - BlockBuilding
           - NewPayload
           - NewPayloadMeasured
+      subset:
+        description: 'Scenario subset (quick = ~25% representative, full = all 910)'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - quick
       filter:
         description: 'BDN filter pattern (optional, e.g. *MULMOD*)'
         required: false
@@ -35,6 +43,19 @@ on:
         description: 'BDN launch count'
         required: false
         default: '1'
+      retrospective:
+        description: 'Enable retrospective mode: benchmark N historical master commits'
+        required: false
+        type: boolean
+        default: false
+      retrospective_commits:
+        description: 'Number of recent master commits to scan (retrospective mode)'
+        required: false
+        default: '100'
+      retrospective_step:
+        description: 'Sample every Nth commit (retrospective mode)'
+        required: false
+        default: '10'
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
@@ -49,11 +70,16 @@ jobs:
     runs-on: ubuntu-slim
     outputs:
       mode: ${{ steps.check.outputs.mode }}
+      subset: ${{ steps.check.outputs.subset }}
       filter: ${{ steps.check.outputs.filter }}
       chunks: ${{ steps.check.outputs.chunks }}
       warmupCount: ${{ steps.check.outputs.warmupCount }}
       iterationCount: ${{ steps.check.outputs.iterationCount }}
       launchCount: ${{ steps.check.outputs.launchCount }}
+      retrospective: ${{ steps.check.outputs.retrospective }}
+      retro_matrix: ${{ steps.retro.outputs.matrix }}
+      retro_commits: ${{ steps.check.outputs.retro_commits }}
+      retro_step: ${{ steps.check.outputs.retro_step }}
     steps:
       - name: Resolve inputs
         id: check
@@ -62,33 +88,81 @@ jobs:
           set -euo pipefail
 
           mode="NewPayload"
+          subset="full"
           filter=""
           warmupCount="1"
           iterationCount="1"
           launchCount="1"
+          retrospective="false"
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             mode="${{ inputs.mode }}"
+            subset="${{ inputs.subset }}"
             filter="${{ inputs.filter }}"
             warmupCount="${{ inputs.warmupCount }}"
             iterationCount="${{ inputs.iterationCount }}"
             launchCount="${{ inputs.launchCount }}"
+            retrospective="${{ inputs.retrospective }}"
           fi
 
-          chunks="[1, 2, 3, 4, 5]"
+          if [[ "${retrospective}" == "true" ]]; then
+            # Retrospective forces quick subset and single chunk for speed
+            subset="quick"
+            chunks="[1]"
+          else
+            chunks="[1, 2, 3, 4, 5]"
+          fi
 
           {
             echo "mode=${mode}"
+            echo "subset=${subset}"
             echo "filter=${filter}"
             echo "chunks=${chunks}"
             echo "warmupCount=${warmupCount}"
             echo "iterationCount=${iterationCount}"
             echo "launchCount=${launchCount}"
+            echo "retrospective=${retrospective}"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout for retrospective
+        if: steps.check.outputs.retrospective == 'true'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Generate retrospective matrix
+        id: retro
+        if: steps.check.outputs.retrospective == 'true'
+        shell: bash
+        run: |
+          COMMITS="${{ inputs.retrospective_commits || '100' }}"
+          STEP="${{ inputs.retrospective_step || '10' }}"
+
+          # Get recent master commits, pick every Nth
+          SHAS=$(git log origin/master --format='%H' -n "${COMMITS}" | awk "NR % ${STEP} == 1")
+
+          # Build JSON array
+          MATRIX="["
+          first=true
+          for sha in $SHAS; do
+            if [ "$first" = true ]; then
+              first=false
+            else
+              MATRIX="${MATRIX},"
+            fi
+            MATRIX="${MATRIX}\"${sha}\""
+          done
+          MATRIX="${MATRIX}]"
+
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+          COUNT=$(echo "$SHAS" | wc -w)
+          echo "Generated retrospective matrix with ${COUNT} commits (every ${STEP}th of last ${COMMITS})"
+
+  # ─── Normal benchmark flow ─────────────────────────────────────────────
 
   build:
     needs: resolve
-    if: always() && !cancelled() && needs.resolve.result == 'success'
+    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.retrospective != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -114,6 +188,7 @@ jobs:
           path: |
             src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/
             tools/gas-benchmarks/
+            scripts/benchmarks/quick-subset.txt
             global.json
 
   benchmark:
@@ -170,6 +245,7 @@ jobs:
         shell: bash
         run: |
           MODE="${{ needs.resolve.outputs.mode }}"
+          SUBSET="${{ needs.resolve.outputs.subset }}"
           FILTER="${{ needs.resolve.outputs.filter }}"
           WARMUP="${{ needs.resolve.outputs.warmupCount }}"
           ITERATIONS="${{ needs.resolve.outputs.iterationCount }}"
@@ -179,6 +255,9 @@ jobs:
           TOTAL=$((TOTAL + 1))
 
           ARGS="--inprocess --mode=$MODE --chunk ${{ matrix.chunk }}/$TOTAL"
+          if [[ "$SUBSET" == "quick" ]]; then
+            ARGS="$ARGS --subset quick"
+          fi
           if [[ -n "$FILTER" ]]; then
             ARGS="$ARGS --filter $FILTER"
           fi
@@ -276,3 +355,106 @@ jobs:
           header: gas-benchmark-bdn
           path: comparison.md
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─── Retrospective mode ────────────────────────────────────────────────
+  # Builds and benchmarks multiple historical master commits to detect
+  # regressions over time. Uses quick subset for speed.
+
+  retro-benchmark:
+    needs: resolve
+    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.retrospective == 'true'
+    runs-on: [self-hosted, benchmark]
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        commit: ${{ fromJson(needs.resolve.outputs.retro_matrix || '[]') }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ matrix.commit }}
+          lfs: true
+          submodules: true
+          fetch-depth: 1
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build benchmarks
+        id: build
+        run: dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release
+        continue-on-error: true
+
+      - name: Run quick benchmarks
+        if: steps.build.outcome == 'success'
+        shell: bash
+        run: |
+          MODE="${{ needs.resolve.outputs.mode }}"
+          WARMUP="${{ needs.resolve.outputs.warmupCount }}"
+          ITERATIONS="${{ needs.resolve.outputs.iterationCount }}"
+          LAUNCHES="${{ needs.resolve.outputs.launchCount }}"
+          SHORT_SHA=$(echo "${{ matrix.commit }}" | head -c 10)
+
+          ARGS="--inprocess --mode=$MODE"
+
+          # --subset is only available in commits that have quick-subset.txt
+          if [[ -f "scripts/benchmarks/quick-subset.txt" ]]; then
+            ARGS="$ARGS --subset quick"
+          fi
+
+          if [[ -n "$WARMUP" ]]; then
+            ARGS="$ARGS --warmupCount $WARMUP"
+          fi
+          if [[ -n "$ITERATIONS" ]]; then
+            ARGS="$ARGS --iterationCount $ITERATIONS"
+          fi
+          if [[ -n "$LAUNCHES" ]]; then
+            ARGS="$ARGS --launchCount $LAUNCHES"
+          fi
+
+          echo "=== Benchmarking commit ${SHORT_SHA} ==="
+          dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll $ARGS
+
+      - name: Upload results
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: retro-${{ matrix.commit }}
+          path: BenchmarkDotNet.Artifacts/results/*-full.json
+          retention-days: 30
+
+  retro-collect:
+    needs: [resolve, retro-benchmark]
+    if: always() && !cancelled() && needs.resolve.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download all retrospective results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: retro-*
+          path: retro-results/
+
+      - name: Generate retrospective reports
+        shell: bash
+        run: |
+          python3 scripts/benchmarks/retrospective_report.py retro-results/ > retrospective.md
+          python3 scripts/benchmarks/retrospective_report.py retro-results/ --json > retrospective.json
+
+      - name: Upload retrospective reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrospective-report
+          path: |
+            retrospective.md
+            retrospective.json
+          retention-days: 90
+
+      - name: Print report
+        run: cat retrospective.md

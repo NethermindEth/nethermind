@@ -44,12 +44,20 @@ public static class GasPayloadBenchmarks
         string[] dirs = Directory.GetDirectories(s_testingDir);
         Array.Sort(dirs);
 
+        HashSet<string> subset = LoadSubset();
         int globalIndex = 0;
         int chunkIndex = GasBenchmarkConfig.ChunkIndex;
         int chunkTotal = GasBenchmarkConfig.ChunkTotal;
 
         for (int d = 0; d < dirs.Length; d++)
         {
+            if (subset is not null)
+            {
+                string dirName = Path.GetFileName(dirs[d]);
+                if (!subset.Contains(dirName))
+                    continue;
+            }
+
             string[] files = Directory.GetFiles(dirs[d], "*.txt");
             Array.Sort(files);
             for (int f = 0; f < files.Length; f++)
@@ -63,6 +71,30 @@ public static class GasPayloadBenchmarks
                 yield return new TestCase(files[f]);
             }
         }
+    }
+
+    private static HashSet<string> LoadSubset()
+    {
+        string subsetFile = GasBenchmarkConfig.SubsetFile;
+        if (subsetFile is null)
+            return null;
+
+        HashSet<string> result = new();
+        foreach (string line in File.ReadLines(subsetFile))
+        {
+            string trimmed = line.Trim();
+            if (trimmed.Length == 0 || trimmed[0] == '#')
+                continue;
+
+            int commentIdx = trimmed.IndexOf('#');
+            if (commentIdx >= 0)
+                trimmed = trimmed[..commentIdx].Trim();
+
+            if (trimmed.Length > 0)
+                result.Add(trimmed);
+        }
+
+        return result;
     }
 
     /// <summary>
