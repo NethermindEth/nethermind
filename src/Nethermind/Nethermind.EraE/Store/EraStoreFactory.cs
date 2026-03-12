@@ -36,7 +36,7 @@ public class EraStoreFactory(
                 eraConfig.Concurrency,
                 validator);
         }
-        catch (EraException) when (remoteClient is not null)
+        catch (Exception e) when (remoteClient is not null && e is EraException or FileNotFoundException or DirectoryNotFoundException)
         {
             // No local era files — remote will supply them on demand.
         }

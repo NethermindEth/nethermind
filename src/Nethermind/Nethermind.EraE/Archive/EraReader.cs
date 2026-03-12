@@ -207,6 +207,69 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
     private TxReceipt[] DecodeSlimReceipts(Memory<byte> buffer)
     {
         Rlp.ValueDecoderContext ctx = new(buffer.Span);
-        return _slimReceiptDecoder.DecodeArray(ref ctx);
+
+        int outerLength = ctx.ReadSequenceLength();
+        int outerEnd = ctx.Position + outerLength;
+        int count = ctx.PeekNumberOfItemsRemaining(outerEnd);
+
+        TxReceipt[] receipts = new TxReceipt[count];
+        for (int i = 0; i < count; i++)
+            receipts[i] = DecodeOneSlimReceipt(ref ctx);
+
+        return receipts;
+    }
+
+    /// <summary>
+    /// Decodes a single slim receipt, handling both Nethermind format and go-ethereum EraE format.
+    ///
+    /// Nethermind writes slim receipts as:
+    ///   - Legacy:  RLP sequence [status, cumulative_gas, logs]
+    ///   - Typed:   RLP byte-array wrapper (EIP-2718 envelope) containing type_byte + [status, cumulative_gas, logs]
+    ///
+    /// go-ethereum writes slim receipts as RLP sequences with 4 fields:
+    ///   [tx_type, status, cumulative_gas, logs]
+    ///   where tx_type=0 (legacy) and status=0 (failure) are each encoded as 0x80 (empty byte string).
+    /// </summary>
+    private TxReceipt DecodeOneSlimReceipt(ref Rlp.ValueDecoderContext ctx)
+    {
+        // Nethermind typed receipt: encoded as an RLP byte-array (not a sequence)
+        if (!ctx.IsSequenceNext())
+            return _slimReceiptDecoder.Decode(ref ctx);
+
+        // Peek the field count inside the sequence without consuming any bytes.
+        int savedPosition = ctx.Position;
+        int sequenceLength = ctx.ReadSequenceLength();
+        int receiptEnd = ctx.Position + sequenceLength;
+        int fieldCount = ctx.PeekNumberOfItemsRemaining(receiptEnd);
+        ctx.Position = savedPosition;
+
+        if (fieldCount != 4)
+        {
+            // Nethermind 3-field format: delegate to existing slim decoder
+            return _slimReceiptDecoder.Decode(ref ctx);
+        }
+
+        // go-ethereum 4-field format: [tx_type, status, cumulative_gas, logs]
+        ctx.ReadSequenceLength(); // consume the sequence header (matches the peek above)
+
+        TxReceipt receipt = new();
+
+        byte[] txTypeBytes = ctx.DecodeByteArray();
+        receipt.TxType = txTypeBytes.Length == 0 ? TxType.Legacy : (TxType)txTypeBytes[0];
+
+        byte[] statusBytes = ctx.DecodeByteArray();
+        receipt.StatusCode = statusBytes.Length == 0 ? (byte)0 : statusBytes[0];
+
+        receipt.GasUsedTotal = ctx.DecodePositiveLong();
+
+        int logsEnd = ctx.ReadSequenceLength() + ctx.Position;
+        int logCount = ctx.PeekNumberOfItemsRemaining(logsEnd);
+        LogEntry[] logs = new LogEntry[logCount];
+        for (int i = 0; i < logCount; i++)
+            logs[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
+        receipt.Logs = logs;
+
+        ctx.Position = receiptEnd;
+        return receipt;
     }
 }

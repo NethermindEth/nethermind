@@ -66,6 +66,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         string localPath = await EnsureEpochAvailableAsync(epoch, cancellation);
 
         using EraReader reader = new(localPath);
+        if (number > reader.LastBlock) return (null, null);
         (Block block, TxReceipt[] receipts) = await reader.GetBlockByNumber(number, cancellation);
         return (block, receipts);
     }
@@ -98,10 +99,8 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         IReadOnlyDictionary<int, RemoteEraEntry> manifest = await GetManifestAsync(cancellation);
         if (manifest.Count == 0) throw new EraException("Remote eraE manifest is empty.");
 
-        int firstEpoch = manifest.Keys.Min();
-        string localPath = await EnsureEpochAvailableAsync(firstEpoch, cancellation);
-        using EraReader reader = new(localPath);
-        return reader.FirstBlock;
+        // Exact: era epochs are aligned to maxEraSize boundaries, so first epoch always starts at epoch * maxEraSize.
+        return (long)manifest.Keys.Min() * _maxEraSize;
     }
 
     private async Task<long> GetLastBlockAsync(CancellationToken cancellation = default)
@@ -111,10 +110,11 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         IReadOnlyDictionary<int, RemoteEraEntry> manifest = await GetManifestAsync(cancellation);
         if (manifest.Count == 0) throw new EraException("Remote eraE manifest is empty.");
 
-        int lastEpoch = manifest.Keys.Max();
-        string localPath = await EnsureEpochAvailableAsync(lastEpoch, cancellation);
-        using EraReader reader = new(localPath);
-        return reader.LastBlock;
+        // Upper-bound estimate: avoids downloading the last (potentially huge) epoch file just for validation.
+        // The actual last block may be slightly lower for a non-full final epoch.
+        // FindBlockAndReceipts returns (null, null) when number > reader.LastBlock, so importers that
+        // rely on this value (to=0 / auto mode) will stop naturally at the real end.
+        return (long)(manifest.Keys.Max() + 1) * _maxEraSize - 1;
     }
 
     private async Task<IReadOnlyDictionary<int, RemoteEraEntry>> GetManifestAsync(CancellationToken cancellation = default)

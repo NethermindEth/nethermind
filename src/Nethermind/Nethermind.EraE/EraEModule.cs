@@ -15,6 +15,7 @@ using Nethermind.EraE.JsonRpc;
 using Nethermind.EraE.Proofs;
 using Nethermind.EraE.Store;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 
 namespace Nethermind.EraE;
 
@@ -46,7 +47,7 @@ public class EraEModule : Module
                 IEraEConfig config = ctx.Resolve<IEraEConfig>();
                 IRemoteEraClient? remoteClient = string.IsNullOrWhiteSpace(config.RemoteBaseUrl)
                     ? null
-                    : new HttpRemoteEraClient(new Uri(config.RemoteBaseUrl), config.RemoteChecksumFile);
+                    : new HttpRemoteEraClient(new Uri(config.RemoteBaseUrl), config.RemoteChecksumFile, logManager: ctx.Resolve<ILogManager>());
 
                 return new EraStoreFactory(
                     ctx.Resolve<ISpecProvider>(),

@@ -37,8 +37,7 @@ public class EraImporter(
 
     public async Task Import(string src, long from, long to, string? accumulatorFile, CancellationToken cancellation = default)
     {
-        if (!fileSystem.Directory.Exists(src))
-            throw new ArgumentException($"Import directory {src} does not exist.");
+        fileSystem.Directory.CreateDirectory(src);
         if (accumulatorFile != null && !fileSystem.File.Exists(accumulatorFile))
             throw new ArgumentException($"Accumulator file {accumulatorFile} does not exist.");
 
@@ -67,9 +66,6 @@ public class EraImporter(
         if (from > to)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to}).");
 
-        long headP1 = (blockTree.Head?.Number ?? 0) + 1;
-        if (from > headP1)
-            throw new ArgumentException($"Start block ({from}) must not be after block after head ({headP1}).");
 
         receiptsDb.Tune(ITunableDb.TuneType.HeavyWrite);
         blocksDb.Tune(ITunableDb.TuneType.HeavyWrite);
@@ -176,7 +172,7 @@ public class EraImporter(
     private void InsertBlockAndReceipts(Block block, TxReceipt[] receipts, long lastBlockNumber)
     {
         if (blockTree.FindBlock(block.Number) is null)
-            blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
+            blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded, bodiesWriteFlags: WriteFlags.DisableWAL);
         if (!receiptStorage.HasBlock(block.Number, block.Hash!))
             receiptStorage.Insert(block, receipts, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);
     }

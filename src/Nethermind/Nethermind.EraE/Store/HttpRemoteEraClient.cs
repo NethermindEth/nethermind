@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.EraE.Exceptions;
+using Nethermind.Logging;
 
 namespace Nethermind.EraE.Store;
 
@@ -18,8 +19,9 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
     private readonly Uri _baseUrl;
     private readonly string _manifestFilename;
     private readonly bool _ownsHttpClient;
+    private readonly ILogger _logger;
 
-    public HttpRemoteEraClient(Uri baseUrl, string manifestFilename, HttpClient? httpClient = null)
+    public HttpRemoteEraClient(Uri baseUrl, string manifestFilename, HttpClient? httpClient = null, ILogManager? logManager = null)
     {
         ArgumentNullException.ThrowIfNull(baseUrl);
         ArgumentException.ThrowIfNullOrWhiteSpace(manifestFilename);
@@ -28,11 +30,14 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
         _manifestFilename = manifestFilename;
         _ownsHttpClient = httpClient is null;
         _httpClient = httpClient ?? new HttpClient();
+        _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<HttpRemoteEraClient>();
     }
 
     public async Task<IReadOnlyDictionary<int, RemoteEraEntry>> FetchManifestAsync(CancellationToken cancellation = default)
     {
         Uri manifestUri = new(_baseUrl, _manifestFilename);
+
+        if (_logger.IsInfo) _logger.Info($"Fetching eraE manifest from {manifestUri}");
 
         using HttpResponseMessage response = await _httpClient.GetAsync(manifestUri, HttpCompletionOption.ResponseHeadersRead, cancellation);
 
@@ -74,6 +79,8 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
         if (!string.IsNullOrEmpty(destinationDir))
             Directory.CreateDirectory(destinationDir);
 
+        if (_logger.IsInfo) _logger.Info($"Downloading eraE file {filename} from {fileUri}");
+
         try
         {
             using HttpResponseMessage response = await _httpClient.GetAsync(fileUri, HttpCompletionOption.ResponseHeadersRead, cancellation);
@@ -81,9 +88,14 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
             if (!response.IsSuccessStatusCode)
                 throw new EraException($"Failed to download eraE file '{filename}': HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
 
+            long? contentLength = response.Content.Headers.ContentLength;
+
             await using Stream httpStream = await response.Content.ReadAsStreamAsync(cancellation);
             await using FileStream fileStream = new(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
             await httpStream.CopyToAsync(fileStream, cancellation);
+
+            double mb = (contentLength ?? fileStream.Length) / 1_048_576.0;
+            if (_logger.IsInfo) _logger.Info($"Downloaded eraE file {filename} ({mb:F1} MB)");
         }
         catch
         {
