@@ -1,28 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Ethereum.Test.Base;
-using NUnit.Framework;
 
-namespace Ethereum.Legacy.VM.Test
-{
-    [TestFixture]
-    [Parallelizable(ParallelScope.All)]
-    // ReSharper disable once InconsistentNaming
-    public class Performance : GeneralStateTestBase
-    {
-        [TestCaseSource(nameof(LoadTests))]
-        [Retry(3)]
-        public void Test(GeneralStateTest test)
-        {
-            Assert.That(RunTest(test).Pass, Is.True);
-        }
+namespace Ethereum.Legacy.VM.Test;
 
-        public static IEnumerable<GeneralStateTest> LoadTests()
-        {
-            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "vmPerformance");
-            return loader.LoadTests<GeneralStateTest>();
-        }
-    }
-}
+public class Performance : LegacyRetryStateTestFixture<Performance, VmPrefix>;

@@ -21,16 +21,9 @@ public class TransactionTest : GeneralStateTestBase
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        try
-        {
-            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stTransactionTest");
-            // We don't handle invalid transaction's RLP cases, that are loaded as FailedToLoadTest
-            return loader.LoadTests<EthereumTest>().OfType<GeneralStateTest>();
-        }
-        catch
-        {
-            throw;
-        }
+        var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stTransactionTest");
+        // Filter out invalid transaction RLP cases loaded as non-GeneralStateTest
+        return loader.LoadTests<EthereumTest>().OfType<GeneralStateTest>();
     }
 }
 
