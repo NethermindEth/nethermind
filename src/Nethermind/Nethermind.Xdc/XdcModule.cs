@@ -23,6 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -71,6 +72,7 @@ public class XdcModule : Module
                 IAbiEncoder,
                 ISpecProvider,
                 IReadOnlyTxProcessingEnvFactory>(CreateVotingContract)
+            .AddSingleton<ITrc21StateReader, IStateReader, ISpecProvider>((stateReader, specProvider) => new Trc21StateReader(stateReader, specProvider))
 
             // sealer
             .AddSingleton<ISealer, XdcSealer>()

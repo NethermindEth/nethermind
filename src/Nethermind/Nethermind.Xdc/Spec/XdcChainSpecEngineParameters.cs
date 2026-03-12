@@ -32,6 +32,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public Address TradingStateAddressBinary { get; set; }
 
     public Address MasternodeVotingContract { get; set; }
+    public Address Trc21IssuerContract { get; set; }
 
     public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
