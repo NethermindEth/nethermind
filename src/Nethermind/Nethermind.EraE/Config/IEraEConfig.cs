@@ -36,4 +36,13 @@ public interface IEraEConfig : IConfig
 
     [ConfigItem(Description = "Beacon node URL for fetching beacon block roots and state roots during post-merge EraE export. When set, enables BeaconApiRootsProvider and HistoricalSummariesRpcProvider.", DefaultValue = "null", HiddenFromDocs = false)]
     string? BeaconNodeUrl { get; set; }
+
+    [ConfigItem(Description = "Base URL of a remote erae archive server (e.g. https://data.ethpandaops.io/erae/{network}/). When set, missing local epoch files are downloaded on demand.", DefaultValue = "null", HiddenFromDocs = false)]
+    string? RemoteBaseUrl { get; set; }
+
+    [ConfigItem(Description = "Local directory where remotely downloaded erae files are cached. Defaults to ImportDirectory when null.", DefaultValue = "null", HiddenFromDocs = false)]
+    string? RemoteDownloadDirectory { get; set; }
+
+    [ConfigItem(Description = "Filename of the checksum manifest on the remote server.", DefaultValue = "checksums_sha256.txt", HiddenFromDocs = true)]
+    string RemoteChecksumFile { get; set; }
 }

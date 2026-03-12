@@ -17,4 +17,7 @@ public class EraEConfig : IEraEConfig
     public int Concurrency { get; set; }
     public long ImportBlocksBufferSize { get; set; } = 4096;
     public string? BeaconNodeUrl { get; set; }
+    public string? RemoteBaseUrl { get; set; }
+    public string? RemoteDownloadDirectory { get; set; }
+    public string RemoteChecksumFile { get; set; } = "checksums_sha256.txt";
 }
