@@ -75,70 +75,49 @@ public class HeaderValidatorTests
         Assert.That(result, Is.True);
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_too_high()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(0, false, TestName = "When_gas_limit_too_high")]
+    [TestCase(-1, true, TestName = "When_gas_limit_just_correct_high")]
+    public void When_gas_limit_above_parent(int adjustment, bool expectedResult)
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
+        _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + adjustment;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
+        Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_just_correct_high()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(1, true, TestName = "When_gas_limit_just_correct_low")]
+    [TestCase(0, false, TestName = "When_gas_limit_is_just_too_low")]
+    public void When_gas_limit_below_parent(int adjustment, bool expectedResult)
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) - 1;
+        _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + adjustment;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.True);
+        Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_just_correct_low()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase("GasUsedAboveLimit", TestName = "When_gas_used_above_gas_limit")]
+    [TestCase("NoParent", TestName = "When_no_parent_invalid")]
+    [TestCase("TimestampSameAsParent", TestName = "When_timestamp_same_as_parent")]
+    public void Header_field_invalidation_returns_false(string scenario)
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + 1;
-        _block.Header.Hash = _block.CalculateHash();
+        switch (scenario)
+        {
+            case "GasUsedAboveLimit":
+                _block.Header.GasUsed = _parentBlock.Header.GasLimit + 1;
+                break;
+            case "NoParent":
+                _block.Header.ParentHash = Keccak.Zero;
+                break;
+            case "TimestampSameAsParent":
+                _block.Header.Timestamp = _parentBlock.Header.Timestamp;
+                break;
+        }
 
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.True);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_is_just_too_low()
-    {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_used_above_gas_limit()
-    {
-        _block.Header.GasUsed = _parentBlock.Header.GasLimit + 1;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_no_parent_invalid()
-    {
-        _block.Header.ParentHash = Keccak.Zero;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_timestamp_same_as_parent()
-    {
-        _block.Header.Timestamp = _parentBlock.Header.Timestamp;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -191,30 +170,25 @@ public class HeaderValidatorTests
         }
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_extra_data_too_long()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase("ExtraDataTooLong", TestName = "When_extra_data_too_long")]
+    [TestCase("IncorrectDifficulty", TestName = "When_incorrect_difficulty_then_invalid")]
+    [TestCase("IncorrectNumber", TestName = "When_incorrect_number_then_invalid")]
+    public void Header_field_corruption_returns_false(string scenario)
     {
-        _block.Header.ExtraData = new byte[33];
-        _block.Header.Hash = _block.CalculateHash();
+        switch (scenario)
+        {
+            case "ExtraDataTooLong":
+                _block.Header.ExtraData = new byte[33];
+                break;
+            case "IncorrectDifficulty":
+                _block.Header.Difficulty = 1;
+                break;
+            case "IncorrectNumber":
+                _block.Header.Number += 1;
+                break;
+        }
 
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_incorrect_difficulty_then_invalid()
-    {
-        _block.Header.Difficulty = 1;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_incorrect_number_then_invalid()
-    {
-        _block.Header.Number += 1;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -282,20 +256,19 @@ public class HeaderValidatorTests
         Assert.That(result, Is.True);
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_block_number_is_negative()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase("Number", TestName = "When_block_number_is_negative")]
+    [TestCase("GasUsed", TestName = "When_gas_used_is_negative")]
+    [TestCase("GasLimit", TestName = "When_gas_limit_is_negative")]
+    public void When_header_field_is_negative(string field)
     {
-        _block.Header.Number = -1;
-        _block.Header.Hash = _block.CalculateHash();
+        switch (field)
+        {
+            case "Number": _block.Header.Number = -1; break;
+            case "GasUsed": _block.Header.GasUsed = -1; break;
+            case "GasLimit": _block.Header.GasLimit = -1; break;
+        }
 
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_used_is_negative()
-    {
-        _block.Header.GasUsed = -1;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -343,16 +316,6 @@ public class HeaderValidatorTests
         HeaderValidator validator = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
         bool result = validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.EqualTo(expectedResult));
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_is_negative()
-    {
-        _block.Header.GasLimit = -1;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
     }
 
     [Test]
