@@ -71,7 +71,7 @@ public class ZeroNettyFrameEncodeDecodeTests
             Random.Shared.NextBytes(input);
 
             byte[] encByte = Rlp.Encode(input).Bytes;
-            IByteBuffer buffer = Unpooled.Buffer(encByte.Length + 1);
+            using DisposableByteBuffer buffer = Unpooled.Buffer(encByte.Length + 1).AsDisposable();
             buffer.WriteByte(0);
             buffer.WriteBytes(encByte);
             await splitter.WriteAsync(encoderWrite, buffer);

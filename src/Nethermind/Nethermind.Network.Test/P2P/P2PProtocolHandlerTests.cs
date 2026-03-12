@@ -111,7 +111,7 @@ namespace Nethermind.Network.Test.P2P
                 NodeId = TestItem.PublicKeyA,
             };
 
-            IByteBuffer data = _serializer.ZeroSerialize(message);
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
             // to account for adaptive packet type
             data.ReadByte();
 
@@ -176,7 +176,7 @@ namespace Nethermind.Network.Test.P2P
                 P2PVersion = 5,
             };
 
-            IByteBuffer data = _serializer.ZeroSerialize(message);
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
             data.ReadByte(); // adaptive packet type
 
             Packet packet = new Packet(data.ReadAllBytesAsArray())
@@ -223,7 +223,7 @@ namespace Nethermind.Network.Test.P2P
                 P2PVersion = 5,
             };
 
-            IByteBuffer data = _serializer.ZeroSerialize(message);
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
             data.ReadByte(); // adaptive packet type
 
             Packet packet = new Packet(data.ReadAllBytesAsArray())

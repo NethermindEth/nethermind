@@ -67,7 +67,7 @@ public class ZeroNettyP2PHandlerTests
         ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(session, LimboLogs.Instance);
         handler.EnableSnappy();
 
-        IByteBuffer buff = Unpooled.Buffer(2);
+        using DisposableByteBuffer buff = Unpooled.Buffer(2).AsDisposable();
         buff.WriteBytes(msg);
         ZeroPacket packet = new ZeroPacket(buff);
 
@@ -89,7 +89,7 @@ public class ZeroNettyP2PHandlerTests
         var data = Snappy.CompressToArray(Enumerable.Repeat<byte>(0, SnappyParameters.MaxSnappyLength + 1).ToArray());
 
         // Create a packet with our compressed data
-        IByteBuffer content = Unpooled.Buffer(data.Length);
+        using DisposableByteBuffer content = Unpooled.Buffer(data.Length).AsDisposable();
         content.WriteBytes(data);
         ZeroPacket packet = new ZeroPacket(content);
 

@@ -21,6 +21,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -130,7 +131,7 @@ public class Eth67ProtocolHandlerTests
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
-        IByteBuffer getZeroPacket = _svc.ZeroSerialize(msg);
+        using DisposableByteBuffer getZeroPacket = _svc.ZeroSerialize(msg).AsDisposable();
         getZeroPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getZeroPacket) { PacketType = (byte)messageCode });
     }
@@ -141,7 +142,7 @@ public class Eth67ProtocolHandlerTests
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 
-        IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
     }

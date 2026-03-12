@@ -22,6 +22,7 @@ using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
@@ -100,11 +101,11 @@ public class SnapProtocolHandlerTests
                             Task.Delay(SimulatedLatency).Wait();
                         }
 
-                        IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
+                        using DisposableByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
                         {
                             PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new PathWithAccount(Keccak.Zero, Account.TotallyEmpty) },
                             RequestId = accountRangeMessage.RequestId,
-                        });
+                        }).AsDisposable();
                         buffer.ReadByte(); // Need to skip adaptive type
 
                         ZeroPacket packet = new(buffer);

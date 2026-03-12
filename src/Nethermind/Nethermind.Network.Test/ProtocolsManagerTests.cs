@@ -31,6 +31,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Stats;
@@ -215,7 +216,7 @@ public class ProtocolsManagerTests
         public Context ReceiveDisconnect()
         {
             using DisconnectMessage message = new(EthDisconnectReason.Other);
-            IByteBuffer disconnectPacket = _serializer.ZeroSerialize(message);
+            using DisposableByteBuffer disconnectPacket = _serializer.ZeroSerialize(message).AsDisposable();
 
             // to account for AdaptivePacketType byte
             disconnectPacket.ReadByte();
@@ -262,7 +263,7 @@ public class ProtocolsManagerTests
 
         private Context ReceiveStatus(StatusMessage msg)
         {
-            IByteBuffer statusPacket = _serializer.ZeroSerialize(msg);
+            using DisposableByteBuffer statusPacket = _serializer.ZeroSerialize(msg).AsDisposable();
             statusPacket.ReadByte();
 
             _currentSession.ReceiveMessage(new ZeroPacket(statusPacket) { PacketType = Eth62MessageCode.Status + 16 });
@@ -288,7 +289,7 @@ public class ProtocolsManagerTests
 
         private Context ReceiveHello(HelloMessage msg)
         {
-            IByteBuffer helloPacket = _serializer.ZeroSerialize(msg);
+            using DisposableByteBuffer helloPacket = _serializer.ZeroSerialize(msg).AsDisposable();
             // to account for AdaptivePacketType byte
             helloPacket.ReadByte();
 
