@@ -235,7 +235,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
-            // tx.BlockGasUsed = spentGas.EffectiveBlockGas;
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+            {
+                tx.BlockGasUsed = spentGas.EffectiveBlockGas;
+            }
             // Console.WriteLine($"i = {VirtualMachine.TxExecutionContext.BlockAccessIndex}, effectiveBlockGas = {spentGas.EffectiveBlockGas}");
 
             //only main thread updates transaction
@@ -813,10 +816,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 header.GasUsed += gasConsumed.EffectiveBlockGas;
             }
             Console.WriteLine($"[sequential] i = {VirtualMachine.TxExecutionContext.BlockAccessIndex}, header.GasUsed = {header.GasUsed}, txBlockGas = {gasConsumed.EffectiveBlockGas}");
-            if (_balBuilder is not { ParallelExecutionEnabled: true } || header.GasUsed == 0)
-            {
-                tx.BlockGasUsed = gasConsumed.EffectiveBlockGas;
-            }
+            // if (_balBuilder is not { ParallelExecutionEnabled: true } || header.GasUsed == 0)
+            // {
+            //     tx.BlockGasUsed = gasConsumed.EffectiveBlockGas;
+            // }
 
             return statusCode;
         }

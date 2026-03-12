@@ -134,7 +134,8 @@ namespace Nethermind.Consensus.Processing
                                     state.processingOptions,
                                     state.logger);
                                 long spentGas = tx.SpentGas;
-                                long blockGasUsed = tx.BlockGasUsedTest;
+                                long blockGasUsed = tx.BlockGasUsed;
+                                // long blockGasUsed = tx.BlockGasUsedTest;
                                 // blockGasUsed = blockGasUsed == tx.GasLimit ? spentGas : blockGasUsed;
                                 Console.WriteLine($"[parallel] finished executing {txIndex}, gas spent: {spentGas} ({tx._spentGas}), block gas used: {blockGasUsed} ({tx._blockGasUsed})");
                                 state.gasResults[txIndex].SetResult((blockGasUsed, spentGas, null));
