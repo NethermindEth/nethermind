@@ -296,10 +296,8 @@ public class InitializeNetwork : IStep
     {
         return new ProtocolsManager(
             _api.SyncPeerPool!,
-            _api.BackgroundTaskScheduler,
             _api.TxPool!,
             _discoveryApp,
-            _api.MessageSerializationService,
             _api.RlpxPeer,
             NodeStatsManager,
             _api.ProtocolValidator,

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -132,6 +133,11 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // V70
             .AddMessageSerializer<V70.GetReceiptsMessage70, V70.GetReceiptsMessageSerializer70>()
             .AddMessageSerializer<V70.ReceiptsMessage70, V70.ReceiptsMessageSerializer70>()
+
+            // P2P protocol handler factory (accepts any version; validation happens after Hello)
+            .Add<Network.P2P.ProtocolHandlers.P2PProtocolHandler>()
+            .AddLast<IProtocolHandlerFactory>(ctx =>
+                new Network.P2P.ProtocolHandlers.P2PProtocolHandlerFactory(ctx.Resolve<Func<Network.P2P.ISession, Network.P2P.ProtocolHandlers.P2PProtocolHandler>>()))
 
             // Protocol handler factories (using clean DSL with Autofac Func auto-generation)
             .AddProtocolHandler<Network.P2P.Subprotocols.Snap.SnapProtocolHandler>(Protocol.Snap, version: 1)

@@ -218,10 +218,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ProtocolsManager = new ProtocolsManager(
                 Substitute.For<ISyncPeerPool>(),
-                Substitute.For<IBackgroundTaskScheduler>(),
                 TxPool,
                 Substitute.For<IDiscoveryApp>(),
-                Substitute.For<IMessageSerializationService>(),
                 Substitute.For<IRlpxHost>(),
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<IProtocolValidator>(),

@@ -78,6 +78,8 @@ public class P2PProtocolHandler(
         _supportedCapabilities.Add(capability);
     }
 
+    public override void RegisterWith(ISession session, IProtocolRegistrar registrar) => registrar.Register(session, this);
+
     public override void Init()
     {
         SendHello();

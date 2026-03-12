@@ -29,7 +29,7 @@ using MemoryAllowance = Nethermind.TxPool.MemoryAllowance;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
-    public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer, ISyncPeerProtocolHandler
+    public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
         internal static ulong SoftOutgoingMessageSizeLimit = (ulong)9_500.KB;
         public Node Node => Session?.Node;
@@ -69,6 +69,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
         }
+
+        public override void RegisterWith(ISession session, IProtocolRegistrar registrar) => registrar.Register(session, this);
 
         public void Disconnect(DisconnectReason reason, string details)
         {
