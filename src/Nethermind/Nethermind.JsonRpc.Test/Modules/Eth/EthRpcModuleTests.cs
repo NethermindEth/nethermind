@@ -1269,6 +1269,23 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_createAccessList_cannot_exceed_gas_cap()
+    {
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+        long gasCap = 60_000;
+        test.RpcConfig.GasCap = gasCap;
+
+        // Contract creation with infinite loop; gas 200K should be capped to 60K
+        TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x0\", \"gas\": \"0x30D40\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
+
+        string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
+
+        long gasUsed = Convert.ToInt64(JToken.Parse(serialized).SelectToken("result.gasUsed")!.Value<string>(), 16);
+        gasUsed.Should().BeLessOrEqualTo(gasCap);
+    }
+
+    [Test]
     public async Task Eth_create_access_list_with_state_override()
     {
         using Context ctx = await Context.Create();
