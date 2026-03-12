@@ -5,27 +5,23 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test.Json
+namespace Nethermind.Core.Test.Json;
+
+[TestFixture]
+public class AddressConverterTests : ConverterTestBase<Address>
 {
-    [TestFixture]
-    public class AddressConverterTests : ConverterTestBase<Address>
+    static readonly AddressConverter converter = new();
+
+    [TestCaseSource(nameof(AddressTestCases))]
+    public void Test_roundtrip(Address? value)
     {
-        [Test]
-        public void Null_value()
-        {
-            TestConverter(null!, static (address, address1) => address == address1, new AddressConverter());
-        }
-
-        [Test]
-        public void Zero_value()
-        {
-            TestConverter(Address.Zero, static (address, address1) => address == address1, new AddressConverter());
-        }
-
-        [Test]
-        public void Some_value()
-        {
-            TestConverter(TestItem.AddressA, static (address, address1) => address == address1, new AddressConverter());
-        }
+        TestConverter(value!, static (address, address1) => address == address1, converter);
     }
+
+    static object?[] AddressTestCases =
+    [
+        new object?[] { null },
+        new object?[] { Address.Zero },
+        new object?[] { TestItem.AddressA },
+    ];
 }

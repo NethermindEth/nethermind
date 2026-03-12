@@ -5,20 +5,22 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test.Json
-{
-    public class PublicKeyConverterTests : ConverterTestBase<PublicKey>
-    {
-        [Test]
-        public void Null_handling()
-        {
-            TestConverter(null!, static (key, publicKey) => key == publicKey, new PublicKeyConverter());
-        }
+namespace Nethermind.Core.Test.Json;
 
-        [Test]
-        public void Zero_handling()
-        {
-            TestConverter(new PublicKey(new byte[64]), static (key, publicKey) => key == publicKey, new PublicKeyConverter());
-        }
+[TestFixture]
+public class PublicKeyConverterTests : ConverterTestBase<PublicKey>
+{
+    static readonly PublicKeyConverter converter = new();
+
+    [TestCaseSource(nameof(PublicKeyTestCases))]
+    public void Test_roundtrip(PublicKey? value)
+    {
+        TestConverter(value!, static (key, publicKey) => key == publicKey, converter);
     }
+
+    static object?[] PublicKeyTestCases =
+    [
+        new object?[] { null },
+        new object?[] { new PublicKey(new byte[64]) },
+    ];
 }
