@@ -24,5 +24,5 @@ public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature s
     public (ulong Round, Hash256 hash) PoolKey() => (ProposedBlockInfo.Round, Keccak.Compute(_decoder.Encode(this, RlpBehaviors.ForSealing).Bytes));
 
     protected override void Encode(KeccakRlpStream stream) =>
-        _decoder.Encode(stream, this, RlpBehaviors.None);        
+        _decoder.Encode(stream, this, RlpBehaviors.None);
 }
