@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.Processing
                                     ExceptionDispatchInfo.Capture(ex).Throw();
 
                                 totalGas += blockGasUsed.Value;
-                                gasRemaining -= txGasSpent.Value;
+                                gasRemaining -= blockGasUsed.Value;
 
                                 bool validateStorageReads = j == chunkEnd - 1;
                                 _balBuilder.MergeIntermediateBalsUpTo((ushort)(j + 1));
