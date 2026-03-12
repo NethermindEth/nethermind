@@ -288,10 +288,12 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         return null;
     }
 
-    protected virtual bool ArePayloadAttributesTimestampAndSlotNumberValid(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,
+    protected virtual ulong GetMinRequiredTimestamp(Block newHeadBlock) => newHeadBlock.Timestamp + 1;
+
+    protected bool ArePayloadAttributesTimestampAndSlotNumberValid(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,
         [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
-        if (newHeadBlock.Timestamp >= payloadAttributes.Timestamp)
+        if (payloadAttributes.Timestamp < GetMinRequiredTimestamp(newHeadBlock))
         {
             string error = $"Payload timestamp {payloadAttributes.Timestamp} must be greater than block timestamp {newHeadBlock.Timestamp}.";
             errorResult = ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);

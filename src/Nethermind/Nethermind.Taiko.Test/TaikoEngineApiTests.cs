@@ -119,7 +119,7 @@ public class TaikoEngineApiTests
         }
         else
         {
-            Assert.That(result.Result.Error, Does.Contain("must be greater than or equal to"));
+            Assert.That(result.Result.Error, Does.Contain("must be greater than"));
         }
     }
 }
