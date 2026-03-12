@@ -26,7 +26,7 @@ on:
       warmupCount:
         description: 'BDN warmup iterations'
         required: false
-        default: '3'
+        default: '1'
       iterationCount:
         description: 'BDN measurement iterations'
         required: false
@@ -63,7 +63,7 @@ jobs:
 
           mode="NewPayload"
           filter=""
-          warmupCount="3"
+          warmupCount="1"
           iterationCount="1"
           launchCount="1"
 
