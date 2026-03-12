@@ -16,9 +16,9 @@ namespace Nethermind.Db
     /// </summary>
     public class SnapshotableMemDb(string name = nameof(SnapshotableMemDb)) : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot
     {
-        private readonly SortedDictionary<byte[], VersionedEntry> _db = new(Bytes.Comparer);
-        private long _currentVersion = 0;
-        private readonly HashSet<long> _activeSnapshotVersions = new();
+        private readonly SortedDictionary<(byte[] Key, int Version), byte[]?> _db = new(new KeyVersionComparer());
+        private int _currentVersion = 0;
+        private readonly HashSet<int> _activeSnapshotVersions = new();
         private readonly object _versionLock = new();
 
         public long ReadsCount { get; private set; }
@@ -52,11 +52,7 @@ namespace Nethermind.Db
             byte[] keyArray = key.ToArray();
             lock (_versionLock)
             {
-                if (!_db.TryGetValue(keyArray, out VersionedEntry? entry))
-                {
-                    return null;
-                }
-                return entry.GetLatestValue();
+                return GetValueAtVersion(keyArray, _currentVersion);
             }
         }
 
@@ -71,31 +67,7 @@ namespace Nethermind.Db
             lock (_versionLock)
             {
                 _currentVersion++;
-
-                if (value is null)
-                {
-                    // Removing: add a tombstone version
-                    if (_db.TryGetValue(keyArray, out VersionedEntry? entry))
-                    {
-                        entry.AddVersion(_currentVersion, null);
-                    }
-                    else
-                    {
-                        // Key never existed, create entry with null value
-                        VersionedEntry newEntry = new();
-                        newEntry.AddVersion(_currentVersion, null);
-                        _db[keyArray] = newEntry;
-                    }
-                }
-                else
-                {
-                    if (!_db.TryGetValue(keyArray, out VersionedEntry? entry))
-                    {
-                        entry = new VersionedEntry();
-                        _db[keyArray] = entry;
-                    }
-                    entry.AddVersion(_currentVersion, value);
-                }
+                _db[(keyArray, _currentVersion)] = value;
             }
         }
 
@@ -109,11 +81,7 @@ namespace Nethermind.Db
             byte[] keyArray = key.ToArray();
             lock (_versionLock)
             {
-                if (!_db.TryGetValue(keyArray, out VersionedEntry? entry))
-                {
-                    return false;
-                }
-                return entry.GetLatestValue() is not null;
+                return GetValueAtVersion(keyArray, _currentVersion) is not null;
             }
         }
 
@@ -135,12 +103,12 @@ namespace Nethermind.Db
         {
             lock (_versionLock)
             {
-                foreach (KeyValuePair<byte[], VersionedEntry> kvp in _db)
+                foreach (byte[] key in GetAllUniqueKeys())
                 {
-                    byte[]? value = kvp.Value.GetLatestValue();
+                    byte[]? value = GetValueAtVersion(key, _currentVersion);
                     if (value is not null)
                     {
-                        yield return new KeyValuePair<byte[], byte[]?>(kvp.Key, value);
+                        yield return new KeyValuePair<byte[], byte[]?>(key, value);
                     }
                 }
             }
@@ -150,11 +118,11 @@ namespace Nethermind.Db
         {
             lock (_versionLock)
             {
-                foreach (KeyValuePair<byte[], VersionedEntry> kvp in _db)
+                foreach (byte[] key in GetAllUniqueKeys())
                 {
-                    if (kvp.Value.GetLatestValue() is not null)
+                    if (GetValueAtVersion(key, _currentVersion) is not null)
                     {
-                        yield return kvp.Key;
+                        yield return key;
                     }
                 }
             }
@@ -164,9 +132,9 @@ namespace Nethermind.Db
         {
             lock (_versionLock)
             {
-                foreach (VersionedEntry entry in _db.Values)
+                foreach (byte[] key in GetAllUniqueKeys())
                 {
-                    byte[]? value = entry.GetLatestValue();
+                    byte[]? value = GetValueAtVersion(key, _currentVersion);
                     if (value is not null)
                     {
                         yield return value;
@@ -181,7 +149,9 @@ namespace Nethermind.Db
             {
                 lock (_versionLock)
                 {
-                    return _db.Keys.Where(k => _db[k].GetLatestValue() is not null).ToArray();
+                    return GetAllUniqueKeys()
+                        .Where(k => GetValueAtVersion(k, _currentVersion) is not null)
+                        .ToArray();
                 }
             }
         }
@@ -192,7 +162,10 @@ namespace Nethermind.Db
             {
                 lock (_versionLock)
                 {
-                    return _db.Values.Select(e => e.GetLatestValue()).Where(v => v is not null).ToArray();
+                    return GetAllUniqueKeys()
+                        .Select(k => GetValueAtVersion(k, _currentVersion))
+                        .Where(v => v is not null)
+                        .ToArray()!;
                 }
             }
         }
@@ -203,7 +176,8 @@ namespace Nethermind.Db
             {
                 lock (_versionLock)
                 {
-                    return _db.Values.Count(e => e.GetLatestValue() is not null);
+                    return GetAllUniqueKeys()
+                        .Count(k => GetValueAtVersion(k, _currentVersion) is not null);
                 }
             }
         }
@@ -223,11 +197,11 @@ namespace Nethermind.Db
             {
                 lock (_versionLock)
                 {
-                    foreach (KeyValuePair<byte[], VersionedEntry> kvp in _db)
+                    foreach (byte[] key in GetAllUniqueKeys())
                     {
-                        if (kvp.Value.GetLatestValue() is not null)
+                        if (GetValueAtVersion(key, _currentVersion) is not null)
                         {
-                            return kvp.Key;
+                            return key;
                         }
                     }
                     return null;
@@ -241,14 +215,15 @@ namespace Nethermind.Db
             {
                 lock (_versionLock)
                 {
-                    foreach (KeyValuePair<byte[], VersionedEntry> kvp in _db.Reverse())
+                    byte[]? lastKey = null;
+                    foreach (byte[] key in GetAllUniqueKeys())
                     {
-                        if (kvp.Value.GetLatestValue() is not null)
+                        if (GetValueAtVersion(key, _currentVersion) is not null)
                         {
-                            return kvp.Key;
+                            lastKey = key;
                         }
                     }
-                    return null;
+                    return lastKey;
                 }
             }
         }
@@ -263,13 +238,13 @@ namespace Nethermind.Db
         {
             lock (_versionLock)
             {
-                long snapshotVersion = _currentVersion;
+                int snapshotVersion = _currentVersion;
                 _activeSnapshotVersions.Add(snapshotVersion);
                 return new MemDbSnapshot(this, snapshotVersion);
             }
         }
 
-        internal void OnSnapshotDisposed(long version)
+        internal void OnSnapshotDisposed(int version)
         {
             lock (_versionLock)
             {
@@ -278,116 +253,167 @@ namespace Nethermind.Db
                 // Fast path: no active snapshots - keep only latest version per key
                 if (_activeSnapshotVersions.Count == 0)
                 {
-                    foreach (VersionedEntry entry in _db.Values)
-                    {
-                        entry.KeepOnlyLatest();
-                    }
+                    KeepOnlyLatestVersions();
                     return;
                 }
 
                 // Slow path: prune versions older than oldest active snapshot
-                long minVersion = _activeSnapshotVersions.Min();
-                foreach (VersionedEntry entry in _db.Values)
-                {
-                    entry.PruneVersionsOlderThan(minVersion);
-                }
+                int minVersion = _activeSnapshotVersions.Min();
+                PruneVersionsOlderThan(minVersion);
             }
         }
 
-        internal byte[]? GetAtVersion(ReadOnlySpan<byte> key, long version)
+        internal byte[]? GetAtVersion(ReadOnlySpan<byte> key, int version)
         {
             byte[] keyArray = key.ToArray();
             lock (_versionLock)
             {
-                if (!_db.TryGetValue(keyArray, out VersionedEntry? entry))
-                {
-                    return null;
-                }
-                return entry.GetValueAtVersion(version);
+                return GetValueAtVersion(keyArray, version);
             }
         }
 
-        internal IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllAtVersion(long version)
+        internal IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllAtVersion(int version)
         {
             lock (_versionLock)
             {
-                foreach (KeyValuePair<byte[], VersionedEntry> kvp in _db)
+                foreach (byte[] key in GetAllUniqueKeys())
                 {
-                    byte[]? value = kvp.Value.GetValueAtVersion(version);
+                    byte[]? value = GetValueAtVersion(key, version);
                     if (value is not null)
                     {
-                        yield return new KeyValuePair<byte[], byte[]?>(kvp.Key, value);
+                        yield return new KeyValuePair<byte[], byte[]?>(key, value);
                     }
                 }
             }
         }
 
         /// <summary>
-        /// Holds multiple versions of a value for a single key.
-        /// Versions are stored newest-first for optimal read performance.
+        /// Gets the value for a key at a specific version (latest version <= requested version).
+        /// Returns null if the key doesn't exist or was deleted (tombstone) at that version.
         /// </summary>
-        private sealed class VersionedEntry
+        private byte[]? GetValueAtVersion(byte[] key, int version)
         {
-            public List<(long Version, byte[]? Value)> Versions { get; } = new();
+            // Find the latest entry for this key with version <= requested version
+            // Since entries are sorted by (key, version), we can iterate backwards from the upper bound
 
-            public void AddVersion(long version, byte[]? value)
+            // Get all entries that could match: same key with version <= requested version
+            // We need to find the entry with the highest version <= requested version
+            foreach (var kvp in _db.Reverse())
             {
-                // Insert at front (newest first)
-                Versions.Insert(0, (version, value));
-            }
+                (byte[] entryKey, int entryVersion) = kvp.Key;
 
-            public byte[]? GetLatestValue()
-            {
-                if (Versions.Count == 0) return null;
-                return Versions[0].Value;
-            }
-
-            public byte[]? GetValueAtVersion(long version)
-            {
-                // Find latest version <= requested version
-                for (int i = 0; i < Versions.Count; i++)
+                // If we've gone past this key entirely, stop
+                if (entryKey.AsSpan().SequenceCompareTo(key) < 0)
                 {
-                    (long ver, byte[]? val) = Versions[i];
-                    if (ver <= version)
-                    {
-                        return val;
-                    }
+                    break;
                 }
-                return null;
-            }
 
-            public void KeepOnlyLatest()
-            {
-                if (Versions.Count > 1)
+                // If this entry is for our key and version is <= requested
+                if (entryKey.AsSpan().SequenceCompareTo(key) == 0 && entryVersion <= version)
                 {
-                    Versions.RemoveRange(1, Versions.Count - 1);
+                    return kvp.Value; // This could be null (tombstone)
                 }
             }
 
-            public void PruneVersionsOlderThan(long minVersion)
+            return null;
+        }
+
+        /// <summary>
+        /// Returns all unique keys in sorted order.
+        /// </summary>
+        private IEnumerable<byte[]> GetAllUniqueKeys()
+        {
+            byte[]? lastKey = null;
+            foreach (var kvp in _db)
             {
-                // Find first version older than minVersion and remove all after it
-                for (int i = 0; i < Versions.Count; i++)
+                byte[] currentKey = kvp.Key.Key;
+                if (lastKey == null || lastKey.AsSpan().SequenceCompareTo(currentKey) != 0)
                 {
-                    if (Versions[i].Version < minVersion)
-                    {
-                        if (i < Versions.Count - 1)
-                        {
-                            Versions.RemoveRange(i + 1, Versions.Count - i - 1);
-                        }
-                        break;
-                    }
+                    lastKey = currentKey;
+                    yield return currentKey;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Removes all versions except the latest for each key.
+        /// Called when there are no active snapshots.
+        /// </summary>
+        private void KeepOnlyLatestVersions()
+        {
+            var keysToRemove = new List<(byte[] Key, int Version)>();
+            byte[]? lastKey = null;
+
+            // Iterate backwards - versions for same key are sorted ascending
+            // so the latest version comes last
+            foreach (var kvp in _db.Reverse())
+            {
+                byte[] currentKey = kvp.Key.Key;
+                int currentVersion = kvp.Key.Version;
+
+                if (lastKey != null && lastKey.AsSpan().SequenceCompareTo(currentKey) == 0)
+                {
+                    // This is an older version of the same key, mark for removal
+                    keysToRemove.Add((currentKey, currentVersion));
+                }
+                else
+                {
+                    // New key (going backwards), this is the latest version - keep it
+                    lastKey = currentKey;
+                }
+            }
+
+            foreach (var key in keysToRemove)
+            {
+                _db.Remove(key);
+            }
+        }
+
+        /// <summary>
+        /// Removes all versions older than the specified minimum version.
+        /// </summary>
+        private void PruneVersionsOlderThan(int minVersion)
+        {
+            var keysToRemove = new List<(byte[] Key, int Version)>();
+
+            foreach (var kvp in _db)
+            {
+                if (kvp.Key.Version < minVersion)
+                {
+                    keysToRemove.Add(kvp.Key);
+                }
+            }
+
+            foreach (var key in keysToRemove)
+            {
+                _db.Remove(key);
+            }
+        }
+
+        /// <summary>
+        /// Comparer for (byte[] Key, int Version) tuples.
+        /// Compares by key first using byte array comparer, then by version.
+        /// </summary>
+        private sealed class KeyVersionComparer : IComparer<(byte[] Key, int Version)>
+        {
+            public int Compare((byte[] Key, int Version) x, (byte[] Key, int Version) y)
+            {
+                int keyComparison = x.Key.AsSpan().SequenceCompareTo(y.Key);
+                if (keyComparison != 0)
+                {
+                    return keyComparison;
+                }
+                return x.Version.CompareTo(y.Version);
             }
         }
 
         /// <summary>
         /// Read-only snapshot of SnapshotableMemDb at a specific version.
         /// </summary>
-        private sealed class MemDbSnapshot(SnapshotableMemDb db, long snapshotVersion) : IKeyValueStoreSnapshot, ISortedKeyValueStore
+        private sealed class MemDbSnapshot(SnapshotableMemDb db, int snapshotVersion) : IKeyValueStoreSnapshot, ISortedKeyValueStore
         {
             private readonly SnapshotableMemDb _db = db;
-            private readonly long _snapshotVersion = snapshotVersion;
+            private readonly int _snapshotVersion = snapshotVersion;
 
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
             {
@@ -412,11 +438,11 @@ namespace Nethermind.Db
                 {
                     lock (_db._versionLock)
                     {
-                        foreach (KeyValuePair<byte[], VersionedEntry> kvp in _db._db)
+                        foreach (byte[] key in _db.GetAllUniqueKeys())
                         {
-                            if (kvp.Value.GetValueAtVersion(_snapshotVersion) is not null)
+                            if (_db.GetValueAtVersion(key, _snapshotVersion) is not null)
                             {
-                                return kvp.Key;
+                                return key;
                             }
                         }
                         return null;
@@ -430,14 +456,15 @@ namespace Nethermind.Db
                 {
                     lock (_db._versionLock)
                     {
-                        foreach (KeyValuePair<byte[], VersionedEntry> kvp in _db._db.Reverse())
+                        byte[]? lastKey = null;
+                        foreach (byte[] key in _db.GetAllUniqueKeys())
                         {
-                            if (kvp.Value.GetValueAtVersion(_snapshotVersion) is not null)
+                            if (_db.GetValueAtVersion(key, _snapshotVersion) is not null)
                             {
-                                return kvp.Key;
+                                lastKey = key;
                             }
                         }
-                        return null;
+                        return lastKey;
                     }
                 }
             }
@@ -456,51 +483,48 @@ namespace Nethermind.Db
         /// <summary>
         /// Sorted view iterator for a range of keys.
         /// </summary>
-        private sealed class MemDbSortedView(SnapshotableMemDb db, long version, byte[] firstKey, byte[] lastKey) : ISortedView
+        private sealed class MemDbSortedView(SnapshotableMemDb db, int version, byte[] firstKey, byte[] lastKey) : ISortedView
         {
             private readonly SnapshotableMemDb _db = db;
-            private readonly long _version = version;
+            private readonly int _version = version;
             private readonly byte[] _firstKey = firstKey;
             private readonly byte[] _lastKey = lastKey;
-            private IEnumerator<KeyValuePair<byte[], VersionedEntry>>? _enumerator;
-            private byte[]? _currentKey;
-            private byte[]? _currentValue;
+            private List<byte[]>? _keysInRange;
+            private int _currentIndex = -1;
 
             public bool StartBefore(ReadOnlySpan<byte> key)
             {
+                // Initialize the range
+                InitializeRange();
+
+                // Find position before the given key
                 byte[] keyArray = key.ToArray();
-                lock (_db._versionLock)
+                for (int i = 0; i < _keysInRange!.Count; i++)
                 {
-                    _enumerator = _db._db
-                        .Where(kvp => Bytes.BytesComparer.Compare(kvp.Key, _firstKey) >= 0 &&
-                                     Bytes.BytesComparer.Compare(kvp.Key, _lastKey) < 0 &&
-                                     Bytes.BytesComparer.Compare(kvp.Key, keyArray) < 0)
-                        .GetEnumerator();
-                    return true;
+                    if (_keysInRange[i].AsSpan().SequenceCompareTo(keyArray) >= 0)
+                    {
+                        _currentIndex = i - 1;
+                        return _currentIndex >= 0;
+                    }
                 }
+                _currentIndex = _keysInRange.Count - 1;
+                return _currentIndex >= 0;
             }
 
             public bool MoveNext()
             {
-                if (_enumerator is null)
+                if (_keysInRange == null)
                 {
-                    lock (_db._versionLock)
-                    {
-                        _enumerator = _db._db
-                            .Where(kvp => Bytes.BytesComparer.Compare(kvp.Key, _firstKey) >= 0 &&
-                                         Bytes.BytesComparer.Compare(kvp.Key, _lastKey) < 0)
-                            .GetEnumerator();
-                    }
+                    InitializeRange();
+                    _currentIndex = -1;
                 }
 
-                while (_enumerator.MoveNext())
+                while (++_currentIndex < _keysInRange!.Count)
                 {
-                    KeyValuePair<byte[], VersionedEntry> current = _enumerator.Current;
-                    byte[]? value = current.Value.GetValueAtVersion(_version);
+                    byte[] key = _keysInRange[_currentIndex];
+                    byte[]? value = _db.GetValueAtVersion(key, _version);
                     if (value is not null)
                     {
-                        _currentKey = current.Key;
-                        _currentValue = value;
                         return true;
                     }
                 }
@@ -508,12 +532,40 @@ namespace Nethermind.Db
                 return false;
             }
 
-            public ReadOnlySpan<byte> CurrentKey => _currentKey ?? ReadOnlySpan<byte>.Empty;
-            public ReadOnlySpan<byte> CurrentValue => _currentValue ?? ReadOnlySpan<byte>.Empty;
+            public ReadOnlySpan<byte> CurrentKey => _keysInRange?[_currentIndex] ?? ReadOnlySpan<byte>.Empty;
+
+            public ReadOnlySpan<byte> CurrentValue
+            {
+                get
+                {
+                    if (_keysInRange == null || _currentIndex < 0 || _currentIndex >= _keysInRange.Count)
+                    {
+                        return ReadOnlySpan<byte>.Empty;
+                    }
+                    byte[]? value = _db.GetValueAtVersion(_keysInRange[_currentIndex], _version);
+                    return value ?? ReadOnlySpan<byte>.Empty;
+                }
+            }
 
             public void Dispose()
             {
-                _enumerator?.Dispose();
+                _keysInRange = null;
+            }
+
+            private void InitializeRange()
+            {
+                lock (_db._versionLock)
+                {
+                    _keysInRange = new List<byte[]>();
+                    foreach (byte[] key in _db.GetAllUniqueKeys())
+                    {
+                        if (key.AsSpan().SequenceCompareTo(_firstKey) >= 0 &&
+                            key.AsSpan().SequenceCompareTo(_lastKey) < 0)
+                        {
+                            _keysInRange.Add(key);
+                        }
+                    }
+                }
             }
         }
 
@@ -555,38 +607,11 @@ namespace Nethermind.Db
                     {
                         // Increment version once for the entire batch
                         _db._currentVersion++;
-                        long batchVersion = _db._currentVersion;
+                        int batchVersion = _db._currentVersion;
 
                         foreach ((byte[] key, byte[]? value, WriteFlags _) in _operations)
                         {
-                            if (value is null)
-                            {
-                                // Removing: add a tombstone version
-                                if (_db._db.TryGetValue(key, out VersionedEntry? entry))
-                                {
-                                    entry.AddVersion(batchVersion, null);
-                                }
-                                else
-                                {
-                                    VersionedEntry newEntry = new();
-                                    newEntry.AddVersion(batchVersion, null);
-                                    _db._db[key] = newEntry;
-                                }
-                            }
-                            else
-                            {
-                                // Adding or updating
-                                if (_db._db.TryGetValue(key, out VersionedEntry? entry))
-                                {
-                                    entry.AddVersion(batchVersion, value);
-                                }
-                                else
-                                {
-                                    VersionedEntry newEntry = new();
-                                    newEntry.AddVersion(batchVersion, value);
-                                    _db._db[key] = newEntry;
-                                }
-                            }
+                            _db._db[(key, batchVersion)] = value;
                         }
 
                         _db.WritesCount += _operations.Count;
