@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Ethereum.Test.Base;
 using NUnit.Framework;
 
 namespace Ethereum.Legacy.VM.Test;
@@ -16,8 +17,7 @@ public class MetaTests
     [Test]
     public void All_categories_are_tested()
     {
-        string[] directories =
-            Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
+        string[] directories = Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
             .Select(Path.GetFileName)
             .Where(d => d.StartsWith("vm"))
             .ToArray();
@@ -26,18 +26,14 @@ public class MetaTests
         List<string> missingCategories = [];
         foreach (string directory in directories)
         {
-            string expectedTypeName = directory[2..];
-            if (types.All(t => !string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase)))
-            {
-                missingCategories.Add(directory + " expected " + expectedTypeName);
-            }
+            string expected = TestDirectoryHelper.GetClassNameFromDirectory(directory, 2);
+            if (types.All(t => !string.Equals(t.Name, expected, StringComparison.InvariantCultureIgnoreCase)))
+                missingCategories.Add($"{directory} expected {expected}");
         }
 
         foreach (string missing in missingCategories)
-        {
             Console.WriteLine($"{missing} category is missing");
-        }
 
-        Assert.That(missingCategories.Count, Is.EqualTo(0));
+        Assert.That(missingCategories, Is.Empty);
     }
 }
