@@ -354,14 +354,16 @@ namespace Nethermind.Xdc
             if (!IsMasternode(epochInfo, _signer.Address))
             {
                 SetHighestVotedRound(votingRound);
-                _logger.Info($"Round {votingRound}: Skipped voting (not in masternode set)");
+                if (_logger.IsDebug)
+                    _logger.Debug($"Round {votingRound}: Skipped voting (not in masternode set)");
                 return;
             }
 
             // Check voting rule            
             if (!head.IsSelfMined && !_votesManager.VerifyVotingRules(head, out string error))   
             {
-                _logger.Info($"Round {votingRound}: Voting rule not satisfied for block #{head.Number}, hash={head.Hash}: {error}");
+                if (_logger.IsDebug)
+                    _logger.Debug($"Round {votingRound}: Voting rule not satisfied for block #{head.Number}, hash={head.Hash}: {error}");
                 return;
             }
                 
@@ -371,7 +373,8 @@ namespace Nethermind.Xdc
                 SetHighestVotedRound(votingRound);
                 await _votesManager.CastVote(voteInfo);
                 _lastActivityTime = DateTime.UtcNow;
-                _logger.Info($"Round {votingRound}: Voted for block #{head.Number}, hash={head.Hash}");
+                if (_logger.IsInfo)
+                    _logger.Info($"Round {votingRound}: Voted for block #{head.Number}, hash={head.Hash}");
             }
             catch (Exception ex)
             {
