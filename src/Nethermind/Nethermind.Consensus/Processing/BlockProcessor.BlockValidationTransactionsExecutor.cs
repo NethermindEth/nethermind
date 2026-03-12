@@ -80,7 +80,6 @@ namespace Nethermind.Consensus.Processing
                         _balBuilder.ValidateBlockAccessList(block.Header, 0, gasRemaining);
 
                         long totalGas = 0;
-                        long totalGasTx = 0;
                         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
                         {
                             int chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, len);
@@ -91,7 +90,6 @@ namespace Nethermind.Consensus.Processing
                                     ExceptionDispatchInfo.Capture(ex).Throw();
 
                                 totalGas += blockGasUsed.Value;
-                                totalGasTx += txGasSpent.Value;
                                 gasRemaining -= txGasSpent.Value;
 
                                 bool validateStorageReads = j == chunkEnd - 1;
@@ -105,7 +103,7 @@ namespace Nethermind.Consensus.Processing
                                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {totalGas} > block gas limit {block.Header.GasLimit} after transaction index {chunkEnd - 1}.");
                             }
                         }
-                        _blockExecutionContext.Header.GasUsed = totalGasTx;
+                        _blockExecutionContext.Header.GasUsed = totalGas;
                     }, token);
 
                     ParallelUnbalancedWork.For(
