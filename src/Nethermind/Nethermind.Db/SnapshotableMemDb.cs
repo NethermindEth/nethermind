@@ -38,11 +38,15 @@ namespace Nethermind.Db
         {
             get
             {
-                ReadsCount += keys.Length;
                 KeyValuePair<byte[], byte[]?>[] result = new KeyValuePair<byte[], byte[]?>[keys.Length];
-                for (int i = 0; i < keys.Length; i++)
+                lock (_versionLock)
                 {
-                    result[i] = new KeyValuePair<byte[], byte[]?>(keys[i], Get(keys[i]));
+                    ReadsCount += keys.Length;
+                    for (int i = 0; i < keys.Length; i++)
+                    {
+                        byte[] key = keys[i];
+                        result[i] = new KeyValuePair<byte[], byte[]?>(key, GetValueAtVersion(key, _currentVersion));
+                    }
                 }
                 return result;
             }
@@ -70,6 +74,11 @@ namespace Nethermind.Db
             {
                 _currentVersion++;
                 AddOrReplace((keyArray, _currentVersion, value));
+
+                if (!_neverPrune && _activeSnapshotVersions.Count == 0)
+                {
+                    RemovePreviousVersions(keyArray, _currentVersion);
+                }
             }
         }
 
@@ -103,46 +112,55 @@ namespace Nethermind.Db
 
         public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
         {
+            List<KeyValuePair<byte[], byte[]?>> result;
             lock (_versionLock)
             {
+                result = new List<KeyValuePair<byte[], byte[]?>>();
                 foreach (byte[] key in GetAllUniqueKeys())
                 {
                     byte[]? value = GetValueAtVersion(key, _currentVersion);
                     if (value is not null)
                     {
-                        yield return new KeyValuePair<byte[], byte[]?>(key, value);
+                        result.Add(new KeyValuePair<byte[], byte[]?>(key, value));
                     }
                 }
             }
+            return result;
         }
 
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
         {
+            List<byte[]> result;
             lock (_versionLock)
             {
+                result = new List<byte[]>();
                 foreach (byte[] key in GetAllUniqueKeys())
                 {
                     if (GetValueAtVersion(key, _currentVersion) is not null)
                     {
-                        yield return key;
+                        result.Add(key);
                     }
                 }
             }
+            return result;
         }
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false)
         {
+            List<byte[]> result;
             lock (_versionLock)
             {
+                result = new List<byte[]>();
                 foreach (byte[] key in GetAllUniqueKeys())
                 {
                     byte[]? value = GetValueAtVersion(key, _currentVersion);
                     if (value is not null)
                     {
-                        yield return value;
+                        result.Add(value);
                     }
                 }
             }
+            return result;
         }
 
         public ICollection<byte[]> Keys
@@ -272,17 +290,20 @@ namespace Nethermind.Db
 
         internal IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllAtVersion(int version)
         {
+            List<KeyValuePair<byte[], byte[]?>> result;
             lock (_versionLock)
             {
+                result = new List<KeyValuePair<byte[], byte[]?>>();
                 foreach (byte[] key in GetAllUniqueKeys())
                 {
                     byte[]? value = GetValueAtVersion(key, version);
                     if (value is not null)
                     {
-                        yield return new KeyValuePair<byte[], byte[]?>(key, value);
+                        result.Add(new KeyValuePair<byte[], byte[]?>(key, value));
                     }
                 }
             }
+            return result;
         }
 
         /// <summary>
@@ -415,6 +436,27 @@ namespace Nethermind.Db
         }
 
         /// <summary>
+        /// Removes all versions of a key older than the specified version.
+        /// Used during writes when no snapshots are active to prevent unbounded memory growth.
+        /// </summary>
+        private void RemovePreviousVersions(byte[] key, int currentVersion)
+        {
+            var lower = (key, 0, (byte[]?)null);
+            var upper = (key, currentVersion - 1, (byte[]?)null);
+
+            if (_entryComparer.Compare(lower, upper) > 0)
+                return;
+
+            var view = _db.GetViewBetween(lower, upper);
+            // Materialize before removing to avoid modifying during enumeration
+            var toRemove = new List<(byte[] Key, int Version, byte[]? Value)>(view);
+            foreach (var entry in toRemove)
+            {
+                _db.Remove(entry);
+            }
+        }
+
+        /// <summary>
         /// Comparer for (byte[] Key, int Version, byte[]? Value) tuples.
         /// Compares by key first using byte array comparer, then by version. Ignores Value.
         /// </summary>
@@ -512,9 +554,10 @@ namespace Nethermind.Db
 
                     if (_db._entryComparer.Compare(lower, upper) > 0)
                     {
+                        // key is before _firstKey: position before start so MoveNext yields first element
                         _currentKey = null;
                         _currentValue = null;
-                        return false;
+                        return true;
                     }
 
                     var view = _db._db.GetViewBetween(lower, upper);
