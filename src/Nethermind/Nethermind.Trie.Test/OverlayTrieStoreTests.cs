@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -32,7 +33,7 @@ public class OverlayTrieStoreTests
             patriciaTree.Commit();
         }
         Hash256 originalRoot = patriciaTree.RootHash;
-        int originalKeyCount = dbProvider.StateDb.GetAllKeys().Count();
+        int originalKeyCount = ((ISortedKeyValueStore)dbProvider.StateDb).GetAllKeys().Count();
 
         ReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(true);
         ITrieStore overlayStore = new OverlayTrieStore(readOnlyDbProvider.GetDb<IDb>(DbNames.State), existingStore.AsReadOnly());
@@ -48,7 +49,7 @@ public class OverlayTrieStoreTests
         Hash256 newRoot = overlaidTree.RootHash;
 
         // Verify that the db is modified
-        readOnlyDbProvider.GetDb<IDb>(DbNames.State).GetAllKeys().Count().Should().NotBe(originalKeyCount);
+        ((ISortedKeyValueStore)readOnlyDbProvider.GetDb<IDb>(DbNames.State)).GetAllKeys().Count().Should().NotBe(originalKeyCount);
 
         // It can read the modified db
         overlaidTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
@@ -62,7 +63,7 @@ public class OverlayTrieStoreTests
         readOnlyDbProvider.ClearTempChanges();
 
         // It should throw because the overlaid keys are now missing.
-        readOnlyDbProvider.GetDb<IDb>(DbNames.State).GetAllKeys().Count().Should().Be(originalKeyCount);
+        ((ISortedKeyValueStore)readOnlyDbProvider.GetDb<IDb>(DbNames.State)).GetAllKeys().Count().Should().Be(originalKeyCount);
         overlaidTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
         Action act = () =>
         {
@@ -73,6 +74,6 @@ public class OverlayTrieStoreTests
         act.Should().Throw<MissingTrieNodeException>(); // The root is now missing.
 
         // After all this, the original should not change.
-        dbProvider.StateDb.GetAllKeys().Count().Should().Be(originalKeyCount);
+        ((ISortedKeyValueStore)dbProvider.StateDb).GetAllKeys().Count().Should().Be(originalKeyCount);
     }
 }

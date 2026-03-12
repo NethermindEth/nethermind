@@ -30,9 +30,14 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
 
     public IEnumerable<Block> GetAll()
     {
-        return blockDb.GetAllValues(true).Select(bytes =>
+        if (blockDb is not ISortedKeyValueStore sortedDb)
         {
-            Rlp.ValueDecoderContext ctx = ((byte[]?)bytes ?? []).AsRlpValueContext();
+            throw new InvalidOperationException($"Database must implement {nameof(ISortedKeyValueStore)}");
+        }
+
+        return sortedDb.GetAllValues().Select(bytes =>
+        {
+            Rlp.ValueDecoderContext ctx = (bytes ?? []).AsRlpValueContext();
             return _blockDecoder.Decode(ref ctx);
         });
     }

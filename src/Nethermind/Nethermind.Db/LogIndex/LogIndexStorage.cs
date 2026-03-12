@@ -370,7 +370,12 @@ namespace Nethermind.Db.LogIndex
         private static void ForceMerge(IDb db)
         {
             // Fetching RocksDB key values forces it to merge corresponding parts
-            db.GetAllValues().ForEach(static _ => { });
+            if (db is not ISortedKeyValueStore sortedDb)
+            {
+                throw new InvalidOperationException($"Database must implement {nameof(ISortedKeyValueStore)}");
+            }
+
+            sortedDb.GetAllValues().ForEach(static _ => { });
         }
 
         public Task StopAsync() => StopAsync(acquireLock: true);

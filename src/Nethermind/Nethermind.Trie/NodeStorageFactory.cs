@@ -61,9 +61,14 @@ public class NodeStorageFactory : INodeStorageFactory
         // If most of them have length == 32, they are hash db.
         // Otherwise, its probably halfpath
 
+        if (db is not ISortedKeyValueStore sortedDb)
+        {
+            return null;
+        }
+
         int total = 0;
         int keyOfLength32 = 0;
-        foreach (KeyValuePair<byte[], byte[]?> keyValuePair in db.GetAll().Take(20))
+        foreach (KeyValuePair<byte[], byte[]?> keyValuePair in sortedDb.GetAll().Take(20))
         {
             total++;
             if (keyValuePair.Key.Length == 32)

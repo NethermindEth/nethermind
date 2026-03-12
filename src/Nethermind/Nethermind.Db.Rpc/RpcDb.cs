@@ -48,9 +48,6 @@ namespace Nethermind.Db.Rpc
         public bool KeyExists(ReadOnlySpan<byte> key) => GetThroughRpc(key) is not null;
         public void Flush(bool onlyWal = false) { }
         public void Clear() { }
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => recordDb.GetAll();
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => recordDb.GetAllKeys();
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => recordDb.GetAllValues();
         public IWriteBatch StartWriteBatch()
         {
             ThrowWritesNotSupported();

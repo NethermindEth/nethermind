@@ -322,7 +322,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
 
         public void ShouldCopyAllValues()
         {
-            foreach (KeyValuePair<byte[], byte[]?> keyValuePair in TrieDb.GetAll())
+            foreach (KeyValuePair<byte[], byte[]?> keyValuePair in ((ISortedKeyValueStore)TrieDb).GetAll())
             {
                 CopyDb[keyValuePair.Key].Should().BeEquivalentTo(keyValuePair.Value);
                 CopyDb.KeyWasWrittenWithFlags(keyValuePair.Key, WriteFlags.LowPriority | WriteFlags.DisableWAL);

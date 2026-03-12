@@ -191,7 +191,7 @@ public class HealingTreeTests
             IDb serverStateDb = server.ResolveNamed<IDb>(DbNames.State);
 
             Random random = new Random(0);
-            using ArrayPoolList<KeyValuePair<byte[], byte[]?>> allValues = serverStateDb.GetAll().ToPooledList(10);
+            using ArrayPoolList<KeyValuePair<byte[], byte[]?>> allValues = ((ISortedKeyValueStore)serverStateDb).GetAll().ToPooledList(10);
             // Sort for reproducibility
             allValues.AsSpan().Sort(((k1, k2) => ((IComparer<byte[]>)Bytes.Comparer).Compare(k1.Key, k2.Key)));
 

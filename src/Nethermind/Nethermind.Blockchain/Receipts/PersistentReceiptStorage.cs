@@ -65,8 +65,13 @@ namespace Nethermind.Blockchain.Receipts
 
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
 
-            KeyValuePair<byte[], byte[]>? firstValue = _receiptsDb.GetAll().FirstOrDefault();
-            _legacyHashKey = firstValue.HasValue && firstValue.Value.Key is not null && firstValue.Value.Key.Length == Hash256.Size;
+            if (_receiptsDb is not ISortedKeyValueStore sortedDb)
+            {
+                throw new InvalidOperationException($"Database must implement {nameof(ISortedKeyValueStore)}");
+            }
+
+            _legacyHashKey = sortedDb.GetAll().FirstOrDefault() is { Key: not null } firstValue &&
+                firstValue.Key.Length == Hash256.Size;
 
             _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
         }

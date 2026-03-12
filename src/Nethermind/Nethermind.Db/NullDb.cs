@@ -47,11 +47,6 @@ namespace Nethermind.Db
 
         public void Clear() { }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => [];
-
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => [];
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => [];
-
         public IWriteBatch StartWriteBatch()
         {
             throw new NotSupportedException();

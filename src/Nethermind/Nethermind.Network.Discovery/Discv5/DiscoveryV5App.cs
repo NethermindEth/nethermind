@@ -176,7 +176,17 @@ public sealed class DiscoveryV5App : IDiscoveryApp
 
     internal List<ENR> LoadStoredEnrs()
     {
-        List<ENR> enrs = [.. _discoveryDb.GetAllValues().Select(ToEnr)];
+        if (_discoveryDb is not ISortedKeyValueStore discoverySorted)
+        {
+            throw new InvalidOperationException($"Database must implement {nameof(ISortedKeyValueStore)}");
+        }
+
+        if (_legacyDiscoveryDb is not ISortedKeyValueStore legacySorted)
+        {
+            throw new InvalidOperationException($"Database must implement {nameof(ISortedKeyValueStore)}");
+        }
+
+        List<ENR> enrs = [.. discoverySorted.GetAllValues().OfType<byte[]>().Select(ToEnr)];
 
         if (enrs.Count is not 0)
         {
@@ -188,7 +198,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
 
         try
         {
-            foreach (KeyValuePair<byte[], byte[]?> kv in _legacyDiscoveryDb.GetAll())
+            foreach (KeyValuePair<byte[], byte[]?> kv in legacySorted.GetAll())
             {
                 if (kv.Value is null)
                 {

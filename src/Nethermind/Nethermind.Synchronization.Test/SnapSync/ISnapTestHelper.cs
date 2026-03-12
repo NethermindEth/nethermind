@@ -3,6 +3,7 @@
 
 using System.Linq;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 
@@ -17,7 +18,7 @@ public interface ISnapTestHelper
 
 public class PatriciaSnapTestHelper([KeyFilter(DbNames.State)] IDb stateDb) : ISnapTestHelper
 {
-    public int CountTrieNodes() => stateDb.GetAllKeys().Count();
+    public int CountTrieNodes() => ((ISortedKeyValueStore)stateDb).GetAllKeys().Count();
     public bool TrieNodeKeyExists(Hash256 hash) => stateDb.KeyExists(hash.Bytes);
     public long TrieNodeWritesCount => ((MemDb)stateDb).WritesCount;
 }

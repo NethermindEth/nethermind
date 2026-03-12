@@ -188,7 +188,7 @@ public class FullPruningDiskTest
             await chain.AddBlock();
         }
 
-        HashSet<byte[]> allItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
+        HashSet<byte[]> allItems = ((ISortedKeyValueStore)chain.DbProvider.StateDb).GetAllValues().OfType<byte[]>().ToHashSet(Bytes.EqualityComparer);
         bool pruningFinished = false;
         for (int i = 0; i < 100 && !pruningFinished; i++)
         {
@@ -207,7 +207,7 @@ public class FullPruningDiskTest
                 Is.EqualTo($"State{time + 1}").After(500, 100)
                 );
 
-            HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
+            HashSet<byte[]> currentItems = ((ISortedKeyValueStore)chain.DbProvider.StateDb).GetAllValues().OfType<byte[]>().ToHashSet(Bytes.EqualityComparer);
             currentItems.IsSubsetOf(allItems).Should().BeTrue();
             currentItems.Count.Should().BeGreaterThan(0);
         }

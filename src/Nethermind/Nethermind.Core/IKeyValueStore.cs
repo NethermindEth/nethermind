@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 
@@ -176,6 +177,71 @@ namespace Nethermind.Core
         public bool MoveNext();
         public ReadOnlySpan<byte> CurrentKey { get; }
         public ReadOnlySpan<byte> CurrentValue { get; }
+    }
+
+    public static class SortedKeyValueStoreExtensions
+    {
+        /// <summary>
+        /// Iterates over all key-value pairs in the sorted store.
+        /// </summary>
+        public static IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(this ISortedKeyValueStore store)
+        {
+            byte[]? firstKey = store.FirstKey;
+            if (firstKey is null)
+                yield break;
+
+            byte[]? lastKey = store.LastKey;
+            if (lastKey is null)
+                yield break;
+
+            using ISortedView view = store.GetViewBetween(firstKey, []);
+            while (view.MoveNext())
+            {
+                yield return new KeyValuePair<byte[], byte[]?>(
+                    view.CurrentKey.ToArray(),
+                    view.CurrentValue.IsEmpty ? null : view.CurrentValue.ToArray());
+            }
+        }
+
+        /// <summary>
+        /// Iterates over all keys in the sorted store.
+        /// </summary>
+        public static IEnumerable<byte[]> GetAllKeys(this ISortedKeyValueStore store)
+        {
+            byte[]? firstKey = store.FirstKey;
+            if (firstKey is null)
+                yield break;
+
+            byte[]? lastKey = store.LastKey;
+            if (lastKey is null)
+                yield break;
+
+            using ISortedView view = store.GetViewBetween(firstKey, []);
+            while (view.MoveNext())
+            {
+                yield return view.CurrentKey.ToArray();
+            }
+        }
+
+        /// <summary>
+        /// Iterates over all values in the sorted store.
+        /// </summary>
+        public static IEnumerable<byte[]?> GetAllValues(this ISortedKeyValueStore store)
+        {
+            byte[]? firstKey = store.FirstKey;
+            if (firstKey is null)
+                yield break;
+
+            byte[]? lastKey = store.LastKey;
+            if (lastKey is null)
+                yield break;
+
+            using ISortedView view = store.GetViewBetween(firstKey, []);
+            while (view.MoveNext())
+            {
+                yield return view.CurrentValue.IsEmpty ? null : view.CurrentValue.ToArray();
+            }
+        }
     }
 
     [Flags]

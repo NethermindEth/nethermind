@@ -40,9 +40,14 @@ public class ProcessedTransactionsDbCleaner : IDisposable
     {
         try
         {
+            if (_processedTxsDb is not ISortedKeyValueStore sortedDb)
+            {
+                throw new InvalidOperationException($"Database must implement {nameof(ISortedKeyValueStore)}");
+            }
+
             using (IWriteBatch writeBatch = _processedTxsDb.StartWriteBatch())
             {
-                foreach (byte[] key in _processedTxsDb.GetAllKeys())
+                foreach (byte[] key in sortedDb.GetAllKeys())
                 {
                     long blockNumber = key.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
                     if (newlyFinalizedBlockNumber >= blockNumber)

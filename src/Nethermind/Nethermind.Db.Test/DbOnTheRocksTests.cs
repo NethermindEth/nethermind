@@ -474,7 +474,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void Can_get_all_on_empty()
         {
-            _ = _db.GetAll().ToList();
+            _ = ((ISortedKeyValueStore)_db).GetAll().ToList();
         }
 
         [Test]
@@ -482,7 +482,7 @@ namespace Nethermind.Db.Test
         {
             _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
 
-            KeyValuePair<byte[], byte[]>[] allValues = _db.GetAll().ToArray()!;
+            KeyValuePair<byte[], byte[]>[] allValues = ((ISortedKeyValueStore)_db).GetAll().ToArray()!;
             allValues[0].Key.Should().BeEquivalentTo(new byte[] { 1, 2, 3 });
             allValues[0].Value.Should().BeEquivalentTo(new byte[] { 4, 5, 6 });
         }

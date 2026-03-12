@@ -79,9 +79,14 @@ public class BlobTxStorage : IBlobTxStorage
 
     public IEnumerable<LightTransaction> GetAll()
     {
-        foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
+        if (_lightBlobTxsDb is not ISortedKeyValueStore sortedDb)
         {
-            if (TryDecodeLightTx(txBytes, out LightTransaction? transaction))
+            throw new InvalidOperationException($"Database must implement {nameof(ISortedKeyValueStore)}");
+        }
+
+        foreach (byte[]? txBytes in sortedDb.GetAllValues())
+        {
+            if (txBytes is not null && TryDecodeLightTx(txBytes, out LightTransaction? transaction))
             {
                 yield return transaction!;
             }

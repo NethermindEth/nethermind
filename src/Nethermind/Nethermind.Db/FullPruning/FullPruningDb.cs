@@ -139,12 +139,6 @@ namespace Nethermind.Db.FullPruning
 
         public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => _currentDb[keys];
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _currentDb.GetAll(ordered);
-
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _currentDb.GetAllKeys(ordered);
-
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _currentDb.GetAllValues(ordered);
-
         // we need to remove from both DB's
         public void Remove(ReadOnlySpan<byte> key)
         {

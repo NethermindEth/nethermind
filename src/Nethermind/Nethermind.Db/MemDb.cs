@@ -11,10 +11,11 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using static Nethermind.Core.SortedKeyValueStoreExtensions;
 
 namespace Nethermind.Db
 {
-    public class MemDb : IFullDb
+    public class MemDb : IFullDb, ISortedKeyValueStore
     {
         private readonly int _writeDelay; // for testing scenarios
         private readonly int _readDelay; // for testing scenarios
@@ -38,9 +39,19 @@ namespace Nethermind.Db
         public static MemDb CopyFrom(IDb anotherDb)
         {
             MemDb newDb = new();
-            foreach (KeyValuePair<byte[], byte[]> kv in anotherDb.GetAll())
+            if (anotherDb is ISortedKeyValueStore sorted)
             {
-                newDb[kv.Key] = kv.Value;
+                foreach (KeyValuePair<byte[], byte[]?> kv in sorted.GetAll())
+                {
+                    if (kv.Value is not null)
+                    {
+                        newDb[kv.Key] = kv.Value;
+                    }
+                }
+            }
+            else
+            {
+                throw new ArgumentException("Database must implement ISortedKeyValueStore", nameof(anotherDb));
             }
 
             return newDb;
@@ -87,12 +98,6 @@ namespace Nethermind.Db
 
         public void Clear() => _db.Clear();
 
-        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => ordered ? OrderedDb : _db;
-
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => ordered ? OrderedDb.Select(kvp => kvp.Key) : Keys;
-
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => ordered ? OrderedDb.Select(kvp => kvp.Value) : Values;
-
         public virtual IWriteBatch StartWriteBatch() => this.LikeABatch();
 
         public ICollection<byte[]> Keys => _db.Keys;
@@ -101,6 +106,95 @@ namespace Nethermind.Db
         public int Count => _db.Count;
 
         public void Dispose() { }
+
+        // ISortedKeyValueStore implementation
+        public byte[]? FirstKey
+        {
+            get
+            {
+                byte[]? min = null;
+                foreach (byte[] key in Keys)
+                {
+                    if (min is null || Bytes.BytesComparer.Compare(key, min) < 0)
+                    {
+                        min = key;
+                    }
+                }
+                return min;
+            }
+        }
+
+        public byte[]? LastKey
+        {
+            get
+            {
+                byte[]? max = null;
+                foreach (byte[] key in Keys)
+                {
+                    if (max is null || Bytes.BytesComparer.Compare(key, max) > 0)
+                    {
+                        max = key;
+                    }
+                }
+                return max;
+            }
+        }
+
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+        {
+            ArrayPoolList<(byte[], byte[]?)> sortedValue = new(1);
+
+            foreach (KeyValuePair<byte[], byte[]?> keyValuePair in _db)
+            {
+                if (Bytes.BytesComparer.Compare(keyValuePair.Key, firstKeyInclusive) < 0)
+                {
+                    continue;
+                }
+
+                if (lastKeyExclusive.Length > 0 && Bytes.BytesComparer.Compare(keyValuePair.Key, lastKeyExclusive) >= 0)
+                {
+                    continue;
+                }
+                sortedValue.Add((keyValuePair.Key, keyValuePair.Value));
+            }
+
+            sortedValue.AsSpan().Sort((it1, it2) => Bytes.BytesComparer.Compare(it1.Item1, it2.Item1));
+            return new MemDbSortedView(sortedValue);
+        }
+
+        private class MemDbSortedView(ArrayPoolList<(byte[], byte[]?)> list) : ISortedView
+        {
+            private int idx = -1;
+
+            public void Dispose() => list.Dispose();
+
+            public bool StartBefore(ReadOnlySpan<byte> value)
+            {
+                if (list.Count == 0) return false;
+
+                idx = 0;
+                while (idx < list.Count)
+                {
+                    if (Bytes.BytesComparer.Compare(list[idx].Item1, value) >= 0)
+                    {
+                        idx--;
+                        return true;
+                    }
+                    idx++;
+                }
+                idx = list.Count - 1;
+                return true;
+            }
+
+            public bool MoveNext()
+            {
+                idx++;
+                return idx < list.Count;
+            }
+
+            public ReadOnlySpan<byte> CurrentKey => list[idx].Item1;
+            public ReadOnlySpan<byte> CurrentValue => list[idx].Item2 ?? ReadOnlySpan<byte>.Empty;
+        }
 
         public bool PreferWriteByArray => true;
 

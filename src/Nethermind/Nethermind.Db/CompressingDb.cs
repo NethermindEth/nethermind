@@ -113,15 +113,6 @@ namespace Nethermind.Db
 
             public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => throw new NotImplementedException();
 
-            public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => wrapped.GetAll(ordered)
-                .Select(static kvp => new KeyValuePair<byte[], byte[]>(kvp.Key, Decompress(kvp.Value)));
-
-            public IEnumerable<byte[]> GetAllKeys(bool ordered = false) =>
-                wrapped.GetAllKeys(ordered);
-
-            public IEnumerable<byte[]> GetAllValues(bool ordered = false) =>
-                wrapped.GetAllValues(ordered).Select(Decompress);
-
             public void Remove(ReadOnlySpan<byte> key) => wrapped.Remove(key);
 
             public bool KeyExists(ReadOnlySpan<byte> key) => wrapped.KeyExists(key);

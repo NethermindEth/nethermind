@@ -266,7 +266,7 @@ public class SnapProviderTests
 
         snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs).Should().Be(AddRangeResult.OK);
 
-        container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count().Should().Be(3); // 3 child. Root branch node not saved due to state sync compatibility
+        ((ISortedKeyValueStore)container.ResolveNamed<IDb>(DbNames.State)).GetAllKeys().Count().Should().Be(3); // 3 child. Root branch node not saved due to state sync compatibility
     }
 
     [TestCase("badreq-roothash.zip")]

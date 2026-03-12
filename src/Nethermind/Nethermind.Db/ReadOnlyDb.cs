@@ -50,12 +50,6 @@ namespace Nethermind.Db
             }
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _memDb.GetAll().Union(wrappedDb.GetAll());
-
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _memDb.GetAllKeys().Union(wrappedDb.GetAllKeys());
-
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _memDb.GetAllValues().Union(wrappedDb.GetAllValues());
-
         public IWriteBatch StartWriteBatch() => this.LikeABatch();
 
         public IDbMeta.DbMetric GatherMetric() => wrappedDb.GatherMetric();

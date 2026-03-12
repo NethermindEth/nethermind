@@ -122,7 +122,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            memDb.GetAllValues().Should().HaveCount(2);
+            ((ISortedKeyValueStore)memDb).GetAllValues().Should().HaveCount(2);
         }
 
         [Test]
@@ -159,7 +159,7 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakB, _sampleValue);
             memDb.Set(TestItem.KeccakD, _sampleValue);
 
-            var orderedItems = memDb.GetAll(true);
+            var orderedItems = ((ISortedKeyValueStore)memDb).GetAll();
 
             orderedItems.Should().HaveCount(5);
 

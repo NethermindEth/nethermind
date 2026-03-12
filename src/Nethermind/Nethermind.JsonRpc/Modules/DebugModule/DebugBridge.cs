@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -37,6 +38,7 @@ public class DebugBridge : IDebugBridge
     private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockStore _blockStore;
     private readonly Dictionary<string, IDb> _dbMappings;
+    private readonly BlockDecoder _blockDecoder = new();
 
     public DebugBridge(
         IConfigProvider configProvider,
@@ -83,7 +85,19 @@ public class DebugBridge : IDebugBridge
         }
     }
 
-    public IEnumerable<Block> GetBadBlocks() => _badBlockStore.GetAll();
+    public IEnumerable<Block> GetBadBlocks()
+    {
+        if (_badBlockStore is not ISortedKeyValueStore sortedBadBlockStore)
+        {
+            throw new InvalidOperationException($"BadBlockStore must implement {nameof(ISortedKeyValueStore)}");
+        }
+
+        return sortedBadBlockStore.GetAllValues().Select(bytes =>
+        {
+            Rlp.ValueDecoderContext ctx = (bytes ?? []).AsRlpValueContext();
+            return _blockDecoder.Decode(ref ctx);
+        });
+    }
 
     public byte[] GetDbValue(string dbName, byte[] key) => _dbMappings[dbName][key];
 
