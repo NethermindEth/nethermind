@@ -22,6 +22,7 @@ using Nethermind.Evm.Tracing.State;
 
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 using System.Threading;
+using System.Runtime.Serialization;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
@@ -812,7 +813,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 header.GasUsed += gasConsumed.EffectiveBlockGas;
             }
             Console.WriteLine($"[sequential] i = {VirtualMachine.TxExecutionContext.BlockAccessIndex}, header.GasUsed = {header.GasUsed}, txBlockGas = {gasConsumed.EffectiveBlockGas}");
-            tx.BlockGasUsed = gasConsumed.EffectiveBlockGas;
+            if (_balBuilder is not { ParallelExecutionEnabled: true } || header.GasUsed == 0)
+            {
+                tx.BlockGasUsed = gasConsumed.EffectiveBlockGas;
+            }
 
             return statusCode;
         }
