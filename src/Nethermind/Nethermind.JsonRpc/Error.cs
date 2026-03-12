@@ -7,13 +7,10 @@ namespace Nethermind.JsonRpc
 {
     public class Error
     {
-        [JsonPropertyName("code")]
         public int Code { get; set; }
 
-        [JsonPropertyName("message")]
         public string? Message { get; set; }
 
-        [JsonPropertyName("data")]
         public object? Data { get; set; }
 
         [JsonIgnore]
