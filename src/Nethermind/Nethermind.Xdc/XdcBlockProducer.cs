@@ -60,6 +60,12 @@ internal class XdcBlockProducer : BlockProducerBase
         QuorumCertificate highestCert = xdcContext.HighestQC;
         var currentRound = xdcContext.CurrentRound;
 
+        if (payloadAttributes is XdcPayloadAttributes xdcPayloadAttributes)
+        {
+            currentRound = xdcPayloadAttributes.Round;
+            highestCert = xdcPayloadAttributes.QuorumCertificate;
+        }
+
         //TODO maybe some sanity checks here for round and hash
 
         byte[] extra = [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(new ExtraFieldsV2(currentRound, highestCert)).Bytes];

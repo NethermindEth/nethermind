@@ -43,7 +43,6 @@ namespace Nethermind.Xdc
 
         public event EventHandler<BlockEventArgs>? BlockProduced;
 
-        private static readonly PayloadAttributes DefaultPayloadAttributes = new PayloadAttributes();
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
         private bool _writeRoundInfo = true;
@@ -196,7 +195,10 @@ namespace Nethermind.Xdc
             {
                 try
                 {
-                    await RunRoundChecks(ct);
+                    if (!_blockTree.IsSyncing().isSyncing)
+                    {
+                        await RunRoundChecks(ct);
+                    }
                     await Task.Delay(50, ct);
                 }
                 catch (OperationCanceledException)
@@ -279,14 +281,17 @@ namespace Nethermind.Xdc
 
             try
             {
-                XdcBlockHeader parentHeader = FindHeaderToBuildOn(_xdcContext.HighestQC) ?? parent;
+                QuorumCertificate highestQC = _xdcContext.HighestQC;
+                XdcBlockHeader parentHeader = FindHeaderToBuildOn(highestQC) ?? parent;
                 ulong parentTimestamp = parentHeader.Timestamp;
                 ulong minTimestamp = parentTimestamp + (ulong)spec.MinePeriod;
                 ulong currentTimestamp = (ulong)new DateTimeOffset(now).ToUnixTimeSeconds();
 
                 _logger.Debug($"Round {currentRound}: Building proposal block");
 
-                DefaultPayloadAttributes.Timestamp = minTimestamp;
+                XdcPayloadAttributes payloadAttributes = new XdcPayloadAttributes();
+                payloadAttributes.Round = currentRound;
+                payloadAttributes.QuorumCertificate = highestQC;
 
                 if (currentTimestamp < minTimestamp)
                 {
@@ -296,8 +301,10 @@ namespace Nethermind.Xdc
                     await Task.Delay(delay, ct);
                 }
 
+                payloadAttributes.Timestamp = (ulong)new DateTimeOffset(now).ToUnixTimeSeconds();
+
                 Task<Block?> proposedBlockTask =
-                    _blockBuilder.BuildBlock(parentHeader, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, ct);
+                    _blockBuilder.BuildBlock(parentHeader, null, payloadAttributes, IBlockProducer.Flags.None, ct);
 
                 Block? proposedBlock = await proposedBlockTask;
 
@@ -337,19 +344,23 @@ namespace Nethermind.Xdc
             if (_highestVotedRound >= votingRound)
                 return;
 
-            // Commit/record the header's QC
-            _quorumCertificateManager.CommitCertificate(head.ExtraConsensusData.QuorumCert);
+            if (head.ExtraConsensusData.QuorumCert.Hash != _xdcContext.HighestQC?.Hash)
+            {
+                // Commit/record the header's QC
+                _quorumCertificateManager.CommitCertificate(head.ExtraConsensusData.QuorumCert);
+            }
 
             // Check if we are in the masternode set
             if (!IsMasternode(epochInfo, _signer.Address))
             {
+                _highestVotedRound = votingRound;
                 _logger.Info($"Round {votingRound}: Skipped voting (not in masternode set)");
                 return;
             }
 
             // Check voting rule
             bool canVote = _votesManager.VerifyVotingRules(head, out string error);
-            if (!canVote)
+            if (!canVote)   
             {
                 _logger.Info($"Round {votingRound}: Voting rule not satisfied for block #{head.Number}, hash={head.Hash}: {error}");
                 return;
