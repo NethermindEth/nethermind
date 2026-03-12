@@ -99,6 +99,17 @@ namespace Nethermind.Serialization.Ssz.Test
             Assert.That(output.ToHexString(), Is.EqualTo("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"));
         }
 
+        [Test]
+        public void Can_roundtrip_uint128_asymmetric()
+        {
+            UInt128 value = new UInt128(0x0000000000000001, 0x0000000000000002);
+            Span<byte> output = stackalloc byte[16];
+            Ssz.Encode(output, value);
+            Assert.That(output.ToHexString(), Is.EqualTo("02000000000000000100000000000000"));
+            Ssz.Decode((ReadOnlySpan<byte>)output, out UInt128 decoded);
+            Assert.That(decoded, Is.EqualTo(value));
+        }
+
         [TestCase(true, "0x01")]
         [TestCase(false, "0x00")]
         public void Can_serialize_bool(bool value, string expectedValue)
