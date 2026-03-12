@@ -73,28 +73,18 @@ namespace Nethermind.Evm.Test
             Assert.That(receipt.StatusCode, Is.EqualTo(outOfGasExpected ? 0 : 1));
         }
 
-        [TestCase("0x60006000556000600055", 1612, 0, 0)]
-        [TestCase("0x60016000556001600055", 1612, 0, 1)]
-        public void Test_when_gas_just_above_stipend(string codeHex, long gasUsed, long refund, byte originalValue)
+        [TestCase("0x60006000556000600055", 1612, 0, 2301, 1)]
+        [TestCase("0x60016000556001600055", 1612, 1, 2301, 1)]
+        [TestCase("0x60006000556000600055", 1612, 0, 2299, 0)]
+        [TestCase("0x60016000556001600055", 1612, 1, 2299, 0)]
+        public void Test_when_gas_near_stipend(string codeHex, long gasUsed, byte originalValue, int stipendOffset, int expectedStatus)
         {
             TestState.CreateAccount(Recipient, 0);
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
-            TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2301 - 800), Bytes.FromHexString(codeHex));
-            Assert.That(receipt.StatusCode, Is.EqualTo(1));
-        }
-
-        [TestCase("0x60006000556000600055", 1612, 0, 0)]
-        [TestCase("0x60016000556001600055", 1612, 0, 1)]
-        public void Test_when_gas_just_below_stipend(string codeHex, long gasUsed, long refund, byte originalValue)
-        {
-            TestState.CreateAccount(Recipient, 0);
-            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
-
-            TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2299 - 800), Bytes.FromHexString(codeHex));
-            Assert.That(receipt.StatusCode, Is.EqualTo(0));
+            TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (stipendOffset - 800), Bytes.FromHexString(codeHex));
+            Assert.That(receipt.StatusCode, Is.EqualTo(expectedStatus));
         }
     }
 }

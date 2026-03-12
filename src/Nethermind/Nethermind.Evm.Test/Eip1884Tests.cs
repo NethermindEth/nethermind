@@ -50,8 +50,9 @@ namespace Nethermind.Evm.Test
             AssertStorage(new StorageCell(TestItem.AddressC, UInt256.Zero), balanceC);
         }
 
-        [Test]
-        public void after_istanbul_extcodehash_cost_is_increased()
+        [TestCase(true, GasCostOf.ExtCodeHashEip1884)]
+        [TestCase(false, GasCostOf.ExtCodeHash)]
+        public void Extcodehash_cost_depends_on_istanbul(bool isIstanbul, long expectedOpGasCost)
         {
             TestState.CreateAccount(TestItem.AddressC, 100.Ether);
 
@@ -60,12 +61,15 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.EXTCODEHASH)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(code);
-            AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.ExtCodeHashEip1884);
+            TestAllTracerWithOutput result = isIstanbul
+                ? Execute(code)
+                : Execute(BlockNumber - 1, 100000, code);
+            AssertGas(result, 21000 + GasCostOf.VeryLow + expectedOpGasCost);
         }
 
-        [Test]
-        public void after_istanbul_balance_cost_is_increased()
+        [TestCase(true, GasCostOf.BalanceEip1884)]
+        [TestCase(false, GasCostOf.BalanceEip150)]
+        public void Balance_cost_depends_on_istanbul(bool isIstanbul, long expectedOpGasCost)
         {
             TestState.CreateAccount(TestItem.AddressC, 100.Ether);
 
@@ -74,12 +78,15 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.BALANCE)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(code);
-            AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.BalanceEip1884);
+            TestAllTracerWithOutput result = isIstanbul
+                ? Execute(code)
+                : Execute(BlockNumber - 1, 100000, code);
+            AssertGas(result, 21000 + GasCostOf.VeryLow + expectedOpGasCost);
         }
 
-        [Test]
-        public void after_istanbul_sload_cost_is_increased()
+        [TestCase(true, GasCostOf.SLoadEip1884)]
+        [TestCase(false, GasCostOf.SLoadEip150)]
+        public void Sload_cost_depends_on_istanbul(bool isIstanbul, long expectedOpGasCost)
         {
             TestState.CreateAccount(TestItem.AddressC, 100.Ether);
 
@@ -89,51 +96,10 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SLOAD)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(code);
-            AssertGas(result, 21000 + 2 * GasCostOf.VeryLow + GasCostOf.SLoadEip1884);
-        }
-
-        [Test]
-        public void just_before_istanbul_extcodehash_cost_is_increased()
-        {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
-
-            byte[] code = Prepare.EvmCode
-                .PushData(TestItem.AddressC)
-                .Op(Instruction.EXTCODEHASH)
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(BlockNumber - 1, 100000, code);
-            AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.ExtCodeHash);
-        }
-
-        [Test]
-        public void just_before_istanbul_balance_cost_is_increased()
-        {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
-
-            byte[] code = Prepare.EvmCode
-                .PushData(TestItem.AddressC)
-                .Op(Instruction.BALANCE)
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(BlockNumber - 1, 100000, code);
-            AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.BalanceEip150);
-        }
-
-        [Test]
-        public void just_before_istanbul_sload_cost_is_increased()
-        {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
-
-            byte[] code = Prepare.EvmCode
-                .PushData(TestItem.AddressC)
-                .PushData(0)
-                .Op(Instruction.SLOAD)
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(BlockNumber - 1, 100000, code);
-            AssertGas(result, 21000 + 2 * GasCostOf.VeryLow + GasCostOf.SLoadEip150);
+            TestAllTracerWithOutput result = isIstanbul
+                ? Execute(code)
+                : Execute(BlockNumber - 1, 100000, code);
+            AssertGas(result, 21000 + 2 * GasCostOf.VeryLow + expectedOpGasCost);
         }
     }
 }
