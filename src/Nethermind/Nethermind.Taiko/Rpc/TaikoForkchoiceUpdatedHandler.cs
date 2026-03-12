@@ -77,6 +77,22 @@ internal class TaikoForkchoiceUpdatedHandler(
         return blockHeader;
     }
 
+    // Taiko Pacaya allows equal timestamps because multiple L2 blocks can be derived
+    // from a single L1 block, all sharing the same L1 anchor timestamp.
+    protected override bool ArePayloadAttributesTimestampAndSlotNumberValid(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,
+        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
+    {
+        if (newHeadBlock.Timestamp > payloadAttributes.Timestamp)
+        {
+            string error = $"Payload timestamp {payloadAttributes.Timestamp} must be greater than or equal to block timestamp {newHeadBlock.Timestamp}.";
+            errorResult = ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+            return false;
+        }
+
+        errorResult = null;
+        return true;
+    }
+
     protected override bool TryGetBranch(Block newHeadBlock, out Block[] blocks)
     {
         // Allow resetting to any block already on the main chain (including genesis)
