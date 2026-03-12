@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions LimitedCollapse commentComment on line R1Marchhill commented on Nov 3, 2025 Marchhillon Nov 3, 2025ContributorMore actions
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 using Nethermind.Core.Crypto;
 
