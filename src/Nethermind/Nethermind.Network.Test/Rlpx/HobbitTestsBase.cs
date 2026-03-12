@@ -69,10 +69,10 @@ public abstract class HobbitTestsBase
             if (outbound == StackType.Zero)
             {
                 byte[] rlpPacketType = Rlp.Encode((long)packet.PacketType).Bytes;
-                using DisposableByteBuffer packetBuffer = embeddedChannel.Allocator.Buffer(rlpPacketType.Length + packet.Data.Length).AsDisposable();
+                IByteBuffer packetBuffer = embeddedChannel.Allocator.Buffer(rlpPacketType.Length + packet.Data.Length);
                 packetBuffer.WriteBytes(rlpPacketType);
                 packetBuffer.WriteBytes(packet.Data);
-                embeddedChannel.WriteOutbound(packetBuffer);
+                embeddedChannel.WriteOutbound(packetBuffer);  // packetBuffer is released here
             }
             else // allocating
             {
