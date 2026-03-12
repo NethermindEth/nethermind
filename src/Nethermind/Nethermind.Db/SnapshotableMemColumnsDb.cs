@@ -16,25 +16,29 @@ namespace Nethermind.Db
         private readonly IDictionary<TKey, SnapshotableMemDb> _columnDbs = new Dictionary<TKey, SnapshotableMemDb>();
         private readonly bool _neverPrune;
 
-        public SnapshotableMemColumnsDb(params TKey[] keys)
+        private SnapshotableMemColumnsDb(TKey[] keys, bool neverPrune)
         {
+            _neverPrune = neverPrune;
             foreach (TKey key in keys)
             {
                 GetColumnDb(key);
             }
         }
 
-        public SnapshotableMemColumnsDb() : this(Enum.GetValues<TKey>())
+        public SnapshotableMemColumnsDb(params TKey[] keys) : this(keys, false)
         {
         }
 
-        public SnapshotableMemColumnsDb(string _) : this(Enum.GetValues<TKey>())
+        public SnapshotableMemColumnsDb() : this(Enum.GetValues<TKey>(), false)
         {
         }
 
-        public SnapshotableMemColumnsDb(bool neverPrune) : this(Enum.GetValues<TKey>())
+        public SnapshotableMemColumnsDb(string _) : this(Enum.GetValues<TKey>(), false)
         {
-            _neverPrune = neverPrune;
+        }
+
+        public SnapshotableMemColumnsDb(bool neverPrune) : this(Enum.GetValues<TKey>(), neverPrune)
+        {
         }
 
         public IDb GetColumnDb(TKey key)
