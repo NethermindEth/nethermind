@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -20,40 +19,17 @@ namespace Ethereum.Trie.Test
             return new StorageTree(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance).GetTrieStore(TestItem.KeccakA), Keccak.EmptyTreeHash, LimboLogs.Instance);
         }
 
-        [Test]
-        public void Storage_trie_set_reset_with_empty()
+        [TestCase(new byte[0], TestName = "Storage_trie_set_reset_with_empty")]
+        [TestCase(new byte[] { 0, 0, 0, 0, 0 }, TestName = "Storage_trie_set_reset_with_long_zero")]
+        [TestCase(new byte[] { 0 }, TestName = "Storage_trie_set_reset_with_short_zero")]
+        public void Storage_trie_set_reset(byte[] resetValue)
         {
             StorageTree tree = CreateStorageTrie();
             Hash256 rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
-            tree.Set(1, Array.Empty<byte>());
+            tree.Set(1, resetValue);
             tree.UpdateRootHash();
-            Hash256 rootAfter = tree.RootHash;
-            Assert.That(rootAfter, Is.EqualTo(rootBefore));
-        }
-
-        [Test]
-        public void Storage_trie_set_reset_with_long_zero()
-        {
-            StorageTree tree = CreateStorageTrie();
-            Hash256 rootBefore = tree.RootHash;
-            tree.Set(1, new byte[] { 1 });
-            tree.Set(1, new byte[] { 0, 0, 0, 0, 0 });
-            tree.UpdateRootHash();
-            Hash256 rootAfter = tree.RootHash;
-            Assert.That(rootAfter, Is.EqualTo(rootBefore));
-        }
-
-        [Test]
-        public void Storage_trie_set_reset_with_short_zero()
-        {
-            StorageTree tree = CreateStorageTrie();
-            Hash256 rootBefore = tree.RootHash;
-            tree.Set(1, new byte[] { 1 });
-            tree.Set(1, new byte[] { 0 });
-            tree.UpdateRootHash();
-            Hash256 rootAfter = tree.RootHash;
-            Assert.That(rootAfter, Is.EqualTo(rootBefore));
+            Assert.That(tree.RootHash, Is.EqualTo(rootBefore));
         }
     }
 }
