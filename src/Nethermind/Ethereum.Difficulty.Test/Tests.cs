@@ -8,86 +8,32 @@ using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test;
 
-[Parallelizable(ParallelScope.All)]
-public class DifficultyByzantiumTests : TestsBase
-{
-    public static IEnumerable<DifficultyTests> LoadTests() => LoadHex("difficultyByzantium.json");
+public class DifficultyByzantiumTests()
+    : DifficultyHexTestFixture<DifficultyByzantiumTests>(new TestSingleReleaseSpecProvider(Byzantium.Instance));
 
-    [TestCaseSource(nameof(LoadTests))]
-    public void Test(DifficultyTests test) => RunTest(test, new TestSingleReleaseSpecProvider(Byzantium.Instance));
-}
+public class DifficultyConstantinopleTests()
+    : DifficultyHexTestFixture<DifficultyConstantinopleTests>(new TestSingleReleaseSpecProvider(Constantinople.Instance));
 
-[Parallelizable(ParallelScope.All)]
-public class DifficultyConstantinopleTests : TestsBase
-{
-    public static IEnumerable<DifficultyTests> LoadTests() => LoadHex("difficultyConstantinople.json");
+public class DifficultyCustomHomesteadTests()
+    : DifficultyHexTestFixture<DifficultyCustomHomesteadTests>(new TestSingleReleaseSpecProvider(Homestead.Instance));
 
-    [TestCaseSource(nameof(LoadTests))]
-    public void Test(DifficultyTests test) => RunTest(test, new TestSingleReleaseSpecProvider(Constantinople.Instance));
-}
+public class DifficultyCustomMainNetworkTests()
+    : DifficultyHexTestFixture<DifficultyCustomMainNetworkTests>(MainnetSpecProvider.Instance);
 
-[Parallelizable(ParallelScope.All)]
-public class DifficultyCustomHomesteadTests : TestsBase
-{
-    public static IEnumerable<DifficultyTests> LoadTests() => LoadHex("difficultyCustomHomestead.json");
+public class DifficultyEIP2384Tests()
+    : DifficultyHexTestFixture<DifficultyEIP2384Tests>(new TestSingleReleaseSpecProvider(MuirGlacier.Instance));
 
-    [TestCaseSource(nameof(LoadTests))]
-    public void Test(DifficultyTests test) => RunTest(test, new TestSingleReleaseSpecProvider(Homestead.Instance));
-}
+public class DifficultyEIP2384_randomTests()
+    : DifficultyHexTestFixture<DifficultyEIP2384_randomTests>(new TestSingleReleaseSpecProvider(MuirGlacier.Instance));
 
-[Parallelizable(ParallelScope.All)]
-public class DifficultyCustomMainNetworkTests : TestsBase
-{
-    public static IEnumerable<DifficultyTests> LoadTests() => LoadHex("difficultyCustomMainNetwork.json");
+public class DifficultyEIP2384_random_to20MTests()
+    : DifficultyHexTestFixture<DifficultyEIP2384_random_to20MTests>(new TestSingleReleaseSpecProvider(MuirGlacier.Instance));
 
-    [TestCaseSource(nameof(LoadTests))]
-    public void Test(DifficultyTests test) => RunTest(test, MainnetSpecProvider.Instance);
-}
+public class DifficultyFrontierTests()
+    : DifficultyHexTestFixture<DifficultyFrontierTests>(new TestSingleReleaseSpecProvider(Frontier.Instance));
 
-[Parallelizable(ParallelScope.All)]
-public class DifficultyEIP2384Tests : TestsBase
-{
-    public static IEnumerable<DifficultyTests> LoadTests() => LoadHex("difficultyEIP2384.json");
-
-    [TestCaseSource(nameof(LoadTests))]
-    public void Test(DifficultyTests test) => RunTest(test, new TestSingleReleaseSpecProvider(MuirGlacier.Instance));
-}
-
-[Parallelizable(ParallelScope.All)]
-public class DifficultyEIP2384RandomTests : TestsBase
-{
-    public static IEnumerable<DifficultyTests> LoadTests() => LoadHex("difficultyEIP2384_random.json");
-
-    [TestCaseSource(nameof(LoadTests))]
-    public void Test(DifficultyTests test) => RunTest(test, new TestSingleReleaseSpecProvider(MuirGlacier.Instance));
-}
-
-[Parallelizable(ParallelScope.All)]
-public class DifficultyEIP2384RandomTo20MTests : TestsBase
-{
-    public static IEnumerable<DifficultyTests> LoadTests() => LoadHex("difficultyEIP2384_random_to20M.json");
-
-    [TestCaseSource(nameof(LoadTests))]
-    public void Test(DifficultyTests test) => RunTest(test, new TestSingleReleaseSpecProvider(MuirGlacier.Instance));
-}
-
-[Parallelizable(ParallelScope.All)]
-public class DifficultyFrontierTests : TestsBase
-{
-    public static IEnumerable<DifficultyTests> LoadTests() => LoadHex("difficultyFrontier.json");
-
-    [TestCaseSource(nameof(LoadTests))]
-    public void Test(DifficultyTests test) => RunTest(test, new TestSingleReleaseSpecProvider(Frontier.Instance));
-}
-
-[Parallelizable(ParallelScope.All)]
-public class DifficultyHomesteadTests : TestsBase
-{
-    public static IEnumerable<DifficultyTests> LoadTests() => LoadHex("difficultyHomestead.json");
-
-    [TestCaseSource(nameof(LoadTests))]
-    public void Test(DifficultyTests test) => RunTest(test, new TestSingleReleaseSpecProvider(Homestead.Instance));
-}
+public class DifficultyHomesteadTests()
+    : DifficultyHexTestFixture<DifficultyHomesteadTests>(new TestSingleReleaseSpecProvider(Homestead.Instance));
 
 [Parallelizable(ParallelScope.All)]
 public class DifficultyMainNetworkTests : TestsBase
@@ -103,20 +49,8 @@ public class DifficultyMainNetworkTests : TestsBase
     public void Test_main(DifficultyTests test) => RunTest(test, MainnetSpecProvider.Instance);
 }
 
-[Parallelizable(ParallelScope.All)]
-public class DifficultyMordenTests : TestsBase
-{
-    public static IEnumerable<DifficultyTests> LoadTests() => LoadHex("difficultyMorden.json");
+public class DifficultyMordenTests()
+    : DifficultyHexTestFixture<DifficultyMordenTests>(new MordenSpecProvider());
 
-    [TestCaseSource(nameof(LoadTests))]
-    public void Test(DifficultyTests test) => RunTest(test, new MordenSpecProvider());
-}
-
-[Parallelizable(ParallelScope.All)]
-public class DifficultyOlympicTests : TestsBase
-{
-    public static IEnumerable<DifficultyTests> LoadTests() => LoadHex("difficultyOlympic.json");
-
-    [TestCaseSource(nameof(LoadTests))]
-    public void Test(DifficultyTests test) => RunTest(test, new TestSingleReleaseSpecProvider(Olympic.Instance));
-}
+public class DifficultyOlympicTests()
+    : DifficultyHexTestFixture<DifficultyOlympicTests>(new TestSingleReleaseSpecProvider(Olympic.Instance));

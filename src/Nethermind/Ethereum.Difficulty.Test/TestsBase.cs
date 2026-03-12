@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Globalization;
 using System.Linq;
-using System.Numerics;
 using Ethereum.Test.Base;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Crypto;
@@ -27,12 +24,9 @@ namespace Ethereum.Difficulty.Test
 
         public static IEnumerable<DifficultyTests> LoadHex(string fileName)
         {
-            Stopwatch watch = new Stopwatch();
-            IEnumerable<DifficultyTests> tests = TestLoader.LoadFromFile<Dictionary<string, DifficultyTestHexJson>, DifficultyTests>(
+            return TestLoader.LoadFromFile<Dictionary<string, DifficultyTestHexJson>, DifficultyTests>(
                 fileName,
                 t => t.Select(dtj => ToTest(fileName, dtj.Key, dtj.Value))).ToList();
-            watch.Stop();
-            return tests;
         }
 
         protected static DifficultyTests ToTest(string fileName, string name, DifficultyTestJson json)
@@ -46,12 +40,6 @@ namespace Ethereum.Difficulty.Test
                 json.CurrentBlockNumber,
                 (ulong)json.CurrentDifficulty,
                 false);
-        }
-
-        private static BigInteger ToBigInteger(string hex)
-        {
-            hex = hex.Replace("0x", "0");
-            return BigInteger.Parse(hex, NumberStyles.HexNumber);
         }
 
         private static UInt256 ToUInt256(string hex)
@@ -88,5 +76,19 @@ namespace Ethereum.Difficulty.Test
 
             Assert.That(difficulty, Is.EqualTo(test.CurrentDifficulty), test.Name);
         }
+    }
+
+    /// <summary>
+    /// Generic fixture for difficulty tests that load hex JSON and use a constructor-provided spec provider.
+    /// JSON filename is derived from class name: strip "Tests" suffix, lowercase first char, add ".json".
+    /// </summary>
+    [Parallelizable(ParallelScope.All)]
+    public abstract class DifficultyHexTestFixture<TSelf>(ISpecProvider specProvider) : TestsBase
+    {
+        public static IEnumerable<DifficultyTests> LoadTests() =>
+            LoadHex(TestDirectoryHelper.GetJsonFileByConvention<TSelf>("Tests"));
+
+        [TestCaseSource(nameof(LoadTests))]
+        public void Test(DifficultyTests test) => RunTest(test, specProvider);
     }
 }

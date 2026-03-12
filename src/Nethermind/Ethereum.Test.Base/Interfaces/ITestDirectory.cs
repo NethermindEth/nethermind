@@ -42,4 +42,30 @@ public static class TestDirectoryHelper
 
         return name.ToLowerInvariant();
     }
+
+    /// <summary>
+    /// Derives a JSON filename by stripping a suffix and lowercasing the first character.
+    /// Convention: "DifficultyByzantiumTests" → "difficultyByzantium.json"
+    /// </summary>
+    public static string GetJsonFileByConvention<TSelf>(string suffix, string extension = ".json")
+    {
+        string name = typeof(TSelf).Name;
+        if (name.EndsWith(suffix, System.StringComparison.Ordinal))
+            name = name[..^suffix.Length];
+
+        return char.ToLowerInvariant(name[0]) + name[1..] + extension;
+    }
+
+    /// <summary>
+    /// Reverse of <see cref="GetDirectoryByPrefix{TSelf}"/>: derives expected class name from directory.
+    /// Convention: strip prefix, replace - with _, prepend _ if starts with digit.
+    /// </summary>
+    public static string GetClassNameFromDirectory(string directory, int prefixLength)
+    {
+        string name = directory[prefixLength..];
+        name = name.Replace('-', '_');
+        if (name.Length > 0 && char.IsDigit(name[0]))
+            name = "_" + name;
+        return name;
+    }
 }

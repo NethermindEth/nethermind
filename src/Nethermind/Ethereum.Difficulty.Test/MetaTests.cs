@@ -7,53 +7,38 @@ using System.IO;
 using System.Linq;
 using NUnit.Framework;
 
-namespace Ethereum.Difficulty.Test
+namespace Ethereum.Difficulty.Test;
+
+[TestFixture]
+public class MetaTests
 {
-    [TestFixture]
-    public class MetaTests
+    [Test]
+    public void All_categories_are_tested()
     {
-        [Test]
-        public void All_categories_are_tested()
+        string[] jsonFiles = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory)
+            .Select(Path.GetFileNameWithoutExtension)
+            .Where(f => f.StartsWith("difficulty"))
+            .ToArray();
+        Type[] types = GetType().Assembly.GetTypes();
+        List<string> missingCategories = [];
+        foreach (string file in jsonFiles)
         {
-            string[] directories = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory)
-                .Select(Path.GetFileNameWithoutExtension)
-                .Where(f => f.StartsWith("difficulty"))
-                .ToArray();
-            Type[] types = GetType().Assembly.GetTypes();
-            List<string> missingCategories = new();
-            foreach (string directory in directories)
-            {
-                string expectedTypeName = ExpectedTypeName(directory);
-                if (types.All(t => !string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase)))
-                {
-                    missingCategories.Add(directory);
-                }
-            }
-
-            foreach (string missing in missingCategories)
-            {
-                Console.WriteLine($"{missing} category is missing");
-            }
-
-            Assert.That(missingCategories.Where(x => x != "difficultyRopsten").Count, Is.EqualTo(0));
+            string expected = ExpectedTypeName(file);
+            if (types.All(t => !string.Equals(t.Name, expected, StringComparison.InvariantCultureIgnoreCase)))
+                missingCategories.Add($"{file} expected {expected}");
         }
 
-        private static string ExpectedTypeName(string directory)
-        {
-            string expectedTypeName = directory;
-            if (!expectedTypeName.EndsWith("Tests"))
-            {
-                if (!expectedTypeName.EndsWith("Test"))
-                {
-                    expectedTypeName += "Tests";
-                }
-                else
-                {
-                    expectedTypeName += "s";
-                }
-            }
+        foreach (string missing in missingCategories)
+            Console.WriteLine($"{missing} category is missing");
 
-            return expectedTypeName.Replace("_", string.Empty);
-        }
+        Assert.That(missingCategories.Where(x => !x.StartsWith("difficultyRopsten")), Is.Empty);
+    }
+
+    private static string ExpectedTypeName(string fileName)
+    {
+        string name = fileName;
+        if (!name.EndsWith("Tests"))
+            name = name.EndsWith("Test") ? name + "s" : name + "Tests";
+        return name.Replace("_", string.Empty);
     }
 }
