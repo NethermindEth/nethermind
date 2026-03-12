@@ -20,7 +20,7 @@ public class Validator
     private readonly IHistoricalSummariesProvider? _historicalSummariesProvider;
     private readonly ISet<ValueHash256>? _trustedAccumulators;
     private readonly ISet<ValueHash256>? _trustedHistoricalRoots;
-    private readonly SlotTime _slotTime;
+    private readonly SlotTime? _slotTime;
 
     private const int SlotsPerHistoricalRoot = 8192;
     private const int GenIndexExecutionBlockProofBellatrix = 3228;
@@ -34,12 +34,15 @@ public class Validator
         IHistoricalSummariesProvider? historicalSummariesProvider,
         IBlocksConfig? blocksConfig = null)
     {
-        ulong secondsPerSlot = blocksConfig?.SecondsPerSlot ?? 12;
-        _slotTime = new SlotTime(
-            specProvider.BeaconChainGenesisTimestamp!.Value * 1000,
-            new Timestamper(),
-            TimeSpan.FromSeconds(secondsPerSlot),
-            TimeSpan.FromSeconds(0));
+        if (specProvider.BeaconChainGenesisTimestamp.HasValue)
+        {
+            ulong secondsPerSlot = blocksConfig?.SecondsPerSlot ?? 12;
+            _slotTime = new SlotTime(
+                specProvider.BeaconChainGenesisTimestamp.Value * 1000,
+                new Timestamper(),
+                TimeSpan.FromSeconds(secondsPerSlot),
+                TimeSpan.FromSeconds(0));
+        }
         _trustedAccumulators = trustedAccumulators;
         _trustedHistoricalRoots = trustedHistoricalRoots;
         _historicalSummariesProvider = historicalSummariesProvider;
@@ -79,6 +82,7 @@ public class Validator
                 break;
 
             case AccumulatorType.HistoricalRoots:
+                if (_slotTime is null) throw new EraVerificationException("Beacon chain genesis timestamp is not available for HistoricalRoots verification.");
                 long slot = (long)_slotTime.GetSlot(context.StartingBlockTimestamp!.Value);
                 ValueHash256? trustedRoot = GetHistoricalRoot(slot);
                 if (trustedRoot is null)
@@ -88,6 +92,7 @@ public class Validator
                 break;
 
             case AccumulatorType.HistoricalSummaries:
+                if (_slotTime is null) throw new EraVerificationException("Beacon chain genesis timestamp is not available for HistoricalSummaries verification.");
                 long summarySlot = (long)_slotTime.GetSlot(context.StartingBlockTimestamp!.Value);
                 HistoricalSummary? trustedSummary = await GetHistoricalSummary(summarySlot);
                 if (trustedSummary is null)
@@ -101,7 +106,7 @@ public class Validator
     }
 
     private bool IsDeneb(ulong blockTimestamp) =>
-        _slotTime.GetSlot(blockTimestamp) >= DenebSlot;
+        _slotTime is not null && _slotTime.GetSlot(blockTimestamp) >= DenebSlot;
 
     private bool TrustedAccumulatorsProvided() =>
         _trustedAccumulators is { Count: > 0 };
@@ -141,6 +146,7 @@ public class Validator
 
     private void VerifyRoots(Block block, BlockHeaderProof proof)
     {
+        if (_slotTime is null) throw new EraVerificationException("Beacon chain genesis timestamp is not available for HistoricalRoots verification.");
         long slotNumber = (long)_slotTime.GetSlot(block.Header.Timestamp);
         long blockRootIndex = slotNumber % SlotsPerHistoricalRoot;
         long genIndex = 2 * SlotsPerHistoricalRoot + blockRootIndex;
@@ -155,6 +161,7 @@ public class Validator
 
     private async Task VerifySummaries(Block block, BlockHeaderProof proof)
     {
+        if (_slotTime is null) throw new EraVerificationException("Beacon chain genesis timestamp is not available for HistoricalSummaries verification.");
         long slotNumber = (long)_slotTime.GetSlot(block.Header.Timestamp);
         long genIndex = SlotsPerHistoricalRoot + (slotNumber % SlotsPerHistoricalRoot);
         ValueHash256? blockSummaryRoot = (await GetHistoricalSummary(slotNumber))?.BlockSummaryRoot;
