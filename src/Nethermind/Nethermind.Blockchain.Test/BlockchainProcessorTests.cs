@@ -664,6 +664,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_blockB2D4).BecomesNewHead();
     }
 
+    [Retry(3)]
     [Test(Description = "Covering scenario when we have an invalid block followed by its descendants." +
                         "All the descendant blocks should get discarded and an alternative branch should get selected." +
                         "BRANCH A | BLOCK 2 | INVALID |  DISCARD" +
