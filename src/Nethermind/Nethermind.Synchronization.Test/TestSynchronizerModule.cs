@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -12,6 +13,7 @@ using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Stats;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using NSubstitute;
 
