@@ -14,12 +14,13 @@ namespace Nethermind.Db
     /// In-memory database with MVCC-based snapshot support.
     /// Uses Multi-Version Concurrency Control to enable O(1) snapshot creation.
     /// </summary>
-    public class SnapshotableMemDb(string name = nameof(SnapshotableMemDb)) : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot
+    public class SnapshotableMemDb(string name = nameof(SnapshotableMemDb), bool neverPrune = false) : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot
     {
         private readonly SortedDictionary<(byte[] Key, int Version), byte[]?> _db = new(new KeyVersionComparer());
         private int _currentVersion = 0;
         private readonly HashSet<int> _activeSnapshotVersions = new();
         private readonly object _versionLock = new();
+        private readonly bool _neverPrune = neverPrune;
 
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
@@ -249,6 +250,12 @@ namespace Nethermind.Db
             lock (_versionLock)
             {
                 _activeSnapshotVersions.Remove(version);
+
+                // Skip pruning if disabled
+                if (_neverPrune)
+                {
+                    return;
+                }
 
                 // Fast path: no active snapshots - keep only latest version per key
                 if (_activeSnapshotVersions.Count == 0)

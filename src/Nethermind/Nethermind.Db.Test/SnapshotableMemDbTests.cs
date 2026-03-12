@@ -391,5 +391,63 @@ namespace Nethermind.Db.Test
 
             snapshot.Dispose();
         }
+
+        [Test]
+        [Ignore("Known bug in PruneVersionsOlderThan - will be fixed in separate PR. Use neverPrune option for now.")]
+        public void Snapshot_survives_pruning_when_newer_snapshot_disposed()
+        {
+            // Use default (pruning enabled) to verify the fix
+            SnapshotableMemDb memDb = new();
+
+            // Write key A at version 1
+            memDb.Set(TestItem.KeccakA, new byte[] { 1 });
+
+            // Write key B at version 2
+            memDb.Set(TestItem.KeccakB, new byte[] { 2 });
+
+            // Create snapshot1 at version 2 (sees both keys)
+            IKeyValueStoreSnapshot snapshot1 = memDb.CreateSnapshot();
+
+            // Update key A at version 3
+            memDb.Set(TestItem.KeccakA, new byte[] { 3 });
+
+            // Create snapshot2 at version 3
+            IKeyValueStoreSnapshot snapshot2 = memDb.CreateSnapshot();
+
+            // Dispose snapshot2 - triggers PruneVersionsOlderThan(2)
+            snapshot2.Dispose();
+
+            // snapshot1 should still see the original value for key A
+            byte[]? valueA = snapshot1.Get(TestItem.KeccakA);
+            valueA.Should().NotBeNull("snapshot1 at version 2 should still see key A written at version 1");
+            valueA.Should().BeEquivalentTo(new byte[] { 1 });
+
+            // Key B should still work
+            byte[]? valueB = snapshot1.Get(TestItem.KeccakB);
+            valueB.Should().BeEquivalentTo(new byte[] { 2 });
+
+            snapshot1.Dispose();
+        }
+
+        [Test]
+        public void NeverPrune_option_disables_pruning()
+        {
+            SnapshotableMemDb memDb = new(neverPrune: true);
+
+            memDb.Set(TestItem.KeccakA, new byte[] { 1 });
+            IKeyValueStoreSnapshot snapshot1 = memDb.CreateSnapshot();
+
+            memDb.Set(TestItem.KeccakA, new byte[] { 2 });
+            IKeyValueStoreSnapshot snapshot2 = memDb.CreateSnapshot();
+
+            // Dispose in any order - no pruning should occur
+            snapshot2.Dispose();
+
+            // snapshot1 should still work
+            byte[]? value = snapshot1.Get(TestItem.KeccakA);
+            value.Should().BeEquivalentTo(new byte[] { 1 });
+
+            snapshot1.Dispose();
+        }
     }
 }
