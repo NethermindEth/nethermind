@@ -23,7 +23,7 @@ public class GasBenchmarkConfig : ManualConfig
     /// <summary>Total number of chunks to split scenarios into.</summary>
     internal static int ChunkTotal { get; set; }
 
-    /// <summary>Override for BDN warmup count. Null = 3 (our default).</summary>
+    /// <summary>Override for BDN warmup count. Null = 1 (our default).</summary>
     internal static int? WarmupCount { get; set; }
 
     /// <summary>Override for BDN iteration count. Null = 1 (our default).</summary>
@@ -39,7 +39,7 @@ public class GasBenchmarkConfig : ManualConfig
         // to auto-determine batching — unnecessary at this timescale.
         Job job = Job.MediumRun
             .WithLaunchCount(LaunchCount ?? 1)
-            .WithWarmupCount(WarmupCount ?? 3)
+            .WithWarmupCount(WarmupCount ?? 1)
             .WithIterationCount(IterationCount ?? 1)
             .WithInvocationCount(1)
             .WithUnrollFactor(1);
