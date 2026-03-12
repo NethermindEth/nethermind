@@ -4,7 +4,8 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core;
 
-public enum BlockHeaderProofType: byte {
+public enum BlockHeaderProofType : byte
+{
     BlockProofHistoricalHashesAccumulator = 0,
     BlockProofHistoricalRoots = 1,
     BlockProofHistoricalSummaries = 2

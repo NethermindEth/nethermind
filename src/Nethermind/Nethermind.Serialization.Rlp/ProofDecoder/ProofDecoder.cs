@@ -152,31 +152,31 @@ namespace Nethermind.Serialization.Rlp.ProofDecoder
             switch (proofType)
             {
                 case BlockHeaderProofType.BlockProofHistoricalHashesAccumulator:
-                {
-                    SszEncoding.Decode(payload, out BlockProofHistoricalHashesAccumulator proof);
-                    return new BlockHeaderProof(proof.HashesAccumulator);
-                }
+                    {
+                        SszEncoding.Decode(payload, out BlockProofHistoricalHashesAccumulator proof);
+                        return new BlockHeaderProof(proof.HashesAccumulator);
+                    }
 
                 case BlockHeaderProofType.BlockProofHistoricalRoots:
-                {
-                    SszEncoding.Decode(payload, out BlockProofHistoricalRoots proof);
-                    return new BlockHeaderProof(
-                        proof.BeaconBlockProof,
-                        proof.ExecutionBlockProof,
-                        proof.BeaconBlockRoot,
-                        proof.Slot,
-                        BlockHeaderProofType.BlockProofHistoricalRoots);
-                }
+                    {
+                        SszEncoding.Decode(payload, out BlockProofHistoricalRoots proof);
+                        return new BlockHeaderProof(
+                            proof.BeaconBlockProof,
+                            proof.ExecutionBlockProof,
+                            proof.BeaconBlockRoot,
+                            proof.Slot,
+                            BlockHeaderProofType.BlockProofHistoricalRoots);
+                    }
 
                 case BlockHeaderProofType.BlockProofHistoricalSummaries:
-                {
-                    SszEncoding.Decode(payload, out BlockProofHistoricalSummaries proof);
-                    return new BlockHeaderProof(
-                        proof.BeaconBlockProof,
-                        proof.ExecutionBlockProof,
-                        proof.BeaconBlockRoot,
-                        proof.Slot);
-                }
+                    {
+                        SszEncoding.Decode(payload, out BlockProofHistoricalSummaries proof);
+                        return new BlockHeaderProof(
+                            proof.BeaconBlockProof,
+                            proof.ExecutionBlockProof,
+                            proof.BeaconBlockRoot,
+                            proof.Slot);
+                    }
 
                 default:
                     throw new InvalidOperationException($"Invalid proof type: {proofType}");

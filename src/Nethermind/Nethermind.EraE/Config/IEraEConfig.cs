@@ -4,6 +4,7 @@
 using Nethermind.Config;
 
 namespace Nethermind.EraE.Config;
+
 public interface IEraEConfig : IConfig
 {
     [ConfigItem(Description = "Directory of erae archives to be imported.", DefaultValue = "", HiddenFromDocs = false)]
