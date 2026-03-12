@@ -111,5 +111,7 @@ namespace Nethermind.Serialization.Rlp
             return buffer.Array.AsMemory()
                 .Slice(buffer.ArrayOffset + startIdx, buffer.WriterIndex - startIdx);
         }
+
+        public static DisposableByteBuffer AsDisposable(this IByteBuffer buffer) => new(buffer);
     }
 }
