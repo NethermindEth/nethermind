@@ -9,7 +9,7 @@ namespace Ethereum.Legacy.VM.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class ArithmeticTests : GeneralStateTestBase
+    public class ArithmeticTest : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)

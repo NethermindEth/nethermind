@@ -10,7 +10,7 @@ namespace Ethereum.Legacy.Blockchain.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class RevertTests : GeneralStateTestBase
+public class RevertTest : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test)

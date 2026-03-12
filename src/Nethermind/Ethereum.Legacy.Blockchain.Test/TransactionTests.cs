@@ -11,7 +11,7 @@ namespace Ethereum.Legacy.Blockchain.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class TransactionTests : GeneralStateTestBase
+public class TransactionTest : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test)

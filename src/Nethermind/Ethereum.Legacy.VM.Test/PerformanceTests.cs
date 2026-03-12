@@ -10,7 +10,7 @@ namespace Ethereum.Legacy.VM.Test
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
     // ReSharper disable once InconsistentNaming
-    public class PerformanceTests : GeneralStateTestBase
+    public class Performance : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         [Retry(3)]

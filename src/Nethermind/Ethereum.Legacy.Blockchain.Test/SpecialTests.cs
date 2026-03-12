@@ -9,7 +9,7 @@ namespace Ethereum.Legacy.Blockchain.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class SpecialTests : GeneralStateTestBase
+public class SpecialTest : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     [Retry(3)]

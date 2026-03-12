@@ -13,39 +13,23 @@ namespace Ethereum.Legacy.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class MetaTests
 {
-    private readonly List<string> excludesDirectories =
-    [
-        "stEWASMTests",
-        "VMTests",
-        "Specs",
-        "runtimes",
-        "ref",
-        "TestFiles",
-        "Blockhash",
-        "Data",
-        "Log",
-        "TestResults",
-        "db"
-    ];
+    private static readonly HashSet<string> ExcludedDirectories = ["stEWASMTests"];
 
     [Test]
     public void All_categories_are_tested()
     {
         string[] directories = Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
             .Select(Path.GetFileName)
+            .Where(d => d.StartsWith("st") && !ExcludedDirectories.Contains(d))
             .ToArray();
         Type[] types = GetType().Assembly.GetTypes();
-        List<string> missingCategories = new List<string>();
+        List<string> missingCategories = [];
         foreach (string directory in directories)
         {
-            string expectedTypeName = ExpectedTypeName(directory).Replace("-", "");
-            Type type = types.SingleOrDefault(t => string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase));
-            if (type is null && !excludesDirectories.Contains(directory))
+            string expectedTypeName = ExpectedTypeName(directory);
+            if (types.All(t => !string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase)))
             {
-                if (new DirectoryInfo(directory).GetFiles().Any(f => f.Name.Contains(".resources.")))
-                    continue;
-
-                missingCategories.Add(directory + " - " + expectedTypeName);
+                missingCategories.Add(directory + " expected " + expectedTypeName);
             }
         }
 
@@ -59,22 +43,10 @@ public class MetaTests
 
     private static string ExpectedTypeName(string directory)
     {
-        string expectedTypeName = directory.Remove(0, 2);
-        if (!expectedTypeName.EndsWith("Tests"))
-        {
-            if (!expectedTypeName.EndsWith("Test"))
-            {
-                expectedTypeName += "Tests";
-            }
-            else
-            {
-                expectedTypeName += "s";
-            }
-        }
-
-        if (directory.StartsWith("vm"))
-            return "Vm" + expectedTypeName;
-
-        return expectedTypeName;
+        string name = directory[2..];
+        name = name.Replace('-', '_');
+        if (name.Length > 0 && char.IsDigit(name[0]))
+            name = "_" + name;
+        return name;
     }
 }
