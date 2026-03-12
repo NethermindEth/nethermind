@@ -402,7 +402,7 @@ public static class PayloadLoader
     private static long ParseHexLong(JsonElement parent, string propertyName)
     {
         string hex = parent.GetProperty(propertyName).GetString();
-        return Convert.ToInt64(hex, 16);
+        return Convert.ToInt64(StripHexPrefix(hex), 16);
     }
 
     private static ulong ParseHexULong(JsonElement parent, string propertyName)
@@ -413,7 +413,14 @@ public static class PayloadLoader
 
     private static ulong ParseHexULong(string hex)
     {
-        return Convert.ToUInt64(hex, 16);
+        return Convert.ToUInt64(StripHexPrefix(hex), 16);
+    }
+
+    private static string StripHexPrefix(string hex)
+    {
+        if (hex is not null && hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return hex.Substring(2);
+        return hex;
     }
 
     private static UInt256 ParseHexUInt256(JsonElement parent, string propertyName)
