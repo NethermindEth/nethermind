@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Config;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Admin;
@@ -39,7 +41,21 @@ public class EraEModule : Module
             })
             .AddSingleton<IEraImporter, EraImporter>()
             .AddSingleton<IEraExporter, EraExporter>()
-            .AddSingleton<IEraStoreFactory, EraStoreFactory>()
+            .AddSingleton<IEraStoreFactory>(ctx =>
+            {
+                IEraEConfig config = ctx.Resolve<IEraEConfig>();
+                IRemoteEraClient? remoteClient = string.IsNullOrWhiteSpace(config.RemoteBaseUrl)
+                    ? null
+                    : new HttpRemoteEraClient(new Uri(config.RemoteBaseUrl), config.RemoteChecksumFile);
+
+                return new EraStoreFactory(
+                    ctx.Resolve<ISpecProvider>(),
+                    ctx.Resolve<IBlockValidator>(),
+                    ctx.Resolve<IFileSystem>(),
+                    config,
+                    ctx.ResolveOptional<Validator>(),
+                    remoteClient);
+            })
             .AddSingleton<EraCliRunner>()
             .AddSingleton<IAdminEraService, AdminEraService>()
             .AddSingleton<Validator>(ctx =>

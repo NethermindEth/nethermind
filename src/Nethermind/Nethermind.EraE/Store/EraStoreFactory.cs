@@ -6,6 +6,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Config;
+using Nethermind.EraE.Exceptions;
 using Nethermind.EraE.Proofs;
 
 namespace Nethermind.EraE.Store;
@@ -15,20 +16,44 @@ public class EraStoreFactory(
     IBlockValidator blockValidator,
     IFileSystem fileSystem,
     IEraEConfig eraConfig,
-    Validator? validator = null
+    Validator? validator = null,
+    IRemoteEraClient? remoteClient = null
 ) : IEraStoreFactory
 {
-    public IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators) =>
-        new EraStore(
-            specProvider,
-            blockValidator,
-            fileSystem,
-            eraConfig.NetworkName!,
-            eraConfig.MaxEraSize,
-            trustedAccumulators,
-            src,
-            eraConfig.Concurrency,
-            validator);
+    public IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators)
+    {
+        IEraStore? localStore = null;
+        try
+        {
+            localStore = new EraStore(
+                specProvider,
+                blockValidator,
+                fileSystem,
+                eraConfig.NetworkName!,
+                eraConfig.MaxEraSize,
+                trustedAccumulators,
+                src,
+                eraConfig.Concurrency,
+                validator);
+        }
+        catch (EraException) when (remoteClient is not null)
+        {
+            // No local era files — remote will supply them on demand.
+        }
+
+        if (remoteClient is null)
+        {
+            if (localStore is null)
+                throw new EraException($"No eraE files found in '{src}' and no remote URL is configured.");
+            return localStore;
+        }
+
+        string downloadDir = !string.IsNullOrWhiteSpace(eraConfig.RemoteDownloadDirectory)
+            ? eraConfig.RemoteDownloadDirectory
+            : src;
+
+        return new RemoteEraStoreDecorator(localStore, remoteClient, downloadDir, eraConfig.MaxEraSize);
+    }
 }
 
 public interface IEraStoreFactory
