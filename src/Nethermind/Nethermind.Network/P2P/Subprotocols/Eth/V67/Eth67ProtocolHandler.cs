@@ -5,6 +5,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -28,7 +29,7 @@ public class Eth67ProtocolHandler(
     ILogManager logManager,
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth66ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+        gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
 {
     public override string Name => "eth67";
 

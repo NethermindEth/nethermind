@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Evm;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69;
@@ -27,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V70;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-7975 - partial block receipt lists.
 /// </summary>
-public class Eth70ProtocolHandler : Eth69ProtocolHandler
+public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 {
     private readonly MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70> _receiptsRequests70;
 

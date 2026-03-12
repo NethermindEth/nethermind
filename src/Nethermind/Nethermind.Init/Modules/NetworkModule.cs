@@ -5,20 +5,18 @@ using System;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
-using Nethermind.State;
-using Nethermind.State.SnapServer;
 using Nethermind.Stats;
-using Nethermind.Synchronization;
 using Handshake = Nethermind.Network.Rlpx.Handshake;
 using P2P = Nethermind.Network.P2P.Messages;
 using V62 = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -30,6 +28,7 @@ using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using NodeData = Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using Snap = Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Subprotocols = Nethermind.Network.P2P.Subprotocols;
 
 namespace Nethermind.Init.Modules;
 
@@ -134,18 +133,21 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V70.ReceiptsMessage70, V70.ReceiptsMessageSerializer70>()
 
             // P2P protocol handler factory (accepts any version; validation happens after Hello)
-            .Add<Network.P2P.ProtocolHandlers.P2PProtocolHandler>()
+            .Map<PublicKey, IRlpxHost>(rlpx => rlpx.LocalNodeId)
+            .Add<P2PProtocolHandler>()
             .AddLast<IProtocolHandlerFactory>(ctx =>
-                new Network.P2P.ProtocolHandlers.P2PProtocolHandlerFactory(ctx.Resolve<Func<Network.P2P.ISession, Network.P2P.ProtocolHandlers.P2PProtocolHandler>>()))
+                new ReusableProtocolHandlerFactory<P2PProtocolHandler>(
+                    ctx.Resolve<Func<Network.P2P.ISession, P2PProtocolHandler>>(),
+                    Protocol.P2P))
 
             // Protocol handler factories (using clean DSL with Autofac Func auto-generation)
-            .AddProtocolHandler<Network.P2P.Subprotocols.Snap.SnapProtocolHandler>()
-            .AddProtocolHandler<Network.P2P.Subprotocols.NodeData.NodeDataProtocolHandler>()
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V66.Eth66ProtocolHandler>()
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V67.Eth67ProtocolHandler>()
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V68.Eth68ProtocolHandler>()
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V69.Eth69ProtocolHandler>()
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V70.Eth70ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Snap.SnapProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.NodeData.NodeDataProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V67.Eth67ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V68.Eth68ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V69.Eth69ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V70.Eth70ProtocolHandler>()
 
             ;
     }
