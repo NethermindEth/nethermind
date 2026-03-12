@@ -53,9 +53,9 @@ public class GasPayloadExecuteBenchmarks
         _testHeaderTemplate = header;
         _testTransactions = txs;
 
-        // Warm up: execute once to JIT-compile code paths, then reset.
-        ExecutePayloadCore();
-        _state.Reset();
+        // No manual warmup here — BDN's WorkloadJitting phase already runs the benchmark
+        // method once, which JITs all code paths. Additional warmup is redundant for 100ms+
+        // benchmarks and wastes ~100-1000ms per scenario per launch.
     }
 
     [Benchmark]

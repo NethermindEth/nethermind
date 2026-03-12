@@ -34,10 +34,15 @@ public class GasBenchmarkConfig : ManualConfig
 
     public GasBenchmarkConfig()
     {
+        // These benchmarks take 100-650ms per invocation. InvocationCount(1) + UnrollFactor(1)
+        // skip BDN's pilot phase which would otherwise run ~9 wasted executions per scenario
+        // to auto-determine batching — unnecessary at this timescale.
         Job job = Job.MediumRun
             .WithLaunchCount(LaunchCount ?? 1)
             .WithWarmupCount(WarmupCount ?? 3)
-            .WithIterationCount(IterationCount ?? 1);
+            .WithIterationCount(IterationCount ?? 1)
+            .WithInvocationCount(1)
+            .WithUnrollFactor(1);
 
         if (InProcess)
         {
