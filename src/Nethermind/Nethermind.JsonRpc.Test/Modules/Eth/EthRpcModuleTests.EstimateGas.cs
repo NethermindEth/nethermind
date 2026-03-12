@@ -97,7 +97,7 @@ public partial class EthRpcModuleTests
             test.JsonSerializer.Deserialize<AccessListTransactionForRpc>(
                 $"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
         string serializedCreateAccessList = await test.TestEthRpc("eth_createAccessList",
-            transaction, "0x0", optimize.ToString().ToLower());
+            transaction, "0x0", null, optimize.ToString().ToLower());
 
         transaction.AccessList = test.JsonSerializer.Deserialize<AccessListForRpc>(JToken.Parse(serializedCreateAccessList).SelectToken("result.accessList")!.ToString());
         string serializedEstimateGas =
@@ -383,6 +383,22 @@ public partial class EthRpcModuleTests
         long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
 
         await TestEstimateGasOutOfGas(ctx, null, blockGasLimit, "out of gas");
+    }
+
+    [Test]
+    public async Task Estimate_gas_not_limited_by_latest_block_gas_used()
+    {
+        using Context ctx = await Context.Create();
+
+        Block head = ctx.Test.BlockTree.FindHeadBlock()!;
+        head.Header.GasUsed = head.Header.GasLimit - 10_000;
+
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            "{\"from\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\"}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}"));
     }
 
     [Test]

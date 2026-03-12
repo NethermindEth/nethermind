@@ -157,8 +157,8 @@ public class PreimageRecordingPersistenceTests
         innerBatch.Received(1).SetAccount(address, account);
 
         // Raw operations should NOT be called
-        innerBatch.DidNotReceive().SetStorageRaw(Arg.Any<Hash256>(), Arg.Any<Hash256>(), Arg.Any<SlotValue?>());
-        innerBatch.DidNotReceive().SetAccountRaw(Arg.Any<Hash256>(), Arg.Any<Account>());
+        innerBatch.DidNotReceive().SetStorageRaw(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256>(), Arg.Any<SlotValue?>());
+        innerBatch.DidNotReceive().SetAccountRaw(Arg.Any<ValueHash256>(), Arg.Any<Account>());
     }
 
     [Test]

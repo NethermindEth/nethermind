@@ -82,11 +82,11 @@ public class NodeLifecycleManagerTests
         IMsgSender udpClient = Substitute.For<IMsgSender>();
 
         SimpleFilePublicKeyDb discoveryDb = new("Test", "test", logManager);
-        _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(discoveryDb, logManager), discoveryConfig, null, logManager);
+        _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(discoveryDb, logManager), discoveryConfig, new NetworkConfig(), logManager);
         _discoveryManager.MsgSender = udpClient;
 
         _discoveryManagerMock = Substitute.For<IDiscoveryManager>();
-        _discoveryManagerMock.NodesFilter.Returns(new NodeFilter(16));
+        _discoveryManagerMock.ShouldContact(Arg.Any<IPAddress>()).Returns(true);
     }
 
     [Test]
@@ -177,6 +177,14 @@ public class NodeLifecycleManagerTests
             .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>());
 
         await nodeManager.SendFindNode([]);
+
+        // Configure mock to track IPs and allow only first occurrence
+        HashSet<IPAddress> seenIps = [];
+        _discoveryManagerMock.ShouldContact(Arg.Any<IPAddress>()).Returns(callInfo =>
+        {
+            IPAddress ip = callInfo.Arg<IPAddress>();
+            return seenIps.Add(ip);
+        });
 
         Node[] firstNodes = TestItem.PublicKeys
             .Take(12)

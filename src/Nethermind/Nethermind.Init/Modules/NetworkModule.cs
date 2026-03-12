@@ -1,15 +1,20 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Container;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Handshake = Nethermind.Network.Rlpx.Handshake;
@@ -23,6 +28,7 @@ using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using NodeData = Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using Snap = Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Subprotocols = Nethermind.Network.P2P.Subprotocols;
 
 namespace Nethermind.Init.Modules;
 
@@ -125,6 +131,23 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // V70
             .AddMessageSerializer<V70.GetReceiptsMessage70, V70.GetReceiptsMessageSerializer70>()
             .AddMessageSerializer<V70.ReceiptsMessage70, V70.ReceiptsMessageSerializer70>()
+
+            // P2P protocol handler factory (accepts any version; validation happens after Hello)
+            .Map<PublicKey, IRlpxHost>(rlpx => rlpx.LocalNodeId)
+            .Add<P2PProtocolHandler>()
+            .AddLast<IProtocolHandlerFactory>(ctx =>
+                new ReusableProtocolHandlerFactory<P2PProtocolHandler>(
+                    ctx.Resolve<Func<Network.P2P.ISession, P2PProtocolHandler>>(),
+                    Protocol.P2P))
+
+            // Protocol handler factories (using clean DSL with Autofac Func auto-generation)
+            .AddProtocolHandler<Subprotocols.Snap.SnapProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.NodeData.NodeDataProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V67.Eth67ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V68.Eth68ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V69.Eth69ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V70.Eth70ProtocolHandler>()
 
             ;
     }

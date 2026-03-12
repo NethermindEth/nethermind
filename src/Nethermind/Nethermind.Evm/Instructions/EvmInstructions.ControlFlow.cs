@@ -85,7 +85,7 @@ internal static partial class EvmInstructions
         if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
@@ -123,7 +123,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
@@ -189,7 +189,7 @@ internal static partial class EvmInstructions
         vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.Revert;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -219,7 +219,8 @@ internal static partial class EvmInstructions
         // If Shanghai DDoS protection is active, charge the appropriate gas cost.
         if (spec.UseShanghaiDDosProtection)
         {
-            TGasPolicy.ConsumeSelfDestructGas(ref gas);
+            if (!TGasPolicy.ConsumeSelfDestructGas(ref gas))
+                goto OutOfGas;
         }
 
         // Pop the inheritor address from the stack; signal underflow if missing.
@@ -241,6 +242,16 @@ internal static partial class EvmInstructions
 
         // Retrieve the current balance for transfer.
         UInt256 result = state.GetBalance(executingAccount);
+
+        if (executingAccount == inheritor)
+        {
+            vm.AddSelfDestructLog(executingAccount, result);
+        }
+        else
+        {
+            vm.AddTransferLog(executingAccount, inheritor, result);
+        }
+
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
@@ -276,7 +287,7 @@ internal static partial class EvmInstructions
         // Subtract the balance from the executing account.
         state.SubtractFromBalance(executingAccount, result, spec);
 
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     Stop:
         return EvmExceptionType.Stop;
     OutOfGas:
