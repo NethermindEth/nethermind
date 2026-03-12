@@ -60,15 +60,21 @@ public class BlockchainProcessorTests
             public void Allow(Hash256 hash)
             {
                 _logger.Info($"Allowing {hash} to process");
-                _allowed.Add(hash);
-                lock (_gate) { Monitor.PulseAll(_gate); }
+                lock (_gate)
+                {
+                    _allowed.Add(hash);
+                    Monitor.PulseAll(_gate);
+                }
             }
 
             public void AllowToFail(Hash256 hash)
             {
                 _logger.Info($"Allowing {hash} to fail");
-                _allowedToFail.Add(hash);
-                lock (_gate) { Monitor.PulseAll(_gate); }
+                lock (_gate)
+                {
+                    _allowedToFail.Add(hash);
+                    Monitor.PulseAll(_gate);
+                }
             }
 
             public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
@@ -85,37 +91,40 @@ public class BlockchainProcessorTests
                 int nextBlock = 0;
                 while (true)
                 {
-                    bool notYet = false;
-                    for (int i = nextBlock; i < suggestedBlocks.Count; i++)
+                    lock (_gate)
                     {
-                        BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
-                        Block suggestedBlock = suggestedBlocks[i];
-                        BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
-                        Hash256 hash = suggestedBlock.Hash!;
-                        if (!_allowed.Contains(hash))
+                        bool notYet = false;
+                        for (int i = nextBlock; i < suggestedBlocks.Count; i++)
                         {
-                            if (_allowedToFail.TryRemove(hash))
+                            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+                            Block suggestedBlock = suggestedBlocks[i];
+                            BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
+                            Hash256 hash = suggestedBlock.Hash!;
+                            if (!_allowed.Contains(hash))
                             {
-                                BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
-                                throw new InvalidBlockException(suggestedBlock, "allowed to fail");
+                                if (_allowedToFail.TryRemove(hash))
+                                {
+                                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
+                                    throw new InvalidBlockException(suggestedBlock, "allowed to fail");
+                                }
+
+                                notYet = true;
+                                break;
                             }
 
-                            notYet = true;
-                            break;
+                            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
+                            nextBlock = i + 1;
                         }
 
-                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
-                        nextBlock = i + 1;
-                    }
-
-                    if (notYet)
-                    {
-                        lock (_gate) { Monitor.Wait(_gate, ProcessingWait); }
-                    }
-                    else
-                    {
-                        _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
-                        return suggestedBlocks.ToArray();
+                        if (notYet)
+                        {
+                            Monitor.Wait(_gate, ProcessingWait);
+                        }
+                        else
+                        {
+                            _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
+                            return suggestedBlocks.ToArray();
+                        }
                     }
                 }
             }
@@ -137,8 +146,11 @@ public class BlockchainProcessorTests
             public void Allow(Hash256 hash)
             {
                 _logger.Info($"Allowing {hash} to recover");
-                _allowed[hash] = new object();
-                lock (_gate) { Monitor.PulseAll(_gate); }
+                lock (_gate)
+                {
+                    _allowed[hash] = new object();
+                    Monitor.PulseAll(_gate);
+                }
             }
 
             public void RecoverData(Block block)
@@ -152,22 +164,25 @@ public class BlockchainProcessorTests
 
                 while (true)
                 {
-                    Hash256 blockHash = block.Hash!;
-                    if (!_allowed.ContainsKey(blockHash))
+                    lock (_gate)
                     {
-                        if (_allowedToFail.ContainsKey(blockHash))
+                        Hash256 blockHash = block.Hash!;
+                        if (!_allowed.ContainsKey(blockHash))
                         {
-                            _allowedToFail.Remove(blockHash, out _);
-                            throw new Exception();
+                            if (_allowedToFail.ContainsKey(blockHash))
+                            {
+                                _allowedToFail.Remove(blockHash, out _);
+                                throw new Exception();
+                            }
+
+                            Monitor.Wait(_gate, ProcessingWait);
+                            continue;
                         }
 
-                        lock (_gate) { Monitor.Wait(_gate, ProcessingWait); }
-                        continue;
+                        block.Header.Author = Address.Zero;
+                        _allowed.Remove(blockHash, out _);
+                        return;
                     }
-
-                    block.Header.Author = Address.Zero;
-                    _allowed.Remove(blockHash, out _);
-                    return;
                 }
             }
         }
