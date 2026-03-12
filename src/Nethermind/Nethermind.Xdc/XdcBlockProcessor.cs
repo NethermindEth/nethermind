@@ -10,7 +10,10 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 
@@ -21,6 +24,10 @@ internal class XdcBlockProcessor : BlockProcessor
     public XdcBlockProcessor(ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor, IWorldState stateProvider, IReceiptStorage receiptStorage, IBeaconBlockRootHandler beaconBlockRootHandler, IBlockhashStore blockHashStore, ILogManager logManager, IWithdrawalProcessor withdrawalProcessor, IExecutionRequestsProcessor executionRequestsProcessor) : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor)
     {
     }
+
+    protected override BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec) =>
+        BlockExecutionContext.WithPrevRandao(header, spec,
+            ValueKeccak.Compute(header.Number.ToBigEndianSpanWithoutLeadingZeros(out _)));
 
     protected override Block PrepareBlockForProcessing(Block suggestedBlock)
     {
