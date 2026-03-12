@@ -8,7 +8,7 @@ namespace Nethermind.Xdc.Types;
 
 public abstract class RlpHashEqualityBase
 {
-    private Hash256 _hash;
+    private Hash256? _hash;
 
     public Hash256 Hash => _hash ??= CalculateHash();
 
