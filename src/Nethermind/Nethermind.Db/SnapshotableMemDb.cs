@@ -321,56 +321,27 @@ namespace Nethermind.Db
 
         private byte[]? FindFirstKeyAtVersion(int version)
         {
-            byte[]? candidateKey = null;
-            byte[]? candidateValue = null;
-
-            foreach (var entry in _db)
+            foreach (byte[] key in GetAllUniqueKeys())
             {
-                if (candidateKey is not null && candidateKey.AsSpan().SequenceCompareTo(entry.Key) != 0)
-                {
-                    if (candidateValue is not null)
-                        return candidateKey;
-                    candidateKey = null;
-                    candidateValue = null;
-                }
-
-                if (entry.Version <= version)
-                {
-                    candidateKey = entry.Key;
-                    candidateValue = entry.Value;
-                }
+                if (GetValueAtVersion(key, version) is not null)
+                    return key;
             }
-
-            return candidateValue is not null ? candidateKey : null;
+            return null;
         }
 
         private byte[]? FindLastKeyAtVersion(int version)
         {
-            byte[]? lastValidKey = null;
-            byte[]? candidateKey = null;
-            byte[]? candidateValue = null;
-
-            foreach (var entry in _db)
+            byte[]? lastKey = null;
+            foreach (var entry in _db.Reverse())
             {
-                if (candidateKey is not null && candidateKey.AsSpan().SequenceCompareTo(entry.Key) != 0)
+                if (lastKey is null || lastKey.AsSpan().SequenceCompareTo(entry.Key) != 0)
                 {
-                    if (candidateValue is not null)
-                        lastValidKey = candidateKey;
-                    candidateKey = null;
-                    candidateValue = null;
-                }
-
-                if (entry.Version <= version)
-                {
-                    candidateKey = entry.Key;
-                    candidateValue = entry.Value;
+                    lastKey = entry.Key;
+                    if (GetValueAtVersion(entry.Key, version) is not null)
+                        return entry.Key;
                 }
             }
-
-            if (candidateValue is not null)
-                lastValidKey = candidateKey;
-
-            return lastValidKey;
+            return null;
         }
 
         /// <summary>
