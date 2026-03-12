@@ -393,7 +393,6 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        [Ignore("Known bug in PruneVersionsOlderThan - will be fixed in separate PR. Use neverPrune option for now.")]
         public void Snapshot_survives_pruning_when_newer_snapshot_disposed()
         {
             // Use default (pruning enabled) to verify the fix
