@@ -14,5 +14,6 @@ internal static class EntryTypes
 
     // EraE-specific
     public const ushort CompressedSlimReceipts = 0x0a;
+    public const ushort Proof = 0x0b;
     public const ushort ComponentIndex = 0x3267;
 }

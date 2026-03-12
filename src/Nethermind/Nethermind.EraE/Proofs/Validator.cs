@@ -182,9 +182,10 @@ public class Validator
         Span<byte> merkleRoot = leaf.ToByteArray();
         for (int i = 0; i < depth; i++)
         {
-            bool leftSibling = (genIndex >> i) % 2 == 0;
+            // bit i == 1 means current node is the RIGHT child, so sibling is on the LEFT
+            bool siblingOnLeft = (genIndex >> i) % 2 != 0;
             Span<byte> next = new byte[32];
-            if (leftSibling)
+            if (siblingOnLeft)
                 Hash(branch[i].Bytes, merkleRoot, next);
             else
                 Hash(merkleRoot, branch[i].Bytes, next);

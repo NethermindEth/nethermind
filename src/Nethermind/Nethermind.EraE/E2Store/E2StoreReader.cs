@@ -70,7 +70,7 @@ public sealed class E2StoreReader : IDisposable
         get
         {
             EnsureIndexLoaded();
-            return _componentCount == 4;
+            return _componentCount >= 4;
         }
     }
 
@@ -194,7 +194,10 @@ public sealed class E2StoreReader : IDisposable
 
         // Read component_count from the 8 bytes before block_count
         _componentCount = (int)ReadInt64(_fileLength - 16);
-        if (_componentCount != 3 && _componentCount != 4)
+        // 3 = post-merge (header, body, receipts)
+        // 4 = pre-merge or transition (+ total-difficulty), or post-merge with proof
+        // 5 = transition with both total-difficulty and proof (future)
+        if (_componentCount < 3 || _componentCount > 5)
             throw new EraFormatException($"Invalid component count {_componentCount} in EraE ComponentIndex.");
 
         // Total data length = 8 + blockCount * componentCount * 8 + 8 + 8

@@ -15,14 +15,22 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
 {
     private readonly HttpClient _httpClient;
     private readonly Uri _baseUrl;
+    private readonly TimeSpan _requestTimeout;
+    private readonly int _maxRetries;
     private const string Endpoint = "/eth/v2/debug/beacon/states";
 
     private HistoricalSummary[] _cachedSummaries = [];
 
-    public HistoricalSummariesRpcProvider(Uri baseUrl, HttpClient? httpClient = null)
+    public HistoricalSummariesRpcProvider(
+        Uri baseUrl,
+        HttpClient? httpClient = null,
+        TimeSpan? requestTimeout = null,
+        int maxRetries = 3)
     {
         _baseUrl = baseUrl;
         _httpClient = httpClient ?? new HttpClient();
+        _requestTimeout = requestTimeout ?? TimeSpan.FromSeconds(30);
+        _maxRetries = maxRetries;
     }
 
     public void Dispose() => _httpClient.Dispose();
@@ -44,8 +52,28 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
         if (_cachedSummaries.Length > 0 && !forceRefresh)
             return _cachedSummaries;
 
-        _cachedSummaries = await LoadHistoricalSummariesAsync(stateId, cancellationToken);
+        _cachedSummaries = await LoadWithRetryAsync(stateId, cancellationToken);
         return _cachedSummaries;
+    }
+
+    private async Task<HistoricalSummary[]> LoadWithRetryAsync(
+        string stateId,
+        CancellationToken cancellationToken)
+    {
+        int attempt = 0;
+        while (true)
+        {
+            try
+            {
+                return await LoadHistoricalSummariesAsync(stateId, cancellationToken);
+            }
+            catch (Exception ex) when (IsTransient(ex) && attempt < _maxRetries - 1)
+            {
+                attempt++;
+                TimeSpan delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)); // 2s, 4s, 8s
+                await Task.Delay(delay, cancellationToken);
+            }
+        }
     }
 
     private async Task<HistoricalSummary[]> LoadHistoricalSummariesAsync(
@@ -54,16 +82,22 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
     {
         Uri fullUri = new(_baseUrl, $"{Endpoint}/{stateId}");
 
+        using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(_requestTimeout);
+
         using HttpRequestMessage request = new(HttpMethod.Get, fullUri);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         using HttpResponseMessage response = await _httpClient.SendAsync(
-            request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
         response.EnsureSuccessStatusCode();
 
-        await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        return await ParseHistoricalSummariesFromStreamAsync(stream, cancellationToken);
+        await using Stream stream = await response.Content.ReadAsStreamAsync(timeoutCts.Token);
+        return await ParseHistoricalSummariesFromStreamAsync(stream, timeoutCts.Token);
     }
+
+    private static bool IsTransient(Exception ex) =>
+        ex is HttpRequestException or TaskCanceledException or TimeoutException;
 
     private static async Task<HistoricalSummary[]> ParseHistoricalSummariesFromStreamAsync(
         Stream stream,
@@ -84,15 +118,17 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
         List<HistoricalSummary> summaries = new(historicalSummaries.GetArrayLength());
         foreach (JsonElement summary in historicalSummaries.EnumerateArray())
         {
-            // Bug fix: use `summary` (the loop element), not `data` (the outer object)
-            if (!summary.TryGetProperty("block_summary_root", out JsonElement blockSummaryRoot))
+            if (!summary.TryGetProperty("block_summary_root", out JsonElement blockSummaryRootEl))
                 continue;
-            if (!summary.TryGetProperty("state_summary_root", out JsonElement stateSummaryRoot))
+            if (!summary.TryGetProperty("state_summary_root", out JsonElement stateSummaryRootEl))
                 continue;
 
-            summaries.Add(HistoricalSummary.From(
-                blockSummaryRoot.GetString()!,
-                stateSummaryRoot.GetString()!));
+            string? blockSummaryRoot = blockSummaryRootEl.GetString();
+            string? stateSummaryRoot = stateSummaryRootEl.GetString();
+            if (blockSummaryRoot is null || stateSummaryRoot is null)
+                continue;
+
+            summaries.Add(HistoricalSummary.From(blockSummaryRoot, stateSummaryRoot));
         }
 
         return summaries.ToArray();
