@@ -14,6 +14,7 @@ namespace Nethermind.Db
     public class SnapshotableMemColumnsDb<TKey> : IColumnsDb<TKey> where TKey : struct, Enum
     {
         private readonly IDictionary<TKey, SnapshotableMemDb> _columnDbs = new Dictionary<TKey, SnapshotableMemDb>();
+        private readonly bool _neverPrune;
 
         public SnapshotableMemColumnsDb(params TKey[] keys)
         {
@@ -31,11 +32,16 @@ namespace Nethermind.Db
         {
         }
 
+        public SnapshotableMemColumnsDb(bool neverPrune) : this(Enum.GetValues<TKey>())
+        {
+            _neverPrune = neverPrune;
+        }
+
         public IDb GetColumnDb(TKey key)
         {
             if (!_columnDbs.TryGetValue(key, out SnapshotableMemDb? db))
             {
-                db = new SnapshotableMemDb($"Column_{key}");
+                db = new SnapshotableMemDb($"Column_{key}", _neverPrune);
                 _columnDbs[key] = db;
             }
             return db;
