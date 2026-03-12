@@ -21,6 +21,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
+using System.Threading;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
@@ -68,6 +69,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
         private readonly IBlockAccessListBuilder? _balBuilder;
+        private Lock _gasUsedLock = new();
 
         [Flags]
         protected enum ExecutionOptions
@@ -805,10 +807,19 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.Restore(snapshot, VirtualMachine.TxExecutionContext.BlockAccessIndex);
             gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
         Complete:
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation) && _balBuilder is not { ParallelExecutionEnabled: true })
+            // if (!opts.HasFlag(ExecutionOptions.SkipValidation) && _balBuilder is not { ParallelExecutionEnabled: true })
+            // {
+            //     header.GasUsed += gasConsumed.EffectiveBlockGas;
+            //     Console.WriteLine($"[sequential] header.GasUsed = {header.GasUsed}, txBlockGas = {gasConsumed.EffectiveBlockGas}");
+            // }
+
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
             {
-                header.GasUsed += gasConsumed.EffectiveBlockGas;
-                Console.WriteLine($"[sequential] header.GasUsed = {header.GasUsed}, txBlockGas = {gasConsumed.EffectiveBlockGas}");
+                lock (_gasUsedLock)
+                {
+                    header.GasUsed += gasConsumed.EffectiveBlockGas;
+                    Console.WriteLine($"[sequential] header.GasUsed = {header.GasUsed}, txBlockGas = {gasConsumed.EffectiveBlockGas}");
+                }
             }
 
             return statusCode;

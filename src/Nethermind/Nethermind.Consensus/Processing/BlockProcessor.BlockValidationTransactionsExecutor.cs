@@ -103,7 +103,7 @@ namespace Nethermind.Consensus.Processing
                                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {totalGas} > block gas limit {block.Header.GasLimit} after transaction index {chunkEnd - 1}.");
                             }
                         }
-                        _blockExecutionContext.Header.GasUsed = totalGas;
+                        // _blockExecutionContext.Header.GasUsed = totalGas;
                     }, token);
 
                     ParallelUnbalancedWork.For(
@@ -122,23 +122,25 @@ namespace Nethermind.Consensus.Processing
                             int txIndex = i - 1;
                             try
                             {
+                                Transaction tx = state.txs[txIndex];
                                 ProcessTransactionParallel(
                                     state.transactionProcessors[txIndex],
                                     state.stateProvider,
                                     state.specProvider,
                                     state.block,
-                                    state.txs[txIndex],
+                                    tx,
                                     txIndex,
                                     state.receiptsTracers[txIndex],
                                     state.processingOptions,
                                     state.logger);
-                                long spentGas = state.txs[txIndex].SpentGas;
-                                long blockGasUsed = state.txs[txIndex].BlockGasUsed;
-                                blockGasUsed = blockGasUsed == state.txs[txIndex].GasLimit ? spentGas : blockGasUsed;
+                                long spentGas = tx.SpentGas;
+                                long blockGasUsed = tx.BlockGasUsed;
+                                // blockGasUsed = blockGasUsed == tx.GasLimit ? spentGas : blockGasUsed;
                                 state.gasResults[txIndex].SetResult((blockGasUsed, spentGas, null));
                             }
                             catch (Exception ex)
                             {
+                                Console.WriteLine($"parallel exec error: {ex}");
                                 state.gasResults[txIndex].SetResult((null, null, ex));
                             }
 
@@ -203,6 +205,7 @@ namespace Nethermind.Consensus.Processing
 
             protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
+                currentTx.BlockAccessIndex = index + 1;
                 TransactionResult result = _transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
