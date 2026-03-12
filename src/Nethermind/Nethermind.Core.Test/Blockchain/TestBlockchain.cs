@@ -125,7 +125,7 @@ public class TestBlockchain : IDisposable
 
     // Resolving all these component at once is faster.
     protected FromContainer _fromContainer = null!;
-    public class FromContainer(
+    public sealed class FromContainer(
         Lazy<IStateReader> stateReader,
         Lazy<IEthereumEcdsa> ethereumEcdsa,
         Lazy<INonceManager> nonceManager,
