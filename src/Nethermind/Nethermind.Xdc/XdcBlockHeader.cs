@@ -13,22 +13,20 @@ using System.Collections.Immutable;
 
 namespace Nethermind.Xdc;
 
-public class XdcBlockHeader : BlockHeader, IHashResolver
+public class XdcBlockHeader(
+    Hash256 parentHash,
+    Hash256 unclesHash,
+    Address beneficiary,
+    in UInt256 difficulty,
+    long number,
+    long gasLimit,
+    ulong timestamp,
+    byte[] extraData,
+    bool isSelfMined = false
+) : BlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData), IHashResolver
 {
     private static readonly XdcHeaderDecoder _headerDecoder = new();
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
-    public XdcBlockHeader(
-        Hash256 parentHash,
-        Hash256 unclesHash,
-        Address beneficiary,
-        in UInt256 difficulty,
-        long number,
-        long gasLimit,
-        ulong timestamp,
-        byte[] extraData)
-        : base(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
-    {
-    }
 
     public byte[]? Validators { get; set; }
 
@@ -85,6 +83,8 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         }
         set { _extraFieldsV2 = value; }
     }
+
+    public bool IsSelfMined { get; } = isSelfMined;
 
     public virtual ValueHash256 CalculateHash()
     {
