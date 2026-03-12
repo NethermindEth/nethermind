@@ -29,7 +29,7 @@ public class Bls12381G2AddPrecompile : IPrecompile<Bls12381G2AddPrecompile>
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Metrics.BlsG2AddPrecompile++;
+        Metrics.Bls12381G2AddPrecompile++;
 
         const int expectedInputLength = 2 * Eip2537.LenG2;
         if (inputData.Length != expectedInputLength) return Errors.InvalidInputLength;

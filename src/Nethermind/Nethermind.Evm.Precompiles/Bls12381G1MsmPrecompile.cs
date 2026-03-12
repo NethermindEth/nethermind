@@ -37,7 +37,7 @@ public class Bls12381G1MsmPrecompile : IPrecompile<Bls12381G1MsmPrecompile>
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Metrics.BlsG1MSMPrecompile++;
+        Metrics.Bls12381G1MsmPrecompile++;
 
         if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
         {

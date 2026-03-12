@@ -33,7 +33,7 @@ public class Bls12381PairingCheckPrecompile : IPrecompile<Bls12381PairingCheckPr
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Metrics.BlsPairingCheckPrecompile++;
+        Metrics.Bls12381PairingCheckPrecompile++;
 
         if (inputData.Length % PairSize > 0 || inputData.Length == 0) return Errors.InvalidInputLength;
 

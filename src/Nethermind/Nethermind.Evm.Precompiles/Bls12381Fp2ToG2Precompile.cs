@@ -29,7 +29,7 @@ public class Bls12381Fp2ToG2Precompile : IPrecompile<Bls12381Fp2ToG2Precompile>
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Metrics.BlsMapFp2ToG2Precompile++;
+        Metrics.Bls12381Fp2ToG2Precompile++;
 
         const int expectedInputLength = 2 * Eip2537.LenFp;
         if (inputData.Length != expectedInputLength) return Errors.InvalidInputLength;
