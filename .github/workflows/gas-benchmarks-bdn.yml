@@ -75,13 +75,7 @@ jobs:
             launchCount="${{ inputs.launchCount }}"
           fi
 
-          # Full suite on master push, PRs, and workflow_dispatch; smoke test on branch pushes
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" != "refs/heads/master" ]]; then
-            chunks="[1, 2, 3, 4, 5]"
-            mode="NewPayload"
-          else
-            chunks="[1, 2, 3, 4, 5]"
-          fi
+          chunks="[1, 2, 3, 4, 5]"
 
           {
             echo "mode=${mode}"

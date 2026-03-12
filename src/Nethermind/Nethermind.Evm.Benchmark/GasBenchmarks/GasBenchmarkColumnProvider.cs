@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Mathematics;
 using BenchmarkDotNet.Reports;
@@ -24,10 +23,22 @@ public class GasBenchmarkColumnProvider : IColumnProvider
 
     private static double CalculateMGasThroughput(double nanoseconds)
     {
-        // All gas-benchmark payloads use 100M gas
+        // All gas-benchmark payloads use exactly 100M gas by design (filenames contain "gas-value_100M").
+        // This constant must stay in sync with GAS_PER_BENCHMARK in scripts/benchmarks/compare_bdn_results.py.
         const long gas = 100_000_000L;
         double opThroughput = 1_000_000_000.0 / nanoseconds;
         return gas * opThroughput / 1_000_000.0;
+    }
+
+    private static Statistics FindStatistics(Summary summary, BenchmarkCase benchmarkCase)
+    {
+        foreach (BenchmarkReport report in summary.Reports)
+        {
+            if (report.BenchmarkCase == benchmarkCase)
+                return report.ResultStatistics;
+        }
+
+        return null;
     }
 
     private class MGasThroughputColumn : IColumn
@@ -43,7 +54,7 @@ public class GasBenchmarkColumnProvider : IColumnProvider
 
         public string GetValue(Summary summary, BenchmarkCase benchmarkCase)
         {
-            Statistics stats = summary.Reports.FirstOrDefault(r => r.BenchmarkCase == benchmarkCase)?.ResultStatistics;
+            Statistics stats = FindStatistics(summary, benchmarkCase);
             if (stats is null)
                 return "N/A";
 
@@ -70,12 +81,14 @@ public class GasBenchmarkColumnProvider : IColumnProvider
 
         public string GetValue(Summary summary, BenchmarkCase benchmarkCase)
         {
-            Statistics stats = summary.Reports.FirstOrDefault(r => r.BenchmarkCase == benchmarkCase)?.ResultStatistics;
+            Statistics stats = FindStatistics(summary, benchmarkCase);
             if (stats is null)
                 return "N/A";
 
             ConfidenceInterval ci = stats.GetConfidenceInterval(ConfidenceLevel.L99);
-            double bound = isLower ? ci.Lower : ci.Upper;
+            // CI bounds are in nanoseconds: lower ns = faster = higher MGas/s.
+            // Invert the mapping so CI-Lower shows the lower MGas/s bound (from higher ns).
+            double bound = isLower ? ci.Upper : ci.Lower;
             return CalculateMGasThroughput(bound).ToString("F2");
         }
 

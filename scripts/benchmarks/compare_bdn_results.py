@@ -7,7 +7,9 @@ and outputs a Markdown comparison table suitable for GitHub PR comments.
 import json
 import sys
 
-GAS_PER_BENCHMARK = 100_000_000  # 100M gas per scenario
+# All gas-benchmark payloads use exactly 100M gas by design (filenames contain "gas-value_100M").
+# Must stay in sync with the constant in GasBenchmarkColumnProvider.cs.
+GAS_PER_BENCHMARK = 100_000_000
 SIGNIFICANT_CHANGE_THRESHOLD = 3.0  # % change to flag as regression/improvement
 
 

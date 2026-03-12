@@ -3,19 +3,14 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.Visitors;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -180,7 +175,11 @@ public class GasBlockBuildingBenchmarks
         public void UpdateStats(Block block, BlockHeader baseBlock, long blockProcessingTimeInMicros) { }
     }
 
-    private sealed class BenchmarkBlockProducerBlockTree : IBlockTree
+    /// <summary>
+    /// Block tree stub for block-building benchmarks. Knows about the parent header
+    /// so BlockchainProcessor can find the parent block/header during production.
+    /// </summary>
+    private sealed class BenchmarkBlockProducerBlockTree : BenchmarkBlockTreeBase
     {
         private readonly BlockHeader _parentHeader;
         private readonly Block _head;
@@ -189,127 +188,41 @@ public class GasBlockBuildingBenchmarks
         {
             _parentHeader = parentHeader;
             _head = new Block(parentHeader, new BlockBody(Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), null));
-            SyncPivot = (0, Keccak.Zero);
             BestSuggestedHeader = parentHeader;
         }
 
-        public Hash256 HeadHash => _head.Hash;
-        public Hash256 GenesisHash => _parentHeader.Hash;
-        public Hash256 PendingHash => null;
-        public Hash256 FinalizedHash => null;
-        public Hash256 SafeHash => null;
-        public Block Head => _head;
-        public ulong NetworkId => 1;
-        public ulong ChainId => 1;
-        public BlockHeader Genesis => _parentHeader;
-        public BlockHeader BestSuggestedHeader { get; set; }
-        public Block BestSuggestedBody => _head;
-        public BlockHeader BestSuggestedBeaconHeader => _parentHeader;
-        public BlockHeader LowestInsertedHeader { get; set; }
-        public BlockHeader LowestInsertedBeaconHeader { get; set; }
-        public long BestKnownNumber => _parentHeader.Number;
-        public long BestKnownBeaconNumber => _parentHeader.Number;
-        public bool CanAcceptNewBlocks => true;
-        public (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
-        public bool IsProcessingBlock { get; set; }
-        public long? BestPersistedState { get; set; }
+        public override Hash256 HeadHash => _head.Hash;
+        public override Hash256 GenesisHash => _parentHeader.Hash;
+        public override Block Head => _head;
+        public override BlockHeader Genesis => _parentHeader;
+        public override Block BestSuggestedBody => _head;
+        public override BlockHeader BestSuggestedBeaconHeader => _parentHeader;
+        public override long BestKnownNumber => _parentHeader.Number;
+        public override long BestKnownBeaconNumber => _parentHeader.Number;
+        public override long GetLowestBlock() => _parentHeader.Number;
 
-        public event EventHandler<BlockEventArgs> NewBestSuggestedBlock { add { } remove { } }
-        public event EventHandler<BlockEventArgs> NewSuggestedBlock { add { } remove { } }
-        public event EventHandler<BlockReplacementEventArgs> BlockAddedToMain { add { } remove { } }
-        public event EventHandler<BlockEventArgs> NewHeadBlock { add { } remove { } }
-        public event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain { add { } remove { } }
-        public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs> OnForkChoiceUpdated { add { } remove { } }
-
-        public Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
+        public override Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
             blockHash == _parentHeader.Hash ? _head : null;
-
-        public Block FindBlock(long blockNumber, BlockTreeLookupOptions options) =>
+        public override Block FindBlock(long blockNumber, BlockTreeLookupOptions options) =>
             blockNumber == _parentHeader.Number ? _head : null;
-
-        public bool HasBlock(long blockNumber, Hash256 blockHash) =>
+        public override bool HasBlock(long blockNumber, Hash256 blockHash) =>
             blockNumber == _parentHeader.Number && blockHash == _parentHeader.Hash;
-
-        public BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
+        public override BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
             blockHash == _parentHeader.Hash ? _parentHeader : null;
-
-        public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) =>
+        public override BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) =>
             blockNumber == _parentHeader.Number ? _parentHeader : null;
-
-        public Hash256 FindBlockHash(long blockNumber) =>
+        public override Hash256 FindBlockHash(long blockNumber) =>
             blockNumber == _parentHeader.Number ? _parentHeader.Hash : null;
-
-        public bool IsMainChain(BlockHeader blockHeader) => blockHeader?.Hash == _parentHeader.Hash;
-
-        public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) => blockHash == _parentHeader.Hash;
-
-        public BlockHeader FindBestSuggestedHeader() => BestSuggestedHeader;
-
-        public long GetLowestBlock() => _parentHeader.Number;
-
-        public AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>
-            AddBlockResult.Added;
-
-        public void BulkInsertHeader(IReadOnlyList<BlockHeader> headers, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) { }
-
-        public AddBlockResult Insert(
-            Block block,
-            BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
-            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None,
-            WriteFlags bodiesWriteFlags = WriteFlags.None) =>
-            AddBlockResult.Added;
-
-        public void UpdateHeadBlock(Hash256 blockHash) { }
-
-        public void NewOldestBlock(long oldestBlock) { }
-
-        public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
-            AddBlockResult.Added;
-
-        public ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
-            ValueTask.FromResult(AddBlockResult.Added);
-
-        public AddBlockResult SuggestHeader(BlockHeader header) => AddBlockResult.Added;
-
-        public bool IsKnownBlock(long number, Hash256 blockHash) =>
+        public override Hash256 FindHash(long blockNumber) =>
+            blockNumber == _parentHeader.Number ? _parentHeader.Hash : null;
+        public override bool IsMainChain(BlockHeader blockHeader) => blockHeader?.Hash == _parentHeader.Hash;
+        public override bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) => blockHash == _parentHeader.Hash;
+        public override bool IsKnownBlock(long number, Hash256 blockHash) =>
             number == _parentHeader.Number && blockHash == _parentHeader.Hash;
-
-        public bool IsKnownBeaconBlock(long number, Hash256 blockHash) =>
+        public override bool IsKnownBeaconBlock(long number, Hash256 blockHash) =>
             number == _parentHeader.Number && blockHash == _parentHeader.Hash;
-
-        public bool WasProcessed(long number, Hash256 blockHash) =>
+        public override bool WasProcessed(long number, Hash256 blockHash) =>
             number == _parentHeader.Number && blockHash == _parentHeader.Hash;
-
-        public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) { }
-
-        public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) { }
-
-        public Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken) => Task.CompletedTask;
-
-        public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Hash256 blockHash) => (null, null);
-
-        public ChainLevelInfo FindLevel(long number) => null;
-
-        public BlockInfo FindCanonicalBlockInfo(long blockNumber) => null;
-
-        public Hash256 FindHash(long blockNumber) => blockNumber == _parentHeader.Number ? _parentHeader.Hash : null;
-
-        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) =>
-            new ArrayPoolList<BlockHeader>(0);
-
-        public void DeleteInvalidBlock(Block invalidBlock) { }
-
-        public void DeleteOldBlock(long blockNumber, Hash256 blockHash) { }
-
-        public void ForkChoiceUpdated(Hash256 finalizedBlockHash, Hash256 safeBlockBlockHash) { }
-
-        public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false) => 0;
-
-        public bool IsBetterThanHead(BlockHeader header) => true;
-
-        public void UpdateBeaconMainChain(BlockInfo[] blockInfos, long clearBeaconMainChainStartPoint) { }
-
-        public void RecalculateTreeLevels() { }
     }
 
 }

@@ -409,7 +409,7 @@ public class GasNewPayloadMeasuredBenchmarks
         for (int i = 0; i < summaries.Count; i++)
         {
             TimingBreakdownSummary summary = summaries[i];
-            PrintSummary(writer, summary.Name, summary.Iterations, summary.JsonParseTicks, summary.PayloadDeserializeTicks, summary.OptionalParamsTicks, summary.TryGetBlockTicks, summary.HeaderValidationTicks, summary.SenderRecoveryTicks, summary.BlockProcessTicks, summary.TxExecutionTicks, summary.TxExecutionCount, summary.SenderRecoveryByTypeTicks, summary.SenderRecoveryByTypeCount, summary.TxExecutionByTypeTicks, summary.TxExecutionByTypeCount);
+            PrintSummary(writer, summary);
 
             totalJsonParseTicks += summary.JsonParseTicks;
             totalPayloadDeserializeTicks += summary.PayloadDeserializeTicks;
@@ -421,15 +421,20 @@ public class GasNewPayloadMeasuredBenchmarks
             totalTxExecutionTicks += summary.TxExecutionTicks;
             totalIterations += summary.Iterations;
             totalTxExecutionCount += summary.TxExecutionCount;
-            AddTypeBreakdown(totalSenderRecoveryByTypeTicks, summary.SenderRecoveryByTypeTicks);
-            AddTypeBreakdown(totalSenderRecoveryByTypeCount, summary.SenderRecoveryByTypeCount);
-            AddTypeBreakdown(totalTxExecutionByTypeTicks, summary.TxExecutionByTypeTicks);
-            AddTypeBreakdown(totalTxExecutionByTypeCount, summary.TxExecutionByTypeCount);
+            TimingReportHelper.AddTypeBreakdown(totalSenderRecoveryByTypeTicks, summary.SenderRecoveryByTypeTicks);
+            TimingReportHelper.AddTypeBreakdown(totalSenderRecoveryByTypeCount, summary.SenderRecoveryByTypeCount);
+            TimingReportHelper.AddTypeBreakdown(totalTxExecutionByTypeTicks, summary.TxExecutionByTypeTicks);
+            TimingReportHelper.AddTypeBreakdown(totalTxExecutionByTypeCount, summary.TxExecutionByTypeCount);
         }
 
         if (summaries.Count > 1 && totalIterations > 0)
         {
-            PrintSummary(writer, "ALL SCENARIOS", totalIterations, totalJsonParseTicks, totalPayloadDeserializeTicks, totalOptionalParamsTicks, totalTryGetBlockTicks, totalHeaderValidationTicks, totalSenderRecoveryTicks, totalBlockProcessTicks, totalTxExecutionTicks, totalTxExecutionCount, totalSenderRecoveryByTypeTicks, totalSenderRecoveryByTypeCount, totalTxExecutionByTypeTicks, totalTxExecutionByTypeCount);
+            PrintSummary(writer, new TimingBreakdownSummary(
+                "ALL SCENARIOS", totalIterations, totalJsonParseTicks, totalPayloadDeserializeTicks,
+                totalOptionalParamsTicks, totalTryGetBlockTicks, totalHeaderValidationTicks,
+                totalSenderRecoveryTicks, totalBlockProcessTicks, totalTxExecutionTicks,
+                totalTxExecutionCount, totalSenderRecoveryByTypeTicks, totalSenderRecoveryByTypeCount,
+                totalTxExecutionByTypeTicks, totalTxExecutionByTypeCount));
         }
     }
 
@@ -461,139 +466,43 @@ public class GasNewPayloadMeasuredBenchmarks
         }
     }
 
-    private static void PrintSummary(
-        TextWriter writer,
-        string name,
-        int iterations,
-        long jsonParseTicks,
-        long payloadDeserializeTicks,
-        long optionalParamsTicks,
-        long tryGetBlockTicks,
-        long headerValidationTicks,
-        long senderRecoveryTicks,
-        long blockProcessTicks,
-        long txExecutionTicks,
-        int txExecutionCount,
-        long[] senderRecoveryByTypeTicks,
-        int[] senderRecoveryByTypeCount,
-        long[] txExecutionByTypeTicks,
-        int[] txExecutionByTypeCount)
+    private static void PrintSummary(TextWriter writer, TimingBreakdownSummary s)
     {
-        double jsonParseMs = TicksToMs(jsonParseTicks);
-        double payloadDeserializeMs = TicksToMs(payloadDeserializeTicks);
-        double optionalParamsMs = TicksToMs(optionalParamsTicks);
-        double tryGetBlockMs = TicksToMs(tryGetBlockTicks);
-        double headerValidationMs = TicksToMs(headerValidationTicks);
-        double senderRecoveryMs = TicksToMs(senderRecoveryTicks);
-        double blockProcessMs = TicksToMs(blockProcessTicks);
-        double txExecutionMs = TicksToMs(txExecutionTicks);
+        double jsonParseMs = TimingReportHelper.TicksToMs(s.JsonParseTicks);
+        double payloadDeserializeMs = TimingReportHelper.TicksToMs(s.PayloadDeserializeTicks);
+        double optionalParamsMs = TimingReportHelper.TicksToMs(s.OptionalParamsTicks);
+        double tryGetBlockMs = TimingReportHelper.TicksToMs(s.TryGetBlockTicks);
+        double headerValidationMs = TimingReportHelper.TicksToMs(s.HeaderValidationTicks);
+        double senderRecoveryMs = TimingReportHelper.TicksToMs(s.SenderRecoveryTicks);
+        double blockProcessMs = TimingReportHelper.TicksToMs(s.BlockProcessTicks);
+        double txExecutionMs = TimingReportHelper.TicksToMs(s.TxExecutionTicks);
         double nonTxBlockMs = blockProcessMs - txExecutionMs;
         if (nonTxBlockMs < 0)
         {
             nonTxBlockMs = 0;
         }
 
-        int senderRecoveryCount = GetTotalCount(senderRecoveryByTypeCount);
+        int senderRecoveryCount = TimingReportHelper.GetTotalCount(s.SenderRecoveryByTypeCount);
         double totalMs = jsonParseMs + payloadDeserializeMs + optionalParamsMs + tryGetBlockMs + headerValidationMs + senderRecoveryMs + blockProcessMs;
 
-        writer.WriteLine($"--- {name} ({iterations} iterations) ---");
-        PrintLine(writer, "JSON parse", jsonParseMs, totalMs, iterations);
-        PrintLine(writer, "Payload deserialize", payloadDeserializeMs, totalMs, iterations);
-        PrintLine(writer, "Optional params", optionalParamsMs, totalMs, iterations);
-        PrintLine(writer, "TryGetBlock", tryGetBlockMs, totalMs, iterations);
-        PrintLine(writer, "Header validate", headerValidationMs, totalMs, iterations);
-        PrintLine(writer, "Sender recovery", senderRecoveryMs, totalMs, iterations);
-        PrintLine(writer, "Block processing", blockProcessMs, totalMs, iterations);
-        writer.WriteLine($"  {"Total",-20} {totalMs,9:F3} ms                 avg {totalMs / iterations:F3} ms/iter");
+        writer.WriteLine($"--- {s.Name} ({s.Iterations} iterations) ---");
+        TimingReportHelper.PrintLine(writer, "JSON parse", jsonParseMs, totalMs, s.Iterations);
+        TimingReportHelper.PrintLine(writer, "Payload deserialize", payloadDeserializeMs, totalMs, s.Iterations);
+        TimingReportHelper.PrintLine(writer, "Optional params", optionalParamsMs, totalMs, s.Iterations);
+        TimingReportHelper.PrintLine(writer, "TryGetBlock", tryGetBlockMs, totalMs, s.Iterations);
+        TimingReportHelper.PrintLine(writer, "Header validate", headerValidationMs, totalMs, s.Iterations);
+        TimingReportHelper.PrintLine(writer, "Sender recovery", senderRecoveryMs, totalMs, s.Iterations);
+        TimingReportHelper.PrintLine(writer, "Block processing", blockProcessMs, totalMs, s.Iterations);
+        writer.WriteLine($"  {"Total",-20} {totalMs,9:F3} ms                 avg {totalMs / s.Iterations:F3} ms/iter");
         writer.WriteLine("  Block processing detail:");
-        writer.WriteLine($"    {"Tx execution",-18} {txExecutionMs,9:F3} ms  ({GetShare(txExecutionMs, blockProcessMs),5:F1}% of block)  avg {GetAverage(txExecutionMs, txExecutionCount):F3} ms/tx");
-        writer.WriteLine($"    {"Non-tx overhead",-18} {nonTxBlockMs,9:F3} ms  ({GetShare(nonTxBlockMs, blockProcessMs),5:F1}% of block)");
-        PrintTxTypeBreakdown(writer, "Tx execution by type", txExecutionByTypeTicks, txExecutionByTypeCount, txExecutionMs);
+        writer.WriteLine($"    {"Tx execution",-18} {txExecutionMs,9:F3} ms  ({TimingReportHelper.GetShare(txExecutionMs, blockProcessMs),5:F1}% of block)  avg {TimingReportHelper.GetAverage(txExecutionMs, s.TxExecutionCount):F3} ms/tx");
+        writer.WriteLine($"    {"Non-tx overhead",-18} {nonTxBlockMs,9:F3} ms  ({TimingReportHelper.GetShare(nonTxBlockMs, blockProcessMs),5:F1}% of block)");
+        TimingReportHelper.PrintTxTypeBreakdown(writer, "Tx execution by type", s.TxExecutionByTypeTicks, s.TxExecutionByTypeCount, txExecutionMs);
         writer.WriteLine("  Sender recovery detail:");
         writer.WriteLine($"    {"Recovered txs",-18} {senderRecoveryCount,9} tx");
-        writer.WriteLine($"    {"Avg per tx",-18} {GetAverage(senderRecoveryMs, senderRecoveryCount),9:F3} ms/tx");
-        PrintTxTypeBreakdown(writer, "Sender recovery by type", senderRecoveryByTypeTicks, senderRecoveryByTypeCount, senderRecoveryMs);
+        writer.WriteLine($"    {"Avg per tx",-18} {TimingReportHelper.GetAverage(senderRecoveryMs, senderRecoveryCount),9:F3} ms/tx");
+        TimingReportHelper.PrintTxTypeBreakdown(writer, "Sender recovery by type", s.SenderRecoveryByTypeTicks, s.SenderRecoveryByTypeCount, senderRecoveryMs);
     }
-
-    private static void PrintLine(TextWriter writer, string label, double stageMs, double totalMs, int iterations)
-    {
-        double share = totalMs > 0 ? (100.0 * stageMs / totalMs) : 0.0;
-        double avg = iterations > 0 ? (stageMs / iterations) : 0.0;
-        writer.WriteLine($"  {label,-20} {stageMs,9:F3} ms  ({share,5:F1}%)  avg {avg:F3} ms/iter");
-    }
-
-    private static void PrintTxTypeBreakdown(TextWriter writer, string title, long[] ticksByType, int[] countByType, double stageTotalMs)
-    {
-        writer.WriteLine($"    {title}:");
-        for (int txTypeIndex = 0; txTypeIndex < countByType.Length; txTypeIndex++)
-        {
-            int count = countByType[txTypeIndex];
-            if (count == 0)
-            {
-                continue;
-            }
-
-            double ms = TicksToMs(ticksByType[txTypeIndex]);
-            double share = GetShare(ms, stageTotalMs);
-            double avg = GetAverage(ms, count);
-            writer.WriteLine($"      {FormatTxType((TxType)txTypeIndex),-16} {ms,9:F3} ms  ({share,5:F1}%)  avg {avg:F3} ms/tx  count {count}");
-        }
-    }
-
-    private static string FormatTxType(TxType txType)
-    {
-        return txType switch
-        {
-            TxType.Legacy => "Legacy",
-            TxType.AccessList => "AccessList",
-            TxType.EIP1559 => "EIP1559",
-            TxType.Blob => "Blob",
-            TxType.SetCode => "SetCode",
-            TxType.DepositTx => "DepositTx",
-            _ => $"Type(0x{(byte)txType:X2})"
-        };
-    }
-
-    private static void AddTypeBreakdown(long[] destination, long[] source)
-    {
-        int length = destination.Length < source.Length ? destination.Length : source.Length;
-        for (int i = 0; i < length; i++)
-        {
-            destination[i] += source[i];
-        }
-    }
-
-    private static void AddTypeBreakdown(int[] destination, int[] source)
-    {
-        int length = destination.Length < source.Length ? destination.Length : source.Length;
-        for (int i = 0; i < length; i++)
-        {
-            destination[i] += source[i];
-        }
-    }
-
-    private static int GetTotalCount(int[] countByType)
-    {
-        int total = 0;
-        for (int i = 0; i < countByType.Length; i++)
-        {
-            total += countByType[i];
-        }
-
-        return total;
-    }
-
-    private static double GetShare(double part, double whole)
-    {
-        return whole > 0 ? (100.0 * part / whole) : 0.0;
-    }
-
-    private static double GetAverage(double totalMs, int count)
-    {
-        return count > 0 ? (totalMs / count) : 0.0;
-    }
-
-    private static double TicksToMs(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
 
     private sealed class TimedTransactionProcessor(ITransactionProcessor inner, GasNewPayloadMeasuredBenchmarks owner) : ITransactionProcessor
     {

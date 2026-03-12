@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,6 +27,8 @@ namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 /// </summary>
 public static class PayloadLoader
 {
+    // Static EthereumEcdsa for sender recovery — lightweight, no disposal needed.
+    private static readonly EthereumEcdsa s_ecdsa = new(1);
     private static readonly object s_genesisLock = new();
     private static Hash256 s_genesisStateRoot;
     private static string s_genesisPath;
@@ -76,12 +79,11 @@ public static class PayloadLoader
         int txCount = txsArray.GetArrayLength();
         Transaction[] transactions = new Transaction[txCount];
 
-        EthereumEcdsa ecdsa = new(1);
         for (int i = 0; i < txCount; i++)
         {
             byte[] rlpBytes = Bytes.FromHexString(txsArray[i].GetString());
             transactions[i] = TxDecoder.Instance.Decode(rlpBytes);
-            transactions[i].SenderAddress = ecdsa.RecoverAddress(transactions[i]);
+            transactions[i].SenderAddress = s_ecdsa.RecoverAddress(transactions[i]);
         }
 
         return (header, transactions);
@@ -118,8 +120,8 @@ public static class PayloadLoader
             if (string.IsNullOrWhiteSpace(line))
                 continue;
 
-            // Only parse engine_newPayloadV4 calls, skip forkchoiceUpdated and others
-            if (!line.Contains("\"engine_newPayloadV4\""))
+            // Only parse engine_newPayload calls (V4, V5, etc.), skip forkchoiceUpdated and others
+            if (!line.Contains("\"engine_newPayload", StringComparison.Ordinal))
                 continue;
 
             blocks.Add(ParseBlockFromJsonRpcLine(line));
@@ -161,12 +163,11 @@ public static class PayloadLoader
         int txCount = txsArray.GetArrayLength();
         Transaction[] transactions = new Transaction[txCount];
 
-        EthereumEcdsa ecdsa = new(1);
         for (int i = 0; i < txCount; i++)
         {
             byte[] rlpBytes = Bytes.FromHexString(txsArray[i].GetString());
             transactions[i] = TxDecoder.Instance.Decode(rlpBytes);
-            transactions[i].SenderAddress = ecdsa.RecoverAddress(transactions[i]);
+            transactions[i].SenderAddress = s_ecdsa.RecoverAddress(transactions[i]);
         }
 
         // Parse withdrawals (EIP-4895)
@@ -238,7 +239,9 @@ public static class PayloadLoader
             LoadGenesisAccounts(state, genesisPath, spec);
             state.Commit(spec);
             state.CommitTree(0);
-            s_genesisStateRoot = state.StateRoot;
+            // Safe for concurrent reads: all callers produce the same state root from
+            // identical genesis data, so last-write-wins is correct.
+            Volatile.Write(ref s_genesisStateRoot, state.StateRoot);
         }
     }
 
@@ -246,9 +249,9 @@ public static class PayloadLoader
     {
         get
         {
-            if (!s_genesisInitialized)
+            if (!Volatile.Read(ref s_genesisInitialized))
                 throw new InvalidOperationException("Genesis not initialized.");
-            return s_genesisStateRoot;
+            return Volatile.Read(ref s_genesisStateRoot);
         }
     }
 

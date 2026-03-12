@@ -85,7 +85,7 @@ public static class GasPayloadBenchmarks
         return null;
     }
 
-    private static string FindRepoRoot()
+    internal static string FindRepoRoot()
     {
         string dir = AppDomain.CurrentDomain.BaseDirectory;
         while (dir is not null)

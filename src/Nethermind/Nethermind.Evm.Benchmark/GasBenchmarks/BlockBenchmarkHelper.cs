@@ -148,22 +148,21 @@ internal static class BlockBenchmarkHelper
 
     private sealed class WorldStateReaderAdapter(IWorldState worldState) : IStateReader
     {
-        public bool TryGetAccount(BlockHeader baseBlock, Address address, out AccountStruct account)
-        {
-            account = default;
-            return false;
-        }
+        public bool TryGetAccount(BlockHeader baseBlock, Address address, out AccountStruct account) =>
+            throw new NotSupportedException("Benchmark IStateReader stub — TryGetAccount should not be called during benchmark execution.");
 
-        public ReadOnlySpan<byte> GetStorage(BlockHeader baseBlock, Address address, in UInt256 index) => [];
+        public ReadOnlySpan<byte> GetStorage(BlockHeader baseBlock, Address address, in UInt256 index) =>
+            throw new NotSupportedException("Benchmark IStateReader stub — GetStorage should not be called during benchmark execution.");
 
-        public byte[] GetCode(Hash256 codeHash) => null;
+        public byte[] GetCode(Hash256 codeHash) =>
+            throw new NotSupportedException("Benchmark IStateReader stub — GetCode should not be called during benchmark execution.");
 
-        public byte[] GetCode(in ValueHash256 codeHash) => null;
+        public byte[] GetCode(in ValueHash256 codeHash) =>
+            throw new NotSupportedException("Benchmark IStateReader stub — GetCode should not be called during benchmark execution.");
 
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader baseBlock, VisitingOptions visitingOptions = null)
-            where TCtx : struct, INodeContext<TCtx>
-        {
-        }
+            where TCtx : struct, INodeContext<TCtx> =>
+            throw new NotSupportedException("Benchmark IStateReader stub — RunTreeVisitor should not be called during benchmark execution.");
 
         public bool HasStateForBlock(BlockHeader baseBlock) => worldState.HasStateForBlock(baseBlock);
     }

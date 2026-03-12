@@ -14,13 +14,11 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -498,25 +496,7 @@ public class GasNewPayloadBenchmarks
         for (int i = 0; i < summaries.Count; i++)
         {
             TimingBreakdownSummary summary = summaries[i];
-            PrintSummary(
-                writer,
-                summary.Name,
-                summary.Iterations,
-                summary.JsonParseTicks,
-                summary.PayloadDeserializeTicks,
-                summary.OptionalParamsTicks,
-                summary.ValidateForkTicks,
-                summary.ValidateParamsTicks,
-                summary.HandlerTicks,
-                summary.QueueTotalTicks,
-                summary.SenderRecoveryTicks,
-                summary.BlockProcessTicks,
-                summary.TxExecutionTicks,
-                summary.TxExecutionCount,
-                summary.SenderRecoveryByTypeTicks,
-                summary.SenderRecoveryByTypeCount,
-                summary.TxExecutionByTypeTicks,
-                summary.TxExecutionByTypeCount);
+            PrintSummary(writer, summary);
 
             totalJsonParseTicks += summary.JsonParseTicks;
             totalPayloadDeserializeTicks += summary.PayloadDeserializeTicks;
@@ -530,33 +510,21 @@ public class GasNewPayloadBenchmarks
             totalTxExecutionTicks += summary.TxExecutionTicks;
             totalIterations += summary.Iterations;
             totalTxExecutionCount += summary.TxExecutionCount;
-            AddTypeBreakdown(totalSenderRecoveryByTypeTicks, summary.SenderRecoveryByTypeTicks);
-            AddTypeBreakdown(totalSenderRecoveryByTypeCount, summary.SenderRecoveryByTypeCount);
-            AddTypeBreakdown(totalTxExecutionByTypeTicks, summary.TxExecutionByTypeTicks);
-            AddTypeBreakdown(totalTxExecutionByTypeCount, summary.TxExecutionByTypeCount);
+            TimingReportHelper.AddTypeBreakdown(totalSenderRecoveryByTypeTicks, summary.SenderRecoveryByTypeTicks);
+            TimingReportHelper.AddTypeBreakdown(totalSenderRecoveryByTypeCount, summary.SenderRecoveryByTypeCount);
+            TimingReportHelper.AddTypeBreakdown(totalTxExecutionByTypeTicks, summary.TxExecutionByTypeTicks);
+            TimingReportHelper.AddTypeBreakdown(totalTxExecutionByTypeCount, summary.TxExecutionByTypeCount);
         }
 
         if (summaries.Count > 1 && totalIterations > 0)
         {
-            PrintSummary(
-                writer,
-                "ALL SCENARIOS",
-                totalIterations,
-                totalJsonParseTicks,
-                totalPayloadDeserializeTicks,
-                totalOptionalParamsTicks,
-                totalValidateForkTicks,
-                totalValidateParamsTicks,
-                totalHandlerTicks,
-                totalQueueTotalTicks,
-                totalSenderRecoveryTicks,
-                totalBlockProcessTicks,
-                totalTxExecutionTicks,
-                totalTxExecutionCount,
-                totalSenderRecoveryByTypeTicks,
-                totalSenderRecoveryByTypeCount,
-                totalTxExecutionByTypeTicks,
-                totalTxExecutionByTypeCount);
+            PrintSummary(writer, new TimingBreakdownSummary(
+                "ALL SCENARIOS", totalIterations, totalJsonParseTicks, totalPayloadDeserializeTicks,
+                totalOptionalParamsTicks, totalValidateForkTicks, totalValidateParamsTicks,
+                totalHandlerTicks, totalQueueTotalTicks, totalSenderRecoveryTicks,
+                totalBlockProcessTicks, totalTxExecutionTicks, totalTxExecutionCount,
+                totalSenderRecoveryByTypeTicks, totalSenderRecoveryByTypeCount,
+                totalTxExecutionByTypeTicks, totalTxExecutionByTypeCount));
         }
     }
 
@@ -588,36 +556,18 @@ public class GasNewPayloadBenchmarks
         }
     }
 
-    private static void PrintSummary(
-        TextWriter writer,
-        string name,
-        int iterations,
-        long jsonParseTicks,
-        long payloadDeserializeTicks,
-        long optionalParamsTicks,
-        long validateForkTicks,
-        long validateParamsTicks,
-        long handlerTicks,
-        long queueTotalTicks,
-        long senderRecoveryTicks,
-        long blockProcessTicks,
-        long txExecutionTicks,
-        int txExecutionCount,
-        long[] senderRecoveryByTypeTicks,
-        int[] senderRecoveryByTypeCount,
-        long[] txExecutionByTypeTicks,
-        int[] txExecutionByTypeCount)
+    private static void PrintSummary(TextWriter writer, TimingBreakdownSummary s)
     {
-        double jsonParseMs = TicksToMs(jsonParseTicks);
-        double payloadDeserializeMs = TicksToMs(payloadDeserializeTicks);
-        double optionalParamsMs = TicksToMs(optionalParamsTicks);
-        double validateForkMs = TicksToMs(validateForkTicks);
-        double validateParamsMs = TicksToMs(validateParamsTicks);
-        double handlerMs = TicksToMs(handlerTicks);
-        double queueTotalMs = TicksToMs(queueTotalTicks);
-        double senderRecoveryMs = TicksToMs(senderRecoveryTicks);
-        double blockProcessMs = TicksToMs(blockProcessTicks);
-        double txExecutionMs = TicksToMs(txExecutionTicks);
+        double jsonParseMs = TimingReportHelper.TicksToMs(s.JsonParseTicks);
+        double payloadDeserializeMs = TimingReportHelper.TicksToMs(s.PayloadDeserializeTicks);
+        double optionalParamsMs = TimingReportHelper.TicksToMs(s.OptionalParamsTicks);
+        double validateForkMs = TimingReportHelper.TicksToMs(s.ValidateForkTicks);
+        double validateParamsMs = TimingReportHelper.TicksToMs(s.ValidateParamsTicks);
+        double handlerMs = TimingReportHelper.TicksToMs(s.HandlerTicks);
+        double queueTotalMs = TimingReportHelper.TicksToMs(s.QueueTotalTicks);
+        double senderRecoveryMs = TimingReportHelper.TicksToMs(s.SenderRecoveryTicks);
+        double blockProcessMs = TimingReportHelper.TicksToMs(s.BlockProcessTicks);
+        double txExecutionMs = TimingReportHelper.TicksToMs(s.TxExecutionTicks);
         double handlerNonQueueMs = handlerMs - queueTotalMs;
         if (handlerNonQueueMs < 0)
         {
@@ -636,113 +586,33 @@ public class GasNewPayloadBenchmarks
             nonTxBlockMs = 0;
         }
 
-        int senderRecoveryCount = GetTotalCount(senderRecoveryByTypeCount);
+        int senderRecoveryCount = TimingReportHelper.GetTotalCount(s.SenderRecoveryByTypeCount);
         double totalMs = jsonParseMs + payloadDeserializeMs + optionalParamsMs + validateForkMs + validateParamsMs + handlerMs;
 
-        writer.WriteLine($"--- {name} ({iterations} iterations) ---");
-        PrintLine(writer, "JSON parse", jsonParseMs, totalMs, iterations);
-        PrintLine(writer, "Payload deserialize", payloadDeserializeMs, totalMs, iterations);
-        PrintLine(writer, "Optional params", optionalParamsMs, totalMs, iterations);
-        PrintLine(writer, "Validate fork", validateForkMs, totalMs, iterations);
-        PrintLine(writer, "Validate params", validateParamsMs, totalMs, iterations);
-        PrintLine(writer, "Handler total", handlerMs, totalMs, iterations);
-        writer.WriteLine($"  {"Total",-20} {totalMs,9:F3} ms                 avg {totalMs / iterations:F3} ms/iter");
+        writer.WriteLine($"--- {s.Name} ({s.Iterations} iterations) ---");
+        TimingReportHelper.PrintLine(writer, "JSON parse", jsonParseMs, totalMs, s.Iterations);
+        TimingReportHelper.PrintLine(writer, "Payload deserialize", payloadDeserializeMs, totalMs, s.Iterations);
+        TimingReportHelper.PrintLine(writer, "Optional params", optionalParamsMs, totalMs, s.Iterations);
+        TimingReportHelper.PrintLine(writer, "Validate fork", validateForkMs, totalMs, s.Iterations);
+        TimingReportHelper.PrintLine(writer, "Validate params", validateParamsMs, totalMs, s.Iterations);
+        TimingReportHelper.PrintLine(writer, "Handler total", handlerMs, totalMs, s.Iterations);
+        writer.WriteLine($"  {"Total",-20} {totalMs,9:F3} ms                 avg {totalMs / s.Iterations:F3} ms/iter");
         writer.WriteLine("  Handler detail:");
-        writer.WriteLine($"    {"Queue total",-18} {queueTotalMs,9:F3} ms  ({GetShare(queueTotalMs, handlerMs),5:F1}% of handler)");
-        writer.WriteLine($"    {"Handler non-queue",-18} {handlerNonQueueMs,9:F3} ms  ({GetShare(handlerNonQueueMs, handlerMs),5:F1}% of handler)");
+        writer.WriteLine($"    {"Queue total",-18} {queueTotalMs,9:F3} ms  ({TimingReportHelper.GetShare(queueTotalMs, handlerMs),5:F1}% of handler)");
+        writer.WriteLine($"    {"Handler non-queue",-18} {handlerNonQueueMs,9:F3} ms  ({TimingReportHelper.GetShare(handlerNonQueueMs, handlerMs),5:F1}% of handler)");
         writer.WriteLine("  Queue detail:");
-        writer.WriteLine($"    {"Sender recovery",-18} {senderRecoveryMs,9:F3} ms  ({GetShare(senderRecoveryMs, queueTotalMs),5:F1}% of queue)  avg {GetAverage(senderRecoveryMs, senderRecoveryCount):F3} ms/tx");
-        writer.WriteLine($"    {"Block processing",-18} {blockProcessMs,9:F3} ms  ({GetShare(blockProcessMs, queueTotalMs),5:F1}% of queue)");
-        writer.WriteLine($"    {"Queue non-staged",-18} {queueNonStagedMs,9:F3} ms  ({GetShare(queueNonStagedMs, queueTotalMs),5:F1}% of queue)");
+        writer.WriteLine($"    {"Sender recovery",-18} {senderRecoveryMs,9:F3} ms  ({TimingReportHelper.GetShare(senderRecoveryMs, queueTotalMs),5:F1}% of queue)  avg {TimingReportHelper.GetAverage(senderRecoveryMs, senderRecoveryCount):F3} ms/tx");
+        writer.WriteLine($"    {"Block processing",-18} {blockProcessMs,9:F3} ms  ({TimingReportHelper.GetShare(blockProcessMs, queueTotalMs),5:F1}% of queue)");
+        writer.WriteLine($"    {"Queue non-staged",-18} {queueNonStagedMs,9:F3} ms  ({TimingReportHelper.GetShare(queueNonStagedMs, queueTotalMs),5:F1}% of queue)");
         writer.WriteLine("  Block processing detail:");
-        writer.WriteLine($"    {"Tx execution",-18} {txExecutionMs,9:F3} ms  ({GetShare(txExecutionMs, blockProcessMs),5:F1}% of block)  avg {GetAverage(txExecutionMs, txExecutionCount):F3} ms/tx");
-        writer.WriteLine($"    {"Non-tx overhead",-18} {nonTxBlockMs,9:F3} ms  ({GetShare(nonTxBlockMs, blockProcessMs),5:F1}% of block)");
-        PrintTxTypeBreakdown(writer, "Tx execution by type", txExecutionByTypeTicks, txExecutionByTypeCount, txExecutionMs);
+        writer.WriteLine($"    {"Tx execution",-18} {txExecutionMs,9:F3} ms  ({TimingReportHelper.GetShare(txExecutionMs, blockProcessMs),5:F1}% of block)  avg {TimingReportHelper.GetAverage(txExecutionMs, s.TxExecutionCount):F3} ms/tx");
+        writer.WriteLine($"    {"Non-tx overhead",-18} {nonTxBlockMs,9:F3} ms  ({TimingReportHelper.GetShare(nonTxBlockMs, blockProcessMs),5:F1}% of block)");
+        TimingReportHelper.PrintTxTypeBreakdown(writer, "Tx execution by type", s.TxExecutionByTypeTicks, s.TxExecutionByTypeCount, txExecutionMs);
         writer.WriteLine("  Sender recovery detail:");
         writer.WriteLine($"    {"Recovered txs",-18} {senderRecoveryCount,9} tx");
-        writer.WriteLine($"    {"Avg per tx",-18} {GetAverage(senderRecoveryMs, senderRecoveryCount),9:F3} ms/tx");
-        PrintTxTypeBreakdown(writer, "Sender recovery by type", senderRecoveryByTypeTicks, senderRecoveryByTypeCount, senderRecoveryMs);
+        writer.WriteLine($"    {"Avg per tx",-18} {TimingReportHelper.GetAverage(senderRecoveryMs, senderRecoveryCount),9:F3} ms/tx");
+        TimingReportHelper.PrintTxTypeBreakdown(writer, "Sender recovery by type", s.SenderRecoveryByTypeTicks, s.SenderRecoveryByTypeCount, senderRecoveryMs);
     }
-
-    private static void PrintLine(TextWriter writer, string label, double stageMs, double totalMs, int iterations)
-    {
-        double share = totalMs > 0 ? (100.0 * stageMs / totalMs) : 0.0;
-        double avg = iterations > 0 ? (stageMs / iterations) : 0.0;
-        writer.WriteLine($"  {label,-20} {stageMs,9:F3} ms  ({share,5:F1}%)  avg {avg:F3} ms/iter");
-    }
-
-    private static void PrintTxTypeBreakdown(TextWriter writer, string title, long[] ticksByType, int[] countByType, double stageTotalMs)
-    {
-        writer.WriteLine($"    {title}:");
-        for (int txTypeIndex = 0; txTypeIndex < countByType.Length; txTypeIndex++)
-        {
-            int count = countByType[txTypeIndex];
-            if (count == 0)
-            {
-                continue;
-            }
-
-            double ms = TicksToMs(ticksByType[txTypeIndex]);
-            double share = GetShare(ms, stageTotalMs);
-            double avg = GetAverage(ms, count);
-            writer.WriteLine($"      {FormatTxType((TxType)txTypeIndex),-16} {ms,9:F3} ms  ({share,5:F1}%)  avg {avg:F3} ms/tx  count {count}");
-        }
-    }
-
-    private static string FormatTxType(TxType txType)
-    {
-        return txType switch
-        {
-            TxType.Legacy => "Legacy",
-            TxType.AccessList => "AccessList",
-            TxType.EIP1559 => "EIP1559",
-            TxType.Blob => "Blob",
-            TxType.SetCode => "SetCode",
-            TxType.DepositTx => "DepositTx",
-            _ => $"Type(0x{(byte)txType:X2})",
-        };
-    }
-
-    private static void AddTypeBreakdown(long[] destination, long[] source)
-    {
-        int length = destination.Length < source.Length ? destination.Length : source.Length;
-        for (int i = 0; i < length; i++)
-        {
-            destination[i] += source[i];
-        }
-    }
-
-    private static void AddTypeBreakdown(int[] destination, int[] source)
-    {
-        int length = destination.Length < source.Length ? destination.Length : source.Length;
-        for (int i = 0; i < length; i++)
-        {
-            destination[i] += source[i];
-        }
-    }
-
-    private static int GetTotalCount(int[] countByType)
-    {
-        int total = 0;
-        for (int i = 0; i < countByType.Length; i++)
-        {
-            total += countByType[i];
-        }
-
-        return total;
-    }
-
-    private static double GetShare(double part, double whole)
-    {
-        return whole > 0 ? (100.0 * part / whole) : 0.0;
-    }
-
-    private static double GetAverage(double totalMs, int count)
-    {
-        return count > 0 ? (totalMs / count) : 0.0;
-    }
-
-    private static double TicksToMs(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
 
     private sealed class BenchmarkProcessingQueue : IBlockProcessingQueue
     {
@@ -926,7 +796,12 @@ public class GasNewPayloadBenchmarks
         public int[] TxExecutionByTypeCount { get; init; }
     }
 
-    private sealed class BenchmarkNewPayloadBlockTree : IBlockTree
+    /// <summary>
+    /// Block tree stub for NewPayload benchmarks. Knows about the parent header and
+    /// provides BlockInfo for GetInfo/FindCanonicalBlockInfo (needed by NewPayloadHandler).
+    /// IsBetterThanHead returns false — the handler drives processing, not the tree.
+    /// </summary>
+    private sealed class BenchmarkNewPayloadBlockTree : BenchmarkBlockTreeBase
     {
         private readonly BlockHeader _parentHeader;
         private readonly Block _head;
@@ -942,179 +817,45 @@ public class GasNewPayloadBenchmarks
                 BlockNumber = parentHeader.Number,
             };
             BestSuggestedHeader = parentHeader;
-            SyncPivot = (0, Keccak.Zero);
         }
 
-        public Block Head => _head;
-        public BlockHeader BestSuggestedHeader { get; set; }
+        public override Hash256 HeadHash => _head.Hash;
+        public override Hash256 GenesisHash => Keccak.Zero;
+        public override Block Head => _head;
+        public override BlockHeader Genesis => _parentHeader;
+        public override Block BestSuggestedBody => _head;
+        public override BlockHeader BestSuggestedBeaconHeader => _parentHeader;
+        public override long BestKnownNumber => _parentHeader.Number;
+        public override long BestKnownBeaconNumber => _parentHeader.Number;
+        public override long GetLowestBlock() => _parentHeader.Number;
 
-        public event EventHandler<BlockReplacementEventArgs> BlockAddedToMain { add { } remove { } }
-        public event EventHandler<BlockEventArgs> NewBestSuggestedBlock { add { } remove { } }
-        public event EventHandler<BlockEventArgs> NewSuggestedBlock { add { } remove { } }
-        public event EventHandler<BlockEventArgs> NewHeadBlock { add { } remove { } }
-        public event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain { add { } remove { } }
-        public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs> OnForkChoiceUpdated { add { } remove { } }
-
-        public BlockHeader FindBestSuggestedHeader() => BestSuggestedHeader;
-
-        public Hash256 HeadHash => _head.Hash;
-        public Hash256 GenesisHash => Keccak.Zero;
-        public Hash256 PendingHash => null;
-        public Hash256 FinalizedHash => null;
-        public Hash256 SafeHash => null;
-        public long? BestPersistedState { get; set; }
-
-        public Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
-        {
-            if (blockHash == _parentHeader.Hash)
-            {
-                return _head;
-            }
-
-            return null;
-        }
-
-        public Block FindBlock(long blockNumber, BlockTreeLookupOptions options)
-        {
-            if (blockNumber == _parentHeader.Number)
-            {
-                return _head;
-            }
-
-            return null;
-        }
-
-        public bool HasBlock(long blockNumber, Hash256 blockHash) =>
+        public override Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
+            blockHash == _parentHeader.Hash ? _head : null;
+        public override Block FindBlock(long blockNumber, BlockTreeLookupOptions options) =>
+            blockNumber == _parentHeader.Number ? _head : null;
+        public override bool HasBlock(long blockNumber, Hash256 blockHash) =>
             blockNumber == _parentHeader.Number && blockHash == _parentHeader.Hash;
-
-        public BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
-        {
-            if (blockHash == _parentHeader.Hash)
-            {
-                return _parentHeader;
-            }
-
-            return null;
-        }
-
-        public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options)
-        {
-            if (blockNumber == _parentHeader.Number)
-            {
-                return _parentHeader;
-            }
-
-            return null;
-        }
-
-        public Hash256 FindBlockHash(long blockNumber)
-        {
-            if (blockNumber == _parentHeader.Number)
-            {
-                return _parentHeader.Hash;
-            }
-
-            return null;
-        }
-
-        public bool IsMainChain(BlockHeader blockHeader) => blockHeader?.Hash == _parentHeader.Hash;
-
-        public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) => blockHash == _parentHeader.Hash;
-
-        public long GetLowestBlock() => _parentHeader.Number;
-
-        public ulong NetworkId => 1;
-        public ulong ChainId => 1;
-        public BlockHeader Genesis => _parentHeader;
-        public Block BestSuggestedBody => _head;
-        public BlockHeader BestSuggestedBeaconHeader => _parentHeader;
-        public BlockHeader LowestInsertedHeader { get; set; }
-        public BlockHeader LowestInsertedBeaconHeader { get; set; }
-        public long BestKnownNumber => _parentHeader.Number;
-        public long BestKnownBeaconNumber => _parentHeader.Number;
-        public bool CanAcceptNewBlocks => true;
-        public (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
-        public bool IsProcessingBlock { get; set; }
-
-        public AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None)
-            => AddBlockResult.Added;
-
-        public void BulkInsertHeader(IReadOnlyList<BlockHeader> headers, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) { }
-
-        public AddBlockResult Insert(
-            Block block,
-            BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
-            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None,
-            WriteFlags bodiesWriteFlags = WriteFlags.None)
-            => AddBlockResult.Added;
-
-        public void UpdateHeadBlock(Hash256 blockHash) { }
-
-        public void NewOldestBlock(long oldestBlock) { }
-
-        public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
-            => AddBlockResult.Added;
-
-        public ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
-            => ValueTask.FromResult(AddBlockResult.Added);
-
-        public AddBlockResult SuggestHeader(BlockHeader header) => AddBlockResult.Added;
-
-        public bool IsKnownBlock(long number, Hash256 blockHash) =>
+        public override BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
+            blockHash == _parentHeader.Hash ? _parentHeader : null;
+        public override BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) =>
+            blockNumber == _parentHeader.Number ? _parentHeader : null;
+        public override Hash256 FindBlockHash(long blockNumber) =>
+            blockNumber == _parentHeader.Number ? _parentHeader.Hash : null;
+        public override Hash256 FindHash(long blockNumber) =>
+            blockNumber == _parentHeader.Number ? _parentHeader.Hash : null;
+        public override bool IsMainChain(BlockHeader blockHeader) => blockHeader?.Hash == _parentHeader.Hash;
+        public override bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) => blockHash == _parentHeader.Hash;
+        public override bool IsKnownBlock(long number, Hash256 blockHash) =>
+            number == _parentHeader.Number && blockHash == _parentHeader.Hash;
+        public override bool IsKnownBeaconBlock(long number, Hash256 blockHash) =>
+            number == _parentHeader.Number && blockHash == _parentHeader.Hash;
+        public override bool WasProcessed(long number, Hash256 blockHash) =>
             number == _parentHeader.Number && blockHash == _parentHeader.Hash;
 
-        public bool IsKnownBeaconBlock(long number, Hash256 blockHash) =>
-            number == _parentHeader.Number && blockHash == _parentHeader.Hash;
-
-        public bool WasProcessed(long number, Hash256 blockHash) =>
-            number == _parentHeader.Number && blockHash == _parentHeader.Hash;
-
-        public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) { }
-
-        public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) { }
-
-        public Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken) => Task.CompletedTask;
-
-        public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Hash256 blockHash)
-        {
-            if (number == _parentHeader.Number && blockHash == _parentHeader.Hash)
-            {
-                return (_parentInfo, null);
-            }
-
-            return (null, null);
-        }
-
-        public ChainLevelInfo FindLevel(long number) => null;
-
-        public BlockInfo FindCanonicalBlockInfo(long blockNumber) => _parentInfo;
-
-        public Hash256 FindHash(long blockNumber)
-        {
-            if (blockNumber == _parentHeader.Number)
-            {
-                return _parentHeader.Hash;
-            }
-
-            return null;
-        }
-
-        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
-            => new ArrayPoolList<BlockHeader>(0);
-
-        public void DeleteInvalidBlock(Block invalidBlock) { }
-
-        public void DeleteOldBlock(long blockNumber, Hash256 blockHash) { }
-
-        public void ForkChoiceUpdated(Hash256 finalizedBlockHash, Hash256 safeBlockBlockHash) { }
-
-        public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false) => 0;
-
-        public bool IsBetterThanHead(BlockHeader header) => false;
-
-        public void UpdateBeaconMainChain(BlockInfo[] blockInfos, long clearBeaconMainChainStartPoint) { }
-
-        public void RecalculateTreeLevels() { }
+        public override (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Hash256 blockHash) =>
+            number == _parentHeader.Number && blockHash == _parentHeader.Hash ? (_parentInfo, null) : (null, null);
+        public override BlockInfo FindCanonicalBlockInfo(long blockNumber) => _parentInfo;
+        public override bool IsBetterThanHead(BlockHeader header) => false;
     }
 
 #nullable enable

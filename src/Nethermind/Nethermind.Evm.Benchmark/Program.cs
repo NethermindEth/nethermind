@@ -296,7 +296,7 @@ static string[] ApplyBdnOverrides(string[] args)
 
 static void RunDiagnostic(string pattern)
 {
-    string repoRoot = FindRepoRoot();
+    string repoRoot = GasPayloadBenchmarks.FindRepoRoot();
     string gasBenchmarksRoot = Path.Combine(repoRoot, "tools", "gas-benchmarks");
     string genesisPath = Path.Combine(gasBenchmarksRoot, "scripts", "genesisfiles", "nethermind", "zkevmgenesis.json");
     string testingDir = Path.Combine(gasBenchmarksRoot, "eest_tests", "testing");
@@ -418,19 +418,3 @@ static string FindFirstMatchingTestFile(string testingDir, string pattern)
     return null;
 }
 
-static string FindRepoRoot()
-{
-    string dir = AppDomain.CurrentDomain.BaseDirectory;
-    while (dir is not null)
-    {
-        string gitPath = Path.Combine(dir, ".git");
-        if (Directory.Exists(gitPath) || File.Exists(gitPath))
-        {
-            return dir;
-        }
-
-        dir = Directory.GetParent(dir)?.FullName;
-    }
-
-    throw new DirectoryNotFoundException("Could not find repository root.");
-}
