@@ -166,7 +166,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             // Its fine to commit the state tree together with the storage tree at this point as the storage tree
             // root has been resolved and updated to the state tree within the writebatch.
             _stateTree.Commit();
-        }));
+        }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
 
         foreach (KeyValuePair<AddressAsKey, FlatStorageTree> storage in _storages)
         {
@@ -177,7 +177,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     FlatStorageTree st = (FlatStorageTree)ctx!;
                     st.CommitTree();
                     _concurrencyQuota.ReturnConcurrencyQuota();
-                }, storage.Value));
+                }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
             }
             else
             {

@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Numerics;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -23,6 +25,11 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Eth.V67;
+using Nethermind.Network.P2P.Subprotocols.Eth.V68;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69;
+using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
 using Nethermind.State;
@@ -70,6 +77,9 @@ public class ProtocolsManagerTests
         private readonly IGossipPolicy _gossipPolicy;
         private readonly IPeerManager _peerManager;
         private readonly INetworkConfig _networkConfig;
+        private readonly ITxPoolConfig _txPoolConfig;
+        private readonly ISpecProvider _specProvider;
+        private readonly IForkInfo _forkInfo;
 
         public Context()
         {
@@ -102,30 +112,55 @@ public class ProtocolsManagerTests
             _blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
             _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
             _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-            ForkInfo forkInfo = new(MainnetSpecProvider.Instance, _syncServer);
+            _forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
             _peerManager = Substitute.For<IPeerManager>();
             _networkConfig = new NetworkConfig();
-            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, _peerManager, _networkConfig, LimboLogs.Instance);
+            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _forkInfo, _peerManager, _networkConfig, LimboLogs.Instance);
             _peerStorage = Substitute.For<INetworkStorage>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
+            _txPoolConfig = Substitute.For<ITxPoolConfig>();
+            _specProvider = Substitute.For<ISpecProvider>();
             _manager = new ProtocolsManager(
                 _syncPeerPool,
-                _syncServer,
-                RunImmediatelyScheduler.Instance,
                 _txPool,
                 _discoveryApp,
-                _serializer,
                 _rlpxHost,
                 _nodeStatsManager,
                 _protocolValidator,
                 _peerStorage,
-                forkInfo,
-                _gossipPolicy,
-                Substitute.For<IWorldStateManager>(),
-                LimboLogs.Instance,
-                Substitute.For<ITxPoolConfig>(),
-                Substitute.For<ISpecProvider>());
+                BuildProtocolHandlerFactories(),
+                LimboLogs.Instance);
+        }
+
+        private IProtocolHandlerFactory[] BuildProtocolHandlerFactories()
+        {
+            return
+            [
+                new ReusableProtocolHandlerFactory<P2PProtocolHandler>(
+                    session => new P2PProtocolHandler(session, _rlpxHost.LocalNodeId, _nodeStatsManager, _serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance),
+                    Protocol.P2P),
+                new ReusableProtocolHandlerFactory<Eth66ProtocolHandler>(
+                    session => new Eth66ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance),
+                    Protocol.Eth,
+                    66),
+                new ReusableProtocolHandlerFactory<Eth67ProtocolHandler>(
+                    session => new Eth67ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance),
+                    Protocol.Eth,
+                    67),
+                new ReusableProtocolHandlerFactory<Eth68ProtocolHandler>(
+                    session => new Eth68ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
+                    Protocol.Eth,
+                    68),
+                new ReusableProtocolHandlerFactory<Eth69ProtocolHandler>(
+                    session => new Eth69ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
+                    Protocol.Eth,
+                    69),
+                new ReusableProtocolHandlerFactory<Eth70ProtocolHandler>(
+                    session => new Eth70ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
+                    Protocol.Eth,
+                    70)
+            ];
         }
 
         public Context CreateIncomingSession()
