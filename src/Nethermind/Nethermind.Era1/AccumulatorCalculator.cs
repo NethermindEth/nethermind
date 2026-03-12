@@ -10,7 +10,7 @@ using Nethermind.Merkleization;
 namespace Nethermind.Era1;
 
 // https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#algorithms
-internal class AccumulatorCalculator : IDisposable
+public class AccumulatorCalculator : IDisposable
 {
     private readonly ArrayPoolList<ReadOnlyMemory<byte>> _roots = new(EraWriter.MaxEra1Size);
 
