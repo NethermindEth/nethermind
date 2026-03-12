@@ -161,26 +161,12 @@ public static partial class Ssz
 
     public static void Decode(ReadOnlySpan<byte> span, int vectorLength, out BitArray vector)
     {
-        BitArray value = new BitArray(span.ToArray())
-        {
-            Length = vectorLength
-        };
-        vector = value;
+        vector = DecodeBitvector(span, vectorLength);
     }
 
     public static void Decode(ReadOnlySpan<byte> span, out BitArray list)
     {
-        BitArray value = new BitArray(span.ToArray());
-        int length = value.Length - 1;
-        int lastByte = span[^1];
-        int mask = 0x80;
-        while ((lastByte & mask) == 0 && mask > 0)
-        {
-            length--;
-            mask >>= 1;
-        }
-        value.Length = length;
-        list = value;
+        list = DecodeBitlist(span);
     }
 
     private static void ValidateLength(ReadOnlySpan<byte> span, int expectedLength)
@@ -188,7 +174,7 @@ public static partial class Ssz
         if (span.Length != expectedLength)
         {
             throw new InvalidDataException(
-                 $"{nameof(DecodeByte)} expects input of length {expectedLength} and received {span.Length}");
+                 $"SSZ decode expects input of length {expectedLength} and received {span.Length}");
         }
     }
 
@@ -197,7 +183,7 @@ public static partial class Ssz
         if (span.Length % itemLength != 0)
         {
             throw new InvalidDataException(
-                 $"{nameof(DecodeUShorts)} expects input in multiples of {itemLength} and received {span.Length}");
+                 $"SSZ decode expects input in multiples of {itemLength} and received {span.Length}");
         }
     }
 }
