@@ -206,16 +206,18 @@ public static class BaseTriePersistence
             Span<byte> lastKeyBuf = stackalloc byte[FullStateNodesKeyLength + 1];
 
             // Delete from StateNodesTop (path length 0-5)
+            // Truncate toPath to max length for this column to ensure all keys in range are included
             EncodeStateTopNodeKey(firstKeyBuf[..StateNodesTopPathLength], fromPath);
-            EncodeStateTopNodeKey(lastKeyBuf[..StateNodesTopPathLength], toPath);
+            EncodeStateTopNodeKey(lastKeyBuf[..StateNodesTopPathLength], toPath.Truncate(StateNodesTopThreshold));
             lastKeyBuf[StateNodesTopPathLength] = 0;
             BasePersistence.DeleteMatchingKeys(stateTopNodesSnap, stateTopNodes,
                 firstKeyBuf[..StateNodesTopPathLength], lastKeyBuf[..(StateNodesTopPathLength + 1)],
                 StateNodesTopPathLength);
 
             // Delete from StateNodes (path length 6-15)
+            // Truncate toPath to max length for this column to ensure all keys in range are included
             EncodeShortenedStateNodeKey(firstKeyBuf[..ShortenedPathLength], fromPath);
-            EncodeShortenedStateNodeKey(lastKeyBuf[..ShortenedPathLength], toPath);
+            EncodeShortenedStateNodeKey(lastKeyBuf[..ShortenedPathLength], toPath.Truncate(ShortenedPathThreshold));
             lastKeyBuf[ShortenedPathLength] = 0;
             BasePersistence.DeleteMatchingKeys(stateNodesSnap, stateNodes,
                 firstKeyBuf[..ShortenedPathLength], lastKeyBuf[..(ShortenedPathLength + 1)],
@@ -243,8 +245,9 @@ public static class BaseTriePersistence
             Span<byte> lastKeyBuf = stackalloc byte[FullStorageNodesKeyLength + 1];
 
             // Delete from StorageNodes (path length 0-15)
+            // Truncate toPath to max length for this column to ensure all keys in range are included
             EncodeShortenedStorageNodeKey(firstKeyBuf[..ShortenedStorageNodesKeyLength], address, fromPath);
-            EncodeShortenedStorageNodeKey(lastKeyBuf[..ShortenedStorageNodesKeyLength], address, toPath);
+            EncodeShortenedStorageNodeKey(lastKeyBuf[..ShortenedStorageNodesKeyLength], address, toPath.Truncate(ShortenedPathThreshold));
             lastKeyBuf[ShortenedStorageNodesKeyLength] = 0;
             BasePersistence.DeleteMatchingKeys(storageNodesSnap, storageNodes,
                 firstKeyBuf[..ShortenedStorageNodesKeyLength], lastKeyBuf[..(ShortenedStorageNodesKeyLength + 1)],
