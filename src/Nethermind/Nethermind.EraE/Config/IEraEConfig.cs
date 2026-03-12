@@ -32,4 +32,7 @@ public interface IEraEConfig : IConfig
 
     [ConfigItem(Description = "[Technical] Block buffer size during era import.", DefaultValue = "4096", HiddenFromDocs = true)]
     long ImportBlocksBufferSize { get; set; }
+
+    [ConfigItem(Description = "Beacon node URL for fetching beacon block roots and state roots during post-merge EraE export. When set, enables BeaconApiRootsProvider and HistoricalSummariesRpcProvider.", DefaultValue = "null", HiddenFromDocs = false)]
+    string? BeaconNodeUrl { get; set; }
 }

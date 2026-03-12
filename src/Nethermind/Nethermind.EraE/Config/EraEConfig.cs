@@ -16,4 +16,5 @@ public class EraEConfig : IEraEConfig
     public string? NetworkName { get; set; }
     public int Concurrency { get; set; }
     public long ImportBlocksBufferSize { get; set; } = 4096;
+    public string? BeaconNodeUrl { get; set; }
 }

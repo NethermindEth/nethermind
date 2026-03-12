@@ -22,6 +22,7 @@ public sealed class EraStore : IEraStore
     private readonly ISpecProvider _specProvider;
     private readonly IBlockValidator _blockValidator;
     private readonly ISet<ValueHash256>? _trustedAccumulators;
+    private readonly Proofs.Validator? _validator;
 
     private readonly Dictionary<long, string> _epochs;
     private readonly ValueHash256[] _checksums;
@@ -75,7 +76,8 @@ public sealed class EraStore : IEraStore
         int maxEraSize,
         ISet<ValueHash256>? trustedAccumulators,
         string directory,
-        int verifyConcurrency = 0)
+        int verifyConcurrency = 0,
+        Proofs.Validator? validator = null)
     {
         ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(blockValidator);
@@ -85,6 +87,7 @@ public sealed class EraStore : IEraStore
         _specProvider = specProvider;
         _blockValidator = blockValidator;
         _trustedAccumulators = trustedAccumulators;
+        _validator = validator;
         _maxEraSize = maxEraSize;
         _maxOpenFile = Environment.ProcessorCount * 2;
         _verifyConcurrency = verifyConcurrency == 0 ? Environment.ProcessorCount : verifyConcurrency;
@@ -136,7 +139,7 @@ public sealed class EraStore : IEraStore
 
         Task accumulatorTask = Task.Run(async () =>
         {
-            ValueHash256 accRoot = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, cancellation: cancellation);
+            ValueHash256 accRoot = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, _validator, cancellation);
             if (_trustedAccumulators != null && accRoot != default && !_trustedAccumulators.Contains(accRoot))
                 throw new EraVerificationException($"AccumulatorRoot {accRoot} for epoch {epoch} is not trusted.");
         });

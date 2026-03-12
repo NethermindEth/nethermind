@@ -6,6 +6,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Config;
+using Nethermind.EraE.Proofs;
 
 namespace Nethermind.EraE.Store;
 
@@ -13,7 +14,8 @@ public class EraStoreFactory(
     ISpecProvider specProvider,
     IBlockValidator blockValidator,
     IFileSystem fileSystem,
-    IEraEConfig eraConfig
+    IEraEConfig eraConfig,
+    Validator? validator = null
 ) : IEraStoreFactory
 {
     public IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators) =>
@@ -25,7 +27,8 @@ public class EraStoreFactory(
             eraConfig.MaxEraSize,
             trustedAccumulators,
             src,
-            eraConfig.Concurrency);
+            eraConfig.Concurrency,
+            validator);
 }
 
 public interface IEraStoreFactory

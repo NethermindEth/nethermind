@@ -22,7 +22,20 @@ public class EraEModule : Module
         base.Load(builder);
 
         builder
-            .AddSingleton<IBeaconRootsProvider>(_ => NullBeaconRootsProvider.Instance)
+            .AddSingleton<IBeaconRootsProvider>(ctx =>
+            {
+                string? url = ctx.Resolve<IEraEConfig>().BeaconNodeUrl;
+                return string.IsNullOrWhiteSpace(url)
+                    ? NullBeaconRootsProvider.Instance
+                    : new BeaconApiRootsProvider(new Uri(url));
+            })
+            .AddSingleton<IHistoricalSummariesProvider>(ctx =>
+            {
+                string? url = ctx.Resolve<IEraEConfig>().BeaconNodeUrl;
+                return string.IsNullOrWhiteSpace(url)
+                    ? NullHistoricalSummariesProvider.Instance
+                    : new HistoricalSummariesRpcProvider(new Uri(url));
+            })
             .AddSingleton<IEraImporter, EraImporter>()
             .AddSingleton<IEraExporter, EraExporter>()
             .AddSingleton<IEraStoreFactory, EraStoreFactory>()
@@ -31,10 +44,7 @@ public class EraEModule : Module
             .AddSingleton<Validator>(ctx =>
             {
                 ISpecProvider spec = ctx.Resolve<ISpecProvider>();
-                IHistoricalSummariesProvider? summariesProvider =
-                    ctx.IsRegistered<IHistoricalSummariesProvider>()
-                        ? ctx.Resolve<IHistoricalSummariesProvider>()
-                        : null;
+                IHistoricalSummariesProvider summariesProvider = ctx.Resolve<IHistoricalSummariesProvider>();
                 return new Validator(spec, trustedAccumulators: null, trustedHistoricalRoots: null, summariesProvider);
             })
             .RegisterSingletonJsonRpcModule<IEraAdminRpcModule, EraAdminRpcModule>()
