@@ -63,7 +63,12 @@ public sealed class BlocksRootContext : IDisposable
         AccumulatorType = GetAccumulatorType(forkActivation);
     }
 
-    public void ProcessBlock(Block block)
+    /// <summary>
+    /// Records a block for the accumulator (pre-merge) or the beacon roots/state roots (post-merge).
+    /// For post-merge blocks, use the overload that accepts <paramref name="beaconBlockRoot"/> and
+    /// <paramref name="stateRoot"/>; without them the post-merge context will not be populated.
+    /// </summary>
+    public void ProcessBlock(Block block, ValueHash256? beaconBlockRoot = null, ValueHash256? stateRoot = null)
     {
         switch (AccumulatorType)
         {
@@ -72,9 +77,21 @@ public sealed class BlocksRootContext : IDisposable
                 if (!block.Header.IsPostMerge)
                     _blockHashes.Add((block.Header.Hash!, block.TotalDifficulty!.Value));
                 break;
-            default:
-                // Post-merge paths (HistoricalRoots, HistoricalSummaries) are stubbed.
-                return;
+
+            case AccumulatorType.HistoricalRoots:
+            case AccumulatorType.HistoricalSummaries:
+                // Post-merge: collect beacon block roots and state roots per slot.
+                // Missed slots are represented by zero hashes (default ValueHash256).
+                if (beaconBlockRoot.HasValue)
+                    _blockRoots.Add(beaconBlockRoot.Value);
+                else
+                    _blockRoots.Add(default);
+
+                if (stateRoot.HasValue)
+                    _stateRoots.Add(stateRoot.Value);
+                else
+                    _stateRoots.Add(default);
+                break;
         }
         Populated = true;
     }

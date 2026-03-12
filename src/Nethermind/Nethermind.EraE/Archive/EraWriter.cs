@@ -12,6 +12,8 @@ using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.ProofDecoder;
+using ITimestamper = Nethermind.Core.ITimestamper;
+using Timestamper = Nethermind.Core.Timestamper;
 
 namespace Nethermind.EraE.Archive;
 
@@ -38,6 +40,8 @@ public sealed class EraWriter : IDisposable
     private readonly ReceiptMessageDecoder _slimReceiptDecoder = new(skipBloom: true);
     private readonly E2StoreWriter _e2StoreWriter;
     private readonly ISpecProvider _specProvider;
+    private readonly IBeaconRootsProvider? _beaconRootsProvider;
+    private readonly SlotTime? _slotTime;
 
     // Buffered encoded sections held in memory until Finalize.
     // ArrayPoolList gives pre-allocated backing storage; the byte[] elements themselves are GC-allocated
@@ -58,20 +62,30 @@ public sealed class EraWriter : IDisposable
     private UInt256 _lastPreMergeTD;
     private BlocksRootContext? _blocksRootContext;
 
-    public EraWriter(string path, ISpecProvider specProvider)
-        : this(new E2StoreWriter(new FileStream(path, FileMode.Create)), specProvider)
+    public EraWriter(string path, ISpecProvider specProvider, IBeaconRootsProvider? beaconRootsProvider = null)
+        : this(new E2StoreWriter(new FileStream(path, FileMode.Create)), specProvider, beaconRootsProvider)
     {
     }
 
-    public EraWriter(Stream outputStream, ISpecProvider specProvider)
-        : this(new E2StoreWriter(outputStream), specProvider)
+    public EraWriter(Stream outputStream, ISpecProvider specProvider, IBeaconRootsProvider? beaconRootsProvider = null)
+        : this(new E2StoreWriter(outputStream), specProvider, beaconRootsProvider)
     {
     }
 
-    private EraWriter(E2StoreWriter e2StoreWriter, ISpecProvider specProvider)
+    private EraWriter(E2StoreWriter e2StoreWriter, ISpecProvider specProvider, IBeaconRootsProvider? beaconRootsProvider)
     {
         _e2StoreWriter = e2StoreWriter;
         _specProvider = specProvider;
+        _beaconRootsProvider = beaconRootsProvider;
+
+        if (beaconRootsProvider is not null && specProvider.BeaconChainGenesisTimestamp.HasValue)
+        {
+            _slotTime = new SlotTime(
+                specProvider.BeaconChainGenesisTimestamp.Value * 1000,
+                new Timestamper(),
+                TimeSpan.FromSeconds(12),
+                TimeSpan.FromSeconds(0));
+        }
     }
 
     public Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
@@ -114,7 +128,18 @@ public sealed class EraWriter : IDisposable
             _encodedSlimReceipts.Add(receiptsRlp.AsMemory().ToArray());
 
         _blockHashes.Add(block.Hash);
-        _blocksRootContext!.ProcessBlock(block);
+
+        if (isPostMerge && _beaconRootsProvider is not null && _slotTime is not null)
+        {
+            long slot = (long)_slotTime.GetSlot(block.Header.Timestamp * 1000);
+            (ValueHash256 beaconBlockRoot, ValueHash256 stateRoot)? roots =
+                await _beaconRootsProvider.GetBeaconRoots(slot, cancellation);
+            _blocksRootContext!.ProcessBlock(block, roots?.beaconBlockRoot, roots?.stateRoot);
+        }
+        else
+        {
+            _blocksRootContext!.ProcessBlock(block);
+        }
 
         if (!isPostMerge)
         {
@@ -133,7 +158,6 @@ public sealed class EraWriter : IDisposable
             _hasPostMergeBlocks = true;
         }
 
-        return Task.CompletedTask;
     }
 
     public async Task<(ValueHash256 AccumulatorRoot, ValueHash256 Checksum)> Finalize(CancellationToken cancellation = default)
