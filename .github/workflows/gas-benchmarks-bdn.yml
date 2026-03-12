@@ -429,7 +429,7 @@ jobs:
 
   retro-collect:
     needs: [resolve, retro-benchmark]
-    if: always() && !cancelled() && needs.resolve.result == 'success'
+    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.retrospective == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
