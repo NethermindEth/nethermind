@@ -137,6 +137,31 @@ namespace Nethermind.Serialization.Ssz.Test
         }
 
         [Test]
+        public void DecodeBitvector_accepts_byte_aligned_length()
+        {
+            // Bitvector[8]: all bits set = 0xFF, no unused high bits
+            byte[] data = [0xFF];
+            BitArray result = Ssz.DecodeBitvector(data, 8);
+            Assert.That(result.Length, Is.EqualTo(8));
+            for (int i = 0; i < 8; i++)
+                Assert.That(result[i], Is.True);
+        }
+
+        [Test]
+        public void DecodeBitlist_accepts_valid_input()
+        {
+            // Bitlist with 3 data bits [true, false, true] + sentinel
+            // Encoded: bits 0-2 = data, bit 3 = sentinel
+            // so we have 0x0D = 0000_1101
+            byte[] data = [0x0D];
+            BitArray result = Ssz.DecodeBitlist(data);
+            Assert.That(result.Length, Is.EqualTo(3));
+            Assert.That(result[0], Is.True);
+            Assert.That(result[1], Is.False);
+            Assert.That(result[2], Is.True);
+        }
+
+        [Test]
         public void DecodeBitlist_rejects_empty_input()
         {
             // missing sentinel
