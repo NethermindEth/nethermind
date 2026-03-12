@@ -153,7 +153,9 @@ namespace Nethermind.Xdc
             //TODO Technically we have to apply timeout exponents from spec, but they are always 1
             _timeoutTimer.Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
 
-            _logger.Info($"Round {args.PreviousRound} completed in {args.LastRoundDuration.TotalSeconds:F2}s");
+            if (args.LastRoundDuration is { } lastRoundDuration)
+                _logger.Info($"Round {args.PreviousRound} completed in {lastRoundDuration.TotalSeconds:F2}s");
+
             _writeRoundInfo = true;
         }
 
@@ -179,6 +181,7 @@ namespace Nethermind.Xdc
                 throw new InvalidBlockException(_blockTree.Head, "Head is not XdcBlockHeader.");
 
             _quorumCertificateManager.Initialize(xdcHead);
+            _highestVotedRound = xdcHead.ExtraConsensusData?.BlockRound ?? 0;
             _logger.Info($"Initialized round {_xdcContext.CurrentRound} from head.");
         }
 
@@ -226,11 +229,6 @@ namespace Nethermind.Xdc
 
             // Get XDC spec for this round
             IXdcReleaseSpec spec = _specProvider.GetXdcSpec(roundParent, currentRound);
-            if (spec == null)
-            {
-                _logger.Error($"Round {currentRound}: Failed to get XDC spec, skipping");
-                return;
-            }
 
             // Get epoch info and check for epoch switch
             EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(roundParent);
@@ -334,6 +332,7 @@ namespace Nethermind.Xdc
         {
             if (head.ExtraConsensusData?.QuorumCert is null)
                 throw new InvalidOperationException("Head block missing consensus data.");
+
             var votingRound = head.ExtraConsensusData.BlockRound;
             if (_highestVotedRound >= votingRound)
                 return;
@@ -349,10 +348,10 @@ namespace Nethermind.Xdc
             }
 
             // Check voting rule
-            bool canVote = _votesManager.VerifyVotingRules(head);
+            bool canVote = _votesManager.VerifyVotingRules(head, out string error);
             if (!canVote)
             {
-                _logger.Info($"Round {votingRound}: Voting rule not satisfied for block #{head.Number}, hash={head.Hash}");
+                _logger.Info($"Round {votingRound}: Voting rule not satisfied for block #{head.Number}, hash={head.Hash}: {error}");
                 return;
             }
 
@@ -399,10 +398,18 @@ namespace Nethermind.Xdc
                 return false;
             }
 
-            if ((long)parent.Timestamp + spec.MinePeriod > DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            if ((long)parent.Timestamp + spec.MinePeriod > now)
             {
                 //Not enough time has passed since last block
                 return false;
+            }
+
+            var fallbackPeriod = spec.TimeoutPeriod / 2;
+            if ((long)parent.Timestamp + fallbackPeriod < now)
+            {
+                // fallback to mining without accumulating enough votes
+                return true;
             }
 
             if (parent.Hash != _xdcContext.HighestQC.ProposedBlockInfo.Hash)
@@ -410,6 +417,7 @@ namespace Nethermind.Xdc
                 //We have not reached QC vote threshold yet
                 return false;
             }
+
             return true;
         }
 

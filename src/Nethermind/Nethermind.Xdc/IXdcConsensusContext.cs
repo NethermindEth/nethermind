@@ -14,7 +14,6 @@ public interface IXdcConsensusContext
     TimeoutCertificate? HighestTC { get; set; }
     QuorumCertificate? LockQC { get; set; }
     int TimeoutCounter { get; set; }
-    DateTime RoundStarted { get; }
 
     event EventHandler<NewRoundEventArgs> NewRoundSetEvent;
 

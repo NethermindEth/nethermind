@@ -95,8 +95,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         var timeoutCertificate = new TimeoutCertificate(timeout.Round, signatures, timeout.GapNumber);
 
         ProcessTimeoutCertificate(timeoutCertificate);
-
-        SyncInfo syncInfo = GetSyncInfo();
     }
 
     public void ProcessTimeoutCertificate(TimeoutCertificate timeoutCertificate)
@@ -267,8 +265,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         timeoutMsg.Signer = _signer.Address;
 
         HandleTimeoutVote(timeoutMsg);
-
-        //TODO: Broadcast _ctx.HighestTC
     }
 
     // Returns true if the signer is within the master node list
