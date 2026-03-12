@@ -79,7 +79,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         {
             _warmerJob = Task.Run(() =>
             {
-                using ArrayPoolList<Thread> tasks = new(_secondaryWorkerCount);
+                using ArrayPoolListRef<Thread> tasks = new(_secondaryWorkerCount);
                 Thread primaryWorkerThread = new(() =>
                 {
                     RunPrimaryWorker(_cancelTokenSource.Token);

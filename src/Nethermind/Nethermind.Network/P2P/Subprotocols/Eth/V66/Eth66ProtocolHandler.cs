@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -27,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     /// <summary>
     /// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2481.md
     /// </summary>
-    public class Eth66ProtocolHandler : Eth65ProtocolHandler
+    public class Eth66ProtocolHandler : Eth65ProtocolHandler, IStaticProtocolInfo
     {
         private readonly MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _headersRequests66;
         private readonly MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
@@ -55,7 +56,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         public override string Name => "eth66";
 
-        public override byte ProtocolVersion => EthVersions.Eth66;
+        public static byte Version => EthVersions.Eth66;
+        public override byte ProtocolVersion => Version;
 
         public override void HandleMessage(ZeroPacket message)
         {

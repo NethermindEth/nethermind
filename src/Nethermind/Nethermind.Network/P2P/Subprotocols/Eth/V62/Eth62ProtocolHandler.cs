@@ -57,6 +57,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public void DisableTxFiltering() => _floodController.IsEnabled = false;
 
+        public static string Code => Protocol.Eth;
         public override byte ProtocolVersion => EthVersions.Eth62;
         public override string ProtocolCode => Protocol.Eth;
         public override int MessageIdSpaceSize => 8;

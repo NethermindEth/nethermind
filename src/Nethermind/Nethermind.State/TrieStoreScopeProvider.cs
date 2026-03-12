@@ -118,7 +118,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
             // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
             // may make it worst. Always check on mainnet.
-            using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
+            using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
             foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
             {
                 if (blockCommitter.TryRequestConcurrencyQuota())

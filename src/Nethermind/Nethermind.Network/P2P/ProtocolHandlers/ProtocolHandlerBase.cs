@@ -194,6 +194,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return messageObject;
         }
 
+        public virtual void RegisterWith(ISession session, IProtocolRegistrar registrar) => registrar.Register(session, this);
+
         public abstract void Dispose();
 
         public abstract byte ProtocolVersion { get; }

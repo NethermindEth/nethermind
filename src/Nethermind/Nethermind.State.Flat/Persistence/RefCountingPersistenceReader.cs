@@ -49,10 +49,10 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
         _innerReader.TryLoadStorageRlp(address, in path, flags);
 
-    public byte[]? GetAccountRaw(Hash256 addrHash) =>
+    public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
         _innerReader.GetAccountRaw(addrHash);
 
-    public bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value) =>
+    public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) =>
         _innerReader.TryGetStorageRaw(addrHash, slotHash, ref value);
 
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
