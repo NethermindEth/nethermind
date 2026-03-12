@@ -21,16 +21,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public void HandleMessage(Packet message) { }
         public void DisconnectProtocol(DisconnectReason disconnectReason, string details) { }
         public void RegisterWith(ISession session, IProtocolRegistrar registrar) { }
-        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized
-        {
-            add { }
-            remove { }
-        }
-
-        public event EventHandler<ProtocolEventArgs> SubprotocolRequested
-        {
-            add { }
-            remove { }
-        }
+        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized { add { } remove { } }
+        public event EventHandler<ProtocolEventArgs> SubprotocolRequested { add { } remove { } }
     }
 }

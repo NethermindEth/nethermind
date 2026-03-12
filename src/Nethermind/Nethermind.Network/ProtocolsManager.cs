@@ -32,14 +32,10 @@ namespace Nethermind.Network
         };
 
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
-
-        private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols =
-            new();
-
+        private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols = new();
         private readonly ISyncPeerPool _syncPool;
         private readonly ITxPool _txPool;
         private readonly INodeStatsManager _stats;
-
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IProtocolValidator _protocolValidator;
@@ -187,12 +183,12 @@ namespace Nethermind.Network
                     else
                     {
                         _hangingSatelliteProtocols.AddOrUpdate(session.Node,
-                            new ConcurrentDictionary<Guid, ProtocolHandlerBase>(new[] { new KeyValuePair<Guid, ProtocolHandlerBase>(session.SessionId, handler) }),
-                            (node, dict) =>
-                        {
-                            dict[session.SessionId] = handler;
-                            return dict;
-                        });
+                            _ => new ConcurrentDictionary<Guid, ProtocolHandlerBase> { [session.SessionId] = handler },
+                            (_, dict) =>
+                            {
+                                dict[session.SessionId] = handler;
+                                return dict;
+                            });
 
                         if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
                     }
@@ -266,7 +262,7 @@ namespace Nethermind.Network
                 {
                     if (_syncPeers.TryAdd(session.SessionId, handler))
                     {
-                        if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out var handlerDictionary))
+                        if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase> handlerDictionary))
                         {
                             foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
                             {
@@ -311,7 +307,7 @@ namespace Nethermind.Network
         }
 
         /// <summary>
-        /// In case of IN connection we don't know what is the port node is listening on until we receive the Hello message
+        /// In case of IN connection we don't know what the port node is listening on is until we receive the Hello message
         /// </summary>
         private void AddNodeToDiscovery(ISession session, P2PProtocolInitializedEventArgs eventArgs)
         {
@@ -350,7 +346,9 @@ namespace Nethermind.Network
             foreach (Capability capability in _capabilities)
             {
                 if (capability.ProtocolCode == protocol)
+                {
                     highestVersion = Math.Max(highestVersion, capability.Version);
+                }
             }
 
             return highestVersion;

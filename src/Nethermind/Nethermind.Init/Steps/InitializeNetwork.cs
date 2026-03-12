@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -64,7 +62,7 @@ public class InitializeNetwork : IStep
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly ISyncConfig _syncConfig;
     private readonly IInitConfig _initConfig;
-    protected readonly IEnumerable<IProtocolHandlerFactory> _protocolHandlerFactories;
+    protected readonly IProtocolHandlerFactory[] _protocolHandlerFactories;
 
     private readonly ILogger _logger;
 
@@ -78,7 +76,7 @@ public class InitializeNetwork : IStep
         IDiscoveryApp discoveryApp,
         Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
         [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
-        IEnumerable<IProtocolHandlerFactory> protocolHandlerFactories,
+        IProtocolHandlerFactory[] protocolHandlerFactories,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
@@ -302,7 +300,7 @@ public class InitializeNetwork : IStep
             NodeStatsManager,
             _api.ProtocolValidator,
             _peerStorage,
-            _protocolHandlerFactories.ToArray(),
+            _protocolHandlerFactories,
             _api.LogManager);
     }
 }

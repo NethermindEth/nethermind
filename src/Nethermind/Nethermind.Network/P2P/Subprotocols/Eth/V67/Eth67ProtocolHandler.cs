@@ -32,7 +32,8 @@ public class Eth67ProtocolHandler(
 {
     public override string Name => "eth67";
 
-    public override byte ProtocolVersion => EthVersions.Eth67;
+    public new static byte Version => EthVersions.Eth67;
+    public override byte ProtocolVersion => Version;
 
     public override void HandleMessage(ZeroPacket message)
     {

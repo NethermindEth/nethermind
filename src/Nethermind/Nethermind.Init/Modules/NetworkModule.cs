@@ -12,7 +12,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
@@ -140,13 +139,13 @@ public class NetworkModule(IConfigProvider configProvider) : Module
                 new Network.P2P.ProtocolHandlers.P2PProtocolHandlerFactory(ctx.Resolve<Func<Network.P2P.ISession, Network.P2P.ProtocolHandlers.P2PProtocolHandler>>()))
 
             // Protocol handler factories (using clean DSL with Autofac Func auto-generation)
-            .AddProtocolHandler<Network.P2P.Subprotocols.Snap.SnapProtocolHandler>(Protocol.Snap, version: 1)
-            .AddProtocolHandler<Network.P2P.Subprotocols.NodeData.NodeDataProtocolHandler>(Protocol.NodeData, version: 1)
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V66.Eth66ProtocolHandler>(Protocol.Eth, version: 66)
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V67.Eth67ProtocolHandler>(Protocol.Eth, version: 67)
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V68.Eth68ProtocolHandler>(Protocol.Eth, version: 68)
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V69.Eth69ProtocolHandler>(Protocol.Eth, version: 69)
-            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V70.Eth70ProtocolHandler>(Protocol.Eth, version: 70)
+            .AddProtocolHandler<Network.P2P.Subprotocols.Snap.SnapProtocolHandler>()
+            .AddProtocolHandler<Network.P2P.Subprotocols.NodeData.NodeDataProtocolHandler>()
+            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V66.Eth66ProtocolHandler>()
+            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V67.Eth67ProtocolHandler>()
+            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V68.Eth68ProtocolHandler>()
+            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V69.Eth69ProtocolHandler>()
+            .AddProtocolHandler<Network.P2P.Subprotocols.Eth.V70.Eth70ProtocolHandler>()
 
             ;
     }

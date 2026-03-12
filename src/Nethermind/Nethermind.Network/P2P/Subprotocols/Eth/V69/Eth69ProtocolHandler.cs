@@ -45,7 +45,8 @@ public class Eth69ProtocolHandler(
 {
     public override string Name => "eth69";
 
-    public override byte ProtocolVersion => EthVersions.Eth69;
+    public new static byte Version => EthVersions.Eth69;
+    public override byte ProtocolVersion => Version;
 
     public override int MessageIdSpaceSize => 18;
 

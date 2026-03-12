@@ -52,7 +52,8 @@ public class Eth68ProtocolHandler(ISession session,
 
     public override string Name => "eth68";
 
-    public override byte ProtocolVersion => EthVersions.Eth68;
+    public new static byte Version => EthVersions.Eth68;
+    public override byte ProtocolVersion => Version;
 
     public override void HandleMessage(ZeroPacket message)
     {
