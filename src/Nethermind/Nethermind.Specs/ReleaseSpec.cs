@@ -151,13 +151,13 @@ public class ReleaseSpec : IReleaseSpec
         if (IsEip4844Enabled) cache.Add(PrecompiledAddresses.PointEvaluation);
         if (IsEip2537Enabled)
         {
-            cache.Add(PrecompiledAddresses.Bls12G1Add);
-            cache.Add(PrecompiledAddresses.Bls12G1Msm);
-            cache.Add(PrecompiledAddresses.Bls12G2Add);
-            cache.Add(PrecompiledAddresses.Bls12G2Msm);
-            cache.Add(PrecompiledAddresses.Bls12PairingCheck);
-            cache.Add(PrecompiledAddresses.Bls12MapFpToG1);
-            cache.Add(PrecompiledAddresses.Bls12MapFp2ToG2);
+            cache.Add(PrecompiledAddresses.Bls12381G1Add);
+            cache.Add(PrecompiledAddresses.Bls12381G1Msm);
+            cache.Add(PrecompiledAddresses.Bls12381G2Add);
+            cache.Add(PrecompiledAddresses.Bls12381G2Msm);
+            cache.Add(PrecompiledAddresses.Bls12381PairingCheck);
+            cache.Add(PrecompiledAddresses.Bls12381FpToG1);
+            cache.Add(PrecompiledAddresses.Bls12381Fp2ToG2);
         }
 
         if (IsRip7212Enabled || IsEip7951Enabled) cache.Add(PrecompiledAddresses.P256Verify);

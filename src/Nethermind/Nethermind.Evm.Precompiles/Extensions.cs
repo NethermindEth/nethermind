@@ -40,7 +40,7 @@ public static class Extensions
             AddPrecompile<PointEvaluationPrecompile>();
         }
 
-        if (spec.Bls381Enabled)
+        if (spec.Bls12381Enabled)
         {
             AddPrecompile<Bls12381G1AddPrecompile>();
             AddPrecompile<Bls12381G1MsmPrecompile>();
