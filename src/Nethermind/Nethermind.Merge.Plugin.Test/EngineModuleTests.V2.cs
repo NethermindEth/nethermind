@@ -795,14 +795,14 @@ public partial class EngineModuleTests
     {
         yield return (new[] { Array.Empty<Withdrawal>() }, Array.Empty<(Address, UInt256)>());
         yield return (new[] { new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth } },
-            new[] { (TestItem.AddressA, 1.Ether()), (TestItem.AddressB, 2.Ether()) });
+            new[] { (TestItem.AddressA, 1.Ether), (TestItem.AddressB, 2.Ether) });
         yield return (new[] { new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth } },
-            new[] { (TestItem.AddressA, 2.Ether()), (TestItem.AddressB, 0.Ether()) });
+            new[] { (TestItem.AddressA, 2.Ether), (TestItem.AddressB, 0.Ether) });
         yield return (
             new[]
             {
                 new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth }, new[] { TestItem.WithdrawalA_1Eth }
-            }, new[] { (TestItem.AddressA, 3.Ether()), (TestItem.AddressB, 0.Ether()) });
+            }, new[] { (TestItem.AddressA, 3.Ether), (TestItem.AddressB, 0.Ether) });
         yield return (new[]
             {
                 new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth }, // 1st payload
@@ -813,8 +813,8 @@ public partial class EngineModuleTests
             },
             new[]
             {
-                (TestItem.AddressA, 4.Ether()), (TestItem.AddressB, 2.Ether()), (TestItem.AddressC, 3.Ether()),
-                (TestItem.AddressF, 6.Ether())
+                (TestItem.AddressA, 4.Ether), (TestItem.AddressB, 2.Ether), (TestItem.AddressC, 3.Ether),
+                (TestItem.AddressF, 6.Ether)
             });
     }
 

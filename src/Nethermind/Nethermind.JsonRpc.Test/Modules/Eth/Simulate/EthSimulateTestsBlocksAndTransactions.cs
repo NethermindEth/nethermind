@@ -18,6 +18,8 @@ using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
@@ -42,7 +44,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     Calls = [ToRpcForInput(txToFail), ToRpcForInput(tx)],
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
-                        { TestItem.AddressA, new AccountOverride { Balance = 2100.Ether() } }
+                        { TestItem.AddressA, new AccountOverride { Balance = 2100.Ether } }
                     }
                 }
             ],
@@ -159,8 +161,8 @@ public class EthSimulateTestsBlocksAndTransactions
             GasLimit = 50_000,
             SenderAddress = from.Address,
             To = to,
-            GasPrice = 20.GWei(),
-            DecodedMaxFeePerGas = type >= TxType.EIP1559 ? 20.GWei() : 0
+            GasPrice = 20.GWei,
+            DecodedMaxFeePerGas = type >= TxType.EIP1559 ? 20.GWei : 0
         };
 
         ethereumEcdsa.Sign(from, tx);
@@ -306,16 +308,62 @@ public class EthSimulateTestsBlocksAndTransactions
         return serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
     }
 
+    [Test]
+    public async Task Test_eth_simulate_caps_gas_to_gas_cap()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        long gasCap = 50_000;
+        chain.RpcConfig.GasCap = gasCap;
+
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN — returns remaining gas
+        Address contractAddress = new("0xc200000000000000000000000000000000000000");
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { contractAddress, new AccountOverride { Code = Bytes.FromHexString("0x5a60005260206000f3") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = contractAddress,
+                            Gas = 100_000,
+                            GasPrice = 0
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+
+        SimulateCallResult callResult = result.Data.First().Calls.First();
+        Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
+
+        UInt256 gasAvailable = new(callResult.ReturnData!, isBigEndian: true);
+        Assert.That(gasAvailable, Is.LessThan((UInt256)gasCap));
+        Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+    }
 
     [Test]
-    public async Task TestTransferLogsAddress()
+    public async Task TestTransferLogsAddress([Values] bool eip7708)
     {
         SimulatePayload<TransactionForRpc> payload = CreateTransferLogsAddressPayload();
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        OverridableReleaseSpec spec = new(London.Instance);
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(spec);
+        spec.IsEip7708Enabled = eip7708;
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         var logs = result.Data.First().Calls.First().Logs.ToArray();
-        Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
+        Assert.That(logs.Length, Is.EqualTo(1));
+        Assert.That(logs.First().Address == (eip7708 ? TransferLog.Sender : TransferLog.Erc20Sender));
     }
 
     [Test]

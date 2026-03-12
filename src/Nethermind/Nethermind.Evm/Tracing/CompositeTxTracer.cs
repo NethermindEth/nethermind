@@ -128,7 +128,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -140,7 +140,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -340,6 +340,30 @@ public class CompositeTxTracer : ITxTracer
             if (innerTracer.IsTracingOpLevelStorage)
             {
                 innerTracer.LoadOperationStorage(address, storageIndex, value);
+            }
+        }
+    }
+
+    public void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingOpLevelStorage)
+            {
+                innerTracer.SetOperationTransientStorage(address, storageIndex, newValue, currentValue);
+            }
+        }
+    }
+
+    public void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingOpLevelStorage)
+            {
+                innerTracer.LoadOperationTransientStorage(address, storageIndex, value);
             }
         }
     }

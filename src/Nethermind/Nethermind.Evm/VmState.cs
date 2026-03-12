@@ -230,7 +230,6 @@ public class VmState<TGasPolicy> : IDisposable
 
     public void Dispose()
     {
-        Debug.Assert(!_isDisposed);
         if (_isDisposed)
         {
             return;

@@ -337,7 +337,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = code.ToHexString();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"type\": \"0x2\", \"value\":\"{1.Ether()}\", \"data\": \"{dataStr}\"}}");
+            $"{{\"type\": \"0x2\", \"value\":\"{1.Ether}\", \"data\": \"{dataStr}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Console.WriteLine(serialized);
         Assert.That(
@@ -477,6 +477,38 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         ctx.Test.RpcConfig.GasCap = 50000000;
         await TestEthCallOutOfGas(ctx, 300000000, 50000000);
+    }
+
+    /// <summary>
+    /// Verifies gas cap is enforced by measuring actual gas available to the EVM.
+    /// Gas cap enforcement is in the shared <c>TxExecutor.Execute()</c> base class,
+    /// so this also covers <c>eth_estimateGas</c> and <c>eth_createAccessList</c>.
+    /// </summary>
+    [Test]
+    public async Task Eth_call_gas_available_is_capped_by_gas_cap()
+    {
+        using Context ctx = await Context.Create();
+        long gasCap = 50_000;
+        ctx.Test.RpcConfig.GasCap = gasCap;
+
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        // Returns gas available at start of execution as a 32-byte uint256
+        var stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
+
+        // Request 100K gas — should be capped to 50K by GasCap
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            """{"to":"0xc200000000000000000000000000000000000000", "gas":"0x186A0"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+
+        string result = JToken.Parse(serialized).Value<string>("result")!;
+        long gasAvailable = (long)Bytes.FromHexString(result).ToUInt256();
+
+        // gas available = gasLimit - intrinsicGas; if gas cap works, gasLimit ≤ 50K so gas available < 50K
+        // Without gas cap, gas available would be ~79K (100K - 21K intrinsic)
+        gasAvailable.Should().BeLessThan(gasCap);
+        gasAvailable.Should().BeGreaterThan(0);
     }
 
     [Test]

@@ -10,7 +10,7 @@ namespace Nethermind.Network.P2P.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, PingMessage message)
         {
-            byteBuffer.WriteBytes(Rlp.OfEmptySequence.Bytes);
+            byteBuffer.WriteBytes(Rlp.OfEmptyList.Bytes);
         }
 
         public PingMessage Deserialize(IByteBuffer byteBuffer)

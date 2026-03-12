@@ -74,6 +74,7 @@ public enum Instruction : byte
     BASEFEE = 0x48,
     BLOBHASH = 0x49,
     BLOBBASEFEE = 0x4a,
+    SLOTNUM = 0x4b,
 
     POP = 0x50,
     MLOAD = 0x51,
@@ -296,6 +297,7 @@ public static class InstructionExtensions
             case Instruction.PC:
             case Instruction.BLOBBASEFEE:
             case Instruction.DATASIZE:
+            case Instruction.SLOTNUM:
                 return (0, 1, 0);
             case Instruction.RJUMP:
             case Instruction.CALLF:

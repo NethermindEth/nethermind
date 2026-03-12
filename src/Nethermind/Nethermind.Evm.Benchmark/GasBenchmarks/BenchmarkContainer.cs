@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using Testably.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -45,6 +46,13 @@ namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 /// components via production modules (<see cref="BlockProcessingModule"/>, <see cref="WorldStateModule"/>),
 /// matching the real Nethermind pipeline. Benchmark-specific overrides (genesis state, stub IBlockTree)
 /// are layered on top.
+///
+/// We intentionally use individual production modules (DbModule, WorldStateModule, PrewarmerModule,
+/// BlockProcessingModule) rather than <see cref="NethermindModule"/>. NethermindModule bundles
+/// NetworkModule, DiscoveryModule, RpcModules, EraModule, MonitoringModule, and BlockTreeModule —
+/// none of which benchmarks need — and requires IConfigProvider + INethermindApi infrastructure.
+/// This granular approach keeps benchmarks fast to initialize while still sharing production
+/// block processing wiring, so changes to those modules are automatically reflected here.
 /// </summary>
 internal static class BenchmarkContainer
 {
@@ -168,9 +176,9 @@ internal static class BenchmarkContainer
             .AddSingleton<IPruningConfig>(new PruningConfig())
             .AddSingleton<IDbConfig>(new DbConfig())
             .AddSingleton<ILogIndexConfig>(new LogIndexConfig())
-            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB()))
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1L.GiB))
             .AddSingleton<ITimerFactory>(_ => TimerFactory.Default)
-            .AddSingleton<IFileSystem>(_ => new FileSystem())
+            .AddSingleton<IFileSystem>(_ => new RealFileSystem())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
             .AddSingleton<ChainSpec>(_ => new ChainSpec { ChainId = specProvider.ChainId })
 
