@@ -112,11 +112,7 @@ public sealed class EraStore : IEraStore
             throw new EraException($"No relevant erae files in directory {directory}.");
     }
 
-    private long GetEpochNumber(long blockNumber)
-    {
-        long epochOffset = (blockNumber - FirstBlock) / _maxEraSize;
-        return FirstEpoch + epochOffset;
-    }
+    private long GetEpochNumber(long blockNumber) => blockNumber / _maxEraSize;
 
     private bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
 
@@ -140,7 +136,7 @@ public sealed class EraStore : IEraStore
 
         Task accumulatorTask = Task.Run(async () =>
         {
-            ValueHash256 accRoot = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, cancellation);
+            ValueHash256 accRoot = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, cancellation: cancellation);
             if (_trustedAccumulators != null && accRoot != default && !_trustedAccumulators.Contains(accRoot))
                 throw new EraVerificationException($"AccumulatorRoot {accRoot} for epoch {epoch} is not trusted.");
         });

@@ -59,7 +59,8 @@ public class EraExporter(
         int totalProcessed = 0;
 
         long startEpoch = from / _eraSize;
-        long epochCount = (long)Math.Ceiling((to - from + 1) / (decimal)_eraSize);
+        long endEpoch = to / _eraSize;
+        long epochCount = endEpoch - startEpoch + 1;
 
         using ArrayPoolList<long> epochIdxs = new((int)epochCount);
         for (long i = 0; i < epochCount; i++) epochIdxs.Add(i);
@@ -89,7 +90,11 @@ public class EraExporter(
         async Task WriteEpoch(long epochIdx, CancellationToken cancel)
         {
             long epoch = startEpoch + epochIdx;
-            long startingIndex = from + epochIdx * _eraSize;
+            // Each epoch covers exactly [epoch * eraSize, epoch * eraSize + eraSize - 1].
+            // Clamp to [from, to] to handle partial first and last epochs.
+            long epochBlockStart = epoch * _eraSize;
+            long writeFrom = Math.Max(epochBlockStart, from);
+            long writeTo = Math.Min(epochBlockStart + _eraSize - 1, to);
 
             string filePath = Path.Combine(
                 destinationPath,
@@ -100,7 +105,7 @@ public class EraExporter(
 
             using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider))
             {
-                for (long y = startingIndex; y < startingIndex + _eraSize && y <= to; y++)
+                for (long y = writeFrom; y <= writeTo; y++)
                 {
                     Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
                     if (block is null)
