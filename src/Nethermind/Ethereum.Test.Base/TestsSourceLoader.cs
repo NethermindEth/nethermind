@@ -24,7 +24,7 @@ namespace Ethereum.Test.Base
         public IEnumerable<TTestType> LoadTests<TTestType>()
             where TTestType : EthereumTest
         {
-            IEnumerable<TTestType> tests = _testLoadStrategy.Load(_path, wildcard).Cast<TTestType>();
+            IEnumerable<TTestType> tests = _testLoadStrategy.Load(_path, wildcard).OfType<TTestType>();
             return TestChunkFilter.FilterByChunk(tests);
         }
     }

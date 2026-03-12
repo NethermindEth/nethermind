@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using NUnit.Framework;
+
 namespace Ethereum.Test.Base;
 
 /// <summary>
@@ -67,5 +72,29 @@ public static class TestDirectoryHelper
         if (name.Length > 0 && char.IsDigit(name[0]))
             name = "_" + name;
         return name;
+    }
+
+    /// <summary>
+    /// Asserts that every category name has a corresponding test class in the given assembly.
+    /// Used by MetaTests across test projects to verify test coverage.
+    /// </summary>
+    public static void AssertAllCategoriesTested(
+        Type assemblyType,
+        IEnumerable<string> categoryNames,
+        Func<string, string> expectedNameMapper)
+    {
+        Type[] types = assemblyType.Assembly.GetTypes();
+        List<string> missingCategories = [];
+        foreach (string name in categoryNames)
+        {
+            string expected = expectedNameMapper(name);
+            if (types.All(t => !string.Equals(t.Name, expected, StringComparison.InvariantCultureIgnoreCase)))
+                missingCategories.Add($"{name} expected {expected}");
+        }
+
+        foreach (string missing in missingCategories)
+            Console.WriteLine($"{missing} category is missing");
+
+        Assert.That(missingCategories, Is.Empty);
     }
 }

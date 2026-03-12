@@ -30,7 +30,7 @@ public class TestLoadStrategy(string testsRootPath, TestType testType) : ITestLo
 
         List<EthereumTest> tests = [];
         foreach (string testDir in testDirs)
-            tests.AddRange(LoadTestsFromDirectory(testDir, wildcard));
+            tests.AddRange(LoadTestsFromDirectoryWithHooks(testDir, wildcard));
         return tests;
     }
 
@@ -41,7 +41,25 @@ public class TestLoadStrategy(string testsRootPath, TestType testType) : ITestLo
         return Path.Combine(root, "src", "tests", testsRootPath);
     }
 
-    private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string? wildcard)
+    /// <summary>
+    /// Loads all tests from a single directory. Can be called directly by other strategies
+    /// that don't need the hook/error-handling infrastructure.
+    /// </summary>
+    public static List<EthereumTest> LoadTestsFromDirectory(string testDir, string? wildcard, TestType testType)
+    {
+        List<EthereumTest> testsByName = [];
+        foreach (string testFile in Directory.EnumerateFiles(testDir))
+        {
+            FileTestsSource fileTestsSource = new(testFile, wildcard);
+            IEnumerable<EthereumTest> tests = fileTestsSource.LoadTests(testType);
+            foreach (EthereumTest test in tests)
+                test.Category ??= testDir;
+            testsByName.AddRange(tests);
+        }
+        return testsByName;
+    }
+
+    private IEnumerable<EthereumTest> LoadTestsFromDirectoryWithHooks(string testDir, string? wildcard)
     {
         List<EthereumTest> testsByName = [];
         foreach (string testFile in Directory.EnumerateFiles(testDir))

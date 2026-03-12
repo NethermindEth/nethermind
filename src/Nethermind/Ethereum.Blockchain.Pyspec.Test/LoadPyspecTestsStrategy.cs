@@ -37,7 +37,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         IEnumerable<string> testDirs = !string.IsNullOrEmpty(testsDir)
             ? Directory.EnumerateDirectories(Path.Combine(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
             : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
-        return testDirs.SelectMany(td => LoadTestsFromDirectory(td, wildcard, testType));
+        return testDirs.SelectMany(td => TestLoadStrategy.LoadTestsFromDirectory(td, wildcard, testType));
     }
 
     /// <summary>
@@ -107,26 +107,5 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         using GZipStream gzStream = new(contentStream, CompressionMode.Decompress);
 
         TarFile.ExtractToDirectory(gzStream, testsDirectoryName, overwriteFiles: true);
-    }
-
-    private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard, TestType testType)
-    {
-        List<EthereumTest> testsByName = new();
-        IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);
-
-        foreach (string testFile in testFiles)
-        {
-            FileTestsSource fileTestsSource = new(testFile, wildcard);
-
-            IEnumerable<EthereumTest> tests = fileTestsSource.LoadTests(testType);
-
-            foreach (EthereumTest test in tests)
-            {
-                test.Category ??= testDir;
-            }
-            testsByName.AddRange(tests);
-        }
-
-        return testsByName;
     }
 }

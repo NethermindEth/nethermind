@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Ethereum.Test.Base;
@@ -14,27 +13,11 @@ namespace Ethereum.Legacy.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class MetaTests
 {
-    private static readonly HashSet<string> ExcludedDirectories = ["stEWASMTests"];
-
     [Test]
-    public void All_categories_are_tested()
-    {
-        string[] directories = Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
-            .Select(Path.GetFileName)
-            .Where(d => d.StartsWith("st") && !ExcludedDirectories.Contains(d))
-            .ToArray();
-        Type[] types = GetType().Assembly.GetTypes();
-        List<string> missingCategories = [];
-        foreach (string directory in directories)
-        {
-            string expected = TestDirectoryHelper.GetClassNameFromDirectory(directory, 2);
-            if (types.All(t => !string.Equals(t.Name, expected, StringComparison.InvariantCultureIgnoreCase)))
-                missingCategories.Add($"{directory} expected {expected}");
-        }
-
-        foreach (string missing in missingCategories)
-            Console.WriteLine($"{missing} category is missing");
-
-        Assert.That(missingCategories, Is.Empty);
-    }
+    public void All_categories_are_tested() =>
+        TestDirectoryHelper.AssertAllCategoriesTested(GetType(),
+            Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
+                .Select(Path.GetFileName)
+                .Where(d => d.StartsWith("st") && d != "stEWASMTests"),
+            d => TestDirectoryHelper.GetClassNameFromDirectory(d, 2));
 }

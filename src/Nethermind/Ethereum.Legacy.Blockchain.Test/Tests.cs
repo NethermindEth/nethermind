@@ -125,6 +125,8 @@ public class SystemOperationsTest : LegacyStateTestFixture<SystemOperationsTest>
 
 public class TimeConsuming : LegacyStateTestFixture<TimeConsuming>;
 
+public class TransactionTest : LegacyStateTestFixture<TransactionTest>;
+
 public class TransitionTest : LegacyStateTestFixture<TransitionTest>;
 
 public class WalletTest : LegacyStateTestFixture<WalletTest>;
@@ -136,3 +138,5 @@ public class ZeroCallsTest : LegacyStateTestFixture<ZeroCallsTest>;
 public class ZeroKnowledge : LegacyStateTestFixture<ZeroKnowledge>;
 
 public class ZeroKnowledge2 : LegacyStateTestFixture<ZeroKnowledge2>;
+
+public class SpecialTest : LegacyRetryStateTestFixture<SpecialTest>;

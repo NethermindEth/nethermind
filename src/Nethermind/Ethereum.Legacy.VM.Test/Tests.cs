@@ -5,6 +5,8 @@ using Ethereum.Test.Base;
 
 namespace Ethereum.Legacy.VM.Test;
 
+public class ArithmeticTest : LegacyStateTestFixture<ArithmeticTest, VmPrefix>;
+
 public class Tests : LegacyStateTestFixture<Tests, VmPrefix>;
 
 public class BitwiseLogicOperation : LegacyStateTestFixture<BitwiseLogicOperation, VmPrefix>;
@@ -12,3 +14,5 @@ public class BitwiseLogicOperation : LegacyStateTestFixture<BitwiseLogicOperatio
 public class IOAndFlowOperations : LegacyStateTestFixture<IOAndFlowOperations, VmPrefix>;
 
 public class LogTest : LegacyStateTestFixture<LogTest, VmPrefix>;
+
+public class Performance : LegacyRetryStateTestFixture<Performance, VmPrefix>;
