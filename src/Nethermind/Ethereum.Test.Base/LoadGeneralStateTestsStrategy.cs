@@ -10,7 +10,7 @@ namespace Ethereum.Test.Base
 {
     public class LoadGeneralStateTestsStrategy : ITestLoadStrategy
     {
-        public IEnumerable<EthereumTest> Load(string testsDirectoryName, string wildcard = null)
+        public IEnumerable<EthereumTest> Load(string testsDirectoryName, string? wildcard = null)
         {
             IEnumerable<string> testDirs;
             if (!Path.IsPathRooted(testsDirectoryName))
@@ -39,7 +39,7 @@ namespace Ethereum.Test.Base
             return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "GeneralStateTests");
         }
 
-        private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard)
+        private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string? wildcard)
         {
             List<EthereumTest> testsByName = new();
             IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);
@@ -49,10 +49,10 @@ namespace Ethereum.Test.Base
                 FileTestsSource fileTestsSource = new(testFile, wildcard);
                 try
                 {
-                    var tests = fileTestsSource.LoadTests(TestType.State);
-                    foreach (GeneralStateTest blockchainTest in tests)
+                    IEnumerable<EthereumTest> tests = fileTestsSource.LoadTests(TestType.State);
+                    foreach (EthereumTest ethereumTest in tests)
                     {
-                        blockchainTest.Category = testDir;
+                        ethereumTest.Category = testDir;
                     }
 
                     testsByName.AddRange(tests);

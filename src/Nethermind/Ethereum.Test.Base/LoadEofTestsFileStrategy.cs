@@ -43,7 +43,7 @@ namespace Ethereum.Test.Base
         {
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
-            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "EOFTests");
+            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src", StringComparison.Ordinal)), "src", "tests", "EOFTests");
         }
     }
 }

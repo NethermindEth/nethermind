@@ -20,7 +20,7 @@ namespace Ethereum.Difficulty.Test
                 .Where(f => f.StartsWith("difficulty"))
                 .ToArray();
             Type[] types = GetType().Assembly.GetTypes();
-            List<string> missingCategories = new List<string>();
+            List<string> missingCategories = new();
             foreach (string directory in directories)
             {
                 string expectedTypeName = ExpectedTypeName(directory);

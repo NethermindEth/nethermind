@@ -361,12 +361,12 @@ public abstract class BlockchainTestBase
                         Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders![uncleIndex].Hash)));
                     }
 
-                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
+                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectException));
                 }
             }
             catch (Exception e)
             {
-                if (testBlockJson.ExpectedException is null)
+                if (testBlockJson.ExpectException is null)
                 {
                     string invalidRlpMessage = $"Invalid RLP ({i}) {e}";
                     Assert.That(!failOnInvalidRlp, invalidRlpMessage);

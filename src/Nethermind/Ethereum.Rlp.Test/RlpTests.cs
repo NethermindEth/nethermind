@@ -51,27 +51,16 @@ namespace Ethereum.Rlp.Test
             }
         }
 
-        private static IEnumerable<RlpTest> LoadValidTests()
-        {
-            return LoadTests("rlptest.json");
-        }
+        private static IEnumerable<RlpTest> LoadValidTests() => LoadTests("rlptest.json");
 
-        private static IEnumerable<RlpTest> LoadRandomTests()
-        {
-            return LoadTests("example.json");
-        }
+        private static IEnumerable<RlpTest> LoadRandomTests() => LoadTests("example.json");
 
-        private static IEnumerable<RlpTest> LoadInvalidTests()
-        {
-            return LoadTests("invalidRLPTest.json");
-        }
+        private static IEnumerable<RlpTest> LoadInvalidTests() => LoadTests("invalidRLPTest.json");
 
-        private static IEnumerable<RlpTest> LoadTests(string testFileName)
-        {
-            return TestLoader.LoadFromFile<Dictionary<string, RlpTestJson>, RlpTest>(
+        private static IEnumerable<RlpTest> LoadTests(string testFileName) =>
+            TestLoader.LoadFromFile<Dictionary<string, RlpTestJson>, RlpTest>(
                 testFileName,
                 c => c.Select(p => new RlpTest(p.Key, p.Value.In, p.Value.Out)));
-        }
 
         //[TestCaseSource(nameof(LoadValidTests))]
         //public void Test(RlpTest test)
