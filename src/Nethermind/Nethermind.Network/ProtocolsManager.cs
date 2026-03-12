@@ -158,7 +158,7 @@ namespace Nethermind.Network
         void IProtocolRegistrar.Register(ISession session, ProtocolHandlerBase handler)
         {
             session.Node.EthDetails = handler.Name;
-            handler.ProtocolInitialized += (sender, args) =>
+            handler.ProtocolInitialized += (_, args) =>
             {
                 if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
                 // SyncPeerProtocolInitializedEventArgs typedArgs = (SyncPeerProtocolInitializedEventArgs)args;
@@ -245,7 +245,7 @@ namespace Nethermind.Network
         void IProtocolRegistrar.Register(ISession session, SyncPeerProtocolHandlerBase handler)
         {
             session.Node.EthDetails = handler.Name;
-            handler.ProtocolInitialized += (sender, args) =>
+            handler.ProtocolInitialized += (_, args) =>
             {
                 if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
                 SyncPeerProtocolInitializedEventArgs typedArgs = (SyncPeerProtocolInitializedEventArgs)args;
