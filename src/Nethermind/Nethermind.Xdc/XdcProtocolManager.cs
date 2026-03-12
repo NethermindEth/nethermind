@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Specs;
@@ -32,11 +33,13 @@ internal class XdcProtocolManager : ProtocolsManager
     private readonly ITimeoutCertificateManager timeoutCertificateManager;
     private readonly IVotesManager votesManager;
     private readonly ISyncInfoManager syncInfoManager;
+    private readonly IBlockTree blockTree;
 
     public XdcProtocolManager(
     ITimeoutCertificateManager timeoutCertificateManager,
     IVotesManager votesManager,
     ISyncInfoManager syncInfoManager,
+    IBlockTree blockTree,
     ISyncPeerPool syncPeerPool,
     ISyncServer syncServer,
     IBackgroundTaskScheduler backgroundTaskScheduler,
@@ -65,6 +68,7 @@ internal class XdcProtocolManager : ProtocolsManager
         this.timeoutCertificateManager = timeoutCertificateManager;
         this.votesManager = votesManager;
         this.syncInfoManager = syncInfoManager;
+        this.blockTree = blockTree;
     }
 
     protected override IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
@@ -78,7 +82,7 @@ internal class XdcProtocolManager : ProtocolsManager
                 63 => new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _logManager, _txGossipPolicy),
                 64 => new Eth64ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                 65 => new Eth65ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                100 => new XdcProtocolHandler(timeoutCertificateManager, votesManager, syncInfoManager, session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                100 => new XdcProtocolHandler(timeoutCertificateManager, votesManager, syncInfoManager, blockTree, session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                 _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
             };
             InitSyncPeerProtocol(session, ethHandler);

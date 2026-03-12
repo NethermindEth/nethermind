@@ -38,10 +38,11 @@ internal class XdcInitializeNetwork(
     {
         //We cannot call base since it will setup a spaghetti of event listeners we don't want
 
-        XdcProtocolManager xdcProtocolManager = new XdcProtocolManager(
+        XdcProtocolManager xdcProtocolManager = new(
             _api.Context.Resolve<ITimeoutCertificateManager>(),
             _api.Context.Resolve<IVotesManager>(),
             _api.Context.Resolve<ISyncInfoManager>(),
+            _api.BlockTree,
             _syncPeerPool,
             _api.SyncServer,
             _api.BackgroundTaskScheduler,
