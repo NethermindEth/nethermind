@@ -12,7 +12,6 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 /// <summary>
 /// Generic base for pyspec blockchain tests using <see cref="LoadPyspecTestsStrategy"/>.
 /// Directory is derived by convention: strip "BlockchainTests" suffix, lowercase.
-/// Override with <see cref="TestDirectoryAttribute"/> if needed.
 /// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
@@ -29,7 +28,6 @@ public abstract class PyspecBlockchainTestFixture<TSelf> : BlockchainTestBase
 /// <summary>
 /// Generic base for pyspec state tests using <see cref="LoadPyspecTestsStrategy"/>.
 /// Directory is derived by convention: strip "StateTests" suffix, lowercase.
-/// Override with <see cref="TestDirectoryAttribute"/> if needed.
 /// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
