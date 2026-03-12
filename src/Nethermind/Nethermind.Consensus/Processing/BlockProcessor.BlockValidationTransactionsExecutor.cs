@@ -103,7 +103,7 @@ namespace Nethermind.Consensus.Processing
                                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {totalGas} > block gas limit {block.Header.GasLimit} after transaction index {chunkEnd - 1}.");
                             }
                         }
-                        // _blockExecutionContext.Header.GasUsed = totalGas;
+                        _blockExecutionContext.Header.GasUsed = totalGas;
                     }, token);
 
                     ParallelUnbalancedWork.For(

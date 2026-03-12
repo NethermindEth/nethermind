@@ -234,8 +234,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
-            tx.BlockGasUsed = spentGas.EffectiveBlockGas;
-            Console.WriteLine($"i = {VirtualMachine.TxExecutionContext.BlockAccessIndex}, effectiveBlockGas = {spentGas.EffectiveBlockGas}");
+            // tx.BlockGasUsed = spentGas.EffectiveBlockGas;
+            // Console.WriteLine($"i = {VirtualMachine.TxExecutionContext.BlockAccessIndex}, effectiveBlockGas = {spentGas.EffectiveBlockGas}");
 
             //only main thread updates transaction
             if (!opts.HasFlag(ExecutionOptions.Warmup))
@@ -807,20 +807,12 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.Restore(snapshot, VirtualMachine.TxExecutionContext.BlockAccessIndex);
             gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
         Complete:
-            // if (!opts.HasFlag(ExecutionOptions.SkipValidation) && _balBuilder is not { ParallelExecutionEnabled: true })
-            // {
-            //     header.GasUsed += gasConsumed.EffectiveBlockGas;
-            //     Console.WriteLine($"[sequential] header.GasUsed = {header.GasUsed}, txBlockGas = {gasConsumed.EffectiveBlockGas}");
-            // }
-
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation) && _balBuilder is not { ParallelExecutionEnabled: true })
             {
-                lock (_gasUsedLock)
-                {
-                    header.GasUsed += gasConsumed.EffectiveBlockGas;
-                    Console.WriteLine($"[sequential] header.GasUsed = {header.GasUsed}, txBlockGas = {gasConsumed.EffectiveBlockGas}");
-                }
+                header.GasUsed += gasConsumed.EffectiveBlockGas;
             }
+            Console.WriteLine($"[sequential] i = {VirtualMachine.TxExecutionContext.BlockAccessIndex}, header.GasUsed = {header.GasUsed}, txBlockGas = {gasConsumed.EffectiveBlockGas}");
+            tx.BlockGasUsed = gasConsumed.EffectiveBlockGas;
 
             return statusCode;
         }
