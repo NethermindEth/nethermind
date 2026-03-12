@@ -252,118 +252,68 @@ namespace Nethermind.Store.Test
             stats.AccountCount.Should().Be(1);
         }
 
-        [Test]
-        public void IsInvalidContractSender_AccountHasCode_ReturnsTrue()
+        private static (IWorldState sut, IReleaseSpec releaseSpec) SetupContractSenderTest(
+            bool eip3607Enabled, bool eip7702Enabled, byte[] code = null)
         {
             IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
-            releaseSpec.IsEip3607Enabled.Returns(true);
-            releaseSpec.IsEip7702Enabled.Returns(true);
+            releaseSpec.IsEip3607Enabled.Returns(eip3607Enabled);
+            releaseSpec.IsEip7702Enabled.Returns(eip7702Enabled);
             IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState sut, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
-            using var _ = sut.BeginScope(IWorldState.PreGenesis);
+            (IWorldState sut, IStateReader _) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
+            using var scope = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
-            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(new byte[1]), new byte[1], releaseSpec, false);
+            if (code is not null)
+            {
+                sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
+            }
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
-
-            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
-
-            Assert.That(result, Is.True);
+            return (sut, releaseSpec);
         }
 
-        [Test]
-        public void IsInvalidContractSender_AccountHasNoCode_ReturnsFalse()
+        [TestCase(true, true, null, false, Description = "No code returns false")]
+        [TestCase(true, true, new byte[] { 1 }, true, Description = "Has code returns true")]
+        [TestCase(true, false, null, false, Description = "No code, 7702 disabled returns false")]
+        public void IsInvalidContractSender_BasicCases(bool eip3607, bool eip7702, byte[] code, bool expected)
         {
-            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
-            releaseSpec.IsEip3607Enabled.Returns(true);
-            releaseSpec.IsEip7702Enabled.Returns(true);
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState sut, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
-            using var _ = sut.BeginScope(IWorldState.PreGenesis);
-            sut.CreateAccount(TestItem.AddressA, 0);
-            sut.Commit(MuirGlacier.Instance);
-            sut.CommitTree(0);
-
+            (IWorldState sut, IReleaseSpec releaseSpec) = SetupContractSenderTest(eip3607, eip7702, code);
             bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
-
-            Assert.That(result, Is.False);
+            Assert.That(result, Is.EqualTo(expected));
         }
 
         [Test]
         public void IsInvalidContractSender_AccountHasDelegatedCode_ReturnsFalse()
         {
-            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
-            releaseSpec.IsEip3607Enabled.Returns(true);
-            releaseSpec.IsEip7702Enabled.Returns(true);
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState sut, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
-            using var _ = sut.BeginScope(IWorldState.PreGenesis);
-            sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
-            sut.Commit(MuirGlacier.Instance);
-            sut.CommitTree(0);
-
+            (IWorldState sut, IReleaseSpec releaseSpec) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: true, code);
             bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
-
             Assert.That(result, Is.False);
         }
 
         [Test]
         public void IsInvalidContractSender_AccountHasCodeButDelegateReturnsTrue_ReturnsFalse()
         {
-            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
-            releaseSpec.IsEip3607Enabled.Returns(true);
-            releaseSpec.IsEip7702Enabled.Returns(true);
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState sut, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
-            using var _ = sut.BeginScope(IWorldState.PreGenesis);
-            sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = new byte[20];
-            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
-            sut.Commit(MuirGlacier.Instance);
-            sut.CommitTree(0);
-
+            (IWorldState sut, IReleaseSpec releaseSpec) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: true, code);
             bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA, static (_) => true);
-
             Assert.That(result, Is.False);
         }
 
         [Test]
         public void IsInvalidContractSender_AccountHasDelegatedCodeBut7702IsNotEnabled_ReturnsTrue()
         {
-            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
-            releaseSpec.IsEip3607Enabled.Returns(true);
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState sut, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
-            using var _ = sut.BeginScope(IWorldState.PreGenesis);
-            sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
-            sut.Commit(MuirGlacier.Instance);
-            sut.CommitTree(0);
-
+            (IWorldState sut, IReleaseSpec releaseSpec) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: false, code);
             bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
-
             Assert.That(result, Is.True);
         }
 
         [Test]
-        public void IsInvalidContractSender_AccountHasDelegatedCodeBut3807IsNotEnabled_ReturnsFalse()
+        public void IsInvalidContractSender_AccountHasDelegatedCodeBut3607IsNotEnabled_ReturnsFalse()
         {
-            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
-            releaseSpec.IsEip7702Enabled.Returns(true);
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState sut, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
-            using var _ = sut.BeginScope(IWorldState.PreGenesis);
-            sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
-            sut.Commit(MuirGlacier.Instance);
-            sut.CommitTree(0);
-
+            (IWorldState sut, IReleaseSpec releaseSpec) = SetupContractSenderTest(eip3607Enabled: false, eip7702Enabled: true, code);
             bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
-
             Assert.That(result, Is.False);
         }
 
