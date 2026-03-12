@@ -5,9 +5,6 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.EraE.Proofs;
 
-/// <summary>
-/// Represents the SSZ historical_summary entry from a Deneb+ beacon state.
-/// </summary>
 public struct HistoricalSummary
 {
     public ValueHash256 BlockSummaryRoot { get; set; }
@@ -23,9 +20,6 @@ public struct HistoricalSummary
         new(new ValueHash256(blockSummaryRootHex), new ValueHash256(stateSummaryRootHex));
 }
 
-/// <summary>
-/// Provides historical summaries from a Beacon Chain API for Deneb+ proof verification.
-/// </summary>
 public interface IHistoricalSummariesProvider : IDisposable
 {
     Task<HistoricalSummary?> GetHistoricalSummary(int index, CancellationToken cancellationToken = default, bool forceRefresh = false);

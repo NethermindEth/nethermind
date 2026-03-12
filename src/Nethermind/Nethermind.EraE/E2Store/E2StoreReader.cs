@@ -30,7 +30,6 @@ public sealed class E2StoreReader : IDisposable
     private readonly SafeFileHandle _file;
     private readonly long _fileLength;
 
-    // Lazily-loaded index state
     private long _startBlock;
     private long _blockCount;
     private int _componentCount; // 3 (post-merge) or 4 (pre-merge/transition)
@@ -42,8 +41,6 @@ public sealed class E2StoreReader : IDisposable
         _file = File.OpenHandle(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         _fileLength = RandomAccess.GetLength(_file);
     }
-
-    // ── Public API ─────────────────────────────────────────────────────────
 
     public long First
     {
@@ -73,8 +70,6 @@ public sealed class E2StoreReader : IDisposable
             return _componentCount >= 4;
         }
     }
-
-    // ── Block component offsets ─────────────────────────────────────────────
 
     /// <summary>Returns the absolute file offset of the CompressedHeader entry for the given block.</summary>
     public long HeaderOffset(long blockNumber) => ComponentOffset(blockNumber, 0);
@@ -112,8 +107,6 @@ public sealed class E2StoreReader : IDisposable
             return _componentIndexTlvStart - EntryHeaderSize - 32;
         }
     }
-
-    // ── Entry reading ────────────────────────────────────────────────────────
 
     public long ReadEntryAndDecode<T>(long position, Func<Memory<byte>, T> decoder, ushort expectedType, out T value)
     {
@@ -169,8 +162,6 @@ public sealed class E2StoreReader : IDisposable
     }
 
     public void Dispose() => _file.Dispose();
-
-    // ── Index parsing ─────────────────────────────────────────────────────────
 
     private void EnsureIndexLoaded()
     {
@@ -235,8 +226,6 @@ public sealed class E2StoreReader : IDisposable
         return _componentIndexTlvStart + relativeOffset;
     }
 
-    // ── Snappy decompression ──────────────────────────────────────────────────
-
     private async Task<T> ReadEntryValueAsSnappy<T>(long offset, ulong length, Func<Memory<byte>, T> decoder, CancellationToken cancellation = default)
     {
         using ArrayPoolList<byte> inputBuffer = new((int)length, (int)length);
@@ -252,8 +241,6 @@ public sealed class E2StoreReader : IDisposable
 
         return decoder(segment);
     }
-
-    // ── Low-level I/O ─────────────────────────────────────────────────────────
 
     private ushort ReadUInt16(long position)
     {
