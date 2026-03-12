@@ -64,11 +64,11 @@ namespace Nethermind.Network.Test.Rlpx
             _macProcessorB?.Dispose();
         }
 
-        [TestCase(StackType.Zero, StackType.Zero, true)]
-        [TestCase(StackType.Zero, StackType.Zero, false)]
-        public void Get_block_bodies_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Get_block_bodies_there_and_back(bool framingEnabled)
         {
-            var hashes = new Hash256[256];
+            Hash256[] hashes = new Hash256[256];
             for (int i = 0; i < hashes.Length; i++)
             {
                 hashes[i] = Keccak.Compute(i.ToString());
@@ -80,12 +80,12 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] data = serializer.Serialize(message);
 
             Packet packet = new("eth", 5, data);
-            Packet decoded = Run(packet, inbound, outbound, framingEnabled);
+            Run(packet, StackType.Zero, StackType.Zero, framingEnabled);
         }
 
-        [TestCase(StackType.Zero, StackType.Zero, true)]
-        [TestCase(StackType.Zero, StackType.Zero, false)]
-        public void Block_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Block_there_and_back(bool framingEnabled)
         {
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
@@ -96,12 +96,12 @@ namespace Nethermind.Network.Test.Rlpx
             NewBlockMessageSerializer newBlockMessageSerializer = new();
             byte[] data = newBlockMessageSerializer.Serialize(newBlockMessage);
             Packet packet = new("eth", 7, data);
-            Packet decoded = Run(packet, inbound, outbound, framingEnabled);
+            Run(packet, StackType.Zero, StackType.Zero, framingEnabled);
         }
 
-        [TestCase(StackType.Zero, StackType.Zero, true)]
-        [TestCase(StackType.Zero, StackType.Zero, false)]
-        public void Two_frame_block_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Two_frame_block_there_and_back(bool framingEnabled)
         {
             Transaction[] txs = Build.A.Transaction.SignedAndResolved().TestObjectNTimes(10);
             Block block = Build.A.Block.WithTransactions(txs).TestObject;
@@ -112,15 +112,15 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] data = newBlockMessageSerializer.Serialize(newBlockMessage);
             Packet packet = new("eth", 7, data);
 
-            Packet decoded = Run(packet, inbound, outbound, framingEnabled);
+            Packet decoded = Run(packet, StackType.Zero, StackType.Zero, framingEnabled);
 
             using NewBlockMessage decodedMessage = newBlockMessageSerializer.Deserialize(decoded.Data);
             Assert.That(decodedMessage.Block.Transactions.Length, Is.EqualTo(newBlockMessage.Block.Transactions.Length));
         }
 
-        [TestCase(StackType.Zero, StackType.Zero, true)]
-        [TestCase(StackType.Zero, StackType.Zero, false)]
-        public void Receipts_message(StackType inbound, StackType outbound, bool framingEnabled)
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Receipts_message(bool framingEnabled)
         {
             Hash256[] hashes = new Hash256[256];
             for (int i = 0; i < hashes.Length; i++)
@@ -133,15 +133,15 @@ namespace Nethermind.Network.Test.Rlpx
             GetReceiptsMessageSerializer serializer = new();
             byte[] data = serializer.Serialize(message);
             Packet packet = new("eth", 7, data);
-            Packet decoded = Run(packet, inbound, outbound, framingEnabled);
+            Packet decoded = Run(packet, StackType.Zero, StackType.Zero, framingEnabled);
 
             GetReceiptsMessage decodedMessage = serializer.Deserialize(decoded.Data);
             Assert.That(decodedMessage.Hashes.Count, Is.EqualTo(message.Hashes.Count));
         }
 
-        [TestCase(StackType.Zero, StackType.Zero, true)]
-        [TestCase(StackType.Zero, StackType.Zero, false)]
-        public void Status_message(StackType inbound, StackType outbound, bool framingEnabled)
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Status_message(bool framingEnabled)
         {
             using StatusMessage message = new();
             message.BestHash = Keccak.Zero;
@@ -153,7 +153,7 @@ namespace Nethermind.Network.Test.Rlpx
             StatusMessageSerializer serializer = new();
             byte[] data = serializer.Serialize(message);
             Packet packet = new("eth", 7, data);
-            Packet decoded = Run(packet, inbound, outbound, framingEnabled);
+            Packet decoded = Run(packet, StackType.Zero, StackType.Zero, framingEnabled);
 
             using StatusMessage decodedMessage = serializer.Deserialize(decoded.Data);
             Assert.That(decodedMessage.TotalDifficulty, Is.EqualTo(message.TotalDifficulty));
