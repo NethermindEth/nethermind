@@ -236,7 +236,7 @@ public partial class EngineModuleTests
 
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(MergeErrorCodes.InvalidPayloadAttributes);
+        errorResponse!.Error!.Code.Should().Be(input.ErrorCode);
         errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "PayloadAttributes"));
     }
 
