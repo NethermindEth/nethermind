@@ -10,17 +10,17 @@ using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
 using GT = Nethermind.Crypto.Bls.PT;
 
-namespace Nethermind.Evm.Precompiles.Bls;
+namespace Nethermind.Evm.Precompiles;
 
 /// <summary>
-/// https://eips.ethereum.org/EIPS/eip-2537
+/// <see href="https://eips.ethereum.org/EIPS/eip-2537" />
 /// </summary>
-public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
+public class Bls12381PairingCheckPrecompile : IPrecompile<Bls12381PairingCheckPrecompile>
 {
     private const int PairSize = 384;
-    public static readonly PairingCheckPrecompile Instance = new();
+    public static readonly Bls12381PairingCheckPrecompile Instance = new();
 
-    private PairingCheckPrecompile() { }
+    private Bls12381PairingCheckPrecompile() { }
 
     public static Address Address { get; } = Address.FromNumber(0xf);
 
@@ -48,13 +48,13 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
         {
             int offset = i * PairSize;
 
-            Result result = x.TryDecodeRaw(inputData[offset..(offset + BlsConst.LenG1)].Span) &&
-                            y.TryDecodeRaw(inputData[(offset + BlsConst.LenG1)..(offset + PairSize)].Span);
+            Result result = x.TryDecodeRaw(inputData[offset..(offset + Eip2537.LenG1)].Span) &&
+                            y.TryDecodeRaw(inputData[(offset + Eip2537.LenG1)..(offset + PairSize)].Span);
 
             if (result)
             {
-                if (!(BlsConst.DisableSubgroupChecks || x.InGroup())) return Errors.G1PointSubgroup;
-                if (!(BlsConst.DisableSubgroupChecks || y.InGroup())) return Errors.G2PointSubgroup;
+                if (!(Eip2537.DisableSubgroupChecks || x.InGroup())) return Errors.G1PointSubgroup;
+                if (!(Eip2537.DisableSubgroupChecks || y.InGroup())) return Errors.G2PointSubgroup;
 
                 // x == inf || y == inf -> e(x, y) = 1
                 if (x.IsInf() || y.IsInf()) continue;

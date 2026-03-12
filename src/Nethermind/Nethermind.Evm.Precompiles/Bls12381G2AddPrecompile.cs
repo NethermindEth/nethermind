@@ -7,18 +7,16 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using G2 = Nethermind.Crypto.Bls.P2;
 
-namespace Nethermind.Evm.Precompiles.Bls;
+namespace Nethermind.Evm.Precompiles;
 
 /// <summary>
-/// https://eips.ethereum.org/EIPS/eip-2537
+/// <see href="https://eips.ethereum.org/EIPS/eip-2537" />
 /// </summary>
-public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
+public class Bls12381G2AddPrecompile : IPrecompile<Bls12381G2AddPrecompile>
 {
-    public static readonly G2AddPrecompile Instance = new();
+    public static readonly Bls12381G2AddPrecompile Instance = new();
 
-    private G2AddPrecompile()
-    {
-    }
+    private Bls12381G2AddPrecompile() { }
 
     public static Address Address { get; } = Address.FromNumber(0x0d);
 
@@ -33,20 +31,20 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
     {
         Metrics.BlsG2AddPrecompile++;
 
-        const int expectedInputLength = 2 * BlsConst.LenG2;
+        const int expectedInputLength = 2 * Eip2537.LenG2;
         if (inputData.Length != expectedInputLength) return Errors.InvalidInputLength;
 
         G2 x = new(stackalloc long[G2.Sz]);
         G2 y = new(stackalloc long[G2.Sz]);
-        Result result = x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span) &&
-                        y.TryDecodeRaw(inputData[BlsConst.LenG2..].Span);
+        Result result = x.TryDecodeRaw(inputData[..Eip2537.LenG2].Span) &&
+                        y.TryDecodeRaw(inputData[Eip2537.LenG2..].Span);
 
         if (result)
         {
             // adding to infinity point has no effect
-            if (x.IsInf()) return inputData[BlsConst.LenG2..].ToArray();
+            if (x.IsInf()) return inputData[Eip2537.LenG2..].ToArray();
 
-            if (y.IsInf()) return inputData[..BlsConst.LenG2].ToArray();
+            if (y.IsInf()) return inputData[..Eip2537.LenG2].ToArray();
 
             G2 res = x.Add(y);
             return res.EncodeRaw();
