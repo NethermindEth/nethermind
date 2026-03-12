@@ -384,6 +384,17 @@ jobs:
         with:
           global-json-file: global.json
 
+      # Inject quick-subset.txt from the triggering ref so historical commits
+      # that pre-date the subset feature can still use it
+      - name: Inject quick-subset.txt
+        shell: bash
+        run: |
+          if [[ ! -f "scripts/benchmarks/quick-subset.txt" ]]; then
+            mkdir -p scripts/benchmarks
+            git fetch origin ${{ github.sha }} --depth=1
+            git show ${{ github.sha }}:scripts/benchmarks/quick-subset.txt > scripts/benchmarks/quick-subset.txt 2>/dev/null || true
+          fi
+
       - name: Build benchmarks
         id: build
         run: dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release
@@ -416,8 +427,17 @@ jobs:
             ARGS="$ARGS --launchCount $LAUNCHES"
           fi
 
-          echo "=== Benchmarking commit ${SHORT_SHA} ==="
-          dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll $ARGS
+          # Find the DLL — newer commits use artifacts/ layout, older use bin/Release/net*/
+          RUNTIMECFG=$(find src/Nethermind -name 'Nethermind.Evm.Benchmark.runtimeconfig.json' 2>/dev/null | head -1)
+          if [[ -z "$RUNTIMECFG" ]]; then
+            echo "ERROR: Could not find Nethermind.Evm.Benchmark.runtimeconfig.json"
+            exit 1
+          fi
+          DLL_DIR=$(dirname "$RUNTIMECFG")
+          DLL="$DLL_DIR/Nethermind.Evm.Benchmark.dll"
+
+          echo "=== Benchmarking commit ${SHORT_SHA} (DLL: $DLL) ==="
+          dotnet "$DLL" $ARGS
 
       - name: Upload results
         if: always() && steps.build.outcome == 'success'
