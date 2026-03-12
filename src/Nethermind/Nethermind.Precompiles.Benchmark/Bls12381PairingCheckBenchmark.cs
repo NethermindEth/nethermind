@@ -3,16 +3,12 @@
 
 using System.Collections.Generic;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Bls;
 
 namespace Nethermind.Precompiles.Benchmark;
 
-public class BlsPairingCheckBenchmark : PrecompileBenchmarkBase
+public class Bls12381PairingCheckBenchmark : PrecompileBenchmarkBase
 {
-    protected override IEnumerable<IPrecompile> Precompiles => new[]
-    {
-        PairingCheckPrecompile.Instance
-    };
+    protected override IEnumerable<IPrecompile> Precompiles => [Bls12381PairingCheckPrecompile.Instance];
 
     protected override string InputsDirectory => "blspairingcheck";
 }
