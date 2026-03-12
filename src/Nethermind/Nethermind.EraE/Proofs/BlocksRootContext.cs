@@ -37,6 +37,7 @@ public sealed class BlocksRootContext : IDisposable
 
     public readonly AccumulatorType AccumulatorType;
 
+    private AccumulatorCalculator? _accumulatorCalculator; // kept alive after FinalizeContext for GetProof
     private ValueHash256? _accumulatorRoot;
     private HistoricalSummary? _historicalSummary;
     private ValueHash256? _historicalRoot;
@@ -85,12 +86,11 @@ public sealed class BlocksRootContext : IDisposable
         switch (AccumulatorType)
         {
             case AccumulatorType.HistoricalHashesAccumulator:
-                using (AccumulatorCalculator calculator = new())
-                {
-                    foreach ((Hash256 hash, UInt256 td) in _blockHashes.AsSpan())
-                        calculator.Add(hash, td);
-                    _accumulatorRoot = calculator.ComputeRoot();
-                }
+                _accumulatorCalculator = new AccumulatorCalculator();
+                foreach ((Hash256 hash, UInt256 td) in _blockHashes.AsSpan())
+                    _accumulatorCalculator.Add(hash, td);
+                _accumulatorRoot = _accumulatorCalculator.ComputeRoot();
+                // Calculator is kept alive (not disposed) so EraWriter can call GetProof after Finalize.
                 break;
 
             case AccumulatorType.HistoricalRoots:
@@ -110,8 +110,21 @@ public sealed class BlocksRootContext : IDisposable
         }
     }
 
+    /// <summary>
+    /// Returns the 15-element Merkle proof path for the pre-merge block at the given
+    /// era-relative index (0 = first pre-merge block in the era).
+    /// Must be called after <see cref="FinalizeContext"/>.
+    /// </summary>
+    public ValueHash256[] GetProof(int blockIndex)
+    {
+        if (_accumulatorCalculator is null)
+            throw new InvalidOperationException("FinalizeContext must be called before GetProof.");
+        return _accumulatorCalculator.GetProof(blockIndex);
+    }
+
     public void Dispose()
     {
+        _accumulatorCalculator?.Dispose();
         _blockRoots.Dispose();
         _stateRoots.Dispose();
         _blockHashes.Dispose();

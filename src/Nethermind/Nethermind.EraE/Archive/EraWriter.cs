@@ -11,6 +11,7 @@ using Nethermind.EraE.E2Store;
 using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.ProofDecoder;
 
 namespace Nethermind.EraE.Archive;
 
@@ -184,6 +185,20 @@ public sealed class EraWriter : IDisposable
         {
             receiptsOffsets[i] = totalWritten;
             totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedSlimReceipts, _encodedSlimReceipts[i], cancellation);
+        }
+
+        // All Proof entries for pre-merge blocks (section-ordered, before TotalDifficulty).
+        // Post-merge proofs (HistoricalRoots / HistoricalSummaries) require beacon roots and are deferred.
+        if (_preMergeBlockCount > 0)
+        {
+            ProofDecoder proofDecoder = new();
+            for (int i = 0; i < _preMergeBlockCount; i++)
+            {
+                ValueHash256[] proofPath = _blocksRootContext!.GetProof(i);
+                BlockHeaderProof proof = new(proofPath);
+                byte[] rlpBytes = proofDecoder.Encode(proof).Bytes;
+                totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.Proof, rlpBytes, cancellation);
+            }
         }
 
         // All TotalDifficulty entries (pre-merge and transition epochs)
