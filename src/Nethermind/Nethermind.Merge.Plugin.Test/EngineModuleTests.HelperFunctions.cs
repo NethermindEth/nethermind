@@ -4,7 +4,9 @@
 using System;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -13,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 using Nethermind.Int256;
@@ -47,6 +50,22 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.That(blockFinder.HeadHash, Is.Not.EqualTo(headBlockHash));
             Assert.That(blockFinder.FinalizedHash, Is.Not.EqualTo(finalizedBlockHash));
             Assert.That(blockFinder.SafeHash, Is.Not.EqualTo(safeBlockHash));
+        }
+
+        private async Task GetPayload_should_fail_on_unknown_payload(int version)
+        {
+            using SemaphoreSlim blockImprovementLock = new(0);
+            using MergeTestBlockchain chain = await CreateBlockchain();
+            IEngineRpcModule rpc = chain.EngineRpcModule;
+
+            byte[] payloadId = Bytes.FromHexString("0x0");
+            int errorCode = version switch
+            {
+                2 => (await rpc.engine_getPayloadV2(payloadId)).ErrorCode,
+                3 => (await rpc.engine_getPayloadV3(payloadId)).ErrorCode,
+                _ => throw new ArgumentOutOfRangeException(nameof(version))
+            };
+            errorCode.Should().Be(MergeErrorCodes.UnknownPayload);
         }
 
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,
