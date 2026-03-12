@@ -41,6 +41,14 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.That(blockFinder.SafeHash, Is.EqualTo(safeBlockHash));
         }
 
+        private void AssertExecutionStatusNotChanged(IBlockFinder blockFinder, Hash256 headBlockHash,
+            Hash256 finalizedBlockHash, Hash256 safeBlockHash)
+        {
+            Assert.That(blockFinder.HeadHash, Is.Not.EqualTo(headBlockHash));
+            Assert.That(blockFinder.FinalizedHash, Is.Not.EqualTo(finalizedBlockHash));
+            Assert.That(blockFinder.SafeHash, Is.Not.EqualTo(safeBlockHash));
+        }
+
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,
             PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
         {

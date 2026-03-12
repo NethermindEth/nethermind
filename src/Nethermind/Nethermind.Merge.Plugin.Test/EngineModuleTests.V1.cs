@@ -601,7 +601,7 @@ public partial class EngineModuleTests
         Hash256 actualHead = chain.BlockTree.HeadHash;
         actualHead.Should().NotBe(startingHead);
         actualHead.Should().Be(newHeadHash);
-        AssertExecutionStatusChangedV1(chain.BlockFinder, newHeadHash, startingHead, startingHead);
+        AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash, startingHead, startingHead);
     }
 
     [Test]
@@ -612,7 +612,7 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(nameof(PayloadStatus.Syncing).ToUpper()); // ToDo wait for final PostMerge sync
-        AssertExecutionStatusNotChangedV1(chain.BlockFinder, TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
+        AssertExecutionStatusNotChanged(chain.BlockFinder, TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
     }
 
     [Test]
@@ -653,7 +653,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult_1 = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV11);
         forkchoiceUpdatedResult_1.Data.PayloadStatus.Status.Should().Be("SYNCING");
 
-        AssertExecutionStatusNotChangedV1(chain.BlockFinder, block.Hash!, startingHead, startingHead);
+        AssertExecutionStatusNotChanged(chain.BlockFinder, block.Hash!, startingHead, startingHead);
     }
 
     [Test, NonParallelizable]
@@ -691,7 +691,7 @@ public partial class EngineModuleTests
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be("SYNCING");
 
-        AssertExecutionStatusNotChangedV1(chain.BlockFinder, block.Hash!, startingHead, startingHead);
+        AssertExecutionStatusNotChanged(chain.BlockFinder, block.Hash!, startingHead, startingHead);
     }
 
     [Test, NonParallelizable]
@@ -790,7 +790,7 @@ public partial class EngineModuleTests
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
         forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
-        AssertExecutionStatusChangedV1(chain.BlockFinder, newHeadHash, newHeadHash, newHeadHash);
+        AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash, newHeadHash, newHeadHash);
     }
 
     [Test]
@@ -1660,20 +1660,4 @@ public partial class EngineModuleTests
             timestamp, random, feeRecipient);
     }
 
-    private void AssertExecutionStatusChangedV1(IBlockFinder blockFinder, Hash256 headBlockHash,
-        Hash256 finalizedBlockHash,
-        Hash256 confirmedBlockHash)
-    {
-        Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
-        Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
-        Assert.That(blockFinder.SafeHash, Is.EqualTo(confirmedBlockHash));
-    }
-
-    private void AssertExecutionStatusNotChangedV1(IBlockFinder blockFinder, Hash256 headBlockHash,
-        Hash256 finalizedBlockHash, Hash256 confirmedBlockHash)
-    {
-        Assert.That(blockFinder.HeadHash, Is.Not.EqualTo(headBlockHash));
-        Assert.That(blockFinder.FinalizedHash, Is.Not.EqualTo(finalizedBlockHash));
-        Assert.That(blockFinder.SafeHash, Is.Not.EqualTo(confirmedBlockHash));
-    }
 }
