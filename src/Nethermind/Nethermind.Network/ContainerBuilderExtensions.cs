@@ -20,15 +20,11 @@ public static class ContainerBuilderExtensions
     }
 
     public static ContainerBuilder AddProtocolHandler<THandler>(
-        this ContainerBuilder builder,
-        string protocolCode,
-        int version) where THandler : class, IProtocolHandler
+        this ContainerBuilder builder) where THandler : class, IProtocolHandler, IStaticProtocolInfo
     {
-        // Register handler type using existing DSL
         builder.Add<THandler>();
 
-        // Register factory using AddLast for ordering
         return builder.AddLast<IProtocolHandlerFactory>(ctx =>
-            new ReusableProtocolHandlerFactory<THandler>(ctx.Resolve<Func<ISession, THandler>>(), protocolCode, version));
+            new ReusableProtocolHandlerFactory<THandler>(ctx.Resolve<Func<ISession, THandler>>(), THandler.Code, THandler.Version));
     }
 }

@@ -9,14 +9,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers;
 public class ReusableProtocolHandlerFactory<THandler>(
     Func<ISession, THandler> handlerFactory,
     string protocolCode,
-    int expectedVersion) : IProtocolHandlerFactory
+    int? expectedVersion = null) : IProtocolHandlerFactory
     where THandler : IProtocolHandler
 {
     public string ProtocolCode => protocolCode;
 
     public bool TryCreate(ISession session, int version, [NotNullWhen(true)] out IProtocolHandler? handler)
     {
-        if (version != expectedVersion)
+        if (expectedVersion is not null && version != expectedVersion)
         {
             handler = null;
             return false;
