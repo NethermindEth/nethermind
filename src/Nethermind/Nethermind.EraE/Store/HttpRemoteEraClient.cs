@@ -70,6 +70,10 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
         Uri fileUri = new(_baseUrl, filename);
         string tmpPath = destinationPath + ".tmp";
 
+        string? destinationDir = Path.GetDirectoryName(destinationPath);
+        if (!string.IsNullOrEmpty(destinationDir))
+            Directory.CreateDirectory(destinationDir);
+
         try
         {
             using HttpResponseMessage response = await _httpClient.GetAsync(fileUri, HttpCompletionOption.ResponseHeadersRead, cancellation);
