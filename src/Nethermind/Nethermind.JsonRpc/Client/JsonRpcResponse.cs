@@ -8,20 +8,16 @@ namespace Nethermind.JsonRpc.Client
 {
     public class JsonRpcResponse<T>
     {
-        [JsonPropertyOrder(1)]
+        [JsonConverter(typeof(IdConverter))]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+        public object Id { get; set; }
+
         public string JsonRpc { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        [JsonPropertyOrder(2)]
         public T Result { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        [JsonPropertyOrder(3)]
         public Error Error { get; set; }
-
-        [JsonConverter(typeof(IdConverter))]
-        [JsonPropertyOrder(0)]
-        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public object Id { get; set; }
     }
 }
