@@ -9,7 +9,6 @@ namespace Nethermind.Test.Runner
 {
     public class StateTestTxTraceState
     {
-        [JsonPropertyName("stateRoot")]
         public Hash256 StateRoot { get; set; }
     }
 }

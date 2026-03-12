@@ -18,22 +18,18 @@ namespace Ethereum.Trie.Test
     public class TrieTests
     {
         private MemDb _db;
-        private ILogger _logger = new TestLogManager().GetClassLogger();
+        private readonly ILogger _logger = new TestLogManager().GetClassLogger();
 
         [SetUp]
-        public void Setup()
-        {
-            _db = new MemDb();
-        }
+        public void Setup() => _db = new MemDb();
 
         [TearDown]
         public void TearDown() => _db?.Dispose();
 
-        private static IEnumerable<TrieTest> GetTestPermutations(IEnumerable<TrieTest> tests)
-        {
-            return tests.SelectMany(t =>
+        private static IEnumerable<TrieTest> GetTestPermutations(IEnumerable<TrieTest> tests) =>
+            tests.SelectMany(t =>
             {
-                List<TrieTest> permutations = new List<TrieTest>();
+                List<TrieTest> permutations = new();
                 Permutations.ForAllPermutation(t.Input.ToArray(), p =>
                 {
                     permutations.Add(new TrieTest(t.Name, p.ToArray(), t.ExpectedRoot));
@@ -42,60 +38,44 @@ namespace Ethereum.Trie.Test
 
                 return permutations;
             });
-        }
 
-        private static TrieTest Convert(KeyValuePair<string, TrieTestArraysJson> p)
-        {
-            return new TrieTest(
+        private static TrieTest Convert(KeyValuePair<string, TrieTestArraysJson> p) =>
+            new(
                 p.Key,
                 p.Value.In.Select(entry => new KeyValuePair<string, string>(entry[0], entry[1] ?? string.Empty))
                     .ToList(),
                 p.Value.Root);
-        }
 
-        private static IEnumerable<TrieTest> LoadTests()
-        {
-            return TestLoader.LoadFromFile<Dictionary<string, TrieTestArraysJson>, TrieTest>(
-                "trietest.json",
-                dwj => dwj.Select(Convert))
+        private static IEnumerable<TrieTest> LoadTests() =>
+            TestLoader.LoadFromFile<Dictionary<string, TrieTestArraysJson>, TrieTest>(
+                    "trietest.json",
+                    dwj => dwj.Select(Convert))
                 // Remove branch value tests
                 .Where(t => t.Input.All(kvp => kvp.Key.Length == 32));
-        }
 
-        private static IEnumerable<TrieTest> LoadSecureTests()
-        {
-            return TestLoader.LoadFromFile<Dictionary<string, TrieTestArraysJson>, TrieTest>(
+        private static IEnumerable<TrieTest> LoadSecureTests() =>
+            TestLoader.LoadFromFile<Dictionary<string, TrieTestArraysJson>, TrieTest>(
                 "trietest_secureTrie.json",
                 dwj => dwj.Select(Convert));
-        }
 
-        private static IEnumerable<TrieTest> LoadAnyOrderTests()
-        {
-            IEnumerable<TrieTest> tests = TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
-                "trieanyorder.json",
-                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)))
-                    // Remove branch value tests
-                    .Where(t => t.Input.All(kvp => kvp.Key.Length == 32));
-            return GetTestPermutations(tests);
-        }
+        private static IEnumerable<TrieTest> LoadAnyOrderTests() =>
+            GetTestPermutations(TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
+                    "trieanyorder.json",
+                    dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)))
+                // Remove branch value tests
+                .Where(t => t.Input.All(kvp => kvp.Key.Length == 32)));
 
-        private static IEnumerable<TrieTest> LoadHexEncodedSecureTests()
-        {
-            IEnumerable<TrieTest> tests = TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
-                "hex_encoded_securetrie_test.json",
-                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)))
-                    // Remove branch value tests
-                    .Where(t => t.Input.All(kvp => kvp.Key.Length == 32));
-            return GetTestPermutations(tests);
-        }
+        private static IEnumerable<TrieTest> LoadHexEncodedSecureTests() =>
+            GetTestPermutations(TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
+                    "hex_encoded_securetrie_test.json",
+                    dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)))
+                // Remove branch value tests
+                .Where(t => t.Input.All(kvp => kvp.Key.Length == 32)));
 
-        private static IEnumerable<TrieTest> LoadAnyOrderSecureTests()
-        {
-            IEnumerable<TrieTest> tests = TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
+        private static IEnumerable<TrieTest> LoadAnyOrderSecureTests() =>
+            GetTestPermutations(TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
                 "trieanyorder_secureTrie.json",
-                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)));
-            return GetTestPermutations(tests);
-        }
+                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root))));
 
         [TestCaseSource(nameof(LoadTests))]
         public void Test(TrieTest test) => RunTest(test, false);
@@ -120,12 +100,11 @@ namespace Ethereum.Trie.Test
                 return;
             }
 
-            string permutationDescription =
-                string.Join(Environment.NewLine, test.Input.Select(p => $"{p.Key} -> {p.Value}"));
+            string permutationDescription = string.Join(Environment.NewLine, test.Input.Select(p => $"{p.Key} -> {p.Value}"));
 
             TestContext.Out.WriteLine(Surrounded(permutationDescription));
 
-            PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            PatriciaTree patriciaTree = new(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
             foreach (KeyValuePair<string, string> keyValuePair in test.Input)
             {
                 string keyString = keyValuePair.Key;
@@ -147,22 +126,19 @@ namespace Ethereum.Trie.Test
             Assert.That(patriciaTree.RootHash.ToString(), Is.EqualTo(test.ExpectedRoot));
         }
 
-        public string Surrounded(string text)
-        {
-            return string.Concat(Environment.NewLine, text, Environment.NewLine);
-        }
+        private string Surrounded(string text) => string.Concat(Environment.NewLine, text, Environment.NewLine);
 
         [Test]
         public void Quick_empty()
         {
-            PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            PatriciaTree patriciaTree = new(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
             Assert.That(patriciaTree.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash));
         }
 
         [Test]
         public void Delete_on_empty()
         {
-            PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            PatriciaTree patriciaTree = new(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
             patriciaTree.Set(Keccak.Compute("1").Bytes, Array.Empty<byte>());
             patriciaTree.Commit();
             Assert.That(patriciaTree.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash));
@@ -171,9 +147,9 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Delete_missing_resolved_on_branch()
         {
-            PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
-            patriciaTree.Set(Keccak.Compute("1123").Bytes, new byte[] { 1 });
-            patriciaTree.Set(Keccak.Compute("1124").Bytes, new byte[] { 2 });
+            PatriciaTree patriciaTree = new(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            patriciaTree.Set(Keccak.Compute("1123").Bytes, [1]);
+            patriciaTree.Set(Keccak.Compute("1124").Bytes, [2]);
             Hash256 rootBefore = patriciaTree.RootHash;
             patriciaTree.Set(Keccak.Compute("1125").Bytes, Array.Empty<byte>());
             Assert.That(patriciaTree.RootHash, Is.EqualTo(rootBefore));
@@ -182,9 +158,9 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Delete_missing_resolved_on_extension()
         {
-            PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
-            patriciaTree.Set(new Nibble[] { 1, 2, 3, 4 }.ToPackedByteArray(), new byte[] { 1 });
-            patriciaTree.Set(new Nibble[] { 1, 2, 3, 4, 5 }.ToPackedByteArray(), new byte[] { 2 });
+            PatriciaTree patriciaTree = new(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            patriciaTree.Set(new Nibble[] { 1, 2, 3, 4 }.ToPackedByteArray(), [1]);
+            patriciaTree.Set(new Nibble[] { 1, 2, 3, 4, 5 }.ToPackedByteArray(), [2]);
             patriciaTree.UpdateRootHash();
             Hash256 rootBefore = patriciaTree.RootHash;
             patriciaTree.Set(new Nibble[] { 1, 2, 3 }.ToPackedByteArray(), Array.Empty<byte>());
@@ -195,9 +171,9 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Delete_missing_resolved_on_leaf()
         {
-            PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
-            patriciaTree.Set(Keccak.Compute("1234567").Bytes, new byte[] { 1 });
-            patriciaTree.Set(Keccak.Compute("1234501").Bytes, new byte[] { 2 });
+            PatriciaTree patriciaTree = new(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            patriciaTree.Set(Keccak.Compute("1234567").Bytes, [1]);
+            patriciaTree.Set(Keccak.Compute("1234501").Bytes, [2]);
             patriciaTree.UpdateRootHash();
             Hash256 rootBefore = patriciaTree.RootHash;
             patriciaTree.Set(Keccak.Compute("1234502").Bytes, Array.Empty<byte>());
@@ -208,9 +184,9 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Lookup_in_empty_tree()
         {
-            PatriciaTree tree = new PatriciaTree(new MemDb(), Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            PatriciaTree tree = new(new MemDb(), Keccak.EmptyTreeHash, true, NullLogManager.Instance);
             Assert.That(tree.RootRef, Is.Null);
-            tree.Get(new byte[] { 1 });
+            tree.Get([1]);
             Assert.That(tree.RootRef, Is.Null);
         }
 
@@ -226,23 +202,13 @@ namespace Ethereum.Trie.Test
             public string Root { get; set; }
         }
 
-        public class TrieTest
+        public class TrieTest(string name, IReadOnlyCollection<KeyValuePair<string, string>> input, string expectedRoot)
         {
-            public TrieTest(string name, IReadOnlyCollection<KeyValuePair<string, string>> input, string expectedRoot)
-            {
-                Name = name;
-                Input = input;
-                ExpectedRoot = expectedRoot;
-            }
+            public string Name { get; set; } = name;
+            public IReadOnlyCollection<KeyValuePair<string, string>> Input { get; set; } = input;
+            public string ExpectedRoot { get; set; } = expectedRoot;
 
-            public string Name { get; set; }
-            public IReadOnlyCollection<KeyValuePair<string, string>> Input { get; set; }
-            public string ExpectedRoot { get; set; }
-
-            public override string ToString()
-            {
-                return $"{Name}, exp: {ExpectedRoot} {Guid.NewGuid()}";
-            }
+            public override string ToString() => $"{Name}, exp: {ExpectedRoot} {Guid.NewGuid()}";
         }
     }
 }

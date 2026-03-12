@@ -16,24 +16,24 @@ namespace Ethereum.Rlp.Test
     [TestFixture]
     public class RlpTests
     {
-        private sealed class TestRlpStream : Nethermind.Serialization.Rlp.RlpStream
+        private sealed class TestRlpStream : RlpStream
         {
             public TestRlpStream(int length) : base(length) { }
             public TestRlpStream(byte[] data) : base(data) { }
-            public void CallWriteZero(int length) => base.WriteZero(length);
+            public void CallWriteZero(int length) => WriteZero(length);
         }
 
         [Test]
         public void TestEmpty()
         {
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(Array.Empty<byte>()), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyByteArray));
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(Array.Empty<Nethermind.Serialization.Rlp.Rlp>()), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyList));
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyList));
         }
 
         [Test]
         public void TestCast()
         {
-            byte[] expected = new byte[] { 1 };
+            byte[] expected = [1];
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((byte)1).Bytes, Is.EqualTo(expected), "byte");
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((short)1).Bytes, Is.EqualTo(expected), "short");
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((ushort)1).Bytes, Is.EqualTo(expected), "ushort");
@@ -42,7 +42,7 @@ namespace Ethereum.Rlp.Test
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1L).Bytes, Is.EqualTo(expected), "long bytes");
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1UL).Bytes, Is.EqualTo(expected), "ulong bytes");
 
-            byte[] expectedNonce = new byte[] { 136, 0, 0, 0, 0, 0, 0, 0, 1 };
+            byte[] expectedNonce = [136, 0, 0, 0, 0, 0, 0, 0, 1];
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((UInt256)1UL, HeaderDecoder.NonceLength).Bytes, Is.EqualTo(expectedNonce), "nonce bytes");
         }
 
@@ -50,8 +50,7 @@ namespace Ethereum.Rlp.Test
         public void WriteZero_ClearsAndAdvances_OnPreFilledBuffer()
         {
             byte[] buffer = Enumerable.Repeat((byte)0xAB, 32).ToArray();
-            var stream = new TestRlpStream(buffer);
-            stream.Position = 5;
+            TestRlpStream stream = new(buffer) { Position = 5 };
             stream.CallWriteZero(7);
 
             Assert.That(stream.Position, Is.EqualTo(12));
@@ -63,8 +62,7 @@ namespace Ethereum.Rlp.Test
         [Test]
         public void WriteZero_AdvancesByRequestedLength_OnNewBuffer()
         {
-            var stream = new TestRlpStream(16);
-            stream.Position = 3;
+            TestRlpStream stream = new(16) { Position = 3 };
             stream.CallWriteZero(4);
             Assert.That(stream.Position, Is.EqualTo(7));
             Assert.That(stream.Data.AsSpan(3, 4).ToArray(), Is.EqualTo(new byte[4]));
@@ -74,9 +72,9 @@ namespace Ethereum.Rlp.Test
         public void EncodeBloom_Empty_Writes256Zeros()
         {
             int total = Nethermind.Serialization.Rlp.Rlp.LengthOf(Bloom.Empty);
-            var stream = new TestRlpStream(total);
+            TestRlpStream stream = new(total);
             stream.Encode(Bloom.Empty);
-            var bytes = stream.Data.AsSpan().ToArray();
+            byte[] bytes = stream.Data.AsSpan().ToArray();
 
             Assert.That(bytes.Length, Is.EqualTo(total));
             Assert.That(bytes[0], Is.EqualTo(185));
@@ -88,7 +86,7 @@ namespace Ethereum.Rlp.Test
         [Test]
         public void TestNonce()
         {
-            byte[] expected = { 136, 0, 0, 0, 0, 0, 0, 0, 42 };
+            byte[] expected = [136, 0, 0, 0, 0, 0, 0, 0, 42];
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((UInt256)42UL, HeaderDecoder.NonceLength).Bytes, Is.EqualTo(expected));
         }
 
@@ -107,7 +105,7 @@ namespace Ethereum.Rlp.Test
                 perfBlock = Nethermind.Serialization.Rlp.Rlp.Decode<Block>(bytes.AsSpan());
             }
 
-            Stopwatch stopwatch = new Stopwatch();
+            Stopwatch stopwatch = new();
             stopwatch.Start();
             for (int i = 0; i < iterations; i++)
             {

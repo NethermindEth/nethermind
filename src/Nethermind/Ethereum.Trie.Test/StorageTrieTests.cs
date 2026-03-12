@@ -14,10 +14,8 @@ namespace Ethereum.Trie.Test
     [TestFixture]
     public class StorageTrieTests
     {
-        private StorageTree CreateStorageTrie()
-        {
-            return new StorageTree(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance).GetTrieStore(TestItem.KeccakA), Keccak.EmptyTreeHash, LimboLogs.Instance);
-        }
+        private StorageTree CreateStorageTrie() =>
+            new(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance).GetTrieStore(TestItem.KeccakA), Keccak.EmptyTreeHash, LimboLogs.Instance);
 
         [TestCase(new byte[0], TestName = "Storage_trie_set_reset_with_empty")]
         [TestCase(new byte[] { 0, 0, 0, 0, 0 }, TestName = "Storage_trie_set_reset_with_long_zero")]
@@ -26,7 +24,7 @@ namespace Ethereum.Trie.Test
         {
             StorageTree tree = CreateStorageTrie();
             Hash256 rootBefore = tree.RootHash;
-            tree.Set(1, new byte[] { 1 });
+            tree.Set(1, [1]);
             tree.Set(1, resetValue);
             tree.UpdateRootHash();
             Assert.That(tree.RootHash, Is.EqualTo(rootBefore));

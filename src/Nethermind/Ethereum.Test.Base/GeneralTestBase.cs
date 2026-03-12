@@ -49,7 +49,7 @@ namespace Ethereum.Test.Base
         {
         }
 
-        protected static void Setup(ILogManager logManager)
+        protected static void Setup(ILogManager? logManager)
         {
             _logManager = logManager ?? LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
