@@ -4,13 +4,12 @@
 using System;
 using Nethermind.BlockProofs;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp.ProofDecoder
 {
     public class ProofDecoder
     {
-        public const int NonceLength = 8;
-
         public BlockHeaderProof? Decode(
             ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -124,27 +123,23 @@ namespace Nethermind.Serialization.Rlp.ProofDecoder
 
         private static byte[] EncodePayload(BlockHeaderProof headerProof)
         {
+            if (headerProof.ProofType == BlockHeaderProofType.BlockProofHistoricalHashesAccumulator)
+                return SszEncoding.Encode(BlockProofHistoricalHashesAccumulator.From(headerProof.HashesAccumulator!));
+
+            // Both HistoricalRoots and HistoricalSummaries share the same proof fields.
+            (ValueHash256[] beaconBlockProof, ValueHash256 beaconBlockRoot, ValueHash256[] executionBlockProof, long slot) = (
+                headerProof.BeaconBlockProof!,
+                headerProof.BeaconBlockRoot!.Value,
+                headerProof.ExecutionBlockProof!,
+                headerProof.Slot!.Value);
+
             return headerProof.ProofType switch
             {
-                BlockHeaderProofType.BlockProofHistoricalHashesAccumulator =>
-                    SszEncoding.Encode(
-                        BlockProofHistoricalHashesAccumulator.From(headerProof.HashesAccumulator!)),
-
                 BlockHeaderProofType.BlockProofHistoricalRoots =>
-                    SszEncoding.Encode(
-                        BlockProofHistoricalRoots.From(
-                            headerProof.BeaconBlockProof!,
-                            headerProof.BeaconBlockRoot!.Value,
-                            headerProof.ExecutionBlockProof!,
-                            headerProof.Slot!.Value)),
+                    SszEncoding.Encode(BlockProofHistoricalRoots.From(beaconBlockProof, beaconBlockRoot, executionBlockProof, slot)),
 
                 BlockHeaderProofType.BlockProofHistoricalSummaries =>
-                    SszEncoding.Encode(
-                        BlockProofHistoricalSummaries.From(
-                            headerProof.BeaconBlockProof!,
-                            headerProof.BeaconBlockRoot!.Value,
-                            headerProof.ExecutionBlockProof!,
-                            headerProof.Slot!.Value)),
+                    SszEncoding.Encode(BlockProofHistoricalSummaries.From(beaconBlockProof, beaconBlockRoot, executionBlockProof, slot)),
 
                 _ => throw new InvalidOperationException($"Invalid proof type: {headerProof.ProofType}")
             };

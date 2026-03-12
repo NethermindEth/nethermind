@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Admin;
@@ -45,7 +46,8 @@ public class EraEModule : Module
             {
                 ISpecProvider spec = ctx.Resolve<ISpecProvider>();
                 IHistoricalSummariesProvider summariesProvider = ctx.Resolve<IHistoricalSummariesProvider>();
-                return new Validator(spec, trustedAccumulators: null, trustedHistoricalRoots: null, summariesProvider);
+                IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
+                return new Validator(spec, trustedAccumulators: null, trustedHistoricalRoots: null, summariesProvider, blocksConfig);
             })
             .RegisterSingletonJsonRpcModule<IEraAdminRpcModule, EraAdminRpcModule>()
             .AddDecorator<IEraEConfig>((ctx, eraConfig) =>

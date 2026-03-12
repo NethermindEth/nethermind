@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Security.Cryptography;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -30,12 +31,14 @@ public class Validator
         ISpecProvider specProvider,
         ISet<ValueHash256>? trustedAccumulators,
         ISet<ValueHash256>? trustedHistoricalRoots,
-        IHistoricalSummariesProvider? historicalSummariesProvider)
+        IHistoricalSummariesProvider? historicalSummariesProvider,
+        IBlocksConfig? blocksConfig = null)
     {
+        ulong secondsPerSlot = blocksConfig?.SecondsPerSlot ?? 12;
         _slotTime = new SlotTime(
             specProvider.BeaconChainGenesisTimestamp!.Value * 1000,
             new Timestamper(),
-            TimeSpan.FromSeconds(12),
+            TimeSpan.FromSeconds(secondsPerSlot),
             TimeSpan.FromSeconds(0));
         _trustedAccumulators = trustedAccumulators;
         _trustedHistoricalRoots = trustedHistoricalRoots;
