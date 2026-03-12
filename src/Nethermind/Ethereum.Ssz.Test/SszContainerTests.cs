@@ -39,59 +39,59 @@ public class SszContainerTests
         switch (containerType)
         {
             case "SingleFieldTestStruct":
-            {
-                SszEncoding.Decode(ssz, out SingleFieldTestStruct decoded);
-                byte[] reEncoded = SszEncoding.Encode(decoded);
-                Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
-                SszEncoding.Merkleize(decoded, out UInt256 root);
-                Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
-                break;
-            }
+                {
+                    SszEncoding.Decode(ssz, out SingleFieldTestStruct decoded);
+                    byte[] reEncoded = SszEncoding.Encode(decoded);
+                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
+                    SszEncoding.Merkleize(decoded, out UInt256 root);
+                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
+                    break;
+                }
             case "SmallTestStruct":
-            {
-                SszEncoding.Decode(ssz, out SmallTestStruct decoded);
-                byte[] reEncoded = SszEncoding.Encode(decoded);
-                Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
-                SszEncoding.Merkleize(decoded, out UInt256 root);
-                Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
-                break;
-            }
+                {
+                    SszEncoding.Decode(ssz, out SmallTestStruct decoded);
+                    byte[] reEncoded = SszEncoding.Encode(decoded);
+                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
+                    SszEncoding.Merkleize(decoded, out UInt256 root);
+                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
+                    break;
+                }
             case "FixedTestStruct":
-            {
-                SszEncoding.Decode(ssz, out FixedTestStruct decoded);
-                byte[] reEncoded = SszEncoding.Encode(decoded);
-                Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
-                SszEncoding.Merkleize(decoded, out UInt256 root);
-                Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
-                break;
-            }
+                {
+                    SszEncoding.Decode(ssz, out FixedTestStruct decoded);
+                    byte[] reEncoded = SszEncoding.Encode(decoded);
+                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
+                    SszEncoding.Merkleize(decoded, out UInt256 root);
+                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
+                    break;
+                }
             case "VarTestStruct":
-            {
-                SszEncoding.Decode(ssz, out VarTestStruct decoded);
-                byte[] reEncoded = SszEncoding.Encode(decoded);
-                Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
-                SszEncoding.Merkleize(decoded, out UInt256 root);
-                Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
-                break;
-            }
+                {
+                    SszEncoding.Decode(ssz, out VarTestStruct decoded);
+                    byte[] reEncoded = SszEncoding.Encode(decoded);
+                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
+                    SszEncoding.Merkleize(decoded, out UInt256 root);
+                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
+                    break;
+                }
             case "ComplexTestStruct":
-            {
-                SszEncoding.Decode(ssz, out ComplexTestStruct decoded);
-                byte[] reEncoded = SszEncoding.Encode(decoded);
-                Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
-                SszEncoding.Merkleize(decoded, out UInt256 root);
-                Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
-                break;
-            }
+                {
+                    SszEncoding.Decode(ssz, out ComplexTestStruct decoded);
+                    byte[] reEncoded = SszEncoding.Encode(decoded);
+                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
+                    SszEncoding.Merkleize(decoded, out UInt256 root);
+                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
+                    break;
+                }
             case "BitsStruct":
-            {
-                SszEncoding.Decode(ssz, out BitsStruct decoded);
-                byte[] reEncoded = SszEncoding.Encode(decoded);
-                Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
-                SszEncoding.Merkleize(decoded, out UInt256 root);
-                Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
-                break;
-            }
+                {
+                    SszEncoding.Decode(ssz, out BitsStruct decoded);
+                    byte[] reEncoded = SszEncoding.Encode(decoded);
+                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
+                    SszEncoding.Merkleize(decoded, out UInt256 root);
+                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
+                    break;
+                }
             default:
                 if (UnsupportedContainers.Contains(containerType))
                     Assert.Ignore($"Unsupported container type (not yet implemented): {containerType}");

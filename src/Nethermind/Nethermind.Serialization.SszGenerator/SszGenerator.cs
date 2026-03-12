@@ -377,7 +377,8 @@ public partial class SszEncoding
 {Whitespace}
 {(variables.Any() ? Shift(2, new[] { $"if (offset1 != {decl.StaticLength} || {string.Join(" || ", variables.Select((_, i) => i + 1 == variables.Count ? $"offset{i + 1} > data.Length" : $"offset{i + 1} > offset{i + 2}"))}) throw new System.IO.InvalidDataException(\"Invalid offsets\");" }) : "")}
 {Whitespace}
-{Shift(2, variables.Select((m, i) => {
+{Shift(2, variables.Select((m, i) =>
+{
     string end = i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}";
     string decodeExpr = $"{(m.HandledByStd ? "SszLib.Decode" : "Decode")}(data.Slice(offset{i + 1}, {end} - offset{i + 1}), out {(m.IsCollection ? (m.HandledByStd ? $"ReadOnlySpan<{m.Type.Name}>" : $"{m.Type.Name}[]") : m.Type.Name)} {VarName(m.Name)}); container.{m.Name} = {(m.IsCollection ? $"[ ..{VarName(m.Name)}]" : VarName(m.Name))};";
     return m.Kind == Kind.BitList
