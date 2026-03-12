@@ -60,10 +60,12 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
             try
             {
                 ValueHash256? blockRoot = await FetchBlockRootAsync(slot, cancellationToken);
-                if (blockRoot is null) return null;
+                if (!blockRoot.HasValue)
+                    return null;
 
                 ValueHash256? stateRoot = await FetchStateRootAsync(slot, cancellationToken);
-                if (stateRoot is null) return null;
+                if (!stateRoot.HasValue)
+                    return null;
 
                 return (blockRoot.Value, stateRoot.Value);
             }
@@ -79,14 +81,28 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
     {
         Uri uri = new(_baseUrl, $"/eth/v1/beacon/headers/{slot}");
         string? hex = await GetJsonStringFieldAsync(uri, ["data", "root"], cancellationToken);
-        return hex is null ? null : new ValueHash256(Convert.FromHexString(hex.TrimStart('0', 'x')));
+
+        if (hex is null)
+            return null;
+
+        if (!TryParseHash256(hex, out ValueHash256 value))
+            return null;
+
+        return value;
     }
 
     private async Task<ValueHash256?> FetchStateRootAsync(long slot, CancellationToken cancellationToken)
     {
         Uri uri = new(_baseUrl, $"/eth/v1/beacon/states/{slot}/root");
         string? hex = await GetJsonStringFieldAsync(uri, ["data", "root"], cancellationToken);
-        return hex is null ? null : new ValueHash256(Convert.FromHexString(hex.TrimStart('0', 'x')));
+
+        if (hex is null)
+            return null;
+
+        if (!TryParseHash256(hex, out ValueHash256 value))
+            return null;
+
+        return value;
     }
 
     private async Task<string?> GetJsonStringFieldAsync(
@@ -101,7 +117,8 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
         using HttpResponseMessage response = await _httpClient.SendAsync(
             request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
 
-        if (!response.IsSuccessStatusCode) return null;
+        if (!response.IsSuccessStatusCode)
+            return null;
 
         await using Stream stream = await response.Content.ReadAsStreamAsync(cts.Token);
         using JsonDocument document = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token);
@@ -109,11 +126,42 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
         JsonElement element = document.RootElement;
         foreach (string key in path)
         {
-            if (!element.TryGetProperty(key, out element))
+            if (!element.TryGetProperty(key, out JsonElement next))
                 return null;
+
+            element = next;
         }
 
-        return element.GetString();
+        if (element.ValueKind != JsonValueKind.String)
+            return null;
+
+        string? value = element.GetString();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static bool TryParseHash256(string? hex, out ValueHash256 value)
+    {
+        value = default;
+
+        if (string.IsNullOrWhiteSpace(hex))
+            return false;
+
+        if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            hex = hex[2..];
+
+        if (hex.Length != 64)
+            return false;
+
+        try
+        {
+            byte[] bytes = Convert.FromHexString(hex);
+            value = new ValueHash256(bytes);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
     }
 
     private static bool IsTransient(Exception ex) =>
