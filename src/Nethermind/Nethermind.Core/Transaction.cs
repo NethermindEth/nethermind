@@ -65,6 +65,8 @@ namespace Nethermind.Core
         /// </summary>
         [JsonIgnore]
         public long BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
+        [JsonIgnore]
+        public long BlockGasUsedTest { get => _blockGasUsed > 0 ? _blockGasUsed : SpentGas; set => _blockGasUsed = value; }
         public Address? To { get; set; }
         private UInt256 _value;
         public UInt256 Value { get => _value; set => _value = value; }
