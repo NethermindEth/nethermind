@@ -22,7 +22,7 @@ public class SszBasicTypeTests
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
         string yamlValue = ReadYamlValue(Path.Combine(casePath, "value.yaml"));
-        string expectedRoot = ReadYamlRoot(Path.Combine(casePath, "meta.yaml"));
+        UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         bool expected = yamlValue == "true";
         bool decoded = SszEncoder.DecodeBool(ssz.AsSpan());
@@ -33,7 +33,7 @@ public class SszBasicTypeTests
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
         Merkle.Merkleize(out UInt256 root, decoded);
-        Assert.That(root, Is.EqualTo(ParseRoot(expectedRoot)));
+        Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
     [TestCaseSource(nameof(BooleanInvalidCases))]
@@ -50,7 +50,7 @@ public class SszBasicTypeTests
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
         string yamlValue = ReadYamlValue(Path.Combine(casePath, "value.yaml"));
-        string expectedRoot = ReadYamlRoot(Path.Combine(casePath, "meta.yaml"));
+        UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         byte expected = byte.Parse(yamlValue);
         byte decoded = SszEncoder.DecodeByte(ssz.AsSpan());
@@ -61,7 +61,7 @@ public class SszBasicTypeTests
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
         Merkle.Merkleize(out UInt256 root, decoded);
-        Assert.That(root, Is.EqualTo(ParseRoot(expectedRoot)));
+        Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
     [TestCaseSource(nameof(Uint8InvalidCases))]
@@ -78,7 +78,7 @@ public class SszBasicTypeTests
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
         string yamlValue = ReadYamlValue(Path.Combine(casePath, "value.yaml"));
-        string expectedRoot = ReadYamlRoot(Path.Combine(casePath, "meta.yaml"));
+        UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         ushort expected = ushort.Parse(yamlValue);
         ushort decoded = SszEncoder.DecodeUShort(ssz.AsSpan());
@@ -89,7 +89,7 @@ public class SszBasicTypeTests
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
         Merkle.Merkleize(out UInt256 root, decoded);
-        Assert.That(root, Is.EqualTo(ParseRoot(expectedRoot)));
+        Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
     [TestCaseSource(nameof(Uint16InvalidCases))]
@@ -106,7 +106,7 @@ public class SszBasicTypeTests
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
         string yamlValue = ReadYamlValue(Path.Combine(casePath, "value.yaml"));
-        string expectedRoot = ReadYamlRoot(Path.Combine(casePath, "meta.yaml"));
+        UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         uint expected = uint.Parse(yamlValue);
         uint decoded = SszEncoder.DecodeUInt(ssz.AsSpan());
@@ -117,7 +117,7 @@ public class SszBasicTypeTests
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
         Merkle.Merkleize(out UInt256 root, decoded);
-        Assert.That(root, Is.EqualTo(ParseRoot(expectedRoot)));
+        Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
     [TestCaseSource(nameof(Uint32InvalidCases))]
@@ -134,7 +134,7 @@ public class SszBasicTypeTests
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
         string yamlValue = ReadYamlValue(Path.Combine(casePath, "value.yaml"));
-        string expectedRoot = ReadYamlRoot(Path.Combine(casePath, "meta.yaml"));
+        UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         ulong expected = ulong.Parse(yamlValue);
         ulong decoded = SszEncoder.DecodeULong(ssz.AsSpan());
@@ -145,7 +145,7 @@ public class SszBasicTypeTests
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
         Merkle.Merkleize(out UInt256 root, decoded);
-        Assert.That(root, Is.EqualTo(ParseRoot(expectedRoot)));
+        Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
     [TestCaseSource(nameof(Uint64InvalidCases))]
@@ -162,7 +162,7 @@ public class SszBasicTypeTests
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
         string yamlValue = ReadYamlValue(Path.Combine(casePath, "value.yaml"));
-        string expectedRoot = ReadYamlRoot(Path.Combine(casePath, "meta.yaml"));
+        UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         UInt128 expected = UInt128.Parse(yamlValue);
         UInt128 decoded = SszEncoder.DecodeUInt128(ssz.AsSpan());
@@ -173,7 +173,7 @@ public class SszBasicTypeTests
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
         Merkle.Merkleize(out UInt256 root, decoded);
-        Assert.That(root, Is.EqualTo(ParseRoot(expectedRoot)));
+        Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
     [TestCaseSource(nameof(Uint128InvalidCases))]
@@ -190,7 +190,7 @@ public class SszBasicTypeTests
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
         string yamlValue = ReadYamlValue(Path.Combine(casePath, "value.yaml"));
-        string expectedRoot = ReadYamlRoot(Path.Combine(casePath, "meta.yaml"));
+        UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         UInt256 expected = UInt256.Parse(yamlValue);
         UInt256 decoded = SszEncoder.DecodeUInt256(ssz.AsSpan());
@@ -201,7 +201,7 @@ public class SszBasicTypeTests
         Assert.That(reencoded, Is.EqualTo(ssz));
 
         Merkle.Merkleize(out UInt256 root, decoded);
-        Assert.That(root, Is.EqualTo(ParseRoot(expectedRoot)));
+        Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
     [TestCaseSource(nameof(Uint256InvalidCases))]
@@ -213,28 +213,12 @@ public class SszBasicTypeTests
 
     // --- Helpers ---
 
-    private static UInt256 ParseRoot(string hexRoot)
-    {
-        byte[] rootBytes = Convert.FromHexString(hexRoot[2..]);
-        return new UInt256(rootBytes);
-    }
-
     private static string ReadYamlValue(string filePath)
     {
         using StreamReader reader = new(filePath);
         YamlStream yaml = new();
         yaml.Load(reader);
         YamlScalarNode rootNode = (YamlScalarNode)yaml.Documents[0].RootNode;
-        return rootNode.Value!;
-    }
-
-    private static string ReadYamlRoot(string filePath)
-    {
-        using StreamReader reader = new(filePath);
-        YamlStream yaml = new();
-        yaml.Load(reader);
-        YamlMappingNode mapping = (YamlMappingNode)yaml.Documents[0].RootNode;
-        YamlScalarNode rootNode = (YamlScalarNode)mapping[new YamlScalarNode("root")];
         return rootNode.Value!;
     }
 

@@ -7,8 +7,6 @@ using System.IO;
 using Nethermind.Int256;
 using Nethermind.Serialization;
 using NUnit.Framework;
-using YamlDotNet.RepresentationModel;
-
 namespace Ethereum.Ssz.Test;
 
 [TestFixture]
@@ -36,7 +34,7 @@ public class SszContainerTests
     public void Container_valid_roundtrip_and_root(string casePath, string containerType)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
-        UInt256 expectedRoot = ParseRoot(Path.Combine(casePath, "meta.yaml"));
+        UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         switch (containerType)
         {
@@ -139,15 +137,6 @@ public class SszContainerTests
 
     // --- Helpers ---
 
-    private static UInt256 ParseRoot(string metaFilePath)
-    {
-        using StreamReader reader = new(metaFilePath);
-        YamlStream yaml = new();
-        yaml.Load(reader);
-        YamlMappingNode mapping = (YamlMappingNode)yaml.Documents[0].RootNode;
-        string hexRoot = ((YamlScalarNode)mapping[new YamlScalarNode("root")]).Value!;
-        return new UInt256(Convert.FromHexString(hexRoot[2..]));
-    }
 
     /// <summary>
     /// Extracts the container type from a case name like "BitsStruct_lengthy_0" → "BitsStruct".

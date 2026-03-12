@@ -5,12 +5,10 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Numerics;
 using Nethermind.Int256;
 using Nethermind.Merkleization;
 using NUnit.Framework;
 using SszEncoder = Nethermind.Serialization.Ssz.Ssz;
-using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.Ssz.Test;
 
@@ -23,7 +21,7 @@ public class SszBitTests
     public void Bitvector_valid_roundtrip_and_root(string casePath, int bitLength)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
-        UInt256 expectedRoot = ParseRoot(Path.Combine(casePath, "meta.yaml"));
+        UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         BitArray decoded = SszEncoder.DecodeBitvector(ssz, bitLength);
         Assert.That(decoded.Length, Is.EqualTo(bitLength));
@@ -62,7 +60,7 @@ public class SszBitTests
     public void Bitlist_valid_roundtrip_and_root(string casePath, int maxBitLength)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
-        UInt256 expectedRoot = ParseRoot(Path.Combine(casePath, "meta.yaml"));
+        UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         BitArray decoded = SszEncoder.DecodeBitlist(ssz);
         Assert.That(decoded.Length, Is.LessThanOrEqualTo(maxBitLength), "Decoded bitlist length exceeds the limit");
@@ -107,15 +105,6 @@ public class SszBitTests
 
     // --- Helpers ---
 
-    private static UInt256 ParseRoot(string metaFilePath)
-    {
-        using StreamReader reader = new(metaFilePath);
-        YamlStream yaml = new();
-        yaml.Load(reader);
-        YamlMappingNode mapping = (YamlMappingNode)yaml.Documents[0].RootNode;
-        string hexRoot = ((YamlScalarNode)mapping[new YamlScalarNode("root")]).Value!;
-        return new UInt256(Convert.FromHexString(hexRoot[2..]));
-    }
 
     /// <summary>
     /// Extracts the bit length/limit from the case name.

@@ -6,7 +6,9 @@ using System.Formats.Tar;
 using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
+using Nethermind.Int256;
 using Snappier;
+using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.Ssz.Test;
 
@@ -55,5 +57,18 @@ public static class SszConsensusTestLoader
     {
         byte[] compressed = File.ReadAllBytes(filePath);
         return Snappy.DecompressToArray(compressed);
+    }
+
+    /// <summary>
+    /// Parses the "root" field from a meta.yaml file and returns it as a UInt256.
+    /// </summary>
+    public static UInt256 ParseRoot(string metaFilePath)
+    {
+        using StreamReader reader = new(metaFilePath);
+        YamlStream yaml = new();
+        yaml.Load(reader);
+        YamlMappingNode mapping = (YamlMappingNode)yaml.Documents[0].RootNode;
+        string hexRoot = ((YamlScalarNode)mapping[new YamlScalarNode("root")]).Value!;
+        return new UInt256(Convert.FromHexString(hexRoot[2..]));
     }
 }

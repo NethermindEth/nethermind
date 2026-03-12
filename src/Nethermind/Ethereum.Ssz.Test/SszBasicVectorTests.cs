@@ -8,8 +8,6 @@ using Nethermind.Int256;
 using Nethermind.Merkleization;
 using NUnit.Framework;
 using SszEncoder = global::Nethermind.Serialization.Ssz.Ssz;
-using YamlDotNet.RepresentationModel;
-
 namespace Ethereum.Ssz.Test;
 
 [TestFixture]
@@ -30,14 +28,14 @@ public class SszBasicVectorTests
     /// Parses "vec_uint64_4_random" into (elementType: "uint64", vectorLength: 4).
     /// Case name format: vec_{type}_{length}_{descriptor}
     /// </summary>
+    // Longest first to avoid "uint1" matching "uint16"
+    private static readonly string[] Types = ["uint128", "uint256", "uint16", "uint32", "uint64", "uint8", "bool"];
+
     private static (string elementType, int vectorLength) ParseCaseName(string caseName)
     {
         // Strip "vec_" prefix
         string rest = caseName.Substring(4);
-
-        // Try each known type prefix (longest first to avoid "uint1" matching "uint16")
-        string[] types = { "uint128", "uint256", "uint16", "uint32", "uint64", "uint8", "bool" };
-        foreach (string type in types)
+        foreach (string type in Types)
         {
             string typePrefix = type + "_";
             if (rest.StartsWith(typePrefix, StringComparison.Ordinal))
@@ -70,7 +68,7 @@ public class SszBasicVectorTests
         Assert.That(reEncoded, Is.EqualTo(ssz), $"Re-encoded SSZ does not match original for {caseName}");
 
         // Verify hash tree root
-        UInt256 expectedRoot = ParseRoot(Path.Combine(casePath, "meta.yaml"));
+        UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
         Merkle.Merkleize(out UInt256 computedRoot, (ReadOnlySpan<byte>)ssz);
         Assert.That(computedRoot, Is.EqualTo(expectedRoot), $"Hash tree root mismatch for {caseName}");
     }
@@ -149,15 +147,6 @@ public class SszBasicVectorTests
         }
     }
 
-    private static UInt256 ParseRoot(string metaFilePath)
-    {
-        using StreamReader reader = new(metaFilePath);
-        YamlStream yaml = new();
-        yaml.Load(reader);
-        YamlMappingNode mapping = (YamlMappingNode)yaml.Documents[0].RootNode;
-        string hexRoot = ((YamlScalarNode)mapping[new YamlScalarNode("root")]).Value!;
-        return new UInt256(Convert.FromHexString(hexRoot[2..]));
-    }
 
     // --- Test case sources ---
     // Structure: basic_vector/valid/{case_name}/ and basic_vector/invalid/{case_name}/
