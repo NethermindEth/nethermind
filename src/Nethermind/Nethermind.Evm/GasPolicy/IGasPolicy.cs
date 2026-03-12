@@ -401,7 +401,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     {
         if (spec.IsEip7976Enabled)
         {
-            long floorTokensInCallData = transaction.Data.Length * spec.GetTxDataNonZeroMultiplier();
+            long floorTokensInCallData = transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
             return GasCostOf.Transaction + floorTokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7976;
         }
         else if (spec.IsEip7623Enabled)
