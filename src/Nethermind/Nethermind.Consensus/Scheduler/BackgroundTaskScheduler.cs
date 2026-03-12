@@ -154,11 +154,11 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
         WaitForBlockProcessing:
             cts.Dispose();
-            // Async-wait for block processing to finish instead of polling/re-queuing in a loop
+            // Wait for block processing to finish, but wake up periodically to drain expired tasks
             TaskCompletionSource? signal = _blockProcessingDoneSignal;
-            if (signal is not null)
+            if (signal is not null && !signal.Task.IsCompleted)
             {
-                await signal.Task.WaitAsync(_mainCancellationTokenSource.Token);
+                await Task.WhenAny(signal.Task, Task.Delay(100, _mainCancellationTokenSource.Token));
             }
         }
     }
