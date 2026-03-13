@@ -48,6 +48,3 @@ public class DifficultyMainNetworkTests : TestsBase
     [TestCaseSource(nameof(LoadMainTests))]
     public void Test_main(DifficultyTests test) => RunTest(test, MainnetSpecProvider.Instance);
 }
-
-// Morden and Olympic tests are disabled — no test resource files exist
-// ToDo: fix loader
