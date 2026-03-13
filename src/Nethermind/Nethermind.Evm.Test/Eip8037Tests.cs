@@ -50,8 +50,7 @@ public class Eip8037Tests
 
         bool consumed = EthereumGasPolicy.ConsumeStateGas(ref gas, 70);
 
-        Assert.That((consumed, gas.Value, gas.StateReservoir, gas.StateGasUsed),
-            Is.EqualTo((true, 80L, 0L, 70L)));
+        Assert.That((consumed, gas.Value, gas.StateReservoir, gas.StateGasUsed), Is.EqualTo((true, 80L, 0L, 70L)));
     }
 
     [Test]
@@ -61,9 +60,7 @@ public class Eip8037Tests
 
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 444);
 
-        Assert.That(
-            (parent.Value, parent.StateReservoir, parent.StateGasUsed,
-             child.Value, child.StateReservoir, child.StateGasUsed),
+        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed, child.Value, child.StateReservoir, child.StateGasUsed),
             Is.EqualTo((1_000L, 0L, 50L, 444L, 333L, 0L)));
     }
 
@@ -77,8 +74,7 @@ public class Eip8037Tests
 
         EthereumGasPolicy.Refund(ref parent, in child);
 
-        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed),
-            Is.EqualTo((1_294L, 233L, 150L)));
+        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((1_294L, 233L, 150L)));
     }
 
     [Test]
@@ -117,17 +113,13 @@ public class Eip8037Tests
         EthereumGasPolicy.UpdateGasUp(ref parent, EthereumGasPolicy.GetRemainingGas(in child));
         EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 400);
 
-        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed),
-            Is.EqualTo((900L, 400L, 20L)));
+        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((900L, 400L, 20L)));
     }
 
     [TestCase(ExpectedResult = 5_000L)]
     public long Spent_gas_subtracts_state_reservoir()
     {
         EthereumGasPolicy gas = new() { Value = 3_000, StateReservoir = 2_000, StateGasUsed = 500 };
-
-        return 10_000L
-            - EthereumGasPolicy.GetRemainingGas(in gas)
-            - EthereumGasPolicy.GetStateReservoir(in gas);
+        return 10_000L - EthereumGasPolicy.GetRemainingGas(in gas) - EthereumGasPolicy.GetStateReservoir(in gas);
     }
 }
