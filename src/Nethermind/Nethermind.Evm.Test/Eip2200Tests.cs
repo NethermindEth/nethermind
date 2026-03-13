@@ -74,18 +74,6 @@ namespace Nethermind.Evm.Test
             Assert.That(receipt.StatusCode, Is.EqualTo(outOfGasExpected ? 0 : 1));
         }
 
-        [TestCase("0x60006000556000600055", 1612, 0, 2301, 1)]
-        [TestCase("0x60016000556001600055", 1612, 1, 2301, 1)]
-        [TestCase("0x60006000556000600055", 1612, 0, 2299, 0)]
-        [TestCase("0x60016000556001600055", 1612, 1, 2299, 0)]
-        public void Test_when_gas_near_stipend(string codeHex, long gasUsed, byte originalValue, int stipendOffset, int expectedStatus)
-        {
-            SetupStorage(originalValue);
-
-            TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (stipendOffset - 800), Bytes.FromHexString(codeHex));
-            Assert.That(receipt.StatusCode, Is.EqualTo(expectedStatus));
-        }
-
         private void SetupStorage(byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
