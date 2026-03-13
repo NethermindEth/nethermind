@@ -167,6 +167,15 @@ public class GasNewPayloadBenchmarks
         ResetTimingAccumulators();
     }
 
+    [IterationSetup]
+    public void IterationSetup()
+    {
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
+        Thread.Sleep(10);
+    }
+
     [Benchmark]
     public void ProcessBlock()
     {
