@@ -80,10 +80,8 @@ public class Eip8024Tests : VirtualMachineTestsBase
         yield return new TestCaseData(PushNValues(10).Op(Instruction.SWAPN).Data(0x80).Done).SetName("SwapN_StackUnderflow");
         yield return new TestCaseData(PushNValues(2).Op(Instruction.EXCHANGE).Data(0x9d).Done).SetName("Exchange_StackUnderflow");
 
-        // Missing immediate at end of code
-        yield return new TestCaseData(Prepare.EvmCode.Op(Instruction.DUPN).Done).SetName("DupN_MissingImmediate");
-        yield return new TestCaseData(Prepare.EvmCode.Op(Instruction.SWAPN).Done).SetName("SwapN_MissingImmediate");
-        yield return new TestCaseData(Prepare.EvmCode.Op(Instruction.EXCHANGE).Done).SetName("Exchange_MissingImmediate");
+        // Missing immediate at end of code is now a graceful STOP (EIP-8024 spec)
+        // Moved to EndOfCode_ActsAsStop test below
 
         // Max depth: immediate 0x5a -> depth=235, only 234 items
         yield return new TestCaseData(PushZeros(234).Op(Instruction.DUPN).Data(0x5a).Done).SetName("DupN_MaxDepth_235");
@@ -121,6 +119,17 @@ public class Eip8024Tests : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(Activation, 100000, code);
         result.StatusCode.Should().Be(StatusCode.Success);
         AssertGas(result, expectedGas);
+    }
+
+    [TestCase(new byte[] { 0xe6 }, TestName = "DupN_MissingImmediate")]
+    [TestCase(new byte[] { 0xe7 }, TestName = "SwapN_MissingImmediate")]
+    [TestCase(new byte[] { 0xe8 }, TestName = "Exchange_MissingImmediate")]
+    public void EndOfCode_ActsAsStop(byte[] code)
+    {
+        // When DUPN/SWAPN/EXCHANGE appears at end of code with no immediate byte,
+        // it acts as a graceful STOP per EIP-8024 spec.
+        TestAllTracerWithOutput result = Execute(code);
+        result.StatusCode.Should().Be(StatusCode.Success);
     }
 
     [Test]
