@@ -12,8 +12,6 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 [Parallelizable(ParallelScope.All)]
 public class Eip8024StateTests : GeneralStateTestBase
 {
-    private const string ArchiveVersion = "bal@v5.2.0";
-    private const string ArchiveName = "fixtures_bal.tar.gz";
     private const string Eip8024Wildcard = "eip8024_dupn_swapn_exchange";
 
     [TestCaseSource(nameof(LoadTests))]
@@ -23,8 +21,8 @@ public class Eip8024StateTests : GeneralStateTestBase
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy
         {
-            ArchiveVersion = ArchiveVersion,
-            ArchiveName = ArchiveName
+            ArchiveVersion = Amsterdam.Constants.BalArchiveVersion,
+            ArchiveName = Amsterdam.Constants.BalArchiveName
         }, "fixtures/state_tests", Eip8024Wildcard);
 
         return loader.LoadTests<GeneralStateTest>();

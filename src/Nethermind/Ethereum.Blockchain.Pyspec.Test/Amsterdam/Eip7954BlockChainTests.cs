@@ -13,8 +13,6 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 [Parallelizable(ParallelScope.All)]
 public class Eip7954BlockChainTests : BlockchainTestBase
 {
-    private const string ArchiveVersion = "bal@v5.2.0";
-    private const string ArchiveName = "fixtures_bal.tar.gz";
     private const string Eip7954Wildcard = "eip7954_increase_max_contract_size";
 
     [TestCaseSource(nameof(LoadTests))]
@@ -24,8 +22,8 @@ public class Eip7954BlockChainTests : BlockchainTestBase
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy
         {
-            ArchiveVersion = ArchiveVersion,
-            ArchiveName = ArchiveName
+            ArchiveVersion = Amsterdam.Constants.BalArchiveVersion,
+            ArchiveName = Amsterdam.Constants.BalArchiveName
         }, "fixtures/blockchain_tests", Eip7954Wildcard);
 
         return loader.LoadTests().OfType<BlockchainTest>();
