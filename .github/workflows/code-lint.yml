@@ -33,24 +33,11 @@ jobs:
       - name: Register problem matcher
         run: echo "::add-matcher::.github/problem-matchers/dotnet-format.json"
 
-      # - name: Check code quality
-      #   run: |
-      #     dotnet build src/Nethermind/Nethermind.slnx \
-      #       -p:EnforceCodeStyleInBuild=true \
-      #       -p:TreatWarningsAsErrors=false \
-      #       -p:GenerateDocumentationFile=true \
-      #       -p:NoWarn=CS0419%3BCS1570%3BCS1572%3BCS1573%3BCS1574%3BCS1584%3BCS1587%3BCS1591%3BCS1658%3BCS1711%3BCS1712%3BCS1723%3BCS1734%3BCS1735%3BNU1701%3BNUnit1032 2>&1 | tee /tmp/build.log
-      #     ! grep -qP "warning (IDE|CA)\d+" /tmp/build.log
-
-      - name: Benchmark dotnet format on single file (Synchronization.Test)
+      - name: Check code quality
         run: |
-          echo "::group::dotnet format --diagnostics IDE0005 on single file"
-          time dotnet format analyzers \
-            src/Nethermind/Nethermind.Synchronization.Test/Nethermind.Synchronization.Test.csproj \
-            --diagnostics IDE0005 \
-            --severity warn \
-            --verbosity diagnostic \
-            --verify-no-changes 2>&1 | tee /tmp/format.log
-          echo "::endgroup::"
-          echo "--- Lines of output ---"
-          wc -l /tmp/format.log
+          dotnet build src/Nethermind/Nethermind.slnx \
+            -p:EnforceCodeStyleInBuild=true \
+            -p:TreatWarningsAsErrors=false \
+            -p:GenerateDocumentationFile=true \
+            -p:NoWarn=CS0419%3BCS1570%3BCS1572%3BCS1573%3BCS1574%3BCS1584%3BCS1587%3BCS1591%3BCS1658%3BCS1711%3BCS1712%3BCS1723%3BCS1734%3BCS1735%3BNU1701%3BNUnit1032 2>&1 | tee /tmp/build.log
+          ! grep -qP "warning (IDE|CA)\d+" /tmp/build.log
