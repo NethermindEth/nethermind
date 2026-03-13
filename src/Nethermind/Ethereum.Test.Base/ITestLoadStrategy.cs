@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 
-namespace Ethereum.Test.Base.Interfaces
+namespace Ethereum.Test.Base
 {
     public interface ITestLoadStrategy
     {

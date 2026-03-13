@@ -5,6 +5,8 @@ using Ethereum.Test.Base;
 
 namespace Ethereum.Legacy.VM.Test;
 
+public class MetaTests : DirectoryMetaTests<VmPrefix>;
+
 public class ArithmeticTest : LegacyStateTestFixture<ArithmeticTest, VmPrefix>;
 
 public class Tests : LegacyStateTestFixture<Tests, VmPrefix>;

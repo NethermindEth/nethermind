@@ -5,15 +5,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.ExceptionServices;
-using Ethereum.Test.Base.Interfaces;
-
 namespace Ethereum.Test.Base;
 
 /// <summary>
 /// Reusable test load strategy parameterized by root path and test type.
 /// Override <see cref="OnTestLoaded"/> or <see cref="HandleLoadFailure"/> for custom behavior.
 /// </summary>
-public class TestLoadStrategy(string testsRootPath, TestType testType) : ITestLoadStrategy
+public abstract class TestLoadStrategy(string testsRootPath, TestType testType) : ITestLoadStrategy
 {
     public IEnumerable<EthereumTest> Load(string testsDirectoryName, string? wildcard = null)
     {
@@ -98,3 +96,12 @@ public class TestLoadStrategy(string testsRootPath, TestType testType) : ITestLo
         return null; // unreachable
     }
 }
+
+public class LoadBlockchainTestsStrategy()
+    : TestLoadStrategy("BlockchainTests", TestType.Blockchain);
+
+public class LoadEipTestsStrategy()
+    : TestLoadStrategy(Path.Combine("EIPTests", "StateTests"), TestType.State);
+
+public class LoadEofTestsStrategy()
+    : TestLoadStrategy(Path.Combine("EIPTests", "StateTests", "stEOF"), TestType.State);

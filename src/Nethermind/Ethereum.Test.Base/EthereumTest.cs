@@ -1,7 +1,7 @@
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 
-namespace Ethereum.Test.Base.Interfaces
+namespace Ethereum.Test.Base
 {
     public abstract class EthereumTest
     {

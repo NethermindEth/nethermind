@@ -3,7 +3,7 @@
 
 using System;
 using System.IO;
-using Ethereum.Test.Base.Interfaces;
+
 
 namespace Ethereum.Test.Base;
 

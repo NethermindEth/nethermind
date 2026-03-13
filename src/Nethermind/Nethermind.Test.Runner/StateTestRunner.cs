@@ -8,7 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
+
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Serialization.Json;

@@ -10,7 +10,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
+
 
 namespace Ethereum.Blockchain.Pyspec.Test;
 

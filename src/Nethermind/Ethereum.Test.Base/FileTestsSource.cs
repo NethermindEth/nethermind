@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using Ethereum.Test.Base.Interfaces;
+
 
 namespace Ethereum.Test.Base
 {

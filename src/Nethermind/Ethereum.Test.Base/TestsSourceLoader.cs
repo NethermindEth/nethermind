@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-using Ethereum.Test.Base.Interfaces;
+
 
 namespace Ethereum.Test.Base
 {
@@ -15,17 +15,10 @@ namespace Ethereum.Test.Base
         private readonly ITestLoadStrategy _testLoadStrategy = testLoadStrategy ?? throw new ArgumentNullException(nameof(testLoadStrategy));
         private readonly string _path = path ?? throw new ArgumentNullException(nameof(path));
 
-        public IEnumerable<EthereumTest> LoadTests()
-        {
-            IEnumerable<EthereumTest> tests = _testLoadStrategy.Load(_path, wildcard);
-            return TestChunkFilter.FilterByChunk(tests);
-        }
+        public IEnumerable<EthereumTest> LoadTests() =>
+            TestChunkFilter.FilterByChunk(_testLoadStrategy.Load(_path, wildcard));
 
-        public IEnumerable<TTestType> LoadTests<TTestType>()
-            where TTestType : EthereumTest
-        {
-            IEnumerable<TTestType> tests = _testLoadStrategy.Load(_path, wildcard).OfType<TTestType>();
-            return TestChunkFilter.FilterByChunk(tests);
-        }
+        public IEnumerable<TTestType> LoadTests<TTestType>() where TTestType : EthereumTest =>
+            TestChunkFilter.FilterByChunk(_testLoadStrategy.Load(_path, wildcard).OfType<TTestType>());
     }
 }

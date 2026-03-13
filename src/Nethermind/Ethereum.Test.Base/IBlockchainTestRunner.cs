@@ -4,7 +4,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace Ethereum.Test.Base.Interfaces
+namespace Ethereum.Test.Base
 {
     public interface IBlockchainTestRunner
     {
