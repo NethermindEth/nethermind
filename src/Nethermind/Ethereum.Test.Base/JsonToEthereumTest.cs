@@ -280,6 +280,7 @@ namespace Ethereum.Test.Base
                         CurrentBeaconRoot = testJson.Env.CurrentBeaconRoot,
                         CurrentWithdrawalsRoot = testJson.Env.CurrentWithdrawalsRoot,
                         CurrentExcessBlobGas = testJson.Env.CurrentExcessBlobGas,
+                        CurrentSlotNumber = testJson.Env.SlotNumber,
                         PostReceiptsRoot = stateJson.Logs,
                         PostHash = stateJson.Hash,
                         Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value),

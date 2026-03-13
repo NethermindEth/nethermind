@@ -751,7 +751,7 @@ internal static partial class EvmInstructions
             inputData: in callData);
 
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-            gas: TGasPolicy.FromLong(callGas),
+            gas: TGasPolicy.CreateChildFrameGas(ref gas, callGas),
             outputDestination: 0,
             outputLength: 0,
             executionType: currentContext,
@@ -866,10 +866,11 @@ internal static partial class EvmInstructions
     /// A tracing flag type used to report VM state changes during the call.
     /// </typeparam>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEofCall<TGasPolicy, TOpEofCall, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionEofCall<TGasPolicy, TOpEofCall, TTracingInst, TEip8037>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEofCall : struct, IOpEofCall
         where TTracingInst : struct, IFlag
+        where TEip8037 : struct, IFlag
     {
         Metrics.IncrementCalls();
 
@@ -946,7 +947,11 @@ internal static partial class EvmInstructions
         if ((!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(codeSource))
             || (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(codeSource)))
         {
-            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
+            if (TEip8037.IsActive switch
+            {
+                true => !TGasPolicy.ConsumeNewAccountCreation(ref gas),
+                false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount),
+            })
                 goto OutOfGas;
         }
 
@@ -1014,7 +1019,7 @@ internal static partial class EvmInstructions
             inputData: in callData);
 
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-            gas: TGasPolicy.FromLong(callGas),
+            gas: TGasPolicy.CreateChildFrameGas(ref gas, callGas),
             outputDestination: 0,
             outputLength: 0,
             executionType: TOpEofCall.ExecutionType,

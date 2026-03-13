@@ -333,6 +333,7 @@ namespace Nethermind.Core.Extensions
             }
         }
 
+
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes)
         {
             return ToUnsignedBigInteger(bytes.AsSpan());
