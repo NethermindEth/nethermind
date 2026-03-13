@@ -23,7 +23,7 @@ public partial class Bls12381G1MsmPrecompile
 
         // use Mul to optimize single point multiplication
         int nItems = inputData.Length / ItemSize;
-        return nItems == 1 ? Mul(inputData) : MSM(inputData, nItems);
+        return nItems == 1 ? Mul(inputData) : Msm(inputData, nItems);
     }
 
     private Result<byte[]> Mul(ReadOnlyMemory<byte> inputData)
@@ -50,7 +50,7 @@ public partial class Bls12381G1MsmPrecompile
         return res.EncodeRaw();
     }
 
-    private Result<byte[]> MSM(ReadOnlyMemory<byte> inputData, int nItems)
+    private Result<byte[]> Msm(ReadOnlyMemory<byte> inputData, int nItems)
     {
         using ArrayPoolList<long> rawPoints = new(nItems * G1.Sz, nItems * G1.Sz);
         using ArrayPoolList<byte> rawScalars = new(nItems * 32, nItems * 32);
