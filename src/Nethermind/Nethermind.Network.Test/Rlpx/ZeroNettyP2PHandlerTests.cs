@@ -67,11 +67,11 @@ public class ZeroNettyP2PHandlerTests
         ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(session, LimboLogs.Instance);
         handler.EnableSnappy();
 
-        using DisposableByteBuffer buff = Unpooled.Buffer(2).AsDisposable();
+        IByteBuffer buff = Unpooled.Buffer(2);
         buff.WriteBytes(msg);
         ZeroPacket packet = new ZeroPacket(buff);
 
-        handler.ChannelRead(channelHandlerContext, packet);
+        handler.ChannelRead(channelHandlerContext, packet); // releases buffer
     }
 
     [Test]
@@ -89,12 +89,12 @@ public class ZeroNettyP2PHandlerTests
         var data = Snappy.CompressToArray(Enumerable.Repeat<byte>(0, SnappyParameters.MaxSnappyLength + 1).ToArray());
 
         // Create a packet with our compressed data
-        using DisposableByteBuffer content = Unpooled.Buffer(data.Length).AsDisposable();
+        IByteBuffer content = Unpooled.Buffer(data.Length);
         content.WriteBytes(data);
         ZeroPacket packet = new ZeroPacket(content);
 
         // Act
-        handler.ChannelRead(channelHandlerContext, packet);
+        handler.ChannelRead(channelHandlerContext, packet); // releases buffer
 
         // Assert
         session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
