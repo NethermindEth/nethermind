@@ -13,6 +13,7 @@ using Nethermind.Specs.Test;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
@@ -87,23 +88,27 @@ public class BlockValidatorTests
         blockValidator.ValidateOrphanedBlock(block, out _).Should().Be(true);
     }
 
-    [TestCase(null, ExpectedResult = true, TestName = "ValidateBodyAgainstHeader_BlockIsValid_ReturnsTrue")]
-    [TestCase("TxRoot", ExpectedResult = false, TestName = "ValidateBodyAgainstHeader_BlockHasInvalidTxRoot_ReturnsFalse")]
-    [TestCase("UnclesHash", ExpectedResult = false, TestName = "ValidateBodyAgainstHeader_BlockHasInvalidUnclesRoot_ReturnsFalse")]
-    [TestCase("WithdrawalsRoot", ExpectedResult = false, TestName = "ValidateBodyAgainstHeader_BlockHasInvalidWithdrawalsRoot_ReturnsFalse")]
-    public bool ValidateBodyAgainstHeader_WithCorruptedField(string? corruptedField)
+    private static IEnumerable<TestCaseData> CorruptedBodyFieldCases()
+    {
+        yield return new TestCaseData(null)
+            .Returns(true).SetName("ValidateBodyAgainstHeader_BlockIsValid_ReturnsTrue");
+        yield return new TestCaseData(new Action<BlockHeader>(h => h.TxRoot = Keccak.OfAnEmptyString))
+            .Returns(false).SetName("ValidateBodyAgainstHeader_BlockHasInvalidTxRoot_ReturnsFalse");
+        yield return new TestCaseData(new Action<BlockHeader>(h => h.UnclesHash = Keccak.OfAnEmptyString))
+            .Returns(false).SetName("ValidateBodyAgainstHeader_BlockHasInvalidUnclesRoot_ReturnsFalse");
+        yield return new TestCaseData(new Action<BlockHeader>(h => h.WithdrawalsRoot = Keccak.OfAnEmptyString))
+            .Returns(false).SetName("ValidateBodyAgainstHeader_BlockHasInvalidWithdrawalsRoot_ReturnsFalse");
+    }
+
+    [TestCaseSource(nameof(CorruptedBodyFieldCases))]
+    public bool ValidateBodyAgainstHeader_WithCorruptedField(Action<BlockHeader>? corrupt)
     {
         Block block = Build.A.Block
             .WithTransactions(1, ReleaseSpecSubstitute.Create())
             .WithWithdrawals(1)
             .TestObject;
 
-        switch (corruptedField)
-        {
-            case "TxRoot": block.Header.TxRoot = Keccak.OfAnEmptyString; break;
-            case "UnclesHash": block.Header.UnclesHash = Keccak.OfAnEmptyString; break;
-            case "WithdrawalsRoot": block.Header.WithdrawalsRoot = Keccak.OfAnEmptyString; break;
-        }
+        corrupt?.Invoke(block.Header);
 
         return _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body);
     }

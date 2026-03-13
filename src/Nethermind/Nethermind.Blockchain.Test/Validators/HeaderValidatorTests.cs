@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Consensus;
@@ -99,25 +100,21 @@ public class HeaderValidatorTests
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    [MaxTime(Timeout.MaxTestTime)]
-    [TestCase("GasUsedAboveLimit", TestName = "When_gas_used_above_gas_limit")]
-    [TestCase("NoParent", TestName = "When_no_parent_invalid")]
-    [TestCase("TimestampSameAsParent", TestName = "When_timestamp_same_as_parent")]
-    public void Header_field_invalidation_returns_false(string scenario)
+    private static IEnumerable<TestCaseData> InvalidFieldCases()
     {
-        switch (scenario)
-        {
-            case "GasUsedAboveLimit":
-                _block.Header.GasUsed = _parentBlock.Header.GasLimit + 1;
-                break;
-            case "NoParent":
-                _block.Header.ParentHash = Keccak.Zero;
-                break;
-            case "TimestampSameAsParent":
-                _block.Header.Timestamp = _parentBlock.Header.Timestamp;
-                break;
-        }
+        yield return new TestCaseData(new Action<Block, Block>((block, parent) => block.Header.GasUsed = parent.Header.GasLimit + 1))
+            .SetName("When_gas_used_above_gas_limit");
+        yield return new TestCaseData(new Action<Block, Block>((block, _) => block.Header.ParentHash = Keccak.Zero))
+            .SetName("When_no_parent_invalid");
+        yield return new TestCaseData(new Action<Block, Block>((block, parent) => block.Header.Timestamp = parent.Header.Timestamp))
+            .SetName("When_timestamp_same_as_parent");
+    }
 
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCaseSource(nameof(InvalidFieldCases))]
+    public void Header_field_invalidation_returns_false(Action<Block, Block> corrupt)
+    {
+        corrupt(_block, _parentBlock);
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -170,25 +167,21 @@ public class HeaderValidatorTests
         }
     }
 
-    [MaxTime(Timeout.MaxTestTime)]
-    [TestCase("ExtraDataTooLong", TestName = "When_extra_data_too_long")]
-    [TestCase("IncorrectDifficulty", TestName = "When_incorrect_difficulty_then_invalid")]
-    [TestCase("IncorrectNumber", TestName = "When_incorrect_number_then_invalid")]
-    public void Header_field_corruption_returns_false(string scenario)
+    private static IEnumerable<TestCaseData> CorruptedFieldCases()
     {
-        switch (scenario)
-        {
-            case "ExtraDataTooLong":
-                _block.Header.ExtraData = new byte[33];
-                break;
-            case "IncorrectDifficulty":
-                _block.Header.Difficulty = 1;
-                break;
-            case "IncorrectNumber":
-                _block.Header.Number += 1;
-                break;
-        }
+        yield return new TestCaseData(new Action<Block>(b => b.Header.ExtraData = new byte[33]))
+            .SetName("When_extra_data_too_long");
+        yield return new TestCaseData(new Action<Block>(b => b.Header.Difficulty = 1))
+            .SetName("When_incorrect_difficulty_then_invalid");
+        yield return new TestCaseData(new Action<Block>(b => b.Header.Number += 1))
+            .SetName("When_incorrect_number_then_invalid");
+    }
 
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCaseSource(nameof(CorruptedFieldCases))]
+    public void Header_field_corruption_returns_false(Action<Block> corrupt)
+    {
+        corrupt(_block);
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -256,19 +249,21 @@ public class HeaderValidatorTests
         Assert.That(result, Is.True);
     }
 
-    [MaxTime(Timeout.MaxTestTime)]
-    [TestCase("Number", TestName = "When_block_number_is_negative")]
-    [TestCase("GasUsed", TestName = "When_gas_used_is_negative")]
-    [TestCase("GasLimit", TestName = "When_gas_limit_is_negative")]
-    public void When_header_field_is_negative(string field)
+    private static IEnumerable<TestCaseData> NegativeFieldCases()
     {
-        switch (field)
-        {
-            case "Number": _block.Header.Number = -1; break;
-            case "GasUsed": _block.Header.GasUsed = -1; break;
-            case "GasLimit": _block.Header.GasLimit = -1; break;
-        }
+        yield return new TestCaseData(new Action<Block>(b => b.Header.Number = -1))
+            .SetName("When_block_number_is_negative");
+        yield return new TestCaseData(new Action<Block>(b => b.Header.GasUsed = -1))
+            .SetName("When_gas_used_is_negative");
+        yield return new TestCaseData(new Action<Block>(b => b.Header.GasLimit = -1))
+            .SetName("When_gas_limit_is_negative");
+    }
 
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCaseSource(nameof(NegativeFieldCases))]
+    public void When_header_field_is_negative(Action<Block> corrupt)
+    {
+        corrupt(_block);
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);

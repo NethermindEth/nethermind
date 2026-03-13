@@ -44,17 +44,21 @@ public class TxValidatorTests
         (HalfN == halfN).Should().BeTrue();
     }
 
-    [MaxTime(Timeout.MaxTestTime)]
-    [TestCase("r", TestName = "Zero_r_is_not_valid")]
-    [TestCase("s", TestName = "Zero_s_is_not_valid")]
-    public void Zero_signature_component_is_not_valid(string component)
+    private static IEnumerable<TestCaseData> ZeroSignatureComponentCases()
     {
-        byte[] sigData = new byte[65];
-        if (component == "r")
-            sigData[63] = 1; // correct s, r is zero
-        else
-            sigData[31] = 1; // correct r, s is zero
+        byte[] zeroR = new byte[65];
+        zeroR[63] = 1; // correct s, r is zero
+        yield return new TestCaseData(zeroR).SetName("Zero_r_is_not_valid");
 
+        byte[] zeroS = new byte[65];
+        zeroS[31] = 1; // correct r, s is zero
+        yield return new TestCaseData(zeroS).SetName("Zero_s_is_not_valid");
+    }
+
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCaseSource(nameof(ZeroSignatureComponentCases))]
+    public void Zero_signature_component_is_not_valid(byte[] sigData)
+    {
         Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
@@ -397,19 +401,19 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, spec);
     }
 
-    [TestCase("MaxFeePerBlobGas", TestName = "IsWellFormed_NotBlobTxButMaxFeePerBlobGasIsSet_ReturnFalse")]
-    [TestCase("BlobVersionedHashes", TestName = "IsWellFormed_NotBlobTxButBlobVersionedHashesIsSet_ReturnFalse")]
-    public void IsWellFormed_NotBlobTxWithBlobField_ReturnFalse(string fieldName)
+    private static IEnumerable<TestCaseData> NotBlobTxWithBlobFieldCases()
     {
-        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
-            .WithChainId(TestBlockchainIds.ChainId);
+        yield return new TestCaseData(new Func<TransactionBuilder<Transaction>, TransactionBuilder<Transaction>>(b => b.WithMaxFeePerBlobGas(1)))
+            .SetName("IsWellFormed_NotBlobTxButMaxFeePerBlobGasIsSet_ReturnFalse");
+        yield return new TestCaseData(new Func<TransactionBuilder<Transaction>, TransactionBuilder<Transaction>>(b => b.WithBlobVersionedHashes([[0x0]])))
+            .SetName("IsWellFormed_NotBlobTxButBlobVersionedHashesIsSet_ReturnFalse");
+    }
 
-        if (fieldName == "MaxFeePerBlobGas")
-            txBuilder = txBuilder.WithMaxFeePerBlobGas(1);
-        else
-            txBuilder = txBuilder.WithBlobVersionedHashes([[0x0]]);
-
-        Transaction tx = txBuilder.SignedAndResolved().TestObject;
+    [TestCaseSource(nameof(NotBlobTxWithBlobFieldCases))]
+    public void IsWellFormed_NotBlobTxWithBlobField_ReturnFalse(Func<TransactionBuilder<Transaction>, TransactionBuilder<Transaction>> addField)
+    {
+        Transaction tx = addField(Build.A.Transaction.WithChainId(TestBlockchainIds.ChainId))
+            .SignedAndResolved().TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
@@ -449,29 +453,30 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
     }
 
-    [TestCase("Blobs", TestName = "IsWellFormed_BlobTxHasBlobOverTheSizeLimit_ReturnFalse")]
-    [TestCase("Commitments", TestName = "IsWellFormed_BlobTxHasCommitmentOverTheSizeLimit_ReturnFalse")]
-    [TestCase("Proofs", TestName = "IsWellFormed_BlobTxHasProofOverTheSizeLimit_ReturnFalse")]
-    public void IsWellFormed_BlobTxHasWrapperFieldOverTheSizeLimit_ReturnFalse(string fieldName)
+    private static IEnumerable<TestCaseData> OversizedWrapperFieldCases()
     {
-        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
+        yield return new TestCaseData(new Action<ShardBlobNetworkWrapper>(w => w.Blobs[0] = new byte[Ckzg.BytesPerBlob + 1]))
+            .SetName("IsWellFormed_BlobTxHasBlobOverTheSizeLimit_ReturnFalse");
+        yield return new TestCaseData(new Action<ShardBlobNetworkWrapper>(w => w.Commitments[0] = new byte[Ckzg.BytesPerCommitment + 1]))
+            .SetName("IsWellFormed_BlobTxHasCommitmentOverTheSizeLimit_ReturnFalse");
+        yield return new TestCaseData(new Action<ShardBlobNetworkWrapper>(w => w.Proofs[0] = new byte[Ckzg.BytesPerProof + 1]))
+            .SetName("IsWellFormed_BlobTxHasProofOverTheSizeLimit_ReturnFalse");
+    }
+
+    [TestCaseSource(nameof(OversizedWrapperFieldCases))]
+    public void IsWellFormed_BlobTxHasWrapperFieldOverTheSizeLimit_ReturnFalse(Action<ShardBlobNetworkWrapper> corrupt)
+    {
+        Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
             .WithMaxFeePerGas(100000)
             .WithGasLimit(1000000)
             .WithChainId(TestBlockchainIds.ChainId)
-            .SignedAndResolved();
+            .SignedAndResolved()
+            .TestObject;
 
-        Transaction tx = txBuilder.TestObject;
-        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
-        switch (fieldName)
-        {
-            case "Blobs": wrapper.Blobs[0] = new byte[Ckzg.BytesPerBlob + 1]; break;
-            case "Commitments": wrapper.Commitments[0] = new byte[Ckzg.BytesPerCommitment + 1]; break;
-            case "Proofs": wrapper.Proofs[0] = new byte[Ckzg.BytesPerProof + 1]; break;
-        }
+        corrupt((ShardBlobNetworkWrapper)tx.NetworkWrapper!);
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
     }
 

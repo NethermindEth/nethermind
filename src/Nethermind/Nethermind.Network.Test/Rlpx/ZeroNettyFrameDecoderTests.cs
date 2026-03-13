@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using Nethermind.Core.Extensions;
@@ -45,15 +46,23 @@ public class ZeroNettyFrameDecoderTests
     [TearDown]
     public void TearDown() => _macProcessor?.Dispose();
 
-    [TestCase(false, Delivery.ByteByByte, Description = "Short frame byte by byte")]
-    [TestCase(true, Delivery.ByteByByte, Description = "Big frame byte by byte")]
-    [TestCase(true, Delivery.AllAtOnce, Description = "Big frame all at once")]
-    [TestCase(true, Delivery.AllAtOnceWithCorruptedHeader, Description = "Big frame all at once followed by corrupted header")]
-    [TestCase(true, Delivery.BlockByBlock, Description = "Big frame block by block")]
-    public void Check_and_decrypt(bool useBigFrame, Delivery delivery)
+    private static IEnumerable<TestCaseData> CheckAndDecryptCases()
     {
-        string frame = useBigFrame ? BigNewBlockSingleFrame : ShortNewBlockSingleFrame;
-        string expectedOutput = useBigFrame ? BigNewBlockSingleFrameDecrypted : ShortNewBlockSingleFrameDecrypted;
+        yield return new TestCaseData(ShortNewBlockSingleFrame, Delivery.ByteByByte, ShortNewBlockSingleFrameDecrypted)
+            .SetName("Short frame byte by byte");
+        yield return new TestCaseData(BigNewBlockSingleFrame, Delivery.ByteByByte, BigNewBlockSingleFrameDecrypted)
+            .SetName("Big frame byte by byte");
+        yield return new TestCaseData(BigNewBlockSingleFrame, Delivery.AllAtOnce, BigNewBlockSingleFrameDecrypted)
+            .SetName("Big frame all at once");
+        yield return new TestCaseData(BigNewBlockSingleFrame, Delivery.AllAtOnceWithCorruptedHeader, BigNewBlockSingleFrameDecrypted)
+            .SetName("Big frame all at once followed by corrupted header");
+        yield return new TestCaseData(BigNewBlockSingleFrame, Delivery.BlockByBlock, BigNewBlockSingleFrameDecrypted)
+            .SetName("Big frame block by block");
+    }
+
+    [TestCaseSource(nameof(CheckAndDecryptCases))]
+    public void Check_and_decrypt(string frame, Delivery delivery, string expectedOutput)
+    {
         Test(frame, delivery, expectedOutput);
     }
 

@@ -31,28 +31,6 @@ namespace Nethermind.Consensus.Validators
         protected readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
-        /// <summary>
-        /// Logs a warning (when enabled) and sets the error, returning <c>false</c>.
-        /// Use for constant or pre-computed warn messages where the string is already allocated.
-        /// </summary>
-        protected bool WarnFail(ref string? error, string errorMessage, string warnMessage)
-        {
-            if (_logger.IsWarn) _logger.Warn(warnMessage);
-            error = errorMessage;
-            return false;
-        }
-
-        /// <summary>
-        /// Logs the error message itself as a warning (when enabled) and returns <c>false</c>.
-        /// Use when the error message is descriptive enough to serve as the log message.
-        /// </summary>
-        protected bool WarnFail(ref string? error, string errorMessage)
-        {
-            if (_logger.IsWarn) _logger.Warn(errorMessage);
-            error = errorMessage;
-            return false;
-        }
-
         public static bool ValidateHash(BlockHeader header, out Hash256 actualHash)
         {
             actualHash = header.CalculateHash();
@@ -63,12 +41,16 @@ namespace Nethermind.Consensus.Validators
 
         private bool ValidateHash(BlockHeader header, ref string? error)
         {
-            if (ValidateHash(header))
-                return true;
+            bool hashAsExpected = ValidateHash(header);
 
-            return WarnFail(ref error,
-                BlockErrorMessages.InvalidHeaderHash(header.Hash!, header.CalculateHash()),
-                $"Invalid block header ({header.Hash}) - invalid block hash");
+            if (!hashAsExpected)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
+                error = BlockErrorMessages.InvalidHeaderHash(header.Hash!, header.CalculateHash());
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -128,12 +110,20 @@ namespace Nethermind.Consensus.Validators
             if (spec.RequestsEnabled)
             {
                 if (header.RequestsHash is null)
-                    return WarnFail(ref error, BlockErrorMessages.MissingRequests, "RequestsHash field is not set.");
+                {
+                    if (_logger.IsWarn) _logger.Warn("RequestsHash field is not set.");
+                    error = BlockErrorMessages.MissingRequests;
+                    return false;
+                }
             }
             else
             {
                 if (header.RequestsHash is not null)
-                    return WarnFail(ref error, BlockErrorMessages.RequestsNotEnabled, "RequestsHash field should not have value.");
+                {
+                    if (_logger.IsWarn) _logger.Warn("RequestsHash field should not have value.");
+                    error = BlockErrorMessages.RequestsNotEnabled;
+                    return false;
+                }
             }
             return true;
         }
@@ -146,10 +136,9 @@ namespace Nethermind.Consensus.Validators
 
                 if (expectedBaseFee != header.BaseFeePerGas)
                 {
-                    // Error message is always allocated, so the warn interpolation is acceptable
-                    return WarnFail(ref error,
-                        BlockErrorMessages.InvalidBaseFeePerGas(expectedBaseFee, header.BaseFeePerGas),
-                        $"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
+                    error = BlockErrorMessages.InvalidBaseFeePerGas(expectedBaseFee, header.BaseFeePerGas);
+                    return false;
                 }
             }
 
@@ -159,8 +148,11 @@ namespace Nethermind.Consensus.Validators
         protected virtual bool ValidateBlockNumber(BlockHeader header, BlockHeader parent, ref string? error)
         {
             if (header.Number != parent.Number + 1)
-                return WarnFail(ref error, BlockErrorMessages.InvalidBlockNumber,
-                    $"Invalid block header ({header.Hash}) - block number is not parent + 1");
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
+                error = BlockErrorMessages.InvalidBlockNumber;
+                return false;
+            }
 
             return true;
         }
@@ -168,8 +160,11 @@ namespace Nethermind.Consensus.Validators
         protected virtual bool ValidateGasUsed(BlockHeader header, ref string? error)
         {
             if (header.GasUsed > header.GasLimit)
-                return WarnFail(ref error, BlockErrorMessages.ExceededGasLimit,
-                    $"Invalid block header ({header.Hash}) - gas used above gas limit");
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
+                error = BlockErrorMessages.ExceededGasLimit;
+                return false;
+            }
 
             return true;
         }
@@ -185,9 +180,13 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
 
-                if (!ValidateGenesis(header))
-                    return WarnFail(ref error, BlockErrorMessages.InvalidGenesisBlock,
-                        $"Invalid genesis block header ({header.Hash})");
+                bool isGenesisValid = ValidateGenesis(header);
+                if (!isGenesisValid)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Invalid genesis block header ({header.Hash})");
+                    error = BlockErrorMessages.InvalidGenesisBlock;
+                    return false;
+                }
             }
             else if (parent.Hash != header.ParentHash)
             {
@@ -238,6 +237,7 @@ namespace Nethermind.Consensus.Validators
                 }}");
 
             return false;
+
         }
 
         protected virtual bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error)
@@ -268,7 +268,7 @@ namespace Nethermind.Consensus.Validators
             // we can check for long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit to ensure that we are in range.
             // In hive we have tests that using long.MaxValue in the genesis block
             // Even if we add maxGasLimitDifference we don't get header.GasLimit higher than long.MaxValue
-            bool gasLimitNotTooHigh = notToHighWithOverflow || header.GasLimit < maxNextGasLimit;
+            var gasLimitNotTooHigh = notToHighWithOverflow || header.GasLimit < maxNextGasLimit;
 
             if (!gasLimitNotTooHigh)
             {
@@ -293,36 +293,40 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
         {
-            if (header.Timestamp > parent.Timestamp)
-                return true;
-
-            return WarnFail(ref error, BlockErrorMessages.InvalidTimestamp,
-                $"Invalid block header ({header.Hash}) - timestamp before parent");
+            bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
+            if (!timestampMoreThanAtParent)
+            {
+                error = BlockErrorMessages.InvalidTimestamp;
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - timestamp before parent");
+            }
+            return timestampMoreThanAtParent;
         }
 
         protected virtual bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
         {
-            if (header.TotalDifficulty is null)
-                return true;
+            bool result = true;
 
-            if (header.TotalDifficulty == 0)
+            if (header.TotalDifficulty is not null)
             {
-                // Same as in BlockTree.SetTotalDifficulty
-                if (!(_blockTree.Genesis!.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0))
+                if (header.TotalDifficulty.Value.IsZero)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - zero total difficulty when genesis or ttd is not zero");
+                    // Same as in BlockTree.SetTotalDifficulty
+                    if (!(_blockTree.Genesis!.Difficulty.IsZero && _specProvider.TerminalTotalDifficulty?.IsZero == true))
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - zero total difficulty when genesis or ttd is not zero");
+                        result = false;
+                        error = BlockErrorMessages.InvalidTotalDifficulty;
+                    }
+                }
+                else if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - incorrect total difficulty");
+                    result = false;
                     error = BlockErrorMessages.InvalidTotalDifficulty;
-                    return false;
                 }
             }
-            else if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - incorrect total difficulty");
-                error = BlockErrorMessages.InvalidTotalDifficulty;
-                return false;
-            }
 
-            return true;
+            return result;
         }
 
         private bool ValidateGenesis(BlockHeader header) =>
@@ -338,27 +342,42 @@ namespace Nethermind.Consensus.Validators
             if (spec.IsEip4844Enabled)
             {
                 if (header.BlobGasUsed is null)
-                    return WarnFail(ref error, BlockErrorMessages.MissingBlobGasUsed, "BlobGasUsed field is not set.");
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlobGasUsed field is not set.");
+                    error = BlockErrorMessages.MissingBlobGasUsed;
+                    return false;
+                }
 
                 if (header.ExcessBlobGas is null)
-                    return WarnFail(ref error, BlockErrorMessages.MissingExcessBlobGas, "ExcessBlobGas field is not set.");
+                {
+                    if (_logger.IsWarn) _logger.Warn("ExcessBlobGas field is not set.");
+                    error = BlockErrorMessages.MissingExcessBlobGas;
+                    return false;
+                }
 
                 ulong? expectedExcessBlobGas = CalculateExcessBlobGas(parent, spec);
                 if (header.ExcessBlobGas != expectedExcessBlobGas)
                 {
-                    // Error message is always allocated, so the warn interpolation is acceptable
-                    return WarnFail(ref error,
-                        BlockErrorMessages.IncorrectExcessBlobGas(expectedExcessBlobGas, header.ExcessBlobGas),
-                        $"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
+                    if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
+                    error = BlockErrorMessages.IncorrectExcessBlobGas(expectedExcessBlobGas, header.ExcessBlobGas);
+                    return false;
                 }
             }
             else
             {
                 if (header.BlobGasUsed is not null)
-                    return WarnFail(ref error, BlockErrorMessages.NotAllowedBlobGasUsed, "BlobGasUsed field should not have value.");
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlobGasUsed field should not have value.");
+                    error = BlockErrorMessages.NotAllowedBlobGasUsed;
+                    return false;
+                }
 
                 if (header.ExcessBlobGas is not null)
-                    return WarnFail(ref error, BlockErrorMessages.NotAllowedExcessBlobGas, "ExcessBlobGas field should not have value.");
+                {
+                    if (_logger.IsWarn) _logger.Warn("ExcessBlobGas field should not have value.");
+                    error = BlockErrorMessages.NotAllowedExcessBlobGas;
+                    return false;
+                }
             }
 
             return true;
@@ -374,12 +393,20 @@ namespace Nethermind.Consensus.Validators
             if (spec.IsEip7928Enabled)
             {
                 if (header.BlockAccessListHash is null)
-                    return WarnFail(ref error, BlockErrorMessages.MissingBlockLevelAccessListHash, "BlockAccessListHash field is not set.");
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field is not set.");
+                    error = BlockErrorMessages.MissingBlockLevelAccessListHash;
+                    return false;
+                }
             }
             else
             {
                 if (header.BlockAccessListHash is not null)
-                    return WarnFail(ref error, BlockErrorMessages.BlockLevelAccessListHashNotEnabled, "BlockAccessListHash field should not have value.");
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field should not have value.");
+                    error = BlockErrorMessages.BlockLevelAccessListHashNotEnabled;
+                    return false;
+                }
             }
             return true;
         }
@@ -389,16 +416,27 @@ namespace Nethermind.Consensus.Validators
             if (spec.IsEip7843Enabled)
             {
                 if (header.SlotNumber is null)
-                    return WarnFail(ref error, BlockErrorMessages.MissingSlotNumber, "SlotNumber field is not set.");
+                {
+                    if (_logger.IsWarn) _logger.Warn("SlotNumber field is not set.");
+                    error = BlockErrorMessages.MissingSlotNumber;
+                    return false;
+                }
 
                 if (parent.SlotNumber is not null && parent.SlotNumber != 0 && header.SlotNumber <= parent.SlotNumber)
-                    return WarnFail(ref error, BlockErrorMessages.InvalidSlotNumber,
-                        $"Invalid slot number ({header.SlotNumber}) - slot number must exceed parent ({parent.SlotNumber})");
+                {
+                    error = BlockErrorMessages.InvalidSlotNumber;
+                    if (_logger.IsWarn) _logger.Warn($"Invalid slot number ({header.SlotNumber}) - slot number must exceed parent ({parent.SlotNumber})");
+                    return false;
+                }
             }
             else
             {
                 if (header.SlotNumber is not null)
-                    return WarnFail(ref error, BlockErrorMessages.SlotNumberNotEnabled, "SlotNumber field should not have value.");
+                {
+                    if (_logger.IsWarn) _logger.Warn("SlotNumber field should not have value.");
+                    error = BlockErrorMessages.SlotNumberNotEnabled;
+                    return false;
+                }
             }
 
             return true;

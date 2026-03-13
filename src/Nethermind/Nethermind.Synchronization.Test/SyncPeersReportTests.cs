@@ -65,18 +65,20 @@ namespace Nethermind.Synchronization.Test
             report.WriteFullReport();
         }
 
-        [Test]
-        public void Can_write_report_update()
+        [TestCase(false, TestName = "Can_write_report_update")]
+        [TestCase(true, TestName = "Can_write_report_update_with_allocations")]
+        public void Can_write_report_update(bool withAllocations)
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
 
             (PeerInfo syncPeer, StubSyncPeer syncPeerSyncPeer) = BuildPeerWithStubSyncPeer(false);
             PeerInfo syncPeer2 = BuildPeer(true);
 
+            if (withAllocations)
+                syncPeer.TryAllocate(AllocationContexts.All);
+
             PeerInfo[] peers = { syncPeer, syncPeer2 };
-
             syncPeerPool.PeerCount.Returns(peers.Length);
-
             syncPeerPool.AllPeers.Returns(peers);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);

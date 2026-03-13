@@ -17,6 +17,9 @@ namespace Nethermind.Evm.Test
         protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
+        private TestAllTracerWithOutput Execute(bool isIstanbul, byte[] code) =>
+            isIstanbul ? Execute(code) : Execute(BlockNumber - 1, 100000, code);
+
         [Test]
         public void after_istanbul_selfbalance_opcode_puts_current_address_balance_onto_the_stack()
         {
@@ -61,9 +64,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.EXTCODEHASH)
                 .Done;
 
-            TestAllTracerWithOutput result = isIstanbul
-                ? Execute(code)
-                : Execute(BlockNumber - 1, 100000, code);
+            TestAllTracerWithOutput result = Execute(isIstanbul, code);
             AssertGas(result, 21000 + GasCostOf.VeryLow + expectedOpGasCost);
         }
 
@@ -78,9 +79,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.BALANCE)
                 .Done;
 
-            TestAllTracerWithOutput result = isIstanbul
-                ? Execute(code)
-                : Execute(BlockNumber - 1, 100000, code);
+            TestAllTracerWithOutput result = Execute(isIstanbul, code);
             AssertGas(result, 21000 + GasCostOf.VeryLow + expectedOpGasCost);
         }
 
@@ -96,9 +95,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SLOAD)
                 .Done;
 
-            TestAllTracerWithOutput result = isIstanbul
-                ? Execute(code)
-                : Execute(BlockNumber - 1, 100000, code);
+            TestAllTracerWithOutput result = Execute(isIstanbul, code);
             AssertGas(result, 21000 + 2 * GasCostOf.VeryLow + expectedOpGasCost);
         }
     }
