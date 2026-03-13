@@ -12,8 +12,8 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Consensus.Stateless;
 
 /// <remarks>
-/// Delegates all logic to base store, only adds logic for capturing trie nodes
-/// accessed during execution as well as during state root recomputation.
+/// Delegates all logic to base store except for writing trie nodes (readonly!)
+/// Adds logic for capturing trie nodes accessed during execution and state root recomputation.
 /// </remarks>
 public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStore
 {
@@ -54,7 +54,6 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
 
     public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
 
-    // Write delegates to base store, be careful to use no-op base store committer
-    // if we don't want to persist any trie nodes to the database.
-    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => baseStore.BeginCommit(address, root, writeFlags);
+    // WitnessCapturingTrieStore is read-only, so we return a no-op committer that doesn't persist any trie nodes
+    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
 }
