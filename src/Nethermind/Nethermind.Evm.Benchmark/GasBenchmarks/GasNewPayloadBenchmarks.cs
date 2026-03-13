@@ -99,20 +99,16 @@ public class GasNewPayloadBenchmarks
         try
         {
             Process process = Process.GetCurrentProcess();
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 process.ProcessorAffinity = new IntPtr(0x3C); // cores 2,3,4,5
             }
             process.PriorityClass = ProcessPriorityClass.High;
-            Thread.CurrentThread.Priority = ThreadPriority.Highest;
         }
         catch
         {
             // Best-effort: CI runners may not allow priority changes.
         }
-
-        // Pre-size the thread pool to avoid growth/shrink during measurement.
-        ThreadPool.SetMinThreads(Environment.ProcessorCount, Environment.ProcessorCount);
 
         _releaseSpec = Prague.Instance;
         _specProvider = new SingleReleaseSpecProvider(_releaseSpec, 1, 1);
@@ -195,12 +191,6 @@ public class GasNewPayloadBenchmarks
         GC.Collect(2, GCCollectionMode.Forced, true, true);
         GC.WaitForPendingFinalizers();
         GC.Collect(2, GCCollectionMode.Forced, true, true);
-
-        // Let background GC threads and thread pool fully quiesce.
-        Thread.Sleep(100);
-
-        // Re-assert thread priority (BDN may reset between iterations).
-        Thread.CurrentThread.Priority = ThreadPriority.Highest;
     }
 
     [Benchmark]
