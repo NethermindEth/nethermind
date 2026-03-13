@@ -296,7 +296,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     {
         if (!IsPayloadTimestampValid(newHeadBlock, payloadAttributes))
         {
-            string error = $"Payload timestamp {payloadAttributes.Timestamp} must be greater than block timestamp {newHeadBlock.Timestamp}.";
+            string error = $"Invalid payload timestamp {payloadAttributes.Timestamp} for block timestamp {newHeadBlock.Timestamp}.";
             errorResult = ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
             return false;
         }
