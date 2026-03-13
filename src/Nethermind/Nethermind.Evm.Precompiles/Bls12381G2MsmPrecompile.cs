@@ -2,26 +2,23 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Collections;
-using System.Threading.Tasks;
-
-using G2 = Nethermind.Crypto.Bls.P2;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
+using G2 = Nethermind.Crypto.Bls.P2;
 
-namespace Nethermind.Evm.Precompiles.Bls;
+namespace Nethermind.Evm.Precompiles;
 
 /// <summary>
-/// https://eips.ethereum.org/EIPS/eip-2537
+/// <see href="https://eips.ethereum.org/EIPS/eip-2537" />
 /// </summary>
-public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
+public class Bls12381G2MsmPrecompile : IPrecompile<Bls12381G2MsmPrecompile>
 {
-    public static readonly G2MSMPrecompile Instance = new();
+    public static readonly Bls12381G2MsmPrecompile Instance = new();
 
-    private G2MSMPrecompile()
-    {
-    }
+    private Bls12381G2MsmPrecompile() { }
 
     public static Address Address { get; } = Address.FromNumber(0xe);
 
@@ -32,7 +29,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         int k = inputData.Length / ItemSize;
-        return 22500L * k * Discount.ForG2(k) / 1000;
+        return 22500L * k * Eip2537.DiscountForG2(k) / 1000;
     }
 
     public const int ItemSize = 288;
@@ -40,7 +37,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Metrics.BlsG2MSMPrecompile++;
+        Metrics.Bls12381G2MsmPrecompile++;
 
         if (inputData.Length % ItemSize > 0 || inputData.Length == 0) return Errors.InvalidInputLength;
 
@@ -52,17 +49,17 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
     private Result<byte[]> Mul(ReadOnlyMemory<byte> inputData)
     {
         G2 x = new(stackalloc long[G2.Sz]);
-        Result result = x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span);
+        Result result = x.TryDecodeRaw(inputData[..Eip2537.LenG2].Span);
         if (!result) return result.Error!;
-        if (!(BlsConst.DisableSubgroupChecks || x.InGroup())) return Errors.G2PointSubgroup;
+        if (!(Eip2537.DisableSubgroupChecks || x.InGroup())) return Errors.G2PointSubgroup;
 
         // multiplying by zero gives infinity point
         // any scalar multiplied by infinity point is infinity point
-        bool scalarIsZero = !inputData[BlsConst.LenG2..].Span.ContainsAnyExcept((byte)0);
-        if (scalarIsZero || x.IsInf()) return BlsConst.G2Inf;
+        bool scalarIsZero = !inputData[Eip2537.LenG2..].Span.ContainsAnyExcept((byte)0);
+        if (scalarIsZero || x.IsInf()) return Eip2537.G2Infinity;
 
         Span<byte> scalar = stackalloc byte[32];
-        inputData.Span[BlsConst.LenG2..].CopyTo(scalar);
+        inputData.Span[Eip2537.LenG2..].CopyTo(scalar);
         scalar.Reverse();
 
         G2 res = x.Mult(scalar);
@@ -80,7 +77,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
         for (int i = 0; i < nItems; i++)
         {
             int offset = i * ItemSize;
-            ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsConst.LenG2)].Span;
+            ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + Eip2537.LenG2)].Span;
 
             // exclude infinity points
             int dest = rawPoint.ContainsAnyExcept((byte)0) ? npoints++ : -1;
@@ -88,18 +85,18 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
         }
 
         // only infinity points so return infinity
-        if (npoints == 0) return BlsConst.G2Inf;
+        if (npoints == 0) return Eip2537.G2Infinity;
 
         Result result = Result.Success;
 
         // decode points to rawPoints buffer
         // n.b. subgroup checks carried out as part of decoding
 #pragma warning disable CS0162 // Unreachable code detected
-        if (BlsConst.DisableConcurrency)
+        if (Eip2537.DisableConcurrency)
         {
             for (int i = 0; i < pointDestinations.Count && result; i++)
             {
-                result = BlsExtensions.TryDecodeG2ToBuffer(inputData, pointBuffer.AsMemory(), scalarBuffer.AsMemory(), pointDestinations[i], i);
+                result = Eip2537.TryDecodeG2ToBuffer(inputData, pointBuffer.AsMemory(), scalarBuffer.AsMemory(), pointDestinations[i], i);
             }
         }
         else
@@ -107,7 +104,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
             Parallel.ForEach(pointDestinations, (dest, state, i) =>
             {
                 int index = (int)i;
-                Result local = BlsExtensions.TryDecodeG2ToBuffer(inputData, pointBuffer.AsMemory(), scalarBuffer.AsMemory(), dest, index);
+                Result local = Eip2537.TryDecodeG2ToBuffer(inputData, pointBuffer.AsMemory(), scalarBuffer.AsMemory(), dest, index);
                 if (!local)
                 {
                     result = local;

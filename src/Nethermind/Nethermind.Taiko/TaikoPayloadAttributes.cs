@@ -19,7 +19,7 @@ public class TaikoPayloadAttributes : PayloadAttributes
         return BlockMetadata!.GasLimit;
     }
 
-    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int apiVersion,
+    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int fcuVersion,
         [NotNullWhen(false)] out string? error)
     {
         if (L1Origin is null)
@@ -55,7 +55,7 @@ public class TaikoPayloadAttributes : PayloadAttributes
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
-        return base.Validate(specProvider, apiVersion, out error);
+        return base.Validate(specProvider, fcuVersion, out error);
     }
 
 }
