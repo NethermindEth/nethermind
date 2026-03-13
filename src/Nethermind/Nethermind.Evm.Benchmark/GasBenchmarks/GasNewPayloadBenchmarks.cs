@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -193,25 +192,15 @@ public class GasNewPayloadBenchmarks
     public void IterationSetup()
     {
         // Force full GC to prevent collections during the ~3s measurement.
-        GC.Collect(2, GCCollectionMode.Aggressive, true, true);
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
         GC.WaitForPendingFinalizers();
-        GC.Collect(2, GCCollectionMode.Aggressive, true, true);
-
-        // Prevent Gen2 collections during measurement — only Gen0/Gen1 allowed.
-        GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
 
         // Let background GC threads and thread pool fully quiesce.
-        Thread.Sleep(50);
+        Thread.Sleep(100);
 
         // Re-assert thread priority (BDN may reset between iterations).
         Thread.CurrentThread.Priority = ThreadPriority.Highest;
-    }
-
-    [IterationCleanup]
-    public void IterationCleanup()
-    {
-        // Restore default GC mode so cleanup/setup can do full collections.
-        GCSettings.LatencyMode = GCLatencyMode.Interactive;
     }
 
     [Benchmark]

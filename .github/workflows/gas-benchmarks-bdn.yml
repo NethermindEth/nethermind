@@ -195,6 +195,11 @@ jobs:
 
       - name: Run benchmarks (chunk ${{ matrix.chunk }}/${{ strategy.job-total }})
         shell: bash
+        env:
+          # Server GC for more deterministic heap management (doesn't apply via BDN WithGcServer in-process)
+          DOTNET_gcServer: "1"
+          # Retain virtual memory after GC — avoids re-faulting pages between iterations
+          DOTNET_GCRetainVM: "1"
         run: |
           MODE="${{ needs.resolve.outputs.mode }}"
           SUBSET="${{ needs.resolve.outputs.subset }}"
