@@ -76,7 +76,7 @@ public partial class EthRpcModuleTests
 
     private static void AssertAccountDoesNotExist(Context ctx, Address account)
     {
-        ctx.Test.ReadOnlyState.AccountExists(account).Should().BeFalse();
+        Assert.That(ctx.Test.ReadOnlyState.AccountExists(account), Is.False);
     }
 
     [TestCase("earliest", "0x3635c9adc5dea00000")]

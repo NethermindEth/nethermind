@@ -99,7 +99,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree.FindHeader(Arg.Any<BlockParameter>()).Returns(fromBlock);
             _blockTree.FindHeader(Arg.Any<BlockParameter>(), true).Returns(toBlock);
 
-            _specProvider.ChainId.Returns((ulong)BlockchainIds.Mainnet);
+            _specProvider.ChainId.Returns(BlockchainIds.Mainnet);
         }
 
         [TearDown]

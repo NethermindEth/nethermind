@@ -49,9 +49,9 @@ public class AuthMessageSerializerTests
     [TestCase(BlockchainIds.EthereumClassicMainnet)]
     [TestCase(BlockchainIds.EthereumClassicTestnet)]
     [TestCase(BlockchainIds.Sepolia)]
-    public void Encode_decode(int chainId)
+    public void Encode_decode(ulong chainId)
     {
-        EthereumEcdsa ecdsa = new((ulong)chainId);
+        EthereumEcdsa ecdsa = new(chainId);
         TestEncodeDecode(ecdsa);
     }
 }

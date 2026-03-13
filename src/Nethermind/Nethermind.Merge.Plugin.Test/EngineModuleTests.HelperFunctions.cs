@@ -38,17 +38,23 @@ namespace Nethermind.Merge.Plugin.Test
         private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Hash256 headBlockHash, Hash256 finalizedBlockHash,
              Hash256 safeBlockHash)
         {
-            Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
-            Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
-            Assert.That(blockFinder.SafeHash, Is.EqualTo(safeBlockHash));
+            Assert.Multiple(() =>
+            {
+                Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
+                Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
+                Assert.That(blockFinder.SafeHash, Is.EqualTo(safeBlockHash));
+            });
         }
 
         private void AssertExecutionStatusNotChanged(IBlockFinder blockFinder, Hash256 headBlockHash,
             Hash256 finalizedBlockHash, Hash256 safeBlockHash)
         {
-            Assert.That(blockFinder.HeadHash, Is.Not.EqualTo(headBlockHash));
-            Assert.That(blockFinder.FinalizedHash, Is.Not.EqualTo(finalizedBlockHash));
-            Assert.That(blockFinder.SafeHash, Is.Not.EqualTo(safeBlockHash));
+            Assert.Multiple(() =>
+            {
+                Assert.That(blockFinder.HeadHash, Is.Not.EqualTo(headBlockHash));
+                Assert.That(blockFinder.FinalizedHash, Is.Not.EqualTo(finalizedBlockHash));
+                Assert.That(blockFinder.SafeHash, Is.Not.EqualTo(safeBlockHash));
+            });
         }
 
         private async Task GetPayload_should_fail_on_unknown_payload(int version)

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
@@ -26,8 +25,8 @@ namespace Nethermind.Evm.Test
                 : MainnetSpecProvider.Instance.GetSpec((ForkActivation)(MainnetSpecProvider.IstanbulBlockNumber - 1));
             Transaction transaction = new Transaction { Data = new byte[] { 1 }, To = Address.Zero };
             EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, spec);
-            cost.Should().Be(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + expectedNonZeroCost,
-                FloorGas: 0));
+            Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + expectedNonZeroCost,
+                FloorGas: 0)));
         }
 
         [Test]
@@ -35,8 +34,8 @@ namespace Nethermind.Evm.Test
         {
             Transaction transaction = new Transaction { Data = new byte[] { 0 }, To = Address.Zero };
             EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-            cost.Should().Be(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataZero,
-                FloorGas: 0));
+            Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataZero,
+                FloorGas: 0)));
         }
     }
 }

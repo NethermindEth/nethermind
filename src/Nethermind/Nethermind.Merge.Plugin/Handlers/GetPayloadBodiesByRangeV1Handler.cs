@@ -12,24 +12,18 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public abstract class GetPayloadBodiesByRangeHandler<TResult> where TResult : class
+public abstract class GetPayloadBodiesByRangeHandler<TResult>(IBlockTree blockTree, ILogManager logManager)
+    where TResult : class
 {
     private const int MaxCount = 1024;
 
-    protected readonly IBlockTree _blockTree;
-    private readonly ILogger _logger;
-
-    protected GetPayloadBodiesByRangeHandler(IBlockTree blockTree, ILogManager logManager)
-    {
-        _blockTree = blockTree;
-        _logger = logManager.GetClassLogger();
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public Task<ResultWrapper<IEnumerable<TResult?>>> Handle(long start, long count)
     {
         if (start < 1 || count < 1)
         {
-            string error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
+            const string error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
             if (_logger.IsError) _logger.Error($"{GetType().Name}: ${error}");
             return ResultWrapper<IEnumerable<TResult?>>.Fail(error, ErrorCodes.InvalidParams);
         }
@@ -48,11 +42,11 @@ public abstract class GetPayloadBodiesByRangeHandler<TResult> where TResult : cl
 
     private IEnumerable<TResult?> GetRequests(long start, long count)
     {
-        long headNumber = _blockTree.Head?.Number ?? 0;
+        long headNumber = blockTree.Head?.Number ?? 0;
 
         for (long i = start, c = Math.Min(start + count - 1, headNumber); i <= c; i++)
         {
-            Block? block = _blockTree.FindBlock(i);
+            Block? block = blockTree.FindBlock(i);
             yield return block is null ? null : CreateResult(block);
         }
     }
