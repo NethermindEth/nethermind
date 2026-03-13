@@ -128,7 +128,7 @@ public class ReleaseSpec : IReleaseSpec
     private FrozenSet<AddressAsKey>? _precompiles;
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
     private SpecGasCosts? _gasCosts;
-    public SpecGasCosts GasCosts => _gasCosts ??= new SpecGasCosts(this);
+    SpecGasCosts IReleaseSpec.GasCosts => _gasCosts ??= new SpecGasCosts(this);
     public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
     public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
     {
