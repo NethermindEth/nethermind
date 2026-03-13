@@ -47,7 +47,8 @@ public class GasBenchmarkConfig : ManualConfig
             .WithIterationCount(IterationCount ?? 1)
             .WithInvocationCount(1)
             .WithUnrollFactor(1)
-            .WithGcForce(false);
+            .WithGcForce(false)
+            .WithEnvironmentVariable("DOTNET_TieredCompilation", "0");
 
         if (InProcess)
         {
