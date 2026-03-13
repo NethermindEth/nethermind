@@ -47,9 +47,7 @@ public class GasBenchmarkConfig : ManualConfig
             .WithIterationCount(IterationCount ?? 1)
             .WithInvocationCount(1)
             .WithUnrollFactor(1)
-            .WithGcForce(true)
-            .WithGcServer(true)
-            .WithAffinity(new IntPtr(0xF));
+            .WithGcForce(true);
 
         if (InProcess)
         {

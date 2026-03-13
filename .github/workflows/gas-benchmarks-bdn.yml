@@ -179,6 +179,20 @@ jobs:
           echo "=== Disk ==="
           df -h . | head -5
 
+      - name: Tune system for stable benchmarks
+        shell: bash
+        run: |
+          # Disable NMI watchdog (periodic interrupt source)
+          echo 0 | sudo tee /proc/sys/kernel/nmi_watchdog || true
+          # Set performance governor (no frequency scaling)
+          for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+            echo performance | sudo tee "$cpu" 2>/dev/null || true
+          done
+          # Drop page caches for consistent cold start
+          sync && echo 3 | sudo tee /proc/sys/vm/drop_caches || true
+          # Disable kernel address space randomization for deterministic layout
+          echo 0 | sudo tee /proc/sys/kernel/randomize_va_space || true
+
       - name: Run benchmarks (chunk ${{ matrix.chunk }}/${{ strategy.job-total }})
         shell: bash
         run: |
