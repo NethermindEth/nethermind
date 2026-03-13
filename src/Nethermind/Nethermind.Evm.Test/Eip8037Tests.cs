@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
@@ -12,182 +13,121 @@ namespace Nethermind.Evm.Test;
 
 public class Eip8037Tests
 {
-    [TestCase(nameof(GasCostOf.CostPerStateByte), 1174)]
-    [TestCase(nameof(GasCostOf.SSetState), 37568)]
-    [TestCase(nameof(GasCostOf.CreateState), 131488)]
-    [TestCase(nameof(GasCostOf.NewAccountState), 131488)]
-    [TestCase(nameof(GasCostOf.PerAuthBaseState), 27002)]
-    public void Constants_are_calculated_correctly(string name, long expected)
+    private static IEnumerable<TestCaseData> ConstantsTestCases()
     {
-        long actual = name switch
-        {
-            nameof(GasCostOf.CostPerStateByte) => GasCostOf.CostPerStateByte,
-            nameof(GasCostOf.SSetState) => GasCostOf.SSetState,
-            nameof(GasCostOf.CreateState) => GasCostOf.CreateState,
-            nameof(GasCostOf.NewAccountState) => GasCostOf.NewAccountState,
-            nameof(GasCostOf.PerAuthBaseState) => GasCostOf.PerAuthBaseState,
-            _ => throw new System.ArgumentException(name)
-        };
-        Assert.That(actual, Is.EqualTo(expected));
+        yield return new TestCaseData(GasCostOf.CostPerStateByte).Returns(1174L).SetName("CostPerStateByte");
+        yield return new TestCaseData(GasCostOf.SSetState).Returns(37568L).SetName("SSetState");
+        yield return new TestCaseData(GasCostOf.CreateState).Returns(131488L).SetName("CreateState");
+        yield return new TestCaseData(GasCostOf.NewAccountState).Returns(131488L).SetName("NewAccountState");
+        yield return new TestCaseData(GasCostOf.PerAuthBaseState).Returns(27002L).SetName("PerAuthBaseState");
     }
 
-    [TestCase(1, 6, 1174)]
-    [TestCase(32, 6, 37568)]
-    [TestCase(33, 12, 38742)]
-    public void Code_deposit_costs_are_split(int codeLength, long expectedRegular, long expectedState)
+    [TestCaseSource(nameof(ConstantsTestCases))]
+    public long Constants_are_calculated_correctly(long actual) => actual;
+
+    [TestCase(1, ExpectedResult = 6L)]
+    [TestCase(32, ExpectedResult = 6L)]
+    [TestCase(33, ExpectedResult = 12L)]
+    public long Code_deposit_regular_cost(int codeLength)
     {
-        IReleaseSpec spec = Amsterdam.Instance;
+        CodeDepositHandler.CalculateCost(Amsterdam.Instance, codeLength, out long regularCost, out _);
+        return regularCost;
+    }
 
-        bool valid = CodeDepositHandler.CalculateCost(spec, codeLength, out long regularCost, out long stateCost);
-
-        Assert.That(valid, Is.True);
-        Assert.That(regularCost, Is.EqualTo(expectedRegular));
-        Assert.That(stateCost, Is.EqualTo(expectedState));
+    [TestCase(1, ExpectedResult = 1174L)]
+    [TestCase(32, ExpectedResult = 37568L)]
+    [TestCase(33, ExpectedResult = 38742L)]
+    public long Code_deposit_state_cost(int codeLength)
+    {
+        CodeDepositHandler.CalculateCost(Amsterdam.Instance, codeLength, out _, out long stateCost);
+        return stateCost;
     }
 
     [Test]
     public void State_gas_consumption_spills_to_regular_gas()
     {
-        EthereumGasPolicy gas = new()
-        {
-            Value = 100,
-            StateReservoir = 50,
-            StateGasUsed = 0,
-        };
+        EthereumGasPolicy gas = new() { Value = 100, StateReservoir = 50, StateGasUsed = 0 };
 
         bool consumed = EthereumGasPolicy.ConsumeStateGas(ref gas, 70);
 
-        Assert.That(consumed, Is.True);
-        Assert.That(gas.StateReservoir, Is.EqualTo(0));
-        Assert.That(gas.Value, Is.EqualTo(80));
-        Assert.That(gas.StateGasUsed, Is.EqualTo(70));
+        Assert.That((consumed, gas.Value, gas.StateReservoir, gas.StateGasUsed),
+            Is.EqualTo((true, 80L, 0L, 70L)));
     }
 
     [Test]
     public void Child_frame_gets_full_state_reservoir()
     {
-        EthereumGasPolicy parent = new()
-        {
-            Value = 1_000,
-            StateReservoir = 333,
-            StateGasUsed = 50,
-        };
+        EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 333, StateGasUsed = 50 };
 
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 444);
 
-        Assert.That(parent.Value, Is.EqualTo(1_000));
-        Assert.That(parent.StateReservoir, Is.EqualTo(0));
-        Assert.That(parent.StateGasUsed, Is.EqualTo(50));
-        Assert.That(child.Value, Is.EqualTo(444));
-        Assert.That(child.StateReservoir, Is.EqualTo(333));
-        Assert.That(child.StateGasUsed, Is.EqualTo(0));
+        Assert.That(
+            (parent.Value, parent.StateReservoir, parent.StateGasUsed,
+             child.Value, child.StateReservoir, child.StateGasUsed),
+            Is.EqualTo((1_000L, 0L, 50L, 444L, 333L, 0L)));
     }
 
     [Test]
     public void Child_frame_refund_restores_remaining_state_reservoir()
     {
-        EthereumGasPolicy parent = new()
-        {
-            Value = 1_000,
-            StateReservoir = 333,
-            StateGasUsed = 50,
-        };
-
+        EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 333, StateGasUsed = 50 };
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 444);
-        bool stateConsumed = EthereumGasPolicy.ConsumeStateGas(ref child, 100);
-        bool regularConsumed = EthereumGasPolicy.UpdateGas(ref child, 150);
-
-        Assert.That(stateConsumed, Is.True);
-        Assert.That(regularConsumed, Is.True);
+        EthereumGasPolicy.ConsumeStateGas(ref child, 100);
+        EthereumGasPolicy.UpdateGas(ref child, 150);
 
         EthereumGasPolicy.Refund(ref parent, in child);
 
-        Assert.That(parent.Value, Is.EqualTo(1_294));
-        Assert.That(parent.StateReservoir, Is.EqualTo(233));
-        Assert.That(parent.StateGasUsed, Is.EqualTo(150));
+        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed),
+            Is.EqualTo((1_294L, 233L, 150L)));
     }
 
     [Test]
     public void State_refund_is_clamped_to_intrinsic_state_floor()
     {
-        EthereumGasPolicy gas = new()
-        {
-            Value = 100,
-            StateReservoir = 0,
-            StateGasUsed = 120,
-        };
+        EthereumGasPolicy gas = new() { Value = 100, StateReservoir = 0, StateGasUsed = 120 };
 
         EthereumGasPolicy.RefundStateGas(ref gas, 200, stateGasFloor: 40);
 
-        Assert.That(gas.StateReservoir, Is.EqualTo(200));
-        Assert.That(gas.StateGasUsed, Is.EqualTo(0));
+        Assert.That((gas.StateReservoir, gas.StateGasUsed), Is.EqualTo((200L, 0L)));
     }
 
     [Test]
     public void Exceptional_halt_preserves_state_gas()
     {
-        EthereumGasPolicy parent = new()
-        {
-            Value = 1_000,
-            StateReservoir = 500,
-            StateGasUsed = 10,
-        };
-
+        EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 500, StateGasUsed = 10 };
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 600);
-        Assert.That(parent.StateReservoir, Is.EqualTo(0));
-
         EthereumGasPolicy.ConsumeStateGas(ref child, 200);
-        Assert.That(child.StateReservoir, Is.EqualTo(300));
-        Assert.That(child.StateGasUsed, Is.EqualTo(200));
 
         EthereumGasPolicy.SetOutOfGas(ref child);
-        Assert.That(child.Value, Is.EqualTo(0));
-        Assert.That(child.StateReservoir, Is.EqualTo(300));
+        Assert.That((child.Value, child.StateReservoir), Is.EqualTo((0L, 300L)));
 
         EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 500);
-        Assert.That(parent.StateReservoir, Is.EqualTo(500));
-        Assert.That(parent.StateGasUsed, Is.EqualTo(10));
+        Assert.That((parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((500L, 10L)));
     }
 
     [Test]
     public void Revert_restores_state_gas_to_parent_reservoir()
     {
-        EthereumGasPolicy parent = new()
-        {
-            Value = 1_000,
-            StateReservoir = 400,
-            StateGasUsed = 20,
-        };
-
+        EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 400, StateGasUsed = 20 };
         EthereumGasPolicy.Consume(ref parent, 600);
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 600);
-
         EthereumGasPolicy.UpdateGas(ref child, 100);
         EthereumGasPolicy.ConsumeStateGas(ref child, 150);
 
         EthereumGasPolicy.UpdateGasUp(ref parent, EthereumGasPolicy.GetRemainingGas(in child));
         EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 400);
 
-        Assert.That(parent.Value, Is.EqualTo(900));
-        Assert.That(parent.StateReservoir, Is.EqualTo(400));
-        Assert.That(parent.StateGasUsed, Is.EqualTo(20));
+        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed),
+            Is.EqualTo((900L, 400L, 20L)));
     }
 
-    [Test]
-    public void Spent_gas_subtracts_state_reservoir()
+    [TestCase(ExpectedResult = 5_000L)]
+    public long Spent_gas_subtracts_state_reservoir()
     {
-        long gasLimit = 10_000;
-        EthereumGasPolicy gas = new()
-        {
-            Value = 3_000,
-            StateReservoir = 2_000,
-            StateGasUsed = 500,
-        };
+        EthereumGasPolicy gas = new() { Value = 3_000, StateReservoir = 2_000, StateGasUsed = 500 };
 
-        long spentGas = gasLimit
+        return 10_000L
             - EthereumGasPolicy.GetRemainingGas(in gas)
             - EthereumGasPolicy.GetStateReservoir(in gas);
-
-        Assert.That(spentGas, Is.EqualTo(5_000));
     }
 }

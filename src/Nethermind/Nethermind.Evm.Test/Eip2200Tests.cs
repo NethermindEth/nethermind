@@ -38,7 +38,6 @@ namespace Nethermind.Evm.Test
         public void Test(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             SetupStorage(originalValue);
-
             TestAllTracerWithOutput receipt = Execute(Bytes.FromHexString(codeHex));
             AssertGas(receipt, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / 2, refund));
         }
@@ -67,7 +66,6 @@ namespace Nethermind.Evm.Test
         public void Test_at_stipend_boundary(string codeHex, long gasUsed, byte originalValue, int stipend, bool outOfGasExpected)
         {
             SetupStorage(originalValue);
-
             TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (stipend - 800), Bytes.FromHexString(codeHex));
             Assert.That(receipt.StatusCode, Is.EqualTo(outOfGasExpected ? 0 : 1));
         }
@@ -75,7 +73,7 @@ namespace Nethermind.Evm.Test
         private void SetupStorage(byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
-            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            TestState.Set(new StorageCell(Recipient, 0), [originalValue]);
             TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
         }
     }
