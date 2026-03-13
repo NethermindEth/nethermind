@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 
 using Nethermind.Core.Crypto;
@@ -31,12 +32,16 @@ public class Hash256ConverterTests
         Assert.That(result, Is.EqualTo(expected));
     }
 
-    static object[] WriteTestCases =
+    static IEnumerable<TestCaseData> WriteTestCases =
     [
-        new object[] { new Hash256(new byte[32]), "\"0x0000000000000000000000000000000000000000000000000000000000000000\"" },
-        new object[] { new Hash256(CreateFilledBytes(32, 0xFF)), "\"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"" },
-        new object[] { new Hash256(CreateSequentialBytes(32)), "\"0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\"" },
-        new object[] { Keccak.OfAnEmptyString, $"\"0x{Keccak.OfAnEmptyString.ToString(false)}\"" },
+        new TestCaseData(new Hash256(new byte[32]), "\"0x0000000000000000000000000000000000000000000000000000000000000000\"")
+            .SetName("All zeros"),
+        new TestCaseData(new Hash256(CreateFilledBytes(32, 0xFF)), "\"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"")
+            .SetName("All 0xFF"),
+        new TestCaseData(new Hash256(CreateSequentialBytes(32)), "\"0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\"")
+            .SetName("Sequential bytes"),
+        new TestCaseData(Keccak.OfAnEmptyString, $"\"0x{Keccak.OfAnEmptyString.ToString(false)}\"")
+            .SetName("Keccak of empty string"),
     ];
 
     [TestCaseSource(nameof(RoundtripTestCases))]
@@ -47,10 +52,12 @@ public class Hash256ConverterTests
         Assert.That(deserialized, Is.EqualTo(hash));
     }
 
-    static object[] RoundtripTestCases =
+    static IEnumerable<TestCaseData> RoundtripTestCases =
     [
-        new object[] { Keccak.Compute("test data"u8) },
-        new object[] { new Hash256(CreateNibblePatternBytes()) },
+        new TestCaseData(Keccak.Compute("test data"u8))
+            .SetName("Keccak of test data"),
+        new TestCaseData(new Hash256(CreateNibblePatternBytes()))
+            .SetName("Nibble pattern"),
     ];
 
     static byte[] CreateFilledBytes(int length, byte value)
