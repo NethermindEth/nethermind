@@ -468,7 +468,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task LogsSubscription_with_invalid_arguments_creating_result()
         {
-            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "trambabamba");
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "invalid_param");
             var expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}";
             expectedResult.Should().Be(serialized);
         }

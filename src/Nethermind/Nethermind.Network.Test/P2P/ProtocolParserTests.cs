@@ -124,7 +124,7 @@ public class ProtocolParserTests
     [Test]
     public void TryGetProtocolCode_WrongLength_FiveChars_ReturnsFalse()
     {
-        byte[] protocolBytes = Encoding.UTF8.GetBytes("ethxx");
+        byte[] protocolBytes = Encoding.UTF8.GetBytes("eth66");
         bool result = ProtocolParser.TryGetProtocolCode(protocolBytes, out string? protocol);
 
         Assert.That(result, Is.False);
