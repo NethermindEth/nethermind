@@ -46,7 +46,7 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
         CancellationToken cancellationToken = default,
         bool forceRefresh = false)
     {
-        HistoricalSummary[] summaries = await GetHistoricalSummariesAsync("head", cancellationToken, forceRefresh);
+        HistoricalSummary[] summaries = await GetHistoricalSummariesAsync("head", cancellationToken, forceRefresh).ConfigureAwait(false);
         return summaries.Length > index ? summaries[index] : null;
     }
 
@@ -58,7 +58,7 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
         if (_cachedSummaries.Length > 0 && !forceRefresh)
             return _cachedSummaries;
 
-        _cachedSummaries = await LoadWithRetryAsync(stateId, cancellationToken);
+        _cachedSummaries = await LoadWithRetryAsync(stateId, cancellationToken).ConfigureAwait(false);
         return _cachedSummaries;
     }
 
@@ -83,18 +83,18 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         using HttpResponseMessage response = await _httpClient.SendAsync(
-            request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
+            request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        await using Stream stream = await response.Content.ReadAsStreamAsync(timeoutCts.Token);
-        return await ParseHistoricalSummariesFromStreamAsync(stream, timeoutCts.Token);
+        await using Stream stream = await response.Content.ReadAsStreamAsync(timeoutCts.Token).ConfigureAwait(false);
+        return await ParseHistoricalSummariesFromStreamAsync(stream, timeoutCts.Token).ConfigureAwait(false);
     }
 
     private static async Task<HistoricalSummary[]> ParseHistoricalSummariesFromStreamAsync(
         Stream stream,
         CancellationToken cancellationToken)
     {
-        using JsonDocument document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+        using JsonDocument document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
         JsonElement root = document.RootElement;
 
         if (!root.TryGetProperty("data", out JsonElement data))

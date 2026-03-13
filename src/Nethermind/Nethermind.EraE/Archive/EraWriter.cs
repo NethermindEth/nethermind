@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -11,7 +12,6 @@ using Nethermind.EraE.E2Store;
 using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using ITimestamper = Nethermind.Core.ITimestamper;
 using Timestamper = Nethermind.Core.Timestamper;
 
 namespace Nethermind.EraE.Archive;
@@ -42,14 +42,10 @@ public sealed class EraWriter : IDisposable
     private readonly IBeaconRootsProvider? _beaconRootsProvider;
     private readonly SlotTime? _slotTime;
 
-    // Buffered encoded sections held in memory until Finalize.
-    // ArrayPoolList gives pre-allocated backing storage; the byte[] elements themselves are GC-allocated
-    // since they come from NettyRlpStream.AsMemory().ToArray(). Kept simple: export is not a hot path.
-    private readonly ArrayPoolList<byte[]> _encodedHeaders = new(MaxEraSize);
-    private readonly ArrayPoolList<byte[]> _encodedBodies = new(MaxEraSize);
-    private readonly ArrayPoolList<byte[]> _encodedSlimReceipts = new(MaxEraSize);
+    private readonly ArrayPoolList<(byte[] Buffer, int Length)> _encodedHeaders = new(MaxEraSize);
+    private readonly ArrayPoolList<(byte[] Buffer, int Length)> _encodedBodies = new(MaxEraSize);
+    private readonly ArrayPoolList<(byte[] Buffer, int Length)> _encodedSlimReceipts = new(MaxEraSize);
 
-    // Per-block metadata
     private readonly ArrayPoolList<UInt256> _totalDifficulties = new(MaxEraSize);
     private readonly ArrayPoolList<Hash256> _blockHashes = new(MaxEraSize);
 
@@ -127,13 +123,13 @@ public sealed class EraWriter : IDisposable
         RlpBehaviors rlpBehaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
         using (NettyRlpStream headerRlp = _headerDecoder.EncodeToNewNettyStream(block.Header, rlpBehaviors))
-            _encodedHeaders.Add(headerRlp.AsMemory().ToArray());
+            _encodedHeaders.Add(RentAndCopy(headerRlp.AsMemory()));
 
         using (NettyRlpStream bodyRlp = _blockBodyDecoder.EncodeToNewNettyStream(block.Body, rlpBehaviors))
-            _encodedBodies.Add(bodyRlp.AsMemory().ToArray());
+            _encodedBodies.Add(RentAndCopy(bodyRlp.AsMemory()));
 
         using (NettyRlpStream receiptsRlp = _slimReceiptDecoder.EncodeToNewNettyStream(receipts, rlpBehaviors))
-            _encodedSlimReceipts.Add(receiptsRlp.AsMemory().ToArray());
+            _encodedSlimReceipts.Add(RentAndCopy(receiptsRlp.AsMemory()));
 
         _blockHashes.Add(block.Hash);
 
@@ -198,21 +194,24 @@ public sealed class EraWriter : IDisposable
         for (int i = 0; i < blockCount; i++)
         {
             headerOffsets[i] = totalWritten;
-            totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedHeader, _encodedHeaders[i], cancellation);
+            (byte[] buf, int len) = _encodedHeaders[i];
+            totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedHeader, buf.AsMemory(0, len), cancellation);
         }
 
         // All CompressedBodies
         for (int i = 0; i < blockCount; i++)
         {
             bodyOffsets[i] = totalWritten;
-            totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, _encodedBodies[i], cancellation);
+            (byte[] buf, int len) = _encodedBodies[i];
+            totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, buf.AsMemory(0, len), cancellation);
         }
 
         // All CompressedSlimReceipts
         for (int i = 0; i < blockCount; i++)
         {
             receiptsOffsets[i] = totalWritten;
-            totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedSlimReceipts, _encodedSlimReceipts[i], cancellation);
+            (byte[] buf, int len) = _encodedSlimReceipts[i];
+            totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedSlimReceipts, buf.AsMemory(0, len), cancellation);
         }
 
         // All Proof entries for pre-merge blocks (section-ordered, before TotalDifficulty).
@@ -282,13 +281,27 @@ public sealed class EraWriter : IDisposable
     private static void WriteInt64(Span<byte> destination, int off, long value) =>
         BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, 8), value);
 
+    private static (byte[] Buffer, int Length) RentAndCopy(ReadOnlyMemory<byte> source)
+    {
+        byte[] rented = ArrayPool<byte>.Shared.Rent(source.Length);
+        source.Span.CopyTo(rented);
+        return (rented, source.Length);
+    }
+
+    private static void ReturnBuffers(ArrayPoolList<(byte[] Buffer, int Length)> list)
+    {
+        foreach ((byte[] buf, _) in list.AsSpan())
+            ArrayPool<byte>.Shared.Return(buf);
+        list.Dispose();
+    }
+
     public void Dispose()
     {
         _blocksRootContext?.Dispose();
         _e2StoreWriter?.Dispose();
-        _encodedHeaders.Dispose();
-        _encodedBodies.Dispose();
-        _encodedSlimReceipts.Dispose();
+        ReturnBuffers(_encodedHeaders);
+        ReturnBuffers(_encodedBodies);
+        ReturnBuffers(_encodedSlimReceipts);
         _totalDifficulties.Dispose();
         _blockHashes.Dispose();
     }

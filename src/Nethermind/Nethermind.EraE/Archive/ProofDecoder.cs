@@ -9,7 +9,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.EraE.Archive;
 
-public class ProofDecoder
+public class ProofDecoder : IRlpValueDecoder<BlockHeaderProof?>, IRlpStreamEncoder<BlockHeaderProof?>, IRlpObjectDecoder<BlockHeaderProof?>
 {
     public BlockHeaderProof? Decode(
         ref Rlp.ValueDecoderContext decoderContext,

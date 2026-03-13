@@ -75,7 +75,7 @@ public class AdminEraService : IAdminEraService
         }
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
         {
-            _logger.Error($"EraE export was cancelled. Archives in '{destination}' may be incomplete.");
+            _logger.Warn($"EraE export was cancelled. Archives in '{destination}' may be incomplete.");
         }
         catch (EraException e)
         {
@@ -101,7 +101,7 @@ public class AdminEraService : IAdminEraService
         }
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
         {
-            _logger.Error($"EraE import was cancelled. State from '{source}' may be incomplete.");
+            _logger.Warn($"EraE import was cancelled. State from '{source}' may be incomplete.");
         }
         catch (EraException e)
         {

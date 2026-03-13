@@ -50,7 +50,7 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
             return cached;
 
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result =
-            await FetchWithRetryAsync(slot, cancellationToken);
+            await FetchWithRetryAsync(slot, cancellationToken).ConfigureAwait(false);
 
         if (result.HasValue)
             _cache[slot] = result.Value;
@@ -62,11 +62,11 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
         long slot, CancellationToken cancellationToken) =>
         BeaconApiRetry.RetryAsync(async ct =>
         {
-            ValueHash256? blockRoot = await FetchBlockRootAsync(slot, ct);
+            ValueHash256? blockRoot = await FetchBlockRootAsync(slot, ct).ConfigureAwait(false);
             if (!blockRoot.HasValue)
                 return default((ValueHash256, ValueHash256)?);
 
-            ValueHash256? stateRoot = await FetchStateRootAsync(slot, ct);
+            ValueHash256? stateRoot = await FetchStateRootAsync(slot, ct).ConfigureAwait(false);
             if (!stateRoot.HasValue)
                 return default((ValueHash256, ValueHash256)?);
 
@@ -76,7 +76,7 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
     private async Task<ValueHash256?> FetchBlockRootAsync(long slot, CancellationToken cancellationToken)
     {
         Uri uri = new(_baseUrl, $"/eth/v1/beacon/headers/{slot}");
-        string? hex = await GetJsonStringFieldAsync(uri, ["data", "root"], cancellationToken);
+        string? hex = await GetJsonStringFieldAsync(uri, ["data", "root"], cancellationToken).ConfigureAwait(false);
 
         if (hex is null)
             return null;
@@ -90,7 +90,7 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
     private async Task<ValueHash256?> FetchStateRootAsync(long slot, CancellationToken cancellationToken)
     {
         Uri uri = new(_baseUrl, $"/eth/v1/beacon/states/{slot}/root");
-        string? hex = await GetJsonStringFieldAsync(uri, ["data", "root"], cancellationToken);
+        string? hex = await GetJsonStringFieldAsync(uri, ["data", "root"], cancellationToken).ConfigureAwait(false);
 
         if (hex is null)
             return null;
@@ -111,13 +111,13 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         using HttpResponseMessage response = await _httpClient.SendAsync(
-            request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            request, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
             return null;
 
-        await using Stream stream = await response.Content.ReadAsStreamAsync(cts.Token);
-        using JsonDocument document = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token);
+        await using Stream stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+        using JsonDocument document = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token).ConfigureAwait(false);
 
         JsonElement element = document.RootElement;
         foreach (string key in path)

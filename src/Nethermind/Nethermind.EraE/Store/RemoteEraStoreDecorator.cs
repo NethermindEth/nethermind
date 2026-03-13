@@ -34,6 +34,8 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     // Verified epoch paths — populated after successful SHA-256 check
     private readonly ConcurrentDictionary<int, string> _verifiedEpochs = new();
 
+    // intentional sync-over-async: IEraStore.FirstBlock/LastBlock are synchronous properties;
+    // called only from non-async EraStore/EraImporter setup paths — not from an async context.
     public long FirstBlock => GetFirstBlockAsync().GetAwaiter().GetResult();
     public long LastBlock => GetLastBlockAsync().GetAwaiter().GetResult();
 
@@ -59,16 +61,16 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     {
         if (_localStore is not null)
         {
-            (Block? b, TxReceipt[]? r) = await _localStore.FindBlockAndReceipts(number, ensureValidated, cancellation);
+            (Block? b, TxReceipt[]? r) = await _localStore.FindBlockAndReceipts(number, ensureValidated, cancellation).ConfigureAwait(false);
             if (b is not null) return (b, r);
         }
 
         int epoch = (int)(number / _maxEraSize);
-        string localPath = await EnsureEpochAvailableAsync(epoch, cancellation);
+        string localPath = await EnsureEpochAvailableAsync(epoch, cancellation).ConfigureAwait(false);
 
         using EraReader reader = new(localPath);
         if (number > reader.LastBlock) return (null, null);
-        (Block block, TxReceipt[] receipts) = await reader.GetBlockByNumber(number, cancellation);
+        (Block block, TxReceipt[] receipts) = await reader.GetBlockByNumber(number, cancellation).ConfigureAwait(false);
         return (block, receipts);
     }
 
@@ -81,6 +83,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         }
 
         int epoch = (int)(blockNumber / _maxEraSize);
+        // intentional sync-over-async: NextEraStart is part of IEraStore synchronous contract.
         string localPath = EnsureEpochAvailableAsync(epoch).GetAwaiter().GetResult();
         using EraReader reader = new(localPath);
         return reader.LastBlock + 1;
@@ -97,7 +100,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     {
         if (_localStore is not null) return _localStore.FirstBlock;
 
-        IReadOnlyDictionary<int, RemoteEraEntry> manifest = await GetManifestAsync(cancellation);
+        IReadOnlyDictionary<int, RemoteEraEntry> manifest = await GetManifestAsync(cancellation).ConfigureAwait(false);
         if (manifest.Count == 0) throw new EraException("Remote eraE manifest is empty.");
 
         // Exact: era epochs are aligned to maxEraSize boundaries, so first epoch always starts at epoch * maxEraSize.
@@ -108,7 +111,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     {
         if (_localStore is not null) return _localStore.LastBlock;
 
-        IReadOnlyDictionary<int, RemoteEraEntry> manifest = await GetManifestAsync(cancellation);
+        IReadOnlyDictionary<int, RemoteEraEntry> manifest = await GetManifestAsync(cancellation).ConfigureAwait(false);
         if (manifest.Count == 0) throw new EraException("Remote eraE manifest is empty.");
 
         // Upper-bound estimate: avoids downloading the last (potentially huge) epoch file just for validation.
@@ -122,11 +125,11 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     {
         if (_manifest is not null) return _manifest;
 
-        await _manifestLock.WaitAsync(cancellation);
+        await _manifestLock.WaitAsync(cancellation).ConfigureAwait(false);
         try
         {
             if (_manifest is not null) return _manifest;
-            _manifest = await _client.FetchManifestAsync(cancellation);
+            _manifest = await _client.FetchManifestAsync(cancellation).ConfigureAwait(false);
             return _manifest;
         }
         finally
@@ -140,14 +143,14 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         if (_verifiedEpochs.TryGetValue(epoch, out string? cached))
             return cached;
 
-        IReadOnlyDictionary<int, RemoteEraEntry> manifest = await GetManifestAsync(cancellation);
+        IReadOnlyDictionary<int, RemoteEraEntry> manifest = await GetManifestAsync(cancellation).ConfigureAwait(false);
         if (!manifest.TryGetValue(epoch, out RemoteEraEntry entry))
             throw new EraException($"Epoch {epoch} is not available in the remote eraE manifest.");
 
         string destinationPath = Path.Join(_downloadDir, entry.Filename);
 
         SemaphoreSlim epochLock = _epochLocks.GetOrAdd(epoch, _ => new SemaphoreSlim(1, 1));
-        await epochLock.WaitAsync(cancellation);
+        await epochLock.WaitAsync(cancellation).ConfigureAwait(false);
         try
         {
             // Re-check after acquiring lock (another thread may have finished)
@@ -155,7 +158,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
                 return cached;
 
             if (!File.Exists(destinationPath))
-                await _client.DownloadFileAsync(entry.Filename, destinationPath, cancellation);
+                await _client.DownloadFileAsync(entry.Filename, destinationPath, cancellation).ConfigureAwait(false);
 
             VerifySha256(destinationPath, entry.Sha256Hash);
             _verifiedEpochs.TryAdd(epoch, destinationPath);

@@ -39,18 +39,18 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
 
         if (_logger.IsInfo) _logger.Info($"Fetching eraE manifest from {manifestUri}");
 
-        using HttpResponseMessage response = await _httpClient.GetAsync(manifestUri, HttpCompletionOption.ResponseHeadersRead, cancellation);
+        using HttpResponseMessage response = await _httpClient.GetAsync(manifestUri, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
             throw new EraException($"Failed to fetch eraE manifest from {manifestUri}: HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
 
-        await using Stream stream = await response.Content.ReadAsStreamAsync(cancellation);
+        await using Stream stream = await response.Content.ReadAsStreamAsync(cancellation).ConfigureAwait(false);
         using StreamReader reader = new(stream);
 
         Dictionary<int, RemoteEraEntry> manifest = new();
 
         string? line;
-        while ((line = await reader.ReadLineAsync(cancellation)) is not null)
+        while ((line = await reader.ReadLineAsync(cancellation).ConfigureAwait(false)) is not null)
         {
             if (string.IsNullOrWhiteSpace(line)) continue;
 
@@ -83,16 +83,16 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
 
         try
         {
-            using HttpResponseMessage response = await _httpClient.GetAsync(fileUri, HttpCompletionOption.ResponseHeadersRead, cancellation);
+            using HttpResponseMessage response = await _httpClient.GetAsync(fileUri, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
                 throw new EraException($"Failed to download eraE file '{filename}': HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
 
             long? contentLength = response.Content.Headers.ContentLength;
 
-            await using Stream httpStream = await response.Content.ReadAsStreamAsync(cancellation);
+            await using Stream httpStream = await response.Content.ReadAsStreamAsync(cancellation).ConfigureAwait(false);
             await using FileStream fileStream = new(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
-            await httpStream.CopyToAsync(fileStream, cancellation);
+            await httpStream.CopyToAsync(fileStream, cancellation).ConfigureAwait(false);
 
             double mb = (contentLength ?? fileStream.Length) / 1_048_576.0;
             if (_logger.IsInfo) _logger.Info($"Downloaded eraE file {filename} ({mb:F1} MB)");
