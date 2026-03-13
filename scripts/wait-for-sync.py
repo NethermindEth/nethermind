@@ -5,7 +5,7 @@ import sys
 network = os.getenv("NETWORK")
 sync_mode = os.getenv("SYNC_MODE", "HalfPath")
 
-if sync_mode.lower() in {"flt", "flat"}:
+if sync_mode.lower() == "flat":
     bad_logs = {"Exception": 1, "Verification failed": 1}
     good_logs = {"Processed": 0, "Verification complete.": 0, "MismatchedAccounts=0, MismatchedSlots=0, MissingInFlat=0, MissingInTrie=0": 0}
     required_count = {"Processed": 20, "Verification complete.": 1, "MismatchedAccounts=0, MismatchedSlots=0, MissingInFlat=0, MissingInTrie=0": 1}

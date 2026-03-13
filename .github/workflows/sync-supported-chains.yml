@@ -159,7 +159,7 @@ jobs:
             halfpath)
               flatdb_enabled=false
               ;;
-            flt|flat)
+            flat)
               flatdb_enabled=true
               ;;
             *)
