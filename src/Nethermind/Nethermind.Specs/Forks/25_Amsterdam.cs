@@ -15,14 +15,14 @@ public class Amsterdam : BPO5
     public Amsterdam()
     {
         Name = "Amsterdam";
-        IsEip8037Enabled = true;
-        IsEip7778Enabled = true;
-        IsEip7928Enabled = true;
-        IsEip7708Enabled = true;
-        IsEip8024Enabled = true;
-        IsEip7843Enabled = true;
-        IsEip7954Enabled = true;
-        MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
+        // ePBS-devnet-0: disable all bal-devnet-2 EIPs regardless of chainspec config
+        IsEip8037Enabled = false;
+        IsEip7778Enabled = false;
+        IsEip7928Enabled = false;
+        IsEip7708Enabled = false;
+        IsEip8024Enabled = false;
+        IsEip7843Enabled = false;
+        IsEip7954Enabled = false;
         Released = false;
     }
 
