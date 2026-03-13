@@ -9,6 +9,7 @@ public class CancunGnosis() : NamedGnosisReleaseSpec<CancunGnosis>(Cancun.Instan
 {
     public override void Apply(ReleaseSpec spec)
     {
+        spec.Eip4844TransitionTimestamp = GnosisSpecProvider.CancunTimestamp;
         spec.MaxBlobCount = 2;
         spec.TargetBlobCount = 1;
         spec.BlobBaseFeeUpdateFraction = 1112826;

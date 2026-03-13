@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
-
 namespace Nethermind.Specs.Forks;
 
 /// <summary>
@@ -69,14 +67,11 @@ public abstract class NamedReleaseSpec : ReleaseSpec
 }
 
 /// <summary>
-/// Generic base that adds a per-fork-type lazy singleton <see cref="Instance"/>.
+/// Generic base that adds a per-fork-type singleton <see cref="Instance"/>.
 /// Concrete forks inherit as: <c>class Cancun() : NamedReleaseSpec&lt;Cancun&gt;(Shanghai.Instance)</c>.
 /// </summary>
 public abstract class NamedReleaseSpec<TSelf>(NamedReleaseSpec? parent) : NamedReleaseSpec(parent)
     where TSelf : NamedReleaseSpec<TSelf>, new()
 {
-    // ReSharper disable once StaticMemberInGenericType
-    private static NamedReleaseSpec? _instance;
-
-    public static NamedReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new TSelf());
+    public static NamedReleaseSpec Instance { get; } = new TSelf();
 }

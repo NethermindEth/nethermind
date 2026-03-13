@@ -7,5 +7,8 @@ namespace Nethermind.Specs.GnosisForks;
 
 public class ShanghaiGnosis() : NamedGnosisReleaseSpec<ShanghaiGnosis>(Shanghai.Instance, LondonGnosis.Instance)
 {
-    public override void Apply(ReleaseSpec spec) { }
+    public override void Apply(ReleaseSpec spec)
+    {
+        spec.WithdrawalTimestamp = GnosisSpecProvider.ShanghaiTimestamp;
+    }
 }

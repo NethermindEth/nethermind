@@ -12,5 +12,6 @@ public class Shanghai() : NamedReleaseSpec<Shanghai>(Paris.Instance)
         spec.IsEip3855Enabled = true;
         spec.IsEip3860Enabled = true;
         spec.IsEip4895Enabled = true;
+        spec.WithdrawalTimestamp = MainnetSpecProvider.ShanghaiBlockTimestamp;
     }
 }

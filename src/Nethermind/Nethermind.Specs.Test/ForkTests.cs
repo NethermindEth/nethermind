@@ -30,12 +30,8 @@ public class ForkTests
         IReleaseSpec chainSpecLatest = provider.GetSpec(latestActivation);
         IReleaseSpec forkLatest = Fork.GetLatest();
 
-        // Compare all properties except:
-        // - Name: ChainSpecBasedSpecProvider doesn't set it
-        // - WithdrawalTimestamp, Eip4844TransitionTimestamp: chain-activation metadata, not fork behavior
-        forkLatest.Should().BeEquivalentTo(chainSpecLatest, options => options
-            .Excluding(s => s.Name)
-            .Excluding(s => s.WithdrawalTimestamp)
-            .Excluding(s => s.Eip4844TransitionTimestamp));
+        // Compare all properties except Name (ChainSpecBasedSpecProvider doesn't set it)
+        forkLatest.Should().BeEquivalentTo(chainSpecLatest,
+            options => options.Excluding(s => s.Name));
     }
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.GnosisForks;
@@ -41,7 +40,7 @@ public abstract class NamedGnosisReleaseSpec(NamedReleaseSpec mainnetFork, Named
 }
 
 /// <summary>
-/// Generic base that adds a per-fork-type lazy singleton <see cref="Instance"/>.
+/// Generic base that adds a per-fork-type singleton <see cref="Instance"/>.
 /// Concrete Gnosis forks inherit as:
 /// <c>class CancunGnosis() : NamedGnosisReleaseSpec&lt;CancunGnosis&gt;(Cancun.Instance, ShanghaiGnosis.Instance)</c>.
 /// </summary>
@@ -49,8 +48,5 @@ public abstract class NamedGnosisReleaseSpec<TSelf>(NamedReleaseSpec mainnetFork
     : NamedGnosisReleaseSpec(mainnetFork, gnosisParent)
     where TSelf : NamedGnosisReleaseSpec<TSelf>, new()
 {
-    // ReSharper disable once StaticMemberInGenericType
-    private static NamedReleaseSpec? _instance;
-
-    public static NamedReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new TSelf());
+    public static NamedReleaseSpec Instance { get; } = new TSelf();
 }

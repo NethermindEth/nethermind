@@ -16,6 +16,7 @@ public class Cancun() : NamedReleaseSpec<Cancun>(Shanghai.Instance)
         spec.IsEip5656Enabled = true;
         spec.IsEip6780Enabled = true;
         spec.Eip4788ContractAddress = Eip4788Constants.BeaconRootsAddress;
+        spec.Eip4844TransitionTimestamp = MainnetSpecProvider.CancunBlockTimestamp;
         spec.MaxBlobCount = 6;
         spec.TargetBlobCount = 3;
         spec.BlobBaseFeeUpdateFraction = 3338477;
