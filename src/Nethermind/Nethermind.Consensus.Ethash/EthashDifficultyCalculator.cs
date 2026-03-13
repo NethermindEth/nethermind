@@ -14,16 +14,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Ethash
 {
-    internal class EthashDifficultyCalculator : IDifficultyCalculator
+    internal class EthashDifficultyCalculator(ISpecProvider specProvider) : IDifficultyCalculator
     {
         // Note: block 200000 is when the difficulty bomb was introduced but we did not spec it in any release info, just hardcoded it
         public const int InitialDifficultyBombBlock = 200000;
-        private readonly ISpecProvider _specProvider;
-
-        public EthashDifficultyCalculator(ISpecProvider specProvider)
-        {
-            _specProvider = specProvider;
-        }
 
         private const long OfGenesisBlock = 131_072;
 
@@ -41,7 +35,7 @@ namespace Nethermind.Consensus.Ethash
             long blockNumber,
             bool parentHasUncles)
         {
-            IReleaseSpec spec = _specProvider.GetSpec(blockNumber, currentTimestamp);
+            IReleaseSpec spec = specProvider.GetSpec(blockNumber, currentTimestamp);
             if (spec.FixedDifficulty is not null && blockNumber != 0)
             {
                 return (UInt256)spec.FixedDifficulty.Value;

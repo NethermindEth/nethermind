@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test;
@@ -22,24 +21,19 @@ public class DifficultyHomesteadTests()
     : DifficultyHexTestFixture<DifficultyHomesteadTests>(new TestSingleReleaseSpecProvider(Homestead.Instance));
 
 public class DifficultyByzantiumTests()
-    : DifficultyHexTestFixture<DifficultyByzantiumTests>(
-        new TestSingleReleaseSpecProvider(new OverridableReleaseSpec(Byzantium.Instance) { DifficultyBombDelay = 0 }));
+    : DifficultyHexTestFixture<DifficultyByzantiumTests>(new TestSingleReleaseSpecProvider(Byzantium.Instance));
 
 public class DifficultyConstantinopleTests()
-    : DifficultyHexTestFixture<DifficultyConstantinopleTests>(
-        new TestSingleReleaseSpecProvider(new OverridableReleaseSpec(Constantinople.Instance) { DifficultyBombDelay = 0 }));
+    : DifficultyHexTestFixture<DifficultyConstantinopleTests>(new TestSingleReleaseSpecProvider(Constantinople.Instance));
 
 public class DifficultyEIP2384Tests()
-    : DifficultyHexTestFixture<DifficultyEIP2384Tests>(
-        new TestSingleReleaseSpecProvider(new OverridableReleaseSpec(MuirGlacier.Instance) { DifficultyBombDelay = 0 }));
+    : DifficultyHexTestFixture<DifficultyEIP2384Tests>(new TestSingleReleaseSpecProvider(MuirGlacier.Instance));
 
 public class DifficultyEIP2384_randomTests()
-    : DifficultyHexTestFixture<DifficultyEIP2384_randomTests>(
-        new TestSingleReleaseSpecProvider(new OverridableReleaseSpec(MuirGlacier.Instance) { DifficultyBombDelay = 0 }));
+    : DifficultyHexTestFixture<DifficultyEIP2384_randomTests>(new TestSingleReleaseSpecProvider(MuirGlacier.Instance));
 
 public class DifficultyEIP2384_random_to20MTests()
-    : DifficultyHexTestFixture<DifficultyEIP2384_random_to20MTests>(
-        new TestSingleReleaseSpecProvider(new OverridableReleaseSpec(MuirGlacier.Instance) { DifficultyBombDelay = 0 }));
+    : DifficultyHexTestFixture<DifficultyEIP2384_random_to20MTests>(new TestSingleReleaseSpecProvider(MuirGlacier.Instance));
 
 [Parallelizable(ParallelScope.All)]
 public class DifficultyMainNetworkTests : TestsBase

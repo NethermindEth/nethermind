@@ -79,7 +79,14 @@ namespace Ethereum.Difficulty.Test
         }
 
         private static bool HasUncles(string parentUncles) =>
-            !string.IsNullOrWhiteSpace(parentUncles) && parentUncles.Length >= Hash256.Size * 2 + "0x".Length && new Hash256(parentUncles) != Keccak.OfAnEmptySequenceRlp;
+            parentUncles switch
+            {
+                _ when string.IsNullOrWhiteSpace(parentUncles) => false,
+                // Full 32-byte hash: compare to keccak of empty RLP list
+                _ when parentUncles.Length >= Hash256.Size * 2 + "0x".Length => new Hash256(parentUncles) != Keccak.OfAnEmptySequenceRlp,
+                // Short hex value (e.g. "0x00" = no uncles, "0x01" = has uncles)
+                _ => ToUInt256(parentUncles) != UInt256.Zero
+            };
 
         protected void RunTest(DifficultyTests test, ISpecProvider specProvider)
         {
