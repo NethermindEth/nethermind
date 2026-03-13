@@ -1643,7 +1643,7 @@ public partial class EngineModuleTests
         Hash256 parentHead = chain.BlockTree.Head!.ParentHash!;
 
         return await BuildAndGetPayloadResult(rpc, chain, startingHead, parentHead, startingHead,
-            payloadAttributes.Timestamp, payloadAttributes.PrevRandao!, payloadAttributes.SuggestedFeeRecipient);
+            payloadAttributes.Timestamp, payloadAttributes.PrevRandao!, payloadAttributes.SuggestedFeeRecipient!);
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(MergeTestBlockchain chain,
@@ -1675,5 +1675,65 @@ public partial class EngineModuleTests
         Assert.That(blockFinder.HeadHash, Is.Not.EqualTo(headBlockHash));
         Assert.That(blockFinder.FinalizedHash, Is.Not.EqualTo(finalizedBlockHash));
         Assert.That(blockFinder.SafeHash, Is.Not.EqualTo(confirmedBlockHash));
+    }
+
+    public static IEnumerable<TestCaseData> ForkchoiceUpdatedFieldValidationTestCases
+    {
+        get
+        {
+            static PayloadAttributes Attrs(
+                Withdrawal[]? withdrawals = null,
+                Hash256? parentBeaconBlockRoot = null,
+                ulong? slotNumber = null,
+                Action<PayloadAttributes>? mutate = null)
+            {
+                PayloadAttributes attrs = new()
+                {
+                    Timestamp = 1,
+                    PrevRandao = Keccak.Zero,
+                    SuggestedFeeRecipient = Address.Zero,
+                    Withdrawals = withdrawals,
+                    ParentBeaconBlockRoot = parentBeaconBlockRoot,
+                    SlotNumber = slotNumber,
+                };
+                mutate?.Invoke(attrs);
+                return attrs;
+            }
+
+            static TestCaseData InvalidFieldCase(IReleaseSpec spec, string method, PayloadAttributes attrs, string testName) =>
+                new(spec, method, attrs)
+                {
+                    TestName = testName,
+                    ExpectedResult = MergeErrorCodes.InvalidPayloadAttributes,
+                };
+
+            yield return InvalidFieldCase(Paris.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), Attrs(mutate: a => a.Timestamp = 0), "FCUv1 Timestamp zero");
+            yield return InvalidFieldCase(Paris.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), Attrs(mutate: a => a.PrevRandao = null), "FCUv1 PrevRandao null");
+            yield return InvalidFieldCase(Paris.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), Attrs(mutate: a => a.SuggestedFeeRecipient = null), "FCUv1 SuggestedFeeRecipient null");
+
+            yield return InvalidFieldCase(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), Attrs(parentBeaconBlockRoot: Keccak.Zero), "FCUv3 Withdrawals null");
+            yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(parentBeaconBlockRoot: Keccak.Zero, slotNumber: 1), "FCUv4 Withdrawals null");
+            yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(withdrawals: [], slotNumber: 1), "FCUv4 ParentBeaconBlockRoot null");
+        }
+    }
+
+    [TestCaseSource(nameof(ForkchoiceUpdatedFieldValidationTestCases))]
+    public async Task<int> ForkchoiceUpdated_should_validate_payload_attributes_fields(
+        IReleaseSpec releaseSpec, string method, PayloadAttributes payloadAttributes)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: releaseSpec);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        ForkchoiceStateV1 fcuState = new(chain.BlockTree.HeadHash, chain.BlockTree.HeadHash, chain.BlockTree.HeadHash);
+
+        // Set a valid timestamp relative to the chain head if test case left it non-zero
+        if (payloadAttributes.Timestamp != 0)
+            payloadAttributes.Timestamp = chain.BlockTree.Head!.Timestamp + 1;
+
+        string response = await RpcTest.TestSerializedRequest(rpcModule, method,
+            chain.JsonSerializer.Serialize(fcuState),
+            chain.JsonSerializer.Serialize(payloadAttributes));
+        JsonRpcErrorResponse errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
+
+        return errorResponse.Error?.Code ?? ErrorCodes.None;
     }
 }

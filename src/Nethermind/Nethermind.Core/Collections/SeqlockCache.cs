@@ -130,8 +130,12 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
         {
+            // Prevent ARM64 from reordering Key/Value loads before the seqlock header read.
+            Thread.MemoryBarrier();
             TKey storedKey = e0.Key;
             TValue? storedValue = e0.Value;
+            // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.
+            Thread.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h1 == h2 && storedKey.Equals(in key))
@@ -147,8 +151,10 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
         {
+            Thread.MemoryBarrier();
             TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
+            Thread.MemoryBarrier();
 
             long w2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (w1 == w2 && storedKey.Equals(in key))
@@ -169,11 +175,27 @@ public sealed class SeqlockCache<TKey, TValue>
     public delegate TValue? ValueFactory(in TKey key);
 
     /// <summary>
+    /// Delegate-based factory with state parameter to avoid closure/delegate allocations.
+    /// Cache the delegate in a static field and pass instance state via <paramref name="state"/>.
+    /// </summary>
+    public delegate TValue? ValueFactory<TState>(in TKey key, TState state);
+
+    /// <summary>
     /// Gets a value from the cache, or adds it using the factory if not present.
+    /// Delegates to the state-based overload to avoid code duplication.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public TValue? GetOrAdd(in TKey key, ValueFactory valueFactory)
+        => GetOrAdd(in key, valueFactory, static (in TKey k, ValueFactory f) => f(in k));
+
+    /// <summary>
+    /// Gets a value from the cache, or adds it using the factory with state if not present.
+    /// Use this overload to avoid per-call delegate allocations by passing a static method
+    /// and the required state separately.
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public TValue? GetOrAdd(in TKey key, ValueFactory valueFactory)
+    public TValue? GetOrAdd<TState>(in TKey key, TState state, ValueFactory<TState> valueFactory)
     {
         long hashCode = key.GetHashCode64();
         int idx0 = (int)hashCode & SetMask;
@@ -185,7 +207,7 @@ public sealed class SeqlockCache<TKey, TValue>
             return value;
         }
 
-        return GetOrAddMiss(in key, valueFactory, idx0, idx1, hashPart);
+        return GetOrAddMiss(in key, state, valueFactory, idx0, idx1, hashPart);
     }
 
     /// <summary>
@@ -194,9 +216,9 @@ public sealed class SeqlockCache<TKey, TValue>
     /// with minimal register saves and stack frame.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private TValue? GetOrAddMiss(in TKey key, ValueFactory valueFactory, int idx0, int idx1, long hashPart)
+    private TValue? GetOrAddMiss<TState>(in TKey key, TState state, ValueFactory<TState> valueFactory, int idx0, int idx1, long hashPart)
     {
-        TValue? value = valueFactory(in key);
+        TValue? value = valueFactory(in key, state);
         SetCore(in key, value, idx0, idx1, hashPart);
         return value;
     }
@@ -221,8 +243,10 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
         {
+            Thread.MemoryBarrier();
             TKey storedKey = e0.Key;
             TValue? storedValue = e0.Value;
+            Thread.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h1 == h2 && storedKey.Equals(in key))
@@ -238,8 +262,10 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
         {
+            Thread.MemoryBarrier();
             TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
+            Thread.MemoryBarrier();
 
             long w2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (w1 == w2 && storedKey.Equals(in key))
@@ -271,6 +297,7 @@ public sealed class SeqlockCache<TKey, TValue>
         {
             TKey k0 = e0.Key;
             TValue? v0 = e0.Value;
+            Thread.MemoryBarrier();
 
             long h0_2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h0 == h0_2 && k0.Equals(in key))
@@ -290,6 +317,7 @@ public sealed class SeqlockCache<TKey, TValue>
         {
             TKey k1 = e1.Key;
             TValue? v1 = e1.Value;
+            Thread.MemoryBarrier();
 
             long h1_2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (h1 == h1_2 && k1.Equals(in key))
