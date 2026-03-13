@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -54,7 +53,6 @@ namespace Nethermind.Merge.Plugin.Test
 
         private async Task GetPayload_should_fail_on_unknown_payload(int version)
         {
-            using SemaphoreSlim blockImprovementLock = new(0);
             using MergeTestBlockchain chain = await CreateBlockchain();
             IEngineRpcModule rpc = chain.EngineRpcModule;
 

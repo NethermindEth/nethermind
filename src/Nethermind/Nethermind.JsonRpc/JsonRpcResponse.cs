@@ -32,7 +32,6 @@ namespace Nethermind.JsonRpc
         [JsonPropertyOrder(0)]
         public readonly string JsonRpc = "2.0";
 
-        [JsonPropertyName("id")]
         [JsonConverter(typeof(IdConverter))]
         [JsonPropertyOrder(2)]
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -50,7 +49,6 @@ namespace Nethermind.JsonRpc
 
     public class JsonRpcSuccessResponse : JsonRpcResponse
     {
-        [JsonPropertyName("result")]
         [JsonPropertyOrder(1)]
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public object? Result { get; set; }
@@ -71,7 +69,6 @@ namespace Nethermind.JsonRpc
 
     public class JsonRpcErrorResponse : JsonRpcResponse
     {
-        [JsonPropertyName("error")]
         [JsonPropertyOrder(1)]
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Error? Error { get; set; }

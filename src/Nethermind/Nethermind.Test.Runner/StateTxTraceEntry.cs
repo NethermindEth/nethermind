@@ -43,8 +43,6 @@ namespace Nethermind.Test.Runner
 
         public string? Error { get; set; } = string.Empty;
 
-        //        public Dictionary<string, string> Storage { get; set; }
-
         internal void UpdateMemorySize(int size)
         {
             MemSize = size;

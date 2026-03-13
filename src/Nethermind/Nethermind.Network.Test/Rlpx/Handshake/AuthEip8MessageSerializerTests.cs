@@ -48,7 +48,7 @@ public class AuthEip8MessageSerializerTests
     [TestCase(BlockchainIds.Sepolia)]
     public void Encode_decode(int chainId)
     {
-        EthereumEcdsa ecdsa = new(BlockchainIds.Olympic);
+        EthereumEcdsa ecdsa = new((ulong)chainId);
         TestEncodeDecode(ecdsa);
     }
 

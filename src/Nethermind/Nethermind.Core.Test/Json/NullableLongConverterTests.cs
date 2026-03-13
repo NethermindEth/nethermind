@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 using Nethermind.Serialization.Json;
 
@@ -40,5 +42,28 @@ public class NullableLongConverterTests : ConverterTestBase<long?>
     {
         long? result = JsonSerializer.Deserialize<long?>("null", options);
         Assert.That(result, Is.EqualTo(null));
+    }
+
+    [Test]
+    public void Inner_converter_receives_underlying_type_not_nullable()
+    {
+        Type? receivedType = null;
+        TypeCapturingConverter inner = new(t => receivedType = t);
+        NullableJsonConverter<long> nullable = new(inner);
+        JsonSerializerOptions opts = new() { Converters = { nullable } };
+        JsonSerializer.Deserialize<long?>("1", opts);
+        Assert.That(receivedType, Is.EqualTo(typeof(long)));
+    }
+
+    private class TypeCapturingConverter(Action<Type> capture) : JsonConverter<long>
+    {
+        public override long Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            capture(typeToConvert);
+            return reader.GetInt64();
+        }
+
+        public override void Write(Utf8JsonWriter writer, long value, JsonSerializerOptions options) =>
+            throw new NotImplementedException();
     }
 }

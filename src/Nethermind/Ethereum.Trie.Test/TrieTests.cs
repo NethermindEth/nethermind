@@ -29,7 +29,7 @@ namespace Ethereum.Trie.Test
         private static IEnumerable<TrieTest> GetTestPermutations(IEnumerable<TrieTest> tests) =>
             tests.SelectMany(t =>
             {
-                List<TrieTest> permutations = new();
+                List<TrieTest> permutations = [];
                 Permutations.ForAllPermutation(t.Input.ToArray(), p =>
                 {
                     permutations.Add(new TrieTest(t.Name, p.ToArray(), t.ExpectedRoot));

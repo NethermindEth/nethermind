@@ -16,7 +16,7 @@ public class NullableJsonConverter<T>(JsonConverter<T> innerConverter) : JsonCon
     public override T? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         reader.TokenType == JsonTokenType.Null
             ? null
-            : innerConverter.Read(ref reader, typeToConvert, options);
+            : innerConverter.Read(ref reader, typeof(T), options);
 
     public override void Write(Utf8JsonWriter writer, T? value, JsonSerializerOptions options)
     {

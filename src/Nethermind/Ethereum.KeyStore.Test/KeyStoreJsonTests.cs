@@ -31,8 +31,10 @@ namespace Ethereum.KeyStore.Test
         [SetUp]
         public void Initialize()
         {
-            IKeyStoreConfig config = new KeyStoreConfig();
-            config.KeyStoreDirectory = TestContext.CurrentContext.WorkDirectory;
+            IKeyStoreConfig config = new KeyStoreConfig
+            {
+                KeyStoreDirectory = TestContext.CurrentContext.WorkDirectory
+            };
 
             if (!Directory.Exists(config.KeyStoreDirectory))
                 Directory.CreateDirectory(config.KeyStoreDirectory);

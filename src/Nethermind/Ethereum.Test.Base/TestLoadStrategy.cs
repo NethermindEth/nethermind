@@ -35,7 +35,7 @@ public abstract class TestLoadStrategy(string testsRootPath, TestType testType) 
     private string GetTestsDirectory()
     {
         string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
-        string root = currentDirectory.Remove(currentDirectory.LastIndexOf("src", StringComparison.Ordinal));
+        string root = currentDirectory[..currentDirectory.LastIndexOf("src", StringComparison.Ordinal)];
         return Path.Combine(root, "src", "tests", testsRootPath);
     }
 
