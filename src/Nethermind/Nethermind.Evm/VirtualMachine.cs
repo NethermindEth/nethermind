@@ -1454,32 +1454,36 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // CALLCODE: value is transferred from ExecutingAccount to ExecutingAccount (self-transfer), so no log
         if (currentState.ExecutionType is not (ExecutionType.DELEGATECALL or ExecutionType.CALLCODE))
         {
-            AddTransferLog(currentState.From, currentState.To, currentState.Env.Value);
+            // Runtime check acceptable here — called once per frame entry, not per instruction.
+            if (Spec.IsEip7708Enabled && !currentState.Env.Value.IsZero && currentState.From != currentState.To)
+                AddLog(TransferLog.CreateTransfer(currentState.From, currentState.To, currentState.Env.Value));
         }
     }
 
-    internal void AddTransferLog(Address from, Address to, in UInt256 value)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void AddTransferLog<TEip7708>(Address from, Address to, in UInt256 value)
+        where TEip7708 : struct, IFlag
     {
-        // Self-transfers don't change balances, so don't log them
-        if (Spec.IsEip7708Enabled && !value.IsZero && from != to)
-        {
+        if (TEip7708.IsActive && !value.IsZero && from != to)
             AddLog(TransferLog.CreateTransfer(from, to, value));
-        }
     }
 
-    internal void AddBurnLog(Address account, in UInt256 value)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void AddSelfDestructLog<TEip8037, TEip7708>(Address executingAccount, Address inheritor, in UInt256 value)
+        where TEip8037 : struct, IFlag
+        where TEip7708 : struct, IFlag
     {
-        if (Spec.IsEip7708Enabled && !value.IsZero)
-        {
-            AddLog(TransferLog.CreateBurn(account, value));
-        }
-    }
+        if (!TEip7708.IsActive || value.IsZero) return;
 
-    internal void AddSelfDestructLog(Address contract, in UInt256 value)
-    {
-        if (Spec.IsEip7708Enabled && !value.IsZero)
+        if (executingAccount == inheritor)
         {
-            AddLog(TransferLog.CreateSelfDestruct(contract, value));
+            AddLog(TEip8037.IsActive
+                ? TransferLog.CreateBurn(executingAccount, value)
+                : TransferLog.CreateSelfDestruct(executingAccount, value));
+        }
+        else
+        {
+            AddLog(TransferLog.CreateTransfer(executingAccount, inheritor, value));
         }
     }
 }
