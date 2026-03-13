@@ -48,7 +48,7 @@ jobs:
           time dotnet format analyzers \
             src/Nethermind/Nethermind.Synchronization.Test/Nethermind.Synchronization.Test.csproj \
             --diagnostics IDE0005 \
-            --severity warning \
+            --severity warn \
             --verbosity diagnostic \
             --verify-no-changes 2>&1 | tee /tmp/format.log
           echo "::endgroup::"
