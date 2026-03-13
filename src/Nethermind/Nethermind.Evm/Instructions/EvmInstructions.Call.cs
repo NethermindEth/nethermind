@@ -89,7 +89,7 @@ internal static partial class EvmInstructions
     /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037>(VirtualMachine<TGasPolicy> vm,
+    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
         ref int programCounter)
@@ -97,6 +97,7 @@ internal static partial class EvmInstructions
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
         where TEip8037 : struct, IFlag
+        where TEip7708 : struct, IFlag
     {
         // Increment global call metrics.
         Metrics.IncrementCalls();
@@ -269,7 +270,7 @@ internal static partial class EvmInstructions
             vm.ReturnDataBuffer = default;
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            vm.AddTransferLog(caller, target, transferValue);
+            vm.AddTransferLog<TEip7708>(caller, target, transferValue);
             return FastCall(vm, spec, in transferValue, target);
         }
 

@@ -202,9 +202,10 @@ internal static partial class EvmInstructions
     /// and marks the executing account for destruction.
     /// </summary>
     [SkipLocalsInit]
-    private static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    private static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TEip8037 : struct, IFlag
+        where TEip7708 : struct, IFlag
     {
         // Increment metrics for self-destruct operations.
         Metrics.IncrementSelfDestructs();
@@ -243,17 +244,7 @@ internal static partial class EvmInstructions
         // Retrieve the current balance for transfer.
         UInt256 result = state.GetBalance(executingAccount);
 
-        if (executingAccount == inheritor)
-        {
-            if (TEip8037.IsActive)
-                vm.AddBurnLog(executingAccount, result);
-            else
-                vm.AddSelfDestructLog(executingAccount, result);
-        }
-        else
-        {
-            vm.AddTransferLog(executingAccount, inheritor, result);
-        }
+        vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);
 
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
