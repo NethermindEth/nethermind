@@ -6,12 +6,12 @@
     <PackageVersion Include="AspNetCore.HealthChecks.UI" Version="9.0.0" />
     <PackageVersion Include="AspNetCore.HealthChecks.UI.Client" Version="9.0.0" />
     <PackageVersion Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="9.0.0" />
-    <PackageVersion Include="Autofac" Version="9.0.0" />
+    <PackageVersion Include="Autofac" Version="9.1.0" />
     <PackageVersion Include="Autofac.Extensions.DependencyInjection" Version="10.0.0" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8" />
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.6.2" />
-    <PackageVersion Include="Ckzg.Bindings" Version="2.1.6.1594" />
+    <PackageVersion Include="Ckzg.Bindings" Version="2.1.7.1596" />
     <PackageVersion Include="Collections.Pooled" Version="1.0.82" />
     <PackageVersion Include="CommunityToolkit.HighPerformance" Version="8.4.0" />
     <PackageVersion Include="ConcurrentHashSet" Version="1.3.0" />
@@ -76,7 +76,7 @@
     <PackageVersion Include="Polly" Version="8.6.6" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageVersion Include="Prometheus.Client.MetricPusher" Version="3.3.0" />
-    <PackageVersion Include="Pyroscope" Version="0.14.1" />
+    <PackageVersion Include="Pyroscope" Version="0.14.2" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
     <PackageVersion Include="RocksDB" Version="[10.4.2.64152]" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />

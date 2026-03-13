@@ -43,9 +43,9 @@
       },
       "Pyroscope": {
         "type": "Direct",
-        "requested": "[0.14.1, )",
-        "resolved": "0.14.1",
-        "contentHash": "i8BoY82ZBrBOmgal7Zbf69CzQ2tRJkV0v7se1yB54rsOuuxFIzcUMplyD0VIg6Gl+EkVORNpm5OUL5tJGhR+lg=="
+        "requested": "[0.14.2, )",
+        "resolved": "0.14.2",
+        "contentHash": "AJnA/2Zz0uA/um0dnFPMZgY4Ylgo6l69uGerB4zHYXrZLJ8cx62ffB8hjI2/ynDxvPFFQKUujJ7m8kUBPaXzgA=="
       },
       "System.CommandLine": {
         "type": "Direct",
@@ -716,7 +716,7 @@
       "nethermind.core": {
         "type": "Project",
         "dependencies": {
-          "Autofac": "[9.0.0, )",
+          "Autofac": "[9.1.0, )",
           "Autofac.Extensions.DependencyInjection": "[10.0.0, )",
           "FastEnum": "[2.0.6, )",
           "Microsoft.IO.RecyclableMemoryStream": "[3.0.1, )",
@@ -732,7 +732,7 @@
         "type": "Project",
         "dependencies": {
           "BouncyCastle.Cryptography": "[2.6.2, )",
-          "Ckzg.Bindings": "[2.1.6.1594, )",
+          "Ckzg.Bindings": "[2.1.7.1596, )",
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.Crypto.Bls": "[1.0.5, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
@@ -1234,9 +1234,9 @@
       },
       "Autofac": {
         "type": "CentralTransitive",
-        "requested": "[9.0.0, )",
-        "resolved": "9.0.0",
-        "contentHash": "G8TpUMVIq1pEAMuAao8h5MKduY91SotjgK93wQb5LaxbJUVE0/XjCA6t2SOp+AkPC3GB/C2MAiF2D7krYjraFw=="
+        "requested": "[9.1.0, )",
+        "resolved": "9.1.0",
+        "contentHash": "onT/BcnnfWcQNXiuC7R/0h8ALQzRdsAI20gpB7nfrudXpFMXdVZKz1umdtHXDwjc/bmWEsrCBAxck3+Arnk15g=="
       },
       "Autofac.Extensions.DependencyInjection": {
         "type": "CentralTransitive",
@@ -1255,9 +1255,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.6.1594, )",
-        "resolved": "2.1.6.1594",
-        "contentHash": "2HAhuzX0e+YDrNwz1CCGCR/DcOaWa8CjfoG+Xr7/QJqnvkQQDTaCFNW4gPNIs1AVZKQFO45pTT6Q2NeHExu6/Q=="
+        "requested": "[2.1.7.1596, )",
+        "resolved": "2.1.7.1596",
+        "contentHash": "KOyRwQv0PwL/WVumNK7ooWyR9R9TOmR2uq51rvaR3ozcidKsjVdE8inA1D7sXC8wP2xtxjp0iGGI1ErhF9xQLg=="
       },
       "Collections.Pooled": {
         "type": "CentralTransitive",
@@ -1670,9 +1670,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.6.1594, )",
-        "resolved": "2.1.6.1594",
-        "contentHash": "2HAhuzX0e+YDrNwz1CCGCR/DcOaWa8CjfoG+Xr7/QJqnvkQQDTaCFNW4gPNIs1AVZKQFO45pTT6Q2NeHExu6/Q=="
+        "requested": "[2.1.7.1596, )",
+        "resolved": "2.1.7.1596",
+        "contentHash": "KOyRwQv0PwL/WVumNK7ooWyR9R9TOmR2uq51rvaR3ozcidKsjVdE8inA1D7sXC8wP2xtxjp0iGGI1ErhF9xQLg=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1768,9 +1768,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.6.1594, )",
-        "resolved": "2.1.6.1594",
-        "contentHash": "2HAhuzX0e+YDrNwz1CCGCR/DcOaWa8CjfoG+Xr7/QJqnvkQQDTaCFNW4gPNIs1AVZKQFO45pTT6Q2NeHExu6/Q=="
+        "requested": "[2.1.7.1596, )",
+        "resolved": "2.1.7.1596",
+        "contentHash": "KOyRwQv0PwL/WVumNK7ooWyR9R9TOmR2uq51rvaR3ozcidKsjVdE8inA1D7sXC8wP2xtxjp0iGGI1ErhF9xQLg=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1866,9 +1866,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.6.1594, )",
-        "resolved": "2.1.6.1594",
-        "contentHash": "2HAhuzX0e+YDrNwz1CCGCR/DcOaWa8CjfoG+Xr7/QJqnvkQQDTaCFNW4gPNIs1AVZKQFO45pTT6Q2NeHExu6/Q=="
+        "requested": "[2.1.7.1596, )",
+        "resolved": "2.1.7.1596",
+        "contentHash": "KOyRwQv0PwL/WVumNK7ooWyR9R9TOmR2uq51rvaR3ozcidKsjVdE8inA1D7sXC8wP2xtxjp0iGGI1ErhF9xQLg=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1964,9 +1964,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.6.1594, )",
-        "resolved": "2.1.6.1594",
-        "contentHash": "2HAhuzX0e+YDrNwz1CCGCR/DcOaWa8CjfoG+Xr7/QJqnvkQQDTaCFNW4gPNIs1AVZKQFO45pTT6Q2NeHExu6/Q=="
+        "requested": "[2.1.7.1596, )",
+        "resolved": "2.1.7.1596",
+        "contentHash": "KOyRwQv0PwL/WVumNK7ooWyR9R9TOmR2uq51rvaR3ozcidKsjVdE8inA1D7sXC8wP2xtxjp0iGGI1ErhF9xQLg=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -2062,9 +2062,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.6.1594, )",
-        "resolved": "2.1.6.1594",
-        "contentHash": "2HAhuzX0e+YDrNwz1CCGCR/DcOaWa8CjfoG+Xr7/QJqnvkQQDTaCFNW4gPNIs1AVZKQFO45pTT6Q2NeHExu6/Q=="
+        "requested": "[2.1.7.1596, )",
+        "resolved": "2.1.7.1596",
+        "contentHash": "KOyRwQv0PwL/WVumNK7ooWyR9R9TOmR2uq51rvaR3ozcidKsjVdE8inA1D7sXC8wP2xtxjp0iGGI1ErhF9xQLg=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
