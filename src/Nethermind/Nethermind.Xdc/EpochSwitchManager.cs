@@ -175,7 +175,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
         return GetEpochSwitchInfo(h);
     }
 
-    private EpochSwitchInfo[] GetEpochSwitchBetween(XdcBlockHeader start, XdcBlockHeader end)
+    public EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end)
     {
         var epochSwitchInfos = new List<EpochSwitchInfo>();
 
@@ -390,7 +390,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             {
                 return null;
             }
-            var epochSwitchInfos = GetEpochSwitchBetween(estBlockHeader, headHeader);
+            var epochSwitchInfos = GetEpochSwitchInfoBetween(estBlockHeader, headHeader);
             if (epochSwitchInfos is null)
             {
                 return null;

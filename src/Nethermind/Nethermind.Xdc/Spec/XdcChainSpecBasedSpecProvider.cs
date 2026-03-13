@@ -26,6 +26,8 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.FoundationWallet = chainSpecEngineParameters.FoundationWalletAddr;
         releaseSpec.Reward = chainSpecEngineParameters.Reward;
         releaseSpec.MasternodeVotingContract = chainSpecEngineParameters.MasternodeVotingContract;
+        releaseSpec.RelayerRegistrationSMC = chainSpecEngineParameters.RelayerRegistrationSMC;
+        releaseSpec.TRC21IssuerSMC = chainSpecEngineParameters.TRC21IssuerSMC;
         releaseSpec.BlockSignerContract = chainSpecEngineParameters.BlockSignerContract;
 
         releaseSpec.IsTipTrc21FeeEnabled = (chainSpecEngineParameters.TipTrc21Fee ?? 0) <= releaseStartBlock;
