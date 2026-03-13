@@ -9,6 +9,7 @@ public class LondonGnosis() : NamedGnosisReleaseSpec<LondonGnosis>(London.Instan
 {
     public override void Apply(ReleaseSpec spec)
     {
+        base.Apply(spec);
         spec.FeeCollector = GnosisSpecProvider.FeeCollector;
     }
 }

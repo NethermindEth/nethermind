@@ -9,6 +9,7 @@ public class PragueGnosis() : NamedGnosisReleaseSpec<PragueGnosis>(Prague.Instan
 {
     public override void Apply(ReleaseSpec spec)
     {
+        base.Apply(spec);
         spec.IsEip4844FeeCollectorEnabled = true;
         spec.BlobBaseFeeUpdateFraction = 0x10fafa;
         spec.TargetBlobCount = 1;

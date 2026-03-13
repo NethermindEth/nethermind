@@ -9,6 +9,7 @@ public class ShanghaiGnosis() : NamedGnosisReleaseSpec<ShanghaiGnosis>(Shanghai.
 {
     public override void Apply(ReleaseSpec spec)
     {
+        base.Apply(spec);
         spec.WithdrawalTimestamp = GnosisSpecProvider.ShanghaiTimestamp;
     }
 }

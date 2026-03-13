@@ -16,13 +16,12 @@ namespace Nethermind.Specs.GnosisForks;
 /// </list>
 ///
 /// <para>
-/// During construction, <see cref="NamedReleaseSpec.ReplayForkChain"/> walks from root to this fork.
-/// At each Gnosis node, <see cref="ApplyDelta"/> first applies the mainnet fork's delta
-/// (<c>mainnetFork.Apply</c>), then this fork's own <see cref="NamedReleaseSpec.Apply"/>.
-/// This produces the correct combined chain, for example for <c>CancunGnosis</c>:
+/// <see cref="Apply"/> calls <c>mainnetFork.Apply(spec)</c> to include the mainnet delta.
+/// Concrete Gnosis forks override <see cref="Apply"/>, call <c>base.Apply(spec)</c> first,
+/// then add Gnosis-specific overrides. For example, <c>CancunGnosis</c>:
 /// <code>
-///   Olympic → … → Berlin → London.Apply → LondonGnosis.Apply(FeeCollector)
-///     → Shanghai.Apply → ShanghaiGnosis.Apply → Cancun.Apply → CancunGnosis.Apply(blob overrides)
+///   Olympic → … → Berlin → London.Apply → LondonGnosis.Apply(base + FeeCollector)
+///     → ShanghaiGnosis.Apply(base=Shanghai) → CancunGnosis.Apply(base=Cancun + blob overrides)
 /// </code>
 /// </para>
 /// </summary>
@@ -30,13 +29,10 @@ public abstract class NamedGnosisReleaseSpec(NamedReleaseSpec mainnetFork, Named
     : NamedReleaseSpec(gnosisParent ?? mainnetFork.Parent)
 {
     /// <summary>
-    /// Applies the corresponding mainnet fork's delta first, then this Gnosis fork's own overrides.
+    /// Applies the corresponding mainnet fork's delta. Concrete Gnosis forks should call
+    /// <c>base.Apply(spec)</c> first, then set Gnosis-specific overrides.
     /// </summary>
-    protected override void ApplyDelta(ReleaseSpec target)
-    {
-        mainnetFork.Apply(target);
-        Apply(target);
-    }
+    public override void Apply(ReleaseSpec spec) => mainnetFork.Apply(spec);
 }
 
 /// <summary>

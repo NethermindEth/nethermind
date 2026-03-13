@@ -5,7 +5,5 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.GnosisForks;
 
-public class OsakaGnosis() : NamedGnosisReleaseSpec<OsakaGnosis>(Osaka.Instance, PragueGnosis.Instance)
-{
-    public override void Apply(ReleaseSpec spec) { }
-}
+public class OsakaGnosis() : NamedGnosisReleaseSpec<OsakaGnosis>(Osaka.Instance, PragueGnosis.Instance);
+

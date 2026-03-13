@@ -17,9 +17,9 @@ namespace Nethermind.Specs.Forks;
 /// </para>
 ///
 /// <para>
-/// Gnosis forks (see <see cref="GnosisForks.NamedGnosisReleaseSpec"/>) extend this by overriding
-/// <see cref="ApplyDelta"/> to inject the corresponding mainnet fork's delta before their own
-/// <see cref="Apply"/>, since their parent chain diverges from mainnet at an earlier point.
+/// Gnosis forks (see <see cref="GnosisForks.NamedGnosisReleaseSpec"/>) override <see cref="Apply"/>
+/// to call <c>mainnetFork.Apply(spec)</c> first, then add their own Gnosis-specific overrides.
+/// Concrete Gnosis forks call <c>base.Apply(spec)</c> to get the mainnet delta.
 /// </para>
 /// </summary>
 public abstract class NamedReleaseSpec : ReleaseSpec
@@ -35,33 +35,20 @@ public abstract class NamedReleaseSpec : ReleaseSpec
 
     /// <summary>
     /// Recursively walks the parent chain from root to <paramref name="fork"/>, calling
-    /// <see cref="ApplyDelta"/> on each ancestor to accumulate their property changes
+    /// <see cref="Apply"/> on each ancestor to accumulate their property changes
     /// into <c>this</c> instance (the spec being constructed).
     /// </summary>
     private void ReplayAncestors(NamedReleaseSpec? fork)
     {
         if (fork is null) return;
         ReplayAncestors(fork.Parent);
-        fork.ApplyDelta(this);
+        fork.Apply(this);
     }
-
-    /// <summary>
-    /// Applies this fork's full contribution to <paramref name="target"/>.
-    ///
-    /// <para>
-    /// For mainnet forks, this simply delegates to <see cref="Apply"/>.
-    /// Gnosis forks override this to first apply the corresponding mainnet fork's delta
-    /// (via <c>mainnetFork.Apply(target)</c>), then their own <see cref="Apply"/>.
-    /// This is needed because a Gnosis fork's <see cref="Parent"/> points to the previous
-    /// Gnosis fork (or a mainnet fork before the divergence point), not to the mainnet fork
-    /// it corresponds to — so the mainnet delta would otherwise be missing.
-    /// </para>
-    /// </summary>
-    protected virtual void ApplyDelta(ReleaseSpec target) => Apply(target);
 
     /// <summary>
     /// Sets only this fork's own property changes on <paramref name="spec"/>.
     /// Each concrete fork overrides this to configure the EIPs and parameters it introduces.
+    /// Gnosis forks should call <c>base.Apply(spec)</c> first to include the mainnet delta.
     /// </summary>
     public abstract void Apply(ReleaseSpec spec);
 }
