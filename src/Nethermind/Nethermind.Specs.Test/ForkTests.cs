@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
+using FluentAssertions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -14,30 +15,27 @@ namespace Nethermind.Specs.Test;
 public class ForkTests
 {
     [Test]
-    public void GetLatest_Returns_BPO2()
-    {
-        Assert.That(Fork.GetLatest(), Is.EqualTo(BPO2.Instance));
-    }
-
-    [Test]
     public void GetLatest_Matches_FoundationJson()
     {
         // Load foundation.json — source of truth for mainnet forks
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
 
         // Build spec provider — discovers all transitions automatically
-        var provider = new ChainSpecBasedSpecProvider(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
 
         // Last timestamp transition = latest fork in foundation.json
         ForkActivation latestActivation = provider.TransitionActivations[^1];
+        IReleaseSpec chainSpecLatest = provider.GetSpec(latestActivation);
+        IReleaseSpec forkLatest = Fork.GetLatest();
 
-        // Resolve to named fork via MainnetSpecProvider (use ParisBlockNumber to reach timestamp-based forks)
-        IReleaseSpec latestSpec = MainnetSpecProvider.Instance.GetSpec(
-            (MainnetSpecProvider.ParisBlockNumber, latestActivation.Timestamp));
-
-        Assert.That(Fork.GetLatest().Name, Is.EqualTo(latestSpec.Name),
-            "Fork.GetLatest() is out of sync with foundation.json. Update Fork.cs.");
+        // Compare all properties except:
+        // - Name: ChainSpecBasedSpecProvider doesn't set it
+        // - WithdrawalTimestamp, Eip4844TransitionTimestamp: chain-activation metadata, not fork behavior
+        forkLatest.Should().BeEquivalentTo(chainSpecLatest, options => options
+            .Excluding(s => s.Name)
+            .Excluding(s => s.WithdrawalTimestamp)
+            .Excluding(s => s.Eip4844TransitionTimestamp));
     }
 }
