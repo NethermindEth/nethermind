@@ -19,14 +19,4 @@
     <PackageReference Include="Nethermind.MclBindings" />
   </ItemGroup>
 
-  <ItemGroup Condition="$(EnableZkEvm) == 'true'">
-    <Compile Remove="std/*.cs" />
-    <None Include="std/*.cs" />
-  </ItemGroup>
-
-  <ItemGroup Condition="$(EnableZkEvm) != 'true'">
-    <Compile Remove="zkevm/*.cs" />
-    <None Include="zkevm/*.cs" />
-  </ItemGroup>
-
 </Project>
