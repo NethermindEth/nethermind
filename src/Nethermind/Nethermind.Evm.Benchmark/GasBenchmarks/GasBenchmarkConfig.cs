@@ -43,11 +43,11 @@ public class GasBenchmarkConfig : ManualConfig
         // to auto-determine batching — unnecessary at this timescale.
         Job job = Job.MediumRun
             .WithLaunchCount(LaunchCount ?? 1)
-            .WithWarmupCount(WarmupCount ?? 1)
+            .WithWarmupCount(WarmupCount ?? 3)
             .WithIterationCount(IterationCount ?? 1)
             .WithInvocationCount(1)
             .WithUnrollFactor(1)
-            .WithGcForce(false);
+            .WithGcForce(true);
 
         if (InProcess)
         {

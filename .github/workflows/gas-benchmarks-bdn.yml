@@ -179,8 +179,33 @@ jobs:
           echo "=== Disk ==="
           df -h . | head -5
 
+      - name: Tune system for stable benchmarks
+        shell: bash
+        run: |
+          # Disable NMI watchdog (periodic interrupt source)
+          echo 0 | sudo tee /proc/sys/kernel/nmi_watchdog || true
+          # Set performance governor (no frequency scaling)
+          for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+            echo performance | sudo tee "$cpu" 2>/dev/null || true
+          done
+          # Drop page caches for consistent cold start
+          sync && echo 3 | sudo tee /proc/sys/vm/drop_caches || true
+          # Disable kernel address space randomization for deterministic layout
+          echo 0 | sudo tee /proc/sys/kernel/randomize_va_space || true
+          # Move all IRQs away from benchmark cores 2-5
+          for irq in /proc/irq/*/smp_affinity_list; do
+            echo "0-1,6-23" | sudo tee "$irq" 2>/dev/null || true
+          done
+          # Allow unlimited RT scheduling
+          sudo tee /proc/sys/kernel/sched_rt_runtime_us <<< -1 2>/dev/null || true
+
       - name: Run benchmarks (chunk ${{ matrix.chunk }}/${{ strategy.job-total }})
         shell: bash
+        env:
+          # Server GC for more deterministic heap management (doesn't apply via BDN WithGcServer in-process)
+          DOTNET_gcServer: "1"
+          # Retain virtual memory after GC — avoids re-faulting pages between iterations
+          DOTNET_GCRetainVM: "1"
         run: |
           MODE="${{ needs.resolve.outputs.mode }}"
           SUBSET="${{ needs.resolve.outputs.subset }}"
@@ -209,7 +234,10 @@ jobs:
             ARGS="$ARGS --launchCount $LAUNCHES"
           fi
 
-          dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll $ARGS
+          # Pin to cores 2-5 (IRQ-free), highest priority
+          DOTNET_BIN="$(which dotnet)"
+          sudo nice -n -20 taskset -c 2-5 \
+            "$DOTNET_BIN" src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll $ARGS
 
       - name: Upload results
         if: always()

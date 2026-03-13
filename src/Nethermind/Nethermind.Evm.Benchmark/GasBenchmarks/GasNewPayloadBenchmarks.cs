@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -93,6 +94,22 @@ public class GasNewPayloadBenchmarks
     [GlobalSetup]
     public void GlobalSetup()
     {
+        // Pin to cores 2-5 (avoid core 0 which handles most IRQs on Linux)
+        // and elevate priority to minimize OS scheduling noise.
+        try
+        {
+            Process process = Process.GetCurrentProcess();
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                process.ProcessorAffinity = new IntPtr(0x3C); // cores 2,3,4,5
+            }
+            process.PriorityClass = ProcessPriorityClass.High;
+        }
+        catch
+        {
+            // Best-effort: CI runners may not allow priority changes.
+        }
+
         _releaseSpec = Prague.Instance;
         _specProvider = new SingleReleaseSpecProvider(_releaseSpec, 1, 1);
 
@@ -165,6 +182,15 @@ public class GasNewPayloadBenchmarks
 
         PayloadLoader.VerifyProcessedBlock(processedBlock, Scenario.ToString(), Scenario.FilePath);
         ResetTimingAccumulators();
+    }
+
+    [IterationSetup]
+    public void IterationSetup()
+    {
+        // Force full GC to prevent collections during the ~3s measurement.
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
     }
 
     [Benchmark]
