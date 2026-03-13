@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
+using System;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
-using System;
 
 namespace Nethermind.Xdc.Spec;
 
@@ -14,9 +13,6 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
     ILogManager logManager)
     : ChainSpecBasedSpecProvider(chainSpec, logManager)
 {
-    private const int ExtraVanity = 32; // Fixed number of extra-data prefix bytes reserved for signer vanity
-    private const int ExtraSeal = 65; // Fixed number of extra-data suffix bytes reserved for signer seal
-
     protected override ReleaseSpec CreateEmptyReleaseSpec() => new XdcReleaseSpec();
     protected override ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
     {
@@ -58,7 +54,9 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         if (releaseSpec.SwitchBlock == 0)
         {
             //We can parse genesis masternodes from genesis if the chain starts as V2
-            releaseSpec.GenesisMasterNodes = ParseGenesisMasternodes(chainSpec);
+            byte[] genesisExtraData = chainSpec.Genesis?.ExtraData
+                ?? throw new ArgumentException("Genesis ExtraData is required when SwitchBlock is 0", nameof(chainSpec));
+            releaseSpec.GenesisMasterNodes = genesisExtraData.ParseV1Masternodes();
         }
         else
         {
@@ -66,17 +64,6 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         }
 
         return releaseSpec;
-    }
-
-    private Address[] ParseGenesisMasternodes(ChainSpec chainSpec)
-    {
-        int length = (chainSpec.Genesis.ExtraData.Length - ExtraVanity - ExtraSeal) / Address.Size;
-        Address[] signers = new Address[length];
-        for (int i = 0; i < length; i++)
-        {
-            signers[i] = new Address(chainSpec.Genesis.ExtraData.AsSpan(ExtraVanity + i * Address.Size, Address.Size));
-        }
-        return signers;
     }
 
 }
