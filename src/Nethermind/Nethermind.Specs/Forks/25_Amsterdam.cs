@@ -22,7 +22,6 @@ public class Amsterdam : BPO5
         IsEip8024Enabled = true;
         IsEip7843Enabled = true;
         IsEip7954Enabled = true;
-        IsEip7976Enabled = true;
         MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
         Released = false;
     }
