@@ -8,7 +8,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 
-
 namespace Nethermind.Blockchain.Test.Runner
 {
     internal class Program

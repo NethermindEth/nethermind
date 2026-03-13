@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 
-
 namespace Ethereum.Test.Base
 {
     public class LoadBlockchainTestFileStrategy : ITestLoadStrategy

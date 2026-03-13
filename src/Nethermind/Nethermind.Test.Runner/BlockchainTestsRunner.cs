@@ -7,7 +7,6 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 
-
 namespace Nethermind.Test.Runner;
 
 public class BlockchainTestsRunner(

@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Text;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -18,160 +18,63 @@ namespace Nethermind.Serialization.Json;
 internal static class NumericConverterHelper
 {
     /// <summary>
-    /// Parse a UTF-8 span that may be hex ("0x...") or decimal into an <see cref="int"/>.
+    /// Parse a UTF-8 span that may be hex ("0x...") or decimal into <typeparamref name="T"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static int ParseInt(ReadOnlySpan<byte> s)
+    internal static T Parse<T>(ReadOnlySpan<byte> s) where T : struct, INumberBase<T>
     {
         if (s.Length == 0)
         {
-            ThrowNullAssignment("int");
+            ThrowNullAssignment(typeof(T).Name);
         }
 
         if (s.SequenceEqual("0x0"u8))
         {
-            return 0;
+            return T.Zero;
         }
 
-        int value;
         if (s.StartsWith("0x"u8))
         {
             s = s[2..];
-            if (Utf8Parser.TryParse(s, out value, out _, 'x'))
+            if (T.TryParse(s, NumberStyles.AllowHexSpecifier, null, out T value))
             {
                 return value;
             }
         }
-        else if (Utf8Parser.TryParse(s, out value, out _))
+        else if (T.TryParse(s, NumberStyles.Integer, null, out T value))
         {
             return value;
         }
 
-        ThrowHexConversion("int");
+        ThrowHexConversion(typeof(T).Name);
         return default;
     }
 
     /// <summary>
-    /// Parse a UTF-8 span that may be hex ("0x...") or decimal into a <see cref="long"/>.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static long ParseLong(ReadOnlySpan<byte> s)
-    {
-        if (s.Length == 0)
-        {
-            ThrowNullAssignment("long");
-        }
-
-        if (s.SequenceEqual("0x0"u8))
-        {
-            return 0L;
-        }
-
-        long value;
-        if (s.StartsWith("0x"u8))
-        {
-            s = s[2..];
-            if (Utf8Parser.TryParse(s, out value, out _, 'x'))
-            {
-                return value;
-            }
-        }
-        else if (Utf8Parser.TryParse(s, out value, out _))
-        {
-            return value;
-        }
-
-        ThrowHexConversion("long");
-        return default;
-    }
-
-    /// <summary>
-    /// Parse a UTF-8 span that may be hex ("0x...") or decimal into a <see cref="ulong"/>.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong ParseULong(ReadOnlySpan<byte> s)
-    {
-        if (s.Length == 0)
-        {
-            ThrowNullAssignment("ulong");
-        }
-
-        if (s.SequenceEqual("0x0"u8))
-        {
-            return 0uL;
-        }
-
-        ulong value;
-        if (s.StartsWith("0x"u8))
-        {
-            s = s[2..];
-            if (Utf8Parser.TryParse(s, out value, out _, 'x'))
-            {
-                return value;
-            }
-        }
-        else if (Utf8Parser.TryParse(s, out value, out _))
-        {
-            return value;
-        }
-
-        ThrowHexConversion("ulong");
-        return default;
-    }
-
-    /// <summary>
-    /// Write a <see cref="long"/> value according to the current <see cref="NumberConversion"/> mode.
+    /// Write a numeric value according to the current <see cref="NumberConversion"/> mode.
     /// </summary>
     [SkipLocalsInit]
-    internal static void WriteLong(Utf8JsonWriter writer, long value)
+    internal static void Write<T>(Utf8JsonWriter writer, T value) where T : struct, INumberBase<T>
     {
         switch (ForcedNumberConversion.GetFinalConversion())
         {
             case NumberConversion.Hex:
-                if (value == 0)
+                if (value == T.Zero)
                 {
                     writer.WriteStringValue("0x0"u8);
                 }
                 else
                 {
-                    HexWriter.WriteUlongHexRawValue(writer, (ulong)value);
+                    HexWriter.WriteUlongHexRawValue(writer, ulong.CreateTruncating(value));
                 }
                 break;
             case NumberConversion.Decimal:
-                writer.WriteStringValue(value == 0 ? "0" : value.ToString(CultureInfo.InvariantCulture));
+                Span<byte> decBuffer = stackalloc byte[20];
+                value.TryFormat(decBuffer, out int decBytesWritten, default, CultureInfo.InvariantCulture);
+                writer.WriteStringValue(decBuffer[..decBytesWritten]);
                 break;
             case NumberConversion.Raw:
-                writer.WriteNumberValue(value);
-                break;
-            default:
-                ThrowNotSupportedConversion();
-                break;
-        }
-    }
-
-    /// <summary>
-    /// Write a <see cref="ulong"/> value according to the current <see cref="NumberConversion"/> mode.
-    /// </summary>
-    [SkipLocalsInit]
-    internal static void WriteULong(Utf8JsonWriter writer, ulong value)
-    {
-        switch (ForcedNumberConversion.GetFinalConversion())
-        {
-            case NumberConversion.Hex:
-                if (value == 0)
-                {
-                    writer.WriteStringValue("0x0"u8);
-                }
-                else
-                {
-                    HexWriter.WriteUlongHexRawValue(writer, value);
-                }
-                break;
-            case NumberConversion.Decimal:
-                writer.WriteStringValue(value == 0 ? "0" : value.ToString(CultureInfo.InvariantCulture));
-                break;
-            case NumberConversion.Raw:
-                writer.WriteNumberValue(value);
+                writer.WriteNumberValue(ulong.CreateTruncating(value));
                 break;
             default:
                 ThrowNotSupportedConversion();

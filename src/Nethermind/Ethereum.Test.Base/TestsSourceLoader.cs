@@ -5,8 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-
-
 namespace Ethereum.Test.Base
 {
     public class TestsSourceLoader(ITestLoadStrategy testLoadStrategy, string path, string? wildcard = null)

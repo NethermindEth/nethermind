@@ -13,7 +13,7 @@ namespace Nethermind.Serialization.Json;
 
 public class ULongConverter : JsonConverter<ulong>
 {
-    public static ulong FromString(ReadOnlySpan<byte> s) => NumericConverterHelper.ParseULong(s);
+    public static ulong FromString(ReadOnlySpan<byte> s) => NumericConverterHelper.Parse<ulong>(s);
 
     [SkipLocalsInit]
     public override void Write(
@@ -21,7 +21,7 @@ public class ULongConverter : JsonConverter<ulong>
         ulong value,
         JsonSerializerOptions options)
     {
-        NumericConverterHelper.WriteULong(writer, value);
+        NumericConverterHelper.Write(writer, value);
     }
 
     internal static ulong ReadCore(ref Utf8JsonReader reader)
@@ -34,8 +34,8 @@ public class ULongConverter : JsonConverter<ulong>
         if (reader.TokenType == JsonTokenType.String)
         {
             return !reader.HasValueSequence
-                ? NumericConverterHelper.ParseULong(reader.ValueSpan)
-                : NumericConverterHelper.ParseULong(reader.ValueSequence.ToArray());
+                ? NumericConverterHelper.Parse<ulong>(reader.ValueSpan)
+                : NumericConverterHelper.Parse<ulong>(reader.ValueSequence.ToArray());
         }
 
         ThrowJsonException();

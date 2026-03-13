@@ -32,7 +32,7 @@ public class ProtocolParserTests
     [TestCase("e", Description = "Single char")]
     [TestCase("xyz", Description = "Unknown 3-char")]
     [TestCase("ethx", Description = "Partial match eth + extra char")]
-    [TestCase("ethxx", Description = "Wrong length 5 chars")]
+    [TestCase("eth69", Description = "Wrong length 5 chars")]
     [TestCase("sna", Description = "Partial match snap truncated")]
     [TestCase("abcdef", Description = "Length 6")]
     [TestCase("abcdefg", Description = "Length 7")]

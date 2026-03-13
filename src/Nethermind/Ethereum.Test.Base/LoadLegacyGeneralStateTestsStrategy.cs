@@ -3,7 +3,6 @@
 
 using System.IO;
 
-
 namespace Ethereum.Test.Base;
 
 public class LoadLegacyGeneralStateTestsStrategy()

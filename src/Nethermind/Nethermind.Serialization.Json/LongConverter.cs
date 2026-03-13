@@ -49,7 +49,7 @@ public class LongConverter : JsonConverter<long>
         return FromString(hex);
     }
 
-    public static long FromString(ReadOnlySpan<byte> s) => NumericConverterHelper.ParseLong(s);
+    public static long FromString(ReadOnlySpan<byte> s) => NumericConverterHelper.Parse<long>(s);
 
     internal static long ReadCore(ref Utf8JsonReader reader)
     {
@@ -61,8 +61,8 @@ public class LongConverter : JsonConverter<long>
         if (reader.TokenType == JsonTokenType.String)
         {
             return !reader.HasValueSequence
-                ? NumericConverterHelper.ParseLong(reader.ValueSpan)
-                : NumericConverterHelper.ParseLong(reader.ValueSequence.ToArray());
+                ? NumericConverterHelper.Parse<long>(reader.ValueSpan)
+                : NumericConverterHelper.Parse<long>(reader.ValueSequence.ToArray());
         }
 
         ThrowJsonException();
@@ -86,6 +86,6 @@ public class LongConverter : JsonConverter<long>
         long value,
         JsonSerializerOptions options)
     {
-        NumericConverterHelper.WriteLong(writer, value);
+        NumericConverterHelper.Write(writer, value);
     }
 }

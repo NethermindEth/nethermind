@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
-
 namespace Ethereum.Test.Base
 {
     public class LoadEofTestFileStrategy : ITestLoadStrategy

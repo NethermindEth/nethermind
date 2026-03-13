@@ -13,15 +13,10 @@ namespace Nethermind.Serialization.Json;
 /// </summary>
 public class NullableJsonConverter<T>(JsonConverter<T> innerConverter) : JsonConverter<T?> where T : struct
 {
-    public override T? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        if (reader.TokenType == JsonTokenType.Null)
-        {
-            return null;
-        }
-
-        return innerConverter.Read(ref reader, typeToConvert, options);
-    }
+    public override T? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.TokenType == JsonTokenType.Null
+            ? null
+            : innerConverter.Read(ref reader, typeToConvert, options);
 
     public override void Write(Utf8JsonWriter writer, T? value, JsonSerializerOptions options)
     {

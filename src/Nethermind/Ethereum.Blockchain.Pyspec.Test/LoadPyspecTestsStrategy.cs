@@ -11,7 +11,6 @@ using System.Net.Http;
 using System.Threading;
 using Ethereum.Test.Base;
 
-
 namespace Ethereum.Blockchain.Pyspec.Test;
 
 public class LoadPyspecTestsStrategy : ITestLoadStrategy

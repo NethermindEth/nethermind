@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Ethereum.Test.Base;
 
-
 namespace Nethermind.Test.Runner;
 
 public class EofTestsRunner(ITestSourceLoader testsSource, string? filter) : EofTestBase, IEofTestRunner

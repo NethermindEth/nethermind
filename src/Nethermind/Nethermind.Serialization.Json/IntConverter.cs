@@ -23,8 +23,8 @@ public class IntConverter : JsonConverter<int>
         if (reader.TokenType == JsonTokenType.String)
         {
             return !reader.HasValueSequence
-                ? NumericConverterHelper.ParseInt(reader.ValueSpan)
-                : NumericConverterHelper.ParseInt(reader.ValueSequence.ToArray());
+                ? NumericConverterHelper.Parse<int>(reader.ValueSpan)
+                : NumericConverterHelper.Parse<int>(reader.ValueSequence.ToArray());
         }
 
         throw new JsonException();

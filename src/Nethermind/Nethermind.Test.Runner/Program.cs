@@ -7,7 +7,6 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-
 using Nethermind.Specs;
 
 namespace Nethermind.Test.Runner;

@@ -4,7 +4,6 @@
 using System;
 using System.IO;
 
-
 namespace Ethereum.Test.Base;
 
 public class LoadLegacyBlockchainTestsStrategy()

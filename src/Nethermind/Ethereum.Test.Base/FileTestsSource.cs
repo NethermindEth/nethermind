@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-
 namespace Ethereum.Test.Base
 {
     public class FileTestsSource(string fileName, string? wildcard = null)

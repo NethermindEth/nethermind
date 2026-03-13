@@ -3,7 +3,6 @@
 
 using System;
 
-
 namespace Ethereum.Test.Base;
 
 public class LoadGeneralStateTestsStrategy() : TestLoadStrategy("GeneralStateTests", TestType.State)

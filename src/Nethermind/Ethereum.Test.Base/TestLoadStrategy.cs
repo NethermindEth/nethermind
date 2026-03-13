@@ -96,12 +96,3 @@ public abstract class TestLoadStrategy(string testsRootPath, TestType testType) 
         return null; // unreachable
     }
 }
-
-public class LoadBlockchainTestsStrategy()
-    : TestLoadStrategy("BlockchainTests", TestType.Blockchain);
-
-public class LoadEipTestsStrategy()
-    : TestLoadStrategy(Path.Combine("EIPTests", "StateTests"), TestType.State);
-
-public class LoadEofTestsStrategy()
-    : TestLoadStrategy(Path.Combine("EIPTests", "StateTests", "stEOF"), TestType.State);
