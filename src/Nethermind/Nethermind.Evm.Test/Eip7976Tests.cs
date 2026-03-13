@@ -19,7 +19,7 @@ public class Eip7976Tests
     // Standard: 21000 + zero*4 + nonzero*16 (+ 32000 + InitCodeWord for contract creation)
     private static IEnumerable<TestCaseData> IntrinsicGasCases()
     {
-        // Contract creation uses NoEip8037 to isolate EIP-7976 floor cost from EIP-8037 state gas, auth list cost changes
+        // We use NoEip8037 to isolate EIP-7976 floor cost from EIP-8037 state gas, auth list cost changes
         yield return new TestCaseData(Amsterdam.NoEip8037Instance, Address.Zero, new byte[] { 1 }, 21_016L, 21_064L)
             .SetName("EIP-7976: single nonzero byte");
         yield return new TestCaseData(Amsterdam.NoEip8037Instance, Address.Zero, new byte[] { 0 }, 21_004L, 21_064L)
