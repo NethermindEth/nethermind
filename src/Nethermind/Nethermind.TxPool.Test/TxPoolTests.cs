@@ -293,7 +293,7 @@ namespace Nethermind.TxPool.Test
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
             Assert.That((UInt256)1, Is.EqualTo(latestNonce));
 
-            // LatestPendingNonce=5, when added pending transactions upto nonce=4
+            // LatestPendingNonce=5, when added pending transactions up to nonce=4
             tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.Accepted);
