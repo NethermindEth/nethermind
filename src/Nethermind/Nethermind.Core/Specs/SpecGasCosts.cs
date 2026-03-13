@@ -114,6 +114,16 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
         _hashCode = HashCode.Combine(hashCode1, hashCode2);
     }
 
+    public long RefundFromReversal<TEip8037>(bool originalIsZero)
+        where TEip8037 : struct, IFlag
+    {
+        return originalIsZero
+            ? TEip8037.IsActive
+                ? RefundOf.SSetReversedEip8037
+                : SetReversalRefund
+            : ClearReversalRefund;
+    }
+
     public bool Equals(SpecGasCosts? other)
     {
         if (other is null) return false;
