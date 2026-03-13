@@ -56,7 +56,7 @@ public class EraCliRunner(
         {
             _logger.Warn("EraE import was cancelled.");
         }
-        catch (Exception e) when (e is EraException or EraImportException)
+        catch (EraException e)
         {
             _logger.Error($"EraE import failed: {e.Message}");
         }

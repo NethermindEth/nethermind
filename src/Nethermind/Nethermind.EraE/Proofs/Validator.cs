@@ -18,8 +18,8 @@ namespace Nethermind.EraE.Proofs;
 public class Validator
 {
     private readonly IHistoricalSummariesProvider? _historicalSummariesProvider;
-    private readonly ISet<ValueHash256>? _trustedAccumulators;
-    private readonly ISet<ValueHash256>? _trustedHistoricalRoots;
+    private readonly IReadOnlyList<ValueHash256>? _trustedAccumulators;
+    private readonly IReadOnlyList<ValueHash256>? _trustedHistoricalRoots;
     private readonly SlotTime? _slotTime;
 
     private const int SlotsPerHistoricalRoot = 8192;
@@ -29,8 +29,8 @@ public class Validator
 
     public Validator(
         ISpecProvider specProvider,
-        ISet<ValueHash256>? trustedAccumulators,
-        ISet<ValueHash256>? trustedHistoricalRoots,
+        IReadOnlyList<ValueHash256>? trustedAccumulators,
+        IReadOnlyList<ValueHash256>? trustedHistoricalRoots,
         IHistoricalSummariesProvider? historicalSummariesProvider,
         IBlocksConfig? blocksConfig = null)
     {
@@ -114,7 +114,7 @@ public class Validator
     private ValueHash256? GetAccumulatorForEpoch(long epochIdx)
     {
         if (_trustedAccumulators is not null && _trustedAccumulators.Count > epochIdx)
-            return _trustedAccumulators.ElementAt((int)epochIdx);
+            return _trustedAccumulators[(int)epochIdx];
         return null;
     }
 
@@ -122,7 +122,7 @@ public class Validator
     {
         long idx = slotNumber / SlotsPerHistoricalRoot;
         if (_trustedHistoricalRoots is not null && _trustedHistoricalRoots.Count > idx)
-            return _trustedHistoricalRoots.ElementAt((int)idx);
+            return _trustedHistoricalRoots[(int)idx];
         return null;
     }
 

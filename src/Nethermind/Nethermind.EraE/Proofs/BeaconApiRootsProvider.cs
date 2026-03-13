@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
@@ -20,7 +21,7 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
     private readonly Uri _baseUrl;
     private readonly TimeSpan _requestTimeout;
     private readonly int _maxRetries;
-    private readonly Dictionary<long, (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)> _cache = new();
+    private readonly ConcurrentDictionary<long, (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)> _cache = new();
 
     public BeaconApiRootsProvider(
         Uri baseUrl,

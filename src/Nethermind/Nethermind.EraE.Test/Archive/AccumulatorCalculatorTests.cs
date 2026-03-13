@@ -173,6 +173,6 @@ public class AccumulatorCalculatorTests
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.BeaconChainGenesisTimestamp.Returns((ulong?)1606824023UL);
-        return new Validator(specProvider, new HashSet<ValueHash256> { trustedRoot }, null, null);
+        return new Validator(specProvider, new List<ValueHash256> { trustedRoot }, null, null);
     }
 }

@@ -36,34 +36,11 @@ public sealed class EraStore : IEraStore
     private readonly int _verifyConcurrency;
     private bool _disposed;
 
-    private long? _firstBlock;
-    private long? _lastBlock;
+    private readonly Lazy<long> _firstBlock;
+    private readonly Lazy<long> _lastBlock;
 
-    public long FirstBlock
-    {
-        get
-        {
-            if (_firstBlock is null)
-            {
-                using EraRenter _ = RentReader(FirstEpoch, out EraReader reader);
-                _firstBlock = reader.FirstBlock;
-            }
-            return _firstBlock.Value;
-        }
-    }
-
-    public long LastBlock
-    {
-        get
-        {
-            if (_lastBlock is null)
-            {
-                using EraRenter _ = RentReader(LastEpoch, out EraReader reader);
-                _lastBlock = reader.LastBlock;
-            }
-            return _lastBlock.Value;
-        }
-    }
+    public long FirstBlock => _firstBlock.Value;
+    public long LastBlock => _lastBlock.Value;
 
     private int LastEpoch { get; set; }
     private int FirstEpoch { get; set; } = int.MaxValue;
@@ -113,6 +90,17 @@ public sealed class EraStore : IEraStore
 
         if (!hasEraFile)
             throw new EraException($"No relevant erae files in directory {directory}.");
+
+        _firstBlock = new Lazy<long>(() =>
+        {
+            using EraRenter _ = RentReader(FirstEpoch, out EraReader reader);
+            return reader.FirstBlock;
+        });
+        _lastBlock = new Lazy<long>(() =>
+        {
+            using EraRenter _ = RentReader(LastEpoch, out EraReader reader);
+            return reader.LastBlock;
+        });
     }
 
     private long GetEpochNumber(long blockNumber) => blockNumber / _maxEraSize;

@@ -52,6 +52,7 @@ public class EraStoreFactory(
             ? eraConfig.RemoteDownloadDirectory
             : src;
 
+        fileSystem.Directory.CreateDirectory(downloadDir);
         return new RemoteEraStoreDecorator(localStore, remoteClient, downloadDir, eraConfig.MaxEraSize);
     }
 }
