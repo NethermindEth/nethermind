@@ -229,6 +229,22 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+
+            // EIP-8037+EIP-7708: process destroy list after PayFees so burn logs include
+            // the priority fee in the destroyed account's balance.
+            if (spec.IsEip8037Enabled && spec.IsEip7708Enabled && statusCode == StatusCode.Success)
+            {
+                foreach (Address toBeDestroyed in substate.DestroyList)
+                {
+                    UInt256 balance = WorldState.GetBalance(toBeDestroyed);
+                    if (!balance.IsZero)
+                        substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
+
+                    WorldState.ClearStorage(toBeDestroyed);
+                    WorldState.DeleteAccount(toBeDestroyed);
+                }
+            }
+
             tx.BlockGasUsed = spentGas.EffectiveBlockGas;
 
             //only main thread updates transaction
@@ -777,28 +793,33 @@ namespace Nethermind.Evm.TransactionProcessing
                         }
                     }
 
-                    bool eip7708Enabled = spec.IsEip7708Enabled;
-                    bool tracingRefunds = tracer.IsTracingRefunds;
-                    foreach (Address toBeDestroyed in substate.DestroyList)
+                    // EIP-8037: defer destroy list processing to after PayFees so that
+                    // burn logs include the priority fee in the balance.
+                    bool deferFinalization = spec.IsEip7708Enabled && spec.IsEip8037Enabled;
+                    if (!deferFinalization)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
-
-                        if (eip7708Enabled)
+                        bool eip7708Enabled = spec.IsEip7708Enabled;
+                        bool tracingRefunds = tracer.IsTracingRefunds;
+                        foreach (Address toBeDestroyed in substate.DestroyList)
                         {
-                            UInt256 balance = WorldState.GetBalance(toBeDestroyed);
-                            if (!balance.IsZero)
+                            if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
+
+                            if (eip7708Enabled)
                             {
-                                substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
+                                UInt256 balance = WorldState.GetBalance(toBeDestroyed);
+                                if (!balance.IsZero)
+                                {
+                                    substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
+                                }
                             }
-                        }
 
-                        WorldState.ClearStorage(toBeDestroyed);
-                        WorldState.DeleteAccount(toBeDestroyed);
+                            WorldState.ClearStorage(toBeDestroyed);
+                            WorldState.DeleteAccount(toBeDestroyed);
 
-
-                        if (tracingRefunds)
-                        {
-                            tracer.ReportRefund(spec.GasCosts.DestroyRefund);
+                            if (tracingRefunds)
+                            {
+                                tracer.ReportRefund(spec.GasCosts.DestroyRefund);
+                            }
                         }
                     }
 
@@ -934,8 +955,9 @@ namespace Nethermind.Evm.TransactionProcessing
             UInt256 fees = premiumPerGas * (ulong)spentGas;
 
             // n.b. destroyed accounts already set to zero balance
+            // EIP-8037: always pay coinbase — deferred finalization will burn the balance
             bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
-            if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
+            if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed || spec.IsEip8037Enabled)
             {
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
             }

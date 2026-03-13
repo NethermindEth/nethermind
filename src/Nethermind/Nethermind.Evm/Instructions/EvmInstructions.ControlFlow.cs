@@ -244,8 +244,6 @@ internal static partial class EvmInstructions
         // Retrieve the current balance for transfer.
         UInt256 result = state.GetBalance(executingAccount);
 
-        vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);
-
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
@@ -276,8 +274,11 @@ internal static partial class EvmInstructions
         }
 
         // Special handling when SELFDESTRUCT is limited to the same transaction.
+        // No ETH moves and no log is emitted for this no-op case.
         if (selfdestructOnlyOnSameTx && !createInSameTx && inheritor.Equals(executingAccount))
-            goto Stop; // Avoid burning ETH if contract is not destroyed per EIP clarification
+            goto Stop;
+
+        vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);
 
         // Subtract the balance from the executing account.
         state.SubtractFromBalance(executingAccount, result, spec);
