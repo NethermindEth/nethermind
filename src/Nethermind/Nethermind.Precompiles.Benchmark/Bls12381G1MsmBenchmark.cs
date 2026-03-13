@@ -3,16 +3,12 @@
 
 using System.Collections.Generic;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Bls;
 
 namespace Nethermind.Precompiles.Benchmark;
 
-public class BlsG1MSMBenchmark : PrecompileBenchmarkBase
+public class Bls12381G1MsmBenchmark : PrecompileBenchmarkBase
 {
-    protected override IEnumerable<IPrecompile> Precompiles => new[]
-    {
-        G1MSMPrecompile.Instance
-    };
+    protected override IEnumerable<IPrecompile> Precompiles => [Bls12381G1MsmPrecompile.Instance];
 
     protected override string InputsDirectory => "blsg1msm";
 }

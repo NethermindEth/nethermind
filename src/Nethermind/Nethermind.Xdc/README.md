@@ -603,6 +603,7 @@ QuorumCertificate {
 }
 ```
 
+<!-- cspell:ignore sig₁ sig₂ vote₁ vote₂ vote₃ voteₙ -->
 **QC Formation**:
 ```
 Votes (2f+1)  ──────▶  Aggregate Signatures  ──────▶  QC
@@ -777,7 +778,7 @@ CalculateNextEpochMasternodes(blockNumber, parentHash):
   1. Load previous snapshot (gap block)
   2. Get candidates from snapshot
   3. Calculate penalties (forensics)
-  4. masterodes = candidates - penalties
+  4. masternodes = candidates - penalties
   5. Enforce maximum: Take(MaxMasternodes)
   6. Return (masternodes, penalties)
 ```
@@ -1104,7 +1105,7 @@ public bool VerifyVotingRules(...) {
 ```
 Block 850 (Gap):    Store snapshot with candidates
 Block 900 (Switch): Load snapshot, calculate masternodes
-                    masterodes = snapshot.candidates - penalties
+                    masternodes = snapshot.candidates - penalties
 ```
 
 ---
