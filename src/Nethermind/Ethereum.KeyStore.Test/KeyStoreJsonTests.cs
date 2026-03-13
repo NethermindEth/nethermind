@@ -52,8 +52,8 @@ namespace Ethereum.KeyStore.Test
         [TestCase("test1")]
         [TestCase("test2")]
         [TestCase("python_generated_test_with_odd_iv")]
-        [TestCase("evilnonce")]
-        [TestCase("mycrypto")]
+        [TestCase("evilnonce")] // cspell:disable-line
+        [TestCase("mycrypto")] // cspell:disable-line
         public void Test(string testName)
         {
             KeyStoreTestModel testModel = _testsModel[testName];
