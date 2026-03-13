@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Diagnosers;
+using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Exporters.Json;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Toolchains.InProcess.Emit;
@@ -45,7 +46,8 @@ public class GasBenchmarkConfig : ManualConfig
             .WithWarmupCount(WarmupCount ?? 1)
             .WithIterationCount(IterationCount ?? 1)
             .WithInvocationCount(1)
-            .WithUnrollFactor(1);
+            .WithUnrollFactor(1)
+            .WithGcForce(false);
 
         if (InProcess)
         {
