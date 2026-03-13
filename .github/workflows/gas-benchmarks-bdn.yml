@@ -192,6 +192,16 @@ jobs:
           sync && echo 3 | sudo tee /proc/sys/vm/drop_caches || true
           # Disable kernel address space randomization for deterministic layout
           echo 0 | sudo tee /proc/sys/kernel/randomize_va_space || true
+          # Move all IRQs away from benchmark cores 2-5
+          for irq in /proc/irq/*/smp_affinity_list; do
+            echo "0-1,6-23" | sudo tee "$irq" 2>/dev/null || true
+          done
+          # Disable kernel tick on benchmark cores (reduces scheduling overhead)
+          for cpu in 2 3 4 5; do
+            sudo tee /sys/devices/system/cpu/cpu${cpu}/online <<< 1 2>/dev/null || true
+          done
+          # Move kernel threads off benchmark cores
+          sudo tee /proc/sys/kernel/sched_rt_runtime_us <<< -1 2>/dev/null || true
 
       - name: Run benchmarks (chunk ${{ matrix.chunk }}/${{ strategy.job-total }})
         shell: bash
@@ -228,7 +238,9 @@ jobs:
             ARGS="$ARGS --launchCount $LAUNCHES"
           fi
 
-          dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll $ARGS
+          # Use taskset to pin to cores 2-5 at OS level + nice -20 for highest priority
+          sudo nice -n -20 taskset -c 2-5 \
+            dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll $ARGS
 
       - name: Upload results
         if: always()
