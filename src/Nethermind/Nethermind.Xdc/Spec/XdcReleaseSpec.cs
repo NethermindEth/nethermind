@@ -42,7 +42,6 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public Address XDCXAddressBinary { get; set; }
     public Address TradingStateAddressBinary { get; set; }
     public long TIP2019Block { get; set; }
-    public long TipUpgradePenalty { get; set; }
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
     public bool IsTipUpgradePenaltyEnabled { get; set; }
@@ -136,7 +135,6 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public bool IsBlackListingEnabled { get; set; }
     public bool IsTIP2019 { get; set; }
     public bool IsTIPXDCXMiner { get; set; }
-    public long TipUpgradePenalty { get; set; }
     public bool IsTipUpgradePenaltyEnabled { get; set; }
     public bool IsDynamicGasLimitBlock { get; set; }
     public void ApplyV2Config(ulong round);

@@ -80,7 +80,6 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         if (TipUpgradePenalty is not null)
             blockNumbers.Add(TipUpgradePenalty.Value);
     }
-
 }
 
 public sealed class V2ConfigParams

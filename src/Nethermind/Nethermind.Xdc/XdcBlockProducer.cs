@@ -74,8 +74,7 @@ internal class XdcBlockProducer : BlockProducerBase
             parent.Number + 1,
             gasLimit,
             0,
-            extra
-        );
+            extra);
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader, currentRound);
 

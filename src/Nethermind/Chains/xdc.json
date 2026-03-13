@@ -63,6 +63,7 @@
         ],
 
         "MergeSignRange": 15,
+        "RangeReturnSigner": 150,
 
         "DynamicGasLimitBlock": 99999999999999,
         "tip2019Block": 1,
