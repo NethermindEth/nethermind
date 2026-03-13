@@ -295,18 +295,30 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.CREATE] = spec.IsEip8037Enabled
             ? &InstructionCreate<TGasPolicy, OpCreate, TTracingInst, OnFlag>
             : &InstructionCreate<TGasPolicy, OpCreate, TTracingInst, OffFlag>;
-        lookup[(int)Instruction.CALL] = spec.IsEip8037Enabled
-            ? &InstructionCall<TGasPolicy, OpCall, TTracingInst, OnFlag>
-            : &InstructionCall<TGasPolicy, OpCall, TTracingInst, OffFlag>;
-        lookup[(int)Instruction.CALLCODE] = spec.IsEip8037Enabled
-            ? &InstructionCall<TGasPolicy, OpCallCode, TTracingInst, OnFlag>
-            : &InstructionCall<TGasPolicy, OpCallCode, TTracingInst, OffFlag>;
+        lookup[(int)Instruction.CALL] = (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
+        {
+            (true, true) => &InstructionCall<TGasPolicy, OpCall, TTracingInst, OnFlag, OnFlag>,
+            (true, false) => &InstructionCall<TGasPolicy, OpCall, TTracingInst, OnFlag, OffFlag>,
+            (false, true) => &InstructionCall<TGasPolicy, OpCall, TTracingInst, OffFlag, OnFlag>,
+            (false, false) => &InstructionCall<TGasPolicy, OpCall, TTracingInst, OffFlag, OffFlag>,
+        };
+        lookup[(int)Instruction.CALLCODE] = (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
+        {
+            (true, true) => &InstructionCall<TGasPolicy, OpCallCode, TTracingInst, OnFlag, OnFlag>,
+            (true, false) => &InstructionCall<TGasPolicy, OpCallCode, TTracingInst, OnFlag, OffFlag>,
+            (false, true) => &InstructionCall<TGasPolicy, OpCallCode, TTracingInst, OffFlag, OnFlag>,
+            (false, false) => &InstructionCall<TGasPolicy, OpCallCode, TTracingInst, OffFlag, OffFlag>,
+        };
         lookup[(int)Instruction.RETURN] = &InstructionReturn;
         if (spec.DelegateCallEnabled)
         {
-            lookup[(int)Instruction.DELEGATECALL] = spec.IsEip8037Enabled
-                ? &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst, OnFlag>
-                : &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst, OffFlag>;
+            lookup[(int)Instruction.DELEGATECALL] = (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
+            {
+                (true, true) => &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst, OnFlag, OnFlag>,
+                (true, false) => &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst, OnFlag, OffFlag>,
+                (false, true) => &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst, OffFlag, OnFlag>,
+                (false, false) => &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst, OffFlag, OffFlag>,
+            };
         }
         if (spec.Create2OpcodeEnabled)
         {
@@ -318,9 +330,13 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.RETURNDATALOAD] = &InstructionReturnDataLoad<TGasPolicy, TTracingInst>;
         if (spec.StaticCallEnabled)
         {
-            lookup[(int)Instruction.STATICCALL] = spec.IsEip8037Enabled
-                ? &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst, OnFlag>
-                : &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst, OffFlag>;
+            lookup[(int)Instruction.STATICCALL] = (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
+            {
+                (true, true) => &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst, OnFlag, OnFlag>,
+                (true, false) => &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst, OnFlag, OffFlag>,
+                (false, true) => &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst, OffFlag, OnFlag>,
+                (false, false) => &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst, OffFlag, OffFlag>,
+            };
         }
 
         // Extended call opcodes in EO mode.
@@ -350,9 +366,13 @@ internal static unsafe partial class EvmInstructions
 
         // Final opcodes.
         lookup[(int)Instruction.INVALID] = &InstructionInvalid;
-        lookup[(int)Instruction.SELFDESTRUCT] = spec.IsEip8037Enabled
-            ? &InstructionSelfDestruct<TGasPolicy, OnFlag>
-            : &InstructionSelfDestruct<TGasPolicy, OffFlag>;
+        lookup[(int)Instruction.SELFDESTRUCT] = (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
+        {
+            (true, true) => &InstructionSelfDestruct<TGasPolicy, OnFlag, OnFlag>,
+            (true, false) => &InstructionSelfDestruct<TGasPolicy, OnFlag, OffFlag>,
+            (false, true) => &InstructionSelfDestruct<TGasPolicy, OffFlag, OnFlag>,
+            (false, false) => &InstructionSelfDestruct<TGasPolicy, OffFlag, OffFlag>,
+        };
 
         return lookup;
     }
