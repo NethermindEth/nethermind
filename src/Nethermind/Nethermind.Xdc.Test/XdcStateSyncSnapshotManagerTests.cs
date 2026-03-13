@@ -11,6 +11,7 @@ using NUnit.Framework;
 using Nethermind.Xdc.Test.Helpers;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Xdc.Test;
 
@@ -66,7 +67,7 @@ internal class XdcStateSyncSnapshotManagerTests
     // gapBlockNum = Max(switchBlock - switchBlock%epochLength, epochLength) - gap
     // V1 branch triggers when gapBlockNum + gap == switchBlock
     [TestCase(27, 10, 10, 5, new int[] { 10, 19 }, new int[] { 15, 25 })]
-    [TestCase(14, 10, 10, 5, new int[] { 10 },     new int[] { })]
+    [TestCase(14, 10, 10, 5, new int[] { 10 }, new int[] { })]
     public async Task GetGapBlocks_WhenGapLandsOnSwitchBlock_StoresV1Snapshot(
         int pivotNumber,
         int switchBlock,
@@ -76,7 +77,6 @@ internal class XdcStateSyncSnapshotManagerTests
         int[] expectedGapBlockNumbers
     )
     {
-
         XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create(pivotNumber);
         xdcTestBlockchain.ChangeReleaseSpec(spec =>
         {
@@ -84,6 +84,10 @@ internal class XdcStateSyncSnapshotManagerTests
             spec.Gap = gap;
             spec.SwitchBlock = switchBlock;
         });
+
+        Address[] masternodeAddresses = { TestItem.AddressA, TestItem.AddressB };
+        XdcBlockHeader switchHeader = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(switchBlock)!;
+        switchHeader.ExtraData = XdcTestHelper.BuildV1ExtraData(masternodeAddresses);
 
         XdcBlockHeader pivotHeader = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(pivotNumber)!;
         pivotHeader.Number.Should().Be(pivotNumber);
@@ -105,7 +109,8 @@ internal class XdcStateSyncSnapshotManagerTests
         int[] resultNumbers = result.Select(r => (int)r.Number).ToArray();
 
         resultNumbers.Should().BeEquivalentTo(expectedGapBlockNumbers);
-        // Masternodes may be parsed incorrectly from ExtraData in test context, but we verify the call was made with the correct block number
-        snapshotManager.Received(1).StoreSnapshot(Arg.Is<Snapshot>(s => s.BlockNumber == switchBlock - gap));
+        snapshotManager.Received(1).StoreSnapshot(Arg.Is<Snapshot>(s =>
+            s.BlockNumber == switchBlock - gap &&
+            s.NextEpochCandidates.SequenceEqual(masternodeAddresses)));
     }
 }

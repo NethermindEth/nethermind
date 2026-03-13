@@ -1134,9 +1134,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 });
             }
 
-            using ArrayPoolList<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
+            using ArrayPoolListRef<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
                     entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, commitSet.BlockNumber, persistedNodeRecorder, writeFlags, disposeQueue)))
-                .ToPooledList(parallelStartNodes.Count);
+                .ToPooledListRef(parallelStartNodes.Count);
 
             Task.WaitAll(persistNodeStartingFromTasks.AsSpan());
         }

@@ -12,8 +12,8 @@ using System;
 namespace Nethermind.Xdc;
 
 /// <summary>
-/// In XDC, header verification requires snapshots from previous blocks; 
-/// however, these are not loaded during fast sync because previous headers are not processed normally. 
+/// In XDC, header verification requires snapshots from previous blocks;
+/// however, these are not loaded during fast sync because previous headers are not processed normally.
 /// This class calculates the required gap block numbers and stores their snapshots.
 /// </summary>
 public class XdcStateSyncSnapshotManager
