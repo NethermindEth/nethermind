@@ -46,60 +46,34 @@ namespace Ethereum.Trie.Test
                     .ToList(),
                 p.Value.Root);
 
-        private static IEnumerable<TrieTest> LoadTests() =>
-            TestLoader.LoadFromFile<Dictionary<string, TrieTestArraysJson>, TrieTest>(
-                    "trietest.json",
-                    dwj => dwj.Select(Convert))
-                // Remove branch value tests
-                .Where(t => t.Input.All(kvp => kvp.Key.Length == 32));
+        private static TrieTest Convert(KeyValuePair<string, TrieTestJson> p) =>
+            new(p.Key, p.Value.In.ToList(), p.Value.Root);
 
-        private static IEnumerable<TrieTest> LoadSecureTests() =>
-            TestLoader.LoadFromFile<Dictionary<string, TrieTestArraysJson>, TrieTest>(
-                "trietest_secureTrie.json",
-                dwj => dwj.Select(Convert));
+        // Filter out branch value tests (keys shorter than 32 bytes)
+        private static bool HasOnlyFullKeys(TrieTest t) => t.Input.All(kvp => kvp.Key.Length == 32);
 
-        private static IEnumerable<TrieTest> LoadAnyOrderTests() =>
-            GetTestPermutations(TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
-                    "trieanyorder.json",
-                    dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)))
-                // Remove branch value tests
-                .Where(t => t.Input.All(kvp => kvp.Key.Length == 32)));
-
-        private static IEnumerable<TrieTest> LoadHexEncodedSecureTests() =>
-            GetTestPermutations(TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
-                    "hex_encoded_securetrie_test.json",
-                    dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)))
-                // Remove branch value tests
-                .Where(t => t.Input.All(kvp => kvp.Key.Length == 32)));
-
-        private static IEnumerable<TrieTest> LoadAnyOrderSecureTests() =>
-            GetTestPermutations(TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
-                "trieanyorder_secureTrie.json",
-                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root))));
-
-        [TestCaseSource(nameof(LoadTests))]
-        public void Test(TrieTest test) => RunTest(test, false);
-
-        [TestCaseSource(nameof(LoadSecureTests))]
-        public void Test_secure(TrieTest test) => RunTest(test, true);
-
-        [TestCaseSource(nameof(LoadAnyOrderTests))]
-        public void Test_any_order(TrieTest test) => RunTest(test, false);
-
-        [TestCaseSource(nameof(LoadAnyOrderSecureTests))]
-        public void Test_any_order_secure(TrieTest test) => RunTest(test, true);
-
-        [TestCaseSource(nameof(LoadHexEncodedSecureTests))]
-        public void Test_hex_encoded_secure(TrieTest test) => RunTest(test, true);
-
-        private void RunTest(TrieTest test, bool secure)
+        private static IEnumerable<TrieTest> LoadArrays(string file, bool filterBranch = false)
         {
-            if (secure)
-            {
-                // removed the implementation of secure trie as it was not used outside of tests
-                return;
-            }
+            IEnumerable<TrieTest> tests = TestLoader.LoadFromFile<Dictionary<string, TrieTestArraysJson>, TrieTest>(
+                file, d => d.Select(Convert));
+            return filterBranch ? tests.Where(HasOnlyFullKeys) : tests;
+        }
 
+        private static IEnumerable<TrieTest> LoadPermuted(string file, bool filterBranch = false)
+        {
+            IEnumerable<TrieTest> tests = TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
+                file, d => d.Select(Convert));
+            if (filterBranch) tests = tests.Where(HasOnlyFullKeys);
+            return GetTestPermutations(tests);
+        }
+
+        private static IEnumerable<TrieTest> LoadAllTests() =>
+            LoadArrays("trietest.json", filterBranch: true)
+                .Concat(LoadPermuted("trieanyorder.json", filterBranch: true));
+
+        [TestCaseSource(nameof(LoadAllTests))]
+        public void Test(TrieTest test)
+        {
             string permutationDescription = string.Join(Environment.NewLine, test.Input.Select(p => $"{p.Key} -> {p.Value}"));
 
             TestContext.Out.WriteLine(Surrounded(permutationDescription));
@@ -207,7 +181,6 @@ namespace Ethereum.Trie.Test
             public string Name { get; set; } = name;
             public IReadOnlyCollection<KeyValuePair<string, string>> Input { get; set; } = input;
             public string ExpectedRoot { get; set; } = expectedRoot;
-
             public override string ToString() => $"{Name}, exp: {ExpectedRoot} {Guid.NewGuid()}";
         }
     }

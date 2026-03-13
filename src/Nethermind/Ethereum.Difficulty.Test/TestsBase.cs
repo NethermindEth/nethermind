@@ -16,24 +16,20 @@ namespace Ethereum.Difficulty.Test
 {
     public abstract class TestsBase
     {
-        public static IEnumerable<DifficultyTests> Load(string fileName)
-        {
-            return TestLoader.LoadFromFile<Dictionary<string, DifficultyTestJson>, DifficultyTests>(
+        protected static IEnumerable<DifficultyTests> Load(string fileName) =>
+            TestLoader.LoadFromFile<Dictionary<string, DifficultyTestJson>, DifficultyTests>(
                 fileName,
                 t => t.Select(dtj => ToTest(fileName, dtj.Key, dtj.Value)));
-        }
 
-        private static readonly JsonSerializerOptions s_caseInsensitive = new() { PropertyNameCaseInsensitive = true };
+        private static readonly JsonSerializerOptions _caseInsensitive = new() { PropertyNameCaseInsensitive = true };
 
-        public static IEnumerable<DifficultyTests> LoadHex(string fileName)
-        {
+        protected static IEnumerable<DifficultyTests> LoadHex(string fileName) =>
             // Handles both flat format (BasicTests/) and nested format (DifficultyTests/).
             // Flat:  { "TestName": { fields } }
             // Nested: { "suiteName": { "_info": {...}, "ForkName": { "TestName": { fields } } } }
-            return TestLoader.LoadFromFile<Dictionary<string, JsonElement>, DifficultyTests>(
+            TestLoader.LoadFromFile<Dictionary<string, JsonElement>, DifficultyTests>(
                 fileName,
                 root => ExtractHexTests(fileName, root)).ToList();
-        }
 
         private static IEnumerable<DifficultyTests> ExtractHexTests(string fileName, Dictionary<string, JsonElement> root)
         {
@@ -42,24 +38,23 @@ namespace Ethereum.Difficulty.Test
                 if (value.TryGetProperty("parentTimestamp", out _) || value.TryGetProperty("ParentTimestamp", out _))
                 {
                     // Flat format: value is a test entry directly
-                    yield return ToTest(fileName, key, value.Deserialize<DifficultyTestHexJson>(s_caseInsensitive)!);
+                    yield return ToTest(fileName, key, value.Deserialize<DifficultyTestHexJson>(_caseInsensitive)!);
                     continue;
                 }
 
                 // Nested format: value contains _info + fork sections with test entries
-                foreach (JsonProperty fork in value.EnumerateObject())
+                foreach (JsonProperty fork in value.EnumerateObject().Where(f => f.Name != "_info"))
                 {
-                    if (fork.Name == "_info") continue;
                     foreach (JsonProperty test in fork.Value.EnumerateObject())
-                        yield return ToTest(fileName, test.Name, test.Value.Deserialize<DifficultyTestHexJson>(s_caseInsensitive)!);
+                    {
+                        yield return ToTest(fileName, test.Name, test.Value.Deserialize<DifficultyTestHexJson>(_caseInsensitive)!);
+                    }
                 }
             }
         }
 
-        protected static DifficultyTests ToTest(string fileName, string name, DifficultyTestJson json)
-        {
-            return new DifficultyTests(
-                fileName,
+        private static DifficultyTests ToTest(string fileName, string name, DifficultyTestJson json) =>
+            new(fileName,
                 name,
                 (ulong)json.ParentTimestamp,
                 (ulong)json.ParentDifficulty,
@@ -67,15 +62,10 @@ namespace Ethereum.Difficulty.Test
                 json.CurrentBlockNumber,
                 (ulong)json.CurrentDifficulty,
                 false);
-        }
 
-        private static UInt256 ToUInt256(string hex)
-        {
-            hex = hex.Replace("0x", "0");
-            return Bytes.FromHexString(hex).ToUInt256();
-        }
+        private static UInt256 ToUInt256(string hex) => Bytes.FromHexString(hex.Replace("0x", "0")).ToUInt256();
 
-        protected static DifficultyTests ToTest(string fileName, string name, DifficultyTestHexJson json)
+        private static DifficultyTests ToTest(string fileName, string name, DifficultyTestHexJson json)
         {
             return new DifficultyTests(
                 fileName,
@@ -88,16 +78,12 @@ namespace Ethereum.Difficulty.Test
                 HasUncles(json.ParentUncles));
         }
 
-        private static bool HasUncles(string parentUncles)
-        {
-            if (string.IsNullOrWhiteSpace(parentUncles) || parentUncles.Length < 66)
-                return false;
-            return new Hash256(parentUncles) != Keccak.OfAnEmptySequenceRlp;
-        }
+        private static bool HasUncles(string parentUncles) =>
+            !string.IsNullOrWhiteSpace(parentUncles) && parentUncles.Length >= Hash256.Size * 2 + "0x".Length && new Hash256(parentUncles) != Keccak.OfAnEmptySequenceRlp;
 
         protected void RunTest(DifficultyTests test, ISpecProvider specProvider)
         {
-            EthashDifficultyCalculator calculator = new EthashDifficultyCalculator(specProvider);
+            EthashDifficultyCalculator calculator = new(specProvider);
 
             UInt256 difficulty = calculator.Calculate(
                 test.ParentDifficulty,
@@ -112,13 +98,12 @@ namespace Ethereum.Difficulty.Test
 
     /// <summary>
     /// Generic fixture for difficulty tests that load hex JSON and use a constructor-provided spec provider.
-    /// JSON filename is derived from class name: strip "Tests" suffix, lowercase first char, add ".json".
+    /// JSON filename is derived from the class name: strip "Tests" suffix, lowercase first char, add ".json".
     /// </summary>
     [Parallelizable(ParallelScope.All)]
     public abstract class DifficultyHexTestFixture<TSelf>(ISpecProvider specProvider) : TestsBase
     {
-        public static IEnumerable<DifficultyTests> LoadTests() =>
-            LoadHex(TestDirectoryHelper.GetJsonFileByConvention<TSelf>("Tests"));
+        public static IEnumerable<DifficultyTests> LoadTests() => LoadHex(TestDirectoryHelper.GetJsonFileByConvention<TSelf>("Tests"));
 
         [TestCaseSource(nameof(LoadTests))]
         public void Test(DifficultyTests test) => RunTest(test, specProvider);
