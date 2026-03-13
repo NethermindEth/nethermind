@@ -26,7 +26,7 @@ public static class IReleaseSpecExtensions
         public bool ModExpEnabled => spec.IsEip198Enabled;
         public bool BN254Enabled => spec.IsEip196Enabled && spec.IsEip197Enabled;
         public bool BlakeEnabled => spec.IsEip152Enabled;
-        public bool Bls381Enabled => spec.IsEip2537Enabled;
+        public bool Bls12381Enabled => spec.IsEip2537Enabled;
         public bool ChargeForTopLevelCreate => spec.IsEip2Enabled;
         public bool FailOnOutOfGasCodeDeposit => spec.IsEip2Enabled;
         public bool UseShanghaiDDosProtection => spec.IsEip150Enabled;
