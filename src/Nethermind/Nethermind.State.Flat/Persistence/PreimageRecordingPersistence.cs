@@ -27,7 +27,7 @@ public class PreimageRecordingPersistence : IPersistence
         _preimageDb = preimageDb;
     }
 
-    public IPersistence.IPersistenceReader CreateReader() => _inner.CreateReader();
+    public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => _inner.CreateReader(flags);
 
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
     {
@@ -38,6 +38,7 @@ public class PreimageRecordingPersistence : IPersistence
     }
 
     public void Flush() => _inner.Flush();
+    public void Clear() => _inner.Clear();
 
     private class RecordingWriteBatch(IPersistence.IWriteBatch inner, IWriteBatch preimageWriteBatch, IDb preimageDb) : IPersistence.IWriteBatch
     {
@@ -70,7 +71,7 @@ public class PreimageRecordingPersistence : IPersistence
 
         public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) => inner.SetStorageTrieNode(address, path, tnValue);
 
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value)
+        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value)
         {
             byte[]? addrPreimage = preimageDb.Get(addrHash.Bytes[..PreimageLookupSize]);
             byte[]? slotPreimage = preimageDb.Get(slotHash.Bytes[..PreimageLookupSize]);
@@ -86,7 +87,7 @@ public class PreimageRecordingPersistence : IPersistence
             }
         }
 
-        public void SetAccountRaw(Hash256 addrHash, Account account)
+        public void SetAccountRaw(in ValueHash256 addrHash, Account account)
         {
             byte[]? addrPreimage = preimageDb.Get(addrHash.Bytes[..PreimageLookupSize]);
             if (addrPreimage is not null)
@@ -112,5 +113,17 @@ public class PreimageRecordingPersistence : IPersistence
             StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
             preimageWriteBatch.PutSpan(slotHash.BytesAsSpan[..PreimageLookupSize], slot.ToBigEndian());
         }
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            inner.DeleteAccountRange(fromPath, toPath);
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            inner.DeleteStorageRange(addressHash, fromPath, toPath);
+
+        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) =>
+            inner.DeleteStateTrieNodeRange(fromPath, toPath);
+
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) =>
+            inner.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
     }
 }

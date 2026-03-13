@@ -10,9 +10,9 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
 
-public ref struct ValueRlpStream(SpanSource data)
+public ref struct ValueRlpStream(CappedArray<byte> data)
 {
-    public readonly ReadOnlySpan<byte> Data = data.Span;
+    public readonly ReadOnlySpan<byte> Data = data.AsSpan();
     private int _position = 0;
 
     internal readonly string Description =>

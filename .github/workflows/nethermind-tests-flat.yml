@@ -19,6 +19,7 @@ jobs:
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     continue-on-error: true
     strategy:
       matrix:
@@ -26,7 +27,6 @@ jobs:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
           - Ethereum.Blockchain.Block.Test
-          - Ethereum.Blockchain.Pyspec.Test
           - Ethereum.Difficulty.Test
           - Ethereum.HexPrefix.Test
           - Ethereum.KeyAddress.Test
@@ -45,12 +45,28 @@ jobs:
         chunk: ['']
         include:
           - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 1of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 2of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 3of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 4of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 5of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 6of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 7of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 8of8
+          - project: Ethereum.Blockchain.Pyspec.Test
             chunk: 1of4
-          - project: Ethereum.Legacy.Blockchain.Test
+          - project: Ethereum.Blockchain.Pyspec.Test
             chunk: 2of4
-          - project: Ethereum.Legacy.Blockchain.Test
+          - project: Ethereum.Blockchain.Pyspec.Test
             chunk: 3of4
-          - project: Ethereum.Legacy.Blockchain.Test
+          - project: Ethereum.Blockchain.Pyspec.Test
             chunk: 4of4
     steps:
       - name: Check out repository
@@ -60,6 +76,13 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
 
       - name: ${{ matrix.project }}
         id: test

@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -117,7 +118,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
             // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
             // may make it worst. Always check on mainnet.
-            using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
+            using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
             foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
             {
                 if (blockCommitter.TryRequestConcurrencyQuota())
@@ -127,7 +128,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                         StorageTree st = (StorageTree)ctx;
                         st.Commit();
                         blockCommitter.ReturnConcurrencyQuota();
-                    }, storage.Value));
+                    }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
                 }
                 else
                 {
@@ -135,7 +136,6 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 }
             }
 
-            // STUCK HERE (comment will be removed)
             Task.WaitAll(commitTask.AsSpan());
             _backingStateTree.Commit();
             _storages.Clear();
