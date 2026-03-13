@@ -293,9 +293,10 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     protected bool ArePayloadAttributesTimestampAndSlotNumberValid(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,
         [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
-        if (payloadAttributes.Timestamp < GetMinRequiredTimestamp(newHeadBlock))
+        ulong minRequiredTimestamp = GetMinRequiredTimestamp(newHeadBlock);
+        if (payloadAttributes.Timestamp < minRequiredTimestamp)
         {
-            string error = $"Payload timestamp {payloadAttributes.Timestamp} must be greater than block timestamp {newHeadBlock.Timestamp}.";
+            string error = $"Payload timestamp {payloadAttributes.Timestamp} must be greater than or equal to {minRequiredTimestamp}.";
             errorResult = ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
             return false;
         }
