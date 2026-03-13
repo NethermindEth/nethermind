@@ -6,7 +6,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.EraE.Config;
-using Nethermind.EraE.Exceptions;
+using EraException = Nethermind.Era1.EraException;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Store;
 using NUnit.Framework;

@@ -9,7 +9,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Archive;
 using Nethermind.EraE.E2Store;
-using Nethermind.EraE.Exceptions;
+using EraException = Nethermind.Era1.EraException;
+using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.EraE.Export;
 using NonBlocking;
 

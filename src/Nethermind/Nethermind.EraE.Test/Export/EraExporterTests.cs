@@ -8,7 +8,7 @@ using Nethermind.Core;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using Nethermind.EraE.Config;
-using Nethermind.EraE.Exceptions;
+using EraException = Nethermind.Era1.EraException;
 using Nethermind.EraE.Export;
 using NUnit.Framework;
 

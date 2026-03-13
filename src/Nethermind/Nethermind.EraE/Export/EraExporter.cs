@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Archive;
 using Nethermind.EraE.Config;
-using Nethermind.EraE.Exceptions;
+using EraException = Nethermind.Era1.EraException;
 using Nethermind.EraE.Proofs;
 using Nethermind.Logging;
 

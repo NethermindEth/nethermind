@@ -10,10 +10,10 @@ using Microsoft.Win32.SafeHandles;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
-using Nethermind.Era1;
 using Nethermind.EraE.Exceptions;
 using Snappier;
 using EraException = Nethermind.Era1.EraException;
+using Entry = Nethermind.Era1.Entry;
 using EraWriter = Nethermind.EraE.Archive.EraWriter;
 
 namespace Nethermind.EraE.E2Store;

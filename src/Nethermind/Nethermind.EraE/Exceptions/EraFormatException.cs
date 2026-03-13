@@ -3,5 +3,4 @@
 
 namespace Nethermind.EraE.Exceptions;
 
-[Serializable]
-internal class EraFormatException(string message) : EraException(message);
+internal class EraFormatException(string message) : Nethermind.Era1.EraException(message);

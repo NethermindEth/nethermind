@@ -5,7 +5,7 @@ using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Ssz;
 
-namespace Nethermind.BlockProofs;
+namespace Nethermind.EraE.Proofs;
 
 [SszSerializable]
 public struct SSZBytes32
@@ -17,7 +17,6 @@ public struct SSZBytes32
 
     public static SSZBytes32 From(ValueHash256 hash) => new() { Data = hash.ToByteArray() };
 }
-
 
 [SszSerializable]
 public struct HistoricalBatch
@@ -59,7 +58,6 @@ public struct BlockProofHistoricalHashesAccumulator
     public static BlockProofHistoricalHashesAccumulator From(ValueHash256[] hashesAccumulator) =>
         new() { Data = [.. hashesAccumulator.Select(SSZBytes32.From)] };
 }
-
 
 [SszSerializable]
 public struct BlockProofHistoricalRoots

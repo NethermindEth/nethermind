@@ -4,7 +4,8 @@
 using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.EraE.Archive;
-using Nethermind.EraE.Exceptions;
+using EraException = Nethermind.Era1.EraException;
+using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using NonBlocking;
 
 namespace Nethermind.EraE.Store;

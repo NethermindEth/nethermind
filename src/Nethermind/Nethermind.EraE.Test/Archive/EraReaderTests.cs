@@ -10,7 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.EraE.Archive;
-using Nethermind.EraE.Exceptions;
+using EraException = Nethermind.Era1.EraException;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;

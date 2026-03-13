@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.EraE.Config;
-using Nethermind.EraE.Exceptions;
+using EraException = Nethermind.Era1.EraException;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Import;
 using Nethermind.Logging;

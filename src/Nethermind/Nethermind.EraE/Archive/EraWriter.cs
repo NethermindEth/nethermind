@@ -11,7 +11,6 @@ using Nethermind.EraE.E2Store;
 using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.ProofDecoder;
 using ITimestamper = Nethermind.Core.ITimestamper;
 using Timestamper = Nethermind.Core.Timestamper;
 

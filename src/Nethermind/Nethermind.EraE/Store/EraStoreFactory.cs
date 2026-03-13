@@ -6,7 +6,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Config;
-using Nethermind.EraE.Exceptions;
+using EraException = Nethermind.Era1.EraException;
 using Nethermind.EraE.Proofs;
 
 namespace Nethermind.EraE.Store;
@@ -57,7 +57,3 @@ public class EraStoreFactory(
     }
 }
 
-public interface IEraStoreFactory
-{
-    IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators);
-}
