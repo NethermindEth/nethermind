@@ -102,7 +102,6 @@ public abstract class BlockchainTestBase
 
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
 
-        // Assert.That(isEngineTest || test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance, "Expected genesis spec to be Frontier for blockchain tests");
 
         if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
         {
