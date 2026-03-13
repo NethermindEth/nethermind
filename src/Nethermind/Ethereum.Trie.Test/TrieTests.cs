@@ -206,6 +206,7 @@ namespace Ethereum.Trie.Test
         //        new byte[] { 0x01, 0x01, 0x02 },
         //        Rlp.Encode(new object[] { "hello" }));
 
+        // cspell:ignore hellothere jimbojones
         //    patriciaTree.Set(
         //        new byte[] { 0x01, 0x01, 0x02 },
         //        Rlp.Encode(new object[] { "hellothere" }));
