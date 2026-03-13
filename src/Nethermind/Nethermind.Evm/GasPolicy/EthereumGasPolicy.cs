@@ -92,6 +92,20 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return result;
     }
 
+    /// <summary>
+    /// For Ethereum, SELFDESTRUCT beneficiary access is the same as regular account access.
+    /// Arbitrum overrides this to charge cold access as full StorageAccess (no split).
+    /// </summary>
+    public static bool ConsumeSelfDestructBeneficiaryAccessGas(ref EthereumGasPolicy gas,
+        IReleaseSpec spec,
+        ref readonly StackAccessTracker accessTracker,
+        bool isTracingAccess,
+        Address address)
+    {
+        // For Ethereum, just use regular account access gas (no MultiGas tracking)
+        return ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, chargeForWarm: false);
+    }
+
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,

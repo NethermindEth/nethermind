@@ -228,8 +228,10 @@ internal static partial class EvmInstructions
         if (inheritor is null)
             goto StackUnderflow;
 
-        // Charge gas for account access; if insufficient, signal out-of-gas.
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor, false))
+        // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
+        // Uses ConsumeSelfDestructBeneficiaryAccessGas which charges cold access as full StorageAccess
+        // (no Computation split) to match Nitro's makeSelfdestructGasFn behavior.
+        if (!TGasPolicy.ConsumeSelfDestructBeneficiaryAccessGas(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
@@ -256,17 +258,19 @@ internal static partial class EvmInstructions
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
         // For certain specs, charge gas if transferring to a dead account.
+        // Use ConsumeNewAccountCreation to track StorageGrowth (matching Nitro's CreateBySelfdestructGas)
         if (clearEmpty && !result.IsZero && state.IsDeadAccount(inheritor))
         {
-            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
+            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas))
                 goto OutOfGas;
         }
 
         // If account creation rules apply, ensure gas is charged for new accounts.
+        // Use ConsumeNewAccountCreation to track StorageGrowth (matching Nitro's CreateBySelfdestructGas)
         bool inheritorAccountExists = state.AccountExists(inheritor);
         if (!clearEmpty && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
         {
-            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
+            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas))
                 goto OutOfGas;
         }
 

@@ -30,7 +30,7 @@ using Nethermind.Db.Blooms;
 
 namespace Nethermind.Blockchain
 {
-    public partial class BlockTree : IBlockTree
+    public partial class BlockTree : IBlockTree, IResettableBlockTree
     {
         // there is not much logic in the addressing here
         private static readonly byte[] StateHeadHashDbEntryAddress = new byte[16];
@@ -1760,5 +1760,28 @@ namespace Nethermind.Blockchain
         public long GetLowestBlock() => _oldestBlock;
 
         public void NewOldestBlock(long oldestBlock) => _oldestBlock = oldestBlock;
+
+        /// <summary>
+        /// Resets internal in-memory state for testing purposes.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Thread Safety:</b> This method is NOT thread-safe. Callers MUST ensure no concurrent
+        /// block processing or sync operations are occurring. In test scenarios, this typically means
+        /// stopping the node before calling this method.
+        /// </para>
+        /// </remarks>
+        void IResettableBlockTree.ResetInternalState()
+        {
+            Head = null;
+            BestSuggestedHeader = null;
+            BestSuggestedBody = null;
+            BestKnownNumber = 0;
+            BestKnownBeaconNumber = 0;
+            BestSuggestedBeaconHeader = null;
+            BestSuggestedBeaconBody = null;
+            FinalizedHash = null;
+            SafeHash = null;
+        }
     }
 }
