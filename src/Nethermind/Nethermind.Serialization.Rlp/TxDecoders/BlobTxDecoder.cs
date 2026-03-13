@@ -10,6 +10,8 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseEIP1559TxDecoder<T>(TxType.Blob, transactionFactory) where T : Transaction, new()
 {
+    private static readonly RlpLimit BlobCountLimit = RlpLimit.For<Transaction>(128, nameof(Transaction.BlobVersionedHashes));
+
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
         ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -86,7 +88,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     {
         base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
         transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
-        transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays();
+        transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobCountLimit);
     }
 
     protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -102,15 +104,15 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         if (!decoderContext.IsSequenceNext())
         {
             version = (ProofVersion)decoderContext.ReadByte();
-            if (version != ProofVersion.V1)
+            if (version > ProofVersion.V1)
             {
                 throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}. Expected no more than {(int)ProofVersion.V1} and is {version}");
             }
         }
 
-        byte[][] blobs = decoderContext.DecodeByteArrays();
-        byte[][] commitments = decoderContext.DecodeByteArrays();
-        byte[][] proofs = decoderContext.DecodeByteArrays();
+        byte[][] blobs = decoderContext.DecodeByteArrays(BlobCountLimit);
+        byte[][] commitments = decoderContext.DecodeByteArrays(BlobCountLimit);
+        byte[][] proofs = decoderContext.DecodeByteArrays(BlobCountLimit);
 
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version);
     }
