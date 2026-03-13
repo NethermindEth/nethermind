@@ -14,6 +14,7 @@ namespace Nethermind.EraE.Proofs;
 public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
 {
     private readonly HttpClient _httpClient;
+    private readonly bool _ownsHttpClient;
     private readonly Uri _baseUrl;
     private readonly TimeSpan _requestTimeout;
     private readonly int _maxRetries;
@@ -28,12 +29,17 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
         int maxRetries = 3)
     {
         _baseUrl = baseUrl;
+        _ownsHttpClient = httpClient is null;
         _httpClient = httpClient ?? new HttpClient();
         _requestTimeout = requestTimeout ?? TimeSpan.FromSeconds(30);
         _maxRetries = maxRetries;
     }
 
-    public void Dispose() => _httpClient.Dispose();
+    public void Dispose()
+    {
+        if (_ownsHttpClient)
+            _httpClient.Dispose();
+    }
 
     public async Task<HistoricalSummary?> GetHistoricalSummary(
         int index,
@@ -56,25 +62,13 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
         return _cachedSummaries;
     }
 
-    private async Task<HistoricalSummary[]> LoadWithRetryAsync(
+    private Task<HistoricalSummary[]> LoadWithRetryAsync(
         string stateId,
-        CancellationToken cancellationToken)
-    {
-        int attempt = 0;
-        while (true)
-        {
-            try
-            {
-                return await LoadHistoricalSummariesAsync(stateId, cancellationToken);
-            }
-            catch (Exception ex) when (IsTransient(ex) && attempt < _maxRetries - 1)
-            {
-                attempt++;
-                TimeSpan delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)); // 2s, 4s, 8s
-                await Task.Delay(delay, cancellationToken);
-            }
-        }
-    }
+        CancellationToken cancellationToken) =>
+        BeaconApiRetry.RetryAsync(
+            ct => LoadHistoricalSummariesAsync(stateId, ct),
+            _maxRetries,
+            cancellationToken);
 
     private async Task<HistoricalSummary[]> LoadHistoricalSummariesAsync(
         string stateId,
@@ -95,9 +89,6 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
         await using Stream stream = await response.Content.ReadAsStreamAsync(timeoutCts.Token);
         return await ParseHistoricalSummariesFromStreamAsync(stream, timeoutCts.Token);
     }
-
-    private static bool IsTransient(Exception ex) =>
-        ex is HttpRequestException or TaskCanceledException or TimeoutException;
 
     private static async Task<HistoricalSummary[]> ParseHistoricalSummariesFromStreamAsync(
         Stream stream,

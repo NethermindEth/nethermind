@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.EraE.Archive;
+using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
 using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
 using NSubstitute;
@@ -143,30 +143,6 @@ public class AccumulatorCalculatorTests
 
         Assert.That(proof0[0], Is.Not.EqualTo(proof1[0]));
         Assert.That(proof0[1], Is.Not.EqualTo(proof1[1]));
-    }
-
-    /// <summary>
-    /// Cross-library consistency: EraE's AccumulatorCalculator must produce the same
-    /// accumulator root as Era1's AccumulatorCalculator for identical inputs.
-    /// This is the algorithm-level interoperability check between the two implementations.
-    /// </summary>
-    [Test]
-    public void ComputeRoot_SameInputs_Era1AndEraECalculatorsAgree()
-    {
-        Hash256[] hashes = [Keccak.Zero, Keccak.OfAnEmptyString, Keccak.MaxValue];
-        UInt256[] tds = [1, 2, 3];
-
-        using Era1.AccumulatorCalculator era1Calculator = new();
-        using AccumulatorCalculator eraeCalculator = new();
-
-        for (int i = 0; i < hashes.Length; i++)
-        {
-            era1Calculator.Add(hashes[i], tds[i]);
-            eraeCalculator.Add(hashes[i], tds[i]);
-        }
-
-        Assert.That(eraeCalculator.ComputeRoot(), Is.EqualTo(era1Calculator.ComputeRoot()),
-            "EraE and Era1 AccumulatorCalculator must produce identical roots for the same inputs");
     }
 
     private static Validator BuildValidator(ValueHash256 trustedRoot)

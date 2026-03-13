@@ -26,19 +26,20 @@ public class EraEModule : Module
         base.Load(builder);
 
         builder
+            .AddSingleton<HttpClient>()
             .AddSingleton<IBeaconRootsProvider>(ctx =>
             {
                 string? url = ctx.Resolve<IEraEConfig>().BeaconNodeUrl;
                 return string.IsNullOrWhiteSpace(url)
                     ? NullBeaconRootsProvider.Instance
-                    : new BeaconApiRootsProvider(new Uri(url));
+                    : new BeaconApiRootsProvider(new Uri(url), ctx.Resolve<HttpClient>());
             })
             .AddSingleton<IHistoricalSummariesProvider>(ctx =>
             {
                 string? url = ctx.Resolve<IEraEConfig>().BeaconNodeUrl;
                 return string.IsNullOrWhiteSpace(url)
                     ? NullHistoricalSummariesProvider.Instance
-                    : new HistoricalSummariesRpcProvider(new Uri(url));
+                    : new HistoricalSummariesRpcProvider(new Uri(url), ctx.Resolve<HttpClient>());
             })
             .AddSingleton<IEraImporter, EraImporter>()
             .AddSingleton<IEraExporter, EraExporter>()
@@ -47,7 +48,7 @@ public class EraEModule : Module
                 IEraEConfig config = ctx.Resolve<IEraEConfig>();
                 IRemoteEraClient? remoteClient = string.IsNullOrWhiteSpace(config.RemoteBaseUrl)
                     ? null
-                    : new HttpRemoteEraClient(new Uri(config.RemoteBaseUrl), config.RemoteChecksumFile, logManager: ctx.Resolve<ILogManager>());
+                    : new HttpRemoteEraClient(new Uri(config.RemoteBaseUrl), config.RemoteChecksumFile, ctx.Resolve<HttpClient>(), logManager: ctx.Resolve<ILogManager>());
 
                 return new EraStoreFactory(
                     ctx.Resolve<ISpecProvider>(),

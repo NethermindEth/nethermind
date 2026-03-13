@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.E2Store;
+using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
 using EraException = Nethermind.Era1.EraException;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.EraE.Proofs;

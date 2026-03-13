@@ -6,7 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.EraE.Archive;
+using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.EraE.Proofs;
 using Nethermind.Int256;

@@ -18,6 +18,7 @@ namespace Nethermind.EraE.Proofs;
 public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
 {
     private readonly HttpClient _httpClient;
+    private readonly bool _ownsHttpClient;
     private readonly Uri _baseUrl;
     private readonly TimeSpan _requestTimeout;
     private readonly int _maxRetries;
@@ -30,12 +31,17 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
         int maxRetries = 3)
     {
         _baseUrl = baseUrl;
+        _ownsHttpClient = httpClient is null;
         _httpClient = httpClient ?? new HttpClient();
         _requestTimeout = requestTimeout ?? TimeSpan.FromSeconds(30);
         _maxRetries = maxRetries;
     }
 
-    public void Dispose() => _httpClient.Dispose();
+    public void Dispose()
+    {
+        if (_ownsHttpClient)
+            _httpClient.Dispose();
+    }
 
     public async Task<(ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)?> GetBeaconRoots(
         long slot, CancellationToken cancellationToken = default)
@@ -52,31 +58,20 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
         return result;
     }
 
-    private async Task<(ValueHash256, ValueHash256)?> FetchWithRetryAsync(
-        long slot, CancellationToken cancellationToken)
-    {
-        int attempt = 0;
-        while (true)
+    private Task<(ValueHash256, ValueHash256)?> FetchWithRetryAsync(
+        long slot, CancellationToken cancellationToken) =>
+        BeaconApiRetry.RetryAsync(async ct =>
         {
-            try
-            {
-                ValueHash256? blockRoot = await FetchBlockRootAsync(slot, cancellationToken);
-                if (!blockRoot.HasValue)
-                    return null;
+            ValueHash256? blockRoot = await FetchBlockRootAsync(slot, ct);
+            if (!blockRoot.HasValue)
+                return default((ValueHash256, ValueHash256)?);
 
-                ValueHash256? stateRoot = await FetchStateRootAsync(slot, cancellationToken);
-                if (!stateRoot.HasValue)
-                    return null;
+            ValueHash256? stateRoot = await FetchStateRootAsync(slot, ct);
+            if (!stateRoot.HasValue)
+                return default((ValueHash256, ValueHash256)?);
 
-                return (blockRoot.Value, stateRoot.Value);
-            }
-            catch (Exception ex) when (IsTransient(ex) && attempt < _maxRetries - 1)
-            {
-                attempt++;
-                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), cancellationToken);
-            }
-        }
-    }
+            return (blockRoot.Value, stateRoot.Value);
+        }, _maxRetries, cancellationToken);
 
     private async Task<ValueHash256?> FetchBlockRootAsync(long slot, CancellationToken cancellationToken)
     {
@@ -165,6 +160,4 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
         }
     }
 
-    private static bool IsTransient(Exception ex) =>
-        ex is HttpRequestException or TaskCanceledException or TimeoutException;
 }

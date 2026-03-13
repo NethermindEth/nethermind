@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using System.IO.Compression;
-using System.Security.Cryptography;
 using CommunityToolkit.HighPerformance;
 using Microsoft.IO;
 using Microsoft.Win32.SafeHandles;
@@ -144,22 +143,8 @@ public sealed class E2StoreReader : IDisposable
         return entry;
     }
 
-    public ValueHash256 CalculateChecksum()
-    {
-        using IncrementalHash sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        const int bufferSize = 81920;
-        byte[] buffer = new byte[bufferSize];
-        long offset = 0;
-        while (offset < _fileLength)
-        {
-            int toRead = (int)Math.Min(bufferSize, _fileLength - offset);
-            int read = RandomAccess.Read(_file, buffer.AsSpan(0, toRead), offset);
-            if (read == 0) break;
-            sha.AppendData(buffer, 0, read);
-            offset += read;
-        }
-        return new ValueHash256(sha.GetHashAndReset());
-    }
+    public ValueHash256 CalculateChecksum() =>
+        Era1.E2StoreReader.ComputeChecksum(_file, _fileLength);
 
     public void Dispose() => _file.Dispose();
 
