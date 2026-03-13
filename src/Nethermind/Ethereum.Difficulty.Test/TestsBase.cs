@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Ethereum.Test.Base;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Crypto;
@@ -22,11 +23,37 @@ namespace Ethereum.Difficulty.Test
                 t => t.Select(dtj => ToTest(fileName, dtj.Key, dtj.Value)));
         }
 
+        private static readonly JsonSerializerOptions s_caseInsensitive = new() { PropertyNameCaseInsensitive = true };
+
         public static IEnumerable<DifficultyTests> LoadHex(string fileName)
         {
-            return TestLoader.LoadFromFile<Dictionary<string, DifficultyTestHexJson>, DifficultyTests>(
+            // Handles both flat format (BasicTests/) and nested format (DifficultyTests/).
+            // Flat:  { "TestName": { fields } }
+            // Nested: { "suiteName": { "_info": {...}, "ForkName": { "TestName": { fields } } } }
+            return TestLoader.LoadFromFile<Dictionary<string, JsonElement>, DifficultyTests>(
                 fileName,
-                t => t.Select(dtj => ToTest(fileName, dtj.Key, dtj.Value))).ToList();
+                root => ExtractHexTests(fileName, root)).ToList();
+        }
+
+        private static IEnumerable<DifficultyTests> ExtractHexTests(string fileName, Dictionary<string, JsonElement> root)
+        {
+            foreach ((string key, JsonElement value) in root)
+            {
+                if (value.TryGetProperty("parentTimestamp", out _) || value.TryGetProperty("ParentTimestamp", out _))
+                {
+                    // Flat format: value is a test entry directly
+                    yield return ToTest(fileName, key, value.Deserialize<DifficultyTestHexJson>(s_caseInsensitive)!);
+                    continue;
+                }
+
+                // Nested format: value contains _info + fork sections with test entries
+                foreach (JsonProperty fork in value.EnumerateObject())
+                {
+                    if (fork.Name == "_info") continue;
+                    foreach (JsonProperty test in fork.Value.EnumerateObject())
+                        yield return ToTest(fileName, test.Name, test.Value.Deserialize<DifficultyTestHexJson>(s_caseInsensitive)!);
+                }
+            }
         }
 
         protected static DifficultyTests ToTest(string fileName, string name, DifficultyTestJson json)
@@ -50,8 +77,6 @@ namespace Ethereum.Difficulty.Test
 
         protected static DifficultyTests ToTest(string fileName, string name, DifficultyTestHexJson json)
         {
-            Hash256 noUnclesHash = Keccak.OfAnEmptySequenceRlp;
-
             return new DifficultyTests(
                 fileName,
                 name,
@@ -60,7 +85,14 @@ namespace Ethereum.Difficulty.Test
                 (ulong)ToUInt256(json.CurrentTimestamp),
                 (long)ToUInt256(json.CurrentBlockNumber),
                 ToUInt256(json.CurrentDifficulty),
-                !string.IsNullOrWhiteSpace(json.ParentUncles) && new Hash256(json.ParentUncles) != noUnclesHash);
+                HasUncles(json.ParentUncles));
+        }
+
+        private static bool HasUncles(string parentUncles)
+        {
+            if (string.IsNullOrWhiteSpace(parentUncles) || parentUncles.Length < 66)
+                return false;
+            return new Hash256(parentUncles) != Keccak.OfAnEmptySequenceRlp;
         }
 
         protected void RunTest(DifficultyTests test, ISpecProvider specProvider)

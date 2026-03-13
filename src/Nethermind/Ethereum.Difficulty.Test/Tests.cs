@@ -8,14 +8,20 @@ using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test;
 
-// Only CustomHomestead and CustomMainNetwork use BasicTests/ flat JSON that the loader supports.
-// The DifficultyTests/ hex JSON files have nested structure incompatible with the current loader.
-
 public class DifficultyCustomHomesteadTests()
     : DifficultyHexTestFixture<DifficultyCustomHomesteadTests>(new TestSingleReleaseSpecProvider(Homestead.Instance));
 
 public class DifficultyCustomMainNetworkTests()
     : DifficultyHexTestFixture<DifficultyCustomMainNetworkTests>(MainnetSpecProvider.Instance);
+
+public class DifficultyFrontierTests()
+    : DifficultyHexTestFixture<DifficultyFrontierTests>(new TestSingleReleaseSpecProvider(Frontier.Instance));
+
+public class DifficultyHomesteadTests()
+    : DifficultyHexTestFixture<DifficultyHomesteadTests>(new TestSingleReleaseSpecProvider(Homestead.Instance));
+
+// Byzantium, Constantinople, and EIP2384 tests are disabled — difficulty bomb calculations
+// don't match the Ethereum Foundation test expectations (pre-existing, disabled on master too).
 
 [Parallelizable(ParallelScope.All)]
 public class DifficultyMainNetworkTests : TestsBase
