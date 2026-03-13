@@ -47,6 +47,8 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public Address Trc21IssuerContract { get; set; }
     public bool IsTipUpgradePenaltyEnabled { get; set; }
     public bool IsTipTrc21FeeEnabled { get; set; }
+    public long TipTrc21FeeBlock { get; set; }
+    public long BlockNumberGas50x { get; set; }
     public bool IsBlackListingEnabled { get; set; }
     public bool IsTIP2019 { get; set; }
     public bool IsTIPXDCXMiner { get; set; }
@@ -134,6 +136,8 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public Address MasternodeVotingContract { get; set; }
     public Address Trc21IssuerContract { get; set; }
     public bool IsTipTrc21FeeEnabled { get; set; }
+    public long TipTrc21FeeBlock { get; set; }
+    public long BlockNumberGas50x { get; set; }
     public bool IsBlackListingEnabled { get; set; }
     public bool IsTIP2019 { get; set; }
     public bool IsTIPXDCXMiner { get; set; }
