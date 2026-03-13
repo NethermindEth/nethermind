@@ -20,8 +20,25 @@ public class DifficultyFrontierTests()
 public class DifficultyHomesteadTests()
     : DifficultyHexTestFixture<DifficultyHomesteadTests>(new TestSingleReleaseSpecProvider(Homestead.Instance));
 
-// Byzantium, Constantinople, and EIP2384 tests are disabled — difficulty bomb calculations
-// don't match the Ethereum Foundation test expectations (pre-existing, disabled on master too).
+[Ignore("Difficulty bomb calculation mismatch — ~50% of tests fail (disabled on master too)")]
+public class DifficultyByzantiumTests()
+    : DifficultyHexTestFixture<DifficultyByzantiumTests>(new TestSingleReleaseSpecProvider(Byzantium.Instance));
+
+[Ignore("Difficulty bomb calculation mismatch — ~50% of tests fail (disabled on master too)")]
+public class DifficultyConstantinopleTests()
+    : DifficultyHexTestFixture<DifficultyConstantinopleTests>(new TestSingleReleaseSpecProvider(Constantinople.Instance));
+
+[Ignore("Difficulty bomb calculation mismatch — ~50% of tests fail (disabled on master too)")]
+public class DifficultyEIP2384Tests()
+    : DifficultyHexTestFixture<DifficultyEIP2384Tests>(new TestSingleReleaseSpecProvider(MuirGlacier.Instance));
+
+[Ignore("Difficulty bomb calculation mismatch — ~50% of tests fail (disabled on master too)")]
+public class DifficultyEIP2384_randomTests()
+    : DifficultyHexTestFixture<DifficultyEIP2384_randomTests>(new TestSingleReleaseSpecProvider(MuirGlacier.Instance));
+
+[Ignore("Difficulty bomb calculation mismatch — ~50% of tests fail (disabled on master too)")]
+public class DifficultyEIP2384_random_to20MTests()
+    : DifficultyHexTestFixture<DifficultyEIP2384_random_to20MTests>(new TestSingleReleaseSpecProvider(MuirGlacier.Instance));
 
 [Parallelizable(ParallelScope.All)]
 public class DifficultyMainNetworkTests : TestsBase
