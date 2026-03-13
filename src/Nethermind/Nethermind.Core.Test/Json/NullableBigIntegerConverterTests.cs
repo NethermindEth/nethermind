@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Numerics;
 using System.Text.Json;
 
@@ -21,12 +22,12 @@ public class NullableBigIntegerConverterTests : ConverterTestBase<BigInteger?>
         TestConverter(value, static (a, b) => a.Equals(b), converter);
     }
 
-    static object?[] RoundtripTestCases =
+    static IEnumerable<TestCaseData> RoundtripTestCases =
     [
-        new object?[] { null },
-        new object?[] { (BigInteger?)int.MaxValue },
-        new object?[] { (BigInteger?)BigInteger.One },
-        new object?[] { (BigInteger?)BigInteger.Zero },
+        new TestCaseData(null).SetName("null"),
+        new TestCaseData((BigInteger?)int.MaxValue).SetName("intMaxValue"),
+        new TestCaseData((BigInteger?)BigInteger.One).SetName("one"),
+        new TestCaseData((BigInteger?)BigInteger.Zero).SetName("zero"),
     ];
 
     [TestCase("0", "0")]

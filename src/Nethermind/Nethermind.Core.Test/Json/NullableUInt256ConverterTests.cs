@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Text.Json;
 
 using Nethermind.Int256;
@@ -22,12 +23,12 @@ public class NullableUInt256ConverterTests : ConverterTestBase<UInt256?>
         TestConverter(value, static (a, b) => a.Equals(b), converter);
     }
 
-    static object?[] RoundtripTestCases =
+    static IEnumerable<TestCaseData> RoundtripTestCases =
     [
-        new object?[] { null },
-        new object?[] { (UInt256?)int.MaxValue },
-        new object?[] { (UInt256?)UInt256.One },
-        new object?[] { (UInt256?)UInt256.Zero },
+        new TestCaseData(null).SetName("null"),
+        new TestCaseData((UInt256?)int.MaxValue).SetName("intMaxValue"),
+        new TestCaseData((UInt256?)UInt256.One).SetName("one"),
+        new TestCaseData((UInt256?)UInt256.Zero).SetName("zero"),
     ];
 
     [TestCase("\"0xa00000\"", "10485760")]

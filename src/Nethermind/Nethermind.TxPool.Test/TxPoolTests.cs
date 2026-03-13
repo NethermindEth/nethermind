@@ -1972,11 +1972,9 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(isLocalDelegation ? AcceptTxResult.Accepted : AcceptTxResult.NotCurrentNonceForDelegation);
         }
 
-        private static IEnumerable<object[]> SetCodeReplacedTxCases()
+        private static IEnumerable<TestCaseData> SetCodeReplacedTxCases()
         {
-            yield return new object[]
-            {
-                //Not self sponsored
+            yield return new TestCaseData(
                 TestItem.PrivateKeyB,
                 (TestReadOnlyStateProvider state, Address account, IReleaseSpec spec) =>
                 {
@@ -1984,30 +1982,25 @@ namespace Nethermind.TxPool.Test
                     state.CreateAccount(TestItem.AddressB, UInt256.MaxValue);
                 },
                 AcceptTxResult.Accepted
-            };
-            yield return new object[]
-            {
-                //Self sponsored
+            ).SetName("Not self sponsored - Accepted");
+            yield return new TestCaseData(
                 TestItem.PrivateKeyA,
                 (TestReadOnlyStateProvider state, Address account, IReleaseSpec spec) =>
                 {
                     state.CreateAccount(account, UInt256.MaxValue);
                 },
                 AcceptTxResult.Accepted
-            };
-            yield return new object[]
-            {
-                //Self sponsored
+            ).SetName("Self sponsored - Accepted");
+            yield return new TestCaseData(
                 TestItem.PrivateKeyA,
-                //Account is delegated so the last transaction should not be accepted
                 (TestReadOnlyStateProvider state, Address account, IReleaseSpec spec) =>
                 {
                     state.CreateAccount(account, UInt256.MaxValue);
-                    byte[] delegation = [..Eip7702Constants.DelegationHeader, ..TestItem.AddressB.Bytes];
+                    byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressB.Bytes];
                     state.InsertCode(account, delegation, spec);
                 },
                 AcceptTxResult.NotCurrentNonceForDelegation
-            };
+            ).SetName("Self sponsored delegated - NotCurrentNonceForDelegation");
         }
 
         [TestCaseSource(nameof(SetCodeReplacedTxCases))]

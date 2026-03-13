@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -18,10 +19,10 @@ public class AddressConverterTests : ConverterTestBase<Address>
         TestConverter(value!, static (address, address1) => address == address1, converter);
     }
 
-    static object?[] AddressTestCases =
+    static IEnumerable<TestCaseData> AddressTestCases =
     [
-        new object?[] { null },
-        new object?[] { Address.Zero },
-        new object?[] { TestItem.AddressA },
+        new TestCaseData(null).SetName("null"),
+        new TestCaseData(Address.Zero).SetName("zero"),
+        new TestCaseData(TestItem.AddressA).SetName("testItemA"),
     ];
 }
