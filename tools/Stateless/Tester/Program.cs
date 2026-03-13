@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
@@ -39,6 +40,14 @@ class Program
 
             if (dir is not null)
                 Directory.CreateDirectory(dir);
+
+            int rem = data.Length % 8;
+            byte[] framedData = new byte[8 + data.Length + (rem == 0 ? 0 : (8 - rem))];
+
+            BinaryPrimitives.WriteUInt64LittleEndian(framedData, (ulong)data.Length);
+            Buffer.BlockCopy(data, 0, framedData, 8, data.Length);
+
+            data = framedData;
 
             File.WriteAllBytes(args[0], data);
         }

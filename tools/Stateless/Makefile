@@ -110,7 +110,7 @@ run-zisk: build-zisk
 		dotnet run -c release --project $(TESTER_DIR)/Tester.csproj -- $(ZISK_DIR)/bin/input.bin
 	docker run --rm -it -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(ZISK_DIR)/bin",target=/n \
-		nethermindeth/zisk@sha256:58936b3609b6cf330cdb1a229fe4f4bfce450a32b9ac649a1e1afc4a967f201d \
+		nethermindeth/zisk@sha256:1b38e92264c30a4109fdb47f3b175324544085e36b9dde0abf7570c2b1e3312b \
 		ziskemu -e /n/nethermind -i /n/input.bin
 
 clean:

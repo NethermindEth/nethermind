@@ -49,8 +49,9 @@ jobs:
         run: |
           block_hash=$(docker run --rm \
             --mount type=bind,source=./bin,target=/n \
-            nethermindeth/zisk:latest \
-            ziskemu -e /n/nethermind -i /n/input.bin
+            nethermindeth/zisk@sha256:1b38e92264c30a4109fdb47f3b175324544085e36b9dde0abf7570c2b1e3312b \
+            ziskemu -e /n/nethermind -i /n/input.bin \
+            | tail -n 1
           )
           if [[ "$block_hash" != "$EXPECTED_BLOCK_HASH" ]]; then
             echo "::error::Unexpected block hash: $block_hash"
