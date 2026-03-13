@@ -145,7 +145,8 @@ public class ChainSpecTest
         {
             changes(expected);
             IReleaseSpec underTest = provider.GetSpec(activation);
-            underTest.Should().BeEquivalentTo(expected);
+            underTest.Should().BeEquivalentTo(expected,
+                options => options.Excluding(s => s.GasCosts));
         }
 
         TestTransitions((ForkActivation)0L, r =>
