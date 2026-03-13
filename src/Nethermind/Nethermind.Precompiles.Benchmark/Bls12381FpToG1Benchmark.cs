@@ -3,16 +3,12 @@
 
 using System.Collections.Generic;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Bls;
 
 namespace Nethermind.Precompiles.Benchmark;
 
-public class BlsMapFpToG1Benchmark : PrecompileBenchmarkBase
+public class Bls12381FpToG1Benchmark : PrecompileBenchmarkBase
 {
-    protected override IEnumerable<IPrecompile> Precompiles => new[]
-    {
-        MapFpToG1Precompile.Instance
-    };
+    protected override IEnumerable<IPrecompile> Precompiles => [Bls12381FpToG1Precompile.Instance];
 
     protected override string InputsDirectory => "blsmapfptog1";
 }

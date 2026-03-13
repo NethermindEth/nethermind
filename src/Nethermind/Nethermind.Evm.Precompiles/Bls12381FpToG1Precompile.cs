@@ -7,18 +7,16 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using G1 = Nethermind.Crypto.Bls.P1;
 
-namespace Nethermind.Evm.Precompiles.Bls;
+namespace Nethermind.Evm.Precompiles;
 
 /// <summary>
-/// https://eips.ethereum.org/EIPS/eip-2537
+/// <see href="https://eips.ethereum.org/EIPS/eip-2537" />
 /// </summary>
-public class MapFpToG1Precompile : IPrecompile<MapFpToG1Precompile>
+public class Bls12381FpToG1Precompile : IPrecompile<Bls12381FpToG1Precompile>
 {
-    public static readonly MapFpToG1Precompile Instance = new();
+    public static readonly Bls12381FpToG1Precompile Instance = new();
 
-    private MapFpToG1Precompile()
-    {
-    }
+    private Bls12381FpToG1Precompile() { }
 
     public static Address Address { get; } = Address.FromNumber(0x10);
 
@@ -31,17 +29,17 @@ public class MapFpToG1Precompile : IPrecompile<MapFpToG1Precompile>
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Metrics.BlsMapFpToG1Precompile++;
+        Metrics.Bls12381FpToG1Precompile++;
 
-        const int expectedInputLength = BlsConst.LenFp;
+        const int expectedInputLength = Eip2537.LenFp;
         if (inputData.Length != expectedInputLength) return Errors.InvalidInputLength;
 
         G1 res = new(stackalloc long[G1.Sz]);
-        Result result = BlsExtensions.ValidRawFp(inputData.Span);
+        Result result = Eip2537.ValidRawFp(inputData.Span);
         if (!result) return result.Error!;
 
         // map field point to G1
-        ReadOnlySpan<byte> fp = inputData[BlsConst.LenFpPad..BlsConst.LenFp].Span;
+        ReadOnlySpan<byte> fp = inputData[Eip2537.LenFpPad..Eip2537.LenFp].Span;
         res.MapTo(fp);
 
         return res.EncodeRaw();
