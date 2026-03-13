@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -9,6 +10,7 @@ using FluentAssertions.Execution;
 using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
@@ -460,18 +462,38 @@ public partial class EthRpcModuleTests
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}"));
     }
 
-    [Test]
-    public async Task Eth_estimateGas_eip7976_data_heavy_tx_returns_floor_cost()
+    private static IEnumerable<TestCaseData> EstimateGasFloorCostCases()
     {
-        OverridableReleaseSpec releaseSpec = new(Prague.Instance) { IsEip7976Enabled = true };
-        TestSpecProvider specProvider = new(releaseSpec);
+        // EIP-7976: 100 zero bytes → floor = 21000 + 100 * 4 * 16 = 27400
+        long eip7976Floor100 = GasCostOf.Transaction + 100 * Amsterdam.NoEip8037Instance.GasCosts.TxDataNonZeroMultiplier * GasCostOf.TotalCostFloorPerTokenEip7976;
+        yield return new TestCaseData(Amsterdam.NoEip8037Instance, new byte[100], 100_000L, $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor100.ToHexString(true)}\",\"id\":67}}")
+            .SetName("EIP-7976: data heavy tx returns floor cost");
+
+        // EIP-7623: 100 zero bytes → floor = 21000 + 100 * 10 = 22000
+        const long eip7623Floor100 = GasCostOf.Transaction + 100 * GasCostOf.TotalCostFloorPerTokenEip7623;
+        yield return new TestCaseData(Prague.Instance, new byte[100], 100_000L, $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7623Floor100.ToHexString(true)}\",\"id\":67}}")
+            .SetName("EIP-7623: data heavy tx returns lower floor");
+
+        // EIP-7976: gas limit below intrinsic gas
+        const long belowFloor = GasCostOf.Transaction + GasCostOf.TxDataZero;
+        yield return new TestCaseData(Amsterdam.NoEip8037Instance, new byte[] { 0 }, belowFloor, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"gas limit below intrinsic gas\"},\"id\":67}")
+            .SetName("EIP-7976: insufficient gas for floor");
+
+        // EIP-7976: mixed calldata (0x00001122 = 2 zero + 2 nonzero bytes)
+        long eip7976Floor4 = GasCostOf.Transaction + 4 * Amsterdam.NoEip8037Instance.GasCosts.TxDataNonZeroMultiplier * GasCostOf.TotalCostFloorPerTokenEip7976;
+        yield return new TestCaseData(Amsterdam.NoEip8037Instance, new byte[] { 0x00, 0x00, 0x11, 0x22 }, 100_000L, $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor4.ToHexString(true)}\",\"id\":67}}")
+            .SetName("EIP-7976: mixed calldata returns floor");
+    }
+
+    [TestCaseSource(nameof(EstimateGasFloorCostCases))]
+    public async Task Eth_estimateGas_floor_cost(IReleaseSpec spec, byte[] data, long gasLimit, string expectedJson)
+    {
+        TestSpecProvider specProvider = new(spec);
         using Context ctx = await Context.Create(specProvider);
 
-        const int dataLength = 100;
-        byte[] data = new byte[dataLength]; // all zero bytes
         Transaction tx = Build.A.Transaction
             .WithTo(TestItem.AddressB)
-            .WithGasLimit(100000)
+            .WithGasLimit(gasLimit)
             .WithData(data)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
@@ -480,82 +502,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 
-        long expectedFloor = GasCostOf.Transaction
-                             + dataLength * releaseSpec.GasCosts.TxDataNonZeroMultiplier *
-                             GasCostOf.TotalCostFloorPerTokenEip7976;
-        Assert.That(serialized,
-            Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedFloor.ToHexString(true)}\",\"id\":67}}"));
-    }
-
-    [Test]
-    public async Task Eth_estimateGas_eip7623_data_heavy_tx_returns_lower_floor()
-    {
-        TestSpecProvider specProvider = new(Prague.Instance);
-        using Context ctx = await Context.Create(specProvider);
-
-        const int dataLength = 100;
-        byte[] data = new byte[dataLength]; // all zero bytes
-        Transaction tx = Build.A.Transaction
-            .WithTo(TestItem.AddressB)
-            .WithGasLimit(100000)
-            .WithData(data)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
-        transaction.GasPrice = null;
-
-        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
-
-        // EIP-7623: zero bytes count as 1 token each
-        const long expectedFloor = GasCostOf.Transaction
-                                   + dataLength * GasCostOf.TotalCostFloorPerTokenEip7623;
-        Assert.That(serialized,
-            Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedFloor.ToHexString(true)}\",\"id\":67}}"));
-    }
-
-    [Test]
-    public async Task Eth_estimateGas_eip7976_insufficient_gas_for_floor()
-    {
-        OverridableReleaseSpec releaseSpec = new(Prague.Instance) { IsEip7976Enabled = true };
-        TestSpecProvider specProvider = new(releaseSpec);
-        using Context ctx = await Context.Create(specProvider);
-
-        const long standardCost = GasCostOf.Transaction + GasCostOf.TxDataZero; // below floor
-        Transaction tx = Build.A.Transaction
-            .WithTo(TestItem.AddressB)
-            .WithGasLimit(standardCost)
-            .WithData([0])
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
-        transaction.GasPrice = null;
-
-        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
-
-        Assert.That(serialized,
-            Is.EqualTo(
-                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"gas limit below intrinsic gas\"},\"id\":67}"));
-    }
-
-    [Test]
-    public async Task Eth_estimateGas_eip7976_mixed_calldata_returns_floor()
-    {
-        OverridableReleaseSpec releaseSpec = new(Prague.Instance) { IsEip7976Enabled = true };
-        TestSpecProvider specProvider = new(releaseSpec);
-        using Context ctx = await Context.Create(specProvider);
-
-        // 0x00001122 = 2 zero bytes + 2 nonzero bytes
-        const int dataLength = 4;
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\",\"data\":\"0x00001122\"}}");
-
-        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
-
-        long expectedFloor = GasCostOf.Transaction
-                             + dataLength * releaseSpec.GasCosts.TxDataNonZeroMultiplier *
-                             GasCostOf.TotalCostFloorPerTokenEip7976;
-        Assert.That(serialized,
-            Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedFloor.ToHexString(true)}\",\"id\":67}}"));
+        Assert.That(serialized, Is.EqualTo(expectedJson));
     }
 
     private static async Task TestEstimateGasOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit, string message)

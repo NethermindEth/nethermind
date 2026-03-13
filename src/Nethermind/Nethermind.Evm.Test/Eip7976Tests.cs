@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -12,41 +14,31 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class Eip7976Tests
 {
-    private static OverridableReleaseSpec Eip7976Spec => new OverridableReleaseSpec(Prague.Instance)
+    // EIP-7976 floor: 21000 + byteCount * nonzeroMultiplier(4) * 16
+    // EIP-7623 floor: 21000 + tokens * 10  (tokens = zeros*1 + nonzeros*multiplier)
+    // Standard: 21000 + zero*4 + nonzero*16 (+ 32000 + InitCodeWord for contract creation)
+    private static IEnumerable<TestCaseData> IntrinsicGasCases()
     {
-        IsEip7976Enabled = true
-    };
+        // Contract creation uses NoEip8037 to isolate EIP-7976 floor cost from EIP-8037 state gas, auth list cost changes
+        yield return new TestCaseData(Amsterdam.NoEip8037Instance, Address.Zero, new byte[] { 1 }, 21_016L, 21_064L)
+            .SetName("EIP-7976: single nonzero byte");
+        yield return new TestCaseData(Amsterdam.NoEip8037Instance, Address.Zero, new byte[] { 0 }, 21_004L, 21_064L)
+            .SetName("EIP-7976: single zero byte");
+        yield return new TestCaseData(Amsterdam.NoEip8037Instance, Address.Zero, new byte[] { 0, 0, 1, 1 }, 21_040L, 21_256L)
+            .SetName("EIP-7976: mixed data");
+        yield return new TestCaseData(Amsterdam.NoEip8037Instance, Address.Zero, Array.Empty<byte>(), 21_000L, 21_000L)
+            .SetName("EIP-7976: empty data");
+        yield return new TestCaseData(Amsterdam.NoEip8037Instance, null, new byte[] { 1 }, 53_018L, 21_064L)
+            .SetName("EIP-7976: contract creation standard exceeds floor");
+        yield return new TestCaseData(Prague.Instance, Address.Zero, new byte[] { 0 }, 21_004L, 21_010L)
+            .SetName("EIP-7623 fallback: single zero byte");
+    }
 
-    // Roughly
-    // Standard: 21000 + zero*4 + nonzero*16
-    // Floor: 21000 + byteCount * 4 * 16
-    [TestCase(new byte[] { 1 }, 21_016, 21_064, TestName = "Single nonzero byte")]
-    [TestCase(new byte[] { 0 }, 21_004, 21_064, TestName = "Single zero byte")]
-    [TestCase(new byte[] { 0, 0, 1, 1 }, 21_040, 21_256, TestName = "Multi byte mixed data")]
-    [TestCase(new byte[0], 21_000, 21_000, TestName = "Empty data is just transaction base")]
-    public void Intrinsic_gas_with_eip7976(byte[] data, long expectedStandard, long expectedFloor)
+    [TestCaseSource(nameof(IntrinsicGasCases))]
+    public void Intrinsic_gas_calculation(IReleaseSpec spec, Address? to, byte[] data, long expectedStandard, long expectedFloor)
     {
-        Transaction transaction = new() { Data = data, To = Address.Zero };
-        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Eip7976Spec);
+        Transaction transaction = new() { Data = data, To = to };
+        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, spec);
         cost.Should().Be(new EthereumIntrinsicGas(expectedStandard, expectedFloor));
-    }
-
-    [Test]
-    public void Contract_creation_standard_exceeds_floor()
-    {
-        Transaction transaction = new() { Data = new byte[] { 1 }, To = null };
-        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Eip7976Spec);
-        // Standard: 21000 (base) + 32000 (tx creation) + InitCodeWord * 1 + 1 * 16 (1 non-zero byte) = 53,018
-        // Floor Gas Cost: 21000 (base) + 1 * 4 * 16 (1 non-zero byte) = 21,064
-        cost.Should().Be(new EthereumIntrinsicGas(Standard: 53_018, FloorGas: 21_064));
-    }
-
-    [Test]
-    public void Disabled_eip7976_falls_back_to_eip7623()
-    {
-        // 1 zero byte -> tokens = 1, floor = 21000 + 1 * 10 = 21010
-        Transaction transaction = new() { Data = new byte[] { 0 }, To = Address.Zero };
-        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Prague.Instance);
-        cost.Should().Be(new EthereumIntrinsicGas(21_004, 21_010));
     }
 }
