@@ -511,6 +511,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (!chargedCodeDeposit && (spec.FailOnOutOfGasCodeDeposit || invalidCode))
         {
             TGasPolicy.Consume(ref _currentState.Gas, gasAvailableForCodeDeposit);
+            // Code deposit failure is an exceptional halt of the child CREATE frame.
+            // Refund already merged the child's state gas (reservoir, stateGasUsed) into the parent,
+            // but halt semantics require restoring the full initial state reservoir and discarding
+            // the child's stateGasUsed (since the child's state changes are being reverted).
+            TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir);
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
             {

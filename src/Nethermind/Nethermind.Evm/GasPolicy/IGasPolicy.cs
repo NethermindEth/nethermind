@@ -62,17 +62,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual long GetStateGasSpill(in TSelf gas) => 0;
 
     /// <summary>
-    /// Gets the amount of regular gas that was consumed but wasted (e.g. callGas burned on CREATE2 collision).
-    /// Excluded from block_regular accounting.
-    /// </summary>
-    static virtual long GetWastedRegularGas(in TSelf gas) => 0;
-
-    /// <summary>
-    /// Records regular gas consumed from gas_left that is wasted and should be excluded from block_regular.
-    /// </summary>
-    static virtual void AddWastedRegularGas(ref TSelf gas, long amount) { }
-
-    /// <summary>
     /// Consume gas for an EVM operation.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
@@ -109,6 +98,17 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="childGas">The child gas state to restore from.</param>
     /// <param name="initialStateReservoir">The initial state reservoir that was assigned to the child frame.</param>
     static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
+
+    /// <summary>
+    /// Adjusts parent gas state when a child <see cref="Refund"/> was already applied but the child
+    /// frame should actually be treated as halted (e.g., code deposit failure).
+    /// Undoes the state gas portion of Refund and applies halt restoration instead.
+    /// Pre-EIP-8037 policies are no-ops.
+    /// </summary>
+    /// <param name="parentGas">The parent gas state to adjust.</param>
+    /// <param name="childGas">The child gas state that was previously merged via Refund.</param>
+    /// <param name="initialStateReservoir">The initial state reservoir that was assigned to the child frame.</param>
+    static virtual void RevertRefundToHalt(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
 
     /// <summary>
     /// Mark the gas state as out of gas.
@@ -207,16 +207,17 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         TSelf.UpdateGas(ref gas, stateGasCost);
 
     /// <summary>
-    /// Attempts to consume state gas and then regular gas in sequence.
-    /// Useful for operations that split costs across both dimensions.
+    /// Attempts to consume regular gas and then state gas in sequence.
+    /// Regular gas (e.g. keccak hash cost) is charged first to prevent
+    /// state gas spill-then-halt from inflating the reservoir via the error refund path.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
     /// <param name="stateGasCost">State gas component.</param>
     /// <param name="regularGasCost">Regular gas component.</param>
     /// <returns><c>true</c> if both deductions succeeded; otherwise, <c>false</c>.</returns>
     static virtual bool TryConsumeStateAndRegularGas(ref TSelf gas, long stateGasCost, long regularGasCost) =>
-        (stateGasCost <= 0 || TSelf.ConsumeStateGas(ref gas, stateGasCost)) &&
-        (regularGasCost <= 0 || TSelf.UpdateGas(ref gas, regularGasCost));
+        (regularGasCost <= 0 || TSelf.UpdateGas(ref gas, regularGasCost)) &&
+        (stateGasCost <= 0 || TSelf.ConsumeStateGas(ref gas, stateGasCost));
 
     /// <summary>
     /// Refunds gas by adding the specified amount back to the available gas.

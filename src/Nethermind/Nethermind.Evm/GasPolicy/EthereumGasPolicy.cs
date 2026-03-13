@@ -23,8 +23,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasUsed;
     /// <summary>State gas that spilled from gas_left (for block regular gas exclusion).</summary>
     public long StateGasSpill;
-    /// <summary>Regular gas consumed but wasted (e.g. callGas burned on CREATE2 collision), excluded from block_regular.</summary>
-    public long WastedRegularGas;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy FromLong(long value) => new() { Value = value };
@@ -41,11 +39,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetStateGasSpill(in EthereumGasPolicy gas) => gas.StateGasSpill;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long GetWastedRegularGas(in EthereumGasPolicy gas) => gas.WastedRegularGas;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void AddWastedRegularGas(ref EthereumGasPolicy gas, long amount) => gas.WastedRegularGas += amount;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Consume(ref EthereumGasPolicy gas, long cost) => gas.Value -= cost;
@@ -89,18 +82,28 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.StateReservoir += childGas.StateReservoir;
         gas.StateGasUsed += childGas.StateGasUsed;
         gas.StateGasSpill += childGas.StateGasSpill;
-        gas.WastedRegularGas += childGas.WastedRegularGas;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir)
     {
         // On halt/revert, restore the full initial reservoir that was transferred to the child.
-        parentGas.StateReservoir += initialStateReservoir;
+        // Also restore the spill amount: state gas that spilled from gas_left is returned to the
+        // reservoir because the child's state operations are being reverted.
+        parentGas.StateReservoir += initialStateReservoir + childGas.StateGasSpill;
         // Propagate spills — gas_left was consumed for state ops even though they're being reverted.
         parentGas.StateGasSpill += childGas.StateGasSpill;
-        // Propagate wasted regular gas (collision burns etc.)
-        parentGas.WastedRegularGas += childGas.WastedRegularGas;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void RevertRefundToHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir)
+    {
+        // Code deposit failure is an exceptional halt: the child's state is reverted.
+        // Refund already added child.StateReservoir, child.StateGasUsed, and child.StateGasSpill to parent.
+        // Halt semantics require restoring the full initial reservoir (plus spill) and discarding child's StateGasUsed.
+        // The spill is added to the reservoir because the child's state ops are being reverted.
+        parentGas.StateReservoir += initialStateReservoir + childGas.StateGasSpill - childGas.StateReservoir;
+        parentGas.StateGasUsed -= childGas.StateGasUsed;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

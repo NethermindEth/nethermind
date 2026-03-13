@@ -812,6 +812,11 @@ namespace Nethermind.Evm.TransactionProcessing
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
             gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
+            if (gasConsumed.SpentGas < tx.GasLimit)
+            {
+                UInt256 refundAmount = (ulong)(tx.GasLimit - gasConsumed.SpentGas) * VirtualMachine.TxExecutionContext.GasPrice;
+                PayRefund(tx, refundAmount, spec);
+            }
         Complete:
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
             {
@@ -822,7 +827,23 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
 
-        protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts) => tx.GasLimit;
+        protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts)
+        {
+            if (!spec.IsEip8037Enabled)
+                return tx.GasLimit;
+
+            // EIP-8037: compute intrinsic state cost and initial reservoir.
+            // All regular gas is consumed as penalty, but the unused state reservoir is refunded.
+            IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
+            long intrinsicState = TGasPolicy.GetStateReservoir(intrinsicGas.Standard);
+            long initialReservoir = Math.Max(0, tx.GasLimit - intrinsicState - Eip7825Constants.DefaultTxGasLimitCap);
+
+            long spentGas = tx.GasLimit - initialReservoir;
+            long blockGas = spentGas - intrinsicState;
+            long blockStateGas = intrinsicState;
+
+            return new GasConsumed(spentGas, spentGas, blockGas, blockStateGas);
+        }
 
         protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {
@@ -1009,8 +1030,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 long initialReservoir = Math.Max(0, tx.GasLimit - intrinsicState - Eip7825Constants.DefaultTxGasLimitCap);
                 long reservoirConsumed = initialReservoir - TGasPolicy.GetStateReservoir(in gasAfterExecution);
                 long stateGasSpill = TGasPolicy.GetStateGasSpill(in gasAfterExecution);
-                long wastedRegularGas = TGasPolicy.GetWastedRegularGas(in gasAfterExecution);
-                long txRegularGas = preRefundGas - intrinsicState - reservoirConsumed - stateGasSpill - wastedRegularGas;
+                long txRegularGas = preRefundGas - intrinsicState - reservoirConsumed - stateGasSpill;
                 blockGas = Math.Max(txRegularGas, floorGasLong);
                 blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
             }

@@ -212,11 +212,9 @@ internal static partial class EvmInstructions
         Snapshot snapshot = state.TakeSnapshot();
 
         // EIP-7610: If the account already exists and is non-zero, then the creation fails.
+        // Collision behaves as an immediate exceptional halt — burned callGas counts as block_regular.
         if (state.IsNonZeroAccount(contractAddress, out bool accountExists))
         {
-            // EIP-8037: callGas burned on collision is wasted (user pays but it doesn't count as block_regular)
-            if (TEip8037.IsActive)
-                TGasPolicy.AddWastedRegularGas(ref gas, callGas);
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
             goto None;
