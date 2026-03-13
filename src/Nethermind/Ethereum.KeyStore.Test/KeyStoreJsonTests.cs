@@ -49,11 +49,11 @@ namespace Ethereum.KeyStore.Test
         [TearDown]
         public void TearDown() => _cryptoRandom?.Dispose();
 
-        [TestCase("Test1")]
-        [TestCase("Test2")]
-        [TestCase("Python_generated_test_with_odd_iv")]
-        [TestCase("EvilNonce")]
-        [TestCase("MyCrypto")]
+        [TestCase("test1")]
+        [TestCase("test2")]
+        [TestCase("python_generated_test_with_odd_iv")]
+        [TestCase("evilnonce")]
+        [TestCase("mycrypto")]
         public void Test(string testName)
         {
             KeyStoreTestModel testModel = _testsModel[testName];

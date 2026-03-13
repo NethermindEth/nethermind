@@ -335,7 +335,10 @@ namespace Nethermind.TxPool.Test
             }
 
             Transaction tx = builder.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            EnsureSenderBalance(tx.SenderAddress, eip1559 ? UInt256.MaxValue : tx.GasPrice * (UInt256)tx.GasLimit + tx.Value);
+            if (eip1559)
+                EnsureSenderBalance(tx.SenderAddress, UInt256.MaxValue);
+            else
+                EnsureSenderBalance(tx);
             AcceptTxResult result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             txPool.GetPendingTransactionsCount().Should().Be(0);
             result.Should().Be(AcceptTxResult.Int256Overflow);

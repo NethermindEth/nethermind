@@ -252,7 +252,7 @@ namespace Nethermind.Store.Test
             stats.AccountCount.Should().Be(1);
         }
 
-        private static (IWorldState sut, IReleaseSpec releaseSpec) SetupContractSenderTest(
+        private static (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) SetupContractSenderTest(
             bool eip3607Enabled, bool eip7702Enabled, byte[] code = null)
         {
             IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
@@ -260,7 +260,7 @@ namespace Nethermind.Store.Test
             releaseSpec.IsEip7702Enabled.Returns(eip7702Enabled);
             IDbProvider dbProvider = TestMemDbProvider.Init();
             (IWorldState sut, IStateReader _) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
-            using var scope = sut.BeginScope(IWorldState.PreGenesis);
+            var scope = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             if (code is not null)
             {
@@ -268,7 +268,7 @@ namespace Nethermind.Store.Test
             }
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
-            return (sut, releaseSpec);
+            return (sut, releaseSpec, scope);
         }
 
         [TestCase(true, true, null, false, Description = "No code returns false")]
@@ -276,45 +276,60 @@ namespace Nethermind.Store.Test
         [TestCase(true, false, null, false, Description = "No code, 7702 disabled returns false")]
         public void IsInvalidContractSender_BasicCases(bool eip3607, bool eip7702, byte[] code, bool expected)
         {
-            (IWorldState sut, IReleaseSpec releaseSpec) = SetupContractSenderTest(eip3607, eip7702, code);
-            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
-            Assert.That(result, Is.EqualTo(expected));
+            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607, eip7702, code);
+            using (scope)
+            {
+                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+                Assert.That(result, Is.EqualTo(expected));
+            }
         }
 
         [Test]
         public void IsInvalidContractSender_AccountHasDelegatedCode_ReturnsFalse()
         {
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            (IWorldState sut, IReleaseSpec releaseSpec) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: true, code);
-            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
-            Assert.That(result, Is.False);
+            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: true, code);
+            using (scope)
+            {
+                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+                Assert.That(result, Is.False);
+            }
         }
 
         [Test]
         public void IsInvalidContractSender_AccountHasCodeButDelegateReturnsTrue_ReturnsFalse()
         {
             byte[] code = new byte[20];
-            (IWorldState sut, IReleaseSpec releaseSpec) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: true, code);
-            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA, static (_) => true);
-            Assert.That(result, Is.False);
+            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: true, code);
+            using (scope)
+            {
+                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA, static (_) => true);
+                Assert.That(result, Is.False);
+            }
         }
 
         [Test]
         public void IsInvalidContractSender_AccountHasDelegatedCodeBut7702IsNotEnabled_ReturnsTrue()
         {
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            (IWorldState sut, IReleaseSpec releaseSpec) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: false, code);
-            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
-            Assert.That(result, Is.True);
+            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: false, code);
+            using (scope)
+            {
+                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+                Assert.That(result, Is.True);
+            }
         }
 
         [Test]
         public void IsInvalidContractSender_AccountHasDelegatedCodeBut3607IsNotEnabled_ReturnsFalse()
         {
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            (IWorldState sut, IReleaseSpec releaseSpec) = SetupContractSenderTest(eip3607Enabled: false, eip7702Enabled: true, code);
-            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
-            Assert.That(result, Is.False);
+            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: false, eip7702Enabled: true, code);
+            using (scope)
+            {
+                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+                Assert.That(result, Is.False);
+            }
         }
 
         [Test]

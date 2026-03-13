@@ -211,7 +211,7 @@ public class TxBroadcasterTests
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
         _headInfo.CurrentBaseFee = 0.GWei;
 
-        // add 256 transactions, 10% of them are non-broadcastable (large or blob)
+        // add 256 transactions, 10% of them are not broadcast (large or blob)
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
