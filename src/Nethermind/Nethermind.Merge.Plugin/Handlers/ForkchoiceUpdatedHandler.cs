@@ -338,8 +338,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         string? error = null;
         return payloadAttributes?.Validate(_specProvider, version, out error) switch
         {
-            PayloadAttributesValidationResult.InvalidParams =>
-                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.InvalidParams),
             PayloadAttributesValidationResult.InvalidPayloadAttributes =>
                 ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, MergeErrorCodes.InvalidPayloadAttributes),
             PayloadAttributesValidationResult.UnsupportedFork =>
