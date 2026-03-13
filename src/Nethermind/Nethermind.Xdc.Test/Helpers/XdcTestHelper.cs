@@ -53,8 +53,16 @@ internal static class XdcTestHelper
         return new Timeout(round, signature, gap) { Signer = key.Address };
     }
 
-    public static Vote BuildSignedVote(
-    BlockRoundInfo info, ulong gap, PrivateKey key)
+    public static SyncInfo BuildSyncInfo(PrivateKey key, ulong round, ulong gap)
+    {
+        BlockRoundInfo roundInfo = new(Hash256.Zero, round, (long)round);
+        QuorumCertificate qc = CreateQc(roundInfo, gap, [key]);
+        Timeout timeout = BuildSignedTimeout(key, round, gap);
+        TimeoutCertificate tc = new(round, [timeout.Signature!], gap);
+        return new SyncInfo(qc, tc);
+    }
+
+    public static Vote BuildSignedVote(BlockRoundInfo info, ulong gap, PrivateKey key)
     {
         var vote = new Vote(info, gap);
         var stream = new KeccakRlpStream();
