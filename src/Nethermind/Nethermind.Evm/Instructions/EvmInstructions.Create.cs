@@ -110,7 +110,13 @@ internal static partial class EvmInstructions
         if (isEip3860)
         {
             if (initCodeLength > spec.MaxInitCodeSize)
+            {
+                // EIP-8037: charge state gas before halting so StateGasSpill is recorded
+                // for correct block gas accounting (block_regular excludes state gas).
+                if (TEip8037.IsActive)
+                    TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState);
                 goto OutOfGas;
+            }
         }
 
         bool outOfGas = false;
