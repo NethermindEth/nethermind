@@ -245,7 +245,7 @@ public partial class SszEncoding
         if(container is null || container.Count is 0)
         {{
             root = 0;
-            Merkle.MixIn(ref root, (int)limit);
+            Merkle.MixIn(ref root, 0);
             return;
         }}
 {Whitespace}
@@ -449,7 +449,7 @@ public partial class SszEncoding
         if(container is null || container.Count is 0)
         {{
             root = 0;
-            Merkle.MixIn(ref root, (int)limit);
+            Merkle.MixIn(ref root, 0);
             return;
         }}
 {Whitespace}
@@ -630,7 +630,7 @@ public partial class SszEncoding
         if(container is null || container.Count is 0)
         {{
             root = 0;
-            Merkle.MixIn(ref root, (int)limit);
+            Merkle.MixIn(ref root, 0);
             return;
         }}
 {Whitespace}
