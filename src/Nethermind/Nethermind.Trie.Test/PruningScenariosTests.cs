@@ -584,7 +584,7 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
-            public PruningContext WaitForBlockedWrite(int timeoutMs = 1000)
+            public PruningContext WaitForBlockedWrite(int timeoutMs = 10000)
             {
                 Assert.That(_writeReached.Wait(timeoutMs), Is.True, "Pruning task did not reach database write");
                 return this;

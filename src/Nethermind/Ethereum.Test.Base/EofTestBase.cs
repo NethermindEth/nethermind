@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -41,20 +42,17 @@ namespace Ethereum.Test.Base
             Assert.That(result, Is.EqualTo(test.Result.Success));
         }
 
-        protected bool RunTest(EofTest test)
-        {
-            return RunTest(test, NullTxTracer.Instance) == test.Result.Success;
-        }
+        protected bool RunTest(EofTest test) => RunTest(test, NullTxTracer.Instance) == test.Result.Success;
 
         protected bool RunTest(EofTest test, ITxTracer txTracer)
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
-            var vector = test.Vector;
-            var code = vector.Code;
-            var strategy = vector.ContainerKind;
-            var fork = test.Result.Fork switch
+            VectorTest vector = test.Vector;
+            byte[] code = vector.Code;
+            ValidationStrategy strategy = vector.ContainerKind;
+            IReleaseSpec fork = test.Result.Fork switch
             {
                 "Osaka" => Nethermind.Specs.Forks.Osaka.Instance,
                 "Prague" => Nethermind.Specs.Forks.Prague.Instance,
@@ -70,8 +68,7 @@ namespace Ethereum.Test.Base
                 _ => throw new NotSupportedException($"Fork {test.Result.Fork} is not supported")
             };
 
-            bool result = CodeDepositHandler.IsValidWithEofRules(fork, code, 1, strategy);
-            return result;
+            return CodeDepositHandler.IsValidWithEofRules(fork, code, 1, strategy);
         }
     }
 }
