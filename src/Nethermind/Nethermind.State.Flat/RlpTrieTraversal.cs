@@ -40,6 +40,30 @@ internal static class RlpTrieTraversal
         Hash256 rootHash,
         ReadOnlySpan<byte> rawKey)
     {
+        TryRead(rlpLoader, rootHash, rawKey, out _);
+    }
+
+    /// <summary>
+    /// Traverses the trie along the path described by <paramref name="rawKey"/> and returns the
+    /// leaf value bytes if the key exists.
+    /// </summary>
+    /// <param name="rlpLoader">
+    /// Loads RLP bytes for a node identified by its path and hash.
+    /// Returns <c>false</c> if the node is not available.
+    /// </param>
+    /// <param name="rootHash">The root hash of the trie to traverse.</param>
+    /// <param name="rawKey">The raw key bytes to look up (not nibble-encoded).</param>
+    /// <param name="value">
+    /// The raw leaf value bytes on success (same bytes returned by <c>PatriciaTree.Get</c>);
+    /// <c>null</c> if the key is not found or the trie is unreachable.
+    /// </param>
+    /// <returns><c>true</c> if the key was found and <paramref name="value"/> is set.</returns>
+    public static bool TryRead(
+        RlpLoader rlpLoader,
+        Hash256 rootHash,
+        ReadOnlySpan<byte> rawKey,
+        out byte[]? value)
+    {
         int nibblesCount = 2 * rawKey.Length;
         byte[]? rentedArray = null;
         Span<byte> nibbles = nibblesCount <= MaxKeyStackAlloc
@@ -52,7 +76,7 @@ internal static class RlpTrieTraversal
             Nibbles.BytesToNibbleBytes(rawKey, nibbles);
 
             TreePath path = TreePath.Empty;
-            WarmUpHashedNode(rlpLoader, ref path, rootHash, nibbles);
+            return TryReadHashedNode(rlpLoader, ref path, rootHash, nibbles, out value);
         }
         finally
         {
@@ -60,12 +84,18 @@ internal static class RlpTrieTraversal
         }
     }
 
-    private static void WarmUpHashedNode(
+    private static bool TryReadHashedNode(
         RlpLoader rlpLoader,
         ref TreePath path,
         Hash256 hash,
-        Span<byte> remainingNibbles)
+        Span<byte> remainingNibbles,
+        out byte[]? value)
     {
+        value = null;
+
+        // The empty tree root is a special sentinel that represents an empty trie — not a real node.
+        if (hash == Keccak.EmptyTreeHash) return false;
+
         // Single stack-allocated buffer reused across all hash-node iterations in this path.
         // ~546 bytes on the stack, acceptable for warmer threads.
         TrieNodeRlp nodeBuffer = default;
@@ -74,10 +104,16 @@ internal static class RlpTrieTraversal
         while (true)
         {
             nodeBuffer.Length = 0;
-            if (!rlpLoader(path, hash, ref nodeBuffer) || nodeBuffer.Length == 0) return;
+            if (!rlpLoader(path, hash, ref nodeBuffer) || nodeBuffer.Length == 0) return false;
 
-            bool continueLoop = TraverseNode(rlpLoader, ref path, nodeBuffer.AsSpan(), remainingNibbles, out Hash256? nextHash, out int nibblesConsumed);
-            if (!continueLoop || nextHash is null) return;
+            bool continueLoop = TraverseNode(rlpLoader, ref path, nodeBuffer.AsSpan(), remainingNibbles, out Hash256? nextHash, out int nibblesConsumed, out byte[]? leafValue);
+            if (!continueLoop)
+            {
+                value = leafValue;
+                return leafValue is not null;
+            }
+
+            if (nextHash is null) return false;
 
             remainingNibbles = remainingNibbles[nibblesConsumed..];
             hash = nextHash;
@@ -87,6 +123,7 @@ internal static class RlpTrieTraversal
     /// <summary>
     /// Parses one node from <paramref name="rlp"/> and determines the next hash and nibbles consumed.
     /// Returns false when traversal should stop (leaf reached, missing child, key mismatch).
+    /// When a leaf is found and the key matches, <paramref name="leafValue"/> is set to the decoded value.
     /// </summary>
     private static bool TraverseNode(
         RlpLoader rlpLoader,
@@ -94,10 +131,12 @@ internal static class RlpTrieTraversal
         ReadOnlySpan<byte> rlp,
         Span<byte> remainingNibbles,
         out Hash256? nextHash,
-        out int nibblesConsumed)
+        out int nibblesConsumed,
+        out byte[]? leafValue)
     {
         nextHash = null;
         nibblesConsumed = 0;
+        leafValue = null;
 
         Rlp.ValueDecoderContext ctx = rlp.AsRlpValueContext();
         int sequenceLength = ctx.ReadSequenceLength();
@@ -106,11 +145,11 @@ internal static class RlpTrieTraversal
 
         if (itemCount == 2)
         {
-            return TraverseExtensionOrLeaf(rlpLoader, ref path, rlp, ref ctx, remainingNibbles, out nextHash, out nibblesConsumed);
+            return TraverseExtensionOrLeaf(rlpLoader, ref path, rlp, ref ctx, remainingNibbles, out nextHash, out nibblesConsumed, out leafValue);
         }
 
-        // Branch node (17 items)
-        return TraverseBranch(rlpLoader, ref path, rlp, ref ctx, remainingNibbles, out nextHash, out nibblesConsumed);
+        // Branch node (17 items) — branch values are always empty in the Ethereum state trie
+        return TraverseBranch(rlpLoader, ref path, rlp, ref ctx, remainingNibbles, out nextHash, out nibblesConsumed, out leafValue);
     }
 
     private static bool TraverseExtensionOrLeaf(
@@ -120,10 +159,12 @@ internal static class RlpTrieTraversal
         ref Rlp.ValueDecoderContext ctx,
         Span<byte> remainingNibbles,
         out Hash256? nextHash,
-        out int nibblesConsumed)
+        out int nibblesConsumed,
+        out byte[]? leafValue)
     {
         nextHash = null;
         nibblesConsumed = 0;
+        leafValue = null;
 
         // First item: compact-encoded path prefix
         (int prefixLen, int contentLen) = ctx.ReadPrefixAndContentLength();
@@ -136,34 +177,60 @@ internal static class RlpTrieTraversal
         ReadOnlySpan<byte> compactKeyBytes = ctx.Read(contentLen);
         byte firstByte = compactKeyBytes[0];
         bool isLeaf = (firstByte & 0x20) != 0;
-
-        if (isLeaf) return false; // Reached a leaf — done
-
-        // Extension node: decode nibbles from compact encoding
         bool isOdd = (firstByte & 0x10) != 0;
         int keyNibbleCount = (compactKeyBytes.Length - 1) * 2 + (isOdd ? 1 : 0);
 
-        // Verify the remaining key starts with the extension's path
+        if (isLeaf)
+        {
+            // Leaf: remaining nibbles must exactly match the leaf's compact key
+            if (remainingNibbles.Length != keyNibbleCount) return false;
+
+            // Check nibble match (inline to avoid allocation)
+            int compactIdx = 0;
+            int nibIdx = 0;
+            if (isOdd)
+            {
+                if (remainingNibbles[nibIdx++] != (firstByte & 0x0F)) return false;
+                compactIdx = 1;
+            }
+            else
+            {
+                compactIdx = 1; // skip the prefix byte
+            }
+
+            while (compactIdx < compactKeyBytes.Length)
+            {
+                byte b = compactKeyBytes[compactIdx++];
+                if (remainingNibbles[nibIdx++] != (b >> 4)) return false;
+                if (nibIdx < keyNibbleCount && remainingNibbles[nibIdx++] != (b & 0x0F)) return false;
+            }
+
+            // Read leaf value (second RLP item) — matches TrieNode.Decoder behaviour
+            leafValue = ctx.DecodeByteArray();
+            return false; // stop traversal; leaf found
+        }
+
+        // Extension node: verify the remaining key starts with the extension's path
         if (remainingNibbles.Length < keyNibbleCount) return false;
 
         // Check nibble match (inline to avoid allocation)
-        int compactIdx = 0;
-        int nibIdx = 0;
+        int cIdx = 0;
+        int nIdx = 0;
         if (isOdd)
         {
-            if (remainingNibbles[nibIdx++] != (firstByte & 0x0F)) return false;
-            compactIdx = 1;
+            if (remainingNibbles[nIdx++] != (firstByte & 0x0F)) return false;
+            cIdx = 1;
         }
         else
         {
-            compactIdx = 1; // skip the prefix byte
+            cIdx = 1; // skip the prefix byte
         }
 
-        while (compactIdx < compactKeyBytes.Length)
+        while (cIdx < compactKeyBytes.Length)
         {
-            byte b = compactKeyBytes[compactIdx++];
-            if (remainingNibbles[nibIdx++] != (b >> 4)) return false;
-            if (nibIdx < keyNibbleCount && remainingNibbles[nibIdx++] != (b & 0x0F)) return false;
+            byte b = compactKeyBytes[cIdx++];
+            if (remainingNibbles[nIdx++] != (b >> 4)) return false;
+            if (nIdx < keyNibbleCount && remainingNibbles[nIdx++] != (b & 0x0F)) return false;
         }
 
         // Advance path by the extension key nibbles
@@ -171,7 +238,7 @@ internal static class RlpTrieTraversal
         nibblesConsumed = keyNibbleCount;
 
         // Second item: child reference
-        return TryReadChildRef(rlpLoader, ref path, parentRlp, ref ctx, remainingNibbles[keyNibbleCount..], out nextHash);
+        return TryReadChildRef(rlpLoader, ref path, parentRlp, ref ctx, remainingNibbles[keyNibbleCount..], out nextHash, out leafValue);
     }
 
     private static bool TraverseBranch(
@@ -181,10 +248,12 @@ internal static class RlpTrieTraversal
         ref Rlp.ValueDecoderContext ctx,
         Span<byte> remainingNibbles,
         out Hash256? nextHash,
-        out int nibblesConsumed)
+        out int nibblesConsumed,
+        out byte[]? leafValue)
     {
         nextHash = null;
         nibblesConsumed = 0;
+        leafValue = null;
 
         if (remainingNibbles.IsEmpty) return false;
 
@@ -196,12 +265,13 @@ internal static class RlpTrieTraversal
         path.AppendMut(nib);
         nibblesConsumed = 1;
 
-        return TryReadChildRef(rlpLoader, ref path, parentRlp, ref ctx, remainingNibbles[1..], out nextHash);
+        return TryReadChildRef(rlpLoader, ref path, parentRlp, ref ctx, remainingNibbles[1..], out nextHash, out leafValue);
     }
 
     /// <summary>
     /// Reads a child reference at the current position in <paramref name="ctx"/>.
     /// Handles empty refs (0x80), hash refs (0xA0 + 32 bytes), and inline nodes (sequence).
+    /// When an inline node is a leaf and the key matches, <paramref name="leafValue"/> is set.
     /// </summary>
     private static bool TryReadChildRef(
         RlpLoader rlpLoader,
@@ -209,9 +279,11 @@ internal static class RlpTrieTraversal
         ReadOnlySpan<byte> parentRlp,
         ref Rlp.ValueDecoderContext ctx,
         Span<byte> remainingNibbles,
-        out Hash256? nextHash)
+        out Hash256? nextHash,
+        out byte[]? leafValue)
     {
         nextHash = null;
+        leafValue = null;
 
         if (ctx.Position >= parentRlp.Length) return false;
 
@@ -241,7 +313,7 @@ internal static class RlpTrieTraversal
             ReadOnlySpan<byte> inlineRlp = parentRlp.Slice(inlineStart, inlineLen);
 
             // Traverse the inline node without loading from cache (it has no hash)
-            TraverseNode(rlpLoader, ref path, inlineRlp, remainingNibbles, out nextHash, out _);
+            TraverseNode(rlpLoader, ref path, inlineRlp, remainingNibbles, out nextHash, out _, out leafValue);
 
             // nextHash may be set if the inline node leads to a hash-referenced child
             return nextHash is not null;
