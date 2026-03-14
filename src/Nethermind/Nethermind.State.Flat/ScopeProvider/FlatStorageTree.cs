@@ -16,7 +16,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
 {
     private readonly StorageTree _tree;
-    private readonly StorageTree _warmupStorageTree;
     private readonly Address _address;
     private readonly IFlatDbConfig _config;
     private readonly ITrieWarmer _trieCacheWarmer;
@@ -46,17 +45,11 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
-        StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
 
         _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
         {
             RootHash = storageRoot
         };
-
-        // Set the rootref manually. Cut the call to find nodes by about 1/4th.
-        _warmupStorageTree = new StorageTree(warmerStorageTrieAdapter, logManager);
-        _warmupStorageTree.SetRootHash(storageRoot, false);
-        _warmupStorageTree.RootRef = _tree.RootRef;
 
         _config = config;
     }
@@ -107,12 +100,19 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             return false;
         }
 
+        Hash256 rootHash = _tree.RootHash;
+        if (rootHash == Keccak.EmptyTreeHash) return true;
+
         // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
         // this is just to warm up the nodes.
         ValueHash256 key = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(index, ref key);
 
-        _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+        Hash256AsKey addressHash = _addressHash;
+        RlpTrieTraversal.WarmUpPath(
+            (path, hash) => _bundle.LoadAndCacheStorageRlpForWarmer(addressHash, path, hash),
+            rootHash,
+            key.BytesAsSpan);
         return true;
     }
 

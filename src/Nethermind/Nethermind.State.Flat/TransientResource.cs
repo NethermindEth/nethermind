@@ -17,7 +17,7 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// Contains some large variable used by <see cref="SnapshotBundle"/> but not committed into <see cref="IFlatDbManager"/>
+/// Contains some large variables used by <see cref="SnapshotBundle"/> but not committed into <see cref="IFlatDbManager"/>
 /// as part of a <see cref="Snapshot"/>. Pooling this is largely for performance reason.
 /// </summary>
 /// <param name="size"></param>
@@ -79,15 +79,15 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public void Dispose() => PrewarmedAddresses.Dispose();
 
-    public bool TryGetStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(null, path, hash, out node);
+    public bool TryGetStateRlp(in TreePath path, Hash256 hash, [NotNullWhen(true)] out byte[]? rlp) =>
+        Nodes.TryGet(null, path, hash, out rlp);
 
-    public TrieNode GetOrAddStateNode(in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(null, path, trieNode);
+    public void UpdateStateRlp(in TreePath path, Hash256 hash, byte[] rlp) =>
+        Nodes.Set(null, path, hash, rlp);
 
-    public void UpdateStateNode(in TreePath path, TrieNode node) => Nodes.Set(null, path, node);
+    public bool TryGetStorageRlp(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out byte[]? rlp) =>
+        Nodes.TryGet(address, path, hash, out rlp);
 
-    public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, hash, out node);
-
-    public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(address, path, trieNode);
-
-    public void UpdateStorageNode(Hash256AsKey address, in TreePath path, TrieNode node) => Nodes.Set(address, path, node);
+    public void UpdateStorageRlp(Hash256AsKey address, in TreePath path, Hash256 hash, byte[] rlp) =>
+        Nodes.Set(address, path, hash, rlp);
 }
