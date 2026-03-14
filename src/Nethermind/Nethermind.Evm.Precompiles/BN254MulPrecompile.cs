@@ -8,8 +8,10 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
 
+/// <summary>
 /// <see href="https://eips.ethereum.org/EIPS/eip-196" />
-public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
+/// </summary>
+public partial class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
 {
     private const int InputLength = 96;
     private const int OutputLength = 64;
@@ -57,16 +59,4 @@ public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
 
         return Mul(padded, output);
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool Mul(ReadOnlySpan<byte> input, byte[] output) =>
-#if ZK_EVM
-        ZiskBindings.Crypto.bn254_g1_mul_c(
-            input[..(InputLength - 32)],
-            input[(InputLength - 32)..],
-            output
-        ) == 0;
-#else
-        BN254.Mul(output, input);
-#endif
 }

@@ -8,8 +8,10 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
 
+/// <summary>
 /// <see href="https://eips.ethereum.org/EIPS/eip-196" />
-public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
+/// </summary>
+public partial class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
 {
     private const int InputLength = 128;
     private const int OutputLength = 64;
@@ -57,16 +59,4 @@ public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
 
         return Add(padded, output);
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool Add(ReadOnlySpan<byte> input, byte[] output) =>
-#if ZK_EVM
-        ZiskBindings.Crypto.bn254_g1_add_c(
-            input[..(InputLength / 2)],
-            input[(InputLength / 2)..],
-            output
-        ) == 0;
-#else
-        BN254.Add(output, input);
-#endif
 }

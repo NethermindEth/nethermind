@@ -7,8 +7,10 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
 
+/// <summary>
 /// <see href="https://eips.ethereum.org/EIPS/eip-197" />
-public class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
+/// </summary>
+public partial class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
 {
     private const int PairingMaxInputSizeGranite = 112_687;
 
@@ -25,39 +27,7 @@ public class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         (releaseSpec.IsEip1108Enabled ? 34_000L : 80_000L) * (inputData.Length / BN254.PairSize);
 
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-#if !ZK_EVM
-        Metrics.Bn254PairingPrecompile++;
-#endif
-        if (releaseSpec.IsOpGraniteEnabled && inputData.Length > PairingMaxInputSizeGranite ||
-            inputData.Length % BN254.PairSize > 0)
-        {
-            return Errors.InvalidInputLength;
-        }
-
-        byte[] output = new byte[32];
-        var success = false;
-#if ZK_EVM
-        if (inputData.Length == 0)
-        {
-            output[31] = 1;
-            success = true;
-        }
-        else
-        {
-            byte result = ZiskBindings.Crypto.bn254_pairing_check_c(
-                inputData.Span,
-                (nuint)inputData.Length / BN254.PairSize
-            );
-            success = result <= 1;
-
-            if (result == 0)
-                output[31] = 1;
-        }
-#else
-        success = BN254.CheckPairing(output, inputData.Span);
-#endif
-        return success ? output : Errors.Failed;
-    }
+    private static bool ValidateInputLength(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+        (!releaseSpec.IsOpGraniteEnabled || inputData.Length <= PairingMaxInputSizeGranite) &&
+            inputData.Length % BN254.PairSize == 0;
 }

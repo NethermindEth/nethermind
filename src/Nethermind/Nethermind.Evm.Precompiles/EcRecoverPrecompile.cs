@@ -2,24 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles;
 
-public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
+public partial class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
 {
     public static readonly EcRecoverPrecompile Instance = new();
     private static readonly Result<byte[]> Empty = Array.Empty<byte>();
 
-    private EcRecoverPrecompile()
-    {
-    }
+    private EcRecoverPrecompile() { }
 
     public static Address Address { get; } = Address.FromNumber(1);
 
@@ -70,27 +65,6 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
         ReadOnlySpan<byte> signature = inputDataSpan.Slice(64, 64);
         byte recoveryId = Signature.GetRecoveryId(v);
 
-#if ZK_EVM
-        Span<byte> result = stackalloc byte[32];
-
-        return EthereumEcdsa.RecoverAddressRaw(signature, recoveryId, message, result)
-            ? result.ToArray() : Empty;
-#else
-        Span<byte> publicKey = stackalloc byte[65];
-
-        if (!EthereumEcdsa.RecoverAddressRaw(signature, recoveryId, message, publicKey))
-        {
-            return Empty;
-        }
-
-        byte[] result = new byte[32];
-        ref byte refResult = ref MemoryMarshal.GetArrayDataReference(result);
-
-        KeccakCache.ComputeTo(publicKey.Slice(1, 64), out Unsafe.As<byte, ValueHash256>(ref refResult));
-
-        // Clear first 12 bytes, as address is last 20 bytes of the hash
-        Unsafe.InitBlockUnaligned(ref refResult, 0, 12);
-        return result;
-#endif
+        return Recover(signature, recoveryId, message);
     }
 }
