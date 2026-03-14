@@ -32,7 +32,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly bool _recordDetailedMetrics;
 
     private readonly ConcurrencyController _concurrencyQuota;
-    private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = new();
     private bool _isDisposed = false;
@@ -61,14 +60,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         _stateTree = new(
             new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
-            logManager
-        )
-        {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
-
-        _warmupStateTree = new(
-            new StateTrieStoreWarmerAdapter(snapshotBundle),
             logManager
         )
         {
@@ -134,10 +125,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             return false;
         }
 
+        Hash256 rootHash = _stateTree.RootHash;
+        if (rootHash == Keccak.EmptyTreeHash) return true;
+
         // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
         // this is just for warming up
         long sw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+        RlpTrieTraversal.WarmUpPath(
+            _snapshotBundle.LoadAndCacheStateRlpForWarmer,
+            rootHash,
+            address.ToAccountPath.Bytes);
         if (_recordDetailedMetrics)
             Metrics.TrieWarmerJobTime.Observe(Stopwatch.GetTimestamp() - sw, _stateWarmerLabel);
 

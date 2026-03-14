@@ -9,7 +9,7 @@ namespace Nethermind.State.Flat;
 
 public interface ITrieNodeCache
 {
-    bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node);
+    bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out byte[]? rlp);
     void Add(TransientResource transientResource);
     void Clear();
 }
