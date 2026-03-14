@@ -29,6 +29,7 @@ public sealed class EraStore : IEraStore
     private readonly ValueHash256[] _checksums;
 
     private readonly ConcurrentDictionary<long, bool> _verifiedEpochs = new();
+    private readonly ConcurrentDictionary<long, SemaphoreSlim> _epochLocks = new();
 
     private readonly int _maxOpenFile;
     private readonly ConcurrentDictionary<int, (long Epoch, EraReader Reader)> _openedReader = new();
@@ -118,23 +119,35 @@ public sealed class EraStore : IEraStore
     {
         if (_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified) return;
 
-        Task checksumTask = Task.Run(() =>
+        SemaphoreSlim epochLock = _epochLocks.GetOrAdd(epoch, _ => new SemaphoreSlim(1, 1));
+        await epochLock.WaitAsync(cancellation).ConfigureAwait(false);
+        try
         {
-            ValueHash256 actual = reader.CalculateChecksum();
-            ValueHash256 expected = _checksums[epoch - FirstEpoch];
-            if (actual != expected)
-                throw new EraVerificationException($"Checksum mismatch for epoch {epoch}. Got {actual}, expected {expected}.");
-        });
+            // Double-check: another worker may have verified this epoch while we were waiting
+            if (_verifiedEpochs.TryGetValue(epoch, out verified) && verified) return;
 
-        Task accumulatorTask = Task.Run(async () =>
+            Task checksumTask = Task.Run(() =>
+            {
+                ValueHash256 actual = reader.CalculateChecksum();
+                ValueHash256 expected = _checksums[epoch - FirstEpoch];
+                if (actual != expected)
+                    throw new EraVerificationException($"Checksum mismatch for epoch {epoch}. Got {actual}, expected {expected}.");
+            });
+
+            Task accumulatorTask = Task.Run(async () =>
+            {
+                ValueHash256 accRoot = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, _validator, cancellation).ConfigureAwait(false);
+                if (_trustedAccumulators != null && accRoot != default && !_trustedAccumulators.Contains(accRoot))
+                    throw new EraVerificationException($"AccumulatorRoot {accRoot} for epoch {epoch} is not trusted.");
+            });
+
+            await Task.WhenAll(checksumTask, accumulatorTask).ConfigureAwait(false);
+            _verifiedEpochs.TryAdd(epoch, true);
+        }
+        finally
         {
-            ValueHash256 accRoot = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, _validator, cancellation);
-            if (_trustedAccumulators != null && accRoot != default && !_trustedAccumulators.Contains(accRoot))
-                throw new EraVerificationException($"AccumulatorRoot {accRoot} for epoch {epoch} is not trusted.");
-        });
-
-        await Task.WhenAll(checksumTask, accumulatorTask);
-        _verifiedEpochs.TryAdd(epoch, true);
+            epochLock.Release();
+        }
     }
 
     public long NextEraStart(long blockNumber)
@@ -219,5 +232,8 @@ public sealed class EraStore : IEraStore
 
         foreach (KeyValuePair<int, (long, EraReader)> kv in _openedReader)
             kv.Value.Item2.Dispose();
+
+        foreach (KeyValuePair<long, SemaphoreSlim> kv in _epochLocks)
+            kv.Value.Dispose();
     }
 }

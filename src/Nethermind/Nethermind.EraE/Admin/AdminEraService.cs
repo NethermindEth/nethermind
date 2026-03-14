@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
-using EraException = Nethermind.Era1.EraException;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Import;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
 namespace Nethermind.EraE.Admin;
@@ -30,10 +30,10 @@ public class AdminEraService : IAdminEraService
         _logger = logManager.GetClassLogger();
     }
 
-    public string ExportHistory(string destination, long from, long to)
+    public ResultWrapper<string> ExportHistory(string destination, long from, long to)
     {
         if (Interlocked.Exchange(ref _canEnterExport, 0) != 1)
-            throw new InvalidOperationException("An export job is already running.");
+            return ResultWrapper<string>.Fail("An export job is already running.");
 
         try
         {
@@ -45,13 +45,13 @@ public class AdminEraService : IAdminEraService
             throw;
         }
 
-        return "Started EraE export task.";
+        return ResultWrapper<string>.Success("Started EraE export task.");
     }
 
-    public string ImportHistory(string source, long from, long to, string? accumulatorFile)
+    public ResultWrapper<string> ImportHistory(string source, long from, long to, string? accumulatorFile)
     {
         if (Interlocked.Exchange(ref _canEnterImport, 0) != 1)
-            throw new InvalidOperationException("An import job is already running.");
+            return ResultWrapper<string>.Fail("An import job is already running.");
 
         try
         {
@@ -63,7 +63,7 @@ public class AdminEraService : IAdminEraService
             throw;
         }
 
-        return "Started EraE import task.";
+        return ResultWrapper<string>.Success("Started EraE import task.");
     }
 
     private async Task StartExportTask(string destination, long from, long to)
@@ -76,10 +76,6 @@ public class AdminEraService : IAdminEraService
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
         {
             _logger.Warn($"EraE export was cancelled. Archives in '{destination}' may be incomplete.");
-        }
-        catch (EraException e)
-        {
-            _logger.Error("EraE export error", e);
         }
         catch (Exception e)
         {
@@ -102,10 +98,6 @@ public class AdminEraService : IAdminEraService
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
         {
             _logger.Warn($"EraE import was cancelled. State from '{source}' may be incomplete.");
-        }
-        catch (EraException e)
-        {
-            _logger.Error("EraE import error", e);
         }
         catch (Exception e)
         {

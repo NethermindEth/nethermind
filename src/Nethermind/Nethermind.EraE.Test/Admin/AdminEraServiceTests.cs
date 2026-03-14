@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.EraE.Admin;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Import;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -29,7 +31,7 @@ public class AdminEraServiceTests
     }
 
     [Test]
-    public void ImportHistory_WhenImportAlreadyRunning_Throws()
+    public void ImportHistory_WhenImportAlreadyRunning_ReturnsFailure()
     {
         IEraImporter importer = Substitute.For<IEraImporter>();
         TaskCompletionSource tcs = new();
@@ -43,7 +45,8 @@ public class AdminEraServiceTests
 
         sut.ImportHistory("somewhere", 99, 999, null);
 
-        Assert.That(() => sut.ImportHistory("somewhere", 99, 999, null), Throws.Exception);
+        ResultWrapper<string> result = sut.ImportHistory("somewhere", 99, 999, null);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
 
         tcs.TrySetResult();
 
@@ -66,7 +69,7 @@ public class AdminEraServiceTests
     }
 
     [Test]
-    public void ExportHistory_WhenExportAlreadyRunning_Throws()
+    public void ExportHistory_WhenExportAlreadyRunning_ReturnsFailure()
     {
         IEraExporter exporter = Substitute.For<IEraExporter>();
         TaskCompletionSource tcs = new();
@@ -80,7 +83,8 @@ public class AdminEraServiceTests
 
         sut.ExportHistory("somewhere", 99, 999);
 
-        Assert.That(() => sut.ExportHistory("somewhere", 99, 999), Throws.Exception);
+        ResultWrapper<string> result = sut.ExportHistory("somewhere", 99, 999);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
 
         tcs.TrySetResult();
 

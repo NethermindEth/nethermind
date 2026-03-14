@@ -9,8 +9,8 @@ namespace Nethermind.EraE.JsonRpc;
 public class EraAdminRpcModule(IAdminEraService eraService) : IEraAdminRpcModule
 {
     public Task<ResultWrapper<string>> admin_exportEraHistory(string destinationPath, int from, int to) =>
-        ResultWrapper<string>.Success(eraService.ExportHistory(destinationPath, from, to));
+        Task.FromResult(eraService.ExportHistory(destinationPath, from, to));
 
     public Task<ResultWrapper<string>> admin_importEraHistory(string sourcePath, int from = 0, int to = 0, string? accumulatorFile = null) =>
-        ResultWrapper<string>.Success(eraService.ImportHistory(sourcePath, from, to, accumulatorFile));
+        Task.FromResult(eraService.ImportHistory(sourcePath, from, to, accumulatorFile));
 }
