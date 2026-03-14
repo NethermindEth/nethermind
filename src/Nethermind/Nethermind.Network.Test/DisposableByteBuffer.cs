@@ -222,3 +222,8 @@ public sealed class DisposableByteBuffer(IByteBuffer inner) : IByteBuffer, IDisp
     public string ToString(Encoding encoding) => inner.ToString(encoding);
     public string ToString(int index, int length, Encoding encoding) => inner.ToString(index, length, encoding);
 }
+
+public static class DisposableByteBufferExtensions
+{
+    public static DisposableByteBuffer AsDisposable(this IByteBuffer buffer) => new(buffer);
+}

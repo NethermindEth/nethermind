@@ -6,7 +6,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;

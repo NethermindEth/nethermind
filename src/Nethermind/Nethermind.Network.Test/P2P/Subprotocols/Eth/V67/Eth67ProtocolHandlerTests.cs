@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;

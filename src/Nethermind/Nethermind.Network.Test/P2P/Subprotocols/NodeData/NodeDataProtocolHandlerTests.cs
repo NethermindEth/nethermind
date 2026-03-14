@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
