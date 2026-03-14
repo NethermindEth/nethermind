@@ -23,8 +23,19 @@ jobs:
 
       - name: Format
         run: |
-          dotnet format whitespace src/Nethermind/ --folder --verify-no-changes
-          dotnet format whitespace tools/ --folder --verify-no-changes
+          dotnet format whitespace src/Nethermind/ --folder
+          dotnet format whitespace tools/ --folder
+
+      - name: Check formatting changes
+        run: |
+          git diff --exit-code --diff-filter=M --stat || {
+            echo ""
+            echo "::error::Code formatting violations detected. Run 'dotnet format whitespace src/Nethermind/ --folder && dotnet format whitespace tools/ --folder' locally to fix."
+            echo ""
+            echo "Diff of required changes:"
+            git diff --diff-filter=M
+            exit 1
+          }
 
       - name: Check spelling
         uses: streetsidesoftware/cspell-action@v7
