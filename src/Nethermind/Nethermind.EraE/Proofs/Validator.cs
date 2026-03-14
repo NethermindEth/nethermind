@@ -189,19 +189,25 @@ public class Validator
     {
         if (branch.Length != depth) return false;
 
-        Span<byte> merkleRoot = leaf.ToByteArray();
+        // Two 32-byte stack buffers, ping-ponged each iteration — zero heap allocations.
+        Span<byte> buf0 = stackalloc byte[32];
+        Span<byte> buf1 = stackalloc byte[32];
+        leaf.Bytes.CopyTo(buf0);
+
         for (int i = 0; i < depth; i++)
         {
             // bit i == 1 means current node is the RIGHT child, so sibling is on the LEFT
             bool siblingOnLeft = (genIndex >> i) % 2 != 0;
-            Span<byte> next = new byte[32];
+            Span<byte> src = (i % 2 == 0) ? buf0 : buf1;
+            Span<byte> dst = (i % 2 == 0) ? buf1 : buf0;
             if (siblingOnLeft)
-                Hash(branch[i].Bytes, merkleRoot, next);
+                Hash(branch[i].Bytes, src, dst);
             else
-                Hash(merkleRoot, branch[i].Bytes, next);
-            merkleRoot = next;
+                Hash(src, branch[i].Bytes, dst);
         }
-        return merkleRoot.SequenceEqual(root.ToByteArray());
+
+        Span<byte> result = (depth % 2 == 0) ? buf0 : buf1;
+        return result.SequenceEqual(root.Bytes);
     }
 
     private static void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)

@@ -107,12 +107,11 @@ public sealed class EraStore : IEraStore
 
     private long GetEpochNumber(long blockNumber) => blockNumber / _maxEraSize;
 
-    private bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
-
     private EraReader GetReader(long epoch)
     {
-        GuardMissingEpoch(epoch);
-        return new EraReader(new E2StoreReader(_epochs[epoch]));
+        if (!_epochs.TryGetValue(epoch, out string? path))
+            throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch not available.");
+        return new EraReader(new E2StoreReader(path));
     }
 
     private async ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)
@@ -173,8 +172,6 @@ public sealed class EraStore : IEraStore
 
     private EraRenter RentReader(long epoch, out EraReader reader)
     {
-        GuardMissingEpoch(epoch);
-
         int shardIdx = (int)(epoch % _maxOpenFile);
         if (_openedReader.TryRemove(shardIdx, out (long, EraReader) opened))
         {
@@ -213,12 +210,6 @@ public sealed class EraStore : IEraStore
             throw new ArgumentOutOfRangeException(nameof(number), number, "Cannot be negative.");
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void GuardMissingEpoch(long epoch)
-    {
-        if (!HasEpoch(epoch))
-            throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch not available.");
-    }
 
     private readonly struct EraRenter(EraStore store, EraReader reader, long epoch) : IDisposable
     {

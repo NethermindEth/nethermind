@@ -182,10 +182,12 @@ public sealed class EraWriter : IDisposable
         }
 
         long totalWritten = 0;
-        long[] headerOffsets = new long[blockCount];
-        long[] bodyOffsets = new long[blockCount];
-        long[] receiptsOffsets = new long[blockCount];
-        long[] tdOffsets = needsTd ? new long[blockCount] : [];
+        long[] headerOffsets = ArrayPool<long>.Shared.Rent(blockCount);
+        long[] bodyOffsets = ArrayPool<long>.Shared.Rent(blockCount);
+        long[] receiptsOffsets = ArrayPool<long>.Shared.Rent(blockCount);
+        long[] tdOffsets = needsTd ? ArrayPool<long>.Shared.Rent(blockCount) : [];
+        try
+        {
 
         // Version
         totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>(), cancellation);
@@ -276,6 +278,14 @@ public sealed class EraWriter : IDisposable
 
         _finalized = true;
         return (accumulatorRoot, _e2StoreWriter.FinalizeChecksum());
+        }
+        finally
+        {
+            ArrayPool<long>.Shared.Return(headerOffsets);
+            ArrayPool<long>.Shared.Return(bodyOffsets);
+            ArrayPool<long>.Shared.Return(receiptsOffsets);
+            if (needsTd) ArrayPool<long>.Shared.Return(tdOffsets);
+        }
     }
 
     private static void WriteInt64(Span<byte> destination, int off, long value) =>

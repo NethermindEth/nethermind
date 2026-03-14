@@ -111,14 +111,14 @@ public sealed class BlocksRootContext : IDisposable
 
             case AccumulatorType.HistoricalRoots:
                 SszEncoding.Merkleize(
-                    HistoricalBatch.From(_blockRoots.ToArray(), _stateRoots.ToArray()),
+                    HistoricalBatch.From(_blockRoots.AsSpan(), _stateRoots.AsSpan()),
                     out UInt256 historicalRoot);
                 _historicalRoot = UInt256ToHash(ref historicalRoot);
                 break;
 
             case AccumulatorType.HistoricalSummaries:
-                SszEncoding.Merkleize(ValueHash256Vector.From(_blockRoots.ToArray()), out UInt256 blockRoot);
-                SszEncoding.Merkleize(ValueHash256Vector.From(_stateRoots.ToArray()), out UInt256 stateRoot);
+                SszEncoding.Merkleize(ValueHash256Vector.From(_blockRoots.AsSpan()), out UInt256 blockRoot);
+                SszEncoding.Merkleize(ValueHash256Vector.From(_stateRoots.AsSpan()), out UInt256 stateRoot);
                 _historicalSummary = new HistoricalSummary(
                     UInt256ToHash(ref blockRoot),
                     UInt256ToHash(ref stateRoot));
