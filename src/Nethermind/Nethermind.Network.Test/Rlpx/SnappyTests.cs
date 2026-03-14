@@ -46,10 +46,6 @@ public class SnappyTests
             return result.ReadAllBytesAsArray();
         }
 
-        /// <summary>
-        /// Exposes the protected Encode method with caller-controlled buffers,
-        /// allowing tests to use a specific allocator (e.g. pooled) for leak detection.
-        /// </summary>
         public void TestEncode(IByteBuffer input, IByteBuffer output)
         {
             Encode(null, input, output);
