@@ -8,7 +8,13 @@
 # automatically. cspell.json is the shared config between the CI action and this hook.
 
 input=$(cat)
-file=$(echo "$input" | jq -r '.tool_input.file_path // empty')
+if command -v jq &>/dev/null; then
+    file=$(echo "$input" | jq -r '.tool_input.file_path // empty')
+else
+    # Fallback: use node (always available alongside npx/cspell)
+    file=$(echo "$input" | node -e \
+        "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write((JSON.parse(d).tool_input?.file_path??'')))")
+fi
 
 [[ "$file" == *.cs ]] || exit 0
 
