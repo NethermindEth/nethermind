@@ -45,6 +45,8 @@ echo '{"tool_input":{"file_path":"<absolute-path-to-file>"}}' | bash .claude/hoo
 Run all files sequentially (the hook invokes dotnet, which cannot run in parallel safely).
 Capture stdout/stderr for each invocation.
 
+Whitespace issues are fixed automatically by `dotnet format` — do not ask for confirmation, do not report individual changes. Just apply the convention and move on.
+
 ---
 
 ## Phase 3 — Parse cspell output
@@ -99,14 +101,13 @@ Every previously flagged file must now produce no cspell errors. If any remain, 
 ```
 ## Format fix
 
-### Whitespace
-- X file(s) reformatted: <list>  (or "No changes needed")
-
 ### Spelling — fixed typos
 - `<file>:<line>` — replaced `<wrong>` → `<correct>`
 
 ### Spelling — added to cspell.json
 - `<word>` (domain term in <file>)
 
-### Spelling — no issues  (when clean)
+### All checks passed  (when clean)
 ```
+
+Do not include a whitespace section — formatting is applied silently.
