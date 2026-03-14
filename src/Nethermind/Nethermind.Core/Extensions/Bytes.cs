@@ -333,6 +333,7 @@ namespace Nethermind.Core.Extensions
             }
         }
 
+
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes)
         {
             return ToUnsignedBigInteger(bytes.AsSpan());
@@ -957,6 +958,7 @@ namespace Nethermind.Core.Extensions
                 ref byte bytes = ref MemoryMarshal.GetReference(data);
                 int i = 0;
 
+                // cspell:ignore addv
                 // ARM: Sum uses native horizontal add (addv) at 128-bit NEON width,
                 // avoiding the expensive multi-instruction ExtractMsb decomposition.
                 // x86: ExtractMostSignificantBits compiles to single pmovmskb instruction.

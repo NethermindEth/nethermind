@@ -81,6 +81,7 @@ public class VmState<TGasPolicy> : IDisposable
     public byte[]? DataStack;
     public ReturnState[]? ReturnStack;
     public TGasPolicy Gas;
+    public long InitialStateReservoir;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -182,6 +183,7 @@ public class VmState<TGasPolicy> : IDisposable
         }
         _accessTracker.TakeSnapshot();
         Gas = gas;
+        InitialStateReservoir = TGasPolicy.GetStateReservoir(in gas);
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;
