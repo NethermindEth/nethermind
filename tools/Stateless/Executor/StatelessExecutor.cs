@@ -19,7 +19,7 @@ public static class StatelessExecutor
     public static bool TryExecute(ReadOnlySpan<byte> data, out Block? processedBlock)
     {
         Witness witness;
-        (Block suggestedBlock, witness, uint chainId) = InputSerializer.Deserialize(data);
+        (Block suggestedBlock, witness, ulong chainId) = InputSerializer.Deserialize(data);
 
         using (witness)
         {
@@ -89,7 +89,7 @@ public static class StatelessExecutor
         return blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock);
     }
 
-    private static ISpecProvider GetSpecProvider(uint chainId) => chainId switch
+    private static ISpecProvider GetSpecProvider(ulong chainId) => chainId switch
     {
         BlockchainIds.Hoodi => HoodiSpecProvider.Instance,
         BlockchainIds.Mainnet => MainnetSpecProvider.Instance,

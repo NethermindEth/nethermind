@@ -12,7 +12,7 @@ namespace Nethermind.Stateless.Execution;
 
 public static class InputSerializer
 {
-    public static byte[] Serialize(Block block, Witness witness, uint chainId)
+    public static byte[] Serialize(Block block, Witness witness, ulong chainId)
     {
         ArgumentNullException.ThrowIfNull(block);
 
@@ -27,7 +27,7 @@ public static class InputSerializer
         byte[] output = GC.AllocateUninitializedArray<byte>(outputLen);
         var offset = 0;
 
-        WriteUInt32(chainId, output, ref offset);
+        WriteUInt64(chainId, output, ref offset);
         WriteInt32(blockLen, output, ref offset);
 
         RlpStream rlpStream = new(output) { Position = offset };
@@ -47,12 +47,12 @@ public static class InputSerializer
         return output;
     }
 
-    public static (Block, Witness, uint) Deserialize(ReadOnlySpan<byte> input)
+    public static (Block, Witness, ulong) Deserialize(ReadOnlySpan<byte> input)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(input.Length, MinSerializedLength);
 
         var offset = 0;
-        var chainId = ReadUInt32(input, ref offset);
+        var chainId = ReadUInt64(input, ref offset);
         var blockLength = ReadInt32(input, ref offset);
 
         IRlpValueDecoder<Block> blockDecoder = Rlp.GetValueDecoder<Block>()!; // cannot be null
@@ -105,10 +105,26 @@ public static class InputSerializer
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ReadUInt64(ReadOnlySpan<byte> source, ref int offset)
+    {
+        var value = BinaryPrimitives.ReadUInt64LittleEndian(source.Slice(offset, sizeof(ulong)));
+        offset += sizeof(ulong);
+
+        return value;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteUInt32(uint value, Span<byte> destination, ref int offset)
     {
         BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(offset, sizeof(uint)), value);
         offset += sizeof(uint);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteUInt64(ulong value, Span<byte> destination, ref int offset)
+    {
+        BinaryPrimitives.WriteUInt64LittleEndian(destination.Slice(offset, sizeof(ulong)), value);
+        offset += sizeof(ulong);
     }
 
     private static ArrayPoolList<byte[]> ReadJaggedArray(ReadOnlySpan<byte> source, ref int offset)
@@ -170,7 +186,7 @@ public static class InputSerializer
     }
 
     private static int MinSerializedLength =>
-        sizeof(uint) + // chain id
+        sizeof(ulong) + // chain id
         sizeof(int) +  // block length
         sizeof(int) +  // codes length
         sizeof(int) +  // headers length
