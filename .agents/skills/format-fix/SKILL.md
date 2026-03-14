@@ -5,7 +5,8 @@ allowed-tools:
   [
     Bash(git diff*),
     Bash(git status*),
-    Bash(bash scripts/dotnet-format.sh*),
+    Bash(echo*),
+    Bash(bash .claude/hooks/format-cs.sh*),
     Bash(bash scripts/cspell.sh*),
     Read,
     Edit,
@@ -15,7 +16,7 @@ allowed-tools:
 
 # format-fix skill
 
-Runs the same checks as `.github/workflows/code-formatting.yml` locally, then resolves every issue automatically.
+Runs the same checks as `.github/workflows/code-formatting.yml` locally by invoking `.claude/hooks/format-cs.sh` — the single source of truth for both dotnet format and cspell. Resolves every issue automatically.
 
 ---
 
@@ -33,32 +34,27 @@ If no `.cs` files are found, report "Nothing to check." and stop.
 
 ---
 
-## Phase 2 — Auto-fix whitespace formatting
+## Phase 2 — Run the hook on each file
 
-Run:
+The hook `.claude/hooks/format-cs.sh` orchestrates both checks (whitespace formatting and spell-check). Call it once per file, piping the file path as JSON on stdin — exactly as Claude Code's PostToolUse event does:
 
 ```bash
-bash scripts/dotnet-format.sh
+echo '{"tool_input":{"file_path":"<absolute-path-to-file>"}}' | bash .claude/hooks/format-cs.sh
 ```
 
-This rewrites files in place. Report how many files were changed (compare `git diff --name-only` before and after).
+Run all files sequentially (the hook invokes dotnet, which cannot run in parallel safely).
+Capture stdout/stderr for each invocation.
 
 ---
 
-## Phase 3 — Spell-check
+## Phase 3 — Parse cspell output
 
-Run cspell across all `.cs` files found in Phase 1:
-
-```bash
-bash scripts/cspell.sh <file1> <file2> ...
-```
-
-Capture every output line matching:
+From the captured output, collect every line matching:
 ```
 <file>:<line>:<col> - Unknown word (<word>) [fix: (<suggestion>)]
 ```
 
-Group issues by file. If there are no issues, report "Spell check passed." and stop.
+Group issues by file. If there are none across all files, report "All checks passed." and stop.
 
 ---
 
@@ -88,20 +84,20 @@ Condition: no `fix:` suggestion, or the suggestion was rejected in Action A.
 
 ## Phase 5 — Verify
 
-After all edits:
+Re-run the hook on every file that had issues:
 
 ```bash
-bash scripts/cspell.sh <previously-failing-files>
+echo '{"tool_input":{"file_path":"<absolute-path>"}}' | bash .claude/hooks/format-cs.sh
 ```
 
-Every previously flagged file must now report 0 issues. If any issues remain, repeat Phase 4 for the residual words.
+Every previously flagged file must now produce no cspell errors. If any remain, repeat Phase 4.
 
 ---
 
 ## Output format
 
 ```
-## Format check
+## Format fix
 
 ### Whitespace
 - X file(s) reformatted: <list>  (or "No changes needed")
