@@ -75,6 +75,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip7934Enabled { get; set; } = spec.IsEip7934Enabled;
         public int Eip7934MaxRlpBlockSize { get; set; } = spec.Eip7934MaxRlpBlockSize;
         public bool ValidateChainId { get; set; } = spec.ValidateChainId;
+        public bool ValidateReceipts { get; set; } = spec.ValidateReceipts;
+        public UInt256? Eip1559BaseFeeMinValue { get; set; } = spec.Eip1559BaseFeeMinValue;
         public bool IsEip3607Enabled { get; set; } = spec.IsEip3607Enabled;
         public Address? Eip158IgnoredAccount { get; set; } = spec.Eip158IgnoredAccount;
         public long Eip1559TransitionBlock { get; set; } = spec.Eip1559TransitionBlock;
