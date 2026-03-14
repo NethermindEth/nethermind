@@ -67,13 +67,12 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         return (block, receipts);
     }
 
+    public bool HasEpoch(long blockNumber) => _localStore is not null && _localStore.HasEpoch(blockNumber);
+
     public long NextEraStart(long blockNumber)
     {
-        if (_localStore is not null)
-        {
-            try { return _localStore.NextEraStart(blockNumber); }
-            catch (ArgumentOutOfRangeException) { /* epoch not in local store, fall through */ }
-        }
+        if (_localStore is not null && _localStore.HasEpoch(blockNumber))
+            return _localStore.NextEraStart(blockNumber);
 
         int epoch = (int)(blockNumber / _maxEraSize);
         // intentional sync-over-async: NextEraStart is part of IEraStore synchronous contract.

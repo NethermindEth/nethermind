@@ -149,6 +149,8 @@ public sealed class EraStore : IEraStore
         }
     }
 
+    public bool HasEpoch(long blockNumber) => _epochs.ContainsKey(GetEpochNumber(blockNumber));
+
     public long NextEraStart(long blockNumber)
     {
         long epoch = GetEpochNumber(blockNumber);

@@ -11,6 +11,8 @@ public interface IEraStore : IDisposable
     long LastBlock { get; }
     long FirstBlock { get; }
 
+    bool HasEpoch(long blockNumber);
+
     /// Used for alignment when parallelizing imports so different tasks work on different files.
     long NextEraStart(long blockNumber);
 }

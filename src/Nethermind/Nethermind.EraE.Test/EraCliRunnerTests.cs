@@ -4,7 +4,6 @@
 using Nethermind.EraE.Config;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Import;
-using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -22,7 +21,7 @@ public class EraCliRunnerTests
             From = 99,
             To = 999
         };
-        EraCliRunner cliRunner = new(eraConfig, eraImporter, Substitute.For<IEraExporter>(), LimboLogs.Instance);
+        EraCliRunner cliRunner = new(eraConfig, eraImporter, Substitute.For<IEraExporter>());
 
         _ = cliRunner.Run(default);
 
@@ -39,7 +38,7 @@ public class EraCliRunnerTests
             From = 99,
             To = 999
         };
-        EraCliRunner cliRunner = new(eraConfig, Substitute.For<IEraImporter>(), eraExporter, LimboLogs.Instance);
+        EraCliRunner cliRunner = new(eraConfig, Substitute.For<IEraImporter>(), eraExporter);
 
         _ = cliRunner.Run(default);
 

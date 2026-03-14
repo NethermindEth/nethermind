@@ -35,15 +35,13 @@ public class AdminEraService : IAdminEraService
         if (Interlocked.Exchange(ref _canEnterExport, 0) != 1)
             return ResultWrapper<string>.Fail("An export job is already running.");
 
-        try
-        {
-            _ = StartExportTask(destination, from, to);
-        }
-        catch
-        {
-            Interlocked.Exchange(ref _canEnterExport, 1);
-            throw;
-        }
+        _ = EraJobRunner.RunProtected(
+            ct => _eraExporter.Export(destination, from, to, ct),
+            $"EraE export was cancelled. Archives in '{destination}' may be incomplete.",
+            "EraE export error",
+            _logger,
+            _processExit.Token,
+            () => Interlocked.Exchange(ref _canEnterExport, 1));
 
         return ResultWrapper<string>.Success("Started EraE export task.");
     }
@@ -53,60 +51,14 @@ public class AdminEraService : IAdminEraService
         if (Interlocked.Exchange(ref _canEnterImport, 0) != 1)
             return ResultWrapper<string>.Fail("An import job is already running.");
 
-        try
-        {
-            _ = StartImportTask(source, accumulatorFile, from, to);
-        }
-        catch
-        {
-            Interlocked.Exchange(ref _canEnterImport, 1);
-            throw;
-        }
+        _ = EraJobRunner.RunProtected(
+            ct => _eraImporter.Import(source, from, to, accumulatorFile, ct),
+            $"EraE import was cancelled. State from '{source}' may be incomplete.",
+            "EraE import error",
+            _logger,
+            _processExit.Token,
+            () => Interlocked.Exchange(ref _canEnterImport, 1));
 
         return ResultWrapper<string>.Success("Started EraE import task.");
-    }
-
-    private async Task StartExportTask(string destination, long from, long to)
-    {
-        Task task = _eraExporter.Export(destination, from, to, cancellation: _processExit.Token);
-        try
-        {
-            await task;
-        }
-        catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
-        {
-            _logger.Warn($"EraE export was cancelled. Archives in '{destination}' may be incomplete.");
-        }
-        catch (Exception e)
-        {
-            _logger.Error("EraE export error", e);
-            throw;
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _canEnterExport, 1);
-        }
-    }
-
-    private async Task StartImportTask(string source, string? accumulatorFile, long from, long to)
-    {
-        Task task = _eraImporter.Import(source, from, to, accumulatorFile, _processExit.Token);
-        try
-        {
-            await task;
-        }
-        catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
-        {
-            _logger.Warn($"EraE import was cancelled. State from '{source}' may be incomplete.");
-        }
-        catch (Exception e)
-        {
-            _logger.Error("EraE import error", e);
-            throw;
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _canEnterImport, 1);
-        }
     }
 }
