@@ -153,14 +153,9 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
-        else if (_transientResource.TryGetStateRlp(path, hash, out byte[]? _))
-        {
-            // RLP is cached — create a lightweight unknown node that resolves lazily via TryLoadStateRlp
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            node = _readStateNodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash));
-        }
         else
         {
+            // Create a lazy unknown node; resolved via TryLoadStateRlp which checks all caches.
             node = _readStateNodes.GetOrAdd(path,
                 DoFindStateNodeExternal(path, hash, out node)
                     ? node
@@ -172,14 +167,6 @@ public sealed class SnapshotBundle : IDisposable
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
-        if (_trieNodeCache.TryGet(null, path, hash, out byte[]? _))
-        {
-            // RLP is in the shared cache — create a lazy unknown node
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            node = new TrieNode(NodeType.Unknown, hash);
-            return true;
-        }
-
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStateNode(path, out node))
@@ -204,14 +191,9 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
-        else if (_transientResource.TryGetStorageRlp((Hash256AsKey)address, path, hash, out byte[]? _))
-        {
-            // RLP is cached — create a lightweight unknown node that resolves lazily via TryLoadStorageRlp
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            node = _readStorageNodes.GetOrAdd(((Hash256AsKey)address, path), new TrieNode(NodeType.Unknown, hash));
-        }
         else
         {
+            // Create a lazy unknown node; resolved via TryLoadStorageRlp which checks all caches.
             node = _readStorageNodes.GetOrAdd(((Hash256AsKey)address, path),
                 DoTryFindStorageNodeExternal((Hash256AsKey)address, path, hash, out node) && node is not null
                     ? node
@@ -226,14 +208,6 @@ public sealed class SnapshotBundle : IDisposable
     // check for slightly improved latency.
     private bool DoTryFindStorageNodeExternal(Hash256AsKey address, in TreePath path, Hash256 hash, out TrieNode? node)
     {
-        if (_trieNodeCache.TryGet(address, path, hash, out byte[]? _))
-        {
-            // RLP is in the shared cache — create a lazy unknown node
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            node = new TrieNode(NodeType.Unknown, hash);
-            return true;
-        }
-
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStorageNode(address, path, out node))
@@ -250,9 +224,11 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        // Check warmer RLP caches before hitting persistence
-        if (_transientResource.TryGetStateRlp(path, hash, out byte[]? rlp)) return rlp;
-        if (_trieNodeCache.TryGet(null, path, hash, out rlp)) return rlp;
+        // Check warmer RLP caches before hitting persistence.
+        // Copy to byte[] only here (commit path); warmup path uses ref TrieNodeRlp.
+        TrieNodeRlp buffer = default;
+        if (_transientResource.TryGetStateRlp(path, hash, ref buffer)) return buffer.ToArray();
+        if (_trieNodeCache.TryGet(null, path, hash, ref buffer)) return buffer.ToArray();
 
         return _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
     }
@@ -261,9 +237,10 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        // Check warmer RLP caches before hitting persistence
-        if (_transientResource.TryGetStorageRlp((Hash256AsKey)address, path, hash, out byte[]? rlp)) return rlp;
-        if (_trieNodeCache.TryGet((Hash256AsKey)address, path, hash, out rlp)) return rlp;
+        // Check warmer RLP caches before hitting persistence.
+        TrieNodeRlp buffer = default;
+        if (_transientResource.TryGetStorageRlp((Hash256AsKey)address, path, hash, ref buffer)) return buffer.ToArray();
+        if (_trieNodeCache.TryGet((Hash256AsKey)address, path, hash, ref buffer)) return buffer.ToArray();
 
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
@@ -283,7 +260,7 @@ public sealed class SnapshotBundle : IDisposable
         // to block processing time but increase the trie node add time by 3x.
         if (newNode.Keccak is not null && newNode.FullRlp.IsNotNullOrEmpty)
         {
-            _transientResource.UpdateStateRlp(path, newNode.Keccak, newNode.FullRlp.ToArray()!);
+            _transientResource.UpdateStateRlp(path, newNode.Keccak, newNode.FullRlp.AsSpan());
         }
     }
 
@@ -299,7 +276,7 @@ public sealed class SnapshotBundle : IDisposable
 
         if (newNode.Keccak is not null && newNode.FullRlp.IsNotNullOrEmpty)
         {
-            _transientResource.UpdateStorageRlp(addr, path, newNode.Keccak, newNode.FullRlp.ToArray()!);
+            _transientResource.UpdateStorageRlp(addr, path, newNode.Keccak, newNode.FullRlp.AsSpan());
         }
     }
 
@@ -368,55 +345,67 @@ public sealed class SnapshotBundle : IDisposable
     /// <summary>
     /// Loads and caches the RLP bytes for a state trie node. Used by <see cref="RlpTrieTraversal"/> during warmup.
     /// Checks transient and persistent RLP caches, then falls back to disk. Caches the result in the transient resource.
+    /// Writes into <paramref name="target"/> inline — no heap allocation.
     /// </summary>
-    public byte[]? LoadAndCacheStateRlpForWarmer(TreePath path, Hash256 hash)
+    public bool LoadAndCacheStateRlpForWarmer(TreePath path, Hash256 hash, ref TrieNodeRlp target)
     {
-        if (_transientResource.TryGetStateRlp(path, hash, out byte[]? rlp)) return rlp;
-        if (_trieNodeCache.TryGet(null, path, hash, out rlp)) return rlp;
+        if (_transientResource.TryGetStateRlp(path, hash, ref target)) return true;
+        if (_trieNodeCache.TryGet(null, path, hash, ref target)) return true;
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStateNode(path, out TrieNode? node) && node.Keccak == hash && node.FullRlp.IsNotNullOrEmpty)
             {
-                rlp = node.FullRlp.ToArray()!;
-                _transientResource.UpdateStateRlp(path, hash, rlp);
-                return rlp;
+                ReadOnlySpan<byte> span = node.FullRlp.AsSpan();
+                if (span.Length > TrieNodeRlp.MaxRlpLength) return false;
+                target.Set(span);
+                _transientResource.UpdateStateRlp(path, hash, span);
+                return true;
             }
         }
 
-        rlp = _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, ReadFlags.None);
-        if (rlp is not null)
+        byte[]? rlp = _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, ReadFlags.None);
+        if (rlp is not null && rlp.Length <= TrieNodeRlp.MaxRlpLength)
         {
+            target.Set(rlp);
             _transientResource.UpdateStateRlp(path, hash, rlp);
+            return true;
         }
-        return rlp;
+
+        return false;
     }
 
     /// <summary>
     /// Loads and caches the RLP bytes for a storage trie node. Used by <see cref="RlpTrieTraversal"/> during warmup.
     /// Checks transient and persistent RLP caches, then falls back to disk. Caches the result in the transient resource.
+    /// Writes into <paramref name="target"/> inline — no heap allocation.
     /// </summary>
-    public byte[]? LoadAndCacheStorageRlpForWarmer(Hash256AsKey addressHash, TreePath path, Hash256 hash)
+    public bool LoadAndCacheStorageRlpForWarmer(Hash256AsKey addressHash, TreePath path, Hash256 hash, ref TrieNodeRlp target)
     {
-        if (_transientResource.TryGetStorageRlp(addressHash, path, hash, out byte[]? rlp)) return rlp;
-        if (_trieNodeCache.TryGet(addressHash, path, hash, out rlp)) return rlp;
+        if (_transientResource.TryGetStorageRlp(addressHash, path, hash, ref target)) return true;
+        if (_trieNodeCache.TryGet(addressHash, path, hash, ref target)) return true;
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStorageNode(addressHash, path, out TrieNode? node) && node.Keccak == hash && node.FullRlp.IsNotNullOrEmpty)
             {
-                rlp = node.FullRlp.ToArray()!;
-                _transientResource.UpdateStorageRlp(addressHash, path, hash, rlp);
-                return rlp;
+                ReadOnlySpan<byte> span = node.FullRlp.AsSpan();
+                if (span.Length > TrieNodeRlp.MaxRlpLength) return false;
+                target.Set(span);
+                _transientResource.UpdateStorageRlp(addressHash, path, hash, span);
+                return true;
             }
         }
 
-        rlp = _readOnlySnapshotBundle.TryLoadStorageRlp(addressHash, path, hash, ReadFlags.None);
-        if (rlp is not null)
+        byte[]? rlp = _readOnlySnapshotBundle.TryLoadStorageRlp(addressHash, path, hash, ReadFlags.None);
+        if (rlp is not null && rlp.Length <= TrieNodeRlp.MaxRlpLength)
         {
+            target.Set(rlp);
             _transientResource.UpdateStorageRlp(addressHash, path, hash, rlp);
+            return true;
         }
-        return rlp;
+
+        return false;
     }
 
     // The trie warmer's PushSlotJob is slightly slow due to the wake up logic.

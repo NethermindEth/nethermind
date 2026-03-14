@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
 using System.Numerics;
 using Nethermind.Core;
@@ -79,15 +78,15 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public void Dispose() => PrewarmedAddresses.Dispose();
 
-    public bool TryGetStateRlp(in TreePath path, Hash256 hash, [NotNullWhen(true)] out byte[]? rlp) =>
-        Nodes.TryGet(null, path, hash, out rlp);
+    public bool TryGetStateRlp(in TreePath path, Hash256 hash, ref TrieNodeRlp rlp) =>
+        Nodes.TryGet(null, path, hash, ref rlp);
 
-    public void UpdateStateRlp(in TreePath path, Hash256 hash, byte[] rlp) =>
+    public void UpdateStateRlp(in TreePath path, Hash256 hash, ReadOnlySpan<byte> rlp) =>
         Nodes.Set(null, path, hash, rlp);
 
-    public bool TryGetStorageRlp(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out byte[]? rlp) =>
-        Nodes.TryGet(address, path, hash, out rlp);
+    public bool TryGetStorageRlp(Hash256AsKey address, in TreePath path, Hash256 hash, ref TrieNodeRlp rlp) =>
+        Nodes.TryGet(address, path, hash, ref rlp);
 
-    public void UpdateStorageRlp(Hash256AsKey address, in TreePath path, Hash256 hash, byte[] rlp) =>
+    public void UpdateStorageRlp(Hash256AsKey address, in TreePath path, Hash256 hash, ReadOnlySpan<byte> rlp) =>
         Nodes.Set(address, path, hash, rlp);
 }

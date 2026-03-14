@@ -9,6 +9,15 @@ using Nethermind.Trie;
 namespace Nethermind.State.Flat;
 
 /// <summary>
+/// Delegate for loading RLP bytes for a trie node identified by its path and hash.
+/// Writes into <paramref name="target"/> and returns <c>true</c> on success.
+/// </summary>
+/// <remarks>
+/// Cannot use <see cref="System.Func{T1,T2,T3,TResult}"/> because it does not support <c>ref</c> parameters.
+/// </remarks>
+internal delegate bool RlpLoader(TreePath path, Hash256 hash, ref TrieNodeRlp target);
+
+/// <summary>
 /// Traverses a Merkle Patricia Trie at the RLP level without creating <see cref="TrieNode"/> objects.
 /// This eliminates GC pressure during warmup by working directly with raw RLP bytes.
 /// </summary>
@@ -22,12 +31,12 @@ internal static class RlpTrieTraversal
     /// </summary>
     /// <param name="rlpLoader">
     /// Loads RLP bytes for a node identified by its path and hash.
-    /// Returns <c>null</c> if the node is not available (cache miss + no disk fallback).
+    /// Returns <c>false</c> if the node is not available (cache miss + no disk fallback).
     /// </param>
     /// <param name="rootHash">The root hash of the trie to traverse.</param>
     /// <param name="rawKey">The raw key bytes to look up (not nibble-encoded).</param>
     public static void WarmUpPath(
-        Func<TreePath, Hash256, byte[]?> rlpLoader,
+        RlpLoader rlpLoader,
         Hash256 rootHash,
         ReadOnlySpan<byte> rawKey)
     {
@@ -43,9 +52,7 @@ internal static class RlpTrieTraversal
             Nibbles.BytesToNibbleBytes(rawKey, nibbles);
 
             TreePath path = TreePath.Empty;
-            Hash256 currentHash = rootHash;
-
-            WarmUpHashedNode(rlpLoader, ref path, currentHash, nibbles);
+            WarmUpHashedNode(rlpLoader, ref path, rootHash, nibbles);
         }
         finally
         {
@@ -54,18 +61,22 @@ internal static class RlpTrieTraversal
     }
 
     private static void WarmUpHashedNode(
-        Func<TreePath, Hash256, byte[]?> rlpLoader,
+        RlpLoader rlpLoader,
         ref TreePath path,
         Hash256 hash,
         Span<byte> remainingNibbles)
     {
+        // Single stack-allocated buffer reused across all hash-node iterations in this path.
+        // ~546 bytes on the stack, acceptable for warmer threads.
+        TrieNodeRlp nodeBuffer = default;
+
         // Iterative loop for hash-referenced nodes; recurse only for inline nodes.
         while (true)
         {
-            byte[]? rlp = rlpLoader(path, hash);
-            if (rlp is null) return;
+            nodeBuffer.Length = 0;
+            if (!rlpLoader(path, hash, ref nodeBuffer) || nodeBuffer.Length == 0) return;
 
-            bool continueLoop = TraverseNode(rlpLoader, ref path, rlp, remainingNibbles, out Hash256? nextHash, out int nibblesConsumed);
+            bool continueLoop = TraverseNode(rlpLoader, ref path, nodeBuffer.AsSpan(), remainingNibbles, out Hash256? nextHash, out int nibblesConsumed);
             if (!continueLoop || nextHash is null) return;
 
             remainingNibbles = remainingNibbles[nibblesConsumed..];
@@ -78,9 +89,9 @@ internal static class RlpTrieTraversal
     /// Returns false when traversal should stop (leaf reached, missing child, key mismatch).
     /// </summary>
     private static bool TraverseNode(
-        Func<TreePath, Hash256, byte[]?> rlpLoader,
+        RlpLoader rlpLoader,
         ref TreePath path,
-        byte[] rlp,
+        ReadOnlySpan<byte> rlp,
         Span<byte> remainingNibbles,
         out Hash256? nextHash,
         out int nibblesConsumed)
@@ -103,9 +114,9 @@ internal static class RlpTrieTraversal
     }
 
     private static bool TraverseExtensionOrLeaf(
-        Func<TreePath, Hash256, byte[]?> rlpLoader,
+        RlpLoader rlpLoader,
         ref TreePath path,
-        byte[] parentRlp,
+        ReadOnlySpan<byte> parentRlp,
         ref Rlp.ValueDecoderContext ctx,
         Span<byte> remainingNibbles,
         out Hash256? nextHash,
@@ -164,9 +175,9 @@ internal static class RlpTrieTraversal
     }
 
     private static bool TraverseBranch(
-        Func<TreePath, Hash256, byte[]?> rlpLoader,
+        RlpLoader rlpLoader,
         ref TreePath path,
-        byte[] parentRlp,
+        ReadOnlySpan<byte> parentRlp,
         ref Rlp.ValueDecoderContext ctx,
         Span<byte> remainingNibbles,
         out Hash256? nextHash,
@@ -193,9 +204,9 @@ internal static class RlpTrieTraversal
     /// Handles empty refs (0x80), hash refs (0xA0 + 32 bytes), and inline nodes (sequence).
     /// </summary>
     private static bool TryReadChildRef(
-        Func<TreePath, Hash256, byte[]?> rlpLoader,
+        RlpLoader rlpLoader,
         ref TreePath path,
-        byte[] parentRlp,
+        ReadOnlySpan<byte> parentRlp,
         ref Rlp.ValueDecoderContext ctx,
         Span<byte> remainingNibbles,
         out Hash256? nextHash)
@@ -218,7 +229,7 @@ internal static class RlpTrieTraversal
             ctx.Position++;
             if (ctx.Position + 32 > parentRlp.Length) return false;
 
-            nextHash = new Hash256(parentRlp.AsSpan(ctx.Position, 32));
+            nextHash = new Hash256(parentRlp.Slice(ctx.Position, 32));
             return true;
         }
 
@@ -227,7 +238,7 @@ internal static class RlpTrieTraversal
             // Inline node — parse directly from parent's RLP at current position
             int inlineStart = ctx.Position;
             int inlineLen = ctx.PeekNextRlpLength();
-            byte[] inlineRlp = parentRlp[inlineStart..(inlineStart + inlineLen)];
+            ReadOnlySpan<byte> inlineRlp = parentRlp.Slice(inlineStart, inlineLen);
 
             // Traverse the inline node without loading from cache (it has no hash)
             TraverseNode(rlpLoader, ref path, inlineRlp, remainingNibbles, out nextHash, out _);

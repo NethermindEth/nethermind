@@ -119,10 +119,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
         // this is just for warming up
-        RlpTrieTraversal.WarmUpPath(
-            _snapshotBundle.LoadAndCacheStateRlpForWarmer,
-            rootHash,
-            address.ToAccountPath.Bytes);
+        bool StateLoader(TreePath p, Hash256 h, ref TrieNodeRlp t) =>
+            _snapshotBundle.LoadAndCacheStateRlpForWarmer(p, h, ref t);
+
+        RlpTrieTraversal.WarmUpPath(StateLoader, rootHash, address.ToAccountPath.Bytes);
 
         return true;
     }

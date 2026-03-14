@@ -109,10 +109,11 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         StorageTree.ComputeKeyWithLookup(index, ref key);
 
         Hash256AsKey addressHash = _addressHash;
-        RlpTrieTraversal.WarmUpPath(
-            (path, hash) => _bundle.LoadAndCacheStorageRlpForWarmer(addressHash, path, hash),
-            rootHash,
-            key.BytesAsSpan);
+
+        bool StorageLoader(TreePath p, Hash256 h, ref TrieNodeRlp t) =>
+            _bundle.LoadAndCacheStorageRlpForWarmer(addressHash, p, h, ref t);
+
+        RlpTrieTraversal.WarmUpPath(StorageLoader, rootHash, key.BytesAsSpan);
         return true;
     }
 
