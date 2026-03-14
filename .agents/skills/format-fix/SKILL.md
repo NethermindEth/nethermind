@@ -1,6 +1,6 @@
 ---
-name: format-check
-description: Run dotnet format and cspell on modified .cs files, auto-fix formatting, correct typos in source, and add unknown domain words to cspell.json. Use when asked to "format", "fix formatting", "check spelling", "run format-check", or "/format-check".
+name: format-fix
+description: Run dotnet format and cspell on modified .cs files, auto-fix formatting, correct typos in source, and add unknown domain words to cspell.json. Use when asked to "format", "fix formatting", "check spelling", "run format-fix", or "/format-fix".
 allowed-tools:
   [
     Bash(git diff*),
@@ -13,7 +13,7 @@ allowed-tools:
   ]
 ---
 
-# format-check skill
+# format-fix skill
 
 Runs the same checks as `.github/workflows/code-formatting.yml` locally, then resolves every issue automatically.
 
