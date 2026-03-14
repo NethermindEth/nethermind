@@ -13,12 +13,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public new string MethodName { get; set; }
 
-        [JsonPropertyName("params")]
         [JsonPropertyOrder(2)]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public JsonRpcSubscriptionResult Params { get; set; }
 
-        [JsonPropertyName("id")]
         [JsonPropertyOrder(3)]
         [JsonConverter(typeof(IdConverter))]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

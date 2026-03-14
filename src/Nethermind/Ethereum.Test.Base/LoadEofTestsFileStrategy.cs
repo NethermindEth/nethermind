@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Ethereum.Test.Base.Interfaces;
 
 namespace Ethereum.Test.Base
 {
@@ -43,7 +42,7 @@ namespace Ethereum.Test.Base
         {
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
-            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "EOFTests");
+            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src", StringComparison.Ordinal)), "src", "tests", "EOFTests");
         }
     }
 }
