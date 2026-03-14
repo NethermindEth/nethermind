@@ -11,7 +11,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
 

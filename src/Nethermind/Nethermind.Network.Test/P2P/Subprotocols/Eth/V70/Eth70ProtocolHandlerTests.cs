@@ -24,7 +24,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;

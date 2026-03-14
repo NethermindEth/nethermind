@@ -5,6 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Test;
 using Nethermind.Network.Test.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.P2P;

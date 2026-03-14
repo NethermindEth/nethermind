@@ -17,7 +17,6 @@ using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.NodeData;
 using Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Synchronization;

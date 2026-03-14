@@ -10,7 +10,7 @@ using DotNetty.Buffers;
 using DotNetty.Common;
 using DotNetty.Common.Utilities;
 
-namespace Nethermind.Serialization.Rlp;
+namespace Nethermind.Network.Test;
 
 public sealed class DisposableByteBuffer(IByteBuffer inner) : IByteBuffer, IDisposable
 {
