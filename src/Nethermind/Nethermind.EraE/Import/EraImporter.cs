@@ -115,14 +115,16 @@ public class EraImporter(
                 partitionStartBlocks.Enqueue(blockNumber);
 
             int concurrency = eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency;
-            Task[] workers = Enumerable.Range(0, concurrency).Select(_ => Task.Run(async () =>
-            {
-                while (partitionStartBlocks.TryDequeue(out long partStart))
+            Task[] workers = new Task[concurrency];
+            for (int i = 0; i < concurrency; i++)
+                workers[i] = Task.Run(async () =>
                 {
-                    for (long i = 0; i < partitionSize; i++)
-                        await ImportBlock(partStart + i);
-                }
-            })).ToArray();
+                    while (partitionStartBlocks.TryDequeue(out long partStart))
+                    {
+                        for (long j = 0; j < partitionSize; j++)
+                            await ImportBlock(partStart + j);
+                    }
+                });
 
             await Task.WhenAll(workers);
         }

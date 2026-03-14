@@ -3,16 +3,6 @@
 
 using System.Buffers.Binary;
 using FluentAssertions;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.IO;
-using Nethermind.EraE.Archive;
-using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.EraE.Test;
@@ -42,7 +32,7 @@ public class EraFileFormatComplianceTests
     [Test]
     public async Task File_PreMergeEpoch_FirstEntryIsVersion()
     {
-        using TempEraFile file = await TempEraFile.Create(preMergeCount: 2, postMergeCount: 0);
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
         List<EntryRecord> entries = ReadAllEntries(file.FilePath);
 
         entries[0].Type.Should().Be(TypeVersion, "Version must be the first entry per spec");
@@ -52,7 +42,7 @@ public class EraFileFormatComplianceTests
     [Test]
     public async Task File_PreMergeEpoch_LastEntryIsComponentIndex()
     {
-        using TempEraFile file = await TempEraFile.Create(preMergeCount: 2, postMergeCount: 0);
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
         List<EntryRecord> entries = ReadAllEntries(file.FilePath);
 
         entries[^1].Type.Should().Be(TypeComponentIndex, "ComponentIndex must be the last entry per spec");
@@ -61,7 +51,7 @@ public class EraFileFormatComplianceTests
     [Test]
     public async Task File_PostMergeEpoch_LastEntryIsComponentIndex()
     {
-        using TempEraFile file = await TempEraFile.Create(preMergeCount: 0, postMergeCount: 2);
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: 2);
         List<EntryRecord> entries = ReadAllEntries(file.FilePath);
 
         entries[^1].Type.Should().Be(TypeComponentIndex);
@@ -70,7 +60,7 @@ public class EraFileFormatComplianceTests
     [Test]
     public async Task File_AllEntries_HaveReservedBytesZero()
     {
-        using TempEraFile file = await TempEraFile.Create(preMergeCount: 3, postMergeCount: 0);
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
         byte[] bytes = File.ReadAllBytes(file.FilePath);
 
         long pos = 0;
@@ -88,7 +78,7 @@ public class EraFileFormatComplianceTests
     public async Task File_PreMergeEpoch_SectionOrderIsHeaderBodyReceiptsProofTdAccumulatorIndex()
     {
         const int blockCount = 2;
-        using TempEraFile file = await TempEraFile.Create(preMergeCount: blockCount, postMergeCount: 0);
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: blockCount, postMergeCount: 0);
         List<ushort> types = ReadAllEntries(file.FilePath).Select(e => e.Type).ToList();
 
         // Section ordering: all headers before any body
@@ -119,7 +109,7 @@ public class EraFileFormatComplianceTests
     [Test]
     public async Task File_PostMergeEpoch_HasNoProofTdOrAccumulatorEntries()
     {
-        using TempEraFile file = await TempEraFile.Create(preMergeCount: 0, postMergeCount: 3);
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: 3);
         List<ushort> types = ReadAllEntries(file.FilePath).Select(e => e.Type).ToList();
 
         types.Should().NotContain(TypeProof, "post-merge epochs have no Proof entries");
@@ -131,7 +121,7 @@ public class EraFileFormatComplianceTests
     public async Task File_PreMergeEpoch_EntryCountsMatchBlockCount()
     {
         const int blockCount = 3;
-        using TempEraFile file = await TempEraFile.Create(preMergeCount: blockCount, postMergeCount: 0);
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: blockCount, postMergeCount: 0);
         List<ushort> types = ReadAllEntries(file.FilePath).Select(e => e.Type).ToList();
 
         types.Count(t => t == TypeCompressedHeader).Should().Be(blockCount);
@@ -147,7 +137,7 @@ public class EraFileFormatComplianceTests
     public async Task File_PostMergeEpoch_EntryCountsMatchBlockCount()
     {
         const int blockCount = 3;
-        using TempEraFile file = await TempEraFile.Create(preMergeCount: 0, postMergeCount: blockCount);
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: blockCount);
         List<ushort> types = ReadAllEntries(file.FilePath).Select(e => e.Type).ToList();
 
         types.Count(t => t == TypeCompressedHeader).Should().Be(blockCount);
@@ -158,7 +148,7 @@ public class EraFileFormatComplianceTests
     [Test]
     public async Task File_AccumulatorRootEntry_Is32Bytes()
     {
-        using TempEraFile file = await TempEraFile.Create(preMergeCount: 2, postMergeCount: 0);
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
         EntryRecord accEntry = ReadAllEntries(file.FilePath).Single(e => e.Type == TypeAccumulatorRoot);
 
         accEntry.Length.Should().Be(32, "AccumulatorRoot entry must be exactly 32 bytes (Bytes32)");
@@ -167,7 +157,7 @@ public class EraFileFormatComplianceTests
     [Test]
     public async Task File_TotalDifficultyEntries_AreEach32Bytes()
     {
-        using TempEraFile file = await TempEraFile.Create(preMergeCount: 2, postMergeCount: 0);
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
         List<EntryRecord> tdEntries = ReadAllEntries(file.FilePath)
             .Where(e => e.Type == TypeTotalDifficulty)
             .ToList();
@@ -195,45 +185,4 @@ public class EraFileFormatComplianceTests
 
     private sealed record EntryRecord(ushort Type, uint Length, long Offset);
 
-    private sealed class TempEraFile : IDisposable
-    {
-        private readonly TempPath _tmpFile;
-        public string FilePath => _tmpFile.Path;
-
-        private TempEraFile(TempPath tmpFile) => _tmpFile = tmpFile;
-
-        public static async Task<TempEraFile> Create(int preMergeCount, int postMergeCount)
-        {
-            TempPath tmpFile = TempPath.GetTempFile();
-            using EraWriter writer = new(tmpFile.Path, MainnetSpecProvider.Instance);
-            HeaderDecoder headerDecoder = new();
-            long number = 0;
-            UInt256 td = BlockHeaderBuilder.DefaultDifficulty;
-
-            for (int i = 0; i < preMergeCount; i++, number++, td += BlockHeaderBuilder.DefaultDifficulty)
-            {
-                TxReceipt receipt = Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject;
-                Block block = Build.A.Block.WithNumber(number).WithTotalDifficulty(td).TestObject;
-                block.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(
-                    [receipt], MainnetSpecProvider.Instance.GetSpec(block.Header), block.ReceiptsRoot);
-                block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);
-                await writer.Add(block, [receipt]);
-            }
-
-            for (int i = 0; i < postMergeCount; i++, number++)
-            {
-                TxReceipt receipt = Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject;
-                Block block = Build.A.Block.WithNumber(number).WithPostMergeRules().TestObject;
-                block.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(
-                    [receipt], MainnetSpecProvider.Instance.GetSpec(block.Header), block.ReceiptsRoot);
-                block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);
-                await writer.Add(block, [receipt]);
-            }
-
-            await writer.Finalize();
-            return new TempEraFile(tmpFile);
-        }
-
-        public void Dispose() => _tmpFile.Dispose();
-    }
 }

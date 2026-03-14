@@ -91,8 +91,9 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
         for (long n = startBlock; n <= _fileReader.LastBlock; n++)
             blockNumbers.Enqueue(n);
 
-        using ArrayPoolList<Task> workers = Enumerable.Range(0, verifyConcurrency)
-            .Select(_ => Task.Run(async () =>
+        Task[] workers = new Task[verifyConcurrency];
+        for (int i = 0; i < verifyConcurrency; i++)
+            workers[i] = Task.Run(async () =>
             {
                 while (blockNumbers.TryDequeue(out long blockNumber))
                 {
@@ -112,10 +113,9 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
                     int idx = (int)(block.Header.Number - startBlock);
                     blockMeta[idx] = (block.Header.Hash!, block.TotalDifficulty ?? UInt256.Zero, !block.Header.IsPostMerge);
                 }
-            }, cancellation))
-            .ToPooledList(verifyConcurrency);
+            }, cancellation);
 
-        await Task.WhenAll(workers.AsSpan());
+        await Task.WhenAll(workers);
 
         // Accumulator verification applies to pre-merge and transition epochs only.
         // Post-merge-only epochs have no AccumulatorRoot entry.

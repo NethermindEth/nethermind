@@ -175,16 +175,16 @@ public sealed class EraStore : IEraStore
     private EraRenter RentReader(long epoch, out EraReader reader)
     {
         int shardIdx = (int)(epoch % _maxOpenFile);
-        if (_openedReader.TryRemove(shardIdx, out (long, EraReader) opened))
+        if (_openedReader.TryRemove(shardIdx, out (long Epoch, EraReader Reader) opened))
         {
-            if (opened.Item1 == epoch)
+            if (opened.Epoch == epoch)
             {
-                reader = opened.Item2;
+                reader = opened.Reader;
                 return new EraRenter(this, reader, epoch);
             }
 
             if (!_openedReader.TryAdd(shardIdx, opened))
-                opened.Item2.Dispose();
+                opened.Reader.Dispose();
         }
 
         reader = GetReader(epoch);
@@ -197,8 +197,8 @@ public sealed class EraStore : IEraStore
 
         if (_openedReader.TryAdd(shardIdx, (epoch, reader))) return;
 
-        if (_openedReader.TryRemove(shardIdx, out (long, EraReader) existing))
-            existing.Item2.Dispose();
+        if (_openedReader.TryRemove(shardIdx, out (long Epoch, EraReader Reader) existing))
+            existing.Reader.Dispose();
 
         if (_openedReader.TryAdd(shardIdx, (epoch, reader))) return;
 
@@ -223,8 +223,8 @@ public sealed class EraStore : IEraStore
         if (_disposed) return;
         _disposed = true;
 
-        foreach (KeyValuePair<int, (long, EraReader)> kv in _openedReader)
-            kv.Value.Item2.Dispose();
+        foreach (KeyValuePair<int, (long Epoch, EraReader Reader)> kv in _openedReader)
+            kv.Value.Reader.Dispose();
 
         foreach (KeyValuePair<long, SemaphoreSlim> kv in _epochLocks)
             kv.Value.Dispose();
