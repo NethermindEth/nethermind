@@ -946,7 +946,7 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public void HasRoot_with_block_number_allows_old_blocks_in_archive_mode([Values(false, true)] bool trackPastKeys)
+        public void HasRoot_with_block_number_allows_old_blocks_in_archive_mode([Values] bool trackPastKeys)
         {
             int pruningBoundary = 4;
             // Archive mode: shouldPrune always true, deleteObsoleteKeys = false
