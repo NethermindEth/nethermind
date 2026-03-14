@@ -16,20 +16,6 @@ using Timestamper = Nethermind.Core.Timestamper;
 
 namespace Nethermind.EraE.Archive;
 
-/// <summary>
-/// Writes EraE (.erae) archive files using the section-ordered layout:
-///   Version
-///   CompressedHeader[0..N-1]
-///   CompressedBody[0..N-1]
-///   CompressedSlimReceipts[0..N-1]   -- bloom filter stripped per EraE spec
-///   TotalDifficulty[0..N-1]          -- pre-merge and transition epochs only
-///   AccumulatorRoot                  -- pre-merge and transition epochs only
-///   ComponentIndex
-///
-/// Pre-merge epochs have component-count=4 (header, body, receipts, td).
-/// Post-merge epochs have component-count=3 (header, body, receipts).
-/// Transition epochs use component-count=4; post-merge blocks use TTD as TotalDifficulty.
-/// </summary>
 public sealed class EraWriter : IDisposable
 {
     public const int MaxEraSize = 8192;
@@ -47,7 +33,6 @@ public sealed class EraWriter : IDisposable
     private readonly ArrayPoolList<(byte[] Buffer, int Length)> _encodedSlimReceipts = new(MaxEraSize);
 
     private readonly ArrayPoolList<UInt256> _totalDifficulties = new(MaxEraSize);
-    private readonly ArrayPoolList<Hash256> _blockHashes = new(MaxEraSize);
 
     private long _startNumber;
     private bool _firstBlock = true;
@@ -131,8 +116,6 @@ public sealed class EraWriter : IDisposable
         using (NettyRlpStream receiptsRlp = _slimReceiptDecoder.EncodeToNewNettyStream(receipts, rlpBehaviors))
             _encodedSlimReceipts.Add(RentAndCopy(receiptsRlp.AsMemory()));
 
-        _blockHashes.Add(block.Hash);
-
         if (isPostMerge && _beaconRootsProvider is not null && _slotTime is not null)
         {
             long slot = (long)_slotTime.GetSlot(block.Header.Timestamp * 1000);
@@ -189,10 +172,8 @@ public sealed class EraWriter : IDisposable
         try
         {
 
-        // Version
         totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>(), cancellation);
 
-        // All CompressedHeaders
         for (int i = 0; i < blockCount; i++)
         {
             headerOffsets[i] = totalWritten;
@@ -200,7 +181,6 @@ public sealed class EraWriter : IDisposable
             totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedHeader, buf.AsMemory(0, len), cancellation);
         }
 
-        // All CompressedBodies
         for (int i = 0; i < blockCount; i++)
         {
             bodyOffsets[i] = totalWritten;
@@ -208,7 +188,6 @@ public sealed class EraWriter : IDisposable
             totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, buf.AsMemory(0, len), cancellation);
         }
 
-        // All CompressedSlimReceipts
         for (int i = 0; i < blockCount; i++)
         {
             receiptsOffsets[i] = totalWritten;
@@ -224,7 +203,7 @@ public sealed class EraWriter : IDisposable
             for (int i = 0; i < _preMergeBlockCount; i++)
             {
                 ValueHash256[] proofPath = _blocksRootContext!.GetProof(i);
-                BlockHeaderProof proof = new(proofPath);
+                BlockHeaderProof proof = new() { ProofType = BlockHeaderProofType.BlockProofHistoricalHashesAccumulator, HashesAccumulator = proofPath };
                 byte[] rlpBytes = proofDecoder.Encode(proof).Bytes;
                 totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.Proof, rlpBytes, cancellation);
             }
@@ -313,6 +292,5 @@ public sealed class EraWriter : IDisposable
         ReturnBuffers(_encodedBodies);
         ReturnBuffers(_encodedSlimReceipts);
         _totalDifficulties.Dispose();
-        _blockHashes.Dispose();
     }
 }

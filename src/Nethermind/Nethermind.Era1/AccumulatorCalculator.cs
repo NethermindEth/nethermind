@@ -37,17 +37,6 @@ public class AccumulatorCalculator : IDisposable
         return new ValueHash256(MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1)));
     }
 
-    /// <summary>
-    /// Returns the 15-element SSZ Merkle proof from the <c>block_hash</c> leaf at
-    /// <paramref name="blockIndex"/> to the epoch accumulator root.
-    /// Must be called after all blocks have been added via <see cref="Add"/>.
-    /// </summary>
-    /// <remarks>
-    /// Proof layout (0-indexed):
-    ///   [0]      sibling of block_hash within HeaderRecord = total_difficulty as 32-byte LE
-    ///   [1..13]  siblings in the binary tree over 8192 HeaderRecord roots (depth 13)
-    ///   [14]     length mixin = uint256(count) as 32-byte LE
-    /// </remarks>
     public ValueHash256[] GetProof(int blockIndex)
     {
         if (blockIndex < 0 || blockIndex >= _roots.Count)

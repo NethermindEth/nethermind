@@ -20,11 +20,6 @@ public enum AccumulatorType
     HistoricalSummaries
 }
 
-/// <summary>
-/// Tracks block-level state within an era epoch and finalizes the epoch's accumulator or historical root.
-/// Pre-merge epochs produce an AccumulatorRoot via SSZ hash_tree_root.
-/// Post-merge paths (HistoricalRoots, HistoricalSummaries) are currently stubbed.
-/// </summary>
 public sealed class BlocksRootContext : IDisposable
 {
     private static readonly ForkActivation ParisFork = new(MainnetSpecProvider.ParisBlockNumber);
@@ -62,11 +57,6 @@ public sealed class BlocksRootContext : IDisposable
         AccumulatorType = GetAccumulatorType(forkActivation);
     }
 
-    /// <summary>
-    /// Records a block for the accumulator (pre-merge) or the beacon roots/state roots (post-merge).
-    /// For post-merge blocks, use the overload that accepts <paramref name="beaconBlockRoot"/> and
-    /// <paramref name="stateRoot"/>; without them the post-merge context will not be populated.
-    /// </summary>
     public void ProcessBlock(Block block, ValueHash256? beaconBlockRoot = null, ValueHash256? stateRoot = null)
     {
         switch (AccumulatorType)
@@ -126,11 +116,6 @@ public sealed class BlocksRootContext : IDisposable
         }
     }
 
-    /// <summary>
-    /// Returns the 15-element Merkle proof path for the pre-merge block at the given
-    /// era-relative index (0 = first pre-merge block in the era).
-    /// Must be called after <see cref="FinalizeContext"/>.
-    /// </summary>
     public ValueHash256[] GetProof(int blockIndex)
     {
         if (_accumulatorCalculator is null)

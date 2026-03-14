@@ -27,7 +27,7 @@ public class ValidatorTests
         ValueHash256[] proof = calculator.GetProof(0);
 
         Validator sut = BuildValidator(root);
-        BlockHeaderProof headerProof = new(proof);
+        BlockHeaderProof headerProof = new() { ProofType = BlockHeaderProofType.BlockProofHistoricalHashesAccumulator, HashesAccumulator = proof };
 
         await sut.Invoking(v => v.VerifyContent(block, headerProof)).Should().NotThrowAsync();
     }
@@ -43,7 +43,7 @@ public class ValidatorTests
         proof[0] = new ValueHash256(new byte[32]);
 
         Validator sut = BuildValidator(root);
-        BlockHeaderProof headerProof = new(proof);
+        BlockHeaderProof headerProof = new() { ProofType = BlockHeaderProofType.BlockProofHistoricalHashesAccumulator, HashesAccumulator = proof };
 
         await sut.Invoking(v => v.VerifyContent(block, headerProof))
             .Should().ThrowAsync<EraVerificationException>();

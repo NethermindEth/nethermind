@@ -3,10 +3,6 @@
 
 namespace Nethermind.EraE.Proofs;
 
-/// <summary>
-/// A no-op historical summaries provider that always returns null / empty.
-/// Used when a beacon node is unavailable (import/verification only, no HistoricalSummaries proof generation).
-/// </summary>
 public sealed class NullHistoricalSummariesProvider : IHistoricalSummariesProvider
 {
     public static readonly NullHistoricalSummariesProvider Instance = new();

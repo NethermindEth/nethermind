@@ -125,7 +125,7 @@ public class AccumulatorCalculatorTests
         ValueHash256[] proof = sut.GetProof(blockIndex);
 
         Validator validator = BuildValidator(root);
-        BlockHeaderProof headerProof = new(proof);
+        BlockHeaderProof headerProof = new() { ProofType = BlockHeaderProofType.BlockProofHistoricalHashesAccumulator, HashesAccumulator = proof };
 
         Assert.That(async () => await validator.VerifyContent(blocks[blockIndex], headerProof), Throws.Nothing);
         return Task.CompletedTask;

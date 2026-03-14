@@ -11,43 +11,12 @@ public enum BlockHeaderProofType : byte
     BlockProofHistoricalSummaries = 2
 }
 
-public class BlockHeaderProof
+public record BlockHeaderProof
 {
-    internal BlockHeaderProof() { }
-
-    public BlockHeaderProofType? ProofType { get; set; }
-    public ValueHash256[]? HashesAccumulator { get; set; }
-    public ValueHash256[]? BeaconBlockProof { get; set; }
-    public ValueHash256[]? ExecutionBlockProof { get; set; }
-    public ValueHash256? BeaconBlockRoot { get; set; }
-    public long? Slot { get; set; }
-
-    public BlockHeaderProof(
-        ValueHash256[] hashesAccumulator,
-        BlockHeaderProofType proofType = BlockHeaderProofType.BlockProofHistoricalHashesAccumulator)
-    {
-        ProofType = proofType;
-        HashesAccumulator = hashesAccumulator;
-    }
-
-    public BlockHeaderProof(
-        ValueHash256[] beaconBlockProof,
-        ValueHash256[] executionBlockProof,
-        ValueHash256 beaconBlockRoot,
-        long slot,
-        BlockHeaderProofType proofType = BlockHeaderProofType.BlockProofHistoricalSummaries)
-    {
-        ProofType = proofType;
-        BeaconBlockProof = beaconBlockProof;
-        ExecutionBlockProof = executionBlockProof;
-        BeaconBlockRoot = beaconBlockRoot;
-        Slot = slot;
-    }
-
-    public string ToString(string indent)
-    {
-        return "";
-    }
-
-    public override string ToString() => ToString(string.Empty);
+    public BlockHeaderProofType? ProofType { get; init; }
+    public ValueHash256[]? HashesAccumulator { get; init; }
+    public ValueHash256[]? BeaconBlockProof { get; init; }
+    public ValueHash256[]? ExecutionBlockProof { get; init; }
+    public ValueHash256? BeaconBlockRoot { get; init; }
+    public long? Slot { get; init; }
 }

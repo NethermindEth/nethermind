@@ -17,10 +17,6 @@ using EraWriter = Nethermind.EraE.Archive.EraWriter;
 
 namespace Nethermind.EraE.E2Store;
 
-/// <summary>
-/// Random-access reader for EraE files. Parses the ComponentIndex to locate
-/// headers, bodies, slim-receipts, and (optionally) total-difficulty entries.
-/// </summary>
 public sealed class E2StoreReader : IDisposable
 {
     private const int EntryHeaderSize = 8;
@@ -70,19 +66,12 @@ public sealed class E2StoreReader : IDisposable
         }
     }
 
-    /// <summary>Returns the absolute file offset of the CompressedHeader entry for the given block.</summary>
     public long HeaderOffset(long blockNumber) => ComponentOffset(blockNumber, 0);
 
-    /// <summary>Returns the absolute file offset of the CompressedBody entry for the given block.</summary>
     public long BodyOffset(long blockNumber) => ComponentOffset(blockNumber, 1);
 
-    /// <summary>Returns the absolute file offset of the CompressedSlimReceipts entry for the given block.</summary>
     public long SlimReceiptsOffset(long blockNumber) => ComponentOffset(blockNumber, 2);
 
-    /// <summary>
-    /// Returns the absolute file offset of the TotalDifficulty entry for the given block,
-    /// or throws if this is a post-merge-only epoch.
-    /// </summary>
     public long TotalDifficultyOffset(long blockNumber)
     {
         EnsureIndexLoaded();
@@ -91,7 +80,6 @@ public sealed class E2StoreReader : IDisposable
         return ComponentOffset(blockNumber, 3);
     }
 
-    /// <summary>Returns the absolute file offset of the AccumulatorRoot entry, or -1 if not present.</summary>
     public long AccumulatorRootOffset
     {
         get

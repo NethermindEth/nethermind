@@ -19,9 +19,6 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.EraE.Archive;
 
-/// <summary>
-/// Main reader for EraE files. Thread-safe: multiple threads may read concurrently.
-/// </summary>
 public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private readonly ReceiptMessageDecoder _slimReceiptDecoder = new(skipBloom: true);
@@ -74,16 +71,6 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
         return root;
     }
 
-    /// <summary>
-    /// Verifies the content of this file:
-    /// <list type="bullet">
-    ///   <item>Block body matches header (transactions root, uncles hash).</item>
-    ///   <item>Slim receipt root reconstructed from logs matches header ReceiptsRoot.</item>
-    ///   <item>Computed accumulator root matches stored AccumulatorRoot (pre-merge epochs).</item>
-    ///   <item>If <paramref name="validator"/> is provided: computed accumulator root is verified
-    ///         against the trusted accumulator set (chain integrity check).</item>
-    /// </list>
-    /// </summary>
     public async Task<ValueHash256> VerifyContent(
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
@@ -221,17 +208,6 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
         return receipts;
     }
 
-    /// <summary>
-    /// Decodes a single slim receipt, handling both Nethermind format and go-ethereum EraE format.
-    ///
-    /// Nethermind writes slim receipts as:
-    ///   - Legacy:  RLP sequence [status, cumulative_gas, logs]
-    ///   - Typed:   RLP byte-array wrapper (EIP-2718 envelope) containing type_byte + [status, cumulative_gas, logs]
-    ///
-    /// go-ethereum writes slim receipts as RLP sequences with 4 fields:
-    ///   [tx_type, status, cumulative_gas, logs]
-    ///   where tx_type=0 (legacy) and status=0 (failure) are each encoded as 0x80 (empty byte string).
-    /// </summary>
     private TxReceipt DecodeOneSlimReceipt(ref Rlp.ValueDecoderContext ctx)
     {
         // Nethermind typed receipt: encoded as an RLP byte-array (not a sequence)

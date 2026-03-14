@@ -6,13 +6,6 @@ using Nethermind.Logging;
 
 namespace Nethermind.EraE.Store;
 
-/// <summary>
-/// Downloads eraE archive files from a remote HTTP server.
-/// The server must expose a checksum manifest in standard sha256sum format:
-///   {hex-sha256}  {filename}
-/// one entry per line, e.g.:
-///   50e29a878a489ef195d4df52072a4524b7bba8b74d65c1e5f5401f914c96366a  sepolia-00000-8e3e7dc9.erae
-/// </summary>
 public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
 {
     private readonly HttpClient _httpClient;

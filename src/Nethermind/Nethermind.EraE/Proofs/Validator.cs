@@ -10,11 +10,6 @@ using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationExcep
 
 namespace Nethermind.EraE.Proofs;
 
-/// <summary>
-/// Verifies block-level proofs in EraE files for all three proof types:
-/// HistoricalHashesAccumulator (pre-merge), HistoricalRoots (Bellatrix–Shanghai),
-/// and HistoricalSummaries (Deneb+).
-/// </summary>
 public class Validator
 {
     private readonly IHistoricalSummariesProvider? _historicalSummariesProvider;

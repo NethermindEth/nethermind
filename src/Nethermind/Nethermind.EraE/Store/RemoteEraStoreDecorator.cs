@@ -10,13 +10,6 @@ using NonBlocking;
 
 namespace Nethermind.EraE.Store;
 
-/// <summary>
-/// Decorates an <see cref="IEraStore"/> with transparent remote download support.
-/// On a cache miss the required epoch file is fetched from the configured remote server,
-/// SHA-256 verified, and cached locally. Subsequent accesses are served from disk.
-/// The inner store (backed by pre-existing local files) is tried first; the remote
-/// path is only taken when the inner store returns a miss.
-/// </summary>
 public sealed class RemoteEraStoreDecorator : IEraStore
 {
     private readonly IEraStore? _localStore;

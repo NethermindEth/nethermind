@@ -155,28 +155,37 @@ public class ProofDecoder : IRlpValueDecoder<BlockHeaderProof?>, IRlpStreamEncod
             case BlockHeaderProofType.BlockProofHistoricalHashesAccumulator:
                 {
                     SszEncoding.Decode(payload, out BlockProofHistoricalHashesAccumulator proof);
-                    return new BlockHeaderProof(proof.HashesAccumulator);
+                    return new BlockHeaderProof
+                    {
+                        ProofType = BlockHeaderProofType.BlockProofHistoricalHashesAccumulator,
+                        HashesAccumulator = proof.HashesAccumulator
+                    };
                 }
 
             case BlockHeaderProofType.BlockProofHistoricalRoots:
                 {
                     SszEncoding.Decode(payload, out BlockProofHistoricalRoots proof);
-                    return new BlockHeaderProof(
-                        proof.BeaconBlockProof,
-                        proof.ExecutionBlockProof,
-                        proof.BeaconBlockRoot,
-                        proof.Slot,
-                        BlockHeaderProofType.BlockProofHistoricalRoots);
+                    return new BlockHeaderProof
+                    {
+                        ProofType = BlockHeaderProofType.BlockProofHistoricalRoots,
+                        BeaconBlockProof = proof.BeaconBlockProof,
+                        ExecutionBlockProof = proof.ExecutionBlockProof,
+                        BeaconBlockRoot = proof.BeaconBlockRoot,
+                        Slot = proof.Slot
+                    };
                 }
 
             case BlockHeaderProofType.BlockProofHistoricalSummaries:
                 {
                     SszEncoding.Decode(payload, out BlockProofHistoricalSummaries proof);
-                    return new BlockHeaderProof(
-                        proof.BeaconBlockProof,
-                        proof.ExecutionBlockProof,
-                        proof.BeaconBlockRoot,
-                        proof.Slot);
+                    return new BlockHeaderProof
+                    {
+                        ProofType = BlockHeaderProofType.BlockProofHistoricalSummaries,
+                        BeaconBlockProof = proof.BeaconBlockProof,
+                        ExecutionBlockProof = proof.ExecutionBlockProof,
+                        BeaconBlockRoot = proof.BeaconBlockRoot,
+                        Slot = proof.Slot
+                    };
                 }
 
             default:
