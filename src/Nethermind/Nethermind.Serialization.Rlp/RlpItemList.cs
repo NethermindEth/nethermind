@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 namespace Nethermind.Serialization.Rlp;
 
@@ -185,18 +184,5 @@ public sealed class RlpItemList : IRlpItemList
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static (int prefixLength, int contentLength) PeekPrefixAndContentLength(
         ReadOnlySpan<byte> span, int position)
-    {
-        int prefix = span[position];
-        int prefixLengthForContent = RlpHelpers.GetPrefixLengthForContent(prefix);
-        if (prefixLengthForContent >= 0)
-            return (prefixLengthForContent, RlpHelpers.GetContentLength(prefix));
-
-        int lengthOfLength = RlpHelpers.IsLongString(prefixLengthForContent)
-            ? prefix - 183
-            : prefix - 247;
-        int cLen = RlpHelpers.DeserializeLengthRef(
-            ref Unsafe.Add(ref MemoryMarshal.GetReference(span), position + 1),
-            lengthOfLength);
-        return (1 + lengthOfLength, cLen);
-    }
+        => RlpHelpers.PeekPrefixAndContentLength(span, position);
 }

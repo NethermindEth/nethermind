@@ -65,7 +65,8 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             // Txpool rpc
             .RegisterSingletonJsonRpcModule<ITxPoolRpcModule, TxPoolRpcModule>()
-                .AddSingleton<ITxPoolInfoProvider, TxPoolInfoProvider>()
+                .AddSingleton<ITxPoolInfoProvider, IChainHeadInfoProvider, ITxPool>(
+                    (chainHeadInfoProvider, txPool) => new TxPoolInfoProvider(chainHeadInfoProvider, txPool))
 
             // Subscriptions
             .RegisterBoundedJsonRpcModule<ISubscribeRpcModule, AutoRpcModuleFactory<ISubscribeRpcModule>>(2, jsonRpcConfig.Timeout)

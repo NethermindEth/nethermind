@@ -20,7 +20,7 @@ public class XdcConsensusContext : IXdcConsensusContext
     public DateTime RoundStarted { get; private set; }
     public int TimeoutCounter { get; set; }
     public ulong CurrentRound { get => _currentRound; set => _currentRound = value; }
-    public QuorumCertificate? HighestQC { get; set; }
+    public QuorumCertificate HighestQC { get; set; }
     public QuorumCertificate? LockQC { get; set; }
     public TimeoutCertificate? HighestTC { get; set; }
     public BlockRoundInfo HighestCommitBlock { get; set; }

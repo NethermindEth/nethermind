@@ -43,6 +43,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
     protected override void Load(ContainerBuilder builder)
     {
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        initConfig.AutoDump = DumpOptions.None;
         if (TestUseFlat)
         {
             ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();

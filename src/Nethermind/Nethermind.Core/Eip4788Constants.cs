@@ -14,4 +14,9 @@ public static class Eip4788Constants
     /// Gets the <c>BEACON_ROOTS_ADDRESS</c> parameter.
     /// </summary>
     public static readonly Address BeaconRootsAddress = new("0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02");
+
+    /// <summary>
+    /// The <c>HISTORY_SERVE_WINDOW</c> parameter.
+    /// </summary>
+    public static readonly ulong RingBufferSize = 8191;
 }
