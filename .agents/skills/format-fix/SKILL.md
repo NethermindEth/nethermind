@@ -6,7 +6,7 @@ allowed-tools:
     Bash(git diff*),
     Bash(git status*),
     Bash(echo*),
-    Bash(bash .claude/hooks/format-cs.sh*),
+    Bash(bash .claude/hooks/format-check.sh*),
     Bash(bash scripts/cspell.sh*),
     Read,
     Edit,
@@ -16,7 +16,7 @@ allowed-tools:
 
 # format-fix skill
 
-Runs the same checks as `.github/workflows/code-formatting.yml` locally by invoking `.claude/hooks/format-cs.sh` — the single source of truth for both dotnet format and cspell. Resolves every issue automatically.
+Runs the same checks as `.github/workflows/code-formatting.yml` locally by invoking `.claude/hooks/format-check.sh` — the single source of truth for both dotnet format and cspell. Resolves every issue automatically.
 
 ---
 
@@ -36,10 +36,10 @@ If no `.cs` files are found, report "Nothing to check." and stop.
 
 ## Phase 2 — Run the hook on each file
 
-The hook `.claude/hooks/format-cs.sh` orchestrates both checks (whitespace formatting and spell-check). Call it once per file, piping the file path as JSON on stdin — exactly as Claude Code's PostToolUse event does:
+The hook `.claude/hooks/format-check.sh` orchestrates both checks (whitespace formatting and spell-check). Call it once per file, piping the file path as JSON on stdin — exactly as Claude Code's PostToolUse event does:
 
 ```bash
-echo '{"tool_input":{"file_path":"<absolute-path-to-file>"}}' | bash .claude/hooks/format-cs.sh
+echo '{"tool_input":{"file_path":"<absolute-path-to-file>"}}' | bash .claude/hooks/format-check.sh
 ```
 
 Run all files sequentially (the hook invokes dotnet, which cannot run in parallel safely).
@@ -87,7 +87,7 @@ Condition: no `fix:` suggestion, or the suggestion was rejected in Action A.
 Re-run the hook on every file that had issues:
 
 ```bash
-echo '{"tool_input":{"file_path":"<absolute-path>"}}' | bash .claude/hooks/format-cs.sh
+echo '{"tool_input":{"file_path":"<absolute-path>"}}' | bash .claude/hooks/format-check.sh
 ```
 
 Every previously flagged file must now produce no cspell errors. If any remain, repeat Phase 4.

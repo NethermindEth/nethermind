@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/format-cs.sh"
+            "command": "bash .claude/hooks/format-check.sh"
           }
         ]
       }
