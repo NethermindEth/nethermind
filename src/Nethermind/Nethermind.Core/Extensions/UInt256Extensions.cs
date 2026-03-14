@@ -16,6 +16,7 @@ using Word = Vector256<byte>;
 
 public static class UInt256Extensions
 {
+    public const int ByteSize = 32;
     // value?.IsZero == false <=> x > 0
     public static bool IsPositive(this UInt256? @this) => @this?.IsZero == false;
 
@@ -65,6 +66,14 @@ public static class UInt256Extensions
 
         return Unsafe.As<Word, ValueHash256>(ref result);
     }
+
+    /// <summary>
+    /// Returns the number of zero-valued bytes in the 256-bit value.
+    /// Operates directly on the four <see cref="ulong"/> limbs — no serialization needed.
+    /// </summary>
+    public static int CountZeroBytes(this in UInt256 value) =>
+        value.u0.CountZeroBytes() + value.u1.CountZeroBytes()
+        + value.u2.CountZeroBytes() + value.u3.CountZeroBytes();
 
     public static int CountLeadingZeros(this in UInt256 uInt256)
     {

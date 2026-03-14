@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -347,22 +348,46 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return totalZeros + (data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
-
-    public static long AccessListCost(Transaction transaction, IReleaseSpec spec)
+    public static long CalculateTokensInAccessList(Transaction transaction, IReleaseSpec spec)
     {
-        AccessList? accessList = transaction.AccessList;
-        if (accessList is not null)
-        {
-            if (!spec.UseTxAccessLists)
-            {
-                ThrowInvalidDataException(spec);
-            }
+        if (!spec.IsEip7981Enabled) return 0L;
 
-            (int addressesCount, int storageKeysCount) = accessList.Count;
-            return addressesCount * GasCostOf.AccessAccountListEntry + storageKeysCount * GasCostOf.AccessStorageListEntry;
+        AccessList? accessList = transaction.AccessList;
+        if (accessList is null) return 0L;
+
+        long tokens = 0;
+        long nonZeroMultiplier = spec.GasCosts.TxDataNonZeroMultiplier;
+
+        foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in accessList)
+        {
+            ReadOnlySpan<byte> addressBytes = address.Bytes;
+            int addressZeros = addressBytes.CountZeros();
+            tokens += addressZeros + (addressBytes.Length - addressZeros) * nonZeroMultiplier;
+
+            foreach (UInt256 key in storageKeys)
+            {
+                int keyZeros = key.CountZeroBytes();
+                tokens += keyZeros + (Nethermind.Core.Extensions.UInt256Extensions.ByteSize - keyZeros) * nonZeroMultiplier;
+            }
         }
 
-        return 0;
+        return tokens;
+    }
+
+    public static long AccessListCost(Transaction transaction, IReleaseSpec spec, long tokensInAccessList)
+    {
+        AccessList? accessList = transaction.AccessList;
+        if (accessList is null) return 0;
+
+        if (!spec.UseTxAccessLists)
+        {
+            ThrowInvalidDataException(spec);
+        }
+
+        (int addressesCount, int storageKeysCount) = accessList.Count;
+        return addressesCount * GasCostOf.AccessAccountListEntry
+            + storageKeysCount * GasCostOf.AccessStorageListEntry
+            + GasCostOf.TotalCostFloorPerTokenEip7623 * tokensInAccessList;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidDataException(IReleaseSpec spec) =>
@@ -396,18 +421,18 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     }
 
     /// <summary>
-    /// Calculates the calldata floor cost for a transaction.
+    /// Calculates the calldata floor cost for a transaction, including EIP-7981 access list tokens.
     /// </summary>
-    protected static long CalculateFloorCost(Transaction transaction, IReleaseSpec spec, long tokensInCallData)
+    protected static long CalculateFloorCost(Transaction transaction, IReleaseSpec spec, long tokensInCallData, long tokensInAccessList)
     {
         if (spec.IsEip7976Enabled)
         {
             long floorTokensInCallData = transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
-            return GasCostOf.Transaction + floorTokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7976;
+            return GasCostOf.Transaction + (floorTokensInCallData + tokensInAccessList) * GasCostOf.TotalCostFloorPerTokenEip7976;
         }
         else if (spec.IsEip7623Enabled)
         {
-            return GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623;
+            return GasCostOf.Transaction + (tokensInCallData + tokensInAccessList) * GasCostOf.TotalCostFloorPerTokenEip7623;
         }
 
         return 0L;
