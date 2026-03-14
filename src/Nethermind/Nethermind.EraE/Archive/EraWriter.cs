@@ -172,91 +172,91 @@ public sealed class EraWriter : IDisposable
         try
         {
 
-        totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>(), cancellation);
+            totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>(), cancellation);
 
-        for (int i = 0; i < blockCount; i++)
-        {
-            headerOffsets[i] = totalWritten;
-            (byte[] buf, int len) = _encodedHeaders[i];
-            totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedHeader, buf.AsMemory(0, len), cancellation);
-        }
-
-        for (int i = 0; i < blockCount; i++)
-        {
-            bodyOffsets[i] = totalWritten;
-            (byte[] buf, int len) = _encodedBodies[i];
-            totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, buf.AsMemory(0, len), cancellation);
-        }
-
-        for (int i = 0; i < blockCount; i++)
-        {
-            receiptsOffsets[i] = totalWritten;
-            (byte[] buf, int len) = _encodedSlimReceipts[i];
-            totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedSlimReceipts, buf.AsMemory(0, len), cancellation);
-        }
-
-        // All Proof entries for pre-merge blocks (section-ordered, before TotalDifficulty).
-        // Post-merge proofs (HistoricalRoots / HistoricalSummaries) require beacon roots and are deferred.
-        if (_preMergeBlockCount > 0)
-        {
-            ProofDecoder proofDecoder = new();
-            for (int i = 0; i < _preMergeBlockCount; i++)
-            {
-                ValueHash256[] proofPath = _blocksRootContext!.GetProof(i);
-                BlockHeaderProof proof = new() { ProofType = BlockHeaderProofType.BlockProofHistoricalHashesAccumulator, HashesAccumulator = proofPath };
-                byte[] rlpBytes = proofDecoder.Encode(proof).Bytes;
-                totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.Proof, rlpBytes, cancellation);
-            }
-        }
-
-        // All TotalDifficulty entries (pre-merge and transition epochs)
-        if (needsTd)
-        {
             for (int i = 0; i < blockCount; i++)
             {
-                tdOffsets[i] = totalWritten;
-                totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, _totalDifficulties[i].ToLittleEndian(), cancellation);
+                headerOffsets[i] = totalWritten;
+                (byte[] buf, int len) = _encodedHeaders[i];
+                totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedHeader, buf.AsMemory(0, len), cancellation);
             }
-        }
 
-        // AccumulatorRoot (SSZ hash_tree_root of pre-merge blocks only)
-        ValueHash256 accumulatorRoot = default;
-        if (needsTd)
-        {
-            accumulatorRoot = _blocksRootContext!.AccumulatorRoot;
-            totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.AccumulatorRoot, accumulatorRoot.ToByteArray(), cancellation);
-        }
+            for (int i = 0; i < blockCount; i++)
+            {
+                bodyOffsets[i] = totalWritten;
+                (byte[] buf, int len) = _encodedBodies[i];
+                totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, buf.AsMemory(0, len), cancellation);
+            }
 
-        // ComponentIndex
-        // Layout: starting_number | [header_off, body_off, receipts_off, [td_off]] * N | component_count | block_count
-        // Offsets are negative int64 LE, relative to start of the ComponentIndex TLV (including 8-byte header).
-        long componentIndexStart = totalWritten; // absolute position of the ComponentIndex entry header
-        int indexDataLength = 8 + blockCount * componentCount * 8 + 8 + 8;
+            for (int i = 0; i < blockCount; i++)
+            {
+                receiptsOffsets[i] = totalWritten;
+                (byte[] buf, int len) = _encodedSlimReceipts[i];
+                totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedSlimReceipts, buf.AsMemory(0, len), cancellation);
+            }
 
-        using ArrayPoolList<byte> indexBytes = new(indexDataLength, indexDataLength);
-        Span<byte> span = indexBytes.AsSpan();
+            // All Proof entries for pre-merge blocks (section-ordered, before TotalDifficulty).
+            // Post-merge proofs (HistoricalRoots / HistoricalSummaries) require beacon roots and are deferred.
+            if (_preMergeBlockCount > 0)
+            {
+                ProofDecoder proofDecoder = new();
+                for (int i = 0; i < _preMergeBlockCount; i++)
+                {
+                    ValueHash256[] proofPath = _blocksRootContext!.GetProof(i);
+                    BlockHeaderProof proof = new() { ProofType = BlockHeaderProofType.BlockProofHistoricalHashesAccumulator, HashesAccumulator = proofPath };
+                    byte[] rlpBytes = proofDecoder.Encode(proof).Bytes;
+                    totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.Proof, rlpBytes, cancellation);
+                }
+            }
 
-        WriteInt64(span, 0, _startNumber);
-
-        for (int i = 0; i < blockCount; i++)
-        {
-            int baseOff = 8 + i * componentCount * 8;
-            WriteInt64(span, baseOff + 0, headerOffsets[i] - componentIndexStart);
-            WriteInt64(span, baseOff + 8, bodyOffsets[i] - componentIndexStart);
-            WriteInt64(span, baseOff + 16, receiptsOffsets[i] - componentIndexStart);
+            // All TotalDifficulty entries (pre-merge and transition epochs)
             if (needsTd)
-                WriteInt64(span, baseOff + 24, tdOffsets[i] - componentIndexStart);
-        }
+            {
+                for (int i = 0; i < blockCount; i++)
+                {
+                    tdOffsets[i] = totalWritten;
+                    totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, _totalDifficulties[i].ToLittleEndian(), cancellation);
+                }
+            }
 
-        int tailOff = 8 + blockCount * componentCount * 8;
-        WriteInt64(span, tailOff, componentCount);
-        WriteInt64(span, tailOff + 8, blockCount);
+            // AccumulatorRoot (SSZ hash_tree_root of pre-merge blocks only)
+            ValueHash256 accumulatorRoot = default;
+            if (needsTd)
+            {
+                accumulatorRoot = _blocksRootContext!.AccumulatorRoot;
+                totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.AccumulatorRoot, accumulatorRoot.ToByteArray(), cancellation);
+            }
 
-        await _e2StoreWriter.WriteEntry(EntryTypes.ComponentIndex, indexBytes.AsMemory(), cancellation);
-        await _e2StoreWriter.Flush(cancellation);
+            // ComponentIndex
+            // Layout: starting_number | [header_off, body_off, receipts_off, [td_off]] * N | component_count | block_count
+            // Offsets are negative int64 LE, relative to start of the ComponentIndex TLV (including 8-byte header).
+            long componentIndexStart = totalWritten; // absolute position of the ComponentIndex entry header
+            int indexDataLength = 8 + blockCount * componentCount * 8 + 8 + 8;
 
-        _finalized = true;
-        return (accumulatorRoot, _e2StoreWriter.FinalizeChecksum());
+            using ArrayPoolList<byte> indexBytes = new(indexDataLength, indexDataLength);
+            Span<byte> span = indexBytes.AsSpan();
+
+            WriteInt64(span, 0, _startNumber);
+
+            for (int i = 0; i < blockCount; i++)
+            {
+                int baseOff = 8 + i * componentCount * 8;
+                WriteInt64(span, baseOff + 0, headerOffsets[i] - componentIndexStart);
+                WriteInt64(span, baseOff + 8, bodyOffsets[i] - componentIndexStart);
+                WriteInt64(span, baseOff + 16, receiptsOffsets[i] - componentIndexStart);
+                if (needsTd)
+                    WriteInt64(span, baseOff + 24, tdOffsets[i] - componentIndexStart);
+            }
+
+            int tailOff = 8 + blockCount * componentCount * 8;
+            WriteInt64(span, tailOff, componentCount);
+            WriteInt64(span, tailOff + 8, blockCount);
+
+            await _e2StoreWriter.WriteEntry(EntryTypes.ComponentIndex, indexBytes.AsMemory(), cancellation);
+            await _e2StoreWriter.Flush(cancellation);
+
+            _finalized = true;
+            return (accumulatorRoot, _e2StoreWriter.FinalizeChecksum());
         }
         finally
         {
