@@ -84,7 +84,6 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
         long startBlock = _fileReader.First;
         int blockCount = (int)_fileReader.BlockCount;
 
-        // Store (hash, td, isPreMerge) so the accumulator only covers pre-merge blocks.
         using ArrayPoolList<(Hash256 Hash, UInt256 Td, bool IsPreMerge)> blockMeta = new(blockCount, blockCount);
 
         ConcurrentQueue<long> blockNumbers = new();
@@ -127,7 +126,7 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
         using AccumulatorCalculator calculator = new();
         foreach ((Hash256 hash, UInt256 td, bool isPreMerge) in blockMeta.AsSpan())
         {
-            if (!isPreMerge) continue; // post-merge blocks (with TTD) are excluded from accumulator
+            if (!isPreMerge) continue; // post-merge blocks excluded from accumulator even in transition epochs
             calculator.Add(hash, td);
         }
 
@@ -152,10 +151,8 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
         (BlockHeader header, _) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
             headerPos, DecodeHeader, EntryTypes.CompressedHeader, cancellation);
         // IsPostMerge is not RLP-serialized; restore it from Difficulty after decode.
-        // This holds for all EIP-3675 networks: pre-merge blocks have Difficulty > 0,
-        // post-merge blocks have Difficulty == 0. Non-mainnet genesis blocks with
-        // Difficulty == 0 would be mislabeled, but EraE files are only written for
-        // post-genesis blocks or chains that follow EIP-3675 semantics.
+        // Pre-merge blocks have Difficulty > 0, post-merge blocks have Difficulty == 0 (EIP-3675).
+        // Safe on all supported networks: genesis always has Difficulty > 0 on mainnet and testnets.
         header.IsPostMerge = header.Difficulty == 0;
 
         long bodyPos = _fileReader.BodyOffset(blockNumber);
@@ -214,7 +211,6 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
         if (!ctx.IsSequenceNext())
             return _slimReceiptDecoder.Decode(ref ctx);
 
-        // Peek the field count inside the sequence without consuming any bytes.
         int savedPosition = ctx.Position;
         int sequenceLength = ctx.ReadSequenceLength();
         int receiptEnd = ctx.Position + sequenceLength;
