@@ -10,7 +10,17 @@ using System.Collections;
 public abstract class SszDiagnosticAnalyzer : DiagnosticAnalyzer
 {
     protected static string[] SszSerializableAttributeNames = ["SszSerializable", "SszSerializableAttribute"];
-    protected static string[] SszCollectionAttributeNames = ["SszVector", "SszList", "SszListAttribute", "SszVectorAttribute"];
+    protected static string[] SszCollectionAttributeNames =
+    [
+        "SszVector",
+        "SszList",
+        "SszListAttribute",
+        "SszVectorAttribute",
+        "SszProgressiveList",
+        "SszProgressiveListAttribute",
+        "SszProgressiveBitlist",
+        "SszProgressiveBitlistAttribute",
+    ];
 
     protected static bool IsSerializableType(TypeDeclarationSyntax type) =>
         type.AttributeLists.SelectMany(attrList => attrList.Attributes).Any(attr => SszSerializableAttributeNames.Contains(attr.ToString()));
