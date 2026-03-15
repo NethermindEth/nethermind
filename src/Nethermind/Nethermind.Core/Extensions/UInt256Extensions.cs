@@ -103,7 +103,6 @@ public static class UInt256Extensions
         // Scalar SWAR fallback: four 64-bit limbs processed independently.
         return value.u0.CountZeroBytes() + value.u1.CountZeroBytes()
              + value.u2.CountZeroBytes() + value.u3.CountZeroBytes();
-        
     }
 
     public static int CountLeadingZeros(this in UInt256 uInt256)
