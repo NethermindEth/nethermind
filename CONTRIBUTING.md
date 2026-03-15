@@ -36,8 +36,7 @@ Please do:
 - **DO** include tests when adding new features. When fixing bugs, add a test highlighting how the current behavior is broken.
 - **DO** ensure your code is properly formatted before submitting. CI runs `dotnet format whitespace` and will reject PRs with formatting violations. Run locally:
   ```bash
-  dotnet format whitespace src/Nethermind/ --folder
-  dotnet format whitespace tools/ --folder
+  bash scripts/dotnet-format.sh
   ```
 - **DO** fill out the issues and PR descriptions according to their templates. The elements in the templates are there for a good reason. Help the team.
 - **DO** especially follow our rules in the [Contributing](https://github.com/NethermindEth/nethermind/blob/master/CODE_OF_CONDUCT.md#contributing) section of our code of conduct.

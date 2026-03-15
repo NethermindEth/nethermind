@@ -22,15 +22,13 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Format
-        run: |
-          dotnet format whitespace src/Nethermind/ --folder
-          dotnet format whitespace tools/ --folder
+        run: bash scripts/dotnet-format.sh
 
       - name: Check formatting changes
         run: |
           git diff --exit-code --diff-filter=M --stat || {
             echo ""
-            echo "::error::Code formatting violations detected. Run 'dotnet format whitespace src/Nethermind/ --folder && dotnet format whitespace tools/ --folder' locally to fix."
+            echo "::error::Code formatting violations detected. Run 'bash scripts/dotnet-format.sh' locally to fix."
             echo ""
             echo "Diff of required changes:"
             git diff --diff-filter=M
