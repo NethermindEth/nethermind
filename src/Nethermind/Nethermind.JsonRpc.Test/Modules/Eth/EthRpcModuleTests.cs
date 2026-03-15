@@ -1308,24 +1308,25 @@ public partial class EthRpcModuleTests
             .Should().Contain("0x0000000000000000000000000000000000000000000000000000000000000001");
     }
 
-    [Test]
-    public async Task Eth_create_access_list_gas_uses_block_spec_not_hardcoded_berlin()
+    // Proves that GetResultGas uses the block's actual spec for AccessListCost.
+    // With EIP-7981 enabled the access list token floor (10 gas/token) must be included in gasUsed.
+    //
+    // Discovered access list for loads=2:
+    //   0xbd770416a3345f91e4b34576cb804a576fa48eb1 -- 20 non-zero bytes = 80 tokens
+    //   StorageKey(1): 31 zero + 1 non-zero = 35 tokens
+    //   StorageKey(2): 31 zero + 1 non-zero = 35 tokens
+    //   0x76e68a8696537e4141926f3e528733af9e237d69 -- 20 non-zero bytes = 80 tokens
+    //   Total = 230 tokens -> EIP-7981 adds 10 x 230 = 2300 gas
+    //
+    // Berlin baseline gasUsed = 0xf71b (63259).  +2300 = 0x10017 (65559)
+    // Osaka baseline gasUsed  = 0xf721 (63265).  +2300 = 0x1001d (65565)
+    //   Osaka is 6 gas higher due to EIP-3860 initcode word metering: ceil(69/32) * 2 = 6
+    [TestCase("Berlin", "0x10017")]
+    [TestCase("Osaka", "0x1001d")]
+    public async Task Eth_create_access_list_gas_uses_block_spec_not_hardcoded_berlin(string fork, string expectedGasUsed)
     {
-        // Proves that GetResultGas uses Berlin.Instance hardcoded instead of the block's actual spec.
-        // With EIP-7981 enabled the access list token floor (10 gas/token) must be included in gasUsed.
-        //
-        // Discovered access list for loads=2 (from the Berlin baseline test result):
-        //   0xbd770416a3345f91e4b34576cb804a576fa48eb1 -- 20 non-zero bytes = 80 tokens
-        //   StorageKey(1): 31 zero + 1 non-zero = 35 tokens
-        //   StorageKey(2): 31 zero + 1 non-zero = 35 tokens
-        //   0x76e68a8696537e4141926f3e528733af9e237d69 -- 20 non-zero bytes = 80 tokens
-        //   Total = 230 tokens -> EIP-7981 adds 10 x 230 = 2300 gas
-        //
-        // Berlin baseline gasUsed = 0xf71b (63259).
-        // Correct gasUsed under EIP-7981 = 63259 + 2300 = 65559 = 0x10017.
-        // Bug: GetResultGas passes Berlin.Instance to AccessListCost regardless of the block spec,
-        //      so it always omits the EIP-7981 token floor and returns 0xf71b instead of 0x10017.
-        OverridableReleaseSpec spec = new(Berlin.Instance) { IsEip7981Enabled = true };
+        IReleaseSpec baseSpec = fork == "Osaka" ? Osaka.Instance : Berlin.Instance;
+        OverridableReleaseSpec spec = new(baseSpec) { IsEip7981Enabled = true, IsEip7623Enabled = true };
         TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(new TestSpecProvider(spec));
 
@@ -1335,9 +1336,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "0x0", null, false);
 
-        // With the bug the gas is 0xf71b (Berlin, no EIP-7981 floor).
-        // With the fix the gas is 0x10017 (Berlin + 2300 EIP-7981 floor).
-        Assert.That(serialized, Contains.Substring("\"gasUsed\":\"0x10017\""));
+        Assert.That(serialized, Contains.Substring($"\"gasUsed\":\"{expectedGasUsed}\""));
     }
 
     [TestCase(null)]
