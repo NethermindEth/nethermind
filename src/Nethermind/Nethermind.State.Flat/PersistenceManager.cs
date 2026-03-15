@@ -237,27 +237,26 @@ public class PersistenceManager(
         long sw = Stopwatch.GetTimestamp();
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            foreach (KeyValuePair<AddressAsKey, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
+            foreach (KeyValuePair<HashedKey<AddressAsKey>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
             {
                 if (toSelfDestructStorage.Value)
                 {
                     continue;
                 }
 
-                batch.SelfDestruct(toSelfDestructStorage.Key.Value);
+                batch.SelfDestruct(toSelfDestructStorage.Key.Key.Value);
             }
 
-            foreach (KeyValuePair<AddressAsKey, Account?> kv in snapshot.Accounts)
+            foreach (KeyValuePair<HashedKey<AddressAsKey>, Account?> kv in snapshot.Accounts)
             {
-                (AddressAsKey addr, Account? account) = kv;
-                batch.SetAccount(addr, account);
+                batch.SetAccount(kv.Key.Key, kv.Value);
             }
 
-            foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in snapshot.Storages)
+            foreach (KeyValuePair<HashedKey<(AddressAsKey, UInt256)>, SlotValue?> kv in snapshot.Storages)
             {
-                ((Address addr, UInt256 slot), SlotValue? value) = kv;
+                (AddressAsKey addr, UInt256 slot) = kv.Key.Key;
 
-                batch.SetStorage(addr, slot, value);
+                batch.SetStorage(addr, slot, kv.Value);
             }
 
             _trieNodesSortBuffer.Clear();
@@ -273,7 +272,7 @@ public class PersistenceManager(
             {
                 (_, TreePath path) = k;
 
-                snapshot.TryGetStateNode(path, out TrieNode? node);
+                snapshot.TryGetStateNode(new HashedKey<TreePath>(path), out TrieNode? node);
 
                 if (node!.FullRlp.Length == 0)
                 {
@@ -301,7 +300,7 @@ public class PersistenceManager(
             {
                 (Hash256AsKey address, TreePath path) = k;
 
-                snapshot.TryGetStorageNode(address, path, out TrieNode? node);
+                snapshot.TryGetStorageNode(new HashedKey<(Hash256AsKey, TreePath)>((address, path)), out TrieNode? node);
 
                 if (node!.FullRlp.Length == 0)
                 {
