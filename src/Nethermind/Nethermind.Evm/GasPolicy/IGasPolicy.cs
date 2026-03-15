@@ -387,7 +387,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         (int addressesCount, int storageKeysCount) = accessList.Count;
         return addressesCount * GasCostOf.AccessAccountListEntry
             + storageKeysCount * GasCostOf.AccessStorageListEntry
-            + GasCostOf.TotalCostFloorPerTokenEip7623 * tokensInAccessList;
+            + spec.GasCosts.TotalCostFloorPerToken * tokensInAccessList;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidDataException(IReleaseSpec spec) =>
@@ -428,11 +428,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         if (spec.IsEip7976Enabled)
         {
             long floorTokensInCallData = transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
-            return GasCostOf.Transaction + (floorTokensInCallData + tokensInAccessList) * GasCostOf.TotalCostFloorPerTokenEip7976;
+            return GasCostOf.Transaction + (floorTokensInCallData + tokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken;
         }
         else if (spec.IsEip7623Enabled)
         {
-            return GasCostOf.Transaction + (tokensInCallData + tokensInAccessList) * GasCostOf.TotalCostFloorPerTokenEip7623;
+            return GasCostOf.Transaction + (tokensInCallData + tokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken;
         }
 
         return 0L;

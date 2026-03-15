@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -69,11 +70,41 @@ public static class UInt256Extensions
 
     /// <summary>
     /// Returns the number of zero-valued bytes in the 256-bit value.
-    /// Operates directly on the four <see cref="ulong"/> limbs — no serialization needed.
     /// </summary>
-    public static int CountZeroBytes(this in UInt256 value) =>
-        value.u0.CountZeroBytes() + value.u1.CountZeroBytes()
-        + value.u2.CountZeroBytes() + value.u3.CountZeroBytes();
+    public static int CountZeroBytes(this in UInt256 value)
+    {
+        // UInt256 is exactly 32 bytes — same width as Vector256<byte>.
+        if (Vector256.IsHardwareAccelerated)
+        {
+            Word v = Unsafe.As<UInt256, Word>(ref Unsafe.AsRef(in value));
+            uint mask = Vector256.Equals(v, default).ExtractMostSignificantBits();
+            return BitOperations.PopCount(mask);
+        }
+
+        if (Vector128.IsHardwareAccelerated)
+        {
+            ref byte bytes = ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in value));
+            Vector128<byte> lo = Unsafe.ReadUnaligned<Vector128<byte>>(ref bytes);
+            Vector128<byte> hi = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref bytes, Vector128<byte>.Count));
+
+            // ARM: Sum with horizontal add (addv) is cheaper than ExtractMostSignificantBits.
+            // x86: ExtractMostSignificantBits compiles to a single pmovmskb.
+            if (AdvSimd.IsSupported)
+            {
+                return Vector128.Sum(~Vector128.Equals(lo, default) + Vector128<byte>.One)
+                     + Vector128.Sum(~Vector128.Equals(hi, default) + Vector128<byte>.One);
+            }
+
+            uint loMask = Vector128.ExtractMostSignificantBits(Vector128.Equals(lo, default));
+            uint hiMask = Vector128.ExtractMostSignificantBits(Vector128.Equals(hi, default));
+            return BitOperations.PopCount(loMask) + BitOperations.PopCount(hiMask);
+        }
+
+        // Scalar SWAR fallback: four 64-bit limbs processed independently.
+        return value.u0.CountZeroBytes() + value.u1.CountZeroBytes()
+             + value.u2.CountZeroBytes() + value.u3.CountZeroBytes();
+        
+    }
 
     public static int CountLeadingZeros(this in UInt256 uInt256)
     {
