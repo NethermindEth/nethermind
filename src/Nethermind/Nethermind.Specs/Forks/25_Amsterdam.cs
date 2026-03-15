@@ -22,6 +22,8 @@ public class Amsterdam : BPO5
         IsEip8024Enabled = true;
         IsEip7843Enabled = true;
         IsEip7954Enabled = true;
+        // TODO: re-enable once pyspec fixtures include EIP-7981 token pricing
+        // IsEip7981Enabled = true;
         MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
         Released = false;
     }

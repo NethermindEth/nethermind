@@ -1293,7 +1293,7 @@ public partial class EthRpcModuleTests
         object transaction = JsonSerializer.Deserialize<object>(
             """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""")!;
 
-        // PUSH1 0x01, SLOAD, POP, STOP — reads storage slot 1
+        // PUSH1 0x01, SLOAD, POP, STOP -- reads storage slot 1
         object stateOverride = JsonSerializer.Deserialize<object>(
             """{"0xc200000000000000000000000000000000000000":{"code":"0x6001545000"}}""")!;
 
@@ -1306,6 +1306,47 @@ public partial class EthRpcModuleTests
         withOverrideResult.Should().NotBeEquivalentTo(withoutOverrideResult);
         withOverrideResult.SelectToken("result.accessList")!.ToString()
             .Should().Contain("0x0000000000000000000000000000000000000000000000000000000000000001");
+    }
+
+    private static IEnumerable<TestCaseData> AccessListGasSpecCases()
+    {
+        // Proves that GetResultGas uses the block's actual spec for AccessListCost.
+        // With EIP-7981 enabled the access list token floor (10 gas/token) must be included in gasUsed.
+        //
+        // Discovered access list for loads=2:
+        //   0xbd770416a3345f91e4b34576cb804a576fa48eb1 -- 20 non-zero bytes = 80 tokens
+        //   StorageKey(1): 31 zero + 1 non-zero = 35 tokens
+        //   StorageKey(2): 31 zero + 1 non-zero = 35 tokens
+        //   0x76e68a8696537e4141926f3e528733af9e237d69 -- 20 non-zero bytes = 80 tokens
+        //   Total = 230 tokens -> EIP-7981 adds 10 x 230 = 2300 gas
+        //
+        // Berlin baseline gasUsed = 0xf71b (63259).  +2300 = 0x10017 (65559)
+        // Osaka baseline gasUsed  = 0xf721 (63265).  +2300 = 0x1001d (65565)
+        //   Osaka is 6 gas higher due to EIP-3860 initcode word metering: ceil(69/32) * 2 = 6
+        yield return new TestCaseData(
+            new OverridableReleaseSpec(Berlin.Instance) { IsEip7981Enabled = true, IsEip7623Enabled = true },
+            "0x10017"
+        ).SetName("Berlin + EIP-7981: 0x10017");
+
+        yield return new TestCaseData(
+            new OverridableReleaseSpec(Osaka.Instance) { IsEip7981Enabled = true },
+            "0x1001d"
+        ).SetName("Osaka + EIP-7981: 0x1001d");
+    }
+
+    [TestCaseSource(nameof(AccessListGasSpecCases))]
+    public async Task Eth_create_access_list_gas_uses_block_spec_not_hardcoded_berlin(IReleaseSpec spec, string expectedGasUsed)
+    {
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(new TestSpecProvider(spec));
+
+        (byte[] code, _) = GetTestAccessList(2);
+        AccessListTransactionForRpc transaction = test.JsonSerializer.Deserialize<AccessListTransactionForRpc>(
+            $"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
+
+        string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "0x0", null, false);
+
+        Assert.That(serialized, Contains.Substring($"\"gasUsed\":\"{expectedGasUsed}\""));
     }
 
     [TestCase(null)]

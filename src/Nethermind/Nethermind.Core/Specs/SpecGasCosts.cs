@@ -22,6 +22,12 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
     public readonly long SStoreResetCost;
     public readonly long TxDataNonZeroMultiplier;
 
+    /// <summary>
+    /// Per-token floor cost for calldata pricing.
+    /// 16 when EIP-7976 is active, 10 when EIP-7623 is active, 0 otherwise.
+    /// </summary>
+    public readonly long TotalCostFloorPerToken;
+
     public readonly long NetMeteredSStoreCost;
     public readonly long ClearReversalRefund;
     public readonly long SetReversalRefund;
@@ -101,6 +107,13 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             ? GasCostOf.TxDataNonZeroMultiplierEip2028
             : GasCostOf.TxDataNonZeroMultiplier;
 
+        // EIP-7976 supersedes EIP-7623 with a higher per-token floor cost.
+        TotalCostFloorPerToken = spec.IsEip7976Enabled
+            ? GasCostOf.TotalCostFloorPerTokenEip7976
+            : spec.IsEip7623Enabled
+                ? GasCostOf.TotalCostFloorPerTokenEip7623
+                : GasCostOf.Free;
+
         SClearRefund = spec.IsEip3529Enabled
             ? RefundOf.SClearAfterEip3529
             : RefundOf.SClearBeforeEip3529;
@@ -110,8 +123,8 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             : RefundOf.DestroyBeforeEip3529;
 
         int hashCode1 = HashCode.Combine(SLoadCost, BalanceCost, ExtCodeCost, ExtCodeHashCost, CallCost, ExpByteCost, sStoreResetCost, netMeteredSStoreCost);
-        int hashCode2 = HashCode.Combine(TxDataNonZeroMultiplier, clearReversalRefund, setReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock, DestroyRefund);
-        _hashCode = HashCode.Combine(hashCode1, hashCode2);
+        int hashCode2 = HashCode.Combine(TxDataNonZeroMultiplier, TotalCostFloorPerToken, clearReversalRefund, setReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock);
+        _hashCode = HashCode.Combine(hashCode1, hashCode2, DestroyRefund);
     }
 
     public long RefundFromReversal<TEip8037>(bool originalIsZero)
@@ -137,6 +150,7 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             && ExpByteCost == other.ExpByteCost
             && SStoreResetCost == other.SStoreResetCost
             && TxDataNonZeroMultiplier == other.TxDataNonZeroMultiplier
+            && TotalCostFloorPerToken == other.TotalCostFloorPerToken
             && NetMeteredSStoreCost == other.NetMeteredSStoreCost
             && ClearReversalRefund == other.ClearReversalRefund
             && SetReversalRefund == other.SetReversalRefund
