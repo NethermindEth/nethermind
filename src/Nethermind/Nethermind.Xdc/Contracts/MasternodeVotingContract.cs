@@ -78,9 +78,13 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 
         StorageCell cell = new(ContractAddress!, slot);
         ReadOnlySpan<byte> storageValue = worldState.Get(cell);
-        if (storageValue.Length != 21 || storageValue[0] != 0x01)
-            throw new InvalidOperationException($"Unexpected storage value for validatorsState owner");
-        return new Address(storageValue.Slice(1, Address.Size));
+
+        // Right-align into a 32-byte buffer and take the last 20 bytes to get the owner address,
+        // mirroring Go's GetOwner: common.HexToAddress(GetState(...).Hex()).
+        // Unknown candidates return all-zero bytes → Address.Zero.
+        Span<byte> raw = stackalloc byte[32];
+        storageValue.CopyTo(raw.Slice(32 - storageValue.Length));
+        return new Address(raw.Slice(32 - Address.Size));
     }
 
     public Address[] GetCandidates(BlockHeader blockHeader)
