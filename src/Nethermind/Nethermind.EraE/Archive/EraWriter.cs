@@ -20,6 +20,10 @@ public sealed class EraWriter : IDisposable
 {
     public const int MaxEraSize = 8192;
 
+    private const long MillisecondsPerSecond = 1000;
+    private const int BeaconSlotSeconds = 12;
+    private const int IndexFieldSize = 8; // sizeof(long) — each ComponentIndex field is a little-endian int64
+
     private readonly HeaderDecoder _headerDecoder = new();
     private readonly BlockBodyDecoder _blockBodyDecoder = new();
     private readonly ReceiptMessageDecoder _slimReceiptDecoder = new(skipBloom: true);
@@ -61,10 +65,10 @@ public sealed class EraWriter : IDisposable
         if (beaconRootsProvider is not null && specProvider.BeaconChainGenesisTimestamp.HasValue)
         {
             _slotTime = new SlotTime(
-                specProvider.BeaconChainGenesisTimestamp.Value * 1000,
+                specProvider.BeaconChainGenesisTimestamp.Value * MillisecondsPerSecond,
                 new Timestamper(),
-                TimeSpan.FromSeconds(12),
-                TimeSpan.FromSeconds(0));
+                TimeSpan.FromSeconds(BeaconSlotSeconds),
+                TimeSpan.Zero);
         }
     }
 
@@ -118,7 +122,7 @@ public sealed class EraWriter : IDisposable
 
         if (isPostMerge && _beaconRootsProvider is not null && _slotTime is not null)
         {
-            long slot = (long)_slotTime.GetSlot(block.Header.Timestamp * 1000);
+            long slot = (long)_slotTime.GetSlot(block.Header.Timestamp * MillisecondsPerSecond);
             (ValueHash256 beaconBlockRoot, ValueHash256 stateRoot)? roots =
                 await _beaconRootsProvider.GetBeaconRoots(slot, cancellation);
             _blocksRootContext!.ProcessBlock(block, roots?.beaconBlockRoot, roots?.stateRoot);
@@ -136,7 +140,7 @@ public sealed class EraWriter : IDisposable
         }
         else
         {
-            // Placeholder; replaced with TTD in Finalize for transition epochs
+            // TTD is written for all blocks in a transition epoch; post-merge value is backfilled in Finalize
             _totalDifficulties.Add(UInt256.Zero);
             _hasPostMergeBlocks = true;
         }
@@ -231,7 +235,7 @@ public sealed class EraWriter : IDisposable
             // Layout: starting_number | [header_off, body_off, receipts_off, [td_off]] * N | component_count | block_count
             // Offsets are negative int64 LE, relative to start of the ComponentIndex TLV (including 8-byte header).
             long componentIndexStart = totalWritten; // absolute position of the ComponentIndex entry header
-            int indexDataLength = 8 + blockCount * componentCount * 8 + 8 + 8;
+            int indexDataLength = IndexFieldSize + blockCount * componentCount * IndexFieldSize + IndexFieldSize + IndexFieldSize;
 
             using ArrayPoolList<byte> indexBytes = new(indexDataLength, indexDataLength);
             Span<byte> span = indexBytes.AsSpan();
@@ -240,17 +244,17 @@ public sealed class EraWriter : IDisposable
 
             for (int i = 0; i < blockCount; i++)
             {
-                int baseOff = 8 + i * componentCount * 8;
-                WriteInt64(span, baseOff + 0, headerOffsets[i] - componentIndexStart);
-                WriteInt64(span, baseOff + 8, bodyOffsets[i] - componentIndexStart);
-                WriteInt64(span, baseOff + 16, receiptsOffsets[i] - componentIndexStart);
+                int baseOff = IndexFieldSize + i * componentCount * IndexFieldSize;
+                WriteInt64(span, baseOff + IndexFieldSize * 0, headerOffsets[i] - componentIndexStart);
+                WriteInt64(span, baseOff + IndexFieldSize * 1, bodyOffsets[i] - componentIndexStart);
+                WriteInt64(span, baseOff + IndexFieldSize * 2, receiptsOffsets[i] - componentIndexStart);
                 if (needsTd)
-                    WriteInt64(span, baseOff + 24, tdOffsets[i] - componentIndexStart);
+                    WriteInt64(span, baseOff + IndexFieldSize * 3, tdOffsets[i] - componentIndexStart);
             }
 
-            int tailOff = 8 + blockCount * componentCount * 8;
+            int tailOff = IndexFieldSize + blockCount * componentCount * IndexFieldSize;
             WriteInt64(span, tailOff, componentCount);
-            WriteInt64(span, tailOff + 8, blockCount);
+            WriteInt64(span, tailOff + IndexFieldSize, blockCount);
 
             await _e2StoreWriter.WriteEntry(EntryTypes.ComponentIndex, indexBytes.AsMemory(), cancellation);
             await _e2StoreWriter.Flush(cancellation);
@@ -268,7 +272,7 @@ public sealed class EraWriter : IDisposable
     }
 
     private static void WriteInt64(Span<byte> destination, int off, long value) =>
-        BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, 8), value);
+        BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, IndexFieldSize), value);
 
     private static (byte[] Buffer, int Length) RentAndCopy(ReadOnlyMemory<byte> source)
     {

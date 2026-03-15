@@ -184,7 +184,6 @@ public class Validator
     {
         if (branch.Length != depth) return false;
 
-        // Two 32-byte stack buffers, ping-ponged each iteration — zero heap allocations.
         Span<byte> buf0 = stackalloc byte[32];
         Span<byte> buf1 = stackalloc byte[32];
         leaf.Bytes.CopyTo(buf0);

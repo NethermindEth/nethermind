@@ -83,7 +83,7 @@ public class ProofDecoder : IRlpValueDecoder<BlockHeaderProof?>, IRlpStreamEncod
     {
         if (item is null)
         {
-            return 1; // RLP null (empty list) = 1 byte (0xC0)
+            return Rlp.LengthOfSequence(0); // empty sequence (0xC0)
         }
 
         int payloadLength = GetPayloadLength(item);

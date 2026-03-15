@@ -31,7 +31,7 @@ public sealed class BlocksRootContext : IDisposable
 
     public readonly AccumulatorType AccumulatorType;
 
-    private AccumulatorCalculator? _accumulatorCalculator; // kept alive after FinalizeContext for GetProof
+    private AccumulatorCalculator? _accumulatorCalculator;
     private ValueHash256? _accumulatorRoot;
     private HistoricalSummary? _historicalSummary;
     private ValueHash256? _historicalRoot;
@@ -96,7 +96,6 @@ public sealed class BlocksRootContext : IDisposable
                 foreach ((Hash256 hash, UInt256 td) in _blockHashes.AsSpan())
                     _accumulatorCalculator.Add(hash, td);
                 _accumulatorRoot = _accumulatorCalculator.ComputeRoot();
-                // Calculator is kept alive (not disposed) so EraWriter can call GetProof after Finalize.
                 break;
 
             case AccumulatorType.HistoricalRoots:

@@ -20,6 +20,11 @@ namespace Nethermind.EraE.E2Store;
 public sealed class E2StoreReader : IDisposable
 {
     private const int EntryHeaderSize = 8;
+    private const int IndexFieldSize = 8; // sizeof(long) — each ComponentIndex field is a little-endian int64
+    private const int AccumulatorRootSize = 32; // Bytes32 hash
+    private const int MinComponentCount = 3; // post-merge: header, body, receipts
+    private const int MaxComponentCount = 5; // future: transition with both TD and proof
+    private const int ComponentsWithTotalDifficulty = 4; // pre-merge or transition epoch
     private const int ValueSizeLimit = 1024 * 1024 * 50;
 
     private readonly SafeFileHandle _file;
@@ -62,7 +67,7 @@ public sealed class E2StoreReader : IDisposable
         get
         {
             EnsureIndexLoaded();
-            return _componentCount >= 4;
+            return _componentCount >= ComponentsWithTotalDifficulty;
         }
     }
 
@@ -75,7 +80,7 @@ public sealed class E2StoreReader : IDisposable
     public long TotalDifficultyOffset(long blockNumber)
     {
         EnsureIndexLoaded();
-        if (_componentCount < 4)
+        if (_componentCount < ComponentsWithTotalDifficulty)
             throw new EraException("This EraE file does not contain TotalDifficulty entries (post-merge epoch).");
         return ComponentOffset(blockNumber, 3);
     }
@@ -85,13 +90,13 @@ public sealed class E2StoreReader : IDisposable
         get
         {
             EnsureIndexLoaded();
-            if (_componentCount < 4)
+            if (_componentCount < ComponentsWithTotalDifficulty)
                 return -1;
 
             // AccumulatorRoot is the entry immediately before ComponentIndex.
             // ComponentIndex entry header is at _componentIndexTlvStart.
-            // Before it: AccumulatorRoot entry = [8-byte header][32-byte hash]
-            return _componentIndexTlvStart - EntryHeaderSize - 32;
+            // Before it: AccumulatorRoot entry = [EntryHeaderSize][AccumulatorRootSize]
+            return _componentIndexTlvStart - EntryHeaderSize - AccumulatorRootSize;
         }
     }
 
@@ -147,25 +152,25 @@ public sealed class E2StoreReader : IDisposable
         //   component_count  (8 bytes)
         //   block_count      (8 bytes)
 
-        // Minimum viable file: entry header (8) + starting_number (8) + component_count (8) + block_count (8)
-        if (_fileLength < EntryHeaderSize + 24)
+        // Minimum viable file: entry header + starting_number + component_count + block_count
+        if (_fileLength < EntryHeaderSize + IndexFieldSize * 3)
             throw new EraFormatException($"File too small ({_fileLength} bytes) to contain a valid ComponentIndex.");
 
         // Read block_count from the last 8 bytes of file
-        _blockCount = ReadInt64(_fileLength - 8);
+        _blockCount = ReadInt64(_fileLength - IndexFieldSize);
         if (_blockCount <= 0 || _blockCount > EraWriter.MaxEraSize)
             throw new EraFormatException($"Invalid block count {_blockCount} in EraE ComponentIndex.");
 
         // Read component_count from the 8 bytes before block_count
-        _componentCount = (int)ReadInt64(_fileLength - 16);
+        _componentCount = (int)ReadInt64(_fileLength - IndexFieldSize * 2);
         // 3 = post-merge (header, body, receipts)
         // 4 = pre-merge or transition (+ total-difficulty), or post-merge with proof
         // 5 = transition with both total-difficulty and proof (future)
-        if (_componentCount < 3 || _componentCount > 5)
+        if (_componentCount < MinComponentCount || _componentCount > MaxComponentCount)
             throw new EraFormatException($"Invalid component count {_componentCount} in EraE ComponentIndex.");
 
-        // Total data length = 8 + blockCount * componentCount * 8 + 8 + 8
-        long indexDataLength = 8 + _blockCount * _componentCount * 8 + 8 + 8;
+        // Total data length = starting_number + offsets + component_count + block_count
+        long indexDataLength = IndexFieldSize + _blockCount * _componentCount * IndexFieldSize + IndexFieldSize + IndexFieldSize;
 
         // Verify entry type
         long indexEntryStart = _fileLength - EntryHeaderSize - indexDataLength;
@@ -173,7 +178,7 @@ public sealed class E2StoreReader : IDisposable
 
         _componentIndexTlvStart = indexEntryStart;
 
-        // Read starting block number (first 8 bytes of index data)
+        // Read starting block number (first field of index data)
         _startBlock = ReadInt64(indexEntryStart + EntryHeaderSize);
 
         _indexLoaded = true;
@@ -189,10 +194,10 @@ public sealed class E2StoreReader : IDisposable
             throw new ArgumentOutOfRangeException(nameof(componentIdx));
 
         long blockIdx = blockNumber - _startBlock;
-        // Offset table starts at: indexEntryStart + EntryHeaderSize + 8 (starting_number)
-        long offsetFieldPos = _componentIndexTlvStart + EntryHeaderSize + 8
-            + blockIdx * _componentCount * 8
-            + componentIdx * 8;
+        // Offset table starts at: indexEntryStart + EntryHeaderSize + IndexFieldSize (starting_number)
+        long offsetFieldPos = _componentIndexTlvStart + EntryHeaderSize + IndexFieldSize
+            + blockIdx * _componentCount * IndexFieldSize
+            + componentIdx * IndexFieldSize;
 
         long relativeOffset = ReadInt64(offsetFieldPos);
         // Offset is relative to the ComponentIndex TLV start (entry header included)
