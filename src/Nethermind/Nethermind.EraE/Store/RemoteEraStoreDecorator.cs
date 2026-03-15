@@ -10,6 +10,11 @@ using NonBlocking;
 
 namespace Nethermind.EraE.Store;
 
+// Thread-safety model:
+//   Setup paths  (FirstBlock, LastBlock, NextEraStart) — called sequentially during initialization,
+//                never from an async context; sync-over-async via GetAwaiter().GetResult() is safe.
+//   Read paths   (FindBlockAndReceipts) — called concurrently by multiple importer worker tasks;
+//                protected by per-epoch semaphores and a manifest lock.
 public sealed class RemoteEraStoreDecorator : IEraStore
 {
     private readonly IEraStore? _localStore;
@@ -21,14 +26,14 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     private IReadOnlyDictionary<int, RemoteEraEntry>? _manifest;
     private readonly SemaphoreSlim _manifestLock = new(1, 1);
 
-    // One semaphore per epoch prevents concurrent duplicate downloads
-    private readonly ConcurrentDictionary<int, SemaphoreSlim> _epochLocks = new();
+    // One semaphore per epoch prevents concurrent duplicate downloads.
+    // Lazy<T> ensures only one SemaphoreSlim is created per epoch even if GetOrAdd races.
+    private readonly ConcurrentDictionary<int, Lazy<SemaphoreSlim>> _epochLocks = new();
 
     // Verified epoch paths — populated after successful SHA-256 check
     private readonly ConcurrentDictionary<int, string> _verifiedEpochs = new();
 
-    // intentional sync-over-async: IEraStore.FirstBlock/LastBlock are synchronous properties;
-    // called only from non-async EraStore/EraImporter setup paths — not from an async context.
+    // Setup path — sequential, sync-over-async is safe (see thread-safety model above)
     public long FirstBlock => GetFirstBlockAsync().GetAwaiter().GetResult();
     public long LastBlock => GetLastBlockAsync().GetAwaiter().GetResult();
 
@@ -75,7 +80,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
             return _localStore.NextEraStart(blockNumber);
 
         int epoch = (int)(blockNumber / _maxEraSize);
-        // intentional sync-over-async: NextEraStart is part of IEraStore synchronous contract.
+        // Setup path — sequential, sync-over-async is safe (see thread-safety model above)
         string localPath = EnsureEpochAvailableAsync(epoch).GetAwaiter().GetResult();
         using EraReader reader = new(localPath);
         return reader.LastBlock + 1;
@@ -85,7 +90,8 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     {
         _localStore?.Dispose();
         _manifestLock.Dispose();
-        foreach (SemaphoreSlim s in _epochLocks.Values) s.Dispose();
+        foreach (Lazy<SemaphoreSlim> s in _epochLocks.Values)
+            if (s.IsValueCreated) s.Value.Dispose();
     }
 
     private async Task<long> GetFirstBlockAsync(CancellationToken cancellation = default)
@@ -141,7 +147,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
 
         string destinationPath = Path.Join(_downloadDir, entry.Filename);
 
-        SemaphoreSlim epochLock = _epochLocks.GetOrAdd(epoch, _ => new SemaphoreSlim(1, 1));
+        SemaphoreSlim epochLock = _epochLocks.GetOrAdd(epoch, static _ => new Lazy<SemaphoreSlim>(() => new SemaphoreSlim(1, 1))).Value;
         await epochLock.WaitAsync(cancellation).ConfigureAwait(false);
         try
         {
