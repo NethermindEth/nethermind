@@ -112,7 +112,8 @@ public class SnappyTests
     [Test]
     public void Encode_does_not_leak_pooled_buffers()
     {
-        PooledByteBufferAllocator allocator = new();
+        PooledByteBufferAllocator allocator = new(
+            nHeapArena: 1, nDirectArena: 0, pageSize: 4096, maxOrder: 0);
         ZeroSnappyEncoderForTest encoder = new();
 
         // RLP-encoded packet type (0x01) followed by an RLP-encoded body
