@@ -3,15 +3,33 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
 namespace Nethermind.Core.Extensions;
 
 public static class DisposableExtensions
 {
+    /// <summary>
+    /// Attempts to dispose <paramref name="item"/> if it implements <see cref="IDisposable"/>.
+    /// For <see cref="ITuple"/> values (e.g. value tuples) that don't implement IDisposable,
+    /// each element is individually checked and disposed. Without this fallback, calling
+    /// TryDispose on a tuple like <c>(OwnedBlockBodies, long)</c> silently no-ops and leaks
+    /// the disposable component.
+    /// </summary>
     public static void TryDispose<T>(this T item)
     {
-        (item as IDisposable)?.Dispose();
+        if (item is IDisposable d)
+        {
+            d.Dispose();
+        }
+        else if (item is ITuple tuple)
+        {
+            for (int i = 0; i < tuple.Length; i++)
+            {
+                (tuple[i] as IDisposable)?.Dispose();
+            }
+        }
     }
 
     public static void DisposeItems<T>(this IEnumerable<T> items) where T : IDisposable
