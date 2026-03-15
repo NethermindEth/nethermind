@@ -22,9 +22,7 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Format
-        run: |
-          dotnet format whitespace src/Nethermind/ --folder --verify-no-changes
-          dotnet format whitespace tools/ --folder --verify-no-changes
+        run: bash scripts/dotnet-format.sh --verify-no-changes
 
       - name: Check spelling
         uses: streetsidesoftware/cspell-action@v7
