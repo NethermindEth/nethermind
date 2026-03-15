@@ -90,6 +90,7 @@
     <PackageVersion Include="Testably.Abstractions" Version="10.1.0" />
     <PackageVersion Include="Testably.Abstractions.Testing" Version="5.3.1" />
     <PackageVersion Include="Websocket.Client" Version="5.3.0" />
+    <PackageVersion Include="YamlDotNet" Version="16.3.0" />
     <PackageVersion Include="ZstdSharp.Port" Version="0.8.7" />
   </ItemGroup>
 </Project>

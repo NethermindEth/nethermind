@@ -362,19 +362,29 @@ public partial class SszEncoding
     public static void Decode(ReadOnlySpan<byte> data, out {decl.Name} container)
     {{
         container = new();
+        {(variables.Any() ? $"if (data.Length < {decl.StaticLength}) throw new System.IO.InvalidDataException(\"Data too short for {decl.Name}\");" : $"if (data.Length != {decl.StaticLength}) throw new System.IO.InvalidDataException(\"Invalid data length for {decl.Name}\");")}
 {Whitespace}
 {Shift(2, decl.Members.Select(m =>
 {
     if (m.IsVariable) offsetIndex++;
     string result = m.IsVariable ? $"SszLib.Decode(data.Slice({offset}, 4), out int offset{offsetIndex});"
+                                    : m.Kind == Kind.BitVector ? $"SszLib.Decode(data.Slice({offset}, {m.StaticLength}), {m.Length}, out BitArray {VarName(m.Name)}); container.{m.Name} = {VarName(m.Name)};"
                                     : m.HandledByStd ? $"SszLib.Decode(data.Slice({offset}, {m.StaticLength}), out {(m.IsCollection ? $"ReadOnlySpan<{m.Type.Name}>" : m.Type.Name)} {VarName(m.Name)}); container.{m.Name} = {(m.IsCollection ? $"[ ..{VarName(m.Name)}]" : VarName(m.Name))};"
                                                      : $"Decode(data.Slice({offset}, {m.StaticLength}), out {(m.IsCollection ? $"{m.Type.Name}[]" : m.Type.Name)} {VarName(m.Name)}); container.{m.Name} = {(m.IsCollection ? $"[ ..{VarName(m.Name)}]" : VarName(m.Name))};";
     offset += m.StaticLength;
     return result;
 }))}
 {Whitespace}
-{Shift(2, variables.Select((m, i) => string.Format($"if ({(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1} > 0) {{{{ {{0}} }}}}",
-            $"{(m.HandledByStd ? "SszLib.Decode" : "Decode")}(data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1}), out {(m.IsCollection ? (m.HandledByStd ? $"ReadOnlySpan<{m.Type.Name}>" : $"{m.Type.Name}[]") : m.Type.Name)} {VarName(m.Name)}); container.{m.Name} = {(m.IsCollection ? $"[ ..{VarName(m.Name)}]" : VarName(m.Name))};")))}
+{(variables.Any() ? Shift(2, new[] { $"if (offset1 != {decl.StaticLength} || {string.Join(" || ", variables.Select((_, i) => i + 1 == variables.Count ? $"offset{i + 1} > data.Length" : $"offset{i + 1} > offset{i + 2}"))}) throw new System.IO.InvalidDataException(\"Invalid offsets\");" }) : "")}
+{Whitespace}
+{Shift(2, variables.Select((m, i) =>
+{
+    string end = i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}";
+    string decodeExpr = $"{(m.HandledByStd ? "SszLib.Decode" : "Decode")}(data.Slice(offset{i + 1}, {end} - offset{i + 1}), out {(m.IsCollection ? (m.HandledByStd ? $"ReadOnlySpan<{m.Type.Name}>" : $"{m.Type.Name}[]") : m.Type.Name)} {VarName(m.Name)}); container.{m.Name} = {(m.IsCollection ? $"[ ..{VarName(m.Name)}]" : VarName(m.Name))};";
+    return m.Kind == Kind.BitList
+        ? decodeExpr + $" if (container.{m.Name}!.Length > {m.Limit}) throw new System.IO.InvalidDataException(\"Bitlist exceeds maximum length\");"
+        : $"if ({end} - offset{i + 1} > 0) {{ {decodeExpr} }}";
+}))}
     }}
 {Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.Name}[] container)
