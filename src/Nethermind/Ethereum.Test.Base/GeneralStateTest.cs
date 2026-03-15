@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.IO;
-using Ethereum.Test.Base.Interfaces;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;

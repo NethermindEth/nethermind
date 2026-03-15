@@ -105,8 +105,8 @@ public class ProtocolsManagerTests
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
             _blockTree = Substitute.For<IBlockTree>();
-            _blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
-            _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
+            _blockTree.NetworkId.Returns(TestBlockchainIds.NetworkId);
+            _blockTree.ChainId.Returns(TestBlockchainIds.ChainId);
             _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
             _forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
             _peerManager = Substitute.For<IPeerManager>();
@@ -476,7 +476,7 @@ public class ProtocolsManagerTests
 
     [TestCase(TestBlockchainIds.NetworkId + 1)]
     [TestCase(TestBlockchainIds.ChainId)]
-    public void Disconnects_on_wrong_network_id(int networkId)
+    public void Disconnects_on_wrong_network_id(ulong networkId)
     {
         When
             .CreateIncomingSession()
@@ -485,7 +485,7 @@ public class ProtocolsManagerTests
             .Init()
             .VerifyInitialized()
             .ReceiveHello()
-            .ReceiveStatusWrongChain((ulong)networkId)
+            .ReceiveStatusWrongChain(networkId)
             .VerifyCompatibilityValidationType(CompatibilityValidationType.NetworkId)
             .VerifyDisconnected();
     }
