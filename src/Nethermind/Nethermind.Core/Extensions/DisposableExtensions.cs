@@ -13,9 +13,7 @@ public static class DisposableExtensions
     /// <summary>
     /// Attempts to dispose <paramref name="item"/> if it implements <see cref="IDisposable"/>.
     /// For <see cref="ITuple"/> values (e.g. value tuples) that don't implement IDisposable,
-    /// each element is individually checked and disposed. Without this fallback, calling
-    /// TryDispose on a tuple like <c>(OwnedBlockBodies, long)</c> silently no-ops and leaks
-    /// the disposable component.
+    /// each element is individually checked and disposed.
     /// </summary>
     public static void TryDispose<T>(this T item)
     {
