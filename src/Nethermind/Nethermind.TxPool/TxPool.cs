@@ -37,6 +37,9 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IAsyncDisposable
     {
+        internal const int RetryCacheExpiringQueueLimit = 200_000;
+        internal static int RetryCacheRequestingCacheSize => MemoryAllowance.TxHashCacheSize / 10;
+
         private readonly RetryCache<PooledTransactionRequestMessage, ValueHash256> _retryCache;
 
         private readonly IIncomingTxFilter[] _preHashFilters;
@@ -124,7 +127,11 @@ namespace Nethermind.TxPool
             _specProvider = _headInfo.SpecProvider;
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
             _cts = new();
-            _retryCache = new RetryCache<PooledTransactionRequestMessage, ValueHash256>(logManager, requestingCacheSize: MemoryAllowance.TxHashCacheSize / 10, token: _cts.Token);
+            _retryCache = new RetryCache<PooledTransactionRequestMessage, ValueHash256>(
+                logManager,
+                requestingCacheSize: RetryCacheRequestingCacheSize,
+                expiringQueueLimit: RetryCacheExpiringQueueLimit,
+                token: _cts.Token);
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
 
