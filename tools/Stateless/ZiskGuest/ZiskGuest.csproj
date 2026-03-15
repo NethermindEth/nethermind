@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>Nethermind.Stateless.ZiskGuest</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nethermind.ZiskBindings" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Executor\Executor.csproj" />
+  </ItemGroup>
+
+</Project>

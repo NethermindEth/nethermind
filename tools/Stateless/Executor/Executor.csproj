@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Nethermind.Stateless.Executor</AssemblyName>
+    <RootNamespace>Nethermind.Stateless.Execution</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+  </ItemGroup>
+
+</Project>

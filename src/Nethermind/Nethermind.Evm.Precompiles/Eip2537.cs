@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using System;
+using System.Runtime.CompilerServices;
 using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
 
@@ -366,4 +367,28 @@ internal static class Eip2537
 
         return Result.Success;
     }
+#if ZK_EVM
+    /// <param name="source">Must have 96 bytes length.</param>
+    /// <param name="destination">Must be zero-initialized.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void EncodeG1(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        source[..48].CopyTo(destination[16..64]);
+        source[48..].CopyTo(destination[80..128]);
+    }
+
+    /// <param name="source">Must have 128 bytes length.</param>
+    /// <param name="destination">Must have 96 bytes length.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool TryDecodeG1(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        if (source[..16].ContainsAnyExcept((byte)0) || source[64..80].ContainsAnyExcept((byte)0))
+            return false;
+
+        source[16..64].CopyTo(destination);
+        source[80..128].CopyTo(destination[48..]);
+
+        return true;
+    }
+#endif
 }

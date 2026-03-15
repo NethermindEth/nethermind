@@ -8,8 +8,10 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
 
+/// <summary>
 /// <see href="https://eips.ethereum.org/EIPS/eip-196" />
-public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
+/// </summary>
+public partial class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
 {
     private const int InputLength = 96;
     private const int OutputLength = 64;
@@ -29,8 +31,9 @@ public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+#if !ZK_EVM
         Metrics.Bn254MulPrecompile++;
-
+#endif
         ReadOnlySpan<byte> input = inputData.Span;
         if (InputLength < input.Length)
         {
@@ -40,20 +43,20 @@ public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
 
         byte[] output = new byte[OutputLength];
         bool result = input.Length == InputLength
-            ? BN254.Mul(output, input)
-            : RunPaddedInput(output, input);
+            ? Mul(input, output)
+            : RunPaddedInput(input, output);
 
         return result ? output : Errors.Failed;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool RunPaddedInput(byte[] output, ReadOnlySpan<byte> input)
+    private static bool RunPaddedInput(ReadOnlySpan<byte> input, byte[] output)
     {
         // Input is too short - pad with zeros up to the expected length.
         Span<byte> padded = stackalloc byte[InputLength];
         // Copies input bytes; rest of the span is already zero-initialized.
         input.CopyTo(padded);
 
-        return BN254.Mul(output, padded);
+        return Mul(padded, output);
     }
 }
