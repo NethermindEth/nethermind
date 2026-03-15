@@ -87,7 +87,7 @@ public static class UInt256Extensions
             Vector128<byte> lo = Unsafe.ReadUnaligned<Vector128<byte>>(ref bytes);
             Vector128<byte> hi = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref bytes, Vector128<byte>.Count));
 
-            // ARM: Sum with horizontal add (addv) is cheaper than ExtractMostSignificantBits.
+            // ARM: Sum with horizontal add is cheaper than ExtractMostSignificantBits.
             // x86: ExtractMostSignificantBits compiles to a single pmovmskb.
             if (AdvSimd.IsSupported)
             {
