@@ -8,17 +8,19 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
 /// <summary>
 /// Tests for EIP-7981: access list token floor pricing.
+/// Uses OverridableReleaseSpec until pyspec fixtures include EIP-7981.
 /// </summary>
 [TestFixture]
 public class Eip7981Tests
 {
-    private static readonly IReleaseSpec Spec = Amsterdam.Instance;
+    private static readonly IReleaseSpec Spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip7981Enabled = true };
     private static long FloorPerToken => Spec.GasCosts.TotalCostFloorPerToken;
 
     private static IEnumerable<TestCaseData> AccessListOnlyCases()
