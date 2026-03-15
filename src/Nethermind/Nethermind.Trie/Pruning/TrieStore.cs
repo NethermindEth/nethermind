@@ -63,6 +63,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private readonly bool _deleteOldNodes = false;
     private readonly bool _pastKeyTrackingEnabled = false;
+    private readonly bool _persistHeadOnShutdown = false;
 
     private bool _lastPersistedReachedReorgBoundary;
     private long _toBePersistedBlockNumber = -1;
@@ -96,6 +97,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _pastKeyTrackingEnabled = pruningConfig.TrackPastKeys && nodeStorage.RequirePath;
         _pruneDelayMs = pruningConfig.PruneDelayMilliseconds;
         _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys && _pastKeyTrackingEnabled;
+        _persistHeadOnShutdown = pruningConfig.PersistHeadOnShutdown;
         _shardBit = pruningConfig.DirtyNodeShardBit;
         _shardedDirtyNodeCount = 1 << _shardBit;
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
@@ -1276,15 +1278,42 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
             ParallelPersistBlockCommitSet(blockCommitSet, _persistedNodeRecorderNoop);
         }
+
+        // Also persist the last committed block so that on restart the node head matches
+        // the consensus client head, not head - PruningBoundary.
+        BlockCommitSet? lastCommitSet = null;
+        if (_persistHeadOnShutdown)
+        {
+            lastCommitSet = _lastCommitSet;
+            if (lastCommitSet is not null && lastCommitSet.BlockNumber > LastPersistedBlockNumber)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Persisting last committed block {lastCommitSet.BlockNumber} on shutdown.");
+                ParallelPersistBlockCommitSet(lastCommitSet, _persistedNodeRecorderNoop);
+            }
+            else
+            {
+                lastCommitSet = null;
+            }
+        }
+
         _nodeStorage.Flush(onlyWal: false);
 
-        if (candidateSets.Count == 0)
+        if (candidateSets.Count == 0 && lastCommitSet is null)
         {
             if (_logger.IsDebug) _logger.Debug("No commit set to persist at all.");
         }
         else
         {
             AnnounceReorgBoundaries();
+
+            // AnnounceReorgBoundaries() requires LatestCommittedBlockNumber >= LastPersistedBlockNumber + _maxDepth
+            // to fire the event. When we persist the last committed block on shutdown, this condition is never met
+            // because LastPersistedBlockNumber == LatestCommittedBlockNumber. Fire the event directly so that
+            // BestPersistedState is updated in BlockTree and the chain head is correct on the next restart.
+            if (lastCommitSet is not null)
+            {
+                ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(lastCommitSet.BlockNumber));
+            }
         }
     }
 
