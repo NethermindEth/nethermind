@@ -11,7 +11,6 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using System;
 using System.Text.RegularExpressions;
 
 namespace Nethermind.Network

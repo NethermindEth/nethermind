@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Config;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;

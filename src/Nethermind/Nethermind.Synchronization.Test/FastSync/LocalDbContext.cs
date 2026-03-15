@@ -10,7 +10,6 @@ using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
 using NUnit.Framework;
 

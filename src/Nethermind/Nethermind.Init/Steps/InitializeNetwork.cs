@@ -22,7 +22,6 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
 

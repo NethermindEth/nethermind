@@ -263,14 +263,14 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         StringBuilder request = new();
         int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
-        request.Append("[");
+        request.Append('[');
         for (int i = 0; i < maxBatchSize + 1; i++)
         {
-            if (i != 0) request.Append(",");
+            if (i != 0) request.Append(',');
             request.Append(
                 "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         }
-        request.Append("]");
+        request.Append(']');
 
         IList<JsonRpcResult> result = await ProcessAsync(request.ToString());
         result.Should().HaveCount(1);
@@ -283,14 +283,14 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         StringBuilder request = new();
         int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
-        request.Append("[");
+        request.Append('[');
         for (int i = 0; i < maxBatchSize + 1; i++)
         {
-            if (i != 0) request.Append(",");
+            if (i != 0) request.Append(',');
             request.Append(
                 "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         }
-        request.Append("]");
+        request.Append(']');
 
         JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []);
         JsonRpcContext context = new(RpcEndpoint.Http, url: url);
