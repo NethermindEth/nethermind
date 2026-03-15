@@ -107,6 +107,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         /// </summary>
         private static void AssertByteRoundtrip(GetTrieNodesMessageSerializer serializer, GetTrieNodesMessage msg)
         {
+            using GetTrieNodesMessage _ = msg;
             using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
             using DisposableByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
 
@@ -126,7 +127,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             buffer2.GetBytes(buffer2.ReaderIndex, secondBytes);
 
             secondBytes.Should().BeEquivalentTo(firstBytes);
-            msg.Dispose();
         }
     }
 }
