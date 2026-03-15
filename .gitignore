@@ -441,8 +441,11 @@ FodyWeavers.xsd
 
 # AI
 .claude/*
+!.claude/settings.json
 !.claude/skills
 !.claude/skills/**
+!.claude/hooks
+!.claude/hooks/**
 .gemini/
 
 # Worktrees
