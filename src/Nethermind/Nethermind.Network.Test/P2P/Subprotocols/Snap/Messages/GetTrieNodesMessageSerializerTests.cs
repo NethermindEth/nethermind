@@ -107,33 +107,26 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         /// </summary>
         private static void AssertByteRoundtrip(GetTrieNodesMessageSerializer serializer, GetTrieNodesMessage msg)
         {
-            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
-            IByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
-            try
-            {
-                serializer.Serialize(buffer, msg);
-                byte[] firstBytes = new byte[buffer.ReadableBytes];
-                buffer.GetBytes(buffer.ReaderIndex, firstBytes);
+            using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
+            using DisposableByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
 
-                using GetTrieNodesMessage deserialized = serializer.Deserialize(buffer);
+            serializer.Serialize(buffer, msg);
+            byte[] firstBytes = new byte[buffer.ReadableBytes];
+            buffer.GetBytes(buffer.ReaderIndex, firstBytes);
 
-                deserialized.RequestId.Should().Be(msg.RequestId);
-                deserialized.RootHash.Should().Be(msg.RootHash);
-                deserialized.Bytes.Should().Be(msg.Bytes);
-                deserialized.Paths.Count.Should().Be(msg.Paths.Count);
+            using GetTrieNodesMessage deserialized = serializer.Deserialize(buffer);
 
-                serializer.Serialize(buffer2, deserialized);
-                byte[] secondBytes = new byte[buffer2.ReadableBytes];
-                buffer2.GetBytes(buffer2.ReaderIndex, secondBytes);
+            deserialized.RequestId.Should().Be(msg.RequestId);
+            deserialized.RootHash.Should().Be(msg.RootHash);
+            deserialized.Bytes.Should().Be(msg.Bytes);
+            deserialized.Paths.Count.Should().Be(msg.Paths.Count);
 
-                secondBytes.Should().BeEquivalentTo(firstBytes);
-            }
-            finally
-            {
-                buffer.Release();
-                buffer2.Release();
-                msg.Dispose();
-            }
+            serializer.Serialize(buffer2, deserialized);
+            byte[] secondBytes = new byte[buffer2.ReadableBytes];
+            buffer2.GetBytes(buffer2.ReaderIndex, secondBytes);
+
+            secondBytes.Should().BeEquivalentTo(firstBytes);
+            msg.Dispose();
         }
     }
 }
