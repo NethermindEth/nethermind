@@ -4,3 +4,7 @@
 [submodule "src/bench_precompiles"]
 	path = src/bench_precompiles
 	url = https://github.com/shamatar/bench_precompiles.git
+[submodule "tools/gas-benchmarks"]
+	path = tools/gas-benchmarks
+	url = https://github.com/NethermindEth/gas-benchmarks
+	branch = main
