@@ -4,6 +4,8 @@
 using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -152,6 +154,129 @@ public class EraImporterTests
         Assert.That(
             () => sut.Import(exportPath, 0, long.MaxValue, fakeAccumulatorPath),
             Throws.TypeOf<EraVerificationException>());
+    }
+
+    [Test]
+    public async Task Import_WithPartialRange_ImportsOnlyRequestedBlocks()
+    {
+        const int chainLength = 32;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
+        string exportPath = sourceCtx.ResolveTempDirPath();
+
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        BlockTree targetTree = Build.A.BlockTree()
+            .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
+            .TestObject;
+
+        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(targetTree)
+            .Build();
+
+        IEraImporter sut = targetCtx.Resolve<IEraImporter>();
+        await sut.Import(exportPath, 0, 15, null);
+
+        for (long i = 1; i <= 15; i++)
+            targetTree.FindBlock(i, BlockTreeLookupOptions.None).Should().NotBeNull($"block {i} should have been imported");
+
+        targetTree.FindBlock(16, BlockTreeLookupOptions.None).Should().BeNull("block 16 is outside the requested range");
+    }
+
+    [Test]
+    public async Task Import_WhenCalledTwice_DoesNotThrowAndIsIdempotent()
+    {
+        const int chainLength = 32;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
+        string exportPath = sourceCtx.ResolveTempDirPath();
+
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        BlockTree targetTree = Build.A.BlockTree()
+            .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
+            .TestObject;
+
+        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(targetTree)
+            .Build();
+
+        IEraImporter sut = targetCtx.Resolve<IEraImporter>();
+        await sut.Import(exportPath, 0, long.MaxValue, null);
+
+        Assert.That(() => sut.Import(exportPath, 0, long.MaxValue, null), Throws.Nothing,
+            "re-importing the same range must be idempotent");
+    }
+
+    [Test]
+    public async Task ExportThenImport_RoundTrip_BlocksAndReceiptsMatchOriginal()
+    {
+        const int chainLength = 32;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
+        string exportPath = sourceCtx.ResolveTempDirPath();
+
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        IReceiptStorage sourceReceipts = sourceCtx.Resolve<IReceiptStorage>();
+
+        BlockTree targetTree = Build.A.BlockTree()
+            .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
+            .TestObject;
+
+        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(targetTree)
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true })
+            .Build();
+
+        await targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, long.MaxValue, null);
+
+        IReceiptStorage targetReceipts = targetCtx.Resolve<IReceiptStorage>();
+
+        for (long i = 1; i < chainLength; i++)
+        {
+            Block? original = sourceTree.FindBlock(i, BlockTreeLookupOptions.None);
+            Block? imported = targetTree.FindBlock(i, BlockTreeLookupOptions.None);
+
+            imported.Should().NotBeNull($"block {i} should exist after import");
+            imported!.Hash.Should().Be(original!.Hash!, $"block {i} hash must match");
+
+            TxReceipt[] originalReceipts = sourceReceipts.Get(original!);
+            bool hasReceipts = targetReceipts.HasBlock(imported.Number, imported.Hash!);
+            if (originalReceipts.Length > 0)
+                hasReceipts.Should().BeTrue($"receipts for block {i} should have been imported");
+        }
+    }
+
+    [Test]
+    public async Task ExportThenImport_PostMergeRoundTrip_BlocksAndReceiptsMatchOriginal()
+    {
+        const int chainLength = 16;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedPostMergeEraEnv(chainLength);
+        string exportPath = sourceCtx.ResolveTempDirPath();
+
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        BlockTree targetTree = Build.A.BlockTree()
+            .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
+            .TestObject;
+
+        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(targetTree)
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true })
+            .Build();
+
+        await targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, long.MaxValue, null);
+
+        IReceiptStorage sourceReceipts = sourceCtx.Resolve<IReceiptStorage>();
+        IReceiptStorage targetReceipts = targetCtx.Resolve<IReceiptStorage>();
+
+        for (long i = 1; i < chainLength; i++)
+        {
+            Block? original = sourceTree.FindBlock(i, BlockTreeLookupOptions.None);
+            Block? imported = targetTree.FindBlock(i, BlockTreeLookupOptions.None);
+
+            imported.Should().NotBeNull($"post-merge block {i} should exist after import");
+            imported!.Hash.Should().Be(original!.Hash!, $"post-merge block {i} hash must match");
+
+            TxReceipt[] originalReceipts = sourceReceipts.Get(original!);
+            bool hasReceipts = targetReceipts.HasBlock(imported.Number, imported.Hash!);
+            if (originalReceipts.Length > 0)
+                hasReceipts.Should().BeTrue($"receipts for post-merge block {i} should have been imported");
+        }
     }
 
     [Test]

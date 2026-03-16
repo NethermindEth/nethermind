@@ -161,4 +161,56 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
         Assert.That(() => sut.Export(tmpFile, 0, 0), Throws.TypeOf<ArgumentException>());
     }
+
+    [Test]
+    public async Task Export_WithPostMergeChain_ProducesEpochWithNoTdProofOrAccumulatorEntries()
+    {
+        const int chainLength = 16;
+        await using IContainer container = EraETestModule.BuildContainerBuilderWithPostMergeBlockTreeOfLength(chainLength).Build();
+
+        string tmpDirectory = container.ResolveTempDirPath();
+        // Export from block 1: genesis is pre-merge in all block trees, so starting at 1 ensures a pure post-merge epoch.
+        await container.Resolve<IEraExporter>().Export(tmpDirectory, 1, 0);
+
+        string[] eraFiles = Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
+        eraFiles.Should().HaveCount(1, "one epoch for blocks 1-15");
+
+        List<ushort> types = ReadAllEntryTypes(eraFiles[0]);
+        types.Should().NotContain(EntryTypeProof, "post-merge epochs have no Proof entries");
+        types.Should().NotContain(EntryTypeTotalDifficulty, "post-merge epochs have no TotalDifficulty entries");
+        types.Should().NotContain(EntryTypeAccumulatorRoot, "post-merge epochs have no AccumulatorRoot entry");
+    }
+
+    private static List<ushort> ReadAllEntryTypes(string filePath)
+    {
+        List<ushort> types = [];
+        byte[] bytes = File.ReadAllBytes(filePath);
+        long pos = 0;
+        while (pos + 8 <= bytes.Length)
+        {
+            ushort type = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan((int)pos, 2));
+            uint length = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan((int)pos + 2, 4));
+            types.Add(type);
+            pos += 8 + length;
+        }
+        return types;
+    }
+
+    private const ushort EntryTypeProof = 0x0b;
+    private const ushort EntryTypeTotalDifficulty = 0x06;
+    private const ushort EntryTypeAccumulatorRoot = 0x07;
+
+    [Test]
+    public async Task Export_WithPartialRange_CreatesOnlyEpochsInRange()
+    {
+        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(48)
+            .AddSingleton<IEraEConfig>(new EraEConfig { MaxEraSize = 16, NetworkName = EraETestModule.TestNetwork })
+            .Build();
+
+        string tmpDirectory = container.ResolveTempDirPath();
+        await container.Resolve<IEraExporter>().Export(tmpDirectory, 16, 31);
+
+        string[] eraFiles = System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
+        eraFiles.Length.Should().Be(1, "only one epoch covers blocks 16-31");
+    }
 }
