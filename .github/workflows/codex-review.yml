@@ -49,20 +49,17 @@ jobs:
         with:
           github-token: ${{ github.token }}
           script: |
+            const request = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes'
+            };
+
             if (context.eventName === 'issue_comment') {
-              await github.rest.reactions.createForIssueComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: context.payload.comment.id,
-                content: 'eyes',
-              });
-            } else if (context.eventName === 'pull_request_review_comment') {
-              await github.rest.reactions.createForPullRequestReviewComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: context.payload.comment.id,
-                content: 'eyes',
-              });
+              await github.rest.reactions.createForIssueComment(request);
+            } else {
+              await github.rest.reactions.createForPullRequestReviewComment(request);
             }
 
       - name: Resolve target
