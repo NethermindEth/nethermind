@@ -23,7 +23,7 @@ public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IB
 
         int maxLength = Snappy.GetMaxCompressedLength(input.ReadableBytes - packetTypeLen);
         output.EnsureWritable(packetTypeLen + maxLength);
-        output.WriteBytes(input.ReadBytes(packetTypeLen));
+        output.WriteBytes(input, packetTypeLen);
 
         if (_logger.IsTrace) TraceCompressing(input.ReadableBytes);
 
