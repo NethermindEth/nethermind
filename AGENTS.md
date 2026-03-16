@@ -114,6 +114,11 @@ Before creating a pull request:
 
 See [global.json](./global.json) for the required .NET SDK version.
 
+## EVM Gas Benchmarks
+
+BenchmarkDotNet gas benchmarks for validating EVM, block processing, and newPayload performance.
+See [src/Nethermind/Nethermind.Evm.Benchmark/README.md](./src/Nethermind/Nethermind.Evm.Benchmark/README.md) for full documentation (setup, modes, CLI usage, CI workflow, DI guidance).
+
 ## Reproducible Benchmark Workflow Guidance
 
 This repository contains a dedicated workflow for reproducible payload benchmarks:
