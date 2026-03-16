@@ -256,7 +256,7 @@ jobs:
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of4 }
     steps:
       - name: Free up disk space
-        if: startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec')
+        if: runner.os == 'Linux' && startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec')
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           large-packages: false
