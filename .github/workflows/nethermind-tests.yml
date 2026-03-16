@@ -255,6 +255,10 @@ jobs:
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of4 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of4 }
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --system core.longpaths true
+
       - name: Check out repository
         uses: actions/checkout@v6
         with:
