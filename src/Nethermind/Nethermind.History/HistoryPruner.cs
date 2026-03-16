@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -40,6 +41,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly ILogger _logger;
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
+    private readonly IBlockAccessListStore _blockAccessListStore;
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
     private readonly IDb _metadataDb;
     private readonly IProcessExitSource _processExitSource;
@@ -66,6 +68,7 @@ public class HistoryPruner : IHistoryPruner
     public HistoryPruner(
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
+        IBlockAccessListStore blockAccessListStore,
         ISpecProvider specProvider,
         IChainLevelInfoRepository chainLevelInfoRepository,
         IDbProvider dbProvider,
@@ -81,6 +84,7 @@ public class HistoryPruner : IHistoryPruner
         _deletionProgressLoggingInterval = _logger.IsDebug ? 5 : 100000;
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
+        _blockAccessListStore = blockAccessListStore;
         _chainLevelInfoRepository = chainLevelInfoRepository;
         _metadataDb = dbProvider.MetadataDb;
         _processExitSource = processExitSource;
@@ -451,6 +455,7 @@ public class HistoryPruner : IHistoryPruner
                 if (_logger.IsDebug) _logger.Debug($"Deleting old block {number} with hash {hash}.");
                 _blockTree.DeleteOldBlock(number, hash);
                 _receiptStorage.RemoveReceipts(block);
+                _blockAccessListStore.Delete(hash);
 
                 UpdateDeletePointer(number + 1, remaining is null || remaining == 0);
                 lastDeletedTimestamp = block.Timestamp;

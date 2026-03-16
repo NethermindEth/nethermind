@@ -24,6 +24,10 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 speedType = TransferSpeedType.Receipts;
             }
+            else if (request is AccessListsSyncBatch)
+            {
+                speedType = TransferSpeedType.AccessLists;
+            }
 
             return new FastBlocksAllocationStrategy(speedType, request.MinNumber, request.Prioritized);
         }

@@ -20,6 +20,7 @@ namespace Nethermind.Synchronization.ParallelSync
         [KeyFilter(nameof(HeadersSyncFeed))] ISyncFeed<HeadersSyncBatch?> headersSyncFeed,
         ISyncFeed<BodiesSyncBatch?> bodiesSyncFeed,
         ISyncFeed<ReceiptsSyncBatch?> receiptsSyncFeed,
+        ISyncFeed<AccessListsSyncBatch?> accessListsSyncFeed,
         ISyncFeed<SnapSyncBatch?> snapSyncFeed)
         : ISyncProgressResolver
     {
@@ -58,6 +59,7 @@ namespace Nethermind.Synchronization.ParallelSync
         public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || !_syncConfig.DownloadHeadersInFastSync || headersSyncFeed.IsFinished;
         public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || !_syncConfig.DownloadBodiesInFastSync || bodiesSyncFeed.IsFinished;
         public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || !_syncConfig.DownloadReceiptsInFastSync || receiptsSyncFeed.IsFinished;
+        public bool IsFastBlocksAccessListsFinished() => !IsFastBlocks() || !_syncConfig.DownloadAccessListsInFastSync || accessListsSyncFeed.IsFinished;
         public bool IsSnapGetRangesFinished() => snapSyncFeed?.IsFinished ?? true;
         public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
         public (long BlockNumber, Hash256 BlockHash) SyncPivot => _blockTree.SyncPivot;

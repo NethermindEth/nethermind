@@ -18,6 +18,7 @@ namespace Nethermind.Synchronization
         void AddNewBlock(Block block, ISyncPeer node);
         void StopNotifyingPeersAboutNewBlocks();
         TxReceipt[] GetReceipts(Hash256 blockHashes);
+        byte[]? GetBlockAccessListRlp(Hash256 blockHash);
         Block? Find(Hash256 hash);
         BlockHeader? FindHeader(Hash256 hash);
         Hash256? FindHash(long number);

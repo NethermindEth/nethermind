@@ -7,4 +7,5 @@ public interface ISyncPointers
 {
     long? LowestInsertedBodyNumber { get; set; }
     long? LowestInsertedReceiptBlockNumber { get; set; }
+    long? LowestInsertedAccessListBlockNumber { get; set; }
 }

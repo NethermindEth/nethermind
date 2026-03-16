@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -709,6 +710,7 @@ public class SyncServerTests
                 new MemDb(),
                 localBlockTree,
                 NullReceiptStorage.Instance,
+                Substitute.For<IBlockAccessListStore>(),
                 blockValidator ?? Always.Valid,
                 sealValidator ?? Always.Valid,
                 PeerPool,
