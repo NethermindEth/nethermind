@@ -36,8 +36,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
-      issues: write
+    outputs:
+      final_message: ${{ steps.run-codex.outputs.final-message }}
+      issue_number: ${{ steps.target.outputs.issue_number }}
     steps:
       - name: Resolve target
         id: target
@@ -130,6 +131,7 @@ jobs:
             fs.writeFileSync(promptPath, `${sections.join('\n')}\n`, 'utf8');
             core.setOutput('prompt_file', promptPath);
 
+      # https://github.com/openai/codex-action/blob/main/docs/security.md#recommendation-run-openaicodex-action-as-the-last-step-in-a-job
       - name: Run Codex
         id: run-codex
         uses: openai/codex-action@v1
@@ -137,12 +139,19 @@ jobs:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt-file: ${{ steps.prompt.outputs.prompt_file }}
 
+  post-feedback:
+    runs-on: ubuntu-latest
+    needs: codex
+    if: needs.codex.outputs.final_message != ''
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
       - name: Report Codex feedback
-        if: steps.run-codex.outputs.final-message != ''
         uses: actions/github-script@v8
         env:
-          CODEX_FINAL_MESSAGE: ${{ steps.run-codex.outputs.final-message }}
-          ISSUE_NUMBER: ${{ steps.target.outputs.issue_number }}
+          CODEX_FINAL_MESSAGE: ${{ needs.codex.outputs.final_message }}
+          ISSUE_NUMBER: ${{ needs.codex.outputs.issue_number }}
         with:
           github-token: ${{ github.token }}
           script: |
