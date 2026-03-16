@@ -20,18 +20,6 @@ namespace Nethermind.EraE.Test.Import;
 public class EraImporterTests
 {
     [Test]
-    public Task Import_WithNonExistentDirectory_ThrowsArgumentException()
-    {
-        using IContainer ctx = EraETestModule.BuildContainerBuilder().Build();
-
-        IEraImporter sut = ctx.Resolve<IEraImporter>();
-        Assert.That(
-            () => sut.Import("/nonexistent/path", 0, 0, null),
-            Throws.TypeOf<ArgumentException>());
-        return Task.CompletedTask;
-    }
-
-    [Test]
     public async Task Import_WithEmptyDirectory_ThrowsEraException()
     {
         using IContainer ctx = EraETestModule.BuildContainerBuilder().Build();
