@@ -32,10 +32,10 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     public void Test_roundtrip_large()
     {
         ByteArrayConverter converter = new();
-        for (var i = 0; i < 1024; i++)
+        for (int i = 0; i < 1024; i++)
         {
             byte[] bytes = new byte[i];
-            for (var j = 0; j < i; j++)
+            for (int j = 0; j < i; j++)
             {
                 bytes[j] = (byte)j;
             }
@@ -48,98 +48,30 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     public void Direct_null()
     {
         IJsonSerializer serializer = new EthereumJsonSerializer();
-        var result = serializer.Serialize<byte[]?>(null);
+        string result = serializer.Serialize<byte[]?>(null);
         result.Should().Be("null");
     }
 
     [TestCaseSource(nameof(ValidHexCases))]
     public void BareString_SegmentationInvariant_And_MatchesReference(string hex)
     {
-        Exception? firstErr = null;
-        byte[]? firstVal = null;
-        bool firstSeen = false;
-
         byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
         byte[]? expected = ReferenceDecode(hex);
-        foreach (ReadOnlySequence<byte> seq in Segmentations(json))
-        {
-            (byte[]? res, Exception? err) = InvokeOnBareString(seq);
-
-            if (!firstSeen)
-            {
-                firstErr = err;
-                firstVal = res;
-                firstSeen = true;
-            }
-            else
-            {
-                if (firstErr is null && err is null)
-                {
-                    if (firstVal is null) res.Should().BeNull();
-                    else res.Should().NotBeNull().And.Equal(firstVal);
-                }
-                else
-                {
-                    firstErr.Should().NotBeNull();
-                    err.Should().NotBeNull();
-                    err!.GetType().Should().Be(firstErr!.GetType());
-                }
-            }
-        }
-
-        if (firstErr is null)
-        {
-            if (expected is null) firstVal.Should().BeNull();
-            else firstVal.Should().NotBeNull().And.Equal(expected);
-        }
+        AssertSegmentationInvariant(json, expected, InvokeOnBareString);
     }
 
     [TestCaseSource(nameof(ValidHexCases))]
     public void PropertyName_SegmentationInvariant_And_MatchesReference(string hex)
     {
-        Exception? firstErr = null;
-        byte[]? firstVal = null;
-        bool firstSeen = false;
-
         byte[] json = Encoding.UTF8.GetBytes($"{{\"{hex}\":0}}");
         byte[]? expected = ReferenceDecode(hex);
-        foreach (ReadOnlySequence<byte> seq in Segmentations(json))
-        {
-            (byte[]? res, Exception? err) = InvokeOnPropertyName(seq);
-
-            if (!firstSeen)
-            {
-                firstErr = err;
-                firstVal = res;
-                firstSeen = true;
-            }
-            else
-            {
-                if (firstErr is null && err is null)
-                {
-                    if (firstVal is null) res.Should().BeNull();
-                    else res.Should().NotBeNull().And.Equal(firstVal);
-                }
-                else
-                {
-                    firstErr.Should().NotBeNull();
-                    err.Should().NotBeNull();
-                    err!.GetType().Should().Be(firstErr!.GetType());
-                }
-            }
-        }
-
-        if (firstErr is null)
-        {
-            if (expected is null) firstVal.Should().BeNull();
-            else firstVal.Should().NotBeNull().And.Equal(expected);
-        }
+        AssertSegmentationInvariant(json, expected, InvokeOnPropertyName);
     }
 
     [TestCaseSource(nameof(InvalidHexCases))]
     public void BareString_InvalidHex_ShouldThrowFormat(string hex)
     {
-        var json = Encoding.UTF8.GetBytes($"\"{hex}\"");
+        byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
 
         foreach (ReadOnlySequence<byte> seq in Segmentations(json))
         {
@@ -153,7 +85,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     public void BridgeAcrossBoundary_TwoNibbles_ShouldDecodeOneByte()
     {
         // "\"AB\"" => split exactly between 'A' and 'B' inside the string token
-        var json = Encoding.UTF8.GetBytes("\"AB\"");
+        byte[] json = Encoding.UTF8.GetBytes("\"AB\"");
         // bytes: 0:'"', 1:'A', 2:'B', 3:'"'
         ReadOnlySequence<byte> seq = MakeSequence(json.AsMemory(0, 2), json.AsMemory(2)); // split at index 2 between 'A'|'B'
 
@@ -184,41 +116,14 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         err.Should().BeOfType<InvalidOperationException>();
     }
 
-    [Test]
-    public void EmptyAfterPrefix_BehaviorIsConsistentAcrossSegmentation()
+    [TestCase("0x")]
+    [TestCase("0X")]
+    public void EmptyAfterPrefix_BehaviorIsConsistentAcrossSegmentation(string hex)
     {
-        foreach (var hex in new[] { "0x", "0X" })
-        {
-            var json = Encoding.UTF8.GetBytes($"\"{hex}\"");
-
-            byte[]? firstVal = null;
-            Exception? firstErr = null;
-            bool first = true;
-
-            foreach (ReadOnlySequence<byte> seq in Segmentations(json))
-            {
-                (byte[]? res, Exception? err) = InvokeOnBareString(seq);
-                if (first)
-                {
-                    firstVal = res; firstErr = err; first = false;
-                }
-                else
-                {
-                    if (firstErr is null && err is null)
-                    {
-                        // We accept either null or empty — but it must be consistent across segmentations.
-                        if (firstVal is null) res.Should().BeNull();
-                        else res.Should().NotBeNull().And.Equal(firstVal);
-                    }
-                    else
-                    {
-                        err.Should().NotBeNull();
-                        firstErr.Should().NotBeNull();
-                        err!.GetType().Should().Be(firstErr!.GetType());
-                    }
-                }
-            }
-        }
+        byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
+        // We accept either null or empty — but it must be consistent across segmentations.
+        // Pass null as expected to skip the reference check, only assert consistency.
+        AssertSegmentationConsistency(json, InvokeOnBareString);
     }
 
     [Test]
@@ -226,14 +131,13 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     {
         string body = string.Concat(Enumerable.Repeat("DEADBEEF", 2048)); // 16K hex chars
         string hex = "0x" + body;
-        var json = Encoding.UTF8.GetBytes($"\"{hex}\"");
+        byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
+        byte[]? expected = ReferenceDecode(hex);
 
         foreach (ReadOnlySequence<byte> seq in Segmentations(json))
         {
             (byte[]? res, Exception? err) = InvokeOnBareString(seq);
             err.Should().BeNull();
-
-            var expected = ReferenceDecode(hex);
             res.Should().NotBeNull().And.Equal(expected);
         }
     }
@@ -241,7 +145,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     [Test]
     public void Fuzz_RandomHex_SegmentationInvariant()
     {
-        var rng = new Random(12345);
+        Random rng = new(12345);
         for (int t = 0; t < 50; t++)
         {
             bool addPrefix = rng.Next(0, 2) == 1;
@@ -257,42 +161,11 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
                 chars[i] = c;
             }
 
-            var s = (addPrefix ? "0x" : string.Empty) + new string(chars);
-            var json = Encoding.UTF8.GetBytes($"\"{s}\"");
-            var expected = ReferenceDecode(s);
+            string s = (addPrefix ? "0x" : string.Empty) + new string(chars);
+            byte[] json = Encoding.UTF8.GetBytes($"\"{s}\"");
+            byte[]? expected = ReferenceDecode(s);
 
-            Exception? firstErr = null;
-            byte[]? firstVal = null;
-            bool firstSeen = false;
-
-            foreach (ReadOnlySequence<byte> seq in Segmentations(json))
-            {
-                (byte[]? res, Exception? err) = InvokeOnBareString(seq);
-                if (!firstSeen)
-                {
-                    firstErr = err; firstVal = res; firstSeen = true;
-                }
-                else
-                {
-                    if (firstErr is null && err is null)
-                    {
-                        if (firstVal is null) res.Should().BeNull();
-                        else res.Should().NotBeNull().And.Equal(firstVal);
-                    }
-                    else
-                    {
-                        err.Should().NotBeNull();
-                        firstErr.Should().NotBeNull();
-                        err!.GetType().Should().Be(firstErr!.GetType());
-                    }
-                }
-            }
-
-            if (firstErr is null)
-            {
-                if (expected is null) firstVal.Should().BeNull();
-                else firstVal.Should().NotBeNull().And.Equal(expected);
-            }
+            AssertSegmentationInvariant(json, expected, InvokeOnBareString);
         }
     }
 
@@ -332,40 +205,26 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         output.Length.Should().Be(404); // 400 hex + 2 prefix + 2 quotes
     }
 
-    [Test]
-    public void WriteAsPropertyName_Format()
+    [TestCase(new byte[] { 0xab, 0xcd }, "{\"0xabcd\":1}")]
+    [TestCase(new byte[] { 0x00, 0x00 }, "{\"0x0000\":1}")]
+    public void WriteAsPropertyName(byte[] input, string expected)
     {
         ByteArrayConverter converter = new();
         using System.IO.MemoryStream ms = new();
         using Utf8JsonWriter writer = new(ms);
         writer.WriteStartObject();
-        converter.WriteAsPropertyName(writer, new byte[] { 0xab, 0xcd }, JsonSerializerOptions.Default);
+        converter.WriteAsPropertyName(writer, input, JsonSerializerOptions.Default);
         writer.WriteNumberValue(1);
         writer.WriteEndObject();
         writer.Flush();
-        Encoding.UTF8.GetString(ms.ToArray()).Should().Be("{\"0xabcd\":1}");
-    }
-
-    [Test]
-    public void WriteAsPropertyName_AllZeros()
-    {
-        ByteArrayConverter converter = new();
-        using System.IO.MemoryStream ms = new();
-        using Utf8JsonWriter writer = new(ms);
-        writer.WriteStartObject();
-        converter.WriteAsPropertyName(writer, new byte[] { 0x00, 0x00 }, JsonSerializerOptions.Default);
-        writer.WriteNumberValue(1);
-        writer.WriteEndObject();
-        writer.Flush();
-        // skipLeadingZeros: false preserves all zeros
-        Encoding.UTF8.GetString(ms.ToArray()).Should().Be("{\"0x0000\":1}");
+        Encoding.UTF8.GetString(ms.ToArray()).Should().Be(expected);
     }
 
     [Test]
     public void Test_DictionaryKey()
     {
-        var random = new CryptoRandom();
-        var dictionary = new Dictionary<byte[], int?>
+        CryptoRandom random = new();
+        Dictionary<byte[], int?> dictionary = new()
         {
             { Bytes.FromHexString("0x0"), null },
             { Bytes.FromHexString("0x1"), random.NextInt(int.MaxValue) },
@@ -377,12 +236,90 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         TestConverter(dictionary, new ByteArrayConverter());
     }
 
+    /// <summary>
+    /// Asserts that all segmentations of <paramref name="json"/> produce consistent results
+    /// and match the <paramref name="expected"/> reference value.
+    /// </summary>
+    private static void AssertSegmentationInvariant(
+        byte[] json,
+        byte[]? expected,
+        Func<ReadOnlySequence<byte>, (byte[]? Result, Exception? Error)> invoke)
+    {
+        Exception? firstErr = null;
+        byte[]? firstVal = null;
+        bool firstSeen = false;
+
+        foreach (ReadOnlySequence<byte> seq in Segmentations(json))
+        {
+            (byte[]? res, Exception? err) = invoke(seq);
+
+            if (!firstSeen)
+            {
+                firstErr = err;
+                firstVal = res;
+                firstSeen = true;
+            }
+            else
+            {
+                AssertResultsConsistent(firstVal, firstErr, res, err);
+            }
+        }
+
+        if (firstErr is null)
+        {
+            if (expected is null) firstVal.Should().BeNull();
+            else firstVal.Should().NotBeNull().And.Equal(expected);
+        }
+    }
+
+    /// <summary>
+    /// Asserts that all segmentations produce consistent results (without checking a reference value).
+    /// </summary>
+    private static void AssertSegmentationConsistency(
+        byte[] json,
+        Func<ReadOnlySequence<byte>, (byte[]? Result, Exception? Error)> invoke)
+    {
+        byte[]? firstVal = null;
+        Exception? firstErr = null;
+        bool first = true;
+
+        foreach (ReadOnlySequence<byte> seq in Segmentations(json))
+        {
+            (byte[]? res, Exception? err) = invoke(seq);
+            if (first)
+            {
+                firstVal = res;
+                firstErr = err;
+                first = false;
+            }
+            else
+            {
+                AssertResultsConsistent(firstVal, firstErr, res, err);
+            }
+        }
+    }
+
+    private static void AssertResultsConsistent(byte[]? firstVal, Exception? firstErr, byte[]? res, Exception? err)
+    {
+        if (firstErr is null && err is null)
+        {
+            if (firstVal is null) res.Should().BeNull();
+            else res.Should().NotBeNull().And.Equal(firstVal);
+        }
+        else
+        {
+            firstErr.Should().NotBeNull();
+            err.Should().NotBeNull();
+            err!.GetType().Should().Be(firstErr!.GetType());
+        }
+    }
+
     private static ReadOnlySequence<byte> JsonForLiteral(string literal) =>
         MakeSequence(Encoding.UTF8.GetBytes(literal));
 
     private static (byte[]? Result, Exception? Error) InvokeOnBareString(ReadOnlySequence<byte> json)
     {
-        var reader = new Utf8JsonReader(json);
+        Utf8JsonReader reader = new(json);
         reader.Read().Should().BeTrue();
         reader.TokenType.Should().Be(JsonTokenType.String);
 
@@ -392,7 +329,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
 
     private static (byte[]? Result, Exception? Error) InvokeOnPropertyName(ReadOnlySequence<byte> json)
     {
-        var reader = new Utf8JsonReader(json);
+        Utf8JsonReader reader = new(json);
         reader.Read().Should().BeTrue();
         reader.TokenType.Should().Be(JsonTokenType.StartObject);
         reader.Read().Should().BeTrue();
@@ -404,7 +341,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
 
     private static (byte[]? Result, Exception? Error) InvokeRaw(ReadOnlySequence<byte> json)
     {
-        var reader = new Utf8JsonReader(json);
+        Utf8JsonReader reader = new(json);
         reader.Read().Should().BeTrue();
         try { return (ByteArrayConverter.Convert(ref reader), null); }
         catch (Exception ex) { return (null, ex); }
@@ -427,7 +364,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         }
 
         int odd = s.Length & 1;
-        var output = new byte[(s.Length >> 1) + odd];
+        byte[] output = new byte[(s.Length >> 1) + odd];
         int oi = 0, i = 0;
 
         if (odd == 1)
@@ -444,7 +381,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         if (parts.Length == 1)
             return new ReadOnlySequence<byte>(parts[0]);
 
-        var first = new BufferSegment(parts[0]);
+        BufferSegment first = new(parts[0]);
         BufferSegment last = first;
         for (int i = 1; i < parts.Length; i++)
             last = last.Append(parts[i]);

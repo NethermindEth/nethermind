@@ -65,18 +65,20 @@ namespace Nethermind.Synchronization.Test
             report.WriteFullReport();
         }
 
-        [Test]
-        public void Can_write_report_update()
+        [TestCase(false, TestName = "Can_write_report_update")]
+        [TestCase(true, TestName = "Can_write_report_update_with_allocations")]
+        public void Can_write_report_update(bool withAllocations)
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
 
             (PeerInfo syncPeer, StubSyncPeer syncPeerSyncPeer) = BuildPeerWithStubSyncPeer(false);
             PeerInfo syncPeer2 = BuildPeer(true);
 
+            if (withAllocations)
+                syncPeer.TryAllocate(AllocationContexts.All);
+
             PeerInfo[] peers = { syncPeer, syncPeer2 };
-
             syncPeerPool.PeerCount.Returns(peers.Length);
-
             syncPeerPool.AllPeers.Returns(peers);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
@@ -127,26 +129,6 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public void Can_write_report_update_with_allocations()
-        {
-            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            (PeerInfo syncPeer, StubSyncPeer syncPeerSyncPeer) = BuildPeerWithStubSyncPeer(false);
-            PeerInfo syncPeer2 = BuildPeer(true);
-
-            PeerInfo[] peers = { syncPeer, syncPeer2 };
-            syncPeerPool.PeerCount.Returns(peers.Length);
-            syncPeerPool.AllPeers.Returns(peers);
-
-            SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.WriteAllocatedReport();
-            report.WriteFullReport();
-
-            syncPeerSyncPeer.IsInitialized = true;
-            report.WriteAllocatedReport();
-            report.WriteFullReport();
-        }
-
-        [Test]
         public void PeerFormatIsCorrect()
         {
             PeerInfo syncPeer = BuildPeer(false);
@@ -165,6 +147,7 @@ namespace Nethermind.Synchronization.Test
                 "== Header ==" + Environment.NewLine +
                 "===[Active ][Sleep  ][Peer(ProtocolVersion/Head/Host:Port/Direction)][Transfer Speeds (L/H/B/R/N/S)      ][Client Info (Name/Version/Operating System/Language)     ]" + Environment.NewLine +
                 "--------------------------------------------------------------------------------------------------------------------------------------------------------------" + Environment.NewLine +
+                // cspell:ignore hbrns
                 "   [HBRNS  ][       ][Peer|eth99|    9999|      127.0.0.1: 3030| Out][     |     |     |     |     |     ][]" + Environment.NewLine +
                 "   [       ][HBRNS  ][Peer|eth99|    9999|      127.0.0.1: 3030|  In][     |     |     |     |     |     ][]";
 

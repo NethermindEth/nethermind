@@ -1,74 +1,69 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 using Nethermind.Serialization.Json;
 
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test.Json
+namespace Nethermind.Core.Test.Json;
+
+[TestFixture]
+public class NullableLongConverterTests : ConverterTestBase<long?>
 {
-    [TestFixture]
-    public class NullableLongConverterTests : ConverterTestBase<long?>
+    static readonly NullableLongConverter converter = new();
+    static readonly JsonSerializerOptions options = new() { Converters = { converter } };
+
+    [TestCase(int.MaxValue)]
+    [TestCase(1L)]
+    [TestCase(0L)]
+    public void Test_roundtrip(long value)
     {
-        static readonly NullableLongConverter converter = new();
-        static readonly JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
+        TestConverter((long?)value, static (a, b) => a.Equals(b), converter);
+    }
 
-        public void Test_roundtrip()
+    [TestCase("\"0xa00000\"", 10485760L)]
+    [TestCase("\"0x0\"", 0L)]
+    [TestCase("\"0x0000\"", 0L)]
+    [TestCase("0", 0L)]
+    [TestCase("1", 1L)]
+    [TestCase("-1", -1L)]
+    public void Can_read_value(string json, long expected)
+    {
+        long? result = JsonSerializer.Deserialize<long?>(json, options);
+        Assert.That(result, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Can_read_null()
+    {
+        long? result = JsonSerializer.Deserialize<long?>("null", options);
+        Assert.That(result, Is.EqualTo(null));
+    }
+
+    [Test]
+    public void Inner_converter_receives_underlying_type_not_nullable()
+    {
+        Type? receivedType = null;
+        TypeCapturingConverter inner = new(t => receivedType = t);
+        NullableJsonConverter<long> nullable = new(inner);
+        JsonSerializerOptions opts = new() { Converters = { nullable } };
+        JsonSerializer.Deserialize<long?>("1", opts);
+        Assert.That(receivedType, Is.EqualTo(typeof(long)));
+    }
+
+    private class TypeCapturingConverter(Action<Type> capture) : JsonConverter<long>
+    {
+        public override long Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            TestConverter(int.MaxValue, static (a, b) => a.Equals(b), converter);
-            TestConverter(1L, static (a, b) => a.Equals(b), converter);
-            TestConverter(0L, static (a, b) => a.Equals(b), converter);
+            capture(typeToConvert);
+            return reader.GetInt64();
         }
 
-        [Test]
-        public void Regression_0xa00000()
-        {
-            long? result = JsonSerializer.Deserialize<long?>("\"0xa00000\"", options);
-            Assert.That(result, Is.EqualTo(10485760));
-        }
-
-        [Test]
-        public void Can_read_0x0()
-        {
-            long? result = JsonSerializer.Deserialize<long?>("\"0x0\"", options);
-            Assert.That(result, Is.EqualTo(long.Parse("0")));
-        }
-
-        [Test]
-        public void Can_read_0x000()
-        {
-            long? result = JsonSerializer.Deserialize<long?>("\"0x0000\"", options);
-            Assert.That(result, Is.EqualTo(long.Parse("0")));
-        }
-
-        [Test]
-        public void Can_read_0()
-        {
-            long? result = JsonSerializer.Deserialize<long?>("0", options);
-            Assert.That(result, Is.EqualTo(long.Parse("0")));
-        }
-
-        [Test]
-        public void Can_read_1()
-        {
-            long? result = JsonSerializer.Deserialize<long?>("1", options);
-            Assert.That(result, Is.EqualTo(long.Parse("1")));
-        }
-
-        [Test]
-        public void Can_read_null()
-        {
-            long? result = JsonSerializer.Deserialize<long?>("null", options);
-            Assert.That(result, Is.EqualTo(null));
-        }
-
-        [Test]
-        public void Can_read_negative_numbers()
-        {
-            long? result = JsonSerializer.Deserialize<long?>("-1", options);
-            Assert.That(result, Is.EqualTo(long.Parse("-1")));
-        }
+        public override void Write(Utf8JsonWriter writer, long value, JsonSerializerOptions options) =>
+            throw new NotImplementedException();
     }
 }

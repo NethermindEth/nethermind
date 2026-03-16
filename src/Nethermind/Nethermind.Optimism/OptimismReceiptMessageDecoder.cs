@@ -37,7 +37,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         }
         else if (firstItem.Length is >= 1 and <= 4)
         {
-            txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
+            txReceipt.GasUsedTotal = firstItem.ToPositiveLong();
         }
         else
         {

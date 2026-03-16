@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -27,6 +28,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -50,6 +52,33 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 [Parallelizable(ParallelScope.Self)]
 public partial class EthRpcModuleTests
 {
+    private const string BatTokenAddress = "0x0d8775f648430679a709e98d2b0cb6250d2887ef";
+    private const string TestAccountAddress = "0x0001020304050607080910111213141516171819";
+    private const string SecondaryTestAddress = "0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24";
+    private const string BalanceOfCallData = "0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160";
+
+    private static readonly Address TestAccount = new(TestAccountAddress);
+
+    private static readonly byte[] InfiniteLoopCode = Prepare.EvmCode
+        .Op(Instruction.JUMPDEST)
+        .PushData(0)
+        .Op(Instruction.JUMP)
+        .Done;
+
+    private static readonly byte[] BaseFeeReturnCode = Prepare.EvmCode
+        .Op(Instruction.BASEFEE)
+        .PushData(0)
+        .Op(Instruction.MSTORE)
+        .PushData("0x20")
+        .PushData("0x0")
+        .Op(Instruction.RETURN)
+        .Done;
+
+    private static void AssertAccountDoesNotExist(Context ctx, Address account)
+    {
+        Assert.That(ctx.Test.ReadOnlyState.AccountExists(account), Is.False);
+    }
+
     [TestCase("earliest", "0x3635c9adc5dea00000")]
     [TestCase("latest", "0x3635c9adc5de9f09e5")]
     [TestCase("pending", "0x3635c9adc5de9f09e5")]
@@ -1263,8 +1292,48 @@ public partial class EthRpcModuleTests
             transaction.AccessList = GetTestAccessList(2, accessListProvided == AccessListProvided.Full).AccessList;
         }
 
-        string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "0x0", optimize);
+        string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "0x0", null, optimize);
         Assert.That(serialized, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_cannot_exceed_gas_cap()
+    {
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+        long gasCap = 60_000;
+        test.RpcConfig.GasCap = gasCap;
+
+        // Contract creation with infinite loop; gas 200K should be capped to 60K
+        TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x0\", \"gas\": \"0x30D40\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
+
+        string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
+
+        long gasUsed = Convert.ToInt64(JToken.Parse(serialized).SelectToken("result.gasUsed")!.Value<string>(), 16);
+        gasUsed.Should().BeLessOrEqualTo(gasCap);
+    }
+
+    [Test]
+    public async Task Eth_create_access_list_with_state_override()
+    {
+        using Context ctx = await Context.Create();
+
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""")!;
+
+        // PUSH1 0x01, SLOAD, POP, STOP — reads storage slot 1
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x6001545000"}}""")!;
+
+        string withOverride = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, false);
+        string withoutOverride = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", null, false);
+
+        JToken withOverrideResult = JToken.Parse(withOverride);
+        JToken withoutOverrideResult = JToken.Parse(withoutOverride);
+
+        withOverrideResult.Should().NotBeEquivalentTo(withoutOverrideResult);
+        withOverrideResult.SelectToken("result.accessList")!.ToString()
+            .Should().Contain("0x0000000000000000000000000000000000000000000000000000000000000001");
     }
 
     [TestCase(null)]
@@ -1578,6 +1647,78 @@ public partial class EthRpcModuleTests
         Assert.That(recovered, Is.EqualTo(new Address(keyAddress)));
     }
 
+    [Test]
+    public async Task Eth_get_block_access_list_by_hash()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        Hash256 blockHash = ctx.Test.BlockTree.Head!.Hash!;
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", blockHash);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"accountChanges\":[{\"address\":\"0x00000961ef480eb55e80d19ad83579a64c007002\",\"storageChanges\":[],\"storageReads\":[{\"key\":\"0x0\"},{\"key\":\"0x1\"},{\"key\":\"0x2\"},{\"key\":\"0x3\"}],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bbddc7ce488642fb579f8b00f3a590007251\",\"storageChanges\":[],\"storageReads\":[{\"key\":\"0x0\"},{\"key\":\"0x1\"},{\"key\":\"0x2\"},{\"key\":\"0x3\"}],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000f90827f1c53a10cb7a02335b175320002935\",\"storageChanges\":[{\"slot\":\"0x2\",\"changes\":{\"0\":{\"blockAccessIndex\":0,\"newValue\":\"0xe111c9ffdfa4f0c91d25a057c6187276049d8b621c0b5452384cdcc69e823c3d\"}}}],\"storageReads\":[],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0xa410\"},{\"blockAccessIndex\":2,\"postBalance\":\"0xf618\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0x3635c9adc5dea00002\"},{\"blockAccessIndex\":2,\"postBalance\":\"0x3635c9adc5dea00003\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0x3635c9adc5de9f5bee\"},{\"blockAccessIndex\":2,\"postBalance\":\"0x3635c9adc5de9f09e5\"}],\"nonceChanges\":[{\"blockAccessIndex\":1,\"newNonce\":\"0x2\"},{\"blockAccessIndex\":2,\"newNonce\":\"0x3\"}],\"codeChanges\":[]}]},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_by_hash_not_found()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", Hash256.Zero);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Cannot return block access list, block not found.\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_by_hash_unavailable_before_fork()
+    {
+        using Context ctx = await Context.Create(); // Amsterdam disabled
+        Hash256 blockHash = ctx.Test.BlockTree.Head!.Hash!;
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", blockHash);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4445,\"message\":\"Cannot return block access list for block from before Amsterdam fork.\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_by_hash_pruned()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        Hash256 blockHash = ctx.Test.BlockTree.Head!.Hash!;
+        ctx.Test.Bridge.DeleteBlockAccessList(blockHash);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", blockHash);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Cannot return pruned historical block access list.\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_by_number()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", 3);
+        Console.WriteLine(serialized);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"accountChanges\":[{\"address\":\"0x00000961ef480eb55e80d19ad83579a64c007002\",\"storageChanges\":[],\"storageReads\":[{\"key\":\"0x0\"},{\"key\":\"0x1\"},{\"key\":\"0x2\"},{\"key\":\"0x3\"}],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bbddc7ce488642fb579f8b00f3a590007251\",\"storageChanges\":[],\"storageReads\":[{\"key\":\"0x0\"},{\"key\":\"0x1\"},{\"key\":\"0x2\"},{\"key\":\"0x3\"}],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000f90827f1c53a10cb7a02335b175320002935\",\"storageChanges\":[{\"slot\":\"0x2\",\"changes\":{\"0\":{\"blockAccessIndex\":0,\"newValue\":\"0xe111c9ffdfa4f0c91d25a057c6187276049d8b621c0b5452384cdcc69e823c3d\"}}}],\"storageReads\":[],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0xa410\"},{\"blockAccessIndex\":2,\"postBalance\":\"0xf618\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0x3635c9adc5dea00002\"},{\"blockAccessIndex\":2,\"postBalance\":\"0x3635c9adc5dea00003\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0x3635c9adc5de9f5bee\"},{\"blockAccessIndex\":2,\"postBalance\":\"0x3635c9adc5de9f09e5\"}],\"nonceChanges\":[{\"blockAccessIndex\":1,\"newNonce\":\"0x2\"},{\"blockAccessIndex\":2,\"newNonce\":\"0x3\"}],\"codeChanges\":[]}]},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_by_number_not_found()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", 100);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Cannot return block access list, block not found.\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_by_number_unavailable_before_fork()
+    {
+        using Context ctx = await Context.Create(); // Amsterdam disabled
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", 3);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4445,\"message\":\"Cannot return block access list for block from before Amsterdam fork.\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_by_number_pruned()
+    {
+        const long number = 3;
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        Hash256 blockHash = ctx.Test.BlockTree.FindLevel(number)!.BlockInfos[0].BlockHash;
+        ctx.Test.Bridge.DeleteBlockAccessList(blockHash);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", number);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Cannot return pruned historical block access list.\"},\"id\":67}"));
+    }
+
     public class AllowNullAuthorizationTuple : AuthorizationTuple
     {
         public AllowNullAuthorizationTuple(ulong chainId, Address? codeAddress, ulong nonce, Signature? sig)
@@ -1663,6 +1804,12 @@ public partial class EthRpcModuleTests
             return await Create(specProvider);
         }
 
+        public static async Task<Context> CreateWithAmsterdamEnabled()
+        {
+            OverridableReleaseSpec releaseSpec = new(Amsterdam.Instance);
+            TestSpecProvider specProvider = new(releaseSpec);
+            return await Create(specProvider);
+        }
 
         public static async Task<Context> CreateWithAncientBarriers(long blockNumber)
         {

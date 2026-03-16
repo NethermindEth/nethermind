@@ -116,7 +116,7 @@ namespace Nethermind.Xdc
                 Hash256 parentHash = h.ParentHash;
                 h = _blockTree.FindHeader(parentHash!, i) as XdcBlockHeader;
                 if (h == null) throw new InvalidOperationException($"Header with hash {parentHash} not found");
-                if (_epochSwitchManager.IsEpochSwitchAtBlock(h))
+                if (_epochSwitchManager.IsEpochSwitchAtBlock(h) && h.Number != spec.SwitchBlock + 1)
                 {
                     epochCount++;
                     if (epochCount == signEpochCount) endBlockNumber = i;
@@ -124,7 +124,10 @@ namespace Nethermind.Xdc
                     {
                         startBlockNumber = i + 1;
                         // Get masternodes from epoch switch header
-                        masternodes = new HashSet<Address>(h.ValidatorsAddress!);
+                        if (h.Number <= spec.SwitchBlock)
+                            masternodes = new HashSet<Address>(h.ExtraData.ParseV1Masternodes());
+                        else
+                            masternodes = new HashSet<Address>(h.ValidatorsAddress!);
                         // TIPUpgradeReward path (protector/observer selection) is currently ignored,
                         // because on mainnet the upgrade height is set to an effectively unreachable block.
                         // If/when that changes, we must compute protector/observer sets here.

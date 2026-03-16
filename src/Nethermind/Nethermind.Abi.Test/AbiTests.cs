@@ -517,10 +517,10 @@ public class AbiTests
 
         AbiSignature signature = new("abc", type);
 
-        ValueTuple<ValueTuple<ValueTuple<UInt256>>> tupleception = new(new ValueTuple<ValueTuple<UInt256>>(new ValueTuple<UInt256>(88888)));
-        byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, tupleception);
+        ValueTuple<ValueTuple<ValueTuple<UInt256>>> nestedTuple = new(new ValueTuple<ValueTuple<UInt256>>(new ValueTuple<UInt256>(88888)));
+        byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, nestedTuple);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.That(arguments[0], Is.EqualTo(tupleception));
+        Assert.That(arguments[0], Is.EqualTo(nestedTuple));
     }
 
     [Test]
