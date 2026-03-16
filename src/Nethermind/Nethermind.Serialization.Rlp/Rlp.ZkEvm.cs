@@ -9,8 +9,10 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -33,28 +35,35 @@ public partial class Rlp
         return _decodersSnapshot ??= new Dictionary<RlpDecoderKey, IRlpDecoder>(_decoderBuilder);
     }
 
-    public static partial void RegisterDecoders(Assembly assembly,bool canOverrideExistingDecoders)
+    public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders)
     {
-        // Under ZK_EVM/bflat AOT we cannot rely on reflection-based auto-discovery of decoders
+        // Under zkEVM/bflat AOT we cannot rely on reflection-based auto-discovery of decoders
         // (CustomAttribute instantiation can trigger TypeLoader failures).
         // Register the required decoders explicitly instead.
-        RegisterDecoder(typeof(Account), new AccountDecoder());
-        RegisterDecoder(typeof(BlockBody), new BlockBodyDecoder());
+        RegisterDecoder(typeof(Account), AccountDecoder.Instance);
+        RegisterDecoder(typeof(AccountChanges), AccountChangesDecoder.Instance);
+        RegisterDecoder(typeof(BalanceChange), BalanceChangeDecoder.Instance);
         RegisterDecoder(typeof(Block), new BlockDecoder());
-        RegisterDecoder(typeof(BlockInfo), new BlockInfoDecoder());
-        RegisterDecoder(typeof(ChainLevelInfo), new ChainLevelDecoder());
-        RegisterDecoder(typeof(LogEntry), new LogEntryDecoder());
-        RegisterDecoder(typeof(Hash256), new KeccakDecoder());
+        RegisterDecoder(typeof(BlockAccessList), BlockAccessListDecoder.Instance);
+        RegisterDecoder(typeof(BlockBody), BlockBodyDecoder.Instance);
         RegisterDecoder(typeof(BlockHeader), new HeaderDecoder());
+        RegisterDecoder(typeof(BlockInfo), BlockInfoDecoder.Instance);
+        RegisterDecoder(typeof(ChainLevelInfo), new ChainLevelDecoder());
+        RegisterDecoder(typeof(CodeChange), CodeChangeDecoder.Instance);
+        RegisterDecoder(typeof(Hash256), KeccakDecoder.Instance);
+        RegisterDecoder(typeof(LogEntry), LogEntryDecoder.Instance);
+        RegisterDecoder(typeof(NonceChange), NonceChangeDecoder.Instance);
+        RegisterDecoder(typeof(SlotChanges), SlotChangesDecoder.Instance);
+        RegisterDecoder(typeof(StorageChange), StorageChangeDecoder.Instance);
+        RegisterDecoder(typeof(StorageRead), StorageReadDecoder.Instance);
+        RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         RegisterDecoder(typeof(Withdrawal), new WithdrawalDecoder());
 
         // Receipt decoders with explicit keys.
-        RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Storage), new CompactReceiptStorageDecoder());
-        RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), new ReceiptArrayStorageDecoder());
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Default), new ReceiptMessageDecoder());
+        RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), ReceiptArrayStorageDecoder.Instance);
+        RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Storage), CompactReceiptStorageDecoder.Instance);
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Trie), new ReceiptMessageDecoder());
-
-        RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
     }
 }
 

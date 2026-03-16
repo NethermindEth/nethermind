@@ -85,7 +85,7 @@ internal static partial class EvmInstructions
         if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
@@ -123,7 +123,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
@@ -189,7 +189,7 @@ internal static partial class EvmInstructions
         vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.Revert;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -202,8 +202,10 @@ internal static partial class EvmInstructions
     /// and marks the executing account for destruction.
     /// </summary>
     [SkipLocalsInit]
-    private static EvmExceptionType InstructionSelfDestruct<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    private static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TEip8037 : struct, IFlag
+        where TEip7708 : struct, IFlag
     {
         // Increment metrics for self-destruct operations.
         Metrics.IncrementSelfDestructs();
@@ -235,7 +237,6 @@ internal static partial class EvmInstructions
         Address executingAccount = vmState.Env.ExecutingAccount;
         bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
         bool selfdestructOnlyOnSameTx = spec.SelfdestructOnlyOnSameTransaction;
-        bool clearEmpty = spec.ClearEmptyAccountWhenTouched;
         // Mark the executing account for destruction if allowed.
         if (!selfdestructOnlyOnSameTx || createInSameTx)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
@@ -243,32 +244,24 @@ internal static partial class EvmInstructions
         // Retrieve the current balance for transfer.
         UInt256 result = state.GetBalance(executingAccount);
 
-        if (executingAccount == inheritor)
-        {
-            vm.AddSelfDestructLog(executingAccount, result);
-        }
-        else
-        {
-            vm.AddTransferLog(executingAccount, inheritor, result);
-        }
-
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
-        // For certain specs, charge gas if transferring to a dead account.
-        if (clearEmpty && !result.IsZero && state.IsDeadAccount(inheritor))
-        {
-            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
-                goto OutOfGas;
-        }
-
-        // If account creation rules apply, ensure gas is charged for new accounts.
+        // Charge gas if transferring to a dead or non-existent account.
         bool inheritorAccountExists = state.AccountExists(inheritor);
-        if (!clearEmpty && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
+        bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
         {
-            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
-                goto OutOfGas;
-        }
+            true => !result.IsZero && state.IsDeadAccount(inheritor),
+            false => !inheritorAccountExists && spec.UseShanghaiDDosProtection,
+        };
+
+        bool outOfGas = chargesNewAccount && !(TEip8037.IsActive switch
+        {
+            true => TGasPolicy.ConsumeNewAccountCreation(ref gas),
+            false => TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount),
+        });
+
+        if (outOfGas) goto OutOfGas;
 
         // Create or update the inheritor account with the transferred balance.
         if (!inheritorAccountExists)
@@ -281,13 +274,16 @@ internal static partial class EvmInstructions
         }
 
         // Special handling when SELFDESTRUCT is limited to the same transaction.
+        // No ETH moves and no log is emitted for this no-op case.
         if (selfdestructOnlyOnSameTx && !createInSameTx && inheritor.Equals(executingAccount))
-            goto Stop; // Avoid burning ETH if contract is not destroyed per EIP clarification
+            goto Stop;
+
+        vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);
 
         // Subtract the balance from the executing account.
         state.SubtractFromBalance(executingAccount, result, spec);
 
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     Stop:
         return EvmExceptionType.Stop;
     OutOfGas:

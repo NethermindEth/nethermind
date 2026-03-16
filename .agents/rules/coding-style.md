@@ -12,6 +12,7 @@
 - Use documentation comments with proper structure (`<summary>`, `<param>`, `<returns>`) for all public APIs
 - Avoid `var` — spell out types (exception: very long nested generic types)
 - Prefer low-allocation code patterns
+- Use `Array.Empty<T>()` or `[]` instead of `new T[0]` — avoids allocating a new empty array each time. In attribute arguments (e.g. `[Attr(new string[0])]`), `new T[0]` is acceptable because `Array.Empty<T>()` is not a compile-time constant.
 - Consider performance implications in high-throughput paths
 - **No LINQ** when a simple `for`/`foreach` works — use LINQ only for complex queries
 - Trust null annotations, don't add redundant null checks

@@ -65,7 +65,7 @@ public class HelloMessageSerializerTests
                               "bce4347107a310dfd5f88a010cd2ffd1005ca406f1842877c883666f6f836261720304");
         HelloMessageSerializer serializer = new();
         using HelloMessage helloMessage = serializer.Deserialize(helloMessageRaw);
-        Assert.That(helloMessage.ClientId, Is.EqualTo("kneth/v0.91/plan9"), $"{nameof(HelloMessage.ClientId)}");
+        Assert.That(helloMessage.ClientId, Is.EqualTo("kneth/v0.91/plan9"), $"{nameof(HelloMessage.ClientId)}"); // cspell:ignore kneth
         Assert.That(helloMessage.ListenPort, Is.EqualTo(9999), $"{nameof(HelloMessage.ListenPort)}");
         Assert.That(helloMessage.P2PVersion, Is.EqualTo(55), $"{nameof(HelloMessage.P2PVersion)}");
         Assert.That(helloMessage.Capabilities.Count, Is.EqualTo(2), $"{nameof(helloMessage.Capabilities.Count)}");

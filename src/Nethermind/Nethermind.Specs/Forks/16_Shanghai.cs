@@ -1,24 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
-using Nethermind.Core.Specs;
+namespace Nethermind.Specs.Forks;
 
-namespace Nethermind.Specs.Forks
+public class Shanghai() : NamedReleaseSpec<Shanghai>(Paris.Instance)
 {
-    public class Shanghai : Paris
+    public override void Apply(ReleaseSpec spec)
     {
-        private static IReleaseSpec _instance;
-
-        protected Shanghai()
-        {
-            Name = "Shanghai";
-            IsEip3651Enabled = true;
-            IsEip3855Enabled = true;
-            IsEip3860Enabled = true;
-            IsEip4895Enabled = true;
-        }
-
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Shanghai());
+        spec.Name = "Shanghai";
+        spec.IsEip3651Enabled = true;
+        spec.IsEip3855Enabled = true;
+        spec.IsEip3860Enabled = true;
+        spec.IsEip4895Enabled = true;
+        spec.WithdrawalTimestamp = MainnetSpecProvider.ShanghaiBlockTimestamp;
     }
 }

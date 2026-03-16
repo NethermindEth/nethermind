@@ -53,16 +53,16 @@ namespace Nethermind.Db.Test
             using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             WriteOptions? options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority);
-            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
-            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeFalse();
+            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().Be(1);
+            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().Be(0);
 
             options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority | WriteFlags.DisableWAL);
-            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
-            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeTrue();
+            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().Be(1);
+            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().Be(1);
 
             options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL);
-            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeFalse();
-            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeTrue();
+            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().Be(0);
+            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().Be(1);
         }
 
         [Test]

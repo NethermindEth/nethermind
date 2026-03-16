@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
 
 namespace Nethermind.Test.Runner;
 

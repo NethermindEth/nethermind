@@ -44,8 +44,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Enode enode = new(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
             var blockTree = Substitute.For<IBlockTree>();
-            blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
-            blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
+            blockTree.NetworkId.Returns(TestBlockchainIds.NetworkId);
+            blockTree.ChainId.Returns(TestBlockchainIds.ChainId);
             var syncConfig = Substitute.For<ISyncConfig>();
             syncConfig.PivotHash.Returns(Keccak.MaxValue.ToString());
             ISyncServer syncServer = new SyncServer(

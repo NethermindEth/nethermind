@@ -196,6 +196,7 @@ namespace Nethermind.Trie.Test
             private BlockHeader? _baseBlock = Build.A.EmptyBlockHeader;
             private readonly Dictionary<string, BlockHeader?> _branchingPoints = new();
             private readonly ManualResetEvent _stateDbBlocker = new ManualResetEvent(true);
+            private readonly ManualResetEventSlim _writeReached = new ManualResetEventSlim(false);
             private readonly TestMemDb _stateDb;
             private readonly TestMemDb _codeDb;
             private IDisposable? _worldStateCloser = null;
@@ -218,6 +219,7 @@ namespace Nethermind.Trie.Test
                 _stateDb = new TestMemDb();
                 _stateDb.WriteFunc = (k, v) =>
                 {
+                    _writeReached.Set();
                     _stateDbBlocker.WaitOne();
                     return true;
                 };
@@ -436,6 +438,11 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public Task StartSyncPruneInBackground()
+            {
+                return Task.Run(() => _trieStore.SyncPruneQueue());
+            }
+
             public PruningContext DisposeAndRecreate()
             {
                 _worldStateCloser!.Dispose();
@@ -574,6 +581,12 @@ namespace Nethermind.Trie.Test
             public PruningContext UnblockDatabase()
             {
                 _stateDbBlocker.Set();
+                return this;
+            }
+
+            public PruningContext WaitForBlockedWrite(int timeoutMs = 10000)
+            {
+                Assert.That(_writeReached.Wait(timeoutMs), Is.True, "Pruning task did not reach database write");
                 return this;
             }
 
@@ -1321,8 +1334,11 @@ namespace Nethermind.Trie.Test
             }
             ctx.ExitScope();
 
-            // Make sure prune task started and its snapshotting
-            Thread.Sleep(100);
+            // Start pruning explicitly on background thread (avoids relying on async prune delay timing)
+            Task pruneTask = ctx.StartSyncPruneInBackground();
+
+            // Wait until pruning actually hits the blocked database write
+            ctx.WaitForBlockedWrite();
 
             Task blockTask = Task.Run(() =>
             {
@@ -1347,13 +1363,16 @@ namespace Nethermind.Trie.Test
             }
             else
             {
-                await Task.Delay(1000);
+                await Task.Delay(3000);
                 blockTask.IsCompleted.Should().BeFalse();
 
                 ctx.UnblockDatabase();
 
                 await blockTask;
             }
+
+            ctx.UnblockDatabase();
+            await pruneTask;
 
         }
 

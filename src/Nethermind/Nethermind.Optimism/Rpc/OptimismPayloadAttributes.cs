@@ -105,7 +105,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         return offset;
     }
 
-    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int apiVersion,
+    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int fcuVersion,
         [NotNullWhen(false)] out string? error)
     {
         if (GasLimit == 0)
@@ -150,7 +150,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
             error = $"Error decoding transactions: {e}";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        return base.Validate(specProvider, apiVersion, out error);
+        return base.Validate(specProvider, fcuVersion, out error);
     }
 
     public override string ToString()

@@ -17,6 +17,7 @@ public class EnrTreeParserTests
         Assert.That(actual, Is.EqualTo(enrTreeRootText));
     }
 
+    // cspell:ignore owlf
     [TestCase("enrtree-branch:TSVUMUTQU3AMKR36PNX4ILDJJI,VPN5OWLF7Q2PBBJUSOYKPQDGFE", 2)]
     [TestCase("enrtree-branch:", 1)]
     public void Can_parse_branch(string enrBranchText, int hashCount)
