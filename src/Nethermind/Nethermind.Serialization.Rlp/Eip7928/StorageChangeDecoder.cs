@@ -2,46 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamEncoder<StorageChange>
+public class StorageChangeDecoder : IndexedChangeDecoder<StorageChange>
 {
-    private static StorageChangeDecoder? _instance = null;
+    private static StorageChangeDecoder? _instance;
     public static StorageChangeDecoder Instance => _instance ??= new();
 
-    public StorageChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
-    {
-        int length = ctx.ReadSequenceLength();
-        int check = length + ctx.Position;
+    protected override StorageChange DecodeFields(ref Rlp.ValueDecoderContext ctx)
+        => new(ctx.DecodeUShort(), ctx.DecodeUInt256());
 
-        ushort blockAccessIndex = ctx.DecodeUShort();
-        UInt256 newValue = ctx.DecodeUInt256();
-        StorageChange storageChange = new()
-        {
-            BlockAccessIndex = blockAccessIndex,
-            NewValue = newValue
-        };
+    protected override void EncodeValue(RlpStream stream, StorageChange item)
+        => stream.Encode(item.NewValue);
 
-        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
-        {
-            ctx.Check(check);
-        }
-
-        return storageChange;
-    }
-
-    public int GetLength(StorageChange item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-
-    public void Encode(RlpStream stream, StorageChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.BlockAccessIndex);
-        stream.Encode(item.NewValue);
-    }
-
-    public static int GetContentLength(StorageChange item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOf(item.BlockAccessIndex) + Rlp.LengthOf(item.NewValue);
+    protected override int GetValueLength(StorageChange item)
+        => Rlp.LengthOf(item.NewValue);
 }
