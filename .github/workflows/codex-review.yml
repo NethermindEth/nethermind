@@ -162,6 +162,7 @@ jobs:
           prompt-file: ${{ steps.prompt.outputs.prompt_file }}
 
   post-feedback:
+    name: Feedback
     runs-on: ubuntu-latest
     needs: codex
     if: needs.codex.outputs.final_message != ''
