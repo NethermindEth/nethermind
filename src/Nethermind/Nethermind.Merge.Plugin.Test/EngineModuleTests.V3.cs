@@ -46,30 +46,20 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    [Test]
-    public async Task NewPayloadV1_should_decline_post_cancun()
+    [TestCase(1, ErrorCodes.InvalidParams)]
+    [TestCase(2, MergeErrorCodes.UnsupportedFork)]
+    public async Task NewPayload_should_decline_post_cancun(int version, int expectedErrorCode)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         ExecutionPayload executionPayload = CreateBlockRequest(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: []);
 
-        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV1(executionPayload);
+        ResultWrapper<PayloadStatusV1> result = version == 1
+            ? await rpcModule.engine_newPayloadV1(executionPayload)
+            : await rpcModule.engine_newPayloadV2(executionPayload);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
-    }
-
-    [Test]
-    public async Task NewPayloadV2_should_decline_post_cancun()
-    {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
-        IEngineRpcModule rpcModule = chain.EngineRpcModule;
-        ExecutionPayload executionPayload = CreateBlockRequest(
-            chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: []);
-
-        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV2(executionPayload);
-
-        Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
     }
 
     [TestCaseSource(nameof(CancunFieldsTestSource))]
@@ -122,15 +112,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetPayloadV3_should_fail_on_unknown_payload()
     {
-        using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        byte[] payloadId = Bytes.FromHexString("0x0");
-        ResultWrapper<GetPayloadV3Result?> responseFirst = await rpc.engine_getPayloadV3(payloadId);
-        responseFirst.Should().NotBeNull();
-        responseFirst.Result.ResultType.Should().Be(ResultType.Failure);
-        responseFirst.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
+        await GetPayload_should_fail_on_unknown_payload(3);
     }
 
     [Test]
@@ -377,23 +359,26 @@ public partial class EngineModuleTests
                                          .Success(new PayloadStatusV1() { Status = FurtherValidationStatus })));
 
             return (chain, new EngineRpcModule(
-                 Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
-                 Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
-                 Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
-                 Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
-                 Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
-                 newPayloadHandlerMock,
-                 Substitute.For<IForkchoiceUpdatedHandler>(),
-                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
-                 Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
-                 Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-                 Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
-                 Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
-                 Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
-                 Substitute.For<IEngineRequestsTracker>(),
-                 chain.SpecProvider,
-                 new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
-                 Substitute.For<ILogManager>()));
+                Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>(),
+                newPayloadHandlerMock,
+                Substitute.For<IForkchoiceUpdatedHandler>(),
+                Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
+                Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
+                Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
+                Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
+                Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
+                Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
+                Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(),
+                Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+                Substitute.For<IEngineRequestsTracker>(),
+                chain.SpecProvider,
+                new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
+                Substitute.For<ILogManager>()));
         }
 
 

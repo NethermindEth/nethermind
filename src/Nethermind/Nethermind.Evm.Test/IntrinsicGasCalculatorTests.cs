@@ -11,7 +11,9 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -225,6 +227,58 @@ namespace Nethermind.Evm.Test
                 .TestObject;
 
             Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance), Throws.InstanceOf<InvalidDataException>());
+        }
+
+        [Test]
+        public void Eip8037_policy_intrinsic_gas_splits_authorization_cost()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
+                .TestObject;
+            IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
+
+            Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular));
+            Assert.That(intrinsicGas.Standard.StateReservoir, Is.EqualTo(GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState));
+        }
+
+        [Test]
+        public void Eip8037_nongeneric_intrinsic_gas_includes_state_gas_for_create()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithCode(Array.Empty<byte>())
+                .TestObject;
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
+
+            long expectedRegular = GasCostOf.Transaction + GasCostOf.CreateRegular;
+            long expectedState = GasCostOf.CreateState;
+            Assert.That(gas.Standard, Is.EqualTo(expectedRegular + expectedState));
+            Assert.That(gas.MinimalGas, Is.EqualTo(Math.Max(gas.Standard, gas.FloorGas)));
+        }
+
+        [Test]
+        public void Eip8037_nongeneric_intrinsic_gas_includes_state_gas_for_setcode()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
+                .TestObject;
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
+
+            long expectedRegular = GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular;
+            long expectedState = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
+            Assert.That(gas.Standard, Is.EqualTo(expectedRegular + expectedState));
+        }
+
+        [Test]
+        public void Eip8037_nongeneric_minimal_gas_is_at_least_regular_plus_state()
+        {
+            // A create tx with no calldata: floor gas is low, Standard = regular + state
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithCode(Array.Empty<byte>())
+                .TestObject;
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
+
+            long regularPlusState = GasCostOf.Transaction + GasCostOf.CreateRegular + GasCostOf.CreateState;
+            Assert.That(gas.MinimalGas, Is.GreaterThanOrEqualTo(regularPlusState));
         }
     }
 }

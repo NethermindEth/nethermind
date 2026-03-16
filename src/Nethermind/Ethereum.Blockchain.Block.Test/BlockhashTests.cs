@@ -21,7 +21,7 @@ public class BlockhashTests : GeneralStateTestBase
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Blockhash"));
+        TestsSourceLoader loader = new(new LoadGeneralStateTestsStrategy(), Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Blockhash"));
         return loader.LoadTests<GeneralStateTest>();
     }
 }

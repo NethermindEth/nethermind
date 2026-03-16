@@ -14,16 +14,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Ethash
 {
-    internal class EthashDifficultyCalculator : IDifficultyCalculator
+    internal class EthashDifficultyCalculator(ISpecProvider specProvider) : IDifficultyCalculator
     {
         // Note: block 200000 is when the difficulty bomb was introduced but we did not spec it in any release info, just hardcoded it
         public const int InitialDifficultyBombBlock = 200000;
-        private readonly ISpecProvider _specProvider;
-
-        public EthashDifficultyCalculator(ISpecProvider specProvider)
-        {
-            _specProvider = specProvider;
-        }
 
         private const long OfGenesisBlock = 131_072;
 
@@ -41,7 +35,7 @@ namespace Nethermind.Consensus.Ethash
             long blockNumber,
             bool parentHasUncles)
         {
-            IReleaseSpec spec = _specProvider.GetSpec(blockNumber, currentTimestamp);
+            IReleaseSpec spec = specProvider.GetSpec(blockNumber, currentTimestamp);
             if (spec.FixedDifficulty is not null && blockNumber != 0)
             {
                 return (UInt256)spec.FixedDifficulty.Value;
@@ -63,28 +57,22 @@ namespace Nethermind.Consensus.Ethash
             BigInteger currentTimestamp,
             bool parentHasUncles)
         {
-            if (spec.IsEip100Enabled)
             {
-                return BigInteger.Max((parentHasUncles ? 2 : BigInteger.One) - BigInteger.Divide(currentTimestamp - parentTimestamp, 9), -99);
-            }
+                BigInteger timeDiff = currentTimestamp - parentTimestamp;
 
-            if (spec.IsEip2Enabled)
-            {
-                return BigInteger.Max(BigInteger.One - BigInteger.Divide(currentTimestamp - parentTimestamp, 10), -99);
+                return spec switch
+                {
+                    { IsEip100Enabled: true } => BigInteger.Max((parentHasUncles ? 2 : 1) - BigInteger.Divide(timeDiff, 9), -99),
+                    { IsEip2Enabled: true } => BigInteger.Max(1 - BigInteger.Divide(timeDiff, 10), -99),
+                    { IsTimeAdjustmentPostOlympic: true } => currentTimestamp < parentTimestamp + 13 ? BigInteger.One : BigInteger.MinusOne,
+                    _ => currentTimestamp < parentTimestamp + 7 ? BigInteger.One : BigInteger.MinusOne
+                };
             }
-
-            if (spec.IsTimeAdjustmentPostOlympic)
-            {
-                return currentTimestamp < parentTimestamp + 13 ? BigInteger.One : BigInteger.MinusOne;
-            }
-
-            return currentTimestamp < parentTimestamp + 7 ? BigInteger.One : BigInteger.MinusOne;
         }
 
         private static BigInteger TimeBomb(IReleaseSpec spec, long blockNumber)
         {
             blockNumber -= spec.DifficultyBombDelay;
-
             return blockNumber < InitialDifficultyBombBlock ? BigInteger.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
         }
     }

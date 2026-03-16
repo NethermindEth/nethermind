@@ -404,7 +404,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _scopeLock.Exit();
 
             // Try exit and flush async
-            Task.Factory.StartNew(TryExitCommitBufferMode);
+            Task.Factory.StartNew(TryExitCommitBufferMode, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default);
         });
     }
 
@@ -1134,9 +1134,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 });
             }
 
-            using ArrayPoolList<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
+            using ArrayPoolListRef<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
                     entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, commitSet.BlockNumber, persistedNodeRecorder, writeFlags, disposeQueue)))
-                .ToPooledList(parallelStartNodes.Count);
+                .ToPooledListRef(parallelStartNodes.Count);
 
             Task.WaitAll(persistNodeStartingFromTasks.AsSpan());
         }
@@ -1196,7 +1196,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             GetDirtyNodeShard(key).GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(currentNode, blockNumber));
 
             if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
-            writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.Span, writeFlags);
+            writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.AsSpan(), writeFlags);
             currentNode.IsPersisted = true;
             IncrementPersistedNodesCount();
         }
@@ -1428,10 +1428,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (!HasRoot(stateRoot)) return false;
 
         // Reject blocks whose state may have been partially pruned (root exists but child nodes don't)
-        long lastPersisted = LastPersistedBlockNumber;
-        if (lastPersisted > 0 && blockNumber < lastPersisted - _maxDepth)
+        if (_deleteOldNodes)
         {
-            return false;
+            long lastPersisted = LastPersistedBlockNumber;
+            if (lastPersisted > 0 && blockNumber < lastPersisted - _maxDepth)
+            {
+                return false;
+            }
         }
 
         return true;

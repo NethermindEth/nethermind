@@ -19,15 +19,13 @@ namespace Nethermind.Network.Test;
 public class MessageQueueTests
 {
     private readonly List<GetBlockHeadersMessage> _recordedSends = new();
-    private RecordingMessageSender _messageSender;
     private MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _queue;
 
     [SetUp]
     public void Setup()
     {
         _recordedSends.Clear();
-        _messageSender = new RecordingMessageSender(_recordedSends);
-        _queue = new(_messageSender);
+        _queue = new((message) => _recordedSends.Add(message));
     }
 
     [Test]
@@ -209,11 +207,5 @@ public class MessageQueueTests
     private static Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> CreateRequest()
     {
         return new(new GetBlockHeadersMessage());
-    }
-
-    private sealed class RecordingMessageSender(List<GetBlockHeadersMessage> recordedSends)
-        : IMessageSender<GetBlockHeadersMessage>
-    {
-        public void Send(GetBlockHeadersMessage message) => recordedSends.Add(message);
     }
 }

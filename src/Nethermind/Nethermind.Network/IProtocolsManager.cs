@@ -8,11 +8,10 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
-    public interface IProtocolsManager : IDisposable
+    public interface IProtocolsManager
     {
         void AddSupportedCapability(Capability capability);
         void RemoveSupportedCapability(Capability capability);
-        void AddProtocol(string code, Func<ISession, int, IProtocolHandler> factory);
         int GetHighestProtocolVersion(string protocol);
     }
 }

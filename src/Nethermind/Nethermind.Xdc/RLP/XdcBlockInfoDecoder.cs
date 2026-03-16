@@ -23,10 +23,9 @@ internal sealed class XdcBlockInfoDecoder : RlpValueDecoder<BlockRoundInfo>
         if (hashBytes.Length > Hash256.Size)
             throw new RlpException($"Hash length {hashBytes.Length} is longer than max size of 32.");
         ulong round = decoderContext.DecodeULong();
-        long number = decoderContext.DecodeLong();
+        long number = decoderContext.DecodePositiveLong();
 
         return new BlockRoundInfo(new Hash256(hashBytes), round, number);
-
     }
 
     public override void Encode(RlpStream stream, BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

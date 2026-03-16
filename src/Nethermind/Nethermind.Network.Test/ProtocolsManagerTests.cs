@@ -8,6 +8,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -20,11 +21,15 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
-using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Eth.V67;
+using Nethermind.Network.P2P.Subprotocols.Eth.V68;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69;
+using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
 using Nethermind.State;
@@ -72,7 +77,9 @@ public class ProtocolsManagerTests
         private readonly IGossipPolicy _gossipPolicy;
         private readonly IPeerManager _peerManager;
         private readonly INetworkConfig _networkConfig;
-        private TestProtocolHandler? _customProtocolHandler;
+        private readonly ITxPoolConfig _txPoolConfig;
+        private readonly ISpecProvider _specProvider;
+        private readonly IForkInfo _forkInfo;
 
         public Context()
         {
@@ -102,33 +109,58 @@ public class ProtocolsManagerTests
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
             _blockTree = Substitute.For<IBlockTree>();
-            _blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
-            _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
+            _blockTree.NetworkId.Returns(TestBlockchainIds.NetworkId);
+            _blockTree.ChainId.Returns(TestBlockchainIds.ChainId);
             _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-            ForkInfo forkInfo = new(MainnetSpecProvider.Instance, _syncServer);
+            _forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
             _peerManager = Substitute.For<IPeerManager>();
             _networkConfig = new NetworkConfig();
-            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, _peerManager, _networkConfig, LimboLogs.Instance);
+            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _forkInfo, _peerManager, _networkConfig, LimboLogs.Instance);
             _peerStorage = Substitute.For<INetworkStorage>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
+            _txPoolConfig = Substitute.For<ITxPoolConfig>();
+            _specProvider = Substitute.For<ISpecProvider>();
             _manager = new ProtocolsManager(
                 _syncPeerPool,
-                _syncServer,
-                RunImmediatelyScheduler.Instance,
                 _txPool,
                 _discoveryApp,
-                _serializer,
                 _rlpxHost,
                 _nodeStatsManager,
                 _protocolValidator,
                 _peerStorage,
-                forkInfo,
-                _gossipPolicy,
-                Substitute.For<IWorldStateManager>(),
-                LimboLogs.Instance,
-                Substitute.For<ITxPoolConfig>(),
-                Substitute.For<ISpecProvider>());
+                BuildProtocolHandlerFactories(),
+                LimboLogs.Instance);
+        }
+
+        private IProtocolHandlerFactory[] BuildProtocolHandlerFactories()
+        {
+            return
+            [
+                new ReusableProtocolHandlerFactory<P2PProtocolHandler>(
+                    session => new P2PProtocolHandler(session, _rlpxHost.LocalNodeId, _nodeStatsManager, _serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance),
+                    Protocol.P2P),
+                new ReusableProtocolHandlerFactory<Eth66ProtocolHandler>(
+                    session => new Eth66ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance),
+                    Protocol.Eth,
+                    66),
+                new ReusableProtocolHandlerFactory<Eth67ProtocolHandler>(
+                    session => new Eth67ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance),
+                    Protocol.Eth,
+                    67),
+                new ReusableProtocolHandlerFactory<Eth68ProtocolHandler>(
+                    session => new Eth68ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
+                    Protocol.Eth,
+                    68),
+                new ReusableProtocolHandlerFactory<Eth69ProtocolHandler>(
+                    session => new Eth69ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
+                    Protocol.Eth,
+                    69),
+                new ReusableProtocolHandlerFactory<Eth70ProtocolHandler>(
+                    session => new Eth70ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
+                    Protocol.Eth,
+                    70)
+            ];
         }
 
         public Context CreateIncomingSession()
@@ -174,23 +206,6 @@ public class ProtocolsManagerTests
             return this;
         }
 
-        public Context VerifyPingSenderNotSet()
-        {
-            Assert.That(_currentSession.PingSender, Is.Null);
-            return this;
-        }
-
-        public Context AddCustomProtocol(string protocolCode = "zzz", int version = 1)
-        {
-            _manager.AddSupportedCapability(new Capability(protocolCode, version));
-            _manager.AddProtocol(protocolCode, (_, _) =>
-            {
-                _customProtocolHandler = new TestProtocolHandler(protocolCode, (byte)version);
-                return _customProtocolHandler;
-            });
-            return this;
-        }
-
         public Context VerifyDisconnected()
         {
             Assert.That(_currentSession.State, Is.EqualTo(SessionState.Disconnected));
@@ -211,19 +226,6 @@ public class ProtocolsManagerTests
         public Context VerifyInitialized()
         {
             Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
-            return this;
-        }
-
-        public Context VerifyCustomProtocolHandlerUnsubscribed()
-        {
-            Assert.That(_customProtocolHandler, Is.Not.Null);
-            Assert.That(_customProtocolHandler!.SubprotocolRequestedSubscriberCount, Is.EqualTo(0));
-            return this;
-        }
-
-        public Context DisposeManager()
-        {
-            _manager.Dispose();
             return this;
         }
 
@@ -307,24 +309,6 @@ public class ProtocolsManagerTests
             return ReceiveHello(msg);
         }
 
-        public Context ReceiveHello(params Capability[] capabilities)
-        {
-            using HelloMessage msg = new();
-            ArrayPoolList<Capability> capabilityList = new(capabilities.Length);
-            foreach (Capability capability in capabilities)
-            {
-                capabilityList.Add(capability);
-            }
-
-            msg.Capabilities = capabilityList;
-            msg.NodeId = TestItem.PublicKeyB;
-            msg.ClientId = "other client v1";
-            msg.P2PVersion = 5;
-            msg.ListenPort = 30314;
-
-            return ReceiveHello(msg);
-        }
-
         public Context ReceiveHelloNoEth()
         {
             using HelloMessage msg = new();
@@ -388,44 +372,6 @@ public class ProtocolsManagerTests
             .Init()
             .ReceiveHello()
             .VerifyPingSenderSet();
-    }
-
-    [Test]
-    public void Stops_initializing_new_sessions_after_dispose()
-    {
-        When
-            .DisposeManager()
-            .CreateIncomingSession()
-            .ActivateChannel()
-            .Handshake()
-            .Init()
-            .VerifyPingSenderNotSet();
-    }
-
-    [Test]
-    public void Stops_initializing_existing_sessions_after_dispose()
-    {
-        When
-            .CreateIncomingSession()
-            .ActivateChannel()
-            .Handshake()
-            .DisposeManager()
-            .Init()
-            .VerifyPingSenderNotSet();
-    }
-
-    [Test]
-    public void Removes_custom_protocol_subscriptions_on_disconnect()
-    {
-        When
-            .AddCustomProtocol()
-            .CreateIncomingSession()
-            .ActivateChannel()
-            .Handshake()
-            .Init()
-            .ReceiveHello(new Capability(Protocol.Eth, 68), new Capability("zzz", 1))
-            .Disconnect()
-            .VerifyCustomProtocolHandlerUnsubscribed();
     }
 
     [Test]
@@ -534,7 +480,7 @@ public class ProtocolsManagerTests
 
     [TestCase(TestBlockchainIds.NetworkId + 1)]
     [TestCase(TestBlockchainIds.ChainId)]
-    public void Disconnects_on_wrong_network_id(int networkId)
+    public void Disconnects_on_wrong_network_id(ulong networkId)
     {
         When
             .CreateIncomingSession()
@@ -543,7 +489,7 @@ public class ProtocolsManagerTests
             .Init()
             .VerifyInitialized()
             .ReceiveHello()
-            .ReceiveStatusWrongChain((ulong)networkId)
+            .ReceiveStatusWrongChain(networkId)
             .VerifyCompatibilityValidationType(CompatibilityValidationType.NetworkId)
             .VerifyDisconnected();
     }
@@ -584,62 +530,5 @@ public class ProtocolsManagerTests
             .Handshake()
             .Init()
             .VerifyProtocolVersion(Protocol.Eth, 68);
-    }
-
-    private sealed class TestProtocolHandler : IProtocolHandler
-    {
-        private EventHandler<ProtocolEventArgs>? _subprotocolRequested;
-
-        public TestProtocolHandler(string protocolCode, byte protocolVersion)
-        {
-            ProtocolCode = protocolCode;
-            ProtocolVersion = protocolVersion;
-        }
-
-        public string Name => $"{ProtocolCode}.{ProtocolVersion}";
-
-        public byte ProtocolVersion { get; }
-
-        public string ProtocolCode { get; }
-
-        public int MessageIdSpaceSize => 1;
-
-        public int SubprotocolRequestedSubscriberCount { get; private set; }
-
-        public event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized
-        {
-            add { }
-            remove { }
-        }
-
-        public event EventHandler<ProtocolEventArgs>? SubprotocolRequested
-        {
-            add
-            {
-                _subprotocolRequested += value;
-                SubprotocolRequestedSubscriberCount++;
-            }
-            remove
-            {
-                _subprotocolRequested -= value;
-                SubprotocolRequestedSubscriberCount--;
-            }
-        }
-
-        public void Init()
-        {
-        }
-
-        public void HandleMessage(Packet message)
-        {
-        }
-
-        public void DisconnectProtocol(DisconnectReason disconnectReason, string details)
-        {
-        }
-
-        public void Dispose()
-        {
-        }
     }
 }

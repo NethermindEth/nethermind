@@ -33,8 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private readonly ITxGossipPolicy _txGossipPolicy;
         private LruKeyCache<Hash256AsKey>? _lastBlockNotificationCache;
         private LruKeyCache<Hash256AsKey> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
-        private static readonly Func<Eth62ProtocolHandler, (IOwnedReadOnlyList<Transaction> txs, int startIndex), CancellationToken, ValueTask> HandleSlowStatic
-            = static (handler, request, cancellationToken) => handler.HandleSlow(request, cancellationToken);
+        private readonly Func<(IOwnedReadOnlyList<Transaction> txs, int startIndex), CancellationToken, ValueTask> _handleSlow;
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -51,12 +50,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _txGossipPolicy = transactionsGossipPolicy ?? TxPool.ShouldGossip.Instance;
+            _handleSlow = HandleSlow;
 
             EnsureGossipPolicy();
         }
 
         public void DisableTxFiltering() => _floodController.IsEnabled = false;
 
+        public static string Code => Protocol.Eth;
         public override byte ProtocolVersion => EthVersions.Eth62;
         public override string ProtocolCode => Protocol.Eth;
         public override int MessageIdSpaceSize => 8;
@@ -234,7 +235,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected void Handle(TransactionsMessage msg)
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-            BackgroundTaskScheduler.TryScheduleBackgroundTask(this, (iList, 0), HandleSlowStatic);
+            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask((iList, 0), _handleSlow, "Transactions"))
+            {
+                iList.Dispose();
+            }
         }
 
         protected virtual ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
@@ -252,15 +256,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     {
                         if (i == startIdx)
                         {
-                            // Timeout immediately on the first transaction. This indicate that this task spent too much
-                            // time in the queue as the queue is probably full. In this case, queuing again wont help
-                            // as it later will just take as much time in the queue, then timing out again.
-                            if (Logger.IsDebug) Logger.Debug("Background task queue full. Dropping transactions.");
+                            // Cancelled before processing any transaction — dispose and bail out.
+                            // Rescheduling would just loop (cancelled again immediately).
+                            transactions.Dispose();
                             return ValueTask.CompletedTask;
                         }
 
-                        // Reschedule and with different start index
-                        BackgroundTaskScheduler.TryScheduleBackgroundTask(this, (transactions, i), HandleSlowStatic);
+                        // Reschedule remaining transactions with a different start index
+                        if (!BackgroundTaskScheduler.TryScheduleBackgroundTask((transactions, i), _handleSlow, "Transactions"))
+                        {
+                            transactions.Dispose();
+                        }
                         return ValueTask.CompletedTask;
                     }
 

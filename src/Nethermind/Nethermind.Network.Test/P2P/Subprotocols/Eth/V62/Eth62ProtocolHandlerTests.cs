@@ -285,7 +285,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
 
-            _session.Received(1).InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+            _session.Received(1).InitiateDisconnect(DisconnectReason.EthSyncException, Arg.Any<string>());
             _session.DidNotReceive().DeliverMessage(Arg.Any<BlockHeadersMessage>());
         }
 
@@ -420,7 +420,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             internal int ScheduledTasks = 0;
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
-                TimeSpan? timeout = null)
+                TimeSpan? timeout = null, string? source = null)
             {
                 CancellationTokenSource cts = new();
                 cts.Cancel();

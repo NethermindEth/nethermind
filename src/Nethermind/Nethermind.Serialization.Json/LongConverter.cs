@@ -3,10 +3,9 @@
 
 using System;
 using System.Buffers;
-using System.Buffers.Text;
-using System.Globalization;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -50,38 +49,7 @@ public class LongConverter : JsonConverter<long>
         return FromString(hex);
     }
 
-    public static long FromString(ReadOnlySpan<byte> s)
-    {
-        if (s.Length == 0)
-        {
-            throw new JsonException("null cannot be assigned to long");
-        }
-
-        if (s.SequenceEqual("0x0"u8))
-        {
-            return 0L;
-        }
-
-        long value;
-        if (s.StartsWith("0x"u8))
-        {
-            s = s[2..];
-            if (Utf8Parser.TryParse(s, out value, out _, 'x'))
-            {
-                return value;
-            }
-        }
-        else if (Utf8Parser.TryParse(s, out value, out _))
-        {
-            return value;
-        }
-
-        ThrowJsonException();
-        return default;
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowJsonException() => throw new JsonException("hex to long");
-    }
+    public static long FromString(ReadOnlySpan<byte> s) => NumericConverterHelper.Parse<long>(s);
 
     internal static long ReadCore(ref Utf8JsonReader reader)
     {
@@ -89,11 +57,12 @@ public class LongConverter : JsonConverter<long>
         {
             return reader.GetInt64();
         }
-        else if (reader.TokenType == JsonTokenType.String)
+
+        if (reader.TokenType == JsonTokenType.String)
         {
             return !reader.HasValueSequence
-                ? FromString(reader.ValueSpan)
-                : FromString(reader.ValueSequence.ToArray());
+                ? NumericConverterHelper.Parse<long>(reader.ValueSpan)
+                : NumericConverterHelper.Parse<long>(reader.ValueSequence.ToArray());
         }
 
         ThrowJsonException();
@@ -117,26 +86,6 @@ public class LongConverter : JsonConverter<long>
         long value,
         JsonSerializerOptions options)
     {
-        switch (ForcedNumberConversion.GetFinalConversion())
-        {
-            case NumberConversion.Hex:
-                if (value == 0)
-                {
-                    writer.WriteStringValue("0x0"u8);
-                }
-                else
-                {
-                    HexWriter.WriteUlongHexRawValue(writer, (ulong)value);
-                }
-                break;
-            case NumberConversion.Decimal:
-                writer.WriteStringValue(value == 0 ? "0" : value.ToString(CultureInfo.InvariantCulture));
-                break;
-            case NumberConversion.Raw:
-                writer.WriteNumberValue(value);
-                break;
-            default:
-                throw new NotSupportedException();
-        }
+        NumericConverterHelper.Write(writer, value);
     }
 }

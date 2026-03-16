@@ -37,7 +37,7 @@ public class P2PProtocolHandler(
     /// <summary>
     /// Maximum size of a base protocol (p2p) message in bytes (2 KiB).
     /// </summary>
-    public readonly static long BaseProtocolMaxMsgSize = 2.KiB;
+    public static readonly long BaseProtocolMaxMsgSize = 2.KiB;
 
     private TaskCompletionSource<Packet> _pongCompletionSource;
     private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -78,6 +78,8 @@ public class P2PProtocolHandler(
 
         _supportedCapabilities.Add(capability);
     }
+
+    public override void RegisterWith(ISession session, IProtocolRegistrar registrar) => registrar.Register(session, this);
 
     public override void Init()
     {
