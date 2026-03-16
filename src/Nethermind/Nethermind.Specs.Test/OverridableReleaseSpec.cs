@@ -75,6 +75,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip7934Enabled { get; set; } = spec.IsEip7934Enabled;
         public int Eip7934MaxRlpBlockSize { get; set; } = spec.Eip7934MaxRlpBlockSize;
         public bool ValidateChainId { get; set; } = spec.ValidateChainId;
+        public bool ValidateReceipts { get; set; } = spec.ValidateReceipts;
+        public UInt256? Eip1559BaseFeeMinValue { get; set; } = spec.Eip1559BaseFeeMinValue;
         public bool IsEip3607Enabled { get; set; } = spec.IsEip3607Enabled;
         public Address? Eip158IgnoredAccount { get; set; } = spec.Eip158IgnoredAccount;
         public long Eip1559TransitionBlock { get; set; } = spec.Eip1559TransitionBlock;
@@ -115,15 +117,17 @@ namespace Nethermind.Specs.Test
         public bool IsEip6110Enabled { get; set; } = spec.IsEip6110Enabled;
         public Address? DepositContractAddress { get; set; } = spec.DepositContractAddress;
         public bool IsEip7594Enabled { get; set; } = spec.IsEip7594Enabled;
-        Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
-        Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
+        Array? IReleaseSpec.EvmInstructionsNoTrace { get => field ?? spec.EvmInstructionsNoTrace; set; }
+        Array? IReleaseSpec.EvmInstructionsTraced { get => field ?? spec.EvmInstructionsTraced; set; }
         public bool IsEip7939Enabled { get; set; } = spec.IsEip7939Enabled;
         public bool IsEip7907Enabled { get; set; } = spec.IsEip7907Enabled;
         public bool IsRip7728Enabled { get; set; } = spec.IsRip7728Enabled;
         public bool IsEip7928Enabled { get; set; } = spec.IsEip7928Enabled;
+        public bool IsEip8037Enabled { get; set; } = spec.IsEip8037Enabled;
         public bool IsEip7708Enabled { get; set; } = spec.IsEip7708Enabled;
         public bool IsEip7778Enabled { get; set; } = spec.IsEip7778Enabled;
         public bool IsEip7843Enabled => spec.IsEip7843Enabled;
+        public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
         public SpecGasCosts GasCosts => new(this);
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     }
