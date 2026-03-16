@@ -50,7 +50,6 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
     {
         ReadOnlySpan<byte> vBytes = inputDataSpan.Slice(32, 32);
 
-        // cspell:ignore prefixedf
         // TEST: CALLCODEEcrecoverV_prefixedf0_d0g0v0
         // TEST: CALLCODEEcrecoverV_prefixedf0_d1g0v0
         if (!Bytes.AreEqual(_zero31, vBytes[..31]))

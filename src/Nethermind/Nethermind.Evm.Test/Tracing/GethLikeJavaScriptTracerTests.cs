@@ -543,7 +543,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                                                              "state": db.getState(contractAddress, this.hash),
                                                              "stateString": db.getState(contractAddress, this.hash).toString(16),
                                                              "exists": db.exists(contractAddress),
-                                                             "randomexists": db.exists(this.randomAddress) // cspell:ignore randomexists
+                                                             "randomexists": db.exists(this.randomAddress)
                                                          },
                                                          "pc": log.getPC(),
                                                          "gas": log.getGas(),
