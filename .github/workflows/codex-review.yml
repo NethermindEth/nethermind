@@ -14,6 +14,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   codex:
     name: Codex review
@@ -34,12 +39,32 @@ jobs:
         (github.event_name == 'issues' && (contains(github.event.issue.body, '@codex') || contains(github.event.issue.title, '@codex')))
       )
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     outputs:
       final_message: ${{ steps.run-codex.outputs.final-message }}
       issue_number: ${{ steps.target.outputs.issue_number }}
     steps:
+      - name: React to trigger comment
+        if: github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            if (context.eventName === 'issue_comment') {
+              await github.rest.reactions.createForIssueComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: context.payload.comment.id,
+                content: 'eyes',
+              });
+            } else if (context.eventName === 'pull_request_review_comment') {
+              await github.rest.reactions.createForPullRequestReviewComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: context.payload.comment.id,
+                content: 'eyes',
+              });
+            }
+
       - name: Resolve target
         id: target
         uses: actions/github-script@v8
@@ -143,9 +168,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: codex
     if: needs.codex.outputs.final_message != ''
-    permissions:
-      issues: write
-      pull-requests: write
     steps:
       - name: Report Codex feedback
         uses: actions/github-script@v8
