@@ -216,7 +216,7 @@ public class GasNewPayloadBenchmarks
 
         start = Stopwatch.GetTimestamp();
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
-        Nethermind.Merge.Plugin.Data.ValidationResult validationResult = request.ValidateParams(releaseSpec, EngineApiVersions.Prague, out string validationError);
+        Nethermind.Merge.Plugin.Data.ValidationResult validationResult = request.ValidateParams(releaseSpec, EngineApiVersions.NewPayload.V4, out string validationError);
         if (validationResult != Nethermind.Merge.Plugin.Data.ValidationResult.Success)
         {
             throw new InvalidOperationException($"Payload parameter validation failed: {validationError}");
