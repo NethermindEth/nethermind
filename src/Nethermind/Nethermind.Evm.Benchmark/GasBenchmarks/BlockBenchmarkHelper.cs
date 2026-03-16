@@ -18,10 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.Trie;
 
 namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 
@@ -45,8 +42,6 @@ internal static class BlockBenchmarkHelper
         {
             StateRoot = PayloadLoader.GenesisStateRoot
         };
-
-    public static IStateReader CreateStateReader(IWorldState worldState) => new WorldStateReaderAdapter(worldState);
 
     public static ProcessingOptions GetNewPayloadProcessingOptions(IReceiptConfig receiptConfig) =>
         receiptConfig.StoreReceipts
@@ -145,25 +140,4 @@ internal static class BlockBenchmarkHelper
             LimboLogs.Instance,
             new WithdrawalProcessor(state, LimboLogs.Instance),
             new ExecutionRequestsProcessor(txProcessor));
-
-    private sealed class WorldStateReaderAdapter(IWorldState worldState) : IStateReader
-    {
-        public bool TryGetAccount(BlockHeader baseBlock, Address address, out AccountStruct account) =>
-            throw new NotSupportedException("Benchmark IStateReader stub — TryGetAccount should not be called during benchmark execution.");
-
-        public ReadOnlySpan<byte> GetStorage(BlockHeader baseBlock, Address address, in UInt256 index) =>
-            throw new NotSupportedException("Benchmark IStateReader stub — GetStorage should not be called during benchmark execution.");
-
-        public byte[] GetCode(Hash256 codeHash) =>
-            throw new NotSupportedException("Benchmark IStateReader stub — GetCode should not be called during benchmark execution.");
-
-        public byte[] GetCode(in ValueHash256 codeHash) =>
-            throw new NotSupportedException("Benchmark IStateReader stub — GetCode should not be called during benchmark execution.");
-
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader baseBlock, VisitingOptions visitingOptions = null)
-            where TCtx : struct, INodeContext<TCtx> =>
-            throw new NotSupportedException("Benchmark IStateReader stub — RunTreeVisitor should not be called during benchmark execution.");
-
-        public bool HasStateForBlock(BlockHeader baseBlock) => worldState.HasStateForBlock(baseBlock);
-    }
 }

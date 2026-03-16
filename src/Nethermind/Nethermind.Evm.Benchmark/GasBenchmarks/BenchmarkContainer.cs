@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -28,9 +29,15 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Healing;
+using Nethermind.Synchronization;
 using Nethermind.Trie;
 
 namespace Nethermind.Evm.Benchmark.GasBenchmarks;
@@ -144,7 +151,9 @@ internal static class BenchmarkContainer
             new SyncConfig(),
             new ReceiptConfig(),
             new PruningConfig(),
-            new DbConfig()
+            new DbConfig(),
+            // Benchmark iterations replay the same block hash, so NewPayload cache must be disabled.
+            new MergeConfig { NewPayloadCacheSize = 0, SimulateBlockProduction = false }
         );
 
         ContainerBuilder builder = new();
@@ -169,6 +178,9 @@ internal static class BenchmarkContainer
     /// <summary>
     /// Benchmark-specific overrides on top of the production + test modules.
     /// Disables validation, stubs IBlockTree, and overrides ISpecProvider with the benchmark-provided one.
+    /// Also registers merge/sync stubs so that <see cref="NewPayloadHandler"/> and
+    /// <see cref="BlockchainProcessor"/> can be auto-wired by Autofac without pulling in the
+    /// full merge synchronization stack.
     /// </summary>
     private sealed class BenchmarkOverrideModule(ISpecProvider specProvider) : Module
     {
@@ -186,11 +198,26 @@ internal static class BenchmarkContainer
                 .AddSingleton<IBlockValidator>(Always.Valid)
                 // Stub IHeaderFinder — BlockhashCache needs it; benchmarks don't look up historical headers
                 .AddSingleton<IHeaderFinder>(new NullHeaderFinder())
-                // Stub IBlockTree — benchmarks process blocks with no uncles
+                // Stub IBlockTree — default for DI resolution; benchmarks override with
+                // BenchmarkSingleParentBlockTree in child scopes when the parent header is known
                 .AddSingleton<IBlockTree>(new MinimalBenchmarkBlockTree())
                 .Bind<IBlockFinder, IBlockTree>()
                 // Benchmarks have complete state; provide noop recovery
                 .AddSingleton<Lazy<IPathRecovery>>(_ => new Lazy<IPathRecovery>(() => new NoopPathRecovery()))
+
+                // --- Merge/sync stubs for NewPayloadHandler DI resolution ---
+                // These allow Autofac to auto-wire NewPayloadHandler without BaseMergePluginModule.
+                // If NewPayloadHandler's constructor gains a new dependency, Autofac surfaces it immediately.
+                .AddSingleton<IPayloadPreparationService>(new BenchmarkMergeStubs.NoopPayloadPreparationService())
+                .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
+                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddSingleton<IBlockCacheService, BlockCacheService>()
+                .AddSingleton<IInvalidChainTracker>(new BenchmarkMergeStubs.NoopInvalidChainTracker())
+                .AddSingleton<IMergeSyncController>(new BenchmarkMergeStubs.NoopMergeSyncController())
+
+                // --- Processing stubs ---
+                .AddSingleton<IProcessingStats>(new BenchmarkMergeStubs.NoopProcessingStats())
+                .AddSingleton(BlockchainProcessor.Options.NoReceipts)
                 ;
         }
     }

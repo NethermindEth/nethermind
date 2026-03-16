@@ -13,12 +13,9 @@ using System.Threading.Tasks;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -30,15 +27,12 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
-using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Synchronization;
 
 namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 
@@ -47,7 +41,7 @@ namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 /// production newPayload processing (request decode + payload validation + handler + queue processing).
 /// </summary>
 [Config(typeof(GasBenchmarkConfig))]
-public class GasNewPayloadBenchmarks
+public class GasNewPayloadBenchmarks : ITxExecutionTimingCollector
 {
     internal const string TimingFileEnvVar = "NETHERMIND_NEWPAYLOAD_REAL_TIMING_FILE";
     internal const string TimingReportFileEnvVar = "NETHERMIND_NEWPAYLOAD_REAL_TIMING_REPORT_FILE";
@@ -58,12 +52,12 @@ public class GasNewPayloadBenchmarks
     private IReleaseSpec _releaseSpec;
     private ISpecProvider _specProvider;
     private ILifetimeScope _scope;
+    private ILifetimeScope _newPayloadScope;
     private IDisposable _containerLifetime;
     private IWorldState _state;
     private IBranchProcessor _branchProcessor;
     private BlockHeader _preBlockHeader;
     private byte[] _rawJsonBytes;
-    private BenchmarkNewPayloadBlockTree _blockTree;
     private BenchmarkProcessingQueue _processingQueue;
     private NewPayloadHandler _newPayloadHandler;
     private TimedTransactionProcessor _timedTransactionProcessor;
@@ -130,7 +124,6 @@ public class GasNewPayloadBenchmarks
 
         BlockBenchmarkHelper.ExecuteSetupPayload(_state, _timedTransactionProcessor, _preBlockHeader, Scenario, _specProvider);
 
-        ReceiptConfig receiptConfig = new();
         _branchProcessor = _scope.Resolve<IBranchProcessor>();
 
         string rawJson = PayloadLoader.ReadRawJson(Scenario.FilePath);
@@ -141,7 +134,6 @@ public class GasNewPayloadBenchmarks
         long parentNumber = (long)initialRequest.ExecutionPayload.BlockNumber - 1;
         _preBlockHeader.Number = parentNumber >= 0 ? parentNumber : 0;
 
-        _blockTree = new BenchmarkNewPayloadBlockTree(_preBlockHeader);
         RecoverSignatures recoverSignatures = _scope.Resolve<RecoverSignatures>();
         _processingQueue = new BenchmarkProcessingQueue(
             _branchProcessor,
@@ -149,28 +141,18 @@ public class GasNewPayloadBenchmarks
             recoverSignatures,
             this);
 
-        MergeConfig mergeConfig = new()
+        // Create a child scope with runtime-dependent overrides and resolve NewPayloadHandler from DI.
+        // Autofac auto-wires all 14 constructor parameters from registered services.
+        // If NewPayloadHandler's constructor changes, the benchmark adapts automatically.
+        _newPayloadScope = _scope.BeginLifetimeScope(childBuilder =>
         {
-            // Benchmark iterations replay the same block hash, so cache must be disabled.
-            NewPayloadCacheSize = 0,
-            SimulateBlockProduction = false,
-        };
-
-        _newPayloadHandler = new NewPayloadHandler(
-            new NoopPayloadPreparationService(),
-            Always.Valid,
-            _blockTree,
-            AlwaysPoS.Instance,
-            Nethermind.Synchronization.No.BeaconSync,
-            new StaticBeaconPivot(_preBlockHeader),
-            new BlockCacheService(),
-            _processingQueue,
-            new NoopInvalidChainTracker(),
-            new NoopMergeSyncController(),
-            mergeConfig,
-            receiptConfig,
-            BlockBenchmarkHelper.CreateStateReader(_state),
-            LimboLogs.Instance);
+            childBuilder
+                .AddSingleton<IBlockTree>(new BenchmarkSingleParentBlockTree(_preBlockHeader, isBetterThanHead: false))
+                .AddSingleton<IBeaconPivot>(new BenchmarkMergeStubs.StaticBeaconPivot(_preBlockHeader))
+                .AddSingleton<IBlockProcessingQueue>(_processingQueue)
+                .AddSingleton<NewPayloadHandler>();
+        });
+        _newPayloadHandler = _newPayloadScope.Resolve<NewPayloadHandler>();
 
         ExecuteNewPayload(initialRequest, collectTiming: false);
 
@@ -307,57 +289,15 @@ public class GasNewPayloadBenchmarks
             executionRequests);
     }
 
-    private void AddQueueTiming(Block block, long senderRecoveryTicks, long blockProcessTicks, long queueTotalTicks)
+    internal void AddQueueTiming(Block block, long senderRecoveryTicks, long blockProcessTicks, long queueTotalTicks)
     {
         _senderRecoveryTicks += senderRecoveryTicks;
         _blockProcessTicks += blockProcessTicks;
         _queueTotalTicks += queueTotalTicks;
-        AddSenderRecoveryTypeBreakdown(block, senderRecoveryTicks);
+        TimingReportHelper.AddSenderRecoveryTypeBreakdown(block, senderRecoveryTicks, _senderRecoveryByTypeTicks, _senderRecoveryByTypeCount);
     }
 
-    private void AddSenderRecoveryTypeBreakdown(Block block, long elapsedTicks)
-    {
-        int txCount = block.Transactions.Length;
-        if (txCount == 0)
-        {
-            return;
-        }
-
-        int[] countsPerType = new int[_senderRecoveryByTypeCount.Length];
-        int firstTypeIndex = -1;
-        for (int i = 0; i < txCount; i++)
-        {
-            int txTypeIndex = (int)block.Transactions[i].Type;
-            if (firstTypeIndex == -1)
-            {
-                firstTypeIndex = txTypeIndex;
-            }
-
-            countsPerType[txTypeIndex]++;
-            _senderRecoveryByTypeCount[txTypeIndex]++;
-        }
-
-        long allocatedTicks = 0;
-        for (int txTypeIndex = 0; txTypeIndex < countsPerType.Length; txTypeIndex++)
-        {
-            int count = countsPerType[txTypeIndex];
-            if (count == 0)
-            {
-                continue;
-            }
-
-            long typeTicks = elapsedTicks * count / txCount;
-            _senderRecoveryByTypeTicks[txTypeIndex] += typeTicks;
-            allocatedTicks += typeTicks;
-        }
-
-        if (firstTypeIndex >= 0 && allocatedTicks != elapsedTicks)
-        {
-            _senderRecoveryByTypeTicks[firstTypeIndex] += elapsedTicks - allocatedTicks;
-        }
-    }
-
-    private void AddTxExecutionTiming(TxType txType, long elapsedTicks)
+    public void AddTxExecutionTiming(TxType txType, long elapsedTicks)
     {
         _txExecutionTicks += elapsedTicks;
         _txExecutionCount++;
@@ -429,14 +369,15 @@ public class GasNewPayloadBenchmarks
 
         _newPayloadHandler?.Dispose();
         _preWarmer?.ClearCaches();
+        _newPayloadScope?.Dispose();
         _scope?.Dispose();
         _containerLifetime?.Dispose();
         _newPayloadHandler = null;
         _processingQueue = null;
-        _blockTree = null;
         _rawJsonBytes = null;
         _branchProcessor = null;
         _state = null;
+        _newPayloadScope = null;
         _scope = null;
         _containerLifetime = null;
         _timedTransactionProcessor = null;
@@ -640,7 +581,13 @@ public class GasNewPayloadBenchmarks
         TimingReportHelper.PrintTxTypeBreakdown(writer, "Sender recovery by type", s.SenderRecoveryByTypeTicks, s.SenderRecoveryByTypeCount, senderRecoveryMs);
     }
 
-    private sealed class BenchmarkProcessingQueue : IBlockProcessingQueue
+    /// <summary>
+    /// Synchronous block processing queue for NewPayload benchmarks.
+    /// Implements <see cref="IBlockProcessingQueue"/> so that <see cref="NewPayloadHandler"/>
+    /// (resolved from DI) can enqueue blocks the same way it does in production.
+    /// Collects per-stage timing breakdowns when <see cref="CollectTiming"/> is set.
+    /// </summary>
+    internal sealed class BenchmarkProcessingQueue : IBlockProcessingQueue
     {
         private readonly IBranchProcessor _branchProcessor;
         private readonly BlockHeader _parentHeader;
@@ -733,36 +680,6 @@ public class GasNewPayloadBenchmarks
         }
     }
 
-    private sealed class TimedTransactionProcessor(ITransactionProcessor inner, GasNewPayloadBenchmarks owner) : ITransactionProcessor
-    {
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
-        {
-            long start = Stopwatch.GetTimestamp();
-            TransactionResult result = inner.Execute(transaction, txTracer);
-            long elapsedTicks = Stopwatch.GetTimestamp() - start;
-            owner.AddTxExecutionTiming(transaction.Type, elapsedTicks);
-            return result;
-        }
-
-        public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
-            inner.CallAndRestore(transaction, txTracer);
-
-        public TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer) =>
-            inner.BuildUp(transaction, txTracer);
-
-        public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
-            inner.Trace(transaction, txTracer);
-
-        public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
-            inner.Warmup(transaction, txTracer);
-
-        public void SetBlockExecutionContext(BlockHeader blockHeader) =>
-            inner.SetBlockExecutionContext(blockHeader);
-
-        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
-            inner.SetBlockExecutionContext(in blockExecutionContext);
-    }
-
     private sealed record TimingBreakdownSummary
     {
         public TimingBreakdownSummary(
@@ -821,135 +738,4 @@ public class GasNewPayloadBenchmarks
         public long[] TxExecutionByTypeTicks { get; init; }
         public int[] TxExecutionByTypeCount { get; init; }
     }
-
-    /// <summary>
-    /// Block tree stub for NewPayload benchmarks. Knows about the parent header and
-    /// provides BlockInfo for GetInfo/FindCanonicalBlockInfo (needed by NewPayloadHandler).
-    /// IsBetterThanHead returns false — the handler drives processing, not the tree.
-    /// </summary>
-    private sealed class BenchmarkNewPayloadBlockTree : BenchmarkBlockTreeBase
-    {
-        private readonly BlockHeader _parentHeader;
-        private readonly Block _head;
-        private readonly BlockInfo _parentInfo;
-
-        public BenchmarkNewPayloadBlockTree(BlockHeader parentHeader)
-        {
-            _parentHeader = parentHeader;
-            _head = new Block(parentHeader, new BlockBody(Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), null));
-            _parentInfo = new BlockInfo(parentHeader.Hash, parentHeader.TotalDifficulty ?? UInt256.Zero)
-            {
-                WasProcessed = true,
-                BlockNumber = parentHeader.Number,
-            };
-            BestSuggestedHeader = parentHeader;
-        }
-
-        public override Hash256 HeadHash => _head.Hash;
-        public override Hash256 GenesisHash => Keccak.Zero;
-        public override Block Head => _head;
-        public override BlockHeader Genesis => _parentHeader;
-        public override Block BestSuggestedBody => _head;
-        public override BlockHeader BestSuggestedBeaconHeader => _parentHeader;
-        public override long BestKnownNumber => _parentHeader.Number;
-        public override long BestKnownBeaconNumber => _parentHeader.Number;
-        public override long GetLowestBlock() => _parentHeader.Number;
-
-        public override Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
-            blockHash == _parentHeader.Hash ? _head : null;
-        public override Block FindBlock(long blockNumber, BlockTreeLookupOptions options) =>
-            blockNumber == _parentHeader.Number ? _head : null;
-        public override bool HasBlock(long blockNumber, Hash256 blockHash) =>
-            blockNumber == _parentHeader.Number && blockHash == _parentHeader.Hash;
-        public override BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
-            blockHash == _parentHeader.Hash ? _parentHeader : null;
-        public override BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) =>
-            blockNumber == _parentHeader.Number ? _parentHeader : null;
-        public override Hash256 FindBlockHash(long blockNumber) =>
-            blockNumber == _parentHeader.Number ? _parentHeader.Hash : null;
-        public override Hash256 FindHash(long blockNumber) =>
-            blockNumber == _parentHeader.Number ? _parentHeader.Hash : null;
-        public override bool IsMainChain(BlockHeader blockHeader) => blockHeader?.Hash == _parentHeader.Hash;
-        public override bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) => blockHash == _parentHeader.Hash;
-        public override bool IsKnownBlock(long number, Hash256 blockHash) =>
-            number == _parentHeader.Number && blockHash == _parentHeader.Hash;
-        public override bool IsKnownBeaconBlock(long number, Hash256 blockHash) =>
-            number == _parentHeader.Number && blockHash == _parentHeader.Hash;
-        public override bool WasProcessed(long number, Hash256 blockHash) =>
-            number == _parentHeader.Number && blockHash == _parentHeader.Hash;
-
-        public override (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Hash256 blockHash) =>
-            number == _parentHeader.Number && blockHash == _parentHeader.Hash ? (_parentInfo, null) : (null, null);
-        public override BlockInfo FindCanonicalBlockInfo(long blockNumber) => _parentInfo;
-        public override bool IsBetterThanHead(BlockHeader header) => false;
-    }
-
-#nullable enable
-    private sealed class NoopPayloadPreparationService : IPayloadPreparationService
-    {
-        public string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes) => null;
-
-        public ValueTask<IBlockProductionContext?> GetPayload(string payloadId, bool skipCancel = false)
-            => ValueTask.FromResult<IBlockProductionContext?>(null);
-
-        public void CancelBlockProduction(string payloadId) { }
-    }
-#nullable disable
-
-    private sealed class NoopMergeSyncController : IMergeSyncController
-    {
-        public void StopSyncing() { }
-
-        public bool TryInitBeaconHeaderSync(BlockHeader blockHeader) => false;
-
-        public void StopBeaconModeControl() { }
-    }
-
-    private sealed class NoopInvalidChainTracker : IInvalidChainTracker
-    {
-        public void SetChildParent(Hash256 child, Hash256 parent) { }
-
-        public void OnInvalidBlock(Hash256 failedBlock, Hash256 parent) { }
-
-        public bool IsOnKnownInvalidChain(Hash256 blockHash, out Hash256 lastValidHash)
-        {
-            lastValidHash = null;
-            return false;
-        }
-
-        public void Dispose() { }
-    }
-
-    private sealed class StaticBeaconPivot : IBeaconPivot
-    {
-        private readonly BlockHeader _pivot;
-
-        public StaticBeaconPivot(BlockHeader pivot)
-        {
-            _pivot = pivot;
-            ProcessDestination = pivot;
-        }
-
-        public long PivotNumber => _pivot.Number;
-        public Hash256 PivotHash => _pivot.Hash;
-        public Hash256 PivotParentHash => _pivot.ParentHash;
-        public long PivotDestinationNumber => _pivot.Number;
-
-        public BlockHeader ProcessDestination { get; set; }
-
-        public bool ShouldForceStartNewSync { get; set; }
-
-        public void EnsurePivot(BlockHeader blockHeader, bool updateOnlyIfNull = false)
-        {
-            if (!updateOnlyIfNull || ProcessDestination is null)
-            {
-                ProcessDestination = blockHeader;
-            }
-        }
-
-        public void RemoveBeaconPivot() { }
-
-        public bool BeaconPivotExists() => true;
-    }
-
 }

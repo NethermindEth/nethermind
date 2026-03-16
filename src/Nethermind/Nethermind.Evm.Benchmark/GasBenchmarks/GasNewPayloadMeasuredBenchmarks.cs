@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 /// decoding, RLP transaction decoding, and block construction on top of block processing.
 /// </summary>
 [Config(typeof(GasBenchmarkConfig))]
-public class GasNewPayloadMeasuredBenchmarks
+public class GasNewPayloadMeasuredBenchmarks : ITxExecutionTimingCollector
 {
     internal const string TimingFileEnvVar = "NETHERMIND_NEWPAYLOAD_TIMING_FILE";
     internal const string TimingReportFileEnvVar = "NETHERMIND_NEWPAYLOAD_TIMING_REPORT_FILE";
@@ -131,7 +131,7 @@ public class GasNewPayloadMeasuredBenchmarks
         _iterationCount++;
     }
 
-    private void AddTxExecutionTiming(TxType txType, long elapsedTicks)
+    public void AddTxExecutionTiming(TxType txType, long elapsedTicks)
     {
         _txExecutionTicks += elapsedTicks;
         _txExecutionCount++;
@@ -233,7 +233,7 @@ public class GasNewPayloadMeasuredBenchmarks
             _recoverSignatures.RecoverData(block);
             long elapsedTicks = Stopwatch.GetTimestamp() - start;
             _senderRecoveryTicks += elapsedTicks;
-            AddSenderRecoveryTypeBreakdown(block, elapsedTicks);
+            TimingReportHelper.AddSenderRecoveryTypeBreakdown(block, elapsedTicks, _senderRecoveryByTypeTicks, _senderRecoveryByTypeCount);
         }
         else
         {
@@ -241,48 +241,6 @@ public class GasNewPayloadMeasuredBenchmarks
         }
 
         return block;
-    }
-
-    private void AddSenderRecoveryTypeBreakdown(Block block, long elapsedTicks)
-    {
-        int txCount = block.Transactions.Length;
-        if (txCount == 0)
-        {
-            return;
-        }
-
-        int[] countsPerType = new int[_senderRecoveryByTypeCount.Length];
-        int firstTypeIndex = -1;
-        for (int i = 0; i < txCount; i++)
-        {
-            int txTypeIndex = (int)block.Transactions[i].Type;
-            if (firstTypeIndex == -1)
-            {
-                firstTypeIndex = txTypeIndex;
-            }
-
-            countsPerType[txTypeIndex]++;
-            _senderRecoveryByTypeCount[txTypeIndex]++;
-        }
-
-        long allocatedTicks = 0;
-        for (int txTypeIndex = 0; txTypeIndex < countsPerType.Length; txTypeIndex++)
-        {
-            int count = countsPerType[txTypeIndex];
-            if (count == 0)
-            {
-                continue;
-            }
-
-            long typeTicks = elapsedTicks * count / txCount;
-            _senderRecoveryByTypeTicks[txTypeIndex] += typeTicks;
-            allocatedTicks += typeTicks;
-        }
-
-        if (firstTypeIndex >= 0 && allocatedTicks != elapsedTicks)
-        {
-            _senderRecoveryByTypeTicks[firstTypeIndex] += elapsedTicks - allocatedTicks;
-        }
     }
 
     [GlobalCleanup]
@@ -502,36 +460,6 @@ public class GasNewPayloadMeasuredBenchmarks
         writer.WriteLine($"    {"Recovered txs",-18} {senderRecoveryCount,9} tx");
         writer.WriteLine($"    {"Avg per tx",-18} {TimingReportHelper.GetAverage(senderRecoveryMs, senderRecoveryCount),9:F3} ms/tx");
         TimingReportHelper.PrintTxTypeBreakdown(writer, "Sender recovery by type", s.SenderRecoveryByTypeTicks, s.SenderRecoveryByTypeCount, senderRecoveryMs);
-    }
-
-    private sealed class TimedTransactionProcessor(ITransactionProcessor inner, GasNewPayloadMeasuredBenchmarks owner) : ITransactionProcessor
-    {
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
-        {
-            long start = Stopwatch.GetTimestamp();
-            TransactionResult result = inner.Execute(transaction, txTracer);
-            long elapsedTicks = Stopwatch.GetTimestamp() - start;
-            owner.AddTxExecutionTiming(transaction.Type, elapsedTicks);
-            return result;
-        }
-
-        public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
-            inner.CallAndRestore(transaction, txTracer);
-
-        public TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer) =>
-            inner.BuildUp(transaction, txTracer);
-
-        public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
-            inner.Trace(transaction, txTracer);
-
-        public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
-            inner.Warmup(transaction, txTracer);
-
-        public void SetBlockExecutionContext(BlockHeader blockHeader) =>
-            inner.SetBlockExecutionContext(blockHeader);
-
-        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
-            inner.SetBlockExecutionContext(in blockExecutionContext);
     }
 
     private sealed record TimingBreakdownSummary

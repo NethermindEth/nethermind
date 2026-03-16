@@ -16,7 +16,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
@@ -32,6 +31,7 @@ public class GasBlockBuildingBenchmarks
     internal const string BuildBlocksOnMainStateEnvVar = "NETHERMIND_BLOCKBUILDING_MAIN_STATE";
 
     private ILifetimeScope _scope;
+    private ILifetimeScope _blockchainScope;
     private IDisposable _containerLifetime;
     private IBlockchainProcessor _chainProcessor;
     private BlockHeader _chainParentHeader;
@@ -85,17 +85,17 @@ public class GasBlockBuildingBenchmarks
         BlockBenchmarkHelper.ExecuteSetupPayload(state, txProcessor, preBlockHeader, Scenario, specProvider);
         _chainParentHeader.StateRoot = preBlockHeader.StateRoot;
 
-        IBranchProcessor branchProcessor = _scope.Resolve<IBranchProcessor>();
-        RecoverSignatures recoverSignatures = _scope.Resolve<RecoverSignatures>();
-
-        BlockchainProcessor blockchainProcessor = new(
-            new BenchmarkBlockProducerBlockTree(_chainParentHeader),
-            branchProcessor,
-            recoverSignatures,
-            BlockBenchmarkHelper.CreateStateReader(state),
-            LimboLogs.Instance,
-            BlockBenchmarkHelper.GetBlockBuildingBlockchainProcessorOptions(blocksConfig),
-            new NoopProcessingStats());
+        // Create a child scope with parent-header-dependent overrides and resolve
+        // BlockchainProcessor from DI. Autofac auto-wires its constructor parameters
+        // (IBlockTree, IBranchProcessor, IBlockPreprocessorStep, IStateReader, ILogManager,
+        // BlockchainProcessor.Options, IProcessingStats) from registered services.
+        _blockchainScope = _scope.BeginLifetimeScope(childBuilder =>
+        {
+            childBuilder
+                .AddSingleton<IBlockTree>(new BenchmarkSingleParentBlockTree(_chainParentHeader))
+                .AddSingleton(BlockBenchmarkHelper.GetBlockBuildingBlockchainProcessorOptions(blocksConfig));
+        });
+        BlockchainProcessor blockchainProcessor = _blockchainScope.Resolve<BlockchainProcessor>();
         _chainProcessor = new OneTimeChainProcessor(state, blockchainProcessor);
 
         // Warm up and verify correctness.
@@ -147,8 +147,10 @@ public class GasBlockBuildingBenchmarks
 
         _chainProcessor?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _preWarmer?.ClearCaches();
+        _blockchainScope?.Dispose();
         _scope?.Dispose();
         _containerLifetime?.Dispose();
+        _blockchainScope = null;
         _scope = null;
         _containerLifetime = null;
         _chainProcessor = null;
@@ -159,70 +161,4 @@ public class GasBlockBuildingBenchmarks
         _testUncles = null;
         _testWithdrawals = null;
     }
-
-    private sealed class NoopProcessingStats : IProcessingStats
-    {
-        event EventHandler<BlockStatistics> IProcessingStats.NewProcessingStatistics
-        {
-            add { }
-            remove { }
-        }
-
-        public void Start() { }
-
-        public void CaptureStartStats() { }
-
-        public void UpdateStats(Block block, BlockHeader baseBlock, long blockProcessingTimeInMicros) { }
-    }
-
-    /// <summary>
-    /// Block tree stub for block-building benchmarks. Knows about the parent header
-    /// so BlockchainProcessor can find the parent block/header during production.
-    /// </summary>
-    private sealed class BenchmarkBlockProducerBlockTree : BenchmarkBlockTreeBase
-    {
-        private readonly BlockHeader _parentHeader;
-        private readonly Block _head;
-
-        public BenchmarkBlockProducerBlockTree(BlockHeader parentHeader)
-        {
-            _parentHeader = parentHeader;
-            _head = new Block(parentHeader, new BlockBody(Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), null));
-            BestSuggestedHeader = parentHeader;
-        }
-
-        public override Hash256 HeadHash => _head.Hash;
-        public override Hash256 GenesisHash => _parentHeader.Hash;
-        public override Block Head => _head;
-        public override BlockHeader Genesis => _parentHeader;
-        public override Block BestSuggestedBody => _head;
-        public override BlockHeader BestSuggestedBeaconHeader => _parentHeader;
-        public override long BestKnownNumber => _parentHeader.Number;
-        public override long BestKnownBeaconNumber => _parentHeader.Number;
-        public override long GetLowestBlock() => _parentHeader.Number;
-
-        public override Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
-            blockHash == _parentHeader.Hash ? _head : null;
-        public override Block FindBlock(long blockNumber, BlockTreeLookupOptions options) =>
-            blockNumber == _parentHeader.Number ? _head : null;
-        public override bool HasBlock(long blockNumber, Hash256 blockHash) =>
-            blockNumber == _parentHeader.Number && blockHash == _parentHeader.Hash;
-        public override BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
-            blockHash == _parentHeader.Hash ? _parentHeader : null;
-        public override BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) =>
-            blockNumber == _parentHeader.Number ? _parentHeader : null;
-        public override Hash256 FindBlockHash(long blockNumber) =>
-            blockNumber == _parentHeader.Number ? _parentHeader.Hash : null;
-        public override Hash256 FindHash(long blockNumber) =>
-            blockNumber == _parentHeader.Number ? _parentHeader.Hash : null;
-        public override bool IsMainChain(BlockHeader blockHeader) => blockHeader?.Hash == _parentHeader.Hash;
-        public override bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) => blockHash == _parentHeader.Hash;
-        public override bool IsKnownBlock(long number, Hash256 blockHash) =>
-            number == _parentHeader.Number && blockHash == _parentHeader.Hash;
-        public override bool IsKnownBeaconBlock(long number, Hash256 blockHash) =>
-            number == _parentHeader.Number && blockHash == _parentHeader.Hash;
-        public override bool WasProcessed(long number, Hash256 blockHash) =>
-            number == _parentHeader.Number && blockHash == _parentHeader.Hash;
-    }
-
 }

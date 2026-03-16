@@ -91,4 +91,50 @@ internal static class TimingReportHelper
     }
 
     public static double TicksToMs(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
+
+    /// <summary>
+    /// Distributes sender-recovery elapsed ticks across transaction types proportionally.
+    /// Shared between NewPayload and NewPayloadMeasured benchmarks.
+    /// </summary>
+    public static void AddSenderRecoveryTypeBreakdown(Block block, long elapsedTicks, long[] byTypeTicks, int[] byTypeCount)
+    {
+        int txCount = block.Transactions.Length;
+        if (txCount == 0)
+        {
+            return;
+        }
+
+        int[] countsPerType = new int[byTypeCount.Length];
+        int firstTypeIndex = -1;
+        for (int i = 0; i < txCount; i++)
+        {
+            int txTypeIndex = (int)block.Transactions[i].Type;
+            if (firstTypeIndex == -1)
+            {
+                firstTypeIndex = txTypeIndex;
+            }
+
+            countsPerType[txTypeIndex]++;
+            byTypeCount[txTypeIndex]++;
+        }
+
+        long allocatedTicks = 0;
+        for (int txTypeIndex = 0; txTypeIndex < countsPerType.Length; txTypeIndex++)
+        {
+            int count = countsPerType[txTypeIndex];
+            if (count == 0)
+            {
+                continue;
+            }
+
+            long typeTicks = elapsedTicks * count / txCount;
+            byTypeTicks[txTypeIndex] += typeTicks;
+            allocatedTicks += typeTicks;
+        }
+
+        if (firstTypeIndex >= 0 && allocatedTicks != elapsedTicks)
+        {
+            byTypeTicks[firstTypeIndex] += elapsedTicks - allocatedTicks;
+        }
+    }
 }
