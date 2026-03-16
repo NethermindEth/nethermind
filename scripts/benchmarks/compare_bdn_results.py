@@ -11,6 +11,9 @@ import sys
 # Must stay in sync with the constant in GasBenchmarkColumnProvider.cs.
 GAS_PER_BENCHMARK = 100_000_000
 SIGNIFICANT_CHANGE_THRESHOLD = 3.0  # % change to flag as regression/improvement
+# Scenarios completing in <10ms didn't execute the full 100M gas payload (e.g. nonce mismatch
+# after state mutation). Their MGas/s is meaningless — flag as INVALID and exclude from comparison.
+MAX_REALISTIC_MGAS = 10_000.0
 
 
 def extract_scenario(benchmark):
@@ -47,14 +50,16 @@ def load_results(filepath):
         stddev_ns = stats.get("StandardDeviation", 0)
         ci99_lower = stats.get("ConfidenceInterval", {}).get("Lower", mean_ns)
         ci99_upper = stats.get("ConfidenceInterval", {}).get("Upper", mean_ns)
+        mgas = mgas_per_second(mean_ns)
         results[scenario] = {
             "mean_ns": mean_ns,
             "mean_ms": ns_to_ms(mean_ns),
-            "mgas": mgas_per_second(mean_ns),
+            "mgas": mgas,
             "stddev_ns": stddev_ns,
             "stddev_ms": ns_to_ms(stddev_ns),
             "ci_lower_ms": ns_to_ms(ci99_lower),
             "ci_upper_ms": ns_to_ms(ci99_upper),
+            "invalid": mgas > MAX_REALISTIC_MGAS,
         }
     return results
 
@@ -85,11 +90,13 @@ def main():
     matched = 0
     new_count = 0
     removed_count = 0
+    invalid_count = 0
 
     # Determine regressions and improvements
     regressions = []
     improvements = []
     neutral = []
+    invalid_scenarios = []
 
     for scenario in all_scenarios:
         b = baseline.get(scenario)
@@ -102,6 +109,12 @@ def main():
         if p is None:
             removed_count += 1
             neutral.append((scenario, b, p, 0.0))
+            continue
+
+        # Skip scenarios that didn't execute the full payload (sub-ms completion = nonce/state failure)
+        if (b and b.get("invalid")) or (p and p.get("invalid")):
+            invalid_count += 1
+            invalid_scenarios.append(scenario)
             continue
 
         matched += 1
@@ -126,6 +139,8 @@ def main():
 
     # Summary line
     parts = ["{} scenarios compared".format(matched)]
+    if invalid_count:
+        parts.append("{} invalid (state-dependent)".format(invalid_count))
     if new_count:
         parts.append("{} new".format(new_count))
     if removed_count:
@@ -133,6 +148,16 @@ def main():
     lines.append("{} | {} regressions | {} improvements | threshold: +/-{:.0f}%".format(
         " | ".join(parts), len(regressions), len(improvements), SIGNIFICANT_CHANGE_THRESHOLD))
     lines.append("")
+
+    if invalid_scenarios:
+        lines.append("<details>")
+        lines.append("<summary>:grey_question: {} invalid scenarios (completed too fast — state-dependent payload failure)</summary>".format(invalid_count))
+        lines.append("")
+        for s in sorted(invalid_scenarios):
+            lines.append("- `{}`".format(s))
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
 
     has_regressions = len(regressions) > 0
     has_improvements = len(improvements) > 0

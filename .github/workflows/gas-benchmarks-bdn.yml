@@ -239,6 +239,18 @@ jobs:
           sudo nice -n -20 taskset -c 2-5 \
             "$DOTNET_BIN" src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll $ARGS
 
+      - name: Rename results for merge safety
+        if: always()
+        shell: bash
+        run: |
+          # BDN writes the same filename for every chunk. Rename to include chunk number
+          # so merge-multiple doesn't clobber files when flattening into one directory.
+          for f in BenchmarkDotNet.Artifacts/results/*-full.json; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f" -full.json)
+            mv "$f" "BenchmarkDotNet.Artifacts/results/${base}-chunk${{ matrix.chunk }}-full.json"
+          done
+
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4

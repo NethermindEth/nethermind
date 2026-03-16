@@ -21,6 +21,13 @@ public class GasBenchmarkColumnProvider : IColumnProvider
 
     public IEnumerable<IColumn> GetColumns(Summary summary) => Columns;
 
+    /// <summary>
+    /// Realistic upper bound for MGas/s. A 100M-gas payload completing in &lt;10ms would be 10,000 MGas/s.
+    /// Anything above this means the scenario didn't actually execute the full payload (e.g. nonce
+    /// mismatch after state mutation), so the MGas/s value is meaningless.
+    /// </summary>
+    private const double MaxRealisticMGasPerSecond = 10_000.0;
+
     private static double CalculateMGasThroughput(double nanoseconds)
     {
         // All gas-benchmark payloads use exactly 100M gas by design (filenames contain "gas-value_100M").
@@ -28,6 +35,14 @@ public class GasBenchmarkColumnProvider : IColumnProvider
         const long gas = 100_000_000L;
         double opThroughput = 1_000_000_000.0 / nanoseconds;
         return gas * opThroughput / 1_000_000.0;
+    }
+
+    private static string FormatMGasThroughput(double mgas)
+    {
+        if (mgas > MaxRealisticMGasPerSecond)
+            return "INVALID";
+
+        return mgas.ToString("F2");
     }
 
     private static Statistics FindStatistics(Summary summary, BenchmarkCase benchmarkCase)
@@ -58,7 +73,7 @@ public class GasBenchmarkColumnProvider : IColumnProvider
             if (stats is null)
                 return "N/A";
 
-            return CalculateMGasThroughput(stats.Mean).ToString("F2");
+            return FormatMGasThroughput(CalculateMGasThroughput(stats.Mean));
         }
 
         public string GetValue(Summary summary, BenchmarkCase benchmarkCase, SummaryStyle style)
@@ -89,7 +104,7 @@ public class GasBenchmarkColumnProvider : IColumnProvider
             // CI bounds are in nanoseconds: lower ns = faster = higher MGas/s.
             // Invert the mapping so CI-Lower shows the lower MGas/s bound (from higher ns).
             double bound = isLower ? ci.Upper : ci.Lower;
-            return CalculateMGasThroughput(bound).ToString("F2");
+            return FormatMGasThroughput(CalculateMGasThroughput(bound));
         }
 
         public string GetValue(Summary summary, BenchmarkCase benchmarkCase, SummaryStyle style)
