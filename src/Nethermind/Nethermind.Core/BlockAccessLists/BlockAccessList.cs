@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
+
+[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
+[assembly: InternalsVisibleTo("Nethermind.State.Test")]
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -377,6 +381,14 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         foreach (AccountChanges change in accountChanges)
         {
             _accountChanges.Add(change.Address, change);
+        }
+    }
+    
+    internal void RemoveAccountChanges(params Address[] addresses)
+    {
+        foreach (Address address in addresses)
+        {
+            _accountChanges.Remove(address);
         }
     }
 

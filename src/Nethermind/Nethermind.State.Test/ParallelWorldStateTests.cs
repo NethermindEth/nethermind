@@ -77,8 +77,8 @@ public class ParallelWorldStateTests
         return bal;
     }
 
-    [TestCase(true, 50u, 100u, 150u, Description = "AddToBalance")]
-    [TestCase(false, 30u, 100u, 70u, Description = "SubtractFromBalance")]
+    [TestCase(true, 50u, 100u, 150u, TestName = "AddToBalance")]
+    [TestCase(false, 30u, 100u, 70u, TestName = "SubtractFromBalance")]
     public void BalanceOp_TracingEnabled_RecordsBalanceChange(
         bool isAdd, uint delta, uint initialBalance, uint expectedBalance)
     {
@@ -106,8 +106,8 @@ public class ParallelWorldStateTests
         }
     }
 
-    [TestCase(true, 1ul, 1ul, Description = "IncrementNonce")]
-    [TestCase(false, 5ul, 5ul, Description = "SetNonce")]
+    [TestCase(true, 1ul, 1ul, TestName = "IncrementNonce")]
+    [TestCase(false, 5ul, 5ul, TestName = "SetNonce")]
     public void NonceOp_TracingEnabled_RecordsNonceChange(
         bool isIncrement, ulong value, ulong expectedNonce)
     {
@@ -131,7 +131,6 @@ public class ParallelWorldStateTests
                 Assert.That(ac!.NonceChanges, Has.Count.EqualTo(1));
                 Assert.That(ac.NonceChanges[0].NewNonce, Is.EqualTo(expectedNonce));
             }
-
         }
     }
 
@@ -153,7 +152,6 @@ public class ParallelWorldStateTests
                 Assert.That(ac!.CodeChanges, Has.Count.EqualTo(1));
                 Assert.That(ac.CodeChanges[0].NewCode, Is.EquivalentTo(code));
             }
-
         }
     }
 
@@ -174,12 +172,11 @@ public class ParallelWorldStateTests
                 Assert.That(ac!.StorageChanges, Has.Count.EqualTo(1));
                 Assert.That(ac.StorageChanges[0].Slot, Is.EqualTo((UInt256)1));
             }
-
         }
     }
 
-    [TestCase(false, Description = "Get_RecordsStorageRead")]
-    [TestCase(true, Description = "GetOriginal_RecordsStorageRead")]
+    [TestCase(false, TestName = "Get_RecordsStorageRead")]
+    [TestCase(true, TestName = "GetOriginal_RecordsStorageRead")]
     public void StorageRead_TracingEnabled_RecordsStorageRead(bool useGetOriginal)
     {
         StorageCell cell = new(TestItem.AddressA, 2);
@@ -190,11 +187,14 @@ public class ParallelWorldStateTests
             // GetOriginal requires a prior Get call within the same caching round.
             _ = pws.Get(cell, blockAccessIndex: 0);
             if (useGetOriginal)
+            {
                 _ = pws.GetOriginal(cell, blockAccessIndex: 0);
+            }
 
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             Assert.That(ac, Is.Not.Null);
-            Assert.That(ac!.StorageReads.Count(r => r.Key == (UInt256)2), Is.EqualTo(1));
+            Assert.That(ac!.StorageReads, Has.Count.EqualTo(1));
+            Assert.That(ac!.StorageReads.First().Key, Is.EqualTo((UInt256)2));
         }
     }
 
@@ -298,15 +298,14 @@ public class ParallelWorldStateTests
         }
     }
 
-    [TestCase(false, Description = "AccountExists")]
-    [TestCase(true, Description = "IsDeadAccount")]
+    [TestCase(false, TestName = "AccountExists")]
+    [TestCase(true, TestName = "IsDeadAccount")]
     public void AccountExistsOrIsDeadAccount_TracingEnabled_RecordsAccountRead(bool checkDead)
     {
         (ParallelWorldState pws, IDisposable scope) = CreateTracingState(ws =>
             ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            // An account with zero balance, nonce and no code is both existent and dead.
             bool result = checkDead
                 ? pws.IsDeadAccount(TestItem.AddressA, blockAccessIndex: 0)
                 : pws.AccountExists(TestItem.AddressA, blockAccessIndex: 0);
@@ -337,8 +336,8 @@ public class ParallelWorldStateTests
         }
     }
 
-    [TestCase(200u, 5u, 1, 1, Description = "NonZeroBalanceAndNonce")]
-    [TestCase(0u, 0u, 0, 0, Description = "ZeroBalanceAndNonce_OnlyAccountRead")]
+    [TestCase(200u, 5u, 1, 1, TestName = "NonZeroBalanceAndNonce")]
+    [TestCase(0u, 0u, 0, 0, TestName = "ZeroBalanceAndNonce_OnlyAccountRead")]
     public void CreateAccount_TracingEnabled_RecordsChanges(
         uint balance, uint nonce, int expectedBalChanges, int expectedNonceChanges)
     {
@@ -395,7 +394,6 @@ public class ParallelWorldStateTests
             pws.AddAccountRead(TestItem.AddressA, blockAccessIndex: 0);
 
             Assert.That(pws.GeneratedBlockAccessList.HasAccount(TestItem.AddressA), Is.True);
-            // AddAccountRead is a pure read – no balance or nonce changes expected.
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
@@ -593,8 +591,8 @@ public class ParallelWorldStateTests
         }
     }
 
-    [TestCase(true, Description = "ExistedBeforeBlock")]
-    [TestCase(false, Description = "CreatedInCurrentTx")]
+    [TestCase(true, TestName = "ExistedBeforeBlock")]
+    [TestCase(false, TestName = "CreatedInCurrentTx")]
     public void AccountExists_ParallelMode_ReturnsTrue(bool existsInGenesis)
     {
         BlockAccessList suggested = BuildSuggestedBal(TestItem.AddressA);
@@ -625,8 +623,8 @@ public class ParallelWorldStateTests
         }
     }
 
-    [TestCase(true, 100u, 3ul, Description = "ExistingAccount")]
-    [TestCase(false, 0u, 0ul, Description = "NonExistentAccount")]
+    [TestCase(true, 100u, 3ul, TestName = "ExistingAccount")]
+    [TestCase(false, 0u, 0ul, TestName = "NonExistentAccount")]
     public void LoadPreBlockState_AccountState_AvailableAtBlockStart(
         bool existsInGenesis, uint expectedBalance, ulong expectedNonce)
     {
@@ -674,7 +672,7 @@ public class ParallelWorldStateTests
     {
         StorageCell cell = new(TestItem.AddressA, 7);
         BlockAccessList suggested = BuildSuggestedBal(TestItem.AddressA);
-        suggested.AddStorageRead(cell); // causes LoadPreBlockState to snapshot slot 7
+        suggested.AddStorageRead(cell); // causes LoadPreBlockState to load slot
         (ParallelWorldState pws, IDisposable scope) = CreateParallelState(
             suggested,
             genesisSetup: ws =>
@@ -701,14 +699,14 @@ public class ParallelWorldStateTests
             // ParallelExecutionEnabled is false in tracing-only mode – method must return early.
             Assert.DoesNotThrow(() => pws.MergeIntermediateBalsUpTo(0));
 
-            // GeneratedBlockAccessList was written to directly (not via intermediates).
+            // GeneratedBlockAccessList was written to directly.
             Assert.That(pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA)!
                 .BalanceChanges, Has.Count.EqualTo(1));
         }
     }
 
-    [TestCase((ushort)0, 150u, Description = "Index0_AssignsIntermediate0")]
-    [TestCase((ushort)1, 130u, Description = "Index1_MergesIntermediate1")]
+    [TestCase((ushort)0, 150u, TestName = "Index0_AssignsIntermediate0")]
+    [TestCase((ushort)1, 130u, TestName = "Index1_MergesIntermediate1")]
     public void MergeIntermediateBalsUpTo_ParallelMode_BalanceChangeAccessible(
         ushort mergeUpTo, uint expectedPostBalance)
     {
@@ -733,8 +731,8 @@ public class ParallelWorldStateTests
         }
     }
 
-    [TestCase(100u, 150u, Description = "BalanceIncrease")]
-    [TestCase(100u, 70u, Description = "BalanceDecrease")]
+    [TestCase(100u, 150u, TestName = "BalanceIncrease")]
+    [TestCase(100u, 70u, TestName = "BalanceDecrease")]
     public void ApplyStateChanges_Balance_AppliedToInnerWorldState(
         uint initialBalance, uint finalBalance)
     {
@@ -837,20 +835,16 @@ public class ParallelWorldStateTests
 
     public enum ValidateScenario
     {
-        /// <summary>Generated and suggested agree exactly – no exception.</summary>
         Matching,
-        /// <summary>Generated has a balance change; suggested expects a different value – throws.</summary>
         BalanceMismatch,
-        /// <summary>Generated has a balance change for A; suggested has no change at that index – throws.</summary>
-        GeneratedHasSurplus,
-        /// <summary>Suggested contains AddressB with a change that generated never produced – throws.</summary>
+        SuggestedHasMissing,
         SuggestedHasSurplus,
     }
 
     [TestCase(ValidateScenario.Matching, false)]
     [TestCase(ValidateScenario.BalanceMismatch, true)]
-    [TestCase(ValidateScenario.GeneratedHasSurplus, true)]
     [TestCase(ValidateScenario.SuggestedHasSurplus, true)]
+    [TestCase(ValidateScenario.SuggestedHasMissing, true)]
     public void ValidateBlockAccessList_Scenarios_MatchingOrThrows(
         ValidateScenario scenario, bool expectThrow)
     {
@@ -875,7 +869,8 @@ public class ParallelWorldStateTests
                 suggested.GetAccountChanges(TestItem.AddressB)!
                     .AddBalanceChange(new(txIndex, 50u));
                 break;
-            // GeneratedHasSurplus: no suggested change at txIndex for A – generated change has no match.
+            case ValidateScenario.SuggestedHasMissing:
+                break;
         }
 
         (ParallelWorldState pws, IDisposable scope) = CreateParallelState(
@@ -888,10 +883,15 @@ public class ParallelWorldStateTests
             });
         using (scope)
         {
-            if (scenario != ValidateScenario.SuggestedHasSurplus)
+            if (scenario != ValidateScenario.SuggestedHasMissing)
             {
                 // Generates BalanceChange(txIndex, 150) for A in intermediate[txIndex].
                 pws.AddToBalance(TestItem.AddressA, 50, Spec, blockAccessIndex: txIndex);
+            }
+
+            if (scenario == ValidateScenario.SuggestedHasMissing)
+            {
+                suggested.RemoveAccountChanges(TestItem.AddressA);
             }
 
             pws.MergeIntermediateBalsUpTo(0);
@@ -911,8 +911,8 @@ public class ParallelWorldStateTests
         }
     }
 
-    [TestCase(0L, true, Description = "InsufficientGas_Throws")]
-    [TestCase(long.MaxValue, false, Description = "SufficientGas_Passes")]
+    [TestCase(0L, true, TestName = "InsufficientGas_Throws")]
+    [TestCase(long.MaxValue, false, TestName = "SufficientGas_Passes")]
     public void ValidateBlockAccessList_GasCheck_BehavesCorrectly(
         long gasRemaining, bool expectThrow)
     {

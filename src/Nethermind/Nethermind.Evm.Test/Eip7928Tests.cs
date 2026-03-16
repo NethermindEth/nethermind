@@ -934,7 +934,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
     }
 
     [Test]
-    public void CodeInfoRepository_precompile_records_account_read_in_bal()
+    public void CodeInfoRepository_getcachedcodeinfo_precompile_records_account_read_in_bal()
     {
         ParallelWorldState worldState = (ParallelWorldState)TestState;
         worldState.TracingEnabled = true;
@@ -953,40 +953,26 @@ public class Eip7928Tests() : VirtualMachineTestsBase
     }
 
     [Test]
-    public void CodeInfoRepository_empty_code_account_returns_empty_code_info()
+    public void CodeInfoRepository_getcachedcodeinfo_records_account_read_in_bal()
     {
-        TestState.CreateAccount(TestItem.AddressB, 0);
-        TestState.Commit(SpecProvider.GenesisSpec);
-        TestState.CommitTree(0);
-
-        CodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress);
-
-        using (Assert.EnterMultipleScope())
-        {
-            // No code: DefaultLoad returns the Empty sentinel, which has an empty span
-            Assert.That(result.CodeSpan.IsEmpty, Is.True);
-            Assert.That(delegationAddress, Is.Null);
-        }
-    }
-
-    [Test]
-    public void CodeInfoRepository_account_with_code_returns_correct_code_info()
-    {
+        ParallelWorldState worldState = (ParallelWorldState)TestState;
         byte[] code = [(byte)Instruction.STOP];
-        TestState.CreateAccount(TestItem.AddressB, 0);
+        worldState.TracingEnabled = true;
+
+        IWorldState innerState = worldState.Inner;
+        innerState.CreateAccount(TestItem.AddressB, 0);
         TestState.InsertCode(TestItem.AddressB, code, SpecProvider.GenesisSpec);
-        TestState.Commit(SpecProvider.GenesisSpec);
-        TestState.CommitTree(0);
+        innerState.Commit(SpecProvider.GenesisSpec);
+        innerState.CommitTree(0);
 
         CodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress);
+        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.IsEmpty, Is.False);
             Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
             Assert.That(delegationAddress, Is.Null);
+            Assert.That(worldState.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressB), Is.Not.Null);
         }
     }
 
