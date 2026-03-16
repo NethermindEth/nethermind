@@ -25,6 +25,7 @@ public sealed class SimulateTxTracer : TxTracer
     private readonly ulong _logIndexStart;
     private readonly List<LogEntry> _logs;
     private readonly Transaction _tx;
+    private readonly bool _isTracingTransfers;
 
     public SimulateTxTracer(
         bool isTracingTransfers,
@@ -42,17 +43,20 @@ public sealed class SimulateTxTracer : TxTracer
         _currentBlockTimestamp = currentBlockTimestamp;
         _txIndex = txIndex;
         _logIndexStart = logIndexStart;
+        _isTracingTransfers = isTracingTransfers;
         IsTracingReceipt = true;
         IsTracingLogs = true;
-        IsTracingActions = isTracingTransfers;
+        IsTracingActions = true;
         _logs = new();
     }
 
+    public int LogCount => _logs.Count;
     public SimulateCallResult? TraceResult { get; set; }
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        if (!_isTracingTransfers) return;
         if (callType == ExecutionType.DELEGATECALL) return;
         if (!value.IsZero)
         {
@@ -63,6 +67,7 @@ public sealed class SimulateTxTracer : TxTracer
     public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
         base.ReportSelfDestruct(address, balance, refundAddress);
+        if (!_isTracingTransfers) return;
         if (!balance.IsZero)
         {
             _logs.Add(TransferLog.CreateSimulateTransfer(address, refundAddress, balance));
@@ -109,19 +114,7 @@ public sealed class SimulateTxTracer : TxTracer
                 Data = output
             },
             ReturnData = [],
-            Status = StatusCode.Failure,
-            Logs = _logs.Select((entry, i) => new Log
-            {
-                Address = entry.Address,
-                Topics = entry.Topics,
-                Data = entry.Data,
-                LogIndex = _logIndexStart + (ulong)i,
-                TransactionHash = _tx.Hash!,
-                TransactionIndex = _txIndex,
-                BlockHash = _currentBlockHash,
-                BlockNumber = _currentBlockNumber,
-                BlockTimestamp = _currentBlockTimestamp
-            }).ToList()
+            Status = StatusCode.Failure
         };
     }
 
