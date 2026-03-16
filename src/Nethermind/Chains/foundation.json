@@ -207,6 +207,8 @@
     "eip7934TransitionTimestamp": "0x6930b057",
     "eip7939TransitionTimestamp": "0x6930b057",
     "eip7951TransitionTimestamp": "0x6930b057",
+    
+    "eip7928TransitionTimestamp": "0x6930b058",
     "depositContractAddress": "0x00000000219ab540356cbb839cbe05303d7705fa",
     "terminalTotalDifficulty": "C70D808A128D7380000",
     "blobSchedule": [
