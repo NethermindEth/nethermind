@@ -30,6 +30,18 @@ public static class DisposableExtensions
         }
     }
 
+    /// <summary>
+    /// Overload for 2-element value tuples where the first element is <see cref="IDisposable"/>.
+    /// Avoids boxing the tuple into <see cref="ITuple"/>;
+    /// the compiler prefers this overload
+    /// for calls like <c>(OwnedResource, long).TryDispose()</c>.
+    /// </summary>
+    public static void TryDispose<T1, T2>(this in (T1, T2) item) where T1 : IDisposable
+    {
+        item.Item1.Dispose();
+        (item.Item2 as IDisposable)?.Dispose();
+    }
+
     public static void DisposeItems<T>(this IEnumerable<T> items) where T : IDisposable
     {
         foreach (T disposable in items)
