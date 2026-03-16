@@ -121,10 +121,10 @@ public class SnappyTests
         byte[] body = Rlp.Encode(new byte[100]).Bytes;
         byte[] payload = Bytes.Concat(packetType, body);
         using DisposableByteBuffer input = allocator.Buffer().AsDisposable();
-        input.WriteBytes(payload);
-
         using DisposableByteBuffer output = allocator.Buffer().AsDisposable();
 
+        input.WriteBytes(payload);
+        
         long activeBefore = allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
 
         encoder.TestEncode(input, output);
