@@ -109,7 +109,19 @@ public sealed class SimulateTxTracer : TxTracer
                 Data = output
             },
             ReturnData = [],
-            Status = StatusCode.Failure
+            Status = StatusCode.Failure,
+            Logs = _logs.Select((entry, i) => new Log
+            {
+                Address = entry.Address,
+                Topics = entry.Topics,
+                Data = entry.Data,
+                LogIndex = _logIndexStart + (ulong)i,
+                TransactionHash = _tx.Hash!,
+                TransactionIndex = _txIndex,
+                BlockHash = _currentBlockHash,
+                BlockNumber = _currentBlockNumber,
+                BlockTimestamp = _currentBlockTimestamp
+            }).ToList()
         };
     }
 

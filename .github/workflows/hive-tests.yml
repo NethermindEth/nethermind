@@ -1,6 +1,7 @@
 name: Hive tests
 
 on:
+  pull_request:
   push:
     tags: ['*']
     branches: [master]
@@ -55,8 +56,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test-suite: ${{ fromJson((
-            github.event_name == 'push' || 
+        test-suite: ${{ fromJson(
+          github.event_name == 'pull_request' && '["ethereum/rpc-compat"]' ||
+          (github.event_name == 'push' ||
             (github.event_name == 'workflow_dispatch' && github.event.inputs.test-suite == 'all')) &&
           '["ethereum/engine","ethereum/graphql","ethereum/rpc-compat","ethereum/sync"]' ||
           format('["{0}"]', github.event.inputs.test-suite)

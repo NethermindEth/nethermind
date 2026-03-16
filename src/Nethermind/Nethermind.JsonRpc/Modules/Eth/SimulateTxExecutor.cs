@@ -199,7 +199,7 @@ public class SimulateTxExecutor<TTrace>(
                     {
                         EvmExceptionType exception = call.Error.EvmException;
                         call.Error.Code = MapEvmExceptionType(exception);
-                        Console.WriteLine($"EXCEPTION: {call.Error.EvmException}");
+                        Console.WriteLine($"EXCEPTION: {call.Error.EvmException}, {call.Error.Code}, {call.Error.Message}");
                         if (exception != EvmExceptionType.Revert)
                         {
                             call.Error.Message = call.Error.EvmException.GetEvmExceptionDescription();
