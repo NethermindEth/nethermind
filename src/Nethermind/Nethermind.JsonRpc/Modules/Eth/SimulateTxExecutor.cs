@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -198,6 +199,7 @@ public class SimulateTxExecutor<TTrace>(
                     {
                         EvmExceptionType exception = call.Error.EvmException;
                         call.Error.Code = MapEvmExceptionType(exception);
+                        Console.WriteLine($"EXCEPTION: {call.Error.EvmException}");
                         if (exception != EvmExceptionType.Revert)
                         {
                             call.Error.Message = call.Error.EvmException.GetEvmExceptionDescription();
