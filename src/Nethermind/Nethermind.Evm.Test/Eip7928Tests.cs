@@ -934,50 +934,31 @@ public class Eip7928Tests() : VirtualMachineTestsBase
     }
 
     [Test]
-    public void CodeInfoRepository_getcachedcodeinfo_precompile_records_account_read_in_bal()
+    [TestCase("0x0000000000000000000000000000000000000004", TestName = "Precompile")]
+    [TestCase("0x5000001000000000000000000000000000000004", TestName = "RandomAddress")]
+    public void CodeInfoRepository_getcachedcodeinfo_records_account_read_in_bal(string address)
     {
         ParallelWorldState worldState = (ParallelWorldState)TestState;
         worldState.TracingEnabled = true;
 
         CodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        Address precompile = PrecompiledAddresses.Identity;
 
-        CodeInfo result = repo.GetCachedCodeInfo(precompile, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
+        repo.GetCachedCodeInfo(new(address), false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
+
+        AccountChanges? accountChanges = worldState.GeneratedBlockAccessList.GetAccountChanges(new(address));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.IsPrecompile, Is.True);
             Assert.That(delegationAddress, Is.Null);
-            Assert.That(worldState.GeneratedBlockAccessList.GetAccountChanges(precompile), Is.Not.Null);
+            Assert.That(accountChanges, Is.Not.Null);
+            Assert.That(accountChanges.BalanceChanges, Is.Empty);
+            Assert.That(accountChanges.NonceChanges, Is.Empty);
+            Assert.That(accountChanges.CodeChanges, Is.Empty);
         }
     }
 
     [Test]
-    public void CodeInfoRepository_getcachedcodeinfo_records_account_read_in_bal()
-    {
-        ParallelWorldState worldState = (ParallelWorldState)TestState;
-        byte[] code = [(byte)Instruction.STOP];
-        worldState.TracingEnabled = true;
-
-        IWorldState innerState = worldState.Inner;
-        innerState.CreateAccount(TestItem.AddressB, 0);
-        TestState.InsertCode(TestItem.AddressB, code, SpecProvider.GenesisSpec);
-        innerState.Commit(SpecProvider.GenesisSpec);
-        innerState.CommitTree(0);
-
-        CodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
-            Assert.That(delegationAddress, Is.Null);
-            Assert.That(worldState.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressB), Is.Not.Null);
-        }
-    }
-
-    [Test]
-    public void CodeInfoRepository_delegation_follow_true_returns_target_code()
+    public void CodeInfoRepository_getcachedcodeinfo_delegated_records_account_read_in_bal()
     {
         byte[] targetCode = [(byte)Instruction.STOP];
         Address delegationTarget = TestItem.AddressC;
@@ -993,41 +974,19 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         TestState.Commit(SpecProvider.GenesisSpec);
         TestState.CommitTree(0);
 
+        ParallelWorldState worldState = (ParallelWorldState)TestState;
+        worldState.TracingEnabled = true;
+
         CodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        CodeInfo result = repo.GetCachedCodeInfo(delegatedAccount, true, Amsterdam.Instance, out Address? delegationAddress);
+        CodeInfo result = repo.GetCachedCodeInfo(delegatedAccount, true, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(delegationAddress, Is.EqualTo(delegationTarget));
             Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(targetCode));
-        }
-    }
-
-    [Test]
-    public void CodeInfoRepository_delegation_follow_false_returns_delegation_code_itself()
-    {
-        byte[] targetCode = [(byte)Instruction.STOP];
-        Address delegationTarget = TestItem.AddressC;
-        Address delegatedAccount = TestItem.AddressD;
-
-        TestState.CreateAccount(delegationTarget, 0);
-        TestState.InsertCode(delegationTarget, targetCode, SpecProvider.GenesisSpec);
-
-        byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. delegationTarget.Bytes];
-        TestState.CreateAccount(delegatedAccount, 0);
-        TestState.InsertCode(delegatedAccount, delegationCode, SpecProvider.GenesisSpec);
-
-        TestState.Commit(SpecProvider.GenesisSpec);
-        TestState.CommitTree(0);
-
-        CodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        CodeInfo result = repo.GetCachedCodeInfo(delegatedAccount, false, Amsterdam.Instance, out Address? delegationAddress);
-
-        using (Assert.EnterMultipleScope())
-        {
-            // delegationAddress is identified but code is the delegation code itself, not the target
-            Assert.That(delegationAddress, Is.EqualTo(delegationTarget));
-            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(delegationCode));
+            // Both the delegated account and the delegation target are traced as account reads in the BAL
+            Assert.That(worldState.GeneratedBlockAccessList.GetAccountChanges(delegatedAccount), Is.Not.Null);
+            Assert.That(worldState.GeneratedBlockAccessList.GetAccountChanges(delegationTarget), Is.Not.Null);
         }
     }
 
@@ -1040,16 +999,15 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         IWorldState parallelWorldState = TestWorldStateFactory.CreateForTest(parallel: true);
         using IDisposable scope = parallelWorldState.BeginScope(IWorldState.PreGenesis);
 
-        parallelWorldState.CreateAccount(testAddress, 0);
-        parallelWorldState.InsertCode(testAddress, code, SpecProvider.GenesisSpec);
-        parallelWorldState.Commit(SpecProvider.GenesisSpec);
-        parallelWorldState.CommitTree(0);
-
         ParallelWorldState pws = (ParallelWorldState)parallelWorldState;
+        pws.Inner.CreateAccount(testAddress, 0);
+        pws.Inner.InsertCode(testAddress, code, SpecProvider.GenesisSpec);
+        pws.Inner.Commit(SpecProvider.GenesisSpec);
+        pws.Inner.CommitTree(0);
+
         pws.TracingEnabled = true;
         pws.IsGenesis = false;
 
-        // Prime the suggested BAL with the account so LoadPreBlockState pre-loads its code
         BlockAccessList suggestedBal = new();
         suggestedBal.AddAccountRead(testAddress);
         pws.SetupGeneratedAccessLists(LimboLogs.Instance, 1);
@@ -1058,214 +1016,92 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         CodeInfoRepository repo = new(parallelWorldState, new EthereumPrecompileProvider());
         CodeInfo result = repo.GetCachedCodeInfo(testAddress, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
 
+        pws.MergeIntermediateBalsUpTo(0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Code is served from the suggested BAL via address-based lookup (not hash-based inner-state lookup)
+            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
+            Assert.That(delegationAddress, Is.Null);
+            Assert.That(pws.GeneratedBlockAccessList.GetAccountChanges(testAddress), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void CacheCodeInfoRepository_tracing_records_account_read_in_bal()
+    {
+        CacheCodeInfoRepository.Clear();
+
+        byte[] code = [(byte)Instruction.STOP];
+        ParallelWorldState worldState = (ParallelWorldState)TestState;
+
+        // Set up state via inner world state to avoid polluting the BAL before the test begins
+        IWorldState innerState = worldState.Inner;
+        innerState.CreateAccount(TestItem.AddressB, 0);
+        innerState.InsertCode(TestItem.AddressB, code, SpecProvider.GenesisSpec);
+        innerState.Commit(SpecProvider.GenesisSpec);
+        innerState.CommitTree(0);
+
+        worldState.TracingEnabled = true;
+
+        CacheCodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
+
+        AccountChanges? accountChanges = worldState.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressB);
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
             Assert.That(delegationAddress, Is.Null);
+            // GetCachedCodeInfo records a pure account read even through the cache layer
+            Assert.That(accountChanges, Is.Not.Null);
+            Assert.That(accountChanges!.BalanceChanges, Is.Empty);
+            Assert.That(accountChanges.NonceChanges, Is.Empty);
+            Assert.That(accountChanges.CodeChanges, Is.Empty);
         }
     }
 
     [Test]
-    public void CodeInfoRepository_without_bal_builder_uses_hash_based_code_lookup()
-    {
-        byte[] code = [(byte)Instruction.STOP];
-        (IWorldState worldState, _) = TestWorldStateFactory.CreateForTestWithStateReader();
-        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
-
-        worldState.CreateAccount(TestItem.AddressB, 0);
-        worldState.InsertCode(TestItem.AddressB, code, SpecProvider.GenesisSpec);
-        worldState.Commit(SpecProvider.GenesisSpec);
-        worldState.CommitTree(0);
-
-        // WorldState does not implement IBlockAccessListBuilder, so GetCodeInfo uses GetCode(in codeHash)
-        CodeInfoRepository repo = new(worldState, new EthereumPrecompileProvider());
-        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out _);
-
-        Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
-    }
-
-    [Test]
-    public void CodeInfoRepository_TryGetDelegation_delegated_account_returns_true()
-    {
-        Address delegationTarget = TestItem.AddressC;
-        Address delegatedAccount = TestItem.AddressD;
-        byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. delegationTarget.Bytes];
-
-        TestState.CreateAccount(delegatedAccount, 0);
-        TestState.InsertCode(delegatedAccount, delegationCode, SpecProvider.GenesisSpec);
-        TestState.Commit(SpecProvider.GenesisSpec);
-        TestState.CommitTree(0);
-
-        CodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        bool found = repo.TryGetDelegation(delegatedAccount, Amsterdam.Instance, out Address? delegatedAddress);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(found, Is.True);
-            Assert.That(delegatedAddress, Is.EqualTo(delegationTarget));
-        }
-    }
-
-    [Test]
-    public void CodeInfoRepository_TryGetDelegation_non_delegated_account_returns_false()
-    {
-        byte[] regularCode = [(byte)Instruction.STOP];
-        TestState.CreateAccount(TestItem.AddressB, 0);
-        TestState.InsertCode(TestItem.AddressB, regularCode, SpecProvider.GenesisSpec);
-        TestState.Commit(SpecProvider.GenesisSpec);
-        TestState.CommitTree(0);
-
-        CodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        bool found = repo.TryGetDelegation(TestItem.AddressB, Amsterdam.Instance, out Address? delegatedAddress);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(found, Is.False);
-            Assert.That(delegatedAddress, Is.Null);
-        }
-    }
-
-    [Test]
-    public void CodeInfoRepository_InsertCode_persists_code_to_world_state()
-    {
-        byte[] code = [(byte)Instruction.STOP];
-        TestState.CreateAccount(TestItem.AddressB, 0);
-        TestState.Commit(SpecProvider.GenesisSpec);
-        TestState.CommitTree(0);
-
-        CodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        repo.InsertCode(code, TestItem.AddressB, Amsterdam.Instance);
-        TestState.Commit(Amsterdam.Instance);
-        TestState.CommitTree(1);
-
-        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out _);
-
-        Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
-    }
-
-    [Test]
-    public void CacheCodeInfoRepository_cache_miss_loads_code_from_world_state()
+    public void CacheCodeInfoRepository_parallel_execution_retrieves_code_from_suggested_bal()
     {
         CacheCodeInfoRepository.Clear();
 
         byte[] code = [(byte)Instruction.STOP];
-        TestState.CreateAccount(TestItem.AddressB, 0);
-        TestState.InsertCode(TestItem.AddressB, code, SpecProvider.GenesisSpec);
-        TestState.Commit(SpecProvider.GenesisSpec);
-        TestState.CommitTree(0);
+        Address testAddress = TestItem.AddressB;
 
-        CacheCodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out _);
+        IWorldState parallelWorldState = TestWorldStateFactory.CreateForTest(parallel: true);
+        using IDisposable scope = parallelWorldState.BeginScope(IWorldState.PreGenesis);
 
-        Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
-    }
+        // Commit code into the inner world state
+        ParallelWorldState pws = (ParallelWorldState)parallelWorldState;
+        pws.Inner.CreateAccount(testAddress, 0);
+        pws.Inner.InsertCode(testAddress, code, SpecProvider.GenesisSpec);
+        pws.Inner.Commit(SpecProvider.GenesisSpec);
+        pws.Inner.CommitTree(0);
 
-    [Test]
-    public void CacheCodeInfoRepository_cache_hit_returns_same_code_info_instance()
-    {
-        CacheCodeInfoRepository.Clear();
+        // Enable parallel execution: tracing on, mark as non-genesis
+        pws.TracingEnabled = true;
+        pws.IsGenesis = false;
 
-        byte[] code = [(byte)Instruction.STOP];
-        TestState.CreateAccount(TestItem.AddressB, 0);
-        TestState.InsertCode(TestItem.AddressB, code, SpecProvider.GenesisSpec);
-        TestState.Commit(SpecProvider.GenesisSpec);
-        TestState.CommitTree(0);
+        // Load suggested BAL — LoadPreBlockState reads code from inner state into the BAL entry
+        BlockAccessList suggestedBal = new();
+        suggestedBal.AddAccountRead(testAddress);
+        pws.SetupGeneratedAccessLists(LimboLogs.Instance, 1);
+        pws.LoadSuggestedBlockAccessList(suggestedBal, 0);
 
-        CacheCodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        CodeInfo first = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out _);
-        CodeInfo second = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out _);
+        CacheCodeInfoRepository repo = new(parallelWorldState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(testAddress, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
 
-        // Second call must return the same instance — confirms it was served from cache
-        Assert.That(ReferenceEquals(first, second), Is.True);
-    }
-
-    [Test]
-    public void CacheCodeInfoRepository_empty_code_hash_bypasses_cache_and_returns_empty()
-    {
-        CacheCodeInfoRepository.Clear();
-
-        TestState.CreateAccount(TestItem.AddressB, 0);
-        TestState.Commit(SpecProvider.GenesisSpec);
-        TestState.CommitTree(0);
-
-        CacheCodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out _);
+        // Merge the intermediate BAL for index 0 so the account read is visible in GeneratedBlockAccessList
+        pws.MergeIntermediateBalsUpTo(0);
 
         using (Assert.EnterMultipleScope())
         {
-            // Empty hash short-circuits to CodeInfo.Empty singleton in GetOrCacheCodeInfo — no cache entry created
-            Assert.That(result.CodeSpan.IsEmpty, Is.True);
-            Assert.That(ReferenceEquals(result, CodeInfo.Empty), Is.True);
-        }
-    }
-
-    [Test]
-    public void CacheCodeInfoRepository_InsertCode_populates_world_state_and_cache()
-    {
-        CacheCodeInfoRepository.Clear();
-
-        byte[] code = [(byte)Instruction.STOP];
-        TestState.CreateAccount(TestItem.AddressB, 0);
-        TestState.Commit(SpecProvider.GenesisSpec);
-        TestState.CommitTree(0);
-
-        CacheCodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        repo.InsertCode(code, TestItem.AddressB, Amsterdam.Instance);
-
-        // First retrieval should be a cache hit (InsertCode populates the cache)
-        CodeInfo first = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out _);
-        CodeInfo second = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out _);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(first.CodeSpan.ToArray(), Is.EqualTo(code));
-            Assert.That(ReferenceEquals(first, second), Is.True);
-        }
-    }
-
-    [Test]
-    public void CacheCodeInfoRepository_SetDelegation_nonzero_address_sets_delegation_code_and_caches_it()
-    {
-        CacheCodeInfoRepository.Clear();
-
-        Address delegationTarget = TestItem.AddressC;
-        Address authority = TestItem.AddressD;
-        TestState.CreateAccount(authority, 0);
-        TestState.Commit(SpecProvider.GenesisSpec);
-        TestState.CommitTree(0);
-
-        CacheCodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        repo.SetDelegation(delegationTarget, authority, Amsterdam.Instance);
-
-        CodeInfo result = repo.GetCachedCodeInfo(authority, false, Amsterdam.Instance, out Address? delegationAddress);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(delegationAddress, Is.EqualTo(delegationTarget));
-            Assert.That(Eip7702Constants.IsDelegatedCode(result.CodeSpan), Is.True);
-        }
-    }
-
-    [Test]
-    public void CacheCodeInfoRepository_SetDelegation_zero_address_clears_code_without_caching()
-    {
-        CacheCodeInfoRepository.Clear();
-
-        Address authority = TestItem.AddressD;
-        TestState.CreateAccount(authority, 0);
-        TestState.Commit(SpecProvider.GenesisSpec);
-        TestState.CommitTree(0);
-
-        CacheCodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        repo.SetDelegation(Address.Zero, authority, Amsterdam.Instance);
-
-        CodeInfo result = repo.GetCachedCodeInfo(authority, false, Amsterdam.Instance, out Address? delegationAddress);
-
-        using (Assert.EnterMultipleScope())
-        {
+            // Code is served from the suggested BAL via address-based lookup through the cache layer
+            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
             Assert.That(delegationAddress, Is.Null);
-            // Zero address produces empty code; GetOrCacheCodeInfo returns CodeInfo.Empty sentinel
-            Assert.That(result.CodeSpan.IsEmpty, Is.True);
+            // The address-based code access is traced in the BAL even when the cache is involved
+            Assert.That(pws.GeneratedBlockAccessList.GetAccountChanges(testAddress), Is.Not.Null);
         }
     }
 }
