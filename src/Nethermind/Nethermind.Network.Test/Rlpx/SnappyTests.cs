@@ -124,7 +124,7 @@ public class SnappyTests
         using DisposableByteBuffer output = allocator.Buffer().AsDisposable();
 
         input.WriteBytes(payload);
-        
+
         long activeBefore = allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
 
         encoder.TestEncode(input, output);
