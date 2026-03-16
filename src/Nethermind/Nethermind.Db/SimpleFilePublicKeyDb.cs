@@ -62,7 +62,7 @@ namespace Nethermind.Db
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) 
         {
-            _cacheSpan.TryGetValue(key, out byte[]? value)
+            _cacheSpan.TryGetValue(key, out byte[]? value);
             return value;
         }
 
