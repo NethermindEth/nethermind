@@ -4,6 +4,7 @@
 using Nethermind.EraE.Config;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Import;
+using Nethermind.History;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -21,11 +22,21 @@ public class EraCliRunnerTests
             From = 99,
             To = 999
         };
-        EraCliRunner cliRunner = new(eraConfig, eraImporter, Substitute.For<IEraExporter>());
+        EraCliRunner cliRunner = new(eraConfig, new HistoryConfig(), eraImporter, Substitute.For<IEraExporter>());
 
         _ = cliRunner.Run(default);
 
         eraImporter.Received().Import("import dir", 99, 999, null, default);
+    }
+
+    [Test]
+    public void Run_WithImportDirectoryAndUseAncientBarriers_ThrowsInvalidOperationException()
+    {
+        IEraEConfig eraConfig = new EraEConfig { ImportDirectory = "import dir" };
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.UseAncientBarriers };
+        EraCliRunner cliRunner = new(eraConfig, historyConfig, Substitute.For<IEraImporter>(), Substitute.For<IEraExporter>());
+
+        Assert.That(() => cliRunner.Run(default), Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -38,7 +49,7 @@ public class EraCliRunnerTests
             From = 99,
             To = 999
         };
-        EraCliRunner cliRunner = new(eraConfig, Substitute.For<IEraImporter>(), eraExporter);
+        EraCliRunner cliRunner = new(eraConfig, new HistoryConfig(), Substitute.For<IEraImporter>(), eraExporter);
 
         _ = cliRunner.Run(default);
 
