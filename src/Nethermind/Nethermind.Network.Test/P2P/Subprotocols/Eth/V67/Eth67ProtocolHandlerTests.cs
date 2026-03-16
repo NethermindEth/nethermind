@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -130,7 +129,7 @@ public class Eth67ProtocolHandlerTests
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
-        IByteBuffer getZeroPacket = _svc.ZeroSerialize(msg);
+        using DisposableByteBuffer getZeroPacket = _svc.ZeroSerialize(msg).AsDisposable();
         getZeroPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getZeroPacket) { PacketType = (byte)messageCode });
     }
@@ -141,7 +140,7 @@ public class Eth67ProtocolHandlerTests
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 
-        IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
     }
