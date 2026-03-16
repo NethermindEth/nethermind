@@ -168,13 +168,15 @@ public static class GasPayloadBenchmarks
             if (gasValueIdx >= 0)
                 afterTestPrefix = afterTestPrefix.Substring(0, gasValueIdx);
 
-            // Remove the "[fork_Prague-benchmark-blockchain_test_engine_x-" prefix from params
-            const string forkPrefix = "[fork_Prague-benchmark-blockchain_test_engine_x-";
-            int forkIdx = afterTestPrefix.IndexOf(forkPrefix, StringComparison.Ordinal);
+            // Remove the "[fork_Prague-benchmark-blockchain_test_engine_x..." prefix from params.
+            // Two forms: with trailing dash (has parameters) or without (no parameters).
+            const string forkPrefixWithParams = "[fork_Prague-benchmark-blockchain_test_engine_x-";
+            const string forkPrefixNoParams = "[fork_Prague-benchmark-blockchain_test_engine_x]";
+            int forkIdx = afterTestPrefix.IndexOf(forkPrefixWithParams, StringComparison.Ordinal);
             if (forkIdx >= 0)
             {
                 string methodName = afterTestPrefix.Substring(0, forkIdx);
-                string paramsStr = afterTestPrefix.Substring(forkIdx + forkPrefix.Length);
+                string paramsStr = afterTestPrefix.Substring(forkIdx + forkPrefixWithParams.Length);
 
                 // Remove trailing ']'
                 if (paramsStr.EndsWith("]"))
@@ -183,6 +185,13 @@ public static class GasPayloadBenchmarks
                 return string.IsNullOrEmpty(paramsStr)
                     ? methodName
                     : methodName + "[" + paramsStr + "]";
+            }
+
+            // Handle the no-parameter variant: method[fork_Prague-..._x] → method
+            int forkNoParamsIdx = afterTestPrefix.IndexOf(forkPrefixNoParams, StringComparison.Ordinal);
+            if (forkNoParamsIdx >= 0)
+            {
+                return afterTestPrefix.Substring(0, forkNoParamsIdx);
             }
 
             return afterTestPrefix;

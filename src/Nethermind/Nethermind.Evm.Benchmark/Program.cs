@@ -42,9 +42,43 @@ args = ApplySubsetFilter(args);
 args = ApplyBdnOverrides(args);
 
 ConfigureTimingFilePath();
+EmitScenarioIndex();
 BenchmarkSwitcher.FromAssembly(typeof(EvmBenchmarks).Assembly).Run(args);
 GasNewPayloadMeasuredBenchmarks.PrintFinalTimingBreakdown();
 GasNewPayloadBenchmarks.PrintFinalTimingBreakdown();
+
+/// <summary>
+/// Emits a scenario index file mapping BDN parameter indices to full filenames.
+/// Written before BDN runs so it's available even if the run crashes.
+/// Format: TSV with columns Index, DisplayName, FileName, Family, FilePath.
+/// </summary>
+static void EmitScenarioIndex()
+{
+    int chunkIndex = GasBenchmarkConfig.ChunkIndex;
+    int chunkTotal = GasBenchmarkConfig.ChunkTotal;
+    string chunkSuffix = chunkTotal > 0 ? $"-chunk{chunkIndex}of{chunkTotal}" : "";
+
+    string resultsDir = Path.Combine(
+        Directory.GetCurrentDirectory(),
+        "BenchmarkDotNet.Artifacts",
+        "results");
+    Directory.CreateDirectory(resultsDir);
+
+    string indexPath = Path.Combine(resultsDir, $"scenario-index{chunkSuffix}.tsv");
+
+    using StreamWriter writer = new(indexPath);
+    writer.WriteLine("Index\tDisplayName\tFileName\tFamily\tFilePath");
+
+    int index = 0;
+    foreach (GasPayloadBenchmarks.TestCase testCase in GasPayloadBenchmarks.GetTestCases())
+    {
+        index++;
+        string family = Path.GetFileName(Path.GetDirectoryName(testCase.FilePath) ?? string.Empty);
+        writer.WriteLine($"{index}\t{testCase.DisplayName}\t{testCase.FileName}\t{family}\t{testCase.FilePath}");
+    }
+
+    Console.WriteLine($"Scenario index: {indexPath} ({index} scenarios)");
+}
 
 static void ConfigureTimingFilePath()
 {

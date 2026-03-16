@@ -244,7 +244,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bdn-results-${{ matrix.chunk }}
-          path: BenchmarkDotNet.Artifacts/results/*-full.json
+          path: |
+            BenchmarkDotNet.Artifacts/results/*-full.json
+            BenchmarkDotNet.Artifacts/results/scenario-index-*.tsv
           retention-days: 90
 
   collect:
@@ -265,11 +267,31 @@ jobs:
       - name: Merge chunk results
         run: python3 scripts/benchmarks/merge_bdn_results.py results/ pr-results.json
 
+      - name: Merge scenario indices
+        run: |
+          # Concatenate all per-chunk scenario index files into one, deduplicating the header
+          HEADER_WRITTEN=false
+          for f in results/scenario-index-*.tsv; do
+            [ -f "$f" ] || continue
+            if [ "$HEADER_WRITTEN" = false ]; then
+              cat "$f"
+              HEADER_WRITTEN=true
+            else
+              tail -n +2 "$f"
+            fi
+          done > scenario-index-merged.tsv 2>/dev/null || true
+          if [ -f scenario-index-merged.tsv ]; then
+            LINES=$(wc -l < scenario-index-merged.tsv)
+            echo "Merged scenario index: $((LINES - 1)) scenarios"
+          fi
+
       - name: Upload merged results
         uses: actions/upload-artifact@v4
         with:
           name: bdn-results-merged
-          path: pr-results.json
+          path: |
+            pr-results.json
+            scenario-index-merged.tsv
           retention-days: 90
 
       # On master push: cache results as baseline for future PR comparisons
