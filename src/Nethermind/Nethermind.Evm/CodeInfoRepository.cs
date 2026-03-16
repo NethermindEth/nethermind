@@ -24,7 +24,6 @@ public class CodeInfoRepository : ICodeInfoRepository
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
     private readonly Func<Address, ValueHash256, IReleaseSpec, int?, CodeInfo> _codeInfoLoader;
-    private readonly IBlockAccessListBuilder? _balBuilder;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
         : this(worldState, precompileProvider, codeInfoLoader: null)
@@ -35,7 +34,6 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
-        _balBuilder = _worldState as IBlockAccessListBuilder;
         _codeInfoLoader = codeInfoLoader ?? DefaultLoad;
 
         CodeInfo DefaultLoad(Address address, ValueHash256 codeHash, IReleaseSpec spec, int? blockAccessIndex) =>

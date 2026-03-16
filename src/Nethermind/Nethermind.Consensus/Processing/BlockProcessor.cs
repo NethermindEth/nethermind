@@ -100,6 +100,9 @@ public partial class BlockProcessor(
     protected bool ShouldComputeStateRoot(BlockHeader header) =>
         !header.IsGenesis || !specProvider.GenesisStateUnavailable;
 
+    protected virtual BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec) =>
+        new(header, spec);
+
     protected virtual async Task<TxReceipt[]> ProcessBlock(
         Block block,
         IBlockTracer blockTracer,
@@ -114,23 +117,15 @@ public partial class BlockProcessor(
         ReceiptsTracer.StartNewBlockTrace(block);
 
         bool shouldComputeStateRoot = ShouldComputeStateRoot(header);
-        blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+        blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
 
         StoreBeaconRoot(block, spec);
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
         _balBuilder?.MergeIntermediateBalsUpTo(0);
-
         TxReceipt[] receipts;
-        try
-        {
-            receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
-        }
-        catch (ParallelWorldState.InvalidBlockLevelAccessListException e)
-        {
-            throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
-        }
+        receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below

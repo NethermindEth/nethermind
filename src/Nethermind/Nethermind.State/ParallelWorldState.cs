@@ -173,9 +173,6 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
         }
     }
 
-    public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
-        => AddToBalance(address, balanceChange, spec, out _, blockAccessIndex);
-
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
     {
         if (TracingEnabled && !blockAccessIndex.HasValue)
@@ -196,9 +193,6 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
             GetGeneratingBlockAccessList(blockAccessIndex).AddBalanceChange(address, oldBalance, newBalance);
         }
     }
-
-    public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
-        => AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out _, blockAccessIndex);
 
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
     {
@@ -251,9 +245,6 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
         }
         return GetOriginalInternal(storageCell, blockAccessIndex);
     }
-
-    public override void IncrementNonce(Address address, UInt256 delta, int? blockAccessIndex = null)
-        => IncrementNonce(address, delta, out _, blockAccessIndex);
 
     public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? blockAccessIndex = null)
     {
@@ -368,25 +359,28 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
         return GetCodeInternal(address, blockAccessIndex);
     }
 
-    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
+    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
     {
         if (TracingEnabled && !blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
-        if (address == Address.SystemUser && balanceChange.IsZero)
-        {
-            return;
-        }
+        oldBalance = 0;
 
         if (TracingEnabled)
         {
-            UInt256 before = GetBalanceInternal(address, blockAccessIndex.Value);
-            UInt256 after = before - balanceChange;
-            GetGeneratingBlockAccessList(blockAccessIndex).AddBalanceChange(address, before, after);
+            oldBalance = GetBalanceInternal(address, blockAccessIndex.Value);
+
+            if (address == Address.SystemUser && balanceChange.IsZero)
+            {
+                return;
+            }
+
+            UInt256 newBalance = oldBalance - balanceChange;
+            GetGeneratingBlockAccessList(blockAccessIndex).AddBalanceChange(address, oldBalance, newBalance);
         }
         if (!ParallelExecutionEnabled)
         {
-            _innerWorldState.SubtractFromBalance(address, balanceChange, spec);
+            _innerWorldState.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
         }
     }
 
@@ -962,6 +956,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
     // for testing
     internal IWorldState Inner => _innerWorldState;
+
 
     private static bool HasNoChanges(in ChangeAtIndex c)
         => c.BalanceChange is null &&

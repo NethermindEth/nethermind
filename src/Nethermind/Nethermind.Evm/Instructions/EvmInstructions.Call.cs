@@ -89,13 +89,15 @@ internal static partial class EvmInstructions
     /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
         ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
+        where TEip8037 : struct, IFlag
+        where TEip7708 : struct, IFlag
     {
         // Increment global call metrics.
         Metrics.IncrementCalls();
@@ -177,14 +179,20 @@ internal static partial class EvmInstructions
         }
 
         // Charge additional gas if the target account is new or considered empty.
-        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target, vm.TxExecutionContext.BlockAccessIndex))
+        bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
         {
-            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
-        }
-        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target, vm.TxExecutionContext.BlockAccessIndex))
+            false => !state.AccountExists(target, vm.TxExecutionContext.BlockAccessIndex),
+            true => transferValue != 0 && state.IsDeadAccount(target, vm.TxExecutionContext.BlockAccessIndex),
+        };
+
+        bool newAccountOutOfGas = chargesNewAccount && !(TEip8037.IsActive switch
         {
-            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
-        }
+            true => TGasPolicy.ConsumeNewAccountCreation(ref gas),
+            false => TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount),
+        });
+
+        if (newAccountOutOfGas) goto OutOfGas;
+
 
         // Retrieve code information for the call and schedule background analysis if needed.
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec, vm.TxExecutionContext.BlockAccessIndex);
@@ -262,7 +270,7 @@ internal static partial class EvmInstructions
             vm.ReturnDataBuffer = default;
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            vm.AddTransferLog(caller, target, transferValue);
+            vm.AddTransferLog<TEip7708>(caller, target, transferValue);
             return FastCall(vm, spec, in transferValue, target);
         }
 
@@ -289,7 +297,7 @@ internal static partial class EvmInstructions
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-            gas: TGasPolicy.FromLong(gasLimitUl),
+            gas: TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
             outputDestination: outputOffset.ToLong(),
             outputLength: outputLength.ToLong(),
             executionType: TOpCall.ExecutionType,
@@ -313,7 +321,7 @@ internal static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
@@ -373,7 +381,7 @@ internal static partial class EvmInstructions
         vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:

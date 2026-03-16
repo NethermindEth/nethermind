@@ -113,24 +113,24 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// Note: This is different from whether the account has its hash updated</returns>
     bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false, int? blockAccessIndex = null);
 
-    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null);
+    // void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null);
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null);
 
-    bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null);
+    // bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null);
 
     bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null);
 
-    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null);
+    // void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null);
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null);
 
-    void IncrementNonce(Address address, UInt256 delta, int? blockAccessIndex = null);
+    // void IncrementNonce(Address address, UInt256 delta, int? blockAccessIndex = null);
     void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? blockAccessIndex = null);
 
     void DecrementNonce(Address address, UInt256 delta);
 
-    void IncrementNonce(Address address, int? blockAccessIndex = null) => IncrementNonce(address, UInt256.One, blockAccessIndex);
+    // void IncrementNonce(Address address, int? blockAccessIndex = null) => IncrementNonce(address, UInt256.One, blockAccessIndex);
 
     void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
 

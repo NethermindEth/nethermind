@@ -29,9 +29,6 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
         => _innerWorldState.AddToBalance(address, balanceChange, spec, out oldBalance, blockAccessIndex);
 
-    public virtual bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
-        => _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, blockAccessIndex);
-
     public virtual bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
         => _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance, blockAccessIndex);
 
@@ -92,9 +89,6 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => _innerWorldState.HasStateForBlock(baseBlock);
 
-    public virtual void IncrementNonce(Address address, UInt256 delta, int? blockAccessIndex = null)
-        => _innerWorldState.IncrementNonce(address, delta, blockAccessIndex);
-
     public virtual void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? blockAccessIndex = null)
         => _innerWorldState.IncrementNonce(address, delta, out oldNonce, blockAccessIndex);
 
@@ -130,9 +124,6 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 
     public virtual void SetTransientState(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null)
         => _innerWorldState.SetTransientState(storageCell, newValue, blockAccessIndex);
-
-    public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
-        => _innerWorldState.SubtractFromBalance(address, balanceChange, spec, blockAccessIndex);
 
     public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
         => _innerWorldState.SubtractFromBalance(address, balanceChange, spec, out oldBalance, blockAccessIndex);

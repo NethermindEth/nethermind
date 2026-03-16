@@ -53,48 +53,13 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         }
 
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance, true, default, _txLimit);
-        int? lastIndex = null;
-        SortedList<int, BalanceChange> balanceChangesList = new(balanceChanges.Length);
-        foreach (BalanceChange balanceChange in balanceChanges)
-        {
-            int index = balanceChange.BlockAccessIndex;
-            if (lastIndex is not null && index <= lastIndex)
-            {
-                Console.WriteLine($"Balance changes were in incorrect order. index={index}, lastIndex={lastIndex}");
-                throw new RlpException("Balance changes were in incorrect order.");
-            }
-            lastIndex = index;
-            balanceChangesList.Add(index, balanceChange);
-        }
+        SortedList<int, BalanceChange> balanceChangesList = ToSortedByIndex(balanceChanges, "Balance");
 
-        lastIndex = null;
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<int, NonceChange> nonceChangesList = new(nonceChanges.Length);
-        foreach (NonceChange nonceChange in nonceChanges)
-        {
-            int index = nonceChange.BlockAccessIndex;
-            if (lastIndex is not null && index <= lastIndex)
-            {
-                throw new RlpException("Nonce changes were in incorrect order.");
-            }
-            lastIndex = index;
-            nonceChangesList.Add(index, nonceChange);
-        }
+        SortedList<int, NonceChange> nonceChangesList = ToSortedByIndex(nonceChanges, "Nonce");
 
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance, true, default, _txLimit);
-
-        lastIndex = null;
-        SortedList<int, CodeChange> codeChangesList = new(codeChanges.Length);
-        foreach (CodeChange codeChange in codeChanges)
-        {
-            int index = codeChange.BlockAccessIndex;
-            if (lastIndex is not null && index <= lastIndex)
-            {
-                throw new RlpException("Code changes were in incorrect order.");
-            }
-            lastIndex = index;
-            codeChangesList.Add(index, codeChange);
-        }
+        SortedList<int, CodeChange> codeChangesList = ToSortedByIndex(codeChanges, "Code");
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
         {
@@ -120,41 +85,39 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
     public static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors)
     {
-        int slotChangesLen = 0;
-        foreach (SlotChanges slotChanges in item.StorageChanges)
-        {
-            slotChangesLen += SlotChangesDecoder.Instance.GetLength(slotChanges, rlpBehaviors);
-        }
-        slotChangesLen = Rlp.LengthOfSequence(slotChangesLen);
+        return Rlp.LengthOfAddressRlp
+            + SequenceLength(item.StorageChanges, SlotChangesDecoder.Instance, rlpBehaviors)
+            + SequenceLength(item.StorageReads, StorageReadDecoder.Instance, rlpBehaviors)
+            + SequenceLength(item.BalanceChanges, BalanceChangeDecoder.Instance, rlpBehaviors)
+            + SequenceLength(item.NonceChanges, NonceChangeDecoder.Instance, rlpBehaviors)
+            + SequenceLength(item.CodeChanges, CodeChangeDecoder.Instance, rlpBehaviors);
+    }
 
-        int storageReadsLen = 0;
-        foreach (StorageRead storageRead in item.StorageReads)
+    private static int SequenceLength<T>(IEnumerable<T> items, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
+    {
+        int length = 0;
+        foreach (T item in items)
         {
-            storageReadsLen += StorageReadDecoder.Instance.GetLength(storageRead, rlpBehaviors);
+            length += encoder.GetLength(item, rlpBehaviors);
         }
-        storageReadsLen = Rlp.LengthOfSequence(storageReadsLen);
+        return Rlp.LengthOfSequence(length);
+    }
 
-        int balanceChangesLen = 0;
-        foreach (BalanceChange balanceChange in item.BalanceChanges)
+    private static SortedList<int, T> ToSortedByIndex<T>(T[] items, string changeName)
+        where T : struct, IIndexedChange
+    {
+        int? lastIndex = null;
+        SortedList<int, T> sorted = new(items.Length);
+        foreach (T item in items)
         {
-            balanceChangesLen += BalanceChangeDecoder.Instance.GetLength(balanceChange, rlpBehaviors);
+            int index = item.BlockAccessIndex;
+            if (lastIndex is not null && index <= lastIndex)
+            {
+                throw new RlpException($"{changeName} changes were in incorrect order.");
+            }
+            lastIndex = index;
+            sorted.Add(index, item);
         }
-        balanceChangesLen = Rlp.LengthOfSequence(balanceChangesLen);
-
-        int nonceChangesLen = 0;
-        foreach (NonceChange nonceChange in item.NonceChanges)
-        {
-            nonceChangesLen += NonceChangeDecoder.Instance.GetLength(nonceChange, rlpBehaviors);
-        }
-        nonceChangesLen = Rlp.LengthOfSequence(nonceChangesLen);
-
-        int codeChangesLen = 0;
-        foreach (CodeChange codeChange in item.CodeChanges)
-        {
-            codeChangesLen += CodeChangeDecoder.Instance.GetLength(codeChange, rlpBehaviors);
-        }
-        codeChangesLen = Rlp.LengthOfSequence(codeChangesLen);
-
-        return Rlp.LengthOfAddressRlp + slotChangesLen + storageReadsLen + balanceChangesLen + nonceChangesLen + codeChangesLen;
+        return sorted;
     }
 }

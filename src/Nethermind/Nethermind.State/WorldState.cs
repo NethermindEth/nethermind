@@ -190,22 +190,11 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
         }
-        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? _ = null)
-            => AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out UInt256 oldBalance);
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? _ = null)
         {
             DebugGuardInScope();
             _stateProvider.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
         }
-        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? _ = null)
-            => SubtractFromBalance(address, balanceChange, spec, out UInt256 oldBalance);
-        // public void UpdateStorageRoot(Address address, Hash256 storageRoot)
-        // {
-        //     DebugGuardInScope();
-        //     _stateProvider.UpdateStorageRoot(address, storageRoot);
-        // }
-        public void IncrementNonce(Address address, UInt256 delta, int? _ = null)
-            => IncrementNonce(address, delta, out UInt256 oldNonce);
         public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? _ = null)
         {
             DebugGuardInScope();

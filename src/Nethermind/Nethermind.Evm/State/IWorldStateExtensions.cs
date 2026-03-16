@@ -22,20 +22,20 @@ public static class WorldStateExtensions
     public static void Commit(this IWorldState worldState, IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
         => worldState.Commit(releaseSpec, NullStateTracer.Instance, isGenesis, commitRoots);
 
-    public static void AddToBalance(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec)
-        => worldState.AddToBalance(address, balanceChange, spec, out _);
+    public static void AddToBalance(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
+        => worldState.AddToBalance(address, balanceChange, spec, out _, blockAccessIndex);
 
-    public static bool AddToBalanceAndCreateIfNotExists(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec)
-        => worldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out _);
+    public static bool AddToBalanceAndCreateIfNotExists(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
+        => worldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out _, blockAccessIndex);
 
-    public static void SubtractFromBalance(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec)
-        => worldState.SubtractFromBalance(address, balanceChange, spec, out _);
+    public static void SubtractFromBalance(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
+        => worldState.SubtractFromBalance(address, balanceChange, spec, out _, blockAccessIndex);
 
-    public static void IncrementNonce(this IWorldState worldState, Address address, UInt256 delta)
-        => worldState.IncrementNonce(address, delta, out _);
+    public static void IncrementNonce(this IWorldState worldState, Address address, UInt256 delta, int? blockAccessIndex = null)
+        => worldState.IncrementNonce(address, delta, out _, blockAccessIndex);
 
-    public static void IncrementNonce(this IWorldState worldState, Address address)
-        => worldState.IncrementNonce(address, UInt256.One);
+    public static void IncrementNonce(this IWorldState worldState, Address address, int? blockAccessIndex = null)
+        => worldState.IncrementNonce(address, UInt256.One, blockAccessIndex);
 
     public static void AddAccountRead(this IWorldState worldState, Address address, int? blockAccessIndex)
         => (worldState as IBlockAccessListBuilder)?.AddAccountRead(address, blockAccessIndex);

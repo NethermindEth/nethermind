@@ -459,7 +459,13 @@ namespace Nethermind.Core.Specs
         bool BlockLevelAccessListsEnabled => IsEip7928Enabled;
 
         /// <summary>
-        /// EIP-7708: ETH transfers emit a log
+        /// EIP-8037: Cost Per State Byte / State Size Limit.
+        /// Two-dimensional gas metering for state growth control.
+        /// </summary>
+        public bool IsEip8037Enabled { get; }
+
+        /// <summary>
+        /// EIP-7708: ETH transfers and burns emit a log
         /// </summary>
         public bool IsEip7708Enabled { get; }
 
@@ -468,6 +474,12 @@ namespace Nethermind.Core.Specs
         /// </summary>
         public bool IsEip7843Enabled { get; }
 
+        /// <summary>
+        /// EIP-7954: Increase Maximum Contract Size
+        /// </summary>
+        public bool IsEip7954Enabled { get; }
+
+        /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
         /// Values are cached per spec instance (singletons per fork) to avoid
         /// repeated interface dispatch on the EVM opcode hot path.
