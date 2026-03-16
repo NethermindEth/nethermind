@@ -22,7 +22,6 @@ namespace Nethermind.Network.Rlpx.Handshake
         public const int IsTokenUsedOffset = NonceOffset + NonceLength;
         public const int Length = IsTokenUsedOffset + IsTokenUsedLength;
 
-        // cspell:ignore ephem
         //  65 (sig)
         //  32 (ephem hash)
         //  64 (pub)
