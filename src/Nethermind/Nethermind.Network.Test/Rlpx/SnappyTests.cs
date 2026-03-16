@@ -120,26 +120,19 @@ public class SnappyTests
         byte[] packetType = Rlp.Encode(1).Bytes;
         byte[] body = Rlp.Encode(new byte[100]).Bytes;
         byte[] payload = Bytes.Concat(packetType, body);
-        IByteBuffer input = allocator.Buffer();
+        using DisposableByteBuffer input = allocator.Buffer().AsDisposable();
         input.WriteBytes(payload);
 
-        IByteBuffer output = allocator.Buffer();
-        try
-        {
-            long activeBefore = allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
+        using DisposableByteBuffer output = allocator.Buffer().AsDisposable();
 
-            encoder.TestEncode(input, output);
+        long activeBefore = allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
 
-            long activeAfter = allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
+        encoder.TestEncode(input, output);
 
-            // No new active allocations should remain after Encode — any intermediate
-            // buffer must be released. A leak causes activeAfter > activeBefore.
-            Assert.That(activeAfter, Is.EqualTo(activeBefore));
-        }
-        finally
-        {
-            input.Release();
-            output.Release();
-        }
+        long activeAfter = allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
+
+        // No new active allocations should remain after Encode — any intermediate
+        // buffer must be released. A leak causes activeAfter > activeBefore.
+        Assert.That(activeAfter, Is.EqualTo(activeBefore));
     }
 }
