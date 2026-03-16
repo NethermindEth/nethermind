@@ -809,6 +809,8 @@ namespace Nethermind.Network.Test
             {
                 _isFailing = true;
             }
+
+            public bool ShouldContact(IPAddress ip, bool exactOnly = false) => true;
         }
 
         private class InMemoryStorage : INetworkStorage

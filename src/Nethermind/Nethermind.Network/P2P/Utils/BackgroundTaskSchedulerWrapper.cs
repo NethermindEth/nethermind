@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Serialization.Rlp;
@@ -20,14 +21,28 @@ namespace Nethermind.Network.P2P.Utils;
 /// <param name="backgroundTaskScheduler"></param>
 public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgroundTaskScheduler backgroundTaskScheduler)
 {
-    internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage =>
-        TryScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSender);
+    internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage
+    {
+        if (!TryScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSender, typeof(TReq).Name))
+        {
+            request.TryDispose();
+            return false;
+        }
+        return true;
+    }
 
-    internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage =>
-        TryScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSenderValueTask);
+    internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage
+    {
+        if (!TryScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSenderValueTask, typeof(TReq).Name))
+        {
+            request.TryDispose();
+            return false;
+        }
+        return true;
+    }
 
-    internal bool TryScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc) =>
-        backgroundTaskScheduler.TryScheduleTask((request, fulfillFunc), BackgroundTaskFailureHandlerValueTask);
+    internal bool TryScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc, string? source = null) =>
+        backgroundTaskScheduler.TryScheduleTask((request, fulfillFunc), BackgroundTaskFailureHandlerValueTask, source: source);
 
     // I just don't want to create a closure... so this happens.
     private async ValueTask BackgroundSyncSender<TReq, TRes>(

@@ -14,6 +14,26 @@ namespace Nethermind.Config.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
+    public class ConfigSourceHelperTests
+    {
+        [TestCase(typeof(int), 0)]
+        [TestCase(typeof(bool), false)]
+        [TestCase(typeof(long), 0L)]
+        public void GetDefault_returns_correct_default_value_for_value_types(Type type, object expected)
+        {
+            object result = ConfigSourceHelper.GetDefault(type);
+            Assert.That(result, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void GetDefault_returns_null_for_reference_types()
+        {
+            Assert.That(ConfigSourceHelper.GetDefault(typeof(string)), Is.Null);
+        }
+    }
+
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class DefaultConfigProviderTests
     {
         [Test]
@@ -25,15 +45,6 @@ namespace Nethermind.Config.Test
         }
 
         public int DefaultTestProperty { get; set; } = 5;
-
-        // [Test]
-        // public void Can_read_defaults_from_registered_categories()
-        // {
-        //     ConfigProvider configProvider = new ConfigProvider();
-        //     configProvider.RegisterCategory("Nananana", typeof(DefaultConfigProviderTests));
-        //     var result = configProvider.GetRawValue("Nananana", nameof(DefaultTestProperty));
-        //     Assert.AreEqual(5, result);
-        // }
 
         [Test]
         public void Can_read_overwrites()

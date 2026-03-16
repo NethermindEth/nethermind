@@ -10,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 
@@ -139,13 +140,14 @@ public class ChainSpecTest
         Assert.That(provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, Is.EqualTo(maxCodeSize), "at transition");
         Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, Is.EqualTo(maxCodeSize), "one after");
 
-        ReleaseSpec expected = new();
+        OverridableReleaseSpec expected = new(new ReleaseSpec());
 
-        void TestTransitions(ForkActivation activation, Action<ReleaseSpec> changes)
+        void TestTransitions(ForkActivation activation, Action<OverridableReleaseSpec> changes)
         {
             changes(expected);
             IReleaseSpec underTest = provider.GetSpec(activation);
-            underTest.Should().BeEquivalentTo(expected);
+            underTest.Should().BeEquivalentTo(expected,
+                options => options.Excluding(s => s.Name));
         }
 
         TestTransitions((ForkActivation)0L, r =>

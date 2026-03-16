@@ -428,7 +428,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
         return Prepare.EvmCode
             .DelegateCall(TestItem.AddressC, 50000)
@@ -543,7 +543,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                                                              "state": db.getState(contractAddress, this.hash),
                                                              "stateString": db.getState(contractAddress, this.hash).toString(16),
                                                              "exists": db.exists(contractAddress),
-                                                             "randomexists": db.exists(this.randomAddress)
+                                                             "randomexists": db.exists(this.randomAddress) // cspell:ignore randomexists
                                                          },
                                                          "pc": log.getPC(),
                                                          "gas": log.getGas(),

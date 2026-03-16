@@ -269,7 +269,7 @@ namespace Nethermind.Benchmarks.Store
                 _uncommittedFullTree.Set(_entries[i].Item1, _entries[i].Item2);
             }
 
-            _memoryTrieStore = TestTrieStoreFactory.Build(_backingMemory, Prune.WhenCacheReaches(1.GB()), No.Persistence, NullLogManager.Instance);
+            _memoryTrieStore = TestTrieStoreFactory.Build(_backingMemory, Prune.WhenCacheReaches(1.GB), No.Persistence, NullLogManager.Instance);
 
             // Preparing access for large entries
             List<Hash256> currentItems = new();
@@ -353,7 +353,7 @@ namespace Nethermind.Benchmarks.Store
         public void InsertAndCommitRepeatedlyTimes()
         {
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
+                Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
 
@@ -381,7 +381,7 @@ namespace Nethermind.Benchmarks.Store
         public void LargeInsertAndCommit()
         {
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
+                Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
 
@@ -424,7 +424,7 @@ namespace Nethermind.Benchmarks.Store
         public void LargeBulkSetPreSorted()
         {
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
+                Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
             tempTree.RootHash = Keccak.EmptyTreeHash;
@@ -493,7 +493,7 @@ namespace Nethermind.Benchmarks.Store
         private void DoSetOnlyRepeatedly(int repeatBatchSize)
         {
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
+                Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
             var originalRootHash = Keccak.EmptyTreeHash;
@@ -514,7 +514,7 @@ namespace Nethermind.Benchmarks.Store
         private void DoBulkSetRepeatedly(int repeatBatchSize)
         {
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
+                Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
             var originalRootHash = Keccak.EmptyTreeHash;
@@ -541,7 +541,7 @@ namespace Nethermind.Benchmarks.Store
         private void DoBulkSetRepeatedlyNoParallel(int repeatBatchSize)
         {
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
+                Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
             var originalRootHash = Keccak.EmptyTreeHash;
@@ -576,7 +576,7 @@ namespace Nethermind.Benchmarks.Store
         public void SetupLargeUncommittedTree()
         {
             TrieStore trieStore = _largeUncommittedFullTree = TestTrieStoreFactory.Build(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
+                Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = _largeUncommittedStateTree = new StateTree(trieStore, NullLogManager.Instance);
 

@@ -17,14 +17,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.Encode(message.Bytes);
         }
 
-        protected override GetByteCodesMessage Deserialize(RlpStream rlpStream)
+        protected override GetByteCodesMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             GetByteCodesMessage message = new();
-            rlpStream.ReadSequenceLength();
+            ctx.ReadSequenceLength();
 
-            message.RequestId = rlpStream.DecodeLong();
-            message.Hashes = rlpStream.DecodeArrayPoolList(_ => rlpStream.DecodeValueKeccak(out var keccak) ? keccak : default);
-            message.Bytes = rlpStream.DecodeLong();
+            message.RequestId = ctx.DecodeLong();
+            message.Hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeValueKeccak() ?? default);
+            message.Bytes = ctx.DecodeLong();
 
             return message;
         }

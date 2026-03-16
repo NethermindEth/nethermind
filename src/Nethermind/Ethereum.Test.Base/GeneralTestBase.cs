@@ -49,7 +49,7 @@ namespace Ethereum.Test.Base
         {
         }
 
-        protected static void Setup(ILogManager logManager)
+        protected static void Setup(ILogManager? logManager)
         {
             _logManager = logManager ?? LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
@@ -132,8 +132,10 @@ namespace Ethereum.Test.Base
                 WithdrawalsRoot = test.CurrentWithdrawalsRoot ?? (spec.WithdrawalsEnabled ? PatriciaTree.EmptyTreeHash : null),
                 ParentBeaconBlockRoot = test.CurrentBeaconRoot,
                 ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null),
+                SlotNumber = test.CurrentSlotNumber,
                 BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
                 RequestsHash = test.RequestsHash ?? (spec.RequestsEnabled ? ExecutionRequestExtensions.EmptyRequestsHash : null),
+                BlockAccessListHash = spec.IsEip7928Enabled ? Keccak.OfAnEmptySequenceRlp : null,
                 TxRoot = TxTrie.CalculateRoot(transactions),
                 ReceiptsRoot = test.PostReceiptsRoot,
             };
@@ -210,9 +212,8 @@ namespace Ethereum.Test.Base
                         storageItem.Value.WithoutLeadingZeros().ToArray());
                 }
 
-                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
+                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
                 stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
-                stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);
