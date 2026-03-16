@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -48,14 +47,11 @@ namespace Nethermind.Network.Test.P2P
 
         private Packet CreatePacket<T>(T message) where T : P2PMessage
         {
-            IByteBuffer data = _serializer.ZeroSerialize(message);
-            data.ReadByte(); // strip adaptive packet type; Packet.Data is payload-only
-
-            return new Packet(data.ReadAllBytesAsArray())
+            return new(new ZeroPacket(_serializer.ZeroSerialize(message))
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
-            };
+            });
         }
 
         private const int ListenPort = 8003;
@@ -115,7 +111,7 @@ namespace Nethermind.Network.Test.P2P
                 NodeId = TestItem.PublicKeyA,
             };
 
-            IByteBuffer data = _serializer.ZeroSerialize(message);
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
             // to account for adaptive packet type
             data.ReadByte();
 
@@ -180,7 +176,7 @@ namespace Nethermind.Network.Test.P2P
                 P2PVersion = 5,
             };
 
-            IByteBuffer data = _serializer.ZeroSerialize(message);
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
             data.ReadByte(); // adaptive packet type
 
             Packet packet = new Packet(data.ReadAllBytesAsArray())
@@ -227,7 +223,7 @@ namespace Nethermind.Network.Test.P2P
                 P2PVersion = 5,
             };
 
-            IByteBuffer data = _serializer.ZeroSerialize(message);
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
             data.ReadByte(); // adaptive packet type
 
             Packet packet = new Packet(data.ReadAllBytesAsArray())
@@ -251,8 +247,8 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.AddSupportedCapability(capability);
             p2PProtocolHandler.SubprotocolRequested += (_, _) => requestedCount++;
 
-            p2PProtocolHandler.HandleMessage(CreatePacket(new AddCapabilityMessage(capability)));
-            p2PProtocolHandler.HandleMessage(CreatePacket(new AddCapabilityMessage(capability)));
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(capability)));
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(capability)));
 
             requestedCount.Should().Be(1);
             p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(capability)).Should().Be(1);
@@ -265,12 +261,27 @@ namespace Nethermind.Network.Test.P2P
 
             for (int i = 0; i < 64; i++)
             {
-                p2PProtocolHandler.HandleMessage(CreatePacket(new AddCapabilityMessage(new Capability($"cap{i}", 1))));
+                p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(new Capability($"cap{i}", 1))));
             }
 
-            p2PProtocolHandler.HandleMessage(CreatePacket(new AddCapabilityMessage(new Capability("overflow", 1))));
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(new Capability("overflow", 1))));
 
             _session.Received(1).InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+        }
+
+        /// <summary>
+        /// Creates a Packet from a P2P message by stripping the adaptive type byte,
+        /// matching what the real network path produces for P2PProtocolHandler.HandleMessage(Packet).
+        /// </summary>
+        private Packet CreateP2PPacket<T>(T message) where T : P2PMessage
+        {
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
+            data.ReadByte();
+            return new Packet(data.ReadAllBytesAsArray())
+            {
+                Protocol = message.Protocol,
+                PacketType = (byte)message.PacketType,
+            };
         }
     }
 }

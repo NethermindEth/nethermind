@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus;
@@ -23,6 +22,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -176,8 +176,20 @@ public class PooledTransactionsRequestingTests
     }
 
     private void HandleIncomingStatusMessage(Eth66ProtocolHandler handler)
-        => EthProtocolTestHelper.HandleIncomingStatusMessage(_svc, handler, _genesisBlock);
+    {
+        using var statusMsg = new StatusMessage();
+        statusMsg.GenesisHash = _genesisBlock.Hash;
+        statusMsg.BestHash = _genesisBlock.Hash;
+
+        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
+        statusPacket.ReadByte();
+        handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+    }
 
     private void HandleZeroMessage<T>(Eth66ProtocolHandler handler, T msg, int messageCode) where T : MessageBase
-        => EthProtocolTestHelper.HandleZeroMessage(_svc, handler, msg, messageCode);
+    {
+        using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
+        packet.ReadByte();
+        handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+    }
 }

@@ -6,7 +6,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -278,8 +277,18 @@ public class Eth69ProtocolHandlerTests
     }
 
     private void HandleIncomingStatusMessage()
-        => EthProtocolTestHelper.HandleIncomingStatusMessage69(_svc, _handler, _genesisBlock, 69);
+    {
+        using var statusMsg = new StatusMessage69 { ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
+
+        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
+        statusPacket.ReadByte();
+        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+    }
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
-        => EthProtocolTestHelper.HandleZeroMessage(_svc, _handler, msg, messageCode);
+    {
+        using DisposableByteBuffer uOpsPacket = _svc!.ZeroSerialize(msg).AsDisposable();
+        uOpsPacket.ReadByte();
+        _handler!.HandleMessage(new ZeroPacket(uOpsPacket) { PacketType = (byte)messageCode });
+    }
 }

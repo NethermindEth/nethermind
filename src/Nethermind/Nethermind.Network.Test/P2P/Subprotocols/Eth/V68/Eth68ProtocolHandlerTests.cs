@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -288,10 +287,22 @@ public class Eth68ProtocolHandlerTests
     }
 
     private void HandleIncomingStatusMessage()
-        => EthProtocolTestHelper.HandleIncomingStatusMessage(_svc, _handler, _genesisBlock);
+    {
+        var statusMsg = new StatusMessage();
+        statusMsg.GenesisHash = _genesisBlock.Hash;
+        statusMsg.BestHash = _genesisBlock.Hash;
+
+        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
+        statusPacket.ReadByte();
+        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+    }
 
     private void HandleZeroMessage<T>(T msg, byte messageCode) where T : MessageBase
-        => EthProtocolTestHelper.HandleZeroMessage(_svc, _handler, msg, messageCode);
+    {
+        using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
+        getBlockHeadersPacket.ReadByte();
+        _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = messageCode });
+    }
 
     private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes)
     {

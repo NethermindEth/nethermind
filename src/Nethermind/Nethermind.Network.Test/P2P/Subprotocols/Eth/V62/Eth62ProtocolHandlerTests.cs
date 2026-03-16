@@ -7,7 +7,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -205,7 +204,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             msg.Skip = 1;
             msg.Reverse = 1;
 
-            IByteBuffer packet = _svc.ZeroSerialize(msg);
+            using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
             packet.ReadByte();
 
             Assert.Throws<SubprotocolException>(
@@ -328,7 +327,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             HandleIncomingStatusMessage();
 
-            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(newBlockMessage);
+            using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(newBlockMessage).AsDisposable();
             getBlockHeadersPacket.ReadByte();
 
             _syncManager.WhenForAnyArgs(w => w.AddNewBlock(null!, _handler)).Do(_ => throw new Exception());
@@ -638,7 +637,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
-            => EthProtocolTestHelper.HandleZeroMessage(_svc, _handler, msg, messageCode);
+        {
+            using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
+            getBlockHeadersPacket.ReadByte();
+            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+        }
 
         [Test]
         public void Throws_if_new_block_message_received_before_status()
@@ -647,7 +650,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             newBlockMessage.Block = Build.A.Block.WithParent(_genesisBlock).TestObject;
             newBlockMessage.TotalDifficulty = _genesisBlock.Difficulty + newBlockMessage.Block.Difficulty;
 
-            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(newBlockMessage);
+            using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(newBlockMessage).AsDisposable();
             getBlockHeadersPacket.ReadByte();
             Assert.Throws<SubprotocolException>(
                 () => _handler.HandleMessage(
@@ -655,6 +658,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         private void HandleIncomingStatusMessage()
-            => EthProtocolTestHelper.HandleIncomingStatusMessage(_svc, _handler, _genesisBlock);
+        {
+            using var statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+
+            using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
+            statusPacket.ReadByte();
+            _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        }
     }
 }
