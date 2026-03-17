@@ -184,11 +184,32 @@ jobs:
         working-directory: ${{ env.EXPB_DATA_DIR }}
         run: |
           set -euo pipefail
+
+          # Background: tail Nethermind container logs for visibility
+          (
+            sleep 5
+            for i in $(seq 1 60); do
+              cid=$(docker ps --filter "ancestor=nethermindeth/nethermind:${{ env.PGO_TAG }}" \
+                --format '{{.ID}}' 2>/dev/null | head -1)
+              if [[ -n "${cid}" ]]; then
+                echo "=== Tailing Nethermind container ${cid} logs ==="
+                docker logs -f "${cid}" 2>&1 | sed 's/^/[nethermind] /' &
+                break
+              fi
+              sleep 2
+            done
+          ) &
+          log_tail_pid=$!
+
           expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
             --print-logs \
             2>&1 | tee "${RUNNER_TEMP}/expb-pgo-run.log"
+          expb_exit=$?
+
+          kill "${log_tail_pid}" 2>/dev/null || true
+          exit "${expb_exit}"
 
       - name: Extract PGO data from container
         if: always()
