@@ -159,15 +159,11 @@ public static partial class Ssz
         result = array;
     }
 
-    public static void Decode(ReadOnlySpan<byte> span, int vectorLength, out BitArray vector)
-    {
+    public static void Decode(ReadOnlySpan<byte> span, int vectorLength, out BitArray vector) =>
         vector = DecodeBitvector(span, vectorLength);
-    }
 
-    public static void Decode(ReadOnlySpan<byte> span, out BitArray list)
-    {
+    public static void Decode(ReadOnlySpan<byte> span, out BitArray list) =>
         list = DecodeBitlist(span);
-    }
 
     private static void ValidateLength(ReadOnlySpan<byte> span, int expectedLength)
     {
