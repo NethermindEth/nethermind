@@ -24,11 +24,6 @@ on:
           - realblocks
           - superblocks
         default: realblocks
-      create_pr:
-        description: Create PR with updated .mibc profile
-        required: false
-        type: boolean
-        default: false
   schedule:
     # Weekly on Sunday at 02:00 UTC
     - cron: "0 2 * * 0"
@@ -38,8 +33,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 env:
   EXPB_DATA_DIR: /mnt/sda/expb-data
@@ -188,39 +182,3 @@ jobs:
           path: ${{ steps.convert.outputs.mibc_file }}
           retention-days: 90
 
-      - name: Create PR with updated profile
-        if: (inputs.create_pr == true || inputs.create_pr == 'true') || github.event_name == 'schedule'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MIBC_FILE: ${{ steps.convert.outputs.mibc_file }}
-        run: |
-          set -euo pipefail
-          branch="pgo/update-profile-$(date +%Y%m%d)"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "${branch}"
-
-          cp "${MIBC_FILE}" src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc
-          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc
-
-          git commit -m "chore(pgo): update static PGO profile $(date +%Y-%m-%d)"
-          git push origin "${branch}"
-
-          gh pr create \
-            --title "chore(pgo): update static PGO profile" \
-            --body "$(cat <<'EOF'
-          ## Changes
-
-          - Updated static PGO (.mibc) profile collected from EXPB realblocks benchmark
-
-          ## Types of changes
-
-          - [x] Optimization
-
-          ## Testing
-
-          - [x] No (profile data only, no code changes)
-          EOF
-          )" \
-            --base master
