@@ -26,7 +26,7 @@ public class SimulateBlockTracer(bool isTracingLogs, ISpecProvider spec) : Block
 
     protected override SimulateCallResult OnEnd(SimulateTxTracer txTracer)
     {
-        _logIndex += (ulong)txTracer.LogCount;
+        _logIndex += (ulong)(txTracer.TraceResult?.Logs?.Count ?? 0);;
         return txTracer.TraceResult!;
     }
 
