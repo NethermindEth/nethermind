@@ -44,7 +44,7 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMe
         (PublicKey? farPublicKey, _, IByteBuffer? data) = PrepareForDeserialization(msgBytes);
         Rlp.ValueDecoderContext ctx = data.AsRlpContext();
         ctx.ReadSequenceLength();
-        Hash256? requestKeccak = ctx.DecodeKeccak();
+        Hash256? requestKeccak = ctx.DecodeKeccak(); // skip (not sure if needed to verify)
 
         int positionForHex = ctx.Position;
         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(ref ctx);

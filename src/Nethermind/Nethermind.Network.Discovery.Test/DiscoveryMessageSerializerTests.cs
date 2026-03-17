@@ -137,11 +137,6 @@ public class DiscoveryMessageSerializerTests
         Assert.That(deserialized.NodeRecord.Signature, Is.EqualTo(msg.NodeRecord.Signature));
     }
 
-    /// <summary>
-    /// Verifies that Deserialize does not leak a pooled IByteBuffer on the ENR signature
-    /// verification failure path. Before the fix, data.ReadBytes(positionForHex) allocated
-    /// a new pooled buffer that was chained into .ReadAllHex() but never released.
-    /// </summary>
     [Test]
     public void Enr_response_deserialize_does_not_leak_buffer_on_invalid_signature()
     {
