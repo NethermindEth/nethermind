@@ -250,9 +250,17 @@ jobs:
           git clone --depth 1 \
             https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
           cd "${RUNNER_TEMP}/dotnet-runtime"
-          # Remove global.json so we use the installed SDK instead of requiring preview
-          rm -f global.json
-          dotnet build src/coreclr/tools/dotnet-pgo -c Release -o "${RUNNER_TEMP}/dotnet-pgo-bin"
+          ./build.sh -subset clr.tools -c Release
+
+          dotnet_pgo_path=$(find "${RUNNER_TEMP}/dotnet-runtime/artifacts" -type f -name dotnet-pgo | head -1)
+          if [[ -z "${dotnet_pgo_path}" ]]; then
+            echo "dotnet-pgo was not produced under artifacts/"
+            exit 1
+          fi
+
+          mkdir -p "${RUNNER_TEMP}/dotnet-pgo-bin"
+          cp "${dotnet_pgo_path}" "${RUNNER_TEMP}/dotnet-pgo-bin/"
+          chmod +x "${RUNNER_TEMP}/dotnet-pgo-bin/dotnet-pgo"
           echo "${RUNNER_TEMP}/dotnet-pgo-bin" >> "${GITHUB_PATH}"
 
       - name: Convert traces to .mibc and merge with edge profiling
