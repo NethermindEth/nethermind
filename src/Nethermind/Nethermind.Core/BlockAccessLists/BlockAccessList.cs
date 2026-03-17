@@ -383,7 +383,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             _accountChanges.Add(change.Address, change);
         }
     }
-    
+
     internal void RemoveAccountChanges(params Address[] addresses)
     {
         foreach (Address address in addresses)

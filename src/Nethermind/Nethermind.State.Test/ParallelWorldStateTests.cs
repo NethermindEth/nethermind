@@ -571,19 +571,19 @@ public class ParallelWorldStateTests
             switch (scenario)
             {
                 case ParallelScenario.PriorTxChange:
-                {
-                    SlotChanges sc = suggested.GetAccountChanges(TestItem.AddressA)!
-                        .GetOrAddSlotChanges(cell.Index);
-                    sc.AddStorageChange(new StorageChange(0, expectedValue));
-                    break;
-                }
+                    {
+                        SlotChanges sc = suggested.GetAccountChanges(TestItem.AddressA)!
+                            .GetOrAddSlotChanges(cell.Index);
+                        sc.AddStorageChange(new StorageChange(0, expectedValue));
+                        break;
+                    }
                 case ParallelScenario.CurrentTxChange:
-                {
-                    // Mirrors real EVM behaviour: SLOAD must precede SSTORE in the same tx.
-                    _ = pws.Get(cell, blockAccessIndex: 1);
-                    pws.Set(cell, [(byte)expectedValue], blockAccessIndex: 1);
-                    break;
-                }
+                    {
+                        // Mirrors real EVM behaviour: SLOAD must precede SSTORE in the same tx.
+                        _ = pws.Get(cell, blockAccessIndex: 1);
+                        pws.Set(cell, [(byte)expectedValue], blockAccessIndex: 1);
+                        break;
+                    }
             }
 
             ReadOnlySpan<byte> retrieved = pws.Get(cell, blockAccessIndex: txIndex);
