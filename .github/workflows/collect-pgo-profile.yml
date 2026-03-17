@@ -34,14 +34,95 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write
 
 env:
   EXPB_DATA_DIR: /mnt/sda/expb-data
-  PGO_IMAGE: nethermind-pgo:local
+  PGO_TAG: pgo-collect
 
 jobs:
+  build-pgo-image:
+    name: Build PGO collection image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Trigger publish-docker.yml with Dockerfile.pgo
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: publish-docker.yml
+          ref: ${{ github.ref }}
+          token: ${{ github.token }}
+          inputs: '{
+            "image-name": "nethermind",
+            "tag": "${{ env.PGO_TAG }}",
+            "dockerfile": "Dockerfile.pgo",
+            "build-config": "release"
+            }'
+
+      - name: Wait for publish-docker.yml to complete
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Waiting for publish-docker.yml to start and complete..."
+
+          max_discovery=300
+          poll=15
+          max_completion=7200
+          elapsed=0
+          run_id=""
+
+          # Phase 1: discover the run
+          while [[ -z "${run_id}" ]]; do
+            response=$(gh api "repos/${{ github.repository }}/actions/workflows/publish-docker.yml/runs?per_page=5&branch=${{ github.ref_name }}" 2>/dev/null || echo '{"workflow_runs":[]}')
+            run_id=$(echo "${response}" | jq -r '[.workflow_runs[] | select(.status != "completed")] | .[0].id // empty')
+
+            if [[ -n "${run_id}" ]]; then
+              echo "Found publish-docker run: ${run_id}"
+              break
+            fi
+
+            elapsed=$((elapsed + poll))
+            if [[ "${elapsed}" -ge "${max_discovery}" ]]; then
+              echo "No publish-docker.yml run found within ${max_discovery}s."
+              exit 1
+            fi
+            echo "Waiting for run to appear... (${elapsed}/${max_discovery}s)"
+            sleep "${poll}"
+          done
+
+          # Phase 2: wait for completion
+          elapsed=0
+          while true; do
+            run_data=$(gh api "repos/${{ github.repository }}/actions/runs/${run_id}" 2>/dev/null || echo '{}')
+            status=$(echo "${run_data}" | jq -r '.status // "unknown"')
+            conclusion=$(echo "${run_data}" | jq -r '.conclusion // empty')
+
+            if [[ "${status}" == "completed" ]]; then
+              if [[ "${conclusion}" == "success" ]]; then
+                echo "publish-docker.yml completed successfully."
+                exit 0
+              else
+                echo "publish-docker.yml finished with conclusion: ${conclusion}"
+                exit 1
+              fi
+            fi
+
+            elapsed=$((elapsed + poll))
+            if [[ "${elapsed}" -ge "${max_completion}" ]]; then
+              echo "Timeout waiting for publish-docker.yml (${max_completion}s)."
+              exit 1
+            fi
+            echo "Status: ${status} — waiting... (${elapsed}/${max_completion}s)"
+            sleep "${poll}"
+          done
+
   collect:
     name: Collect PGO profile via EXPB
+    needs: [build-pgo-image]
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 720
     steps:
@@ -67,15 +148,23 @@ jobs:
           fi
           echo "config_file=${config_file}" >> "${GITHUB_OUTPUT}"
 
-      - name: Build PGO collection Docker image
+      - name: Render benchmark config
+        id: render-config
         shell: bash
+        env:
+          CONFIG_FILE: ${{ steps.resolve.outputs.config_file }}
         run: |
           set -euo pipefail
-          docker build \
-            -f Dockerfile.pgo \
-            -t "${PGO_IMAGE}" \
-            --build-arg COMMIT_HASH=$(git rev-parse HEAD) \
-            .
+          rendered="${RUNNER_TEMP}/rendered-pgo-config.yaml"
+          sed \
+            -e 's#<<DOCKER_TAG>>#${{ env.PGO_TAG }}#g' \
+            -e 's#<<DELAY>>#0#g' \
+            -e 's#^\([[:space:]]*\)nethermind:#\1nethermind-pgo-collect:#g' \
+            "${EXPB_DATA_DIR}/${CONFIG_FILE}" \
+            > "${rendered}"
+          echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
+          echo "Rendered config:"
+          cat "${rendered}"
 
       - name: Install or upgrade expb
         shell: bash
@@ -87,33 +176,6 @@ jobs:
           fi
           uv tool install --force --from "git+https://github.com/NethermindEth/execution-payloads-benchmarks" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
-
-      - name: Render benchmark config for local PGO image
-        id: render-config
-        shell: bash
-        env:
-          CONFIG_FILE: ${{ steps.resolve.outputs.config_file }}
-        run: |
-          set -euo pipefail
-          rendered="${RUNNER_TEMP}/rendered-pgo-config.yaml"
-
-          # Replace docker image reference with local image name and disable pull
-          sed \
-            -e 's#<<DOCKER_TAG>>#local#g' \
-            -e 's#<<DELAY>>#0#g' \
-            -e 's#^\([[:space:]]*\)nethermind:#\1nethermind-pgo-collect:#g' \
-            "${EXPB_DATA_DIR}/${CONFIG_FILE}" \
-            > "${rendered}"
-
-          # Replace the Docker Hub image with our local image name
-          sed -i "s#nethermindeth/nethermind:local#${PGO_IMAGE}#g" "${rendered}"
-
-          # Add pull_policy: never if expb supports it (append after image line)
-          sed -i '/docker_image:/a\    pull_policy: never' "${rendered}" 2>/dev/null || true
-
-          echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
-          echo "Rendered config:"
-          cat "${rendered}"
 
       - name: Run EXPB for PGO collection
         id: run-expb
@@ -136,17 +198,15 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/pgo-traces"
 
           # Find containers from our PGO image (running or stopped)
-          container_id=$(docker ps -a --filter "ancestor=${PGO_IMAGE}" \
+          container_id=$(docker ps -a --filter "ancestor=nethermindeth/nethermind:${{ env.PGO_TAG }}" \
             --format '{{.ID}}' | head -1)
 
           if [[ -n "${container_id}" ]]; then
             echo "Extracting traces from container ${container_id}..."
             docker cp "${container_id}:/nethermind/pgo/" "${RUNNER_TEMP}/pgo-traces/" 2>/dev/null || true
-            # EventPipe may write to working directory
             docker cp "${container_id}:/nethermind/" "${RUNNER_TEMP}/pgo-workdir/" 2>/dev/null || true
           fi
 
-          # Search everywhere for .nettrace files
           echo "Looking for .nettrace files..."
           find "${RUNNER_TEMP}" -name "*.nettrace" -type f -ls 2>/dev/null || true
           find /tmp -name "*.nettrace" -type f -ls 2>/dev/null || true
@@ -203,9 +263,3 @@ jobs:
             ${{ runner.temp }}/pgo-workdir/**/*.nettrace
           if-no-files-found: warn
           retention-days: 30
-
-      - name: Cleanup
-        if: always()
-        shell: bash
-        run: |
-          docker rmi "${PGO_IMAGE}" 2>/dev/null || true
