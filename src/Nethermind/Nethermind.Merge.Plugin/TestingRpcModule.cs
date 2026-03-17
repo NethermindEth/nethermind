@@ -49,7 +49,7 @@ public class TestingRpcModule(
                 return ResultWrapper<object?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
             }
 
-            if (!ValidatePayloadAttributes(payloadAttributes, resolvedFork, out ResultWrapper<object?>? errorResult))
+            if (!ValidatePayloadAttributes(payloadAttributes, spec, out ResultWrapper<object?>? errorResult))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {errorResult!.Result.Error}");
                 return errorResult!;
@@ -132,9 +132,9 @@ public class TestingRpcModule(
             ? new GetPayloadV6Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false)
             : new GetPayloadV5Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false);
 
-    private bool ValidatePayloadAttributes(PayloadAttributes payloadAttributes, TargetFork resolvedFork, out ResultWrapper<object?>? errorResult)
+    private bool ValidatePayloadAttributes(PayloadAttributes payloadAttributes, IReleaseSpec spec, out ResultWrapper<object?>? errorResult)
     {
-        if (resolvedFork == TargetFork.Amsterdam)
+        if (spec.IsEip7843Enabled)
         {
             if (payloadAttributes.SlotNumber is null)
             {
@@ -144,7 +144,7 @@ public class TestingRpcModule(
         }
         else if (payloadAttributes.SlotNumber is not null)
         {
-            errorResult = ResultWrapper<object?>.Fail("slotNumber is not supported before Amsterdam", MergeErrorCodes.InvalidPayloadAttributes);
+            errorResult = ResultWrapper<object?>.Fail("slotNumber is not supported before EIP-7843", MergeErrorCodes.InvalidPayloadAttributes);
             return false;
         }
 
