@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -82,32 +82,39 @@ public class SszBasicVectorTests
 
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
 
-        bool isInvalid = false;
-
-        // Zero-length vectors are invalid
+        // Zero-length vectors are invalid by definition
         if (vectorLength == 0)
         {
-            isInvalid = true;
+            Assert.Pass("Zero-length vector is invalid by definition");
+            return;
         }
-        // Wrong byte length
-        else if (ssz.Length != expectedByteLength)
+
+        // Wrong byte length: decoders validate alignment and will throw
+        if (ssz.Length != expectedByteLength)
         {
-            isInvalid = true;
+            byte[] reEncoded = new byte[ssz.Length];
+            Assert.That(() => VerifyDecodeReencode(elementType, ssz, reEncoded), Throws.InstanceOf<Exception>(),
+                $"Decoder should reject wrong-length input for {caseName}");
+            return;
         }
-        // For booleans, values > 1 are invalid
-        else if (elementType == "bool")
+
+        // Correct length but invalid values (e.g. bool > 1): DecodeBools doesn't validate yet
+        if (elementType == "bool")
         {
+            bool hasInvalidBool = false;
             for (int i = 0; i < ssz.Length; i++)
             {
                 if (ssz[i] > 1)
                 {
-                    isInvalid = true;
+                    hasInvalidBool = true;
                     break;
                 }
             }
+            Assert.That(hasInvalidBool, Is.True, $"Expected out-of-range boolean value for {caseName}");
+            return;
         }
 
-        Assert.That(isInvalid, Is.True, $"Expected invalid basic_vector case for {caseName}");
+        Assert.Fail($"Unhandled invalid basic_vector case: {caseName}");
     }
 
     private static void VerifyDecodeReencode(string elementType, byte[] ssz, byte[] reEncoded)

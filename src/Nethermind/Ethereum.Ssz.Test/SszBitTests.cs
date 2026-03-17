@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -39,19 +39,7 @@ public class SszBitTests
     public void Bitvector_invalid_should_fail(string casePath, int bitLength)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
-        int expectedByteLength = (bitLength + 7) / 8;
-
-        // Zero-length bitvectors are invalid by definition
-        bool isInvalid = bitLength == 0 || ssz.Length != expectedByteLength;
-        if (!isInvalid && bitLength % 8 != 0)
-        {
-            int excessBits = bitLength % 8;
-            byte lastByte = ssz[^1];
-            byte mask = (byte)(0xFF << excessBits);
-            isInvalid = (lastByte & mask) != 0;
-        }
-
-        Assert.That(isInvalid, Is.True, "Expected invalid bitvector but it appears valid");
+        Assert.That(() => SszEncoder.DecodeBitvector(ssz, bitLength), Throws.InstanceOf<Exception>());
     }
 
     // --- Bitlist tests ---

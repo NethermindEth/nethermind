@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -28,10 +28,11 @@ public static class SszConsensusTestLoader
 
         using HttpClient httpClient = new();
         string url = string.Format(ArchiveUrlTemplate, DefaultVersion, DefaultArchive);
-        HttpResponseMessage response = httpClient.GetAsync(url).GetAwaiter().GetResult();
+        using HttpRequestMessage request = new(HttpMethod.Get, url);
+        using HttpResponseMessage response = httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
 
-        using Stream contentStream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+        using Stream contentStream = response.Content.ReadAsStream();
         using GZipStream gzStream = new(contentStream, CompressionMode.Decompress);
 
         Directory.CreateDirectory(TestsRoot);

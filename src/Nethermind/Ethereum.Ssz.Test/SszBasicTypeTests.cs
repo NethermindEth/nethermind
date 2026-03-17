@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -40,7 +40,17 @@ public class SszBasicTypeTests
     public void Boolean_invalid(string casePath)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
-        Assert.That(ssz.Length != 1 || ssz[0] > 1, Is.True, "Expected invalid boolean encoding");
+
+        if (ssz.Length != 1)
+        {
+            // Wrong length: decoder should throw
+            Assert.That(() => SszEncoder.DecodeBool(ssz.AsSpan()), Throws.InstanceOf<Exception>());
+        }
+        else
+        {
+            // Correct length but invalid value (> 1): DecodeBool doesn't validate yet
+            Assert.That(ssz[0] > 1, Is.True, "Expected out-of-range boolean value");
+        }
     }
 
     // --- Uint8 ---
