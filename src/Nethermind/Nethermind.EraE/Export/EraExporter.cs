@@ -34,7 +34,7 @@ public class EraExporter(
     private readonly int _eraSize = eraConfig.MaxEraSize;
 
     public const string AccumulatorFileName = "accumulators.txt";
-    public const string ChecksumsFileName = "checksums.txt";
+    public const string ChecksumsFileName = "checksums_sha256.txt";
 
     public Task Export(string destinationPath, long from, long to, CancellationToken cancellation = default)
     {
@@ -45,6 +45,13 @@ public class EraExporter(
             throw new ArgumentException($"Cannot export beyond head block {blockTree.Head?.Number ?? 0}.");
         if (from > to)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to}).");
+
+        Block? lastBlock = blockTree.FindBlock(to, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        if (lastBlock is null)
+            throw new InvalidOperationException(
+                $"Block {to} is not available. " +
+                "EraE export requires all block bodies to be present. " +
+                "Ensure the node is fully synced before exporting.");
 
         return DoExport(destinationPath, from, to, cancellation);
     }
@@ -111,7 +118,7 @@ public class EraExporter(
                 {
                     Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
                     if (block is null)
-                        throw new EraException($"Could not find block {y}.");
+                        throw new EraException($"Could not find block {y}. The node may not have finished syncing block bodies for this range.");
 
                     TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
                     if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
@@ -158,8 +165,8 @@ public class EraExporter(
         for (int i = 0; i < hashes.Count; i++)
         {
             cancellation.ThrowIfCancellationRequested();
-            await writer.WriteAsync(hashes[i].ToString());
-            await writer.WriteAsync(' ');
+            await writer.WriteAsync(hashes[i].ToString(false));
+            await writer.WriteAsync("  ");
             await writer.WriteLineAsync(fileNames[i]);
         }
     }

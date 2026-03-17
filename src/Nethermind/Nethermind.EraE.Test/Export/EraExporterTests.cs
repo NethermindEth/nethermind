@@ -3,8 +3,10 @@
 
 using Autofac;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using Nethermind.EraE.Config;
@@ -199,6 +201,24 @@ public class EraExporterTests
     private const ushort EntryTypeProof = 0x0b;
     private const ushort EntryTypeTotalDifficulty = 0x06;
     private const ushort EntryTypeAccumulatorRoot = 0x07;
+
+    [Test]
+    public void Export_WhenLastBlockBodyNotAvailable_ThrowsInvalidOperationException()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        Block head = Build.A.Block.WithNumber(10).TestObject;
+        blockTree.Head.Returns(head);
+        blockTree.FindBlock(10, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).ReturnsNull();
+
+        using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(1)
+            .AddSingleton<IBlockTree>(blockTree)
+            .Build();
+
+        string tmpDirectory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+
+        Assert.That(() => sut.Export(tmpDirectory, 0, 10), Throws.TypeOf<InvalidOperationException>());
+    }
 
     [Test]
     public async Task Export_WithPartialRange_CreatesOnlyEpochsInRange()
