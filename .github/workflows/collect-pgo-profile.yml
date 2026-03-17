@@ -1,0 +1,221 @@
+name: Collect PGO Profile
+
+on:
+  workflow_dispatch:
+    inputs:
+      state_layout:
+        description: State layout mode
+        required: true
+        type: choice
+        options:
+          - halfpath
+          - flat
+        default: halfpath
+      payload_set:
+        description: Payload set mode
+        required: true
+        type: choice
+        options:
+          - realblocks
+          - superblocks
+        default: realblocks
+      create_pr:
+        description: Create PR with updated .mibc profile
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    # Weekly on Sunday at 02:00 UTC
+    - cron: "0 2 * * 0"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  EXPB_DATA_DIR: /mnt/sda/expb-data
+
+jobs:
+  collect:
+    name: Collect PGO profile via EXPB
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 720
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Resolve config file
+        id: resolve
+        shell: bash
+        env:
+          STATE_LAYOUT: ${{ inputs.state_layout || 'halfpath' }}
+          PAYLOAD_SET: ${{ inputs.payload_set || 'realblocks' }}
+        run: |
+          set -euo pipefail
+          if [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "superblocks" ]]; then
+            config_file="github-action-compressed-mainnet-flat.yaml"
+          elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "realblocks" ]]; then
+            config_file="github-action-mainnet-flat.yaml"
+          elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "superblocks" ]]; then
+            config_file="github-action-compressed-mainnet.yaml"
+          else
+            config_file="github-action-mainnet.yaml"
+          fi
+          echo "config_file=${config_file}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build PGO collection Docker image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build \
+            -f Dockerfile.pgo \
+            -t nethermindeth/nethermind:pgo-collect \
+            --build-arg COMMIT_HASH=$(git rev-parse HEAD) \
+            .
+
+      - name: Render benchmark config for PGO image
+        id: render-config
+        shell: bash
+        env:
+          CONFIG_FILE: ${{ steps.resolve.outputs.config_file }}
+        run: |
+          set -euo pipefail
+          rendered="${RUNNER_TEMP}/rendered-pgo-config.yaml"
+          sed \
+            -e 's#<<DOCKER_TAG>>#pgo-collect#g' \
+            -e 's#<<DELAY>>#0#g' \
+            -e 's#^\([[:space:]]*\)nethermind:#\1nethermind-pgo-collect:#g' \
+            "${EXPB_DATA_DIR}/${CONFIG_FILE}" \
+            > "${rendered}"
+          echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
+          echo "Rendered config:"
+          cat "${rendered}"
+
+      - name: Create PGO output directory
+        run: mkdir -p /tmp/nethermind-pgo
+
+      - name: Install or upgrade expb
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v uv >/dev/null 2>&1; then
+            echo "uv is required but not found in PATH."
+            exit 1
+          fi
+          uv tool install --force --from "git+https://github.com/NethermindEth/execution-payloads-benchmarks" expb
+          echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+
+      - name: Run EXPB for PGO collection
+        shell: bash
+        working-directory: ${{ env.EXPB_DATA_DIR }}
+        run: |
+          set -euo pipefail
+          expb execute-scenarios \
+            --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
+            --per-payload-metrics \
+            --print-logs \
+            2>&1 | tee "${RUNNER_TEMP}/expb-pgo-run.log"
+
+      - name: Extract .nettrace from container
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Find the most recent stopped nethermind container
+          container_id=$(docker ps -a --filter "ancestor=nethermindeth/nethermind:pgo-collect" \
+            --format '{{.ID}}' | head -1)
+
+          if [[ -z "${container_id}" ]]; then
+            echo "No PGO collection container found. Trying to find trace via volume."
+            # Fallback: check if any .nettrace files exist
+            find /tmp/nethermind-pgo -name "*.nettrace" -type f 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Extracting traces from container ${container_id}..."
+          docker cp "${container_id}:/nethermind/pgo/" "${RUNNER_TEMP}/pgo-traces/" || true
+
+          # Also try the working directory
+          docker cp "${container_id}:/nethermind/" "${RUNNER_TEMP}/pgo-workdir/" 2>/dev/null || true
+
+          # Find all .nettrace files
+          echo "Looking for .nettrace files..."
+          find "${RUNNER_TEMP}" -name "*.nettrace" -type f -ls
+
+      - name: Set up .NET for dotnet-pgo
+        uses: actions/setup-dotnet@v5
+        with:
+          cache: false
+
+      - name: Install dotnet-pgo tool
+        run: dotnet tool install -g dotnet-pgo
+
+      - name: Convert .nettrace to .mibc
+        id: convert
+        shell: bash
+        run: |
+          set -euo pipefail
+          trace_file=$(find "${RUNNER_TEMP}" -name "*.nettrace" -type f | head -1)
+
+          if [[ -z "${trace_file}" ]]; then
+            echo "No .nettrace file found."
+            exit 1
+          fi
+
+          echo "Converting ${trace_file} to .mibc..."
+          mibc_file="${RUNNER_TEMP}/nethermind.mibc"
+
+          dotnet-pgo create-mibc \
+            --trace "${trace_file}" \
+            --output "${mibc_file}"
+
+          echo "Generated .mibc profile:"
+          ls -lh "${mibc_file}"
+          echo "mibc_file=${mibc_file}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload .mibc artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nethermind-pgo-profile
+          path: ${{ steps.convert.outputs.mibc_file }}
+          retention-days: 90
+
+      - name: Create PR with updated profile
+        if: (inputs.create_pr == true || inputs.create_pr == 'true') || github.event_name == 'schedule'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MIBC_FILE: ${{ steps.convert.outputs.mibc_file }}
+        run: |
+          set -euo pipefail
+          branch="pgo/update-profile-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${branch}"
+
+          cp "${MIBC_FILE}" src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc
+          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc
+
+          git commit -m "chore(pgo): update static PGO profile $(date +%Y-%m-%d)"
+          git push origin "${branch}"
+
+          gh pr create \
+            --title "chore(pgo): update static PGO profile" \
+            --body "$(cat <<'EOF'
+          ## Changes
+
+          - Updated static PGO (.mibc) profile collected from EXPB realblocks benchmark
+
+          ## Types of changes
+
+          - [x] Optimization
+
+          ## Testing
+
+          - [x] No (profile data only, no code changes)
+          EOF
+          )" \
+            --base master
