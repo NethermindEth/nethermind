@@ -251,6 +251,8 @@ jobs:
             https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
           cd "${RUNNER_TEMP}/dotnet-runtime"
           git sparse-checkout set src/coreclr/tools/dotnet-pgo
+          # Remove global.json so we use the installed SDK instead of requiring preview
+          rm -f global.json
           dotnet build src/coreclr/tools/dotnet-pgo -c Release -o "${RUNNER_TEMP}/dotnet-pgo-bin"
           echo "${RUNNER_TEMP}/dotnet-pgo-bin" >> "${GITHUB_PATH}"
 
