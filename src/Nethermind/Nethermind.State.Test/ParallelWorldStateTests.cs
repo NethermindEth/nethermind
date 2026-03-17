@@ -221,7 +221,7 @@ public class ParallelWorldStateTests
         (ParallelWorldState pws, IDisposable scope) = CreateTracingState(ws =>
         {
             ws.CreateAccount(TestItem.AddressA, 0);
-            ws.IncrementNonce(TestItem.AddressA, 3);
+            ws.IncrementNonce(TestItem.AddressA, 1);
         });
         using (scope)
         {
@@ -229,7 +229,7 @@ public class ParallelWorldStateTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(nonce, Is.EqualTo((UInt256)3));
+                Assert.That(nonce, Is.EqualTo((UInt256)1));
                 Assert.That(pws.GeneratedBlockAccessList.HasAccount(TestItem.AddressA), Is.True);
             }
         }
@@ -883,7 +883,7 @@ public class ParallelWorldStateTests
             });
         using (scope)
         {
-            if (scenario != ValidateScenario.SuggestedHasMissing)
+            if (scenario != ValidateScenario.SuggestedHasSurplus)
             {
                 // Generates BalanceChange(txIndex, 150) for A in intermediate[txIndex].
                 pws.AddToBalance(TestItem.AddressA, 50, Spec, blockAccessIndex: txIndex);

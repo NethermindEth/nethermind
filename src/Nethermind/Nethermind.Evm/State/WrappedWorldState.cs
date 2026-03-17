@@ -23,9 +23,6 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual bool AccountExists(Address address, int? blockAccessIndex = null)
         => _innerWorldState.AccountExists(address, blockAccessIndex);
 
-    public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
-        => _innerWorldState.AddToBalance(address, balanceChange, spec, blockAccessIndex);
-
     public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
         => _innerWorldState.AddToBalance(address, balanceChange, spec, out oldBalance, blockAccessIndex);
 
