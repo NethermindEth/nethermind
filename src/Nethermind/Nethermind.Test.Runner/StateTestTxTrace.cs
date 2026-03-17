@@ -7,19 +7,10 @@ namespace Nethermind.Test.Runner
 {
     public class StateTestTxTrace
     {
-        //        public Stack<Dictionary<string, string>> StorageByDepth { get; } = new Stack<Dictionary<string, string>>();
+        public StateTestTxTraceState State { get; set; } = new();
 
-        public StateTestTxTrace()
-        {
-            Entries = new List<StateTestTxTraceEntry>();
-            Result = new StateTestTxTraceResult();
-            State = new StateTestTxTraceState();
-        }
+        public StateTestTxTraceResult Result { get; set; } = new();
 
-        public StateTestTxTraceState State { get; set; }
-
-        public StateTestTxTraceResult Result { get; set; }
-
-        public List<StateTestTxTraceEntry> Entries { get; set; }
+        public List<StateTestTxTraceEntry> Entries { get; set; } = new();
     }
 }

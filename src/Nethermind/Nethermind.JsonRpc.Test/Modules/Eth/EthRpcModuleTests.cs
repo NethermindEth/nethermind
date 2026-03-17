@@ -28,6 +28,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -51,6 +52,33 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 [Parallelizable(ParallelScope.Self)]
 public partial class EthRpcModuleTests
 {
+    private const string BatTokenAddress = "0x0d8775f648430679a709e98d2b0cb6250d2887ef";
+    private const string TestAccountAddress = "0x0001020304050607080910111213141516171819";
+    private const string SecondaryTestAddress = "0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24";
+    private const string BalanceOfCallData = "0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160";
+
+    private static readonly Address TestAccount = new(TestAccountAddress);
+
+    private static readonly byte[] InfiniteLoopCode = Prepare.EvmCode
+        .Op(Instruction.JUMPDEST)
+        .PushData(0)
+        .Op(Instruction.JUMP)
+        .Done;
+
+    private static readonly byte[] BaseFeeReturnCode = Prepare.EvmCode
+        .Op(Instruction.BASEFEE)
+        .PushData(0)
+        .Op(Instruction.MSTORE)
+        .PushData("0x20")
+        .PushData("0x0")
+        .Op(Instruction.RETURN)
+        .Done;
+
+    private static void AssertAccountDoesNotExist(Context ctx, Address account)
+    {
+        Assert.That(ctx.Test.ReadOnlyState.AccountExists(account), Is.False);
+    }
+
     [TestCase("earliest", "0x3635c9adc5dea00000")]
     [TestCase("latest", "0x3635c9adc5de9f09e5")]
     [TestCase("pending", "0x3635c9adc5de9f09e5")]
@@ -1277,7 +1305,7 @@ public partial class EthRpcModuleTests
 
         // Contract creation with infinite loop; gas 200K should be capped to 60K
         TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x0\", \"gas\": \"0x30D40\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x0\", \"gas\": \"0x30D40\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
 
         string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
 

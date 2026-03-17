@@ -52,7 +52,7 @@ public static partial class Ssz
         if (span.Length != expectedBytes)
         {
             throw new InvalidDataException(
-                $"Invalid bitvector: expected {expectedBytes} bytes for {vectorLength} bits, got {span.Length}");
+                $"Invalid bitvector: expected {expectedBytes} bytes for Bitvector[{vectorLength}] but got {span.Length}");
         }
 
         if (vectorLength % 8 != 0)
