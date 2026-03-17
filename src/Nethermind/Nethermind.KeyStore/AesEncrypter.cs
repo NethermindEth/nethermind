@@ -119,7 +119,7 @@ namespace Nethermind.KeyStore
             var counter = (byte[])salt.Clone();
             var xorMask = new Queue<byte>();
             var zeroIv = new byte[blockSize];
-            var encryptor = aes.CreateEncryptor(key, zeroIv);
+            using var encryptor = aes.CreateEncryptor(key, zeroIv);
 
             int @byte;
             while ((@byte = inputStream.ReadByte()) != -1)
