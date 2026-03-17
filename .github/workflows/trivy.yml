@@ -34,7 +34,7 @@ jobs:
         with:
           image-ref: ${{ env.IMAGE_TAG }}
           format: template
-          template: "@/contrib/sarif.tpl"
+          template: '@/contrib/sarif.tpl'
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
         env:
