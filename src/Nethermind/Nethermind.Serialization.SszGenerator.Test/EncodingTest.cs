@@ -49,7 +49,7 @@ public class EncodingTest
         SszEncoding.MerkleizeList(list, 100, out UInt256 rootWithLimit100);
         SszEncoding.MerkleizeList(list, 200, out UInt256 rootWithLimit200);
 
-        Assert.That(rootWithLimit100, Is.EqualTo(rootWithLimit200), 
+        Assert.That(rootWithLimit100, Is.EqualTo(rootWithLimit200),
             "Same list with different limits must have same root (limit affects tree depth, not mix-in)");
     }
 }
