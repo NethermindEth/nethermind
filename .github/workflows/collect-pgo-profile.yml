@@ -38,7 +38,7 @@ permissions:
 
 env:
   EXPB_DATA_DIR: /mnt/sda/expb-data
-  PGO_TAG: pgo-collect
+  PGO_TAG: pgo-${{ github.run_id }}
 
 jobs:
   build-pgo-image:
