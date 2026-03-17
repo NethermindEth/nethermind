@@ -253,7 +253,8 @@ jobs:
           git sparse-checkout set \
             src/coreclr/tools/dotnet-pgo \
             src/coreclr/tools/aot/ILCompiler.Reflection.ReadyToRun \
-            src/coreclr/tools/aot/ILCompiler.TypeSystem
+            src/coreclr/tools/aot/ILCompiler.TypeSystem \
+            src/libraries/Microsoft.NETCore.Platforms/src
           # Remove global.json so we use the installed SDK instead of requiring preview
           rm -f global.json
           dotnet build src/coreclr/tools/dotnet-pgo -c Release -o "${RUNNER_TEMP}/dotnet-pgo-bin"
