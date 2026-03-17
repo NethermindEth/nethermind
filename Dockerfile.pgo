@@ -39,10 +39,12 @@ WORKDIR /nethermind
 # JIT events with method details for dotnet-pgo tool
 # App assemblies are already built without R2R so they will be JIT-compiled.
 # Framework R2R is left enabled to avoid extremely slow startup.
+# Override EventSource.IsSupported=false from runtimeconfig.json
+ENV DOTNET_System_Diagnostics_Tracing_EventSource_IsSupported=true
 ENV DOTNET_EnableEventPipe=1
 ENV DOTNET_EventPipeCircularMB=1024
 ENV DOTNET_EventPipeOutputPath=/nethermind/pgo/
-ENV DOTNET_EventPipeConfig=Microsoft-Windows-DotNETRuntime:0x6000080018:5
+ENV DOTNET_EventPipeConfig=Microsoft-Windows-DotNETRuntime:0x1E000080018:5
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
