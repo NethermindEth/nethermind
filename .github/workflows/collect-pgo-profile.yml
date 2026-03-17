@@ -37,6 +37,7 @@ permissions:
 
 env:
   EXPB_DATA_DIR: /mnt/sda/expb-data
+  PGO_IMAGE: nethermind-pgo:local
 
 jobs:
   collect:
@@ -72,30 +73,9 @@ jobs:
           set -euo pipefail
           docker build \
             -f Dockerfile.pgo \
-            -t nethermindeth/nethermind:pgo-collect \
+            -t "${PGO_IMAGE}" \
             --build-arg COMMIT_HASH=$(git rev-parse HEAD) \
             .
-
-      - name: Render benchmark config for PGO image
-        id: render-config
-        shell: bash
-        env:
-          CONFIG_FILE: ${{ steps.resolve.outputs.config_file }}
-        run: |
-          set -euo pipefail
-          rendered="${RUNNER_TEMP}/rendered-pgo-config.yaml"
-          sed \
-            -e 's#<<DOCKER_TAG>>#pgo-collect#g' \
-            -e 's#<<DELAY>>#0#g' \
-            -e 's#^\([[:space:]]*\)nethermind:#\1nethermind-pgo-collect:#g' \
-            "${EXPB_DATA_DIR}/${CONFIG_FILE}" \
-            > "${rendered}"
-          echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
-          echo "Rendered config:"
-          cat "${rendered}"
-
-      - name: Create PGO output directory
-        run: mkdir -p /tmp/nethermind-pgo
 
       - name: Install or upgrade expb
         shell: bash
@@ -108,7 +88,36 @@ jobs:
           uv tool install --force --from "git+https://github.com/NethermindEth/execution-payloads-benchmarks" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
+      - name: Render benchmark config for local PGO image
+        id: render-config
+        shell: bash
+        env:
+          CONFIG_FILE: ${{ steps.resolve.outputs.config_file }}
+        run: |
+          set -euo pipefail
+          rendered="${RUNNER_TEMP}/rendered-pgo-config.yaml"
+
+          # Replace docker image reference with local image name and disable pull
+          sed \
+            -e 's#<<DOCKER_TAG>>#local#g' \
+            -e 's#<<DELAY>>#0#g' \
+            -e 's#^\([[:space:]]*\)nethermind:#\1nethermind-pgo-collect:#g' \
+            "${EXPB_DATA_DIR}/${CONFIG_FILE}" \
+            > "${rendered}"
+
+          # Replace the Docker Hub image with our local image name
+          sed -i "s#nethermindeth/nethermind:local#${PGO_IMAGE}#g" "${rendered}"
+
+          # Add pull_policy: never if expb supports it (append after image line)
+          sed -i '/docker_image:/a\    pull_policy: never' "${rendered}" 2>/dev/null || true
+
+          echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
+          echo "Rendered config:"
+          cat "${rendered}"
+
       - name: Run EXPB for PGO collection
+        id: run-expb
+        continue-on-error: true
         shell: bash
         working-directory: ${{ env.EXPB_DATA_DIR }}
         run: |
@@ -120,44 +129,45 @@ jobs:
             2>&1 | tee "${RUNNER_TEMP}/expb-pgo-run.log"
 
       - name: Extract .nettrace from container
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          # Find the most recent stopped nethermind container
-          container_id=$(docker ps -a --filter "ancestor=nethermindeth/nethermind:pgo-collect" \
+          mkdir -p "${RUNNER_TEMP}/pgo-traces"
+
+          # Find containers from our PGO image (running or stopped)
+          container_id=$(docker ps -a --filter "ancestor=${PGO_IMAGE}" \
             --format '{{.ID}}' | head -1)
 
-          if [[ -z "${container_id}" ]]; then
-            echo "No PGO collection container found. Trying to find trace via volume."
-            # Fallback: check if any .nettrace files exist
-            find /tmp/nethermind-pgo -name "*.nettrace" -type f 2>/dev/null || true
-            exit 1
+          if [[ -n "${container_id}" ]]; then
+            echo "Extracting traces from container ${container_id}..."
+            docker cp "${container_id}:/nethermind/pgo/" "${RUNNER_TEMP}/pgo-traces/" 2>/dev/null || true
+            # EventPipe may write to working directory
+            docker cp "${container_id}:/nethermind/" "${RUNNER_TEMP}/pgo-workdir/" 2>/dev/null || true
           fi
 
-          echo "Extracting traces from container ${container_id}..."
-          docker cp "${container_id}:/nethermind/pgo/" "${RUNNER_TEMP}/pgo-traces/" || true
-
-          # Also try the working directory
-          docker cp "${container_id}:/nethermind/" "${RUNNER_TEMP}/pgo-workdir/" 2>/dev/null || true
-
-          # Find all .nettrace files
+          # Search everywhere for .nettrace files
           echo "Looking for .nettrace files..."
-          find "${RUNNER_TEMP}" -name "*.nettrace" -type f -ls
+          find "${RUNNER_TEMP}" -name "*.nettrace" -type f -ls 2>/dev/null || true
+          find /tmp -name "*.nettrace" -type f -ls 2>/dev/null || true
 
       - name: Set up .NET for dotnet-pgo
+        if: always()
         uses: actions/setup-dotnet@v5
         with:
           cache: false
 
       - name: Install dotnet-pgo tool
+        if: always()
         run: dotnet tool install -g dotnet-pgo
 
       - name: Convert .nettrace to .mibc
         id: convert
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          trace_file=$(find "${RUNNER_TEMP}" -name "*.nettrace" -type f | head -1)
+          trace_file=$(find "${RUNNER_TEMP}" /tmp -name "*.nettrace" -type f 2>/dev/null | head -1)
 
           if [[ -z "${trace_file}" ]]; then
             echo "No .nettrace file found."
@@ -176,9 +186,26 @@ jobs:
           echo "mibc_file=${mibc_file}" >> "${GITHUB_OUTPUT}"
 
       - name: Upload .mibc artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nethermind-pgo-profile
           path: ${{ steps.convert.outputs.mibc_file }}
           retention-days: 90
 
+      - name: Upload raw trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nethermind-pgo-nettrace
+          path: |
+            ${{ runner.temp }}/pgo-traces/
+            ${{ runner.temp }}/pgo-workdir/**/*.nettrace
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          docker rmi "${PGO_IMAGE}" 2>/dev/null || true
