@@ -200,7 +200,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                     leafNode.ResolveKey(emptyResolver, ref currentPath);
                     if (leafNode.Keccak == currentHash)
                     {
-                        rlp = leafNode.FullRlp.ToArray();
+                        rlp = leafNode.FullRlp;
                     }
                 }
             }

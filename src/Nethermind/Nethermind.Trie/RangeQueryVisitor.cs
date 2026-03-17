@@ -133,7 +133,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
                 TrieNode node = boundaryNodes[i];
                 if (node is null) break;
 
-                proofs.Add(node.FullRlp.ToArray());
+                proofs.Add(node.FullRlp!);
 
                 if (node.IsBranch)
                     i++;

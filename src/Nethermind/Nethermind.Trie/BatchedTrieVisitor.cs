@@ -262,7 +262,7 @@ public class BatchedTrieVisitor<TNodeContext>
         for (int i = batchResult.Count - 1; i >= 0; i--)
         {
             (TrieNode trieNode, TNodeContext nodeContext, SmallTrieVisitContext ctx) = batchResult[i];
-            if (trieNode.NodeType == NodeType.Unknown && trieNode.FullRlp.IsNotNull)
+            if (trieNode.NodeType == NodeType.Unknown && trieNode.FullRlp is not null)
             {
                 // Inline node. Seems rare, so its fine to create new list for this. Does not have a keccak
                 // to queue, so we'll just process it inline.
@@ -315,7 +315,7 @@ public class BatchedTrieVisitor<TNodeContext>
 
                     cur.ResolveKey(_resolver, ref emptyPath);
 
-                    if (cur.FullRlp.IsNotNull) continue;
+                    if (cur.FullRlp is not null) continue;
                     if (cur.Keccak is null)
                         ThrowUnableToResolve(ctx);
 
@@ -359,7 +359,7 @@ public class BatchedTrieVisitor<TNodeContext>
                     (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[i];
 
                     nextToProcesses.Clear();
-                    if (nodeToResolve.FullRlp.IsNull)
+                    if (nodeToResolve.FullRlp is null)
                     {
                         // Still need to decrement counter
                         QueueNextNodes(ref nextToProcesses);

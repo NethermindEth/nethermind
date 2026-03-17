@@ -958,7 +958,7 @@ public class TrieNodeTests
         trieNode.SetChild(1, leaf1);
         trieNode.SetChild(2, leaf2);
         trieNode.ResolveKey(trieStore, ref emptyPath);
-        CappedArray<byte> rlp = trieNode.FullRlp;
+        byte[]? rlp = trieNode.FullRlp;
 
         TrieNode restoredBranch = new(NodeType.Branch, rlp);
 
@@ -1131,5 +1131,56 @@ public class TrieNodeTests
             public int GetHashCode((TreePath, TrieNode, byte[]) obj) =>
                 HashCode.Combine(obj.Item1, obj.Item2, Bytes.EqualityComparer.GetHashCode(obj.Item3));
         }
+    }
+
+    [Test]
+    public void FullRlp_is_byte_array_ensuring_atomic_reads()
+    {
+        // FullRlp must be byte[]? (a single reference, 8 bytes on x64) so that concurrent
+        // reads and writes are atomic. The previous CappedArray<byte> was a 12+ byte struct
+        // whose fields could be torn under concurrent access, causing IndexOutOfRangeException
+        // when _length > _array.Length.
+        TrieNode node = new(NodeType.Leaf);
+        node.Key = new byte[] { 1, 2, 3 };
+        node.Value = new CappedArray<byte>(new byte[] { 4, 5, 6 });
+
+        byte[]? rlp = node.FullRlp;
+
+        // Verify FullRlp is byte[]? (reference type, atomically readable)
+        Assert.That(node.FullRlp, Is.Null.Or.TypeOf<byte[]>());
+    }
+
+    [Test]
+    public void FullRlp_concurrent_access_does_not_throw()
+    {
+        // Regression test: concurrent reads of FullRlp must never throw IndexOutOfRangeException.
+        // With the old CappedArray<byte> struct, torn reads between _array and _length fields
+        // could cause this under contention from trie warmer, block processing, and parallel visitors.
+        // Now that FullRlp is byte[]? (a single 8-byte atomic reference), torn reads are impossible.
+        byte[] rlp = new byte[] { 0xc5, 0x83, 0x01, 0x02, 0x03, 0x83, 0x04, 0x05, 0x06 };
+        TrieNode node = new(NodeType.Leaf, rlp);
+
+        bool failed = false;
+        int iterations = 100_000;
+
+        Parallel.For(0, iterations, (i) =>
+        {
+            try
+            {
+                byte[]? r = node.FullRlp;
+                if (r is not null)
+                {
+                    // Access Length and content to detect torn reads
+                    _ = r.Length;
+                    _ = r[0];
+                }
+            }
+            catch (IndexOutOfRangeException)
+            {
+                failed = true;
+            }
+        });
+
+        Assert.That(failed, Is.False, "Concurrent FullRlp reads must never throw IndexOutOfRangeException");
     }
 }

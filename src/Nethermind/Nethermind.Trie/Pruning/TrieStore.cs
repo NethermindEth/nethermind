@@ -1202,7 +1202,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
         else
         {
-            Debug.Assert(currentNode.FullRlp.IsNotNull && currentNode.FullRlp.Length < 32,
+            Debug.Assert(currentNode.FullRlp is not null && currentNode.FullRlp.Length < 32,
                 "We only expect persistence call without Keccak for the nodes that are kept inside the parent RLP (less than 32 bytes).");
         }
     }
@@ -1363,8 +1363,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return DirtyNodesTryGetValue(new TrieStoreDirtyNodesCache.Key(null, TreePath.Empty, asHash), out TrieNode? trieNode)
                && trieNode is not null
                && trieNode.NodeType != NodeType.Unknown
-               && trieNode.FullRlp.IsNotNull
-            ? trieNode.FullRlp.ToArray()
+               && trieNode.FullRlp is not null
+            ? trieNode.FullRlp
             : _nodeStorage.Get(null, TreePath.Empty, asHash, flags);
     }
 
@@ -1734,7 +1734,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     internal TrieNode CloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
     {
-        if (node!.FullRlp.IsNull)
+        if (node!.FullRlp is null)
         {
             // // this happens in SyncProgressResolver
             // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");

@@ -275,7 +275,7 @@ public class PersistenceManager(
 
                 snapshot.TryGetStateNode(path, out TrieNode? node);
 
-                if (node!.FullRlp.Length == 0)
+                if (node!.FullRlp!.Length == 0)
                 {
                     // TODO: Need to double check this case. Does it need a rewrite or not?
                     if (node.NodeType == NodeType.Unknown)
@@ -284,7 +284,7 @@ public class PersistenceManager(
                     }
                 }
 
-                stateNodesSize += node.FullRlp.Length;
+                stateNodesSize += node.FullRlp!.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
                 batch.SetStateTrieNode(path, node);
 
@@ -303,7 +303,7 @@ public class PersistenceManager(
 
                 snapshot.TryGetStorageNode(address, path, out TrieNode? node);
 
-                if (node!.FullRlp.Length == 0)
+                if (node!.FullRlp!.Length == 0)
                 {
                     // TODO: Need to double check this case. Does it need a rewrite or not?
                     if (node.NodeType == NodeType.Unknown)
@@ -312,7 +312,7 @@ public class PersistenceManager(
                     }
                 }
 
-                storageNodesSize += node.FullRlp.Length;
+                storageNodesSize += node.FullRlp!.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
                 batch.SetStorageTrieNode(address, path, node);
 
