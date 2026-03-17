@@ -250,17 +250,14 @@ jobs:
           git clone --depth 1 \
             https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
           cd "${RUNNER_TEMP}/dotnet-runtime"
-          ./build.sh -subset clr.tools -c Release
-
-          dotnet_pgo_path=$(find "${RUNNER_TEMP}/dotnet-runtime/artifacts" -type f -name dotnet-pgo | head -1)
-          if [[ -z "${dotnet_pgo_path}" ]]; then
-            echo "dotnet-pgo was not produced under artifacts/"
-            exit 1
-          fi
-
-          mkdir -p "${RUNNER_TEMP}/dotnet-pgo-bin"
-          cp "${dotnet_pgo_path}" "${RUNNER_TEMP}/dotnet-pgo-bin/"
-          chmod +x "${RUNNER_TEMP}/dotnet-pgo-bin/dotnet-pgo"
+          # Install the SDK version required by dotnet/runtime (preserves global.json
+          # so Arcade SDK + Central Package Management resolve correctly)
+          SDK_VERSION=$(jq -r '.sdk.version' global.json)
+          curl -sSL https://dot.net/v1/dotnet-install.sh \
+            | bash -s -- --version "$SDK_VERSION" --install-dir "$(dirname "$(which dotnet)")"
+          # Build only dotnet-pgo (not the full clr.tools subset which needs native libs)
+          dotnet build src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj \
+            -c Release -o "${RUNNER_TEMP}/dotnet-pgo-bin"
           echo "${RUNNER_TEMP}/dotnet-pgo-bin" >> "${GITHUB_PATH}"
 
       - name: Convert traces to .mibc and merge with edge profiling
