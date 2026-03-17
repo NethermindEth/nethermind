@@ -366,14 +366,14 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
         oldBalance = 0;
 
+        if (address == Address.SystemUser && balanceChange.IsZero)
+        {
+            return;
+        }
+
         if (TracingEnabled)
         {
             oldBalance = GetBalanceInternal(address, blockAccessIndex.Value);
-
-            if (address == Address.SystemUser && balanceChange.IsZero)
-            {
-                return;
-            }
 
             UInt256 newBalance = oldBalance - balanceChange;
             GetGeneratingBlockAccessList(blockAccessIndex).AddBalanceChange(address, oldBalance, newBalance);

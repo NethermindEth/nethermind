@@ -102,7 +102,6 @@ public class ParallelWorldStateTests
                 Assert.That(ac!.BalanceChanges, Has.Count.EqualTo(1));
                 Assert.That(ac.BalanceChanges[0].PostBalance, Is.EqualTo((UInt256)expectedBalance));
             }
-
         }
     }
 
@@ -620,6 +619,19 @@ public class ParallelWorldStateTests
         {
             Assert.Throws<ParallelWorldState.InvalidBlockLevelAccessListException>(() =>
                 pws.GetBalance(TestItem.AddressB, blockAccessIndex: 0));
+        }
+    }
+
+    [Test]
+    public void SubtractFromBalance_ParallelMode_DoesNotRecordSystemUserZeroChange()
+    {
+        (ParallelWorldState pws, IDisposable scope) = CreateParallelState(new());
+        using (scope)
+        {
+            pws.SubtractFromBalance(Address.SystemUser, 0u, Spec, blockAccessIndex: 0);
+
+            AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(Address.SystemUser);
+            Assert.That(ac, Is.Null);
         }
     }
 

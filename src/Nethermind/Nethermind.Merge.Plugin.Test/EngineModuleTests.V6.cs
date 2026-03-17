@@ -23,10 +23,8 @@ using Nethermind.TxPool;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test;
 using System;
-using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
-using Nethermind.State.Proofs;
 
 namespace Nethermind.Merge.Plugin.Test;
 
