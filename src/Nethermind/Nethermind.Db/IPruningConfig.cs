@@ -106,7 +106,4 @@ public interface IPruningConfig : IConfig
 
     [ConfigItem(Description = "If in-memory pruning is scheduled, the duration between `newPayload` and the GC trigger. If too short, it may clash with fork choice; if too long, it may overlap with GC.", DefaultValue = "75", HiddenFromDocs = true)]
     int PruneDelayMilliseconds { get; set; }
-
-    [ConfigItem(Description = "Also persist the last committed block's state on shutdown, in addition to the finalized state. Ensures the node head matches the consensus client head on restart.", DefaultValue = "false")]
-    bool PersistHeadOnShutdown { get; set; }
 }

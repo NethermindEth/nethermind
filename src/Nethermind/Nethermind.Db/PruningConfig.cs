@@ -65,6 +65,5 @@ namespace Nethermind.Db
         public int MaxBufferedCommitCount { get; set; } = 128;
         public int SimulateLongFinalizationDepth { get; set; } = 0;
         public int PruneDelayMilliseconds { get; set; } = 75;
-        public bool PersistHeadOnShutdown { get; set; } = false;
     }
 }
