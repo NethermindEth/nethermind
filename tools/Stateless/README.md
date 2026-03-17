@@ -28,7 +28,7 @@ For details, see the [Makefile](./Makefile).
 
 ### Input serialization
 
-The input data (`input.bin`) is a simple concatenation of 3 sections: `chain_id | block | witness`, as follows:
+The input data is a simple concatenation of 3 sections: `chain_id | block | witness`, as follows:
 
 ```
 chain_id: u64le
@@ -51,3 +51,13 @@ The witness data comes from `debug_executionWitness` and is deserialized to the 
   "state": [[]]
 }
 ```
+
+Starting from Zisk v0.16.0, the input data (`input.bin`) must be framed as follows when specified with the `--inputs` option:
+
+```
+len: u64le | bytes[len] | zero-padding
+```
+
+Zero-padding is required when the data length isn't a multiple of 8.
+
+For the old behavior, use the `--legacy-inputs` option.
