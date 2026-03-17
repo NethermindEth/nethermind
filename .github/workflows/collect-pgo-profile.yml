@@ -215,15 +215,23 @@ jobs:
           echo "=== .jit files (edge/block profiling data) ==="
           find "${RUNNER_TEMP}" -name "*.jit" -type f -ls 2>/dev/null || true
 
-      - name: Set up .NET for dotnet-pgo
+      - name: Set up .NET
         if: always()
         uses: actions/setup-dotnet@v5
         with:
           cache: false
 
-      - name: Install dotnet-pgo tool
+      - name: Build dotnet-pgo from source
         if: always()
-        run: dotnet tool install -g dotnet-pgo
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
+          cd "${RUNNER_TEMP}/dotnet-runtime"
+          git sparse-checkout set src/coreclr/tools/dotnet-pgo
+          dotnet build src/coreclr/tools/dotnet-pgo -c Release -o "${RUNNER_TEMP}/dotnet-pgo-bin"
+          echo "${RUNNER_TEMP}/dotnet-pgo-bin" >> "${GITHUB_PATH}"
 
       - name: Convert traces to .mibc and merge with edge profiling
         id: convert
