@@ -1,6 +1,11 @@
 name: Collect PGO Profile
 
 on:
+  push:
+    branches: [ready-to-run]
+    paths:
+      - .github/workflows/collect-pgo-profile.yml
+      - Dockerfile.pgo
   workflow_dispatch:
     inputs:
       state_layout:
