@@ -33,6 +33,24 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockchainProcessorTests
 {
+    [Test]
+    public void LogDiagnosticTrace_does_not_throw_for_null_hash_variant()
+    {
+        ILogger logger = LimboLogs.Instance.GetClassLogger();
+
+        Assert.DoesNotThrow(() =>
+            BlockTraceDumper.LogDiagnosticTrace(NullBlockTracer.Instance, (Hash256)null!, logger));
+    }
+
+    [Test]
+    public void LogDiagnosticTrace_does_not_throw_for_default_either_variant()
+    {
+        ILogger logger = LimboLogs.Instance.GetClassLogger();
+
+        Assert.DoesNotThrow(() =>
+            BlockTraceDumper.LogDiagnosticTrace(NullBlockTracer.Instance, default(Either<Hash256, IList<Block>>), logger));
+    }
+
     private class ProcessingTestContext
     {
         private readonly ILogManager _logManager = LimboLogs.Instance;
