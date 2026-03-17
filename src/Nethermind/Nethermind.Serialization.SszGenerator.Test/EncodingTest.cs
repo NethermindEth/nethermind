@@ -42,7 +42,7 @@ public class EncodingTest
     }
 
     [Test]
-    public void Bitvector_roundtrip_preserves_length_and_bits()
+    public void Test_Bitvector_Roundtrip_Preserves_Length_And_Bits()
     {
         // Regression test: Generated Decode for bitvector fields called the bitlist overload
         // which strips a sentinel bit, corrupting the bit count.
@@ -64,7 +64,7 @@ public class EncodingTest
     }
 
     [Test]
-    public void Container_decode_rejects_truncated_input()
+    public void Test_Container_Decode_Rejects_Truncated_Input()
     {
         // Regression test: Generated Decode had no validation
         // truncated input produced garbage instead of throwing.
@@ -73,7 +73,7 @@ public class EncodingTest
     }
 
     [Test]
-    public void Container_decode_rejects_invalid_offset()
+    public void Test_Container_Decode_Rejects_Invalid_Offset()
     {
         // First variable offset must equal staticLength (12 for VariableC).
         // Encode valid data then corrupt the offset.
