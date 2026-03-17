@@ -23,10 +23,10 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [TestCase(
-        "0x0b2e24d802b4664b6f64f87a3e9498566080b2e9f8adf6e00896f89e4cc8a83b",
-        "0xf0444d3c2e8d725d7884803ff71b62a680fe9f96765a9f01b9c4e47dacb2f3b0",
-        "0x73cecfc66bc1c8545aa3521e21be51c31bd2054badeeaa781f5fd5b871883f35",
-        "0xd814b750baa05a39")]
+        "0x32fc756d56a1897bf4d53ec72a854743786b5edbd8c0feec05b245e7cc124eea",
+        "0xc1ecac4884c36982061392807b9307fb0d701a05d9d9fd7dc7e82d2ec96cf9af",
+        "0x8ffb712de6b72f59def7b84f361e6c23519f7f8674d7e6552e23617a996d8ed3",
+        "0x0f0b18188ed90425")]
     public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {

@@ -170,6 +170,36 @@ public class SeqlockCacheTests
     }
 
     [Test]
+    public void GetOrAdd_with_state_returns_existing_value()
+    {
+        SeqlockCache<StorageCell, byte[]> cache = new();
+        StorageCell key = CreateKey(1);
+        byte[] expected = CreateValue(1);
+
+        cache.Set(in key, expected);
+        byte[]? result = cache.GetOrAdd(in key, 42, static (in StorageCell _, int _) => new byte[32]);
+
+        result.Should().BeSameAs(expected);
+    }
+
+    [Test]
+    public void GetOrAdd_with_state_calls_factory_on_miss()
+    {
+        SeqlockCache<StorageCell, byte[]> cache = new();
+        StorageCell key = CreateKey(1);
+        byte[] factoryResult = CreateValue(1);
+
+        byte[]? result = cache.GetOrAdd(in key, factoryResult, static (in StorageCell _, byte[] state) => state);
+
+        result.Should().BeSameAs(factoryResult);
+
+        // Value should now be cached
+        bool found = cache.TryGetValue(in key, out byte[]? cached);
+        found.Should().BeTrue();
+        cached.Should().BeSameAs(factoryResult);
+    }
+
+    [Test]
     public void Clear_invalidates_all_entries()
     {
         SeqlockCache<StorageCell, byte[]> cache = new();

@@ -22,39 +22,31 @@ public class Metrics
 
     [CounterMetric]
     [Description("Number of BLS12_G1ADD precompile calls.")]
-    public static long BlsG1AddPrecompile { get; set; }
-
-    [CounterMetric]
-    [Description("Number of BLS12_G1MUL precompile calls.")]
-    public static long BlsG1MulPrecompile { get; set; }
+    public static long Bls12381G1AddPrecompile { get; set; }
 
     [CounterMetric]
     [Description("Number of BLS12_G1MSM precompile calls.")]
-    public static long BlsG1MSMPrecompile { get; set; }
+    public static long Bls12381G1MsmPrecompile { get; set; }
 
     [CounterMetric]
     [Description("Number of BLS12_G2ADD precompile calls.")]
-    public static long BlsG2AddPrecompile { get; set; }
-
-    [CounterMetric]
-    [Description("Number of BLS12_G2MUL precompile calls.")]
-    public static long BlsG2MulPrecompile { get; set; }
+    public static long Bls12381G2AddPrecompile { get; set; }
 
     [CounterMetric]
     [Description("Number of BLS12_G2MSM precompile calls.")]
-    public static long BlsG2MSMPrecompile { get; set; }
+    public static long Bls12381G2MsmPrecompile { get; set; }
 
     [CounterMetric]
     [Description("Number of BLS12_PAIRING_CHECK precompile calls.")]
-    public static long BlsPairingCheckPrecompile { get; set; }
+    public static long Bls12381PairingCheckPrecompile { get; set; }
 
     [CounterMetric]
     [Description("Number of BLS12_MAP_FP_TO_G1 precompile calls.")]
-    public static long BlsMapFpToG1Precompile { get; set; }
+    public static long Bls12381FpToG1Precompile { get; set; }
 
     [CounterMetric]
     [Description("Number of BLS12_MAP_FP2_TO_G2 precompile calls.")]
-    public static long BlsMapFp2ToG2Precompile { get; set; }
+    public static long Bls12381Fp2ToG2Precompile { get; set; }
 
     [CounterMetric]
     [Description("Number of EC_RECOVERY precompile calls.")]

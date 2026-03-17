@@ -361,17 +361,22 @@ public partial class SszEncoding
 {Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.Name} container)
     {{
+        if (data.Length < {decl.StaticLength}) throw new System.IO.InvalidDataException($""Data too short for {decl.Name}: expected at least {decl.StaticLength} bytes but got {{data.Length}} bytes."");
         container = new();
 {Whitespace}
 {Shift(2, decl.Members.Select(m =>
 {
     if (m.IsVariable) offsetIndex++;
     string result = m.IsVariable ? $"SszLib.Decode(data.Slice({offset}, 4), out int offset{offsetIndex});"
+                                    : m.Kind == Kind.BitVector ? $"SszLib.Decode(data.Slice({offset}, {m.StaticLength}), {m.Length}, out {m.Type.Name} {VarName(m.Name)}); container.{m.Name} = {VarName(m.Name)};"
                                     : m.HandledByStd ? $"SszLib.Decode(data.Slice({offset}, {m.StaticLength}), out {(m.IsCollection ? $"ReadOnlySpan<{m.Type.Name}>" : m.Type.Name)} {VarName(m.Name)}); container.{m.Name} = {(m.IsCollection ? $"[ ..{VarName(m.Name)}]" : VarName(m.Name))};"
                                                      : $"Decode(data.Slice({offset}, {m.StaticLength}), out {(m.IsCollection ? $"{m.Type.Name}[]" : m.Type.Name)} {VarName(m.Name)}); container.{m.Name} = {(m.IsCollection ? $"[ ..{VarName(m.Name)}]" : VarName(m.Name))};";
     offset += m.StaticLength;
     return result;
 }))}
+{Whitespace}
+{(variables.Any() ? Shift(2, [$"if ({string.Join(" || ", variables.Select((m, i) => (i == 0 ? $"offset1 != {decl.StaticLength}" : $"offset{i} > offset{i + 1}")).Append($"offset{variables.Count} > data.Length"))})" +
+    " throw new System.IO.InvalidDataException($\"Invalid offsets for " + decl.Name + ". Data.Length={data.Length}; " + string.Join(", ", variables.Select((m, i) => $"offset{i + 1}={{offset{i + 1}}}")) + "\");"]) : "")}
 {Whitespace}
 {Shift(2, variables.Select((m, i) => string.Format($"if ({(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1} > 0) {{{{ {{0}} }}}}",
             $"{(m.HandledByStd ? "SszLib.Decode" : "Decode")}(data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1}), out {(m.IsCollection ? (m.HandledByStd ? $"ReadOnlySpan<{m.Type.Name}>" : $"{m.Type.Name}[]") : m.Type.Name)} {VarName(m.Name)}); container.{m.Name} = {(m.IsCollection ? $"[ ..{VarName(m.Name)}]" : VarName(m.Name))};")))}
