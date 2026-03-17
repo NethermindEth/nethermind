@@ -13,9 +13,9 @@ on:
         required: true
         type: choice
         options:
-          - halfpath
           - flat
-        default: halfpath
+          - halfpath
+        default: flat
       payload_set:
         description: Payload set mode
         required: true
@@ -133,7 +133,7 @@ jobs:
         id: resolve
         shell: bash
         env:
-          STATE_LAYOUT: ${{ inputs.state_layout || 'halfpath' }}
+          STATE_LAYOUT: ${{ inputs.state_layout || 'flat' }}
           PAYLOAD_SET: ${{ inputs.payload_set || 'realblocks' }}
         run: |
           set -euo pipefail
