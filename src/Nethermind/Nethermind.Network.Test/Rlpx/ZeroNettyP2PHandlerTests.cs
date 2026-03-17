@@ -71,7 +71,7 @@ public class ZeroNettyP2PHandlerTests
         buff.WriteBytes(msg);
         ZeroPacket packet = new ZeroPacket(buff);
 
-        handler.ChannelRead(channelHandlerContext, packet);
+        handler.ChannelRead(channelHandlerContext, packet); // releases buffer
     }
 
     [Test]
@@ -94,7 +94,7 @@ public class ZeroNettyP2PHandlerTests
         ZeroPacket packet = new ZeroPacket(content);
 
         // Act
-        handler.ChannelRead(channelHandlerContext, packet);
+        handler.ChannelRead(channelHandlerContext, packet); // releases buffer
 
         // Assert
         session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");

@@ -111,7 +111,7 @@ public class SnapProtocolHandlerTests
 
                         packet.PacketType = SnapMessageCode.AccountRange;
                         SnapProtocolHandler.HandleMessage(packet);
-                        ReferenceCountUtil.Release(packet);
+                        ReferenceCountUtil.Release(packet); // releases buffer
                     });
                 return this;
             }
