@@ -24,6 +24,11 @@ namespace Nethermind.Network.Test;
 /// the thread-local cache so that <see cref="IByteBuffer.Release"/> goes straight
 /// to the arena, making the metric an accurate count of unreleased buffers.</para>
 ///
+/// <para><b>Allocation cost:</b>
+/// Each instance creates a new <see cref="PooledByteBufferAllocator"/> with its own arena.
+/// This is acceptable for a small number of leak-detection tests, but if usage grows
+/// significantly, consider pooling and reusing allocators across tests to avoid the overhead.</para>
+///
 /// <code>
 /// using PooledBufferLeakDetector detector = new();
 /// using var input = detector.Allocator.Buffer().AsDisposable();
