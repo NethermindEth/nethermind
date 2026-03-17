@@ -115,10 +115,9 @@ public class EciesCipherTests
         Assert.That(authMessage.Version, Is.EqualTo(4));
         Assert.That(authMessage.Signature, Is.Not.Null);
 
-        IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage).AsDisposable();
 
         Assert.That(data.Slice(0, 169).ReadAllBytesAsArray(), Is.EqualTo(deciphered.Slice(0, 169)), "serialization");
-        data.SafeRelease();
     }
 
     [Test]
@@ -138,9 +137,8 @@ public class EciesCipherTests
         Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
         Assert.That(ackMessage.IsTokenUsed, Is.EqualTo(false));
 
-        IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage).AsDisposable();
         Assert.That(data.ReadAllBytesAsArray(), Is.EqualTo(deciphered), "serialization");
-        data.SafeRelease();
     }
 
     [Test]
@@ -172,11 +170,10 @@ public class EciesCipherTests
         Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
         Assert.That(ackMessage.Version, Is.EqualTo(4));
 
-        IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage).AsDisposable();
 
         // TODO: check 102
         Assert.That(data.ReadAllBytesAsArray().Slice(0, 102), Is.EqualTo(deciphered.Slice(0, 102)), "serialization");
-        data.SafeRelease();
     }
 
     [Test]

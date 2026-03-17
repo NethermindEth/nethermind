@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Bls;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -21,13 +20,13 @@ public class SupportsCachingTests
         yield return new TestCaseData(BN254PairingPrecompile.Instance).SetName(nameof(BN254PairingPrecompile));
         yield return new TestCaseData(ModExpPrecompile.Instance).SetName(nameof(ModExpPrecompile));
         yield return new TestCaseData(Blake2FPrecompile.Instance).SetName(nameof(Blake2FPrecompile));
-        yield return new TestCaseData(G1AddPrecompile.Instance).SetName(nameof(G1AddPrecompile));
-        yield return new TestCaseData(G1MSMPrecompile.Instance).SetName(nameof(G1MSMPrecompile));
-        yield return new TestCaseData(G2AddPrecompile.Instance).SetName(nameof(G2AddPrecompile));
-        yield return new TestCaseData(G2MSMPrecompile.Instance).SetName(nameof(G2MSMPrecompile));
-        yield return new TestCaseData(PairingCheckPrecompile.Instance).SetName(nameof(PairingCheckPrecompile));
-        yield return new TestCaseData(MapFpToG1Precompile.Instance).SetName(nameof(MapFpToG1Precompile));
-        yield return new TestCaseData(MapFp2ToG2Precompile.Instance).SetName(nameof(MapFp2ToG2Precompile));
+        yield return new TestCaseData(Bls12381G1AddPrecompile.Instance).SetName(nameof(Bls12381G1AddPrecompile));
+        yield return new TestCaseData(Bls12381G1MsmPrecompile.Instance).SetName(nameof(Bls12381G1MsmPrecompile));
+        yield return new TestCaseData(Bls12381G2AddPrecompile.Instance).SetName(nameof(Bls12381G2AddPrecompile));
+        yield return new TestCaseData(Bls12381G2MsmPrecompile.Instance).SetName(nameof(Bls12381G2MsmPrecompile));
+        yield return new TestCaseData(Bls12381PairingCheckPrecompile.Instance).SetName(nameof(Bls12381PairingCheckPrecompile));
+        yield return new TestCaseData(Bls12381FpToG1Precompile.Instance).SetName(nameof(Bls12381FpToG1Precompile));
+        yield return new TestCaseData(Bls12381Fp2ToG2Precompile.Instance).SetName(nameof(Bls12381Fp2ToG2Precompile));
         yield return new TestCaseData(PointEvaluationPrecompile.Instance).SetName(nameof(PointEvaluationPrecompile));
         yield return new TestCaseData(Secp256r1Precompile.Instance).SetName(nameof(Secp256r1Precompile));
     }
