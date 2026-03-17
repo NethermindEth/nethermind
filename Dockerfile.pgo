@@ -42,9 +42,9 @@ WORKDIR /nethermind
 # Override EventSource.IsSupported=false from runtimeconfig.json
 ENV DOTNET_System_Diagnostics_Tracing_EventSource_IsSupported=true
 ENV DOTNET_EnableEventPipe=1
-ENV DOTNET_EventPipeCircularMB=1024
+ENV DOTNET_EventPipeCircularMB=256
 ENV DOTNET_EventPipeOutputPath=/nethermind/pgo/
-ENV DOTNET_EventPipeConfig=Microsoft-Windows-DotNETRuntime:0x1E000080018:5
+ENV DOTNET_EventPipeConfig=Microsoft-Windows-DotNETRuntime:0x1E000080018:4
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
