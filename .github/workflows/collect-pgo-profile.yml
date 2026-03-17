@@ -247,19 +247,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git clone --depth 1 --filter=blob:none --sparse \
+          git clone --depth 1 \
             https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
           cd "${RUNNER_TEMP}/dotnet-runtime"
-          git sparse-checkout set --no-cone \
-            /Directory.Build.props \
-            /Directory.Build.targets \
-            /Directory.Packages.props \
-            /NuGet.config \
-            /eng/ \
-            /src/coreclr/tools/dotnet-pgo/ \
-            /src/coreclr/tools/aot/ILCompiler.Reflection.ReadyToRun/ \
-            /src/coreclr/tools/aot/ILCompiler.TypeSystem/ \
-            /src/libraries/Microsoft.NETCore.Platforms/src/
           # Remove global.json so we use the installed SDK instead of requiring preview
           rm -f global.json
           dotnet build src/coreclr/tools/dotnet-pgo -c Release -o "${RUNNER_TEMP}/dotnet-pgo-bin"
