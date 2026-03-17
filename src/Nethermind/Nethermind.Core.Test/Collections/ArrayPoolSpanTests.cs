@@ -8,11 +8,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Collections;
 
-[Parallelizable(ParallelScope.All)]
 public class ArrayPoolSpanTests
 {
-    // ArrayPool.Rent returns arrays >= requested size, so out-of-bounds indices won't
-    // throw IndexOutOfRangeException from the runtime — the bounds check must catch them.
     [TestCase(8, 8, Description = "At index == Length")]
     [TestCase(4, 5, Description = "Beyond Length")]
     public void Indexer_out_of_bounds_should_throw(int length, int index)
@@ -21,7 +18,6 @@ public class ArrayPoolSpanTests
         span.Invoking(s => { int _ = s[index]; }).Should().Throw<ArgumentOutOfRangeException>();
     }
 
-    // Negative indices bypass the explicit bounds check and are caught by the runtime array access.
     [TestCase(4, -1)]
     [TestCase(8, -5)]
     public void Indexer_negative_should_throw(int length, int index)
