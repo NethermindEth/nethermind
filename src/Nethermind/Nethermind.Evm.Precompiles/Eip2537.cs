@@ -388,6 +388,19 @@ internal static class Eip2537
         source[144..].CopyTo(destination[208..256]);
     }
 
+    /// <param name="source">Must have 64 bytes length.</param>
+    /// <param name="destination">Must have 48 bytes length.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool TryDecodeFp(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        if (source[..16].ContainsAnyExcept((byte)0))
+            return false;
+
+        source[16..].CopyTo(destination);
+
+        return true;
+    }
+
     /// <param name="source">Must have 128 bytes length.</param>
     /// <param name="destination">Must have 96 bytes length.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
