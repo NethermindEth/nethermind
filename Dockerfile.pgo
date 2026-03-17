@@ -41,7 +41,8 @@ WORKDIR /nethermind
 # Framework R2R is left enabled to avoid extremely slow startup.
 # Override runtimeconfig.json settings not suitable for PGO collection
 ENV DOTNET_System_Diagnostics_Tracing_EventSource_IsSupported=true
-ENV DOTNET_gcLargePages=0
+ENV DOTNET_GCLargePages=0
+ENV DOTNET_GCRegionRange=0x800000000
 ENV DOTNET_EnableEventPipe=1
 ENV DOTNET_EventPipeCircularMB=256
 ENV DOTNET_EventPipeOutputPath=/nethermind/pgo/
