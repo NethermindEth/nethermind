@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Net;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
@@ -12,8 +13,10 @@ using Nethermind.Crypto;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Enr;
+using Nethermind.Network.Test;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats.Model;
+using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test;
@@ -125,12 +128,7 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void Enr_response_there_and_back()
     {
-        NodeRecord nodeRecord = new();
-        nodeRecord.SetEntry(new Secp256K1Entry(_privateKey.CompressedPublicKey));
-        nodeRecord.EnrSequence = 5;
-        NodeRecordSigner signer = new(new Ecdsa(), _privateKey);
-        signer.Sign(nodeRecord);
-        EnrResponseMsg msg = new(TestItem.PublicKeyA, nodeRecord, TestItem.KeccakA);
+        EnrResponseMsg msg = BuildEnrResponse(_privateKey.CompressedPublicKey);
 
         IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
         EnrResponseMsg deserialized = _messageSerializationService.Deserialize<EnrResponseMsg>(serialized);
@@ -138,6 +136,36 @@ public class DiscoveryMessageSerializerTests
         Assert.That(deserialized.NodeRecord.EnrSequence, Is.EqualTo(msg.NodeRecord.EnrSequence));
         Assert.That(deserialized.RequestKeccak, Is.EqualTo(msg.RequestKeccak));
         Assert.That(deserialized.NodeRecord.Signature, Is.EqualTo(msg.NodeRecord.Signature));
+    }
+
+    /// <summary>
+    /// Verifies that Deserialize does not leak a pooled IByteBuffer on the ENR signature
+    /// verification failure path. Before the fix, data.ReadBytes(positionForHex) allocated
+    /// a new pooled buffer that was chained into .ReadAllHex() but never released.
+    /// </summary>
+    [Test]
+    public void Enr_response_deserialize_does_not_leak_buffer_on_invalid_signature()
+    {
+        // ENR with mismatched signature: Secp256K1 entry uses differentKey, but ENR is
+        // signed with _privateKey. The outer Discovery envelope is valid, but the inner
+        // ENR signature verification fails because the recovered signer doesn't match.
+        PrivateKey differentKey = new("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
+        EnrResponseMsg msg = BuildEnrResponse(differentKey.CompressedPublicKey);
+        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg).AsDisposable();
+
+        long activeBefore = PooledByteBufferAllocator.Default.Metric.HeapArenas()
+            .Sum(a => a.NumActiveAllocations);
+
+        _messageSerializationService
+            .Invoking(s => s.Deserialize<EnrResponseMsg>(serialized))
+            .Should().Throw<NetworkingException>()
+            .Where(ex => ex.Message.Contains("Invalid ENR signature"));
+
+        long activeAfter = PooledByteBufferAllocator.Default.Metric.HeapArenas()
+            .Sum(a => a.NumActiveAllocations);
+
+        Assert.That(activeAfter, Is.EqualTo(activeBefore),
+            "Pooled buffer leaked: ReadBytes() return value was not released on the error path");
     }
 
     [Test]
@@ -211,5 +239,15 @@ public class DiscoveryMessageSerializerTests
             Assert.That(deserializedMessage.Nodes[i].IdHash, Is.EqualTo(message.Nodes[i].IdHash));
             Assert.That(deserializedMessage.Nodes[i], Is.EqualTo(message.Nodes[i]));
         }
+    }
+
+    private EnrResponseMsg BuildEnrResponse(CompressedPublicKey enrPublicKey)
+    {
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new Secp256K1Entry(enrPublicKey));
+        nodeRecord.EnrSequence = 5;
+        NodeRecordSigner signer = new(new Ecdsa(), _privateKey);
+        signer.Sign(nodeRecord);
+        return new EnrResponseMsg(TestItem.PublicKeyA, nodeRecord, TestItem.KeccakA);
     }
 }

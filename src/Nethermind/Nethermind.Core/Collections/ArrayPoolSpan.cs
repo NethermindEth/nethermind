@@ -3,7 +3,6 @@
 
 using System.Buffers;
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Collections.Generic;
 using System.Collections;
 
@@ -20,18 +19,8 @@ public readonly struct ArrayPoolSpan<T>(ArrayPool<T> arrayPool, int length) : ID
     {
         get
         {
-            if (index > _length)
-            {
-                ThrowArgumentOutOfRangeException();
-            }
-
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, _length);
             return ref _array[index];
-
-            [DoesNotReturn]
-            static void ThrowArgumentOutOfRangeException()
-            {
-                throw new ArgumentOutOfRangeException(nameof(index));
-            }
         }
     }
 

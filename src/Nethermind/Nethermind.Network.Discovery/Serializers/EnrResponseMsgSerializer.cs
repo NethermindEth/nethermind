@@ -4,6 +4,7 @@
 using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Enr;
@@ -43,13 +44,13 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMe
         (PublicKey? farPublicKey, _, IByteBuffer? data) = PrepareForDeserialization(msgBytes);
         Rlp.ValueDecoderContext ctx = data.AsRlpContext();
         ctx.ReadSequenceLength();
-        Hash256? requestKeccak = ctx.DecodeKeccak(); // skip (not sure if needed to verify)
+        Hash256? requestKeccak = ctx.DecodeKeccak();
 
         int positionForHex = ctx.Position;
         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(ref ctx);
         if (!_nodeRecordSigner.Verify(nodeRecord))
         {
-            string resHex = data.ReadBytes(positionForHex).ReadAllHex();
+            string resHex = data.AsSpan()[..positionForHex].ToHexString();
             throw new NetworkingException($"Invalid ENR signature: {resHex}", NetworkExceptionType.Discovery);
         }
 
