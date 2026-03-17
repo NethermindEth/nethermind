@@ -72,7 +72,7 @@ public static partial class Ssz
 
         ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span[..8]);
         ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
-        result = new UInt128(s0, s1);
+        result = new UInt128(s1, s0);
     }
 
     public static void Decode(ReadOnlySpan<byte> span, out UInt256 value)
