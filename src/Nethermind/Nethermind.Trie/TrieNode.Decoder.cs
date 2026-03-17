@@ -57,7 +57,7 @@ namespace Nethermind.Trie
                 nodeRef.ResolveKey(tree, ref path, bufferPool: bufferPool);
                 path.TruncateMut(previousLength);
 
-                int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
+                int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp!.Length : Rlp.LengthOfKeccakRlp);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 
                 CappedArray<byte> data = bufferPool.SafeRent(totalLength);
@@ -77,7 +77,7 @@ namespace Nethermind.Trie
                     // so E - - - - - - - - - - - - - - -
                     // so |
                     // so |
-                    nodeRef.FullRlp.AsSpan().CopyTo(destination.Slice(position));
+                    nodeRef.FullRlp!.AsSpan().CopyTo(destination.Slice(position));
                 }
                 else
                 {
@@ -208,7 +208,7 @@ namespace Nethermind.Trie
                             path.AppendMut(i);
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
                             childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool);
-                            state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                            state.local += childNode.Keccak is null ? childNode.FullRlp!.Length : Rlp.LengthOfKeccakRlp;
                         }
 
                         return state;
@@ -241,7 +241,7 @@ namespace Nethermind.Trie
                         TrieNode childNode = Unsafe.As<TrieNode>(data);
                         childNode.ResolveKey(tree, ref path, bufferPool: bufferPool);
                         path.TruncateOne();
-                        totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                        totalLength += childNode.Keccak is null ? childNode.FullRlp!.Length : Rlp.LengthOfKeccakRlp;
                     }
                 }
                 return totalLength;
@@ -276,7 +276,7 @@ namespace Nethermind.Trie
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
                             childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool);
-                            state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                            state.local += childNode.Keccak is null ? childNode.FullRlp!.Length : Rlp.LengthOfKeccakRlp;
                         }
 
                         return state;
@@ -320,7 +320,7 @@ namespace Nethermind.Trie
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
                             childNode.ResolveKey(tree, ref path, bufferPool: bufferPool);
                             path.TruncateOne();
-                            totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                            totalLength += childNode.Keccak is null ? childNode.FullRlp!.Length : Rlp.LengthOfKeccakRlp;
                         }
 
                         rlpStream.SkipItem();
@@ -368,7 +368,7 @@ namespace Nethermind.Trie
                         hash = childNode.Keccak;
                         if (hash is null)
                         {
-                            Span<byte> fullRlp = childNode.FullRlp.AsSpan();
+                            Span<byte> fullRlp = childNode.FullRlp!.AsSpan();
                             fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
                             position += fullRlp.Length;
                         }
@@ -417,7 +417,7 @@ namespace Nethermind.Trie
                             hash = childNode.Keccak;
                             if (hash is null)
                             {
-                                Span<byte> fullRlp = childNode.FullRlp.AsSpan();
+                                Span<byte> fullRlp = childNode.FullRlp!.AsSpan();
                                 fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
                                 position += fullRlp.Length;
                             }

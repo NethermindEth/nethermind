@@ -28,7 +28,7 @@ public class WitnessCapturingTrieStore(IKeyValueStoreWithBatching keyValueStore,
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
     {
         TrieNode node = baseStore.FindCachedOrUnknown(address, in path, hash);
-        if (node.NodeType != NodeType.Unknown) _rlpCollector.TryAdd(node.Keccak, node.FullRlp!);
+        if (node.NodeType != NodeType.Unknown && node.FullRlp is not null) _rlpCollector.TryAdd(node.Keccak, node.FullRlp);
         return node;
     }
 

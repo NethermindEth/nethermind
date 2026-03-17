@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -1140,47 +1141,89 @@ public class TrieNodeTests
         // reads and writes are atomic. The previous CappedArray<byte> was a 12+ byte struct
         // whose fields could be torn under concurrent access, causing IndexOutOfRangeException
         // when _length > _array.Length.
-        TrieNode node = new(NodeType.Leaf);
-        node.Key = new byte[] { 1, 2, 3 };
-        node.Value = new CappedArray<byte>(new byte[] { 4, 5, 6 });
 
-        byte[]? rlp = node.FullRlp;
+        // Null case: dirty node with no RLP yet
+        TrieNode dirtyNode = new(NodeType.Leaf);
+        dirtyNode.Key = new byte[] { 1, 2, 3 };
+        dirtyNode.Value = new CappedArray<byte>(new byte[] { 4, 5, 6 });
+        Assert.That(dirtyNode.FullRlp, Is.Null);
 
-        // Verify FullRlp is byte[]? (reference type, atomically readable)
-        Assert.That(node.FullRlp, Is.Null.Or.TypeOf<byte[]>());
+        // Non-null case: node constructed with explicit RLP
+        byte[] rlp = new byte[] { 0xc5, 0x83, 0x01, 0x02, 0x03, 0x83, 0x04, 0x05, 0x06 };
+        TrieNode resolvedNode = new(NodeType.Leaf, rlp);
+        Assert.That(resolvedNode.FullRlp, Is.TypeOf<byte[]>());
+        Assert.That(resolvedNode.FullRlp, Is.SameAs(rlp));
     }
 
     [Test]
-    public void FullRlp_concurrent_access_does_not_throw()
+    public void FullRlp_concurrent_read_write_does_not_throw()
     {
-        // Regression test: concurrent reads of FullRlp must never throw IndexOutOfRangeException.
-        // With the old CappedArray<byte> struct, torn reads between _array and _length fields
-        // could cause this under contention from trie warmer, block processing, and parallel visitors.
-        // Now that FullRlp is byte[]? (a single 8-byte atomic reference), torn reads are impossible.
-        byte[] rlp = new byte[] { 0xc5, 0x83, 0x01, 0x02, 0x03, 0x83, 0x04, 0x05, 0x06 };
-        TrieNode node = new(NodeType.Leaf, rlp);
-
+        // Regression test: concurrent reads of FullRlp while GenerateKey writes _rlp must never
+        // throw IndexOutOfRangeException. With the old CappedArray<byte> struct, torn reads
+        // between _array and _length fields could cause this. With byte[]? (a single 8-byte
+        // atomic reference), torn reads are impossible.
+        //
+        // Real scenario: block processing calls GenerateKey (writes _rlp) while trie warmer
+        // threads read FullRlp concurrently.
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
         bool failed = false;
-        int iterations = 100_000;
+        const int nodeCount = 100;
 
-        Parallel.For(0, iterations, (i) =>
+        TrieNode[] nodes = new TrieNode[nodeCount];
+        for (int i = 0; i < nodeCount; i++)
         {
-            try
-            {
-                byte[]? r = node.FullRlp;
-                if (r is not null)
-                {
-                    // Access Length and content to detect torn reads
-                    _ = r.Length;
-                    _ = r[0];
-                }
-            }
-            catch (IndexOutOfRangeException)
-            {
-                failed = true;
-            }
-        });
+            nodes[i] = new(NodeType.Leaf);
+            nodes[i].Key = new byte[] { (byte)i, (byte)(i >> 8) };
+            nodes[i].Value = new CappedArray<byte>(new byte[] { 1, 2, 3, 4 });
+        }
 
-        Assert.That(failed, Is.False, "Concurrent FullRlp reads must never throw IndexOutOfRangeException");
+        using ManualResetEventSlim go = new(false);
+
+        // Start reader threads that access FullRlp while writer is populating _rlp
+        Thread[] readers = new Thread[4];
+        for (int t = 0; t < readers.Length; t++)
+        {
+            readers[t] = new Thread(() =>
+            {
+                go.Wait();
+                for (int round = 0; round < 1000 && !Volatile.Read(ref failed); round++)
+                {
+                    for (int i = 0; i < nodeCount; i++)
+                    {
+                        try
+                        {
+                            byte[]? r = nodes[i].FullRlp;
+                            if (r is not null)
+                            {
+                                // Access Length and content to detect torn reads
+                                _ = r.Length;
+                                _ = r[0];
+                            }
+                        }
+                        catch (IndexOutOfRangeException)
+                        {
+                            Volatile.Write(ref failed, true);
+                        }
+                    }
+                }
+            });
+            readers[t].Start();
+        }
+
+        // Writer on main thread: GenerateKey writes _rlp on each node
+        go.Set();
+        for (int i = 0; i < nodeCount; i++)
+        {
+            TreePath path = TreePath.Empty;
+            nodes[i].GenerateKey(resolver, ref path);
+        }
+
+        foreach (Thread reader in readers)
+        {
+            reader.Join(TimeSpan.FromSeconds(10));
+        }
+
+        Assert.That(failed, Is.False,
+            "Concurrent FullRlp reads during GenerateKey must never throw IndexOutOfRangeException");
     }
 }
