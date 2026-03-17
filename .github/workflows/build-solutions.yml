@@ -69,7 +69,7 @@ jobs:
           cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
 
       - name: Restore Nethermind.Runner for ${{ matrix.target.rid }}
-        run: dotnet restore src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj --locked-mode -r ${{ matrix.target.rid }}
+        run: dotnet restore src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -r ${{ matrix.target.rid }}
 
       - name: Publish Nethermind.Runner for ${{ matrix.target.rid }}
         run: dotnet publish src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -c release -r ${{ matrix.target.rid }} --no-restore --no-self-contained
