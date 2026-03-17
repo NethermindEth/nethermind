@@ -41,7 +41,9 @@ public class TestingRpcModule(
 
         if (parentBlock is not null)
         {
-            if (!TryResolveTargetFork(targetFork, out TargetFork resolvedFork))
+            IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(parentBlock.Header.Number + 1, payloadAttributes.Timestamp));
+
+            if (!TryResolveTargetFork(targetFork, spec, out TargetFork resolvedFork))
             {
                 if (_logger.IsWarn) _logger.Warn($"Target fork {targetFork ?? "default"} is not supported");
                 return ResultWrapper<object?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
@@ -52,8 +54,6 @@ public class TestingRpcModule(
                 if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {errorResult!.Result.Error}");
                 return errorResult!;
             }
-
-            IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(parentBlock.Header.Number + 1, payloadAttributes.Timestamp));
             BlockHeader header = PrepareBlockHeader(parentBlock.Header, payloadAttributes, extraData);
             Transaction[] transactions = GetTransactions(txRlps).ToArray();
             header.TxRoot = TxTrie.CalculateRoot(transactions);
@@ -152,11 +152,11 @@ public class TestingRpcModule(
         return true;
     }
 
-    private static bool TryResolveTargetFork(string? targetFork, out TargetFork resolvedFork)
+    private static bool TryResolveTargetFork(string? targetFork, IReleaseSpec spec, out TargetFork resolvedFork)
     {
         if (string.IsNullOrWhiteSpace(targetFork))
         {
-            resolvedFork = TargetFork.Prague;
+            resolvedFork = ResolveTargetForkFromSpec(spec);
             return true;
         }
 
@@ -172,6 +172,13 @@ public class TestingRpcModule(
         };
 
         return resolvedFork != TargetFork.Unknown;
+    }
+
+    private static TargetFork ResolveTargetForkFromSpec(IReleaseSpec spec)
+    {
+        if (spec.IsEip7928Enabled) return TargetFork.Amsterdam;
+        if (spec.IsEip7594Enabled) return TargetFork.Osaka;
+        return TargetFork.Prague;
     }
 
     private enum TargetFork
