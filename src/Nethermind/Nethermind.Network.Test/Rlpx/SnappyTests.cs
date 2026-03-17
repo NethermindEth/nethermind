@@ -112,27 +112,17 @@ public class SnappyTests
     [Test]
     public void Encode_does_not_leak_pooled_buffers()
     {
-        PooledByteBufferAllocator allocator = new(
-            nHeapArena: 1, nDirectArena: 0, pageSize: 4096, maxOrder: 0);
+        using PooledBufferLeakDetector detector = new();
         ZeroSnappyEncoderForTest encoder = new();
 
-        // RLP-encoded packet type (0x01) followed by an RLP-encoded body
         byte[] packetType = Rlp.Encode(1).Bytes;
         byte[] body = Rlp.Encode(new byte[100]).Bytes;
         byte[] payload = Bytes.Concat(packetType, body);
-        using DisposableByteBuffer input = allocator.Buffer().AsDisposable();
-        using DisposableByteBuffer output = allocator.Buffer().AsDisposable();
+        using DisposableByteBuffer input = detector.Allocator.Buffer().AsDisposable();
+        using DisposableByteBuffer output = detector.Allocator.Buffer().AsDisposable();
 
         input.WriteBytes(payload);
 
-        long activeBefore = allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
-
         encoder.TestEncode(input, output);
-
-        long activeAfter = allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
-
-        // No new active allocations should remain after Encode — any intermediate
-        // buffer must be released. A leak causes activeAfter > activeBefore.
-        Assert.That(activeAfter, Is.EqualTo(activeBefore));
     }
 }

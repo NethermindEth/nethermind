@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Net;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
@@ -149,23 +148,15 @@ public class DiscoveryMessageSerializerTests
         // ENR with mismatched signature: Secp256K1 entry uses differentKey, but ENR is
         // signed with _privateKey. The outer Discovery envelope is valid, but the inner
         // ENR signature verification fails because the recovered signer doesn't match.
+        using PooledBufferLeakDetector detector = new();
         PrivateKey differentKey = new("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
         EnrResponseMsg msg = BuildEnrResponse(differentKey.CompressedPublicKey);
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg).AsDisposable();
-
-        long activeBefore = PooledByteBufferAllocator.Default.Metric.HeapArenas()
-            .Sum(a => a.NumActiveAllocations);
+        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
 
         _messageSerializationService
             .Invoking(s => s.Deserialize<EnrResponseMsg>(serialized))
             .Should().Throw<NetworkingException>()
             .Where(ex => ex.Message.Contains("Invalid ENR signature"));
-
-        long activeAfter = PooledByteBufferAllocator.Default.Metric.HeapArenas()
-            .Sum(a => a.NumActiveAllocations);
-
-        Assert.That(activeAfter, Is.EqualTo(activeBefore),
-            "Pooled buffer leaked: ReadBytes() return value was not released on the error path");
     }
 
     [Test]
