@@ -853,7 +853,7 @@ namespace Nethermind.Evm.TransactionProcessing
             long blockGas = spentGas - intrinsicState;
             long blockStateGas = intrinsicState;
 
-            return new GasConsumed(spentGas, spentGas, blockGas, blockStateGas);
+            return new GasConsumed(spentGas, spentGas, blockGas, blockStateGas, spentGas);
         }
 
         protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
@@ -1056,7 +1056,8 @@ namespace Nethermind.Evm.TransactionProcessing
             UInt256 refundAmount = (ulong)(tx.GasLimit - spentGas) * gasPrice;
             PayRefund(tx, refundAmount, spec);
 
-            return new GasConsumed(spentGas, operationGas, blockGas, blockStateGas);
+            long maxUsedGas = Math.Max(preRefundGas, floorGasLong);
+            return new GasConsumed(spentGas, operationGas, blockGas, blockStateGas, maxUsedGas);
         }
 
         protected virtual void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
