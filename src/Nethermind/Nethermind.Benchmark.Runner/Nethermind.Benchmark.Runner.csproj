@@ -5,7 +5,6 @@
     <TieredPGO>true</TieredPGO>
     <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
     <ServerGarbageCollection>true</ServerGarbageCollection>
-    <NoWarn>$(NoWarn);NU1608</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

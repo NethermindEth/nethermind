@@ -11,7 +11,11 @@ using System.Linq;
 using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -31,7 +35,14 @@ using Nethermind.Db;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin.Test;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
+using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -120,8 +131,8 @@ public static class NewPayloadBenchmark
     {
         PrivateKey senderKey = TestItem.PrivateKeyA;
 
-        using HighGasLimitMergeTestBlockchain chain = new();
-        await chain.BuildMergeTestBlockchain(BuildChainConfigurer(backend, dbPath));
+        using BenchmarkMergeBlockchain chain = new();
+        await chain.BuildChain(BuildChainConfigurer(backend, dbPath));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 headHash = chain.BlockTree.HeadHash;
@@ -472,17 +483,49 @@ public static class NewPayloadBenchmark
 
     // ── Helper types ─────────────────────────────────────────────────────
 
-    private sealed class HighGasLimitMergeTestBlockchain : BaseEngineModuleTests.MergeTestBlockchain
+    private sealed class BenchmarkMergeBlockchain : TestBlockchain
     {
+        private Lazy<IEngineRpcModule> _lazyEngineRpcModule = null!;
+        public IEngineRpcModule EngineRpcModule => _lazyEngineRpcModule.Value;
+
         protected override ChainSpec CreateChainSpec()
         {
             return new ChainSpec() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).WithGasLimit(60_000_000).TestObject };
         }
+
+        protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
         // Genesis with 1.5M state entries needs more than the default 10s timeout
         protected override AutoCancelTokenSource CreateCancellationSource()
         {
             return AutoCancelTokenSource.ThatCancelAfter(TimeSpan.FromMinutes(2));
         }
+
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+        {
+            return base.ConfigureContainer(builder, configProvider)
+                .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
+                .AddModule(new TestMergeModule(configProvider))
+                .AddSingleton<ISyncPeerPool>(NSubstitute.Substitute.For<ISyncPeerPool>())
+                .AddSingleton<ISyncPointers>(NSubstitute.Substitute.For<ISyncPointers>())
+                .AddSingleton<ISyncProgressResolver>(NSubstitute.Substitute.For<ISyncProgressResolver>())
+                .AddSingleton<ISyncModeSelector>(new StaticSelector(SyncMode.All))
+                .AddSingleton<IPeerRefresher>(NSubstitute.Substitute.For<IPeerRefresher>());
+        }
+
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
+        {
+            IMergeConfig mergeConfig = new MergeConfig { TerminalTotalDifficulty = "0" };
+            TestBlockchain bc = await base.Build(b =>
+            {
+                b.RegisterInstance(mergeConfig).As<IMergeConfig>();
+                configurer?.Invoke(b);
+            });
+            _lazyEngineRpcModule = Container.Resolve<Lazy<IEngineRpcModule>>();
+            return bc;
+        }
+
+        public Task<BenchmarkMergeBlockchain> BuildChain(Action<ContainerBuilder>? configurer) =>
+            Build(configurer).ContinueWith(t => (BenchmarkMergeBlockchain)t.Result);
     }
 }
