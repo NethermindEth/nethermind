@@ -633,6 +633,27 @@ jobs:
 
           trap on_terminate TERM INT
 
+          # Save stdout fd before expb redirects it — container logs go here for live streaming
+          exec 3>&1
+
+          # Background: tail Nethermind container logs for live visibility
+          (
+            sleep 5
+            for i in $(seq 1 60); do
+              cid=$(docker ps --filter "name=nethermind" --format '{{.ID}}' 2>/dev/null | head -1)
+              if [[ -z "$cid" ]]; then
+                cid=$(docker ps --format '{{.ID}} {{.Image}}' 2>/dev/null | grep nethermind | head -1 | cut -d' ' -f1)
+              fi
+              if [[ -n "$cid" ]]; then
+                echo "=== Tailing Nethermind container ${cid} logs ===" >&3
+                docker logs -f "$cid" 2>&1 | sed 's/^/[nethermind] /' >&3
+                break
+              fi
+              sleep 2
+            done
+          ) &
+          log_tail_pid=$!
+
           expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
@@ -646,6 +667,8 @@ jobs:
           expb_exit_code=$?
           set -e
 
+          kill -- -"${log_tail_pid}" 2>/dev/null || kill "${log_tail_pid}" 2>/dev/null || true
+          exec 3>&-
           cat "${RAW_RUN_LOG}"
           exit "${expb_exit_code}"
 
@@ -1366,6 +1389,27 @@ jobs:
 
           trap on_terminate TERM INT
 
+          # Save stdout fd before expb redirects it — container logs go here for live streaming
+          exec 3>&1
+
+          # Background: tail Nethermind container logs for live visibility
+          (
+            sleep 5
+            for i in $(seq 1 60); do
+              cid=$(docker ps --filter "name=nethermind" --format '{{.ID}}' 2>/dev/null | head -1)
+              if [[ -z "$cid" ]]; then
+                cid=$(docker ps --format '{{.ID}} {{.Image}}' 2>/dev/null | grep nethermind | head -1 | cut -d' ' -f1)
+              fi
+              if [[ -n "$cid" ]]; then
+                echo "=== Tailing Nethermind container ${cid} logs ===" >&3
+                docker logs -f "$cid" 2>&1 | sed 's/^/[nethermind] /' >&3
+                break
+              fi
+              sleep 2
+            done
+          ) &
+          log_tail_pid=$!
+
           expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
@@ -1379,6 +1423,8 @@ jobs:
           expb_exit_code=$?
           set -e
 
+          kill -- -"${log_tail_pid}" 2>/dev/null || kill "${log_tail_pid}" 2>/dev/null || true
+          exec 3>&-
           cat "${RAW_RUN_LOG}"
           exit "${expb_exit_code}"
 
