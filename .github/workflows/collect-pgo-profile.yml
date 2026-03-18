@@ -190,6 +190,7 @@ jobs:
           set -euo pipefail
 
           # Background: tail Nethermind container logs for visibility
+          log_tail_pid=""
           (
             sleep 5
             for i in $(seq 1 60); do
@@ -197,8 +198,7 @@ jobs:
                 --format '{{.ID}}' 2>/dev/null | head -1)
               if [[ -n "${cid}" ]]; then
                 echo "=== Tailing Nethermind container ${cid} logs ==="
-                docker logs -f "${cid}" 2>&1 | sed 's/^/[nethermind] /' &
-                break
+                exec docker logs -f "${cid}" 2>&1 | sed 's/^/[nethermind] /'
               fi
               sleep 2
             done
@@ -212,7 +212,8 @@ jobs:
             2>&1 | tee "${RUNNER_TEMP}/expb-pgo-run.log"
           expb_exit=$?
 
-          kill "${log_tail_pid}" 2>/dev/null || true
+          # Kill the entire process group to ensure docker logs is terminated
+          kill -- -"${log_tail_pid}" 2>/dev/null || kill "${log_tail_pid}" 2>/dev/null || true
           exit "${expb_exit}"
 
       - name: Extract PGO data from EXPB output
