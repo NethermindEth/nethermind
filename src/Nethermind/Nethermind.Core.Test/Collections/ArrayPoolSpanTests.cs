@@ -84,4 +84,35 @@ public class ArrayPoolSpanTests
         }
         count.Should().Be(5);
     }
+
+    [Test]
+    public void Slice_respects_logical_length()
+    {
+        using ArrayPoolSpan<int> span = new(5);
+        for (int i = 0; i < 5; i++) span[i] = i;
+
+        Span<int> slice = span.Slice(1, 3);
+        slice.Length.Should().Be(3);
+        slice[0].Should().Be(1);
+        slice[2].Should().Be(3);
+    }
+
+    [Test]
+    public void Slice_throws_when_exceeding_logical_length()
+    {
+        using ArrayPoolSpan<int> span = new(5);
+
+        // Start + length exceeds logical length (5), even though rented array may be larger
+        Assert.Throws<ArgumentOutOfRangeException>(() => span.Slice(3, 5));
+    }
+
+    [Test]
+    public void Slice_at_boundary_succeeds()
+    {
+        using ArrayPoolSpan<int> span = new(5);
+
+        // Exactly at the boundary should work
+        Span<int> slice = span.Slice(0, 5);
+        slice.Length.Should().Be(5);
+    }
 }

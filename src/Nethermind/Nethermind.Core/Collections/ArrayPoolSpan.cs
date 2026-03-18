@@ -19,7 +19,7 @@ public readonly struct ArrayPoolSpan<T>(ArrayPool<T> arrayPool, int length) : ID
     {
         get
         {
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, _length);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, _length, nameof(index));
             return ref _array[index];
         }
     }
@@ -27,7 +27,11 @@ public readonly struct ArrayPoolSpan<T>(ArrayPool<T> arrayPool, int length) : ID
     public static implicit operator Span<T>(ArrayPoolSpan<T> arrayPoolSpan) => arrayPoolSpan._array.AsSpan(0, arrayPoolSpan._length);
     public static implicit operator ReadOnlySpan<T>(ArrayPoolSpan<T> arrayPoolSpan) => arrayPoolSpan._array.AsSpan(0, arrayPoolSpan._length);
 
-    public Span<T> Slice(int start, int length) => _array.AsSpan(start, length);
+    public Span<T> Slice(int start, int length)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(start + length, _length, nameof(length));
+        return _array.AsSpan(start, length);
+    }
 
     public readonly void Dispose() => arrayPool.Return(_array);
 

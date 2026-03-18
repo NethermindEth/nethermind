@@ -55,9 +55,18 @@ public sealed class PooledBufferLeakDetector : IDisposable
         _message = message ?? "Pooled buffer leak: buffer was allocated from the pool but never released back";
     }
 
-    public void Dispose()
+    /// <summary>
+    /// Explicitly assert no leaks. Call at the end of the test body to get a clear failure
+    /// without risk of masking the original exception (as Dispose would from a finally block).
+    /// </summary>
+    public void AssertNoLeaks()
     {
         long active = Allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
         Assert.That(active, Is.EqualTo(0), _message);
+    }
+
+    public void Dispose()
+    {
+        AssertNoLeaks();
     }
 }

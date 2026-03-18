@@ -159,15 +159,126 @@ public class DiscoveryMessageSerializerTests
         // ENR with mismatched signature: Secp256K1 entry uses differentKey, but ENR is
         // signed with _privateKey. The outer Discovery envelope is valid, but the inner
         // ENR signature verification fails because the recovered signer doesn't match.
-        using PooledBufferLeakDetector detector = new();
         PrivateKey differentKey = new("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
         EnrResponseMsg msg = BuildEnrResponse(differentKey.CompressedPublicKey);
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
+        IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
+        int refCountBefore = serialized.ReferenceCount;
 
         _messageSerializationService
             .Invoking(s => s.Deserialize<EnrResponseMsg>(serialized))
             .Should().Throw<NetworkingException>()
             .Where(ex => ex.Message.Contains("Invalid ENR signature"));
+
+        // Buffer refcount should not have increased — no retained slices or leaked copies
+        serialized.ReferenceCount.Should().Be(refCountBefore,
+            "deserializer should not retain additional references to the buffer on error");
+        serialized.SafeRelease();
+    }
+
+    [Test]
+    public void Enr_response_deserialize_does_not_leak_buffer_on_success()
+    {
+        EnrResponseMsg msg = BuildEnrResponse(_privateKey.CompressedPublicKey);
+        IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
+        int refCountBefore = serialized.ReferenceCount;
+
+        EnrResponseMsg deserialized = _messageSerializationService.Deserialize<EnrResponseMsg>(serialized);
+
+        serialized.ReferenceCount.Should().Be(refCountBefore,
+            "deserializer should not retain additional references to the buffer on success");
+        deserialized.NodeRecord.EnrSequence.Should().Be(5);
+        deserialized.RequestKeccak.Should().Be(TestItem.KeccakA);
+        serialized.SafeRelease();
+    }
+
+    [Test]
+    public void Ping_deserialize_does_not_leak_buffer()
+    {
+        PingMsg msg = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
+            new IPEndPoint(IPAddress.Parse("192.168.1.1"), 30303),
+            new IPEndPoint(IPAddress.Parse("192.168.1.2"), 30303),
+            new byte[32])
+        {
+            FarAddress = _farAddress
+        };
+        IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
+        int refCountBefore = serialized.ReferenceCount;
+
+        _messageSerializationService.Deserialize<PingMsg>(serialized);
+
+        serialized.ReferenceCount.Should().Be(refCountBefore,
+            "deserializer should not retain additional references to the buffer");
+        serialized.SafeRelease();
+    }
+
+    [Test]
+    public void Pong_deserialize_does_not_leak_buffer()
+    {
+        PongMsg msg = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] { 1, 2, 3 })
+        {
+            FarAddress = _farAddress
+        };
+        IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
+        int refCountBefore = serialized.ReferenceCount;
+
+        _messageSerializationService.Deserialize<PongMsg>(serialized);
+
+        serialized.ReferenceCount.Should().Be(refCountBefore,
+            "deserializer should not retain additional references to the buffer");
+        serialized.SafeRelease();
+    }
+
+    [Test]
+    public void FindNode_deserialize_does_not_leak_buffer()
+    {
+        FindNodeMsg msg = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] { 1, 2, 3 })
+        {
+            FarAddress = _farAddress
+        };
+        IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
+        int refCountBefore = serialized.ReferenceCount;
+
+        _messageSerializationService.Deserialize<FindNodeMsg>(serialized);
+
+        serialized.ReferenceCount.Should().Be(refCountBefore,
+            "deserializer should not retain additional references to the buffer");
+        serialized.SafeRelease();
+    }
+
+    [Test]
+    public void Neighbors_deserialize_does_not_leak_buffer()
+    {
+        NeighborsMsg msg = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
+            new[] { new Node(TestItem.PublicKeyA, "192.168.1.2", 1) })
+        {
+            FarAddress = _farAddress
+        };
+        IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
+        int refCountBefore = serialized.ReferenceCount;
+
+        _messageSerializationService.Deserialize<NeighborsMsg>(serialized);
+
+        serialized.ReferenceCount.Should().Be(refCountBefore,
+            "deserializer should not retain additional references to the buffer");
+        serialized.SafeRelease();
+    }
+
+    [Test]
+    public void Neighbors_deserialize_does_not_leak_buffer_on_port_zero_rejection()
+    {
+        NeighborsMsg msg = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
+            new Node[] { new(TestItem.PublicKeyA, "192.168.1.2", 0) })
+        {
+            FarAddress = _farAddress
+        };
+        IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
+        int refCountBefore = serialized.ReferenceCount;
+
+        Assert.Throws<NetworkingException>(() => _messageSerializationService.Deserialize<NeighborsMsg>(serialized));
+
+        serialized.ReferenceCount.Should().Be(refCountBefore,
+            "deserializer should not retain additional references to the buffer on error");
+        serialized.SafeRelease();
     }
 
     [Test]
