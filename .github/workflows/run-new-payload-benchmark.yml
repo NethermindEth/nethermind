@@ -107,22 +107,37 @@ jobs:
           dotnet restore ${{ env.BENCHMARK_PROJECT }}
           dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
 
-      - name: Run NewPayload benchmark on PR branch
-        id: run-pr
+      - name: Run NewPayload benchmark on PR branch (FlatState)
+        id: run-pr-flat
         continue-on-error: true
         shell: bash
         env:
-          BACKEND: ${{ needs.resolve-inputs.outputs.backend }}
           BLOCKS: ${{ needs.resolve-inputs.outputs.blocks }}
           WARMUP: ${{ needs.resolve-inputs.outputs.warmup }}
         run: |
           dotnet run -c Release --no-build \
             --project ${{ env.BENCHMARK_PROJECT }} \
             -- --newpayload \
-               --backend "${BACKEND}" \
+               --backend FlatState \
                --blocks "${BLOCKS}" \
                --warmup "${WARMUP}" \
-            | tee "${RUNNER_TEMP}/newpayload-pr.txt"
+            | tee "${RUNNER_TEMP}/newpayload-pr-flat.txt"
+
+      - name: Run NewPayload benchmark on PR branch (Trie)
+        id: run-pr-trie
+        continue-on-error: true
+        shell: bash
+        env:
+          BLOCKS: ${{ needs.resolve-inputs.outputs.blocks }}
+          WARMUP: ${{ needs.resolve-inputs.outputs.warmup }}
+        run: |
+          dotnet run -c Release --no-build \
+            --project ${{ env.BENCHMARK_PROJECT }} \
+            -- --newpayload \
+               --backend Trie \
+               --blocks "${BLOCKS}" \
+               --warmup "${WARMUP}" \
+            | tee "${RUNNER_TEMP}/newpayload-pr-trie.txt"
 
       - name: Save PR benchmark files
         run: |
@@ -146,36 +161,54 @@ jobs:
           dotnet restore ${{ env.BENCHMARK_PROJECT }}
           dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
 
-      - name: Run NewPayload benchmark on base branch
-        id: run-base
+      - name: Run NewPayload benchmark on base branch (FlatState)
+        id: run-base-flat
         continue-on-error: true
         shell: bash
         env:
-          BACKEND: ${{ needs.resolve-inputs.outputs.backend }}
           BLOCKS: ${{ needs.resolve-inputs.outputs.blocks }}
           WARMUP: ${{ needs.resolve-inputs.outputs.warmup }}
         run: |
           dotnet run -c Release --no-build \
             --project ${{ env.BENCHMARK_PROJECT }} \
             -- --newpayload \
-               --backend "${BACKEND}" \
+               --backend FlatState \
                --blocks "${BLOCKS}" \
                --warmup "${WARMUP}" \
-            | tee "${RUNNER_TEMP}/newpayload-base.txt"
+            | tee "${RUNNER_TEMP}/newpayload-base-flat.txt"
+
+      - name: Run NewPayload benchmark on base branch (Trie)
+        id: run-base-trie
+        continue-on-error: true
+        shell: bash
+        env:
+          BLOCKS: ${{ needs.resolve-inputs.outputs.blocks }}
+          WARMUP: ${{ needs.resolve-inputs.outputs.warmup }}
+        run: |
+          dotnet run -c Release --no-build \
+            --project ${{ env.BENCHMARK_PROJECT }} \
+            -- --newpayload \
+               --backend Trie \
+               --blocks "${BLOCKS}" \
+               --warmup "${WARMUP}" \
+            | tee "${RUNNER_TEMP}/newpayload-base-trie.txt"
 
       - name: Compare results and build comment
         id: compare
         if: always()
         shell: bash
         env:
-          BASE_FILE: ${{ runner.temp }}/newpayload-base.txt
-          PR_FILE: ${{ runner.temp }}/newpayload-pr.txt
+          BASE_FLAT_FILE: ${{ runner.temp }}/newpayload-base-flat.txt
+          PR_FLAT_FILE: ${{ runner.temp }}/newpayload-pr-flat.txt
+          BASE_TRIE_FILE: ${{ runner.temp }}/newpayload-base-trie.txt
+          PR_TRIE_FILE: ${{ runner.temp }}/newpayload-pr-trie.txt
           BASE_SHA: ${{ github.event.pull_request.base.sha || 'master' }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          BACKEND: ${{ needs.resolve-inputs.outputs.backend }}
-          BASE_OUTCOME: ${{ steps.run-base.outcome }}
-          PR_OUTCOME: ${{ steps.run-pr.outcome }}
+          BASE_FLAT_OUTCOME: ${{ steps.run-base-flat.outcome }}
+          PR_FLAT_OUTCOME: ${{ steps.run-pr-flat.outcome }}
+          BASE_TRIE_OUTCOME: ${{ steps.run-base-trie.outcome }}
+          PR_TRIE_OUTCOME: ${{ steps.run-pr-trie.outcome }}
         run: |
           set -euo pipefail
 
@@ -227,69 +260,66 @@ jobs:
                   return " :arrow_up_small:"
               return ""
 
+          def build_table(base, pr, backend_name):
+              section = []
+              section.append(f"#### {backend_name}")
+              section.append("")
+              section.append("| Metric | Base | PR | Delta |")
+              section.append("|--------|-----:|---:|------:|")
+              for key in ["TrimmedMean", "Mean", "Median", "P95", "P99", "Min", "Max"]:
+                  if key in base and key in pr:
+                      d = delta_pct(pr[key], base[key])
+                      section.append(
+                          f"| {key} "
+                          f"| {fmt(base[key])} "
+                          f"| {fmt(pr[key])} "
+                          f"| {fmt_delta(d)}{indicator(d)} |"
+                      )
+              for key in ["TrimmedCV", "CV"]:
+                  if key in base and key in pr:
+                      section.append(f"| {key} | {fmt(base[key], '%')} | {fmt(pr[key], '%')} | |")
+              if "Blocks" in base and "Blocks" in pr:
+                  section.append(f"| Blocks | {base['Blocks']} | {pr['Blocks']} | |")
+              return section
+
           marker = "<!-- newpayload-benchmark-report -->"
           run_url = os.environ["RUN_URL"]
           base_sha = os.environ["BASE_SHA"][:8]
           head_sha = os.environ["HEAD_SHA"][:8]
-          backend = os.environ["BACKEND"]
-          base_outcome = os.environ["BASE_OUTCOME"]
-          pr_outcome = os.environ["PR_OUTCOME"]
 
           lines = [marker]
-          lines.append(f"### engine_newPayload Benchmark Comparison ({backend})")
+          lines.append("### engine_newPayload Benchmark Comparison")
           lines.append("")
           lines.append(f"Run: [View workflow run]({run_url})")
           lines.append(f"Base: `{base_sha}` | Head: `{head_sha}`")
           lines.append("")
 
-          if base_outcome != "success":
-              lines.append(":x: **Base branch benchmark failed.** Check the workflow run for details.")
-              body = "\n".join(lines)
-              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
-              sys.exit(0)
+          for backend, base_file_env, pr_file_env, base_out_env, pr_out_env in [
+              ("FlatState", "BASE_FLAT_FILE", "PR_FLAT_FILE", "BASE_FLAT_OUTCOME", "PR_FLAT_OUTCOME"),
+              ("Trie", "BASE_TRIE_FILE", "PR_TRIE_FILE", "BASE_TRIE_OUTCOME", "PR_TRIE_OUTCOME"),
+          ]:
+              base_outcome = os.environ.get(base_out_env, "")
+              pr_outcome = os.environ.get(pr_out_env, "")
 
-          if pr_outcome != "success":
-              lines.append(":x: **PR branch benchmark failed.** Check the workflow run for details.")
-              body = "\n".join(lines)
-              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
-              sys.exit(0)
+              if base_outcome != "success" or pr_outcome != "success":
+                  lines.append(f"#### {backend}")
+                  lines.append("")
+                  lines.append(f":x: **{backend} benchmark failed.** (base={base_outcome}, pr={pr_outcome})")
+                  lines.append("")
+                  continue
 
-          base = parse_results(os.environ["BASE_FILE"])
-          pr = parse_results(os.environ["PR_FILE"])
+              base = parse_results(os.environ.get(base_file_env, ""))
+              pr = parse_results(os.environ.get(pr_file_env, ""))
 
-          if not base or not pr:
-              lines.append(":warning: Could not parse benchmark results from one or both branches.")
-              body = "\n".join(lines)
-              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
-              sys.exit(0)
+              if not base or not pr:
+                  lines.append(f"#### {backend}")
+                  lines.append("")
+                  lines.append(f":warning: Could not parse {backend} results.")
+                  lines.append("")
+                  continue
 
-          lines.append("| Metric | Base | PR | Delta |")
-          lines.append("|--------|-----:|---:|------:|")
-
-          for key in ["TrimmedMean", "Mean", "Median", "P95", "P99", "Min", "Max"]:
-              if key in base and key in pr:
-                  d = delta_pct(pr[key], base[key])
-                  lines.append(
-                      f"| {key} "
-                      f"| {fmt(base[key])} "
-                      f"| {fmt(pr[key])} "
-                      f"| {fmt_delta(d)}{indicator(d)} |"
-                  )
-
-          for key in ["TrimmedCV", "CV"]:
-              if key in base and key in pr:
-                  lines.append(
-                      f"| {key} "
-                      f"| {fmt(base[key], '%')} "
-                      f"| {fmt(pr[key], '%')} "
-                      f"| |"
-                  )
-
-          if "Blocks" in base and "Blocks" in pr:
-              lines.append(f"| Blocks | {base['Blocks']} | {pr['Blocks']} | |")
+              lines.extend(build_table(base, pr, backend))
+              lines.append("")
 
           body = "\n".join(lines)
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
@@ -345,6 +375,8 @@ jobs:
         with:
           name: newpayload-benchmark-results
           path: |
-            ${{ runner.temp }}/newpayload-base.txt
-            ${{ runner.temp }}/newpayload-pr.txt
+            ${{ runner.temp }}/newpayload-base-flat.txt
+            ${{ runner.temp }}/newpayload-base-trie.txt
+            ${{ runner.temp }}/newpayload-pr-flat.txt
+            ${{ runner.temp }}/newpayload-pr-trie.txt
           retention-days: 30

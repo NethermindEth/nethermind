@@ -23,6 +23,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
+using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Api;
@@ -476,6 +477,12 @@ public static class NewPayloadBenchmark
         protected override ChainSpec CreateChainSpec()
         {
             return new ChainSpec() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).WithGasLimit(60_000_000).TestObject };
+        }
+
+        // Genesis with 1.5M state entries needs more than the default 10s timeout
+        protected override AutoCancelTokenSource CreateCancellationSource()
+        {
+            return AutoCancelTokenSource.ThatCancelAfter(TimeSpan.FromMinutes(2));
         }
     }
 }
