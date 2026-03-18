@@ -147,7 +147,6 @@ namespace Nethermind.Synchronization.Test
                 "== Header ==" + Environment.NewLine +
                 "===[Active ][Sleep  ][Peer(ProtocolVersion/Head/Host:Port/Direction)][Transfer Speeds (L/H/B/R/N/S)      ][Client Info (Name/Version/Operating System/Language)     ]" + Environment.NewLine +
                 "--------------------------------------------------------------------------------------------------------------------------------------------------------------" + Environment.NewLine +
-                // cspell:ignore hbrns
                 "   [HBRNS  ][       ][Peer|eth99|    9999|      127.0.0.1: 3030| Out][     |     |     |     |     |     ][]" + Environment.NewLine +
                 "   [       ][HBRNS  ][Peer|eth99|    9999|      127.0.0.1: 3030|  In][     |     |     |     |     |     ][]";
 

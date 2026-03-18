@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- cspell:ignore nethtest -->
     <AssemblyName>nethtest</AssemblyName>
     <Nullable>annotations</Nullable>
     <PublishReadyToRun>true</PublishReadyToRun>

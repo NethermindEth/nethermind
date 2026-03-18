@@ -130,4 +130,17 @@ public class SimpleFilePublicKeyDbTests
         filePublicKeyDb.Clear();
         Assert.That(filePublicKeyDb.KeyExists([1, 2, 3]), Is.False);
     }
+
+    [Test]
+    public void Get_returns_null_for_missing_key()
+    {
+        using TempPath tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
+        tempPath.Dispose();
+
+        SimpleFilePublicKeyDb filePublicKeyDb = new("Test", Path.GetTempPath(), LimboLogs.Instance);
+
+        byte[]? result = filePublicKeyDb.Get([1, 2, 3]);
+
+        Assert.That(result, Is.Null);
+    }
 }
