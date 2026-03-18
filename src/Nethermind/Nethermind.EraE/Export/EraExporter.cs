@@ -142,7 +142,10 @@ public class EraExporter(
 
             accumulators[(int)epochIdx] = accumulator;
             checksums[(int)epochIdx] = sha256;
-            string finalName = EraPathUtils.Filename(_networkName, epoch, new Hash256(accumulator));
+            // Pre-merge epochs: use accumulator root in filename (standard era1 convention).
+            // Post-merge epochs: accumulator is zero — use SHA-256 checksum instead (standard .era convention).
+            ValueHash256 filenameHash = accumulator == default ? sha256 : accumulator;
+            string finalName = EraPathUtils.Filename(_networkName, epoch, new Hash256(filenameHash));
             fileNames[(int)epochIdx] = finalName;
 
             string rename = Path.Combine(destinationPath, finalName);
