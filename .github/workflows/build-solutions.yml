@@ -71,7 +71,7 @@ jobs:
       - name: Restore Nethermind.Runner
         run: |
           dotnet restore src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj --locked-mode
-          dotnet restore src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -r ${{ matrix.target.rid }} -p:PublishReadyToRun=true
+          dotnet restore src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -r ${{ matrix.target.rid }} -p:PublishReadyToRun=true --source ~/.nuget/packages
 
       - name: Publish Nethermind.Runner for ${{ matrix.target.rid }}
         run: dotnet publish src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -c release -r ${{ matrix.target.rid }} --no-restore --no-self-contained
