@@ -129,10 +129,10 @@ public class SnapshotCompactor : ISnapshotCompactor
         ResourcePool.Usage usage = ResourcePool.CompactUsage(compactSize);
 
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage);
-        ConcurrentDictionary<HashedKey<AddressAsKey>, Account?> accounts = snapshot.Content.Accounts;
-        ConcurrentDictionary<HashedKey<(AddressAsKey, UInt256)>, SlotValue?> storages = snapshot.Content.Storages;
-        ConcurrentDictionary<HashedKey<AddressAsKey>, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
-        ConcurrentDictionary<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> storageNodes = snapshot.Content.StorageNodes;
+        ConcurrentDictionary<HashedKey<Address>, Account?> accounts = snapshot.Content.Accounts;
+        ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> storages = snapshot.Content.Storages;
+        ConcurrentDictionary<HashedKey<Address>, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
+        ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> storageNodes = snapshot.Content.StorageNodes;
         ConcurrentDictionary<HashedKey<TreePath>, TrieNode> stateNodes = snapshot.Content.StateNodes;
 
         using ArrayPoolListRef<Task> compactTask = new ArrayPoolListRef<Task>(2);
@@ -157,7 +157,7 @@ public class SnapshotCompactor : ISnapshotCompactor
                 Snapshot knownState = snapshots[i];
                 addressToClear.Clear();
 
-                foreach ((HashedKey<AddressAsKey> address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
+                foreach ((HashedKey<Address> address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
                 {
                     if (isNewAccount)
                     {
@@ -174,7 +174,7 @@ public class SnapshotCompactor : ISnapshotCompactor
                 if (addressToClear.Count > 0)
                 {
                     // Clear
-                    foreach ((HashedKey<(AddressAsKey, UInt256)> key, SlotValue? _) in storages)
+                    foreach ((HashedKey<(Address, UInt256)> key, SlotValue? _) in storages)
                     {
                         if (addressToClear.Contains(key.Key.Item1))
                         {
@@ -195,16 +195,16 @@ public class SnapshotCompactor : ISnapshotCompactor
         for (int i = 0; i < snapshots.Count; i++)
         {
             // Clear storage nodes for self-destructed accounts
-            using PooledSet<Hash256AsKey> addressHashToClear = new();
-            foreach ((HashedKey<AddressAsKey> address, var isNewAccount) in snapshots[i].SelfDestructedStorageAddresses)
+            using PooledSet<Hash256> addressHashToClear = new();
+            foreach ((HashedKey<Address> address, var isNewAccount) in snapshots[i].SelfDestructedStorageAddresses)
             {
                 if (!isNewAccount)
-                    addressHashToClear.Add(address.Key.Value.ToAccountPath.ToCommitment());
+                    addressHashToClear.Add(address.Key.ToAccountPath.ToCommitment());
             }
 
             if (addressHashToClear.Count > 0)
             {
-                foreach (KeyValuePair<HashedKey<(Hash256AsKey, TreePath)>, TrieNode> kv in storageNodes)
+                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in storageNodes)
                 {
                     if (addressHashToClear.Contains(kv.Key.Key.Item1))
                         storageNodes.TryRemove(kv.Key, out _);
