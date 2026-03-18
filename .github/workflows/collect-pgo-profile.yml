@@ -315,22 +315,10 @@ jobs:
             --trace "${trace_file}" \
             --output "${trace_mibc}"
 
-          # Step 2: Merge edge/block profiling data (.jit files) if present
-          jit_files=$(find "${pgo_dir}" -name "*.jit" -type f 2>/dev/null || true)
-          if [[ -n "${jit_files}" ]]; then
-            echo "Found edge profiling data, merging into .mibc..."
-            merge_args=("--input" "${trace_mibc}")
-            while IFS= read -r jit_file; do
-              merge_args+=("--input" "${jit_file}")
-            done <<< "${jit_files}"
-
-            dotnet-pgo merge \
-              "${merge_args[@]}" \
-              --output "${mibc_file}"
-          else
-            echo "No .jit edge profiling files found, using trace-only .mibc"
-            cp "${trace_mibc}" "${mibc_file}"
-          fi
+          # .jit files (from DOTNET_WritePGOData) use a JIT-internal text format read
+          # back via DOTNET_ReadPGOData — they can't be merged into .mibc by dotnet-pgo.
+          # They're uploaded as a separate artifact for optional runtime-level PGO.
+          cp "${trace_mibc}" "${mibc_file}"
 
           echo "Generated .mibc profile:"
           ls -lh "${mibc_file}"
