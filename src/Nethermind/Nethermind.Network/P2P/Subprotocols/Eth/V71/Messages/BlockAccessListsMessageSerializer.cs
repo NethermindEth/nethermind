@@ -3,18 +3,17 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 
-public class BlockAccessListsMessageSerializer : IZeroInnerMessageSerializer<BlockAccessListsMessage>
+public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccessListsMessage>
 {
-    public void Serialize(IByteBuffer byteBuffer, BlockAccessListsMessage message)
+    protected override void SerializeInternal(IByteBuffer byteBuffer, BlockAccessListsMessage message)
     {
-        int length = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(length);
         NettyRlpStream stream = new(byteBuffer);
-        stream.StartSequence(contentLength);
+        stream.StartSequence(GetAccessListsContentLength(message.AccessLists));
 
         foreach (byte[] bal in message.AccessLists.AsSpan())
         {
@@ -22,9 +21,7 @@ public class BlockAccessListsMessageSerializer : IZeroInnerMessageSerializer<Blo
         }
     }
 
-    public BlockAccessListsMessage Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
-
-    private static BlockAccessListsMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+    protected override BlockAccessListsMessage DeserializeInternal(ref Rlp.ValueDecoderContext ctx, long requestId)
     {
         int length = ctx.ReadSequenceLength();
         int endPosition = ctx.Position + length;
@@ -36,17 +33,23 @@ public class BlockAccessListsMessageSerializer : IZeroInnerMessageSerializer<Blo
             accessLists.Add(balBytes);
         }
 
-        return new BlockAccessListsMessage(accessLists);
+        ctx.Check(endPosition);
+        return new BlockAccessListsMessage(requestId, accessLists);
     }
 
-    public int GetLength(BlockAccessListsMessage message, out int contentLength)
+    protected override int GetLengthInternal(BlockAccessListsMessage message)
     {
-        contentLength = 0;
-        foreach (byte[] bal in message.AccessLists.AsSpan())
+        return Rlp.LengthOfSequence(GetAccessListsContentLength(message.AccessLists));
+    }
+
+    private static int GetAccessListsContentLength(IOwnedReadOnlyList<byte[]> accessLists)
+    {
+        int contentLength = 0;
+        foreach (byte[] bal in accessLists.AsSpan())
         {
             contentLength += Rlp.LengthOf(bal);
         }
 
-        return Rlp.LengthOfSequence(contentLength);
+        return contentLength;
     }
 }

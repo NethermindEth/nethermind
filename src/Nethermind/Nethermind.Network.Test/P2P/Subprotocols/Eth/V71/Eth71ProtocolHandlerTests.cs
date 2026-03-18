@@ -121,15 +121,15 @@ public class Eth71ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
 
-        using GetBlockAccessListsMessage66 request = new(1111,
-            new GetBlockAccessListsMessage(new Hash256[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList(2)));
+        using GetBlockAccessListsMessage request = new(1111,
+            new Hash256[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList(2));
         HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
 
-        _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage66>(m =>
+        _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage>(m =>
             m.RequestId == 1111 &&
-            m.EthMessage.AccessLists.Count == 2 &&
-            m.EthMessage.AccessLists[0].SequenceEqual(bal1) &&
-            m.EthMessage.AccessLists[1].SequenceEqual(bal2)));
+            m.AccessLists.Count == 2 &&
+            m.AccessLists[0].SequenceEqual(bal1) &&
+            m.AccessLists[1].SequenceEqual(bal2)));
     }
 
     [Test]
@@ -139,15 +139,15 @@ public class Eth71ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
 
-        using GetBlockAccessListsMessage66 request = new(2222,
-            new GetBlockAccessListsMessage(new Hash256[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList(2)));
+        using GetBlockAccessListsMessage request = new(2222,
+            new Hash256[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList(2));
         HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
 
-        _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage66>(m =>
+        _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage>(m =>
             m.RequestId == 2222 &&
-            m.EthMessage.AccessLists.Count == 2 &&
-            m.EthMessage.AccessLists[0].SequenceEqual(BlockAccessListsMessage.EmptyBal) &&
-            m.EthMessage.AccessLists[1].SequenceEqual(BlockAccessListsMessage.EmptyBal)));
+            m.AccessLists.Count == 2 &&
+            m.AccessLists[0].SequenceEqual(BlockAccessListsMessage.EmptyBal) &&
+            m.AccessLists[1].SequenceEqual(BlockAccessListsMessage.EmptyBal)));
     }
 
     [Test]
@@ -160,15 +160,15 @@ public class Eth71ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
 
-        using GetBlockAccessListsMessage66 request = new(3333,
-            new GetBlockAccessListsMessage(new Hash256[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB }.ToPooledList(3)));
+        using GetBlockAccessListsMessage request = new(3333,
+            new Hash256[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB }.ToPooledList(3));
         HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
 
-        _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage66>(m =>
-            m.EthMessage.AccessLists.Count == 3 &&
-            m.EthMessage.AccessLists[0].SequenceEqual(bal1) &&
-            m.EthMessage.AccessLists[1].SequenceEqual(BlockAccessListsMessage.EmptyBal) &&
-            m.EthMessage.AccessLists[2].SequenceEqual(BlockAccessListsMessage.EmptyBal)));
+        _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage>(m =>
+            m.AccessLists.Count == 3 &&
+            m.AccessLists[0].SequenceEqual(bal1) &&
+            m.AccessLists[1].SequenceEqual(BlockAccessListsMessage.EmptyBal) &&
+            m.AccessLists[2].SequenceEqual(BlockAccessListsMessage.EmptyBal)));
     }
 
     [Test]
@@ -177,34 +177,32 @@ public class Eth71ProtocolHandlerTests
         byte[] bal1 = [0xc1, 0x80];
         byte[] bal2 = [0xc2, 0x01, 0x02];
 
-        ArrayPoolList<byte[]> balList = new(2) { bal1, bal2 };
-        using BlockAccessListsMessage inner = new(balList);
-        BlockAccessListsMessage66 response = new(0, inner);
+        BlockAccessListsMessage? response = null;
 
-        _session.When(s => s.DeliverMessage(Arg.Any<GetBlockAccessListsMessage66>())).Do(call =>
+        _session.When(s => s.DeliverMessage(Arg.Any<GetBlockAccessListsMessage>())).Do(call =>
         {
-            GetBlockAccessListsMessage66 sent = (GetBlockAccessListsMessage66)call[0];
-            response = new BlockAccessListsMessage66(sent.RequestId, inner);
+            GetBlockAccessListsMessage sent = (GetBlockAccessListsMessage)call[0];
+            response = new BlockAccessListsMessage(sent.RequestId, new ArrayPoolList<byte[]>(2) { bal1, bal2 });
         });
 
         HandleIncomingStatusMessage();
         Task<IOwnedReadOnlyList<byte[]>> task = _handler.GetBlockAccessLists(
             new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
-        _session.Received(1).DeliverMessage(Arg.Any<GetBlockAccessListsMessage66>());
-        HandleZeroMessage(response, Eth71MessageCode.BlockAccessLists);
+        _session.Received(1).DeliverMessage(Arg.Any<GetBlockAccessListsMessage>());
+        HandleZeroMessage(response!, Eth71MessageCode.BlockAccessLists);
 
         IOwnedReadOnlyList<byte[]> result = await task;
         result.Should().HaveCount(2);
         result[0].Should().BeEquivalentTo(bal1);
         result[1].Should().BeEquivalentTo(bal2);
+        response?.Dispose();
     }
 
     [Test]
     public void Should_throw_when_receiving_unrequested_block_access_lists()
     {
-        using BlockAccessListsMessage inner = new(ArrayPoolList<byte[]>.Empty());
-        using BlockAccessListsMessage66 msg = new(9999, inner);
+        using BlockAccessListsMessage msg = new(9999, ArrayPoolList<byte[]>.Empty());
 
         HandleIncomingStatusMessage();
         Action action = () => HandleZeroMessage(msg, Eth71MessageCode.BlockAccessLists);
@@ -219,7 +217,7 @@ public class Eth71ProtocolHandlerTests
             Array.Empty<Hash256>(), CancellationToken.None);
 
         result.Should().HaveCount(0);
-        _session.DidNotReceive().DeliverMessage(Arg.Any<GetBlockAccessListsMessage66>());
+        _session.DidNotReceive().DeliverMessage(Arg.Any<GetBlockAccessListsMessage>());
     }
 
     [Test]
@@ -227,13 +225,13 @@ public class Eth71ProtocolHandlerTests
     {
         HandleIncomingStatusMessage();
 
-        using GetBlockAccessListsMessage66 request = new(4444,
-            new GetBlockAccessListsMessage(new ArrayPoolList<Hash256>(0)));
+        using GetBlockAccessListsMessage request = new(4444,
+            new ArrayPoolList<Hash256>(0));
         HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
 
-        _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage66>(m =>
+        _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage>(m =>
             m.RequestId == 4444 &&
-            m.EthMessage.AccessLists.Count == 0));
+            m.AccessLists.Count == 0));
     }
 
     private void HandleIncomingStatusMessage()

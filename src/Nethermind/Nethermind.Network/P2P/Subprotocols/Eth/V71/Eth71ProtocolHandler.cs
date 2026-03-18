@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V71;
 /// </summary>
 public class Eth71ProtocolHandler : Eth70ProtocolHandler
 {
-    private readonly MessageDictionary<GetBlockAccessListsMessage66, BlockAccessListsMessage66> _balRequests;
+    private readonly MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage> _balRequests;
 
     /// <summary>
     /// Recommended soft limit for BlockAccessLists responses (10 MiB per EIP-8159).
@@ -50,7 +50,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
             gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy)
     {
-        _balRequests = new MessageDictionary<GetBlockAccessListsMessage66, BlockAccessListsMessage66>(Send);
+        _balRequests = new MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage>(Send);
     }
 
     public override string Name => "eth71";
@@ -67,10 +67,10 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler
         switch (message.PacketType)
         {
             case Eth71MessageCode.GetBlockAccessLists:
-                HandleInBackground<GetBlockAccessListsMessage66, BlockAccessListsMessage66>(message, Handle);
+                HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 break;
             case Eth71MessageCode.BlockAccessLists:
-                BlockAccessListsMessage66 balMsg = Deserialize<BlockAccessListsMessage66>(message.Content);
+                BlockAccessListsMessage balMsg = Deserialize<BlockAccessListsMessage>(message.Content);
                 ReportIn(balMsg, size);
                 Handle(balMsg, size);
                 break;
@@ -80,12 +80,12 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler
         }
     }
 
-    private void Handle(BlockAccessListsMessage66 msg, long size) =>
+    private void Handle(BlockAccessListsMessage msg, long size) =>
         _balRequests.Handle(msg.RequestId, msg, size);
 
-    private Task<BlockAccessListsMessage66> Handle(GetBlockAccessListsMessage66 request, CancellationToken cancellationToken)
+    private Task<BlockAccessListsMessage> Handle(GetBlockAccessListsMessage request, CancellationToken cancellationToken)
     {
-        IOwnedReadOnlyList<Hash256> hashes = request.EthMessage.Hashes;
+        IOwnedReadOnlyList<Hash256> hashes = request.Hashes;
         ArrayPoolList<byte[]> results = new(hashes.Count);
         long totalSize = 0;
 
@@ -116,8 +116,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler
             results.Add(BlockAccessListsMessage.EmptyBal);
         }
 
-        BlockAccessListsMessage inner = new(results);
-        return Task.FromResult(new BlockAccessListsMessage66(request.RequestId, inner));
+        return Task.FromResult(new BlockAccessListsMessage(request.RequestId, results));
     }
 
     public async Task<IOwnedReadOnlyList<byte[]>> GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
@@ -133,13 +132,11 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler
             hashList.Add(blockHashes[i]);
         }
 
-        GetBlockAccessListsMessage inner = new(hashList);
-        GetBlockAccessListsMessage66 request = new(0, inner);
-
-        Request<GetBlockAccessListsMessage66, BlockAccessListsMessage66> req = new(request);
+        GetBlockAccessListsMessage request = new(hashList);
+        Request<GetBlockAccessListsMessage, BlockAccessListsMessage> req = new(request);
         _balRequests.Send(req);
 
-        BlockAccessListsMessage66 response = await HandleResponse(req, TransferSpeedType.Bodies, static _ => nameof(GetBlockAccessListsMessage66), token);
-        return response.EthMessage.AccessLists;
+        BlockAccessListsMessage response = await HandleResponse(req, TransferSpeedType.Bodies, static _ => nameof(GetBlockAccessListsMessage), token);
+        return response.AccessLists;
     }
 }

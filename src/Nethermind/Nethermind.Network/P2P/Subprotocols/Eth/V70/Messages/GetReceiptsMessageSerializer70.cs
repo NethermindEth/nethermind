@@ -2,35 +2,34 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 
-public class GetReceiptsMessageSerializer70(IZeroInnerMessageSerializer<GetReceiptsMessage> innerSerializer)
-    : IZeroInnerMessageSerializer<GetReceiptsMessage70>
+public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMessage70>
 {
-    private readonly IZeroInnerMessageSerializer<GetReceiptsMessage> _innerSerializer = innerSerializer;
+    private static readonly RlpLimit RlpLimit =
+        RlpLimit.For<GetReceiptsMessage70>(NethermindSyncLimits.MaxHashesFetch, nameof(GetReceiptsMessage70.Hashes));
 
-    public void Serialize(IByteBuffer byteBuffer, GetReceiptsMessage70 message)
+    protected override void SerializeInternal(IByteBuffer byteBuffer, GetReceiptsMessage70 message)
     {
-        int length = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(length);
-
         NettyRlpStream stream = new(byteBuffer);
-        stream.StartSequence(contentLength);
-        stream.Encode(message.RequestId);
         stream.Encode(message.FirstBlockReceiptIndex);
-        _innerSerializer.Serialize(byteBuffer, message.EthMessage);
+        int hashesContentLength = GetHashesContentLength(message.Hashes);
+        stream.StartSequence(hashesContentLength);
+
+        foreach (Hash256 hash in message.Hashes.AsSpan())
+        {
+            stream.Encode(hash);
+        }
     }
 
-    public GetReceiptsMessage70 Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
-
-    private static GetReceiptsMessage70 Deserialize(ref Rlp.ValueDecoderContext ctx)
+    protected override GetReceiptsMessage70 DeserializeInternal(ref Rlp.ValueDecoderContext ctx, long requestId)
     {
-        ctx.ReadSequenceLength();
-
-        long requestId = ctx.DecodeLong();
         long firstIndex = ctx.DecodeLong();
 
         if (firstIndex < 0)
@@ -38,19 +37,25 @@ public class GetReceiptsMessageSerializer70(IZeroInnerMessageSerializer<GetRecei
             throw new RlpException("Negative firstBlockReceiptIndex is invalid");
         }
 
-        GetReceiptsMessage ethMessage = GetReceiptsMessageSerializer.Deserialize(ref ctx);
-        return new GetReceiptsMessage70(requestId, firstIndex, ethMessage);
+        ArrayPoolList<Hash256> hashes =
+            ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext nestedContext) => nestedContext.DecodeKeccak(), limit: RlpLimit);
+
+        return new GetReceiptsMessage70(requestId, firstIndex, hashes);
     }
 
-    public int GetLength(GetReceiptsMessage70 message, out int contentLength)
+    protected override int GetLengthInternal(GetReceiptsMessage70 message)
     {
-        int innerLength = _innerSerializer.GetLength(message.EthMessage, out _);
+        return Rlp.LengthOf(message.FirstBlockReceiptIndex) + Rlp.LengthOfSequence(GetHashesContentLength(message.Hashes));
+    }
 
-        contentLength =
-            Rlp.LengthOf(message.RequestId) +
-            Rlp.LengthOf(message.FirstBlockReceiptIndex) +
-            innerLength;
+    private static int GetHashesContentLength(IOwnedReadOnlyList<Hash256> hashes)
+    {
+        int contentLength = 0;
+        for (int i = 0; i < hashes.Count; i++)
+        {
+            contentLength += Rlp.LengthOf(hashes[i]);
+        }
 
-        return Rlp.LengthOfSequence(contentLength);
+        return contentLength;
     }
 }

@@ -136,10 +136,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // V71
             .AddMessageSerializer<V71.GetBlockAccessListsMessage, V71.GetBlockAccessListsMessageSerializer>()
             .AddMessageSerializer<V71.BlockAccessListsMessage, V71.BlockAccessListsMessageSerializer>()
-            .AddSingleton<IZeroInnerMessageSerializer<V71.GetBlockAccessListsMessage>, V71.GetBlockAccessListsMessageSerializer>() // For v71 66 variant
-            .AddSingleton<IZeroInnerMessageSerializer<V71.BlockAccessListsMessage>, V71.BlockAccessListsMessageSerializer>() // For v71 66 variant
-            .AddMessageSerializer<V71.GetBlockAccessListsMessage66, V71.GetBlockAccessListsMessageSerializer66>()
-            .AddMessageSerializer<V71.BlockAccessListsMessage66, V71.BlockAccessListsMessageSerializer66>()
 
             // P2P protocol handler factory (accepts any version; validation happens after Hello)
             .Map<PublicKey, IRlpxHost>(rlpx => rlpx.LocalNodeId)
