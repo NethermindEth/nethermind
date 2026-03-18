@@ -48,6 +48,10 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             {
                 throw new RlpException("Storage reads were in incorrect order.");
             }
+            if (slotChangesList.ContainsKey(storageRead.Key))
+            {
+                throw new RlpException("Invalid storage read, already in storage changes.");
+            }
             storageReadsList.Add(storageRead);
             lastRead = storageRead;
         }
