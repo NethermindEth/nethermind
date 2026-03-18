@@ -35,7 +35,7 @@ public class FindNodeMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessa
         (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
         Rlp.ValueDecoderContext ctx = Data.AsRlpContext();
         ctx.ReadSequenceLength();
-        byte[] searchedNodeId = ctx.DecodeByteArray();
+        byte[] searchedNodeId = ctx.DecodeByteArray(NodeIdRlpLimit);
         long expirationTime = ctx.DecodeLong();
 
         Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
