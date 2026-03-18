@@ -266,20 +266,17 @@ jobs:
           git clone --depth 1 \
             https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
           cd "${RUNNER_TEMP}/dotnet-runtime"
-          build_exit=0
-          ./build.sh -subset clr.tools -c Release || build_exit=$?
+          # Initialize Arcade SDK and install the required .NET SDK (restore only, no build)
+          ./build.sh --restore -c Release /p:Subset=clr.tools
+          # Build only dotnet-pgo (not the full clr.tools subset which includes ILCompiler/crossgen2)
+          .dotnet/dotnet build src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj -c Release
 
           dotnet_pgo_dir=$(find "${RUNNER_TEMP}/dotnet-runtime/artifacts" -type d -name "dotnet-pgo" -path "*/bin/*" | head -1)
           if [[ -z "${dotnet_pgo_dir}" ]] || [[ ! -f "${dotnet_pgo_dir}/dotnet-pgo.dll" ]]; then
             echo "dotnet-pgo was not produced under artifacts/"
-            exit "${build_exit:-1}"
+            exit 1
           fi
 
-          if [[ "${build_exit}" -ne 0 ]]; then
-            echo "dotnet/runtime build exited with ${build_exit}, but dotnet-pgo was produced; continuing."
-          fi
-
-          # Copy entire output directory (includes .runtimeconfig.json, deps, dependencies)
           cp -a "${dotnet_pgo_dir}" "${RUNNER_TEMP}/dotnet-pgo-bin"
           # Add a wrapper script so dotnet-pgo is callable by name
           cat > "${RUNNER_TEMP}/dotnet-pgo-bin/dotnet-pgo" <<'WRAPPER'
