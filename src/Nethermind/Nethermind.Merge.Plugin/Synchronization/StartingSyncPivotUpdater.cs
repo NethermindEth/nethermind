@@ -34,7 +34,6 @@ public class StartingSyncPivotUpdater : IDisposable
     private static int _maxAttempts;
     private int _attemptsLeft;
     private int _updateInProgress;
-    private int _disposed;
     private Hash256 _alreadyAnnouncedNewPivotHash = Keccak.Zero;
 
     public StartingSyncPivotUpdater(IBlockTree blockTree,
