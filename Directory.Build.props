@@ -12,8 +12,6 @@
     <!-- NU1900: vulnerability metadata fetch failure — don't break builds when a feed is down -->
     <NoWarn>$(NoWarn);NU1900</NoWarn>
     <UseArtifactsOutput>true</UseArtifactsOutput>
-    <NethermindPgoProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc</NethermindPgoProfile>
-    <PublishReadyToRunMibcPaths Condition="'$(PublishReadyToRun)' == 'true' and Exists('$(NethermindPgoProfile)')">$(NethermindPgoProfile)</PublishReadyToRunMibcPaths>
   </PropertyGroup>
 
   <PropertyGroup Label="ProductInfo">
