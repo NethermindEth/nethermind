@@ -13,19 +13,28 @@ if [[ -z "${DOTNET_GCLargePages:-}" ]]; then
 
   if [[ "$hugepages_free" -gt 0 ]]; then
     # With large pages the GC commits memory upfront (can't lazily commit huge pages),
-    # so GCRegionRange becomes actual physical memory, not just virtual reservation.
+    # so GCRegionRange becomes actual pinned physical memory, not virtual reservation.
+    # Hugepages are UNPAGEABLE — no overcommit, no swap. If we ask for more than
+    # physically available, mmap(MAP_HUGETLB) fails and the GC can't initialize.
+    #
     # The GC has a known double-commit bug with large pages where it commits ~2x the
     # region range (see https://github.com/dotnet/runtime/issues/103203).
+    # Therefore region_range * 2 must fit in available memory.
     #
-    # Strategy:
-    # - Bare metal / no cgroup: use 75% of available memory. The 2x wasted commit is
-    #   handled by Linux overcommit (default overcommit_memory=0).
-    # - Container with cgroup limit: use 37.5% (half of 75%) because the 2x commit
-    #   counts against the cgroup limit and the OOM-killer will enforce it.
-    # Final value: min(32 GiB, memory-based cap, free_hugepages).
+    # Use 37.5% of available memory (= 75% / 2) so the 2x commit stays within 75%,
+    # leaving 25% headroom for native allocations, RocksDB, stack, etc.
+    # Final value: min(32 GiB, available_memory * 37.5%, cgroup_limit * 37.5%, free_hugepages).
     min_useful=$((4 * 1024 * 1024 * 1024)) # 4 GiB — below this large pages aren't worth the constraints
     max_range=$((32 * 1024 * 1024 * 1024))  # 32 GiB cap
-    has_cgroup_limit=false
+
+    # Read available physical memory from /proc/meminfo (bytes)
+    if [[ -f /proc/meminfo ]]; then
+      avail_kb=$(awk '/^MemAvailable:/ { print $2 }' /proc/meminfo)
+      if [[ -n "$avail_kb" && "$avail_kb" -gt 0 ]]; then
+        avail_pct=$(( avail_kb * 1024 * 375 / 1000 ))
+        [[ "$avail_pct" -lt "$max_range" ]] && max_range="$avail_pct"
+      fi
+    fi
 
     # Read container memory limit from cgroups
     cgroup_limit=""
@@ -38,25 +47,8 @@ if [[ -z "${DOTNET_GCLargePages:-}" ]]; then
     fi
 
     if [[ -n "$cgroup_limit" ]]; then
-      has_cgroup_limit=true
-      # 37.5%: the 2x commit counts against the cgroup limit / OOM-killer
       cgroup_pct=$(( cgroup_limit * 375 / 1000 ))
       [[ "$cgroup_pct" -lt "$max_range" ]] && max_range="$cgroup_pct"
-    fi
-
-    # Read available physical memory from /proc/meminfo (bytes)
-    if [[ -f /proc/meminfo ]]; then
-      avail_kb=$(awk '/^MemAvailable:/ { print $2 }' /proc/meminfo)
-      if [[ -n "$avail_kb" && "$avail_kb" -gt 0 ]]; then
-        if [[ "$has_cgroup_limit" == true ]]; then
-          # Already capped by cgroup — use 37.5% of available too for consistency
-          avail_pct=$(( avail_kb * 1024 * 375 / 1000 ))
-        else
-          # No cgroup: 75% — Linux overcommit handles the 2x wasted commit
-          avail_pct=$(( avail_kb * 1024 * 75 / 100 ))
-        fi
-        [[ "$avail_pct" -lt "$max_range" ]] && max_range="$avail_pct"
-      fi
     fi
 
     # Cap to available hugepages — large pages are unpageable so we can't
