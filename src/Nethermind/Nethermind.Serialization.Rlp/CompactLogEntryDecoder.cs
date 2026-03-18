@@ -22,20 +22,23 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
-            decoderContext.ReadSequenceLength();
+            int logEntryLength = decoderContext.ReadSequenceLength();
+            int logEntryCheck = decoderContext.Position + logEntryLength;
             Address? address = decoderContext.DecodeAddress();
-            long sequenceLength = decoderContext.ReadSequenceLength();
-            long untilPosition = decoderContext.Position + sequenceLength;
+            int sequenceLength = decoderContext.ReadSequenceLength();
+            int untilPosition = decoderContext.Position + sequenceLength;
             using ArrayPoolListRef<Hash256> topics = new((int)(sequenceLength * 2 / Rlp.LengthOfKeccakRlp));
             while (decoderContext.Position < untilPosition)
             {
                 topics.Add(decoderContext.DecodeZeroPrefixKeccak());
             }
+            decoderContext.Check(untilPosition);
 
             int zeroPrefix = decoderContext.DecodeInt();
             ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
             byte[] data = new byte[zeroPrefix + rlpData.Length];
             rlpData.CopyTo(data.AsSpan(zeroPrefix));
+            decoderContext.Check(logEntryCheck);
 
             return new LogEntry(address, data, topics.ToArray());
         }
@@ -49,7 +52,8 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            decoderContext.ReadSequenceLength();
+            int logEntryLength = decoderContext.ReadSequenceLength();
+            int logEntryCheck = decoderContext.Position + logEntryLength;
             decoderContext.DecodeAddressStructRef(out var address);
             var (PrefixLength, ContentLength) = decoderContext.PeekPrefixAndContentLength();
             var sequenceLength = PrefixLength + ContentLength;
@@ -60,19 +64,21 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
             byte[] data = new byte[zeroPrefix + rlpData.Length];
             rlpData.CopyTo(data.AsSpan(zeroPrefix));
+            decoderContext.Check(logEntryCheck);
 
             item = new LogEntryStructRef(address, data, topics);
         }
 
         public static Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
         {
-            long sequenceLength = valueDecoderContext.ReadSequenceLength();
-            long untilPosition = valueDecoderContext.Position + sequenceLength;
+            int sequenceLength = valueDecoderContext.ReadSequenceLength();
+            int untilPosition = valueDecoderContext.Position + sequenceLength;
             using ArrayPoolListRef<Hash256> topics = new((int)(sequenceLength * 2 / Rlp.LengthOfKeccakRlp));
             while (valueDecoderContext.Position < untilPosition)
             {
                 topics.Add(valueDecoderContext.DecodeZeroPrefixKeccak());
             }
+            valueDecoderContext.Check(untilPosition);
 
             return topics.ToArray();
         }
