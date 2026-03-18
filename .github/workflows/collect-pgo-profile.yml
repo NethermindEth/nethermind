@@ -268,7 +268,7 @@ jobs:
           cd "${RUNNER_TEMP}/dotnet-runtime"
           # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
           ./build.sh -c Release \
-            --projects src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj
+            --projects "$(pwd)/src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
 
           dotnet_pgo_dir=$(find "${RUNNER_TEMP}/dotnet-runtime/artifacts" -type d -name "dotnet-pgo" -path "*/bin/*" | head -1)
           if [[ -z "${dotnet_pgo_dir}" ]] || [[ ! -f "${dotnet_pgo_dir}/dotnet-pgo.dll" ]]; then
