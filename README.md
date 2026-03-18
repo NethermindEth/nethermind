@@ -1,14 +1,4 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/307367c4-415f-4d0f-8d87-49eac88ffebc">
-    <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/ce071b5b-c50b-4f30-95f8-b5f35695140e">
-    <img alt="Nethermind" src="https://github.com/user-attachments/assets/ce071b5b-c50b-4f30-95f8-b5f35695140e" height="64">
-  </picture>
-</p>
-
 <h1 align="center">Nethermind Ethereum Client</h1>
-
-<p align="center"><b>A robust, high-performance Ethereum execution client built on .NET</b></p>
 
 <p align="center">
   <a href="https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml"><img src="https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml/badge.svg" alt="Tests"></a>
@@ -16,6 +6,10 @@
   <a href="https://discord.gg/GXJFaYk"><img src="https://img.shields.io/discord/629004402170134531?style=social&logo=discord" alt="Discord"></a>
   <a href="https://github.com/nethermindeth/nethermind/discussions"><img src="https://img.shields.io/github/discussions/nethermindeth/nethermind?style=social" alt="GitHub Discussions"></a>
   <a href="https://www.gitpoap.io/gh/NethermindEth/nethermind"><img src="https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge" alt="GitPOAPs"></a>
+</p>
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/bcc0fbeb-fd03-4b9f-9b19-c3790e1fe2fa" alt="Nethermind Client" width="100%">
 </p>
 
 <p align="center">
