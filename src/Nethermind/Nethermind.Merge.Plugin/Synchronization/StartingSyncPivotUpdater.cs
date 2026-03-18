@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.State.Snap;
@@ -29,7 +30,7 @@ public class StartingSyncPivotUpdater : IDisposable
     protected readonly IBeaconSyncStrategy _beaconSyncStrategy;
     protected readonly ILogger _logger;
 
-    private readonly CancellationTokenSource _cancellation = new();
+    private CancellationTokenSource? _cancellation = new();
 
     private static int _maxAttempts;
     private int _attemptsLeft;
@@ -69,7 +70,7 @@ public class StartingSyncPivotUpdater : IDisposable
     {
         if ((syncMode.Current & SyncMode.UpdatingPivot) != 0 && Interlocked.CompareExchange(ref _updateInProgress, 1, 0) == 0)
         {
-            if (await TrySetFreshPivot(_cancellation.Token))
+            if (await TrySetFreshPivot(_cancellation!.Token))
             {
                 _syncModeSelector.Changed -= OnSyncModeChanged;
             }
