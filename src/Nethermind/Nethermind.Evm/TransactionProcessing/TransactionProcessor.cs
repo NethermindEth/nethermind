@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -21,8 +22,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
-using System.Threading;
-using System.Runtime.Serialization;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
@@ -335,11 +334,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (authorizationResult != AuthorizationTupleResult.Valid)
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
-
-                    if (_balBuilder is not null && _balBuilder.TracingEnabled && IncludeAccountRead(authorizationResult))
-                    {
-                        _balBuilder.AddAccountRead(authority);
-                    }
                 }
                 else
                 {
@@ -359,9 +353,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return refunds;
         }
-
-        private static bool IncludeAccountRead(in AuthorizationTupleResult res)
-            => res is AuthorizationTupleResult.IncorrectNonce or AuthorizationTupleResult.InvalidAsCodeDeployed;
 
         private enum AuthorizationTupleResult
         {
