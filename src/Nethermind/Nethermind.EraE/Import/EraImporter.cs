@@ -175,12 +175,19 @@ public class EraImporter(
 
     private void InsertBlockAndReceipts(Block block, TxReceipt[] receipts, long lastBlockNumber)
     {
-        if (blockTree.FindBlock(block.Number) is null)
+        Block? existing = blockTree.FindBlock(block.Number);
+        if (existing is null)
         {
             BlockTreeInsertHeaderOptions headerOptions = block.Header.IsPostMerge
                 ? BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded
                 : BlockTreeInsertHeaderOptions.None;
             blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, headerOptions, bodiesWriteFlags: WriteFlags.DisableWAL);
+        }
+        else if (!block.Header.IsPostMerge && existing.TotalDifficulty is null && block.Header.TotalDifficulty is not null)
+        {
+            // Block body already exists (e.g. downloaded during snap sync ancient-bodies phase) but
+            // TotalDifficulty was not stored at that time. Re-insert with correct TD from the era file.
+            blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, BlockTreeInsertHeaderOptions.None, bodiesWriteFlags: WriteFlags.DisableWAL);
         }
         if (!receiptStorage.HasBlock(block.Number, block.Hash!))
             receiptStorage.Insert(block, receipts, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);

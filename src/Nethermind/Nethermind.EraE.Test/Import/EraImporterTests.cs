@@ -268,6 +268,43 @@ public class EraImporterTests
     }
 
     [Test]
+    public async Task Import_WhenBlocksPrePopulatedWithoutTotalDifficulty_SetsCorrectTotalDifficulty()
+    {
+        // Simulate the snap sync ancient-bodies phase: block bodies exist in the tree but were
+        // inserted without TotalDifficulty (blockInfo.TD=0). Era import must re-insert the header
+        // with the correct TD from the era file.
+        const int chainLength = 32;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
+        string exportPath = sourceCtx.ResolveTempDirPath();
+
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        BlockTree targetTree = Build.A.BlockTree()
+            .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
+            .TestObject;
+
+        for (long i = 1; i < chainLength; i++)
+        {
+            Block block = sourceTree.FindBlock(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
+            targetTree.Insert(block,
+                BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks,
+                BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        }
+
+        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(targetTree)
+            .Build();
+
+        await targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, long.MaxValue, null);
+
+        for (long i = 1; i < chainLength; i++)
+        {
+            Block? imported = targetTree.FindBlock(i, BlockTreeLookupOptions.None);
+            imported.Should().NotBeNull($"block {i} should exist");
+            imported!.TotalDifficulty.Should().NotBeNull($"block {i} should have TotalDifficulty after import");
+        }
+    }
+
+    [Test]
     public async Task Import_WhenBlockFailsValidation_ThrowsEraVerificationException()
     {
         await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(32, from: 0, to: 0);
