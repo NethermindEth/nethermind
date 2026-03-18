@@ -164,16 +164,11 @@ jobs:
             > "${rendered}"
           # Inject a writable pgo volume so EventPipe/PGO data survives container removal
           # EXPB stores extra_volumes under {outputs_dir}/{scenario}/volumes/{name}/
-          python3 -c "
-import sys, re
-cfg = open(sys.argv[1]).read()
-# Add pgo volume after the extra_volumes block
-pgo_vol = '''      pgo:
-        bind: /nethermind/pgo
-        mode: rw'''
-cfg = re.sub(r'(extra_volumes:.*?)((\n\s*\S|\Z))', lambda m: m.group(1) + '\n' + pgo_vol + m.group(2), cfg, count=1, flags=re.DOTALL)
-open(sys.argv[1], 'w').write(cfg)
-" "${rendered}"
+          sed -i '/^[[:space:]]*mode: r$/{
+            a\      pgo:
+            a\        bind: /nethermind/pgo
+            a\        mode: rw
+          }' "${rendered}"
           echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
           echo "Rendered config:"
           cat "${rendered}"
