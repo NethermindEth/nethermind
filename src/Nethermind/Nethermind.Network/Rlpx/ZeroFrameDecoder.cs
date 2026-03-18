@@ -16,6 +16,9 @@ namespace Nethermind.Network.Rlpx
     public class ZeroFrameDecoder(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor)
         : ByteToMessageDecoder
     {
+        // 12 MiB: generous upper bound for devp2p frames. Snap responses can reach ~3 MiB,
+        // but block bodies and receipts can be larger. The cap is defense-in-depth against
+        // OOM from malicious peers sending oversized frames — not a protocol-level limit.
         public readonly static int DefaultMaxInboundFrameSize = (int)12.MiB;
         private readonly IFrameCipher _cipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
         private readonly FrameMacProcessor _authenticator = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));

@@ -788,6 +788,10 @@ namespace Nethermind.Network.P2P
         private void ThrowInvalidSessionState([CallerMemberName] string caller = "")
             => throw new InvalidOperationException($"{caller} called on {this}");
 
+        /// <summary>
+        /// Lock-free dispatch collection for disconnect handlers. Remove uses swap-and-null,
+        /// so handler invocation order is NOT guaranteed to match subscription order.
+        /// </summary>
         private sealed class DisconnectEventHandlers
         {
             private readonly Lock _lock = new();

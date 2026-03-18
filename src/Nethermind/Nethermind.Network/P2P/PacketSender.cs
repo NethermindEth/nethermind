@@ -29,6 +29,8 @@ public class PacketSender : ChannelHandlerAdapter, IPacketSender
         _sendLatency = sendLatency;
     }
 
+    // Thread-safe: Netty guarantees single-threaded channel event delivery,
+    // so ??= is never racing on these fields.
     private Action<Task, object?> DelayThenWriteAction => _delayThenWrite ??= DelayThenWrite;
     private Action<Task, object?> ObserveWriteCompletionAction => _observeWriteCompletion ??= ObserveWriteCompletion;
 

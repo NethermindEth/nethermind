@@ -77,21 +77,6 @@ namespace Nethermind.Network.Rlpx
             ArgumentNullException.ThrowIfNull(networkConfig);
             ArgumentNullException.ThrowIfNull(logManager);
 
-            // .NET Core definitely got the easy logging setup right :D
-            // ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
-            // ConfigureNamedOptions<ConsoleLoggerOptions> configureNamedOptions = new("", null);
-            // OptionsFactory<ConsoleLoggerOptions> optionsFactory = new(
-            //     new []{ configureNamedOptions },
-            //     Enumerable.Empty<IPostConfigureOptions<ConsoleLoggerOptions>>());
-            // OptionsMonitor<ConsoleLoggerOptions> optionsMonitor = new(
-            //     optionsFactory,
-            //     Enumerable.Empty<IOptionsChangeTokenSource<ConsoleLoggerOptions>>(),
-            //     new OptionsCache<ConsoleLoggerOptions>());
-            // LoggerFactory loggerFactory = new(
-            //     new[] { new ConsoleLoggerProvider(optionsMonitor) },
-            //     new LoggerFilterOptions { MinLevel = Microsoft.Extensions.Logging.LogLevel.Warning });
-            // InternalLoggerFactory.DefaultFactory = loggerFactory;
-
             int networkProcessingThread = networkConfig.ProcessingThreadCount;
             if (networkProcessingThread <= 1)
             {
@@ -393,10 +378,11 @@ namespace Nethermind.Network.Rlpx
                 delayCancellation.Cancel();
             }
 
-            // Detach subscriptions after channels are closed so Disconnected handlers fire during shutdown
+            // Detach subscriptions and dispose any sessions that weren't disconnected during shutdown.
+            // Sessions whose Disconnected event fired are already disposed via OnDisconnected.
             foreach (SessionActivitySubscription subscription in _sessionActivitySubscriptions.Values)
             {
-                subscription.Detach();
+                subscription.DetachAndDispose();
             }
 
             _sessionActivitySubscriptions.Clear();
@@ -436,6 +422,12 @@ namespace Nethermind.Network.Rlpx
                 _session.MsgDelivered -= _refreshNodeFilter;
                 _session.Disconnected -= _onDisconnected;
                 _rlpxHost._sessionActivitySubscriptions.TryRemove(_session.SessionId, out _);
+            }
+
+            public void DetachAndDispose()
+            {
+                Detach();
+                _session.Dispose();
             }
 
             private void RefreshNodeFilter(object? _, PeerEventArgs __)

@@ -57,7 +57,7 @@ namespace Nethermind.Network
 
         private volatile bool _isStarted;
         private int _logCounter = 1;
-        private bool _isStopping;
+        private bool _isStopping; // guarded by _sessionLock
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
@@ -607,7 +607,7 @@ namespace Nethermind.Network
 
             _currentSelection.Candidates.Sort(_peerComparer);
 
-            foreach (var currentSelectionCounter in _currentSelection.Counters)
+            foreach (KeyValuePair<string, int> currentSelectionCounter in _currentSelection.Counters)
             {
                 Metrics.PeerCandidateFilter.AddBy(
                     currentSelectionCounter.Key,

@@ -122,7 +122,9 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
             if (ReferenceEquals(requests, newBag))
             {
-                // We added the new entry
+                // First announcer: not added to the retry bag because the caller receives
+                // RequestRequired and will immediately request the resource itself.
+                // Only subsequent announcers (via AnnounceUpdate) are registered for retry.
                 AnnounceAddEnqueue(resourceId, handler);
                 return AnnounceResult.RequestRequired;
             }
