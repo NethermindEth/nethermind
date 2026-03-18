@@ -71,7 +71,7 @@ public class PersistenceManagerTests
     private Snapshot CreateSnapshot(StateId from, StateId to, bool compacted = false)
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        snapshot.Content.Accounts[new HashedKey<AddressAsKey>(TestItem.AddressA)] = new Account(1, 100);
+        snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
 
         if (compacted)
         {
@@ -91,7 +91,7 @@ public class PersistenceManagerTests
     private Snapshot CreateSnapshotWithSelfDestruct(StateId from, StateId to)
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        snapshot.Content.SelfDestructedStorageAddresses[new HashedKey<AddressAsKey>(TestItem.AddressA)] = false; // false = should be processed
+        snapshot.Content.SelfDestructedStorageAddresses[TestItem.AddressA] = false; // false = should be processed
         return snapshot;
     }
 
@@ -292,12 +292,12 @@ public class PersistenceManagerTests
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
         // Add accounts
-        snapshot.Content.Accounts[new HashedKey<AddressAsKey>(TestItem.AddressA)] = new Account(1, 100);
-        snapshot.Content.Accounts[new HashedKey<AddressAsKey>(TestItem.AddressB)] = new Account(2, 200);
+        snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
+        snapshot.Content.Accounts[TestItem.AddressB] = new Account(2, 200);
 
         // Add storage
-        snapshot.Content.Storages[new HashedKey<(AddressAsKey, UInt256)>((TestItem.AddressA, (UInt256)1))] = SlotValue.FromSpanWithoutLeadingZero([42]);
-        snapshot.Content.Storages[new HashedKey<(AddressAsKey, UInt256)>((TestItem.AddressA, (UInt256)2))] = SlotValue.FromSpanWithoutLeadingZero([99]);
+        snapshot.Content.Storages[(TestItem.AddressA, (UInt256)1)] = SlotValue.FromSpanWithoutLeadingZero([42]);
+        snapshot.Content.Storages[(TestItem.AddressA, (UInt256)2)] = SlotValue.FromSpanWithoutLeadingZero([99]);
 
         // Add trie nodes
         TreePath path = TreePath.Empty;

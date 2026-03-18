@@ -39,7 +39,7 @@ public class SnapshotRepositoryTests
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
         if (withData)
         {
-            snapshot.Content.Accounts[new HashedKey<AddressAsKey>(TestItem.AddressA)] = new Account(1, 100);
+            snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
         }
         return snapshot;
     }

@@ -38,9 +38,9 @@ public sealed class ReadOnlySnapshotBundle(
     private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
     private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
 
-    public Account? GetAccount(Address address) => GetAccount(address, new HashedKey<AddressAsKey>(address));
+    public Account? GetAccount(Address address) => GetAccount(address, new HashedKey<Address>(address));
 
-    public Account? GetAccount(Address address, HashedKey<AddressAsKey> key)
+    public Account? GetAccount(Address address, HashedKey<Address> key)
     {
         GuardDispose();
 
@@ -70,7 +70,7 @@ public sealed class ReadOnlySnapshotBundle(
 
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
-        HashedKey<AddressAsKey> key = new(address);
+        HashedKey<Address> key = new(address);
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
             if (snapshots[i].HasSelfDestruct(key))
@@ -83,9 +83,9 @@ public sealed class ReadOnlySnapshotBundle(
     }
 
     public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx) =>
-        GetSlot(selfDestructStateIdx, new HashedKey<(AddressAsKey, UInt256)>((address, index)));
+        GetSlot(selfDestructStateIdx, new HashedKey<(Address, UInt256)>((address, index)));
 
-    public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(AddressAsKey, UInt256)> key)
+    public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key)
     {
         GuardDispose();
 
@@ -108,7 +108,7 @@ public sealed class ReadOnlySnapshotBundle(
         SlotValue outSlotValue = new();
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        persistenceReader.TryGetSlot(key.Key.Item1.Value, key.Key.Item2, ref outSlotValue);
+        persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
         byte[]? value = outSlotValue.ToEvmBytes();
 
         if (recordDetailedMetrics)
@@ -127,9 +127,9 @@ public sealed class ReadOnlySnapshotBundle(
     }
 
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
-        TryFindStateNodes(out node, new HashedKey<TreePath>(path));
+        TryFindStateNodes(new HashedKey<TreePath>(path), out node);
 
-    public bool TryFindStateNodes([NotNullWhen(true)] out TrieNode? node, HashedKey<TreePath> key)
+    public bool TryFindStateNodes(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
 
@@ -150,10 +150,10 @@ public sealed class ReadOnlySnapshotBundle(
 
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
     // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed.
-    public bool TryFindStorageNodes(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
-        TryFindStorageNodes(out node, new HashedKey<(Hash256AsKey, TreePath)>((address, path)));
+    public bool TryFindStorageNodes(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
+        TryFindStorageNodes(new HashedKey<(Hash256, TreePath)>((address, path)), out node);
 
-    public bool TryFindStorageNodes([NotNullWhen(true)] out TrieNode? node, HashedKey<(Hash256AsKey, TreePath)> key)
+    public bool TryFindStorageNodes(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
 
