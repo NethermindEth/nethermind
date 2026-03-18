@@ -950,7 +950,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
-                        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(trieNode.Value.AsSpan());
+                        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(trieNode.Value.Span);
                         (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(ref ctx);
                         if (codeHash != Keccak.OfAnEmptyString)
                         {

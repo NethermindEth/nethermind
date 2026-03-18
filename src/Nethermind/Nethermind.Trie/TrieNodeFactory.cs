@@ -13,7 +13,7 @@ public static class TrieNodeFactory
         return new(new BranchData());
     }
 
-    public static TrieNode CreateLeaf(ReadOnlySpan<byte> path, CappedArray<byte> value)
+    public static TrieNode CreateLeaf(ReadOnlySpan<byte> path, SpanSource value)
     {
         byte[] pathArray = HexPrefix.GetArray(path);
         return new(new LeafData(pathArray, value));

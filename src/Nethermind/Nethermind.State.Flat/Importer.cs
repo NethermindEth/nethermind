@@ -115,12 +115,12 @@ public class Importer(
                 ValueHash256 fullPath = path.Append(node.Key).Path;
                 if (address is null)
                 {
-                    Account acc = _accountDecoder.Decode(node.Value.AsSpan())!;
+                    Account acc = _accountDecoder.Decode(node.Value.Span)!;
                     writeBatch.SetAccountRaw(fullPath.ToHash256(), acc);
                 }
                 else
                 {
-                    ReadOnlySpan<byte> value = node.Value.AsSpan();
+                    ReadOnlySpan<byte> value = node.Value.Span;
                     byte[] toWrite;
 
                     if (value.IsEmpty)

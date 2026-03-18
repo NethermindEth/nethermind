@@ -50,7 +50,7 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
                 }
 
                 node.IsPersisted = true;
-                _writeBatch.Set(address, path, node.Keccak, node.FullRlp.AsSpan(), writeFlags);
+                _writeBatch.Set(address, path, node.Keccak, node.FullRlp.Span, writeFlags);
             }
 
             return node;
