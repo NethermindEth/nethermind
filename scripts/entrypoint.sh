@@ -48,6 +48,11 @@ if [[ -z "${DOTNET_GCLargePages:-}" ]]; then
         [[ "$cgroup_pct" -lt "$max_range" ]] && max_range="$cgroup_pct"
       fi
 
+      # Cap to available hugepages — large pages are unpageable so we can't
+      # request more than the host has pre-allocated (mmap MAP_HUGETLB fails)
+      hugepages_bytes=$(( hugepages_free * 2 * 1024 * 1024 )) # 2 MiB per hugepage
+      [[ "$hugepages_bytes" -lt "$max_range" ]] && max_range="$hugepages_bytes"
+
       # Floor: 256 MiB
       min_range=$(( 256 * 1024 * 1024 ))
       [[ "$max_range" -lt "$min_range" ]] && max_range="$min_range"
