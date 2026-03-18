@@ -71,10 +71,11 @@ jobs:
           elapsed=0
           run_id=""
 
-          # Phase 1: discover the run
+          # Phase 1: discover the run (filter by head_sha to avoid matching unrelated runs)
+          head_sha="${{ github.sha }}"
           while [[ -z "${run_id}" ]]; do
-            response=$(gh api "repos/${{ github.repository }}/actions/workflows/publish-docker.yml/runs?per_page=5&branch=${{ github.ref_name }}" 2>/dev/null || echo '{"workflow_runs":[]}')
-            run_id=$(echo "${response}" | jq -r '[.workflow_runs[] | select(.status != "completed")] | .[0].id // empty')
+            response=$(gh api "repos/${{ github.repository }}/actions/workflows/publish-docker.yml/runs?per_page=5&branch=${{ github.ref_name }}&head_sha=${head_sha}" 2>/dev/null || echo '{"workflow_runs":[]}')
+            run_id=$(echo "${response}" | jq -r '.workflow_runs[0].id // empty')
 
             if [[ -n "${run_id}" ]]; then
               echo "Found publish-docker run: ${run_id}"
@@ -350,7 +351,7 @@ jobs:
 
   update-pgo-profile:
     name: Create PR to update PGO profile
-    needs: collect-pgo
+    needs: collect
     runs-on: ubuntu-latest
     if: success()
     steps:
