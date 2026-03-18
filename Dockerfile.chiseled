@@ -42,4 +42,6 @@ COPY --from=build --chown=app /publish .
 
 USER app
 
+# Note: chiseled image has no shell, so entrypoint.sh can't be used here.
+# Set DOTNET_GCRegionRange manually if needed (e.g., via docker run -e).
 ENTRYPOINT ["./nethermind"]

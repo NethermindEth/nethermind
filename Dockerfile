@@ -36,5 +36,6 @@ VOLUME /nethermind/nethermind_db
 EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
+COPY scripts/entrypoint.sh .
 
-ENTRYPOINT ["./nethermind"]
+ENTRYPOINT ["./entrypoint.sh"]
