@@ -1,0 +1,35 @@
+name: Benchmark Dispatcher
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  block-processing:
+    if: >-
+      github.event.action == 'labeled' &&
+      startsWith(github.event.label.name, 'block-processing-benchmark') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    uses: ./.github/workflows/run-block-processing-benchmark.yml
+    with:
+      filter: ${{ github.event.label.name == 'block-processing-benchmark' && '' || '' }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      pr_number: ${{ github.event.pull_request.number }}
+
+  new-payload:
+    if: >-
+      github.event.action == 'labeled' &&
+      startsWith(github.event.label.name, 'new-payload-benchmark') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    uses: ./.github/workflows/run-new-payload-benchmark.yml
+    with:
+      head_sha: ${{ github.event.pull_request.head.sha }}
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      pr_number: ${{ github.event.pull_request.number }}

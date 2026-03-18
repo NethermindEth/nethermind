@@ -1,8 +1,25 @@
 name: Run NewPayload Benchmark
 
 on:
-  pull_request:
-    types: [labeled]
+  workflow_call:
+    inputs:
+      head_sha:
+        type: string
+        required: true
+      base_sha:
+        type: string
+        required: true
+      pr_number:
+        type: number
+        required: true
+      blocks:
+        type: string
+        required: false
+        default: "150"
+      warmup:
+        type: string
+        required: false
+        default: "50"
   workflow_dispatch:
     inputs:
       blocks:
@@ -26,57 +43,14 @@ env:
   BENCHMARK_PROJECT: src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj
 
 jobs:
-  resolve-inputs:
-    if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.action == 'labeled' &&
-       startsWith(github.event.label.name, 'new-payload-benchmark') &&
-       github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
-    outputs:
-      should_run: ${{ steps.resolve.outputs.should_run }}
-      blocks: ${{ steps.resolve.outputs.blocks }}
-      warmup: ${{ steps.resolve.outputs.warmup }}
-    steps:
-      - name: Resolve workflow inputs
-        id: resolve
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          LABEL_NAME: ${{ github.event.label.name }}
-          DISPATCH_BLOCKS: ${{ inputs.blocks }}
-          DISPATCH_WARMUP: ${{ inputs.warmup }}
-        run: |
-          set -euo pipefail
-          should_run="true"
-          blocks="150"
-          warmup="50"
-
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            blocks="${DISPATCH_BLOCKS:-150}"
-            warmup="${DISPATCH_WARMUP:-50}"
-          elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            if [[ "${LABEL_NAME:-}" != new-payload-benchmark* ]]; then
-              should_run="false"
-            fi
-          fi
-
-          {
-            echo "should_run=${should_run}"
-            echo "blocks=${blocks}"
-            echo "warmup=${warmup}"
-          } >> "${GITHUB_OUTPUT}"
-
   benchmark:
-    needs: resolve-inputs
-    if: needs.resolve-inputs.outputs.should_run == 'true'
     runs-on: benchmark
     timeout-minutes: 60
     steps:
       - name: Check out PR branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          ref: ${{ inputs.head_sha || github.ref }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -95,8 +69,8 @@ jobs:
         run: |
           dotnet run -c Release --no-build --project ${{ env.BENCHMARK_PROJECT }} \
             -- --newpayload --backend FlatState \
-               --blocks ${{ needs.resolve-inputs.outputs.blocks }} \
-               --warmup ${{ needs.resolve-inputs.outputs.warmup }} \
+               --blocks ${{ inputs.blocks }} \
+               --warmup ${{ inputs.warmup }} \
             | tee "${RUNNER_TEMP}/newpayload-pr-flat.txt"
 
       - name: Run NewPayload on PR (Trie)
@@ -105,8 +79,8 @@ jobs:
         run: |
           dotnet run -c Release --no-build --project ${{ env.BENCHMARK_PROJECT }} \
             -- --newpayload --backend Trie \
-               --blocks ${{ needs.resolve-inputs.outputs.blocks }} \
-               --warmup ${{ needs.resolve-inputs.outputs.warmup }} \
+               --blocks ${{ inputs.blocks }} \
+               --warmup ${{ inputs.warmup }} \
             | tee "${RUNNER_TEMP}/newpayload-pr-trie.txt"
 
       - name: Save PR benchmark files
@@ -117,7 +91,7 @@ jobs:
       - name: Check out base branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.base.sha || 'master' }}
+          ref: ${{ inputs.base_sha || 'master' }}
           clean: false
 
       - name: Overlay PR benchmark files onto base
@@ -137,8 +111,8 @@ jobs:
         run: |
           dotnet run -c Release --no-build --project ${{ env.BENCHMARK_PROJECT }} \
             -- --newpayload --backend FlatState \
-               --blocks ${{ needs.resolve-inputs.outputs.blocks }} \
-               --warmup ${{ needs.resolve-inputs.outputs.warmup }} \
+               --blocks ${{ inputs.blocks }} \
+               --warmup ${{ inputs.warmup }} \
             | tee "${RUNNER_TEMP}/newpayload-base-flat.txt"
 
       - name: Run NewPayload on base (Trie)
@@ -147,8 +121,8 @@ jobs:
         run: |
           dotnet run -c Release --no-build --project ${{ env.BENCHMARK_PROJECT }} \
             -- --newpayload --backend Trie \
-               --blocks ${{ needs.resolve-inputs.outputs.blocks }} \
-               --warmup ${{ needs.resolve-inputs.outputs.warmup }} \
+               --blocks ${{ inputs.blocks }} \
+               --warmup ${{ inputs.warmup }} \
             | tee "${RUNNER_TEMP}/newpayload-base-trie.txt"
 
       - name: Compare and comment
@@ -164,8 +138,8 @@ jobs:
           NP_PR_FLAT_OUTCOME: ${{ steps.run-pr-flat.outcome }}
           NP_BASE_TRIE_OUTCOME: ${{ steps.run-base-trie.outcome }}
           NP_PR_TRIE_OUTCOME: ${{ steps.run-pr-trie.outcome }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || 'master' }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ inputs.base_sha || 'master' }}
+          HEAD_SHA: ${{ inputs.head_sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -257,17 +231,18 @@ jobs:
           PYEOF
 
       - name: Post comment
-        if: always() && github.event_name == 'pull_request'
+        if: always() && inputs.pr_number != ''
         uses: actions/github-script@v7
         env:
           COMMENT_BODY: ${{ steps.compare.outputs.body }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         with:
           script: |
             const marker = '<!-- newpayload-benchmark-report -->';
             const body = process.env.COMMENT_BODY;
             if (!body) { console.log('No body'); return; }
             const { owner, repo } = context.repo;
-            const issue_number = context.payload.pull_request.number;
+            const issue_number = Number(process.env.PR_NUMBER);
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number, per_page: 100,
             });

@@ -1,12 +1,25 @@
 name: Run Block Processing Benchmark
 
 on:
-  pull_request:
-    types: [labeled]
+  workflow_call:
+    inputs:
+      filter:
+        type: string
+        required: false
+        default: ""
+      head_sha:
+        type: string
+        required: true
+      base_sha:
+        type: string
+        required: true
+      pr_number:
+        type: number
+        required: true
   workflow_dispatch:
     inputs:
       filter:
-        description: "BenchmarkDotNet filter pattern (e.g. 'ContractCall_200'). Empty runs all BlockProcessingBenchmark methods."
+        description: "BenchmarkDotNet filter pattern"
         required: false
         default: ""
 
@@ -22,67 +35,14 @@ env:
   BENCHMARK_PROJECT: src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj
 
 jobs:
-  resolve-inputs:
-    if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.action == 'labeled' &&
-       startsWith(github.event.label.name, 'block-processing-benchmark') &&
-       github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
-    outputs:
-      should_run: ${{ steps.resolve.outputs.should_run }}
-      filter: ${{ steps.resolve.outputs.filter }}
-    steps:
-      - name: Resolve workflow inputs
-        id: resolve
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          LABEL_NAME: ${{ github.event.label.name }}
-          DISPATCH_FILTER: ${{ inputs.filter }}
-        run: |
-          set -euo pipefail
-
-          should_run="true"
-          filter=""
-
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            filter="${DISPATCH_FILTER:-}"
-          elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            label="${LABEL_NAME:-}"
-
-            if [[ "${label}" == "block-processing-benchmark" ]]; then
-              filter=""
-            elif [[ "${label}" == block-processing-benchmark-* ]]; then
-              suffix="${label#block-processing-benchmark-}"
-              if [[ -z "${suffix}" ]]; then
-                filter=""
-              elif [[ "${suffix}" =~ ^[A-Za-z0-9_.*-]+$ ]]; then
-                filter="${suffix}"
-              else
-                echo "::warning::Invalid filter suffix: ${suffix}"
-                should_run="false"
-              fi
-            else
-              should_run="false"
-            fi
-          fi
-
-          {
-            echo "should_run=${should_run}"
-            echo "filter=${filter}"
-          } >> "${GITHUB_OUTPUT}"
-
   benchmark:
-    needs: resolve-inputs
-    if: needs.resolve-inputs.outputs.should_run == 'true'
     runs-on: benchmark
     timeout-minutes: 30
     steps:
       - name: Check out PR branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          ref: ${{ inputs.head_sha || github.ref }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -100,7 +60,7 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
-          FILTER: ${{ needs.resolve-inputs.outputs.filter }}
+          FILTER: ${{ inputs.filter }}
         run: |
           if [[ -z "${FILTER}" ]]; then
             FILTER_ARG="*BlockProcessingBenchmark*"
@@ -122,7 +82,7 @@ jobs:
       - name: Check out base branch (master)
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.base.sha || 'master' }}
+          ref: ${{ inputs.base_sha || 'master' }}
           clean: false
 
       - name: Overlay PR benchmark files onto base
@@ -141,7 +101,7 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
-          FILTER: ${{ needs.resolve-inputs.outputs.filter }}
+          FILTER: ${{ inputs.filter }}
         run: |
           if [[ -z "${FILTER}" ]]; then
             FILTER_ARG="*BlockProcessingBenchmark*"
@@ -162,8 +122,8 @@ jobs:
         env:
           BASE_ARTIFACTS: ${{ runner.temp }}/bdn-base
           PR_ARTIFACTS: ${{ runner.temp }}/bdn-pr
-          BASE_SHA: ${{ github.event.pull_request.base.sha || 'master' }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ inputs.base_sha || 'master' }}
+          HEAD_SHA: ${{ inputs.head_sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BASE_OUTCOME: ${{ steps.run-base.outcome }}
           PR_OUTCOME: ${{ steps.run-pr.outcome }}
@@ -345,10 +305,11 @@ jobs:
           PYEOF
 
       - name: Post benchmark comparison comment
-        if: always() && github.event_name == 'pull_request'
+        if: always() && inputs.pr_number != ''
         uses: actions/github-script@v7
         env:
           COMMENT_BODY: ${{ steps.compare.outputs.body }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         with:
           script: |
             const marker = '<!-- block-processing-benchmark-report -->';
@@ -358,7 +319,7 @@ jobs:
               return;
             }
             const { owner, repo } = context.repo;
-            const issue_number = context.payload.pull_request.number;
+            const issue_number = Number(process.env.PR_NUMBER);
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner,
