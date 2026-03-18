@@ -227,25 +227,30 @@ public static class NewPayloadBenchmark
         GCLatencyMode oldMode = GCSettings.LatencyMode;
         GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
 
-        // Measure
+        // Pin to single core to reduce OS scheduler jitter
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+            Process.GetCurrentProcess().ProcessorAffinity = new IntPtr(1);
+
+        // Measure — only engine_newPayloadV4 is timed, not forkchoiceUpdated
         List<double> timings = new(Math.Max(0, payloads.Length - warmupBlocks));
 
         for (int i = warmupBlocks; i < payloads.Length; i++)
         {
             ExecutionPayloadV3 p = payloads[i].Payload;
 
+            // ── TIMED: only newPayloadV4 ──
             long sw = Stopwatch.GetTimestamp();
-
             ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV4(
                 p, Array.Empty<byte[]?>(), p.ParentBeaconBlockRoot, payloads[i].ExecutionRequests);
+            double elapsedMs = Stopwatch.GetElapsedTime(sw).TotalMilliseconds;
 
+            // Advance head (untimed)
             await rpc.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(p.BlockHash, p.BlockHash, p.BlockHash));
 
-            double elapsedMs = Stopwatch.GetElapsedTime(sw).TotalMilliseconds;
             string status = result.Data?.Status ?? "null";
             timings.Add(elapsedMs);
 
-            if (i == warmupBlocks || (i + 1) % 25 == 0 || i == payloads.Length - 1)
+            if (i == warmupBlocks || (i + 1) % 50 == 0 || i == payloads.Length - 1)
                 Console.WriteLine($"  [MEASURE] Block {i + 1}/{payloads.Length}: {elapsedMs:F2}ms status={status} gasUsed={p.GasUsed} head=#{chain.BlockTree.Head?.Number}");
         }
 
