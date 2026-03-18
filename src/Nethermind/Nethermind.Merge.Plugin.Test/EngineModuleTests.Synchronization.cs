@@ -1054,7 +1054,7 @@ public partial class EngineModuleTests
             Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
             Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
             Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>(),
-            Substitute.For<ISyncFeed<AccessListsSyncBatch?>>(),
+            Substitute.For<ISyncFeed<BlockAccessListsSyncBatch?>>(),
             Substitute.For<ISyncFeed<SnapSyncBatch?>>());
 
         MultiSyncModeSelector multiSyncModeSelector = new(syncProgressResolver,

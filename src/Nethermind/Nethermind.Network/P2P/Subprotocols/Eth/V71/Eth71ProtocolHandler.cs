@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using Nethermind.Network.Rlpx;
@@ -25,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V71;
 /// https://eips.ethereum.org/EIPS/eip-8159 — eth/71: Block Access List Exchange
 /// Adds GetBlockAccessLists (0x12) and BlockAccessLists (0x13) messages for BAL synchronization.
 /// </summary>
-public class Eth71ProtocolHandler : Eth70ProtocolHandler
+public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProtocolInfo
 {
     private readonly MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage> _balRequests;
 
@@ -55,6 +56,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler
 
     public override string Name => "eth71";
 
+    public new static string Code => Protocol.Eth;
     public new static byte Version => EthVersions.Eth71;
     public override byte ProtocolVersion => Version;
 
@@ -136,7 +138,10 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler
         Request<GetBlockAccessListsMessage, BlockAccessListsMessage> req = new(request);
         _balRequests.Send(req);
 
-        BlockAccessListsMessage response = await HandleResponse(req, TransferSpeedType.Bodies, static _ => nameof(GetBlockAccessListsMessage), token);
-        return response.AccessLists;
+        BlockAccessListsMessage response = await HandleResponse(req, TransferSpeedType.BlockAccessLists, static _ => nameof(GetBlockAccessListsMessage), token);
+        return response.BlockAccessLists;
     }
+
+    Task<IOwnedReadOnlyList<byte[]>> ISyncPeer.GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+        => GetBlockAccessLists(blockHashes, token);
 }

@@ -17,7 +17,7 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
     public async Task Dispatch(PeerInfo peerInfo, BlocksRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (request.BodiesRequests.Count == 0 && request.ReceiptsRequests.Count == 0)
+        if (request.BodiesRequests.Count == 0 && request.BlockAccessListsRequests.Count == 0 && request.ReceiptsRequests.Count == 0)
         {
             request.DownloadTask = Task.CompletedTask;
             return;
@@ -34,6 +34,13 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
             using IOwnedReadOnlyList<Hash256> bodiesHash = request.BodiesRequests.Select(b => b.Hash)
                 .ToPooledList(request.BodiesRequests.Count);
             request.OwnedBodies = await peerInfo.SyncPeer.GetBlockBodies(bodiesHash, cancellationToken);
+        }
+
+        if (request.BlockAccessListsRequests.Count > 0)
+        {
+            using IOwnedReadOnlyList<Hash256> blockAccessListsHash = request.BlockAccessListsRequests.Select(b => b.Hash)
+                .ToPooledList(request.BlockAccessListsRequests.Count);
+            request.BlockAccessLists = await peerInfo.SyncPeer.GetBlockAccessLists(blockAccessListsHash, cancellationToken);
         }
 
         if (request.ReceiptsRequests.Count > 0)

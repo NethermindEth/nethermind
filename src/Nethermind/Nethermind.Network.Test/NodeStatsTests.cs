@@ -8,6 +8,7 @@ using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
@@ -29,6 +30,7 @@ public class NodeStatsTests
     [TestCase(TransferSpeedType.Receipts)]
     [TestCase(TransferSpeedType.Latency)]
     [TestCase(TransferSpeedType.NodeData)]
+    [TestCase(TransferSpeedType.BlockAccessLists)]
     public void TransferSpeedCaptureTest(TransferSpeedType speedType)
     {
         _nodeStats = new NodeStatsLight(_node, 0.5m);
@@ -127,6 +129,7 @@ public class NodeStatsTests
     {
         _nodeStats = new NodeStatsLight(_node);
         _nodeStats.GetCurrentRequestLimit(RequestType.Bodies).Should().Be(4);
+        _nodeStats.GetCurrentRequestLimit(RequestType.BlockAccessLists).Should().Be(GethSyncLimits.MaxBodyFetch);
 
         int[] result = await _nodeStats.RunSizeAndLatencyRequestSizer<int[], int, int>(RequestType.Bodies, [1, 2, 3, 4, 5],
             (mapped) => Task.FromResult<(int[], long)>((mapped.ToArray(), 1)));

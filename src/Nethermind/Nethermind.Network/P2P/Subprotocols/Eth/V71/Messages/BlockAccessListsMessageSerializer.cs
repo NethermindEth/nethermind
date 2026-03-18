@@ -13,9 +13,9 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
     protected override void SerializeInternal(IByteBuffer byteBuffer, BlockAccessListsMessage message)
     {
         NettyRlpStream stream = new(byteBuffer);
-        stream.StartSequence(GetAccessListsContentLength(message.AccessLists));
+        stream.StartSequence(GetBlockAccessListsContentLength(message.BlockAccessLists));
 
-        foreach (byte[] bal in message.AccessLists.AsSpan())
+        foreach (byte[] bal in message.BlockAccessLists.AsSpan())
         {
             stream.Encode(bal);
         }
@@ -26,26 +26,26 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
         int length = ctx.ReadSequenceLength();
         int endPosition = ctx.Position + length;
 
-        ArrayPoolList<byte[]> accessLists = new(16);
+        ArrayPoolList<byte[]> blockAccessLists = new(16);
         while (ctx.Position < endPosition)
         {
             byte[] balBytes = ctx.DecodeByteArray();
-            accessLists.Add(balBytes);
+            blockAccessLists.Add(balBytes);
         }
 
         ctx.Check(endPosition);
-        return new BlockAccessListsMessage(requestId, accessLists);
+        return new BlockAccessListsMessage(requestId, blockAccessLists);
     }
 
     protected override int GetLengthInternal(BlockAccessListsMessage message)
     {
-        return Rlp.LengthOfSequence(GetAccessListsContentLength(message.AccessLists));
+        return Rlp.LengthOfSequence(GetBlockAccessListsContentLength(message.BlockAccessLists));
     }
 
-    private static int GetAccessListsContentLength(IOwnedReadOnlyList<byte[]> accessLists)
+    private static int GetBlockAccessListsContentLength(IOwnedReadOnlyList<byte[]> blockAccessLists)
     {
         int contentLength = 0;
-        foreach (byte[] bal in accessLists.AsSpan())
+        foreach (byte[] bal in blockAccessLists.AsSpan())
         {
             contentLength += Rlp.LengthOf(bal);
         }

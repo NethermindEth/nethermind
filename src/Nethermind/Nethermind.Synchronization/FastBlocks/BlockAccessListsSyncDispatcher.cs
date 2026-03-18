@@ -14,16 +14,16 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks;
 
-public class AccessListsSyncDispatcher : ISyncDownloader<AccessListsSyncBatch>
+public class BlockAccessListsSyncDispatcher : ISyncDownloader<BlockAccessListsSyncBatch>
 {
     private readonly ILogger Logger;
 
-    public AccessListsSyncDispatcher(ILogManager logManager)
+    public BlockAccessListsSyncDispatcher(ILogManager logManager)
     {
         Logger = logManager.GetClassLogger();
     }
 
-    public async Task Dispatch(PeerInfo peerInfo, AccessListsSyncBatch batch, CancellationToken cancellationToken)
+    public async Task Dispatch(PeerInfo peerInfo, BlockAccessListsSyncBatch batch, CancellationToken cancellationToken)
     {
         ISyncPeer peer = peerInfo.SyncPeer;
         batch.ResponseSourcePeer = peerInfo;

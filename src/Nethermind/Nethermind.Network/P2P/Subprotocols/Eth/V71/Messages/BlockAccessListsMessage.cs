@@ -15,28 +15,28 @@ public class BlockAccessListsMessage : Eth66MessageBase
 {
     public static readonly byte[] EmptyBal = [0xc0];
 
-    public IOwnedReadOnlyList<byte[]> AccessLists { get; }
+    public IOwnedReadOnlyList<byte[]> BlockAccessLists { get; }
 
     public override int PacketType => Eth71MessageCode.BlockAccessLists;
     public override string Protocol => "eth";
 
-    public BlockAccessListsMessage(IOwnedReadOnlyList<byte[]> accessLists, bool generateRandomRequestId = true)
+    public BlockAccessListsMessage(IOwnedReadOnlyList<byte[]> blockAccessLists, bool generateRandomRequestId = true)
         : base(generateRandomRequestId)
     {
-        AccessLists = accessLists ?? throw new ArgumentNullException(nameof(accessLists));
+        BlockAccessLists = blockAccessLists ?? throw new ArgumentNullException(nameof(blockAccessLists));
     }
 
-    public BlockAccessListsMessage(long requestId, IOwnedReadOnlyList<byte[]> accessLists)
-        : this(accessLists, false)
+    public BlockAccessListsMessage(long requestId, IOwnedReadOnlyList<byte[]> blockAccessLists)
+        : this(blockAccessLists, false)
     {
         RequestId = requestId;
     }
 
-    public override string ToString() => $"BlockAccessLists({RequestId}, {AccessLists.Count})";
+    public override string ToString() => $"BlockAccessLists({RequestId}, {BlockAccessLists.Count})";
 
     public override void Dispose()
     {
         base.Dispose();
-        AccessLists.Dispose();
+        BlockAccessLists.Dispose();
     }
 }

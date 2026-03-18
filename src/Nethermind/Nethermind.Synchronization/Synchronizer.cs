@@ -45,7 +45,7 @@ namespace Nethermind.Synchronization
         [KeyFilter(nameof(HeadersSyncFeed))] SyncFeedComponent<HeadersSyncBatch> fastHeaderComponent,
         SyncFeedComponent<BodiesSyncBatch> oldBodiesComponent,
         SyncFeedComponent<ReceiptsSyncBatch> oldReceiptsComponent,
-        SyncFeedComponent<AccessListsSyncBatch> oldAccessListsComponent,
+        SyncFeedComponent<BlockAccessListsSyncBatch> oldBlockAccessListsComponent,
 #pragma warning disable CS9113 // Parameter is unread. But it need to be instantiated to function
         SyncDbTuner syncDbTuner,
         MallocTrimmer mallocTrimmer,
@@ -224,7 +224,7 @@ namespace Nethermind.Synchronization
 
                 if (syncConfig.DownloadAccessListsInFastSync)
                 {
-                    Task accessListsTask = oldAccessListsComponent.Dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+                    Task blockAccessListsTask = oldBlockAccessListsComponent.Dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {
                         if (t.IsFaulted)
                         {
@@ -272,7 +272,7 @@ namespace Nethermind.Synchronization
                     fastHeaderComponent.Feed.FeedTask,
                     oldBodiesComponent.Feed.FeedTask,
                     oldReceiptsComponent.Feed.FeedTask,
-                    oldAccessListsComponent.Feed.FeedTask));
+                    oldBlockAccessListsComponent.Feed.FeedTask));
 
             if (completedFirst == timeout)
             {
@@ -291,7 +291,7 @@ namespace Nethermind.Synchronization
             WireFeedWithModeSelector(fastHeaderComponent.Feed);
             WireFeedWithModeSelector(oldBodiesComponent.Feed);
             WireFeedWithModeSelector(oldReceiptsComponent.Feed);
-            WireFeedWithModeSelector(oldAccessListsComponent.Feed);
+            WireFeedWithModeSelector(oldBlockAccessListsComponent.Feed);
         }
 
         public void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed)
@@ -359,7 +359,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         ConfigureStateSyncComponent(builder);
         ConfigureSnapComponent(builder);
         ConfigureReceiptSyncComponent(builder);
-        ConfigureAccessListsSyncComponent(builder);
+        ConfigureBlockAccessListsSyncComponent(builder);
         ConfigureBodiesSyncComponent(builder);
 
         builder
@@ -458,15 +458,15 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         }
     }
 
-    private void ConfigureAccessListsSyncComponent(ContainerBuilder serviceCollection)
+    private void ConfigureBlockAccessListsSyncComponent(ContainerBuilder serviceCollection)
     {
-        ConfigureSingletonSyncFeed<AccessListsSyncBatch, AccessListsSyncFeed, AccessListsSyncDispatcher, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
+        ConfigureSingletonSyncFeed<BlockAccessListsSyncBatch, BlockAccessListsSyncFeed, BlockAccessListsSyncDispatcher, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
 
         if (!syncConfig.FastSync || !syncConfig.DownloadHeadersInFastSync ||
             !syncConfig.DownloadBodiesInFastSync ||
             !syncConfig.DownloadAccessListsInFastSync)
         {
-            serviceCollection.AddSingleton<ISyncFeed<AccessListsSyncBatch>, NoopSyncFeed<AccessListsSyncBatch>>();
+            serviceCollection.AddSingleton<ISyncFeed<BlockAccessListsSyncBatch>, NoopSyncFeed<BlockAccessListsSyncBatch>>();
         }
     }
 

@@ -26,15 +26,15 @@ using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Synchronization.FastBlocks;
 
-public class AccessListsSyncFeed : BarrierSyncFeed<AccessListsSyncBatch?>
+public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatch?>
 {
     protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedAccessListBlockNumber;
-    protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.AccessListsBarrierWhenStarted;
+    protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BlockAccessListsBarrierWhenStarted;
     protected override long SyncConfigBarrierCalc => _syncConfig.AncientAccessListsBarrierCalc;
     protected override Func<bool> HasPivot =>
         () => _blockAccessListStore.HasBlock(_blockTree.SyncPivot.BlockHash);
 
-    private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.AccessLists, 0, true);
+    private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.BlockAccessLists, 0, true);
 
     private readonly IBlockTree _blockTree;
     private readonly ISyncConfig _syncConfig;
@@ -49,9 +49,9 @@ public class AccessListsSyncFeed : BarrierSyncFeed<AccessListsSyncBatch?>
     private bool AllDownloaded => (_syncPointers.LowestInsertedAccessListBlockNumber ?? long.MaxValue) <= _barrier;
 
     public override bool IsFinished => AllDownloaded;
-    public override string FeedName => nameof(AccessListsSyncFeed);
+    public override string FeedName => nameof(BlockAccessListsSyncFeed);
 
-    public AccessListsSyncFeed(
+    public BlockAccessListsSyncFeed(
         ISpecProvider specProvider,
         IBlockTree blockTree,
         IBlockAccessListStore blockAccessListStore,
@@ -106,7 +106,7 @@ public class AccessListsSyncFeed : BarrierSyncFeed<AccessListsSyncBatch?>
 
     public override bool IsMultiFeed => true;
 
-    public override AllocationContexts Contexts => AllocationContexts.AccessLists;
+    public override AllocationContexts Contexts => AllocationContexts.BlockAccessLists;
 
     private bool ShouldBuildANewBatch()
     {
@@ -126,14 +126,14 @@ public class AccessListsSyncFeed : BarrierSyncFeed<AccessListsSyncBatch?>
         _syncReport.FastBlocksAccessLists.MarkEnd();
     }
 
-    public override async Task<AccessListsSyncBatch?> PrepareRequest(CancellationToken token = default)
+    public override async Task<BlockAccessListsSyncBatch?> PrepareRequest(CancellationToken token = default)
     {
-        AccessListsSyncBatch? batch = null;
+        BlockAccessListsSyncBatch? batch = null;
         if (ShouldBuildANewBatch())
         {
             int requestSize =
-                (await _syncPeerPool.EstimateRequestLimit(RequestType.AccessLists, _approximateAllocationStrategy, AllocationContexts.AccessLists, token))
-                ?? GethSyncLimits.MaxReceiptFetch;
+                (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, _approximateAllocationStrategy, AllocationContexts.BlockAccessLists, token))
+                ?? GethSyncLimits.MaxBodyFetch;
 
             BlockInfo?[] infos;
             while (!_syncStatusList.TryGetInfosForBatch(requestSize, _accessListDownloadStrategy, out infos))
@@ -145,7 +145,7 @@ public class AccessListsSyncFeed : BarrierSyncFeed<AccessListsSyncBatch?>
 
             if (infos[0] is not null)
             {
-                batch = new AccessListsSyncBatch(infos)
+                batch = new BlockAccessListsSyncBatch(infos)
                 {
                     Prioritized = true
                 };
@@ -157,7 +157,7 @@ public class AccessListsSyncFeed : BarrierSyncFeed<AccessListsSyncBatch?>
         return batch;
     }
 
-    public override SyncResponseHandlingResult HandleResponse(AccessListsSyncBatch? batch, PeerInfo peer = null)
+    public override SyncResponseHandlingResult HandleResponse(BlockAccessListsSyncBatch? batch, PeerInfo peer = null)
     {
         batch?.MarkHandlingStart();
         try
@@ -188,7 +188,7 @@ public class AccessListsSyncFeed : BarrierSyncFeed<AccessListsSyncBatch?>
         }
     }
 
-    private int InsertAccessLists(AccessListsSyncBatch batch)
+    private int InsertAccessLists(BlockAccessListsSyncBatch batch)
     {
         bool hasBreachedProtocol = false;
         int validResponsesCount = 0;
@@ -242,11 +242,11 @@ public class AccessListsSyncFeed : BarrierSyncFeed<AccessListsSyncBatch?>
         return validResponsesCount;
     }
 
-    private void LogPostProcessingBatchInfo(AccessListsSyncBatch batch, int validResponsesCount)
+    private void LogPostProcessingBatchInfo(BlockAccessListsSyncBatch batch, int validResponsesCount)
     {
         if (_logger.IsDebug)
             _logger.Debug(
-                $"{nameof(AccessListsSyncBatch)} back from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
+                $"{nameof(BlockAccessListsSyncBatch)} back from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
     }
 
     private void UpdateSyncReport()

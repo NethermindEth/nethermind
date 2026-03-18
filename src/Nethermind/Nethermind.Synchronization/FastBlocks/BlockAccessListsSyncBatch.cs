@@ -6,7 +6,7 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Synchronization.FastBlocks;
 
-public class AccessListsSyncBatch(BlockInfo?[] infos) : FastBlocksBatch
+public class BlockAccessListsSyncBatch(BlockInfo?[] infos) : FastBlocksBatch
 {
     public BlockInfo?[] Infos { get; } = infos;
     public IOwnedReadOnlyList<byte[]>? Response { get; set; }

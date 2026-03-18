@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -127,9 +128,9 @@ public class Eth71ProtocolHandlerTests
 
         _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage>(m =>
             m.RequestId == 1111 &&
-            m.AccessLists.Count == 2 &&
-            m.AccessLists[0].SequenceEqual(bal1) &&
-            m.AccessLists[1].SequenceEqual(bal2)));
+            m.BlockAccessLists.Count == 2 &&
+            m.BlockAccessLists[0].SequenceEqual(bal1) &&
+            m.BlockAccessLists[1].SequenceEqual(bal2)));
     }
 
     [Test]
@@ -145,9 +146,9 @@ public class Eth71ProtocolHandlerTests
 
         _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage>(m =>
             m.RequestId == 2222 &&
-            m.AccessLists.Count == 2 &&
-            m.AccessLists[0].SequenceEqual(BlockAccessListsMessage.EmptyBal) &&
-            m.AccessLists[1].SequenceEqual(BlockAccessListsMessage.EmptyBal)));
+            m.BlockAccessLists.Count == 2 &&
+            m.BlockAccessLists[0].SequenceEqual(BlockAccessListsMessage.EmptyBal) &&
+            m.BlockAccessLists[1].SequenceEqual(BlockAccessListsMessage.EmptyBal)));
     }
 
     [Test]
@@ -165,10 +166,10 @@ public class Eth71ProtocolHandlerTests
         HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
 
         _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage>(m =>
-            m.AccessLists.Count == 3 &&
-            m.AccessLists[0].SequenceEqual(bal1) &&
-            m.AccessLists[1].SequenceEqual(BlockAccessListsMessage.EmptyBal) &&
-            m.AccessLists[2].SequenceEqual(BlockAccessListsMessage.EmptyBal)));
+            m.BlockAccessLists.Count == 3 &&
+            m.BlockAccessLists[0].SequenceEqual(bal1) &&
+            m.BlockAccessLists[1].SequenceEqual(BlockAccessListsMessage.EmptyBal) &&
+            m.BlockAccessLists[2].SequenceEqual(BlockAccessListsMessage.EmptyBal)));
     }
 
     [Test]
@@ -187,6 +188,35 @@ public class Eth71ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         Task<IOwnedReadOnlyList<byte[]>> task = _handler.GetBlockAccessLists(
+            new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
+
+        _session.Received(1).DeliverMessage(Arg.Any<GetBlockAccessListsMessage>());
+        HandleZeroMessage(response!, Eth71MessageCode.BlockAccessLists);
+
+        IOwnedReadOnlyList<byte[]> result = await task;
+        result.Should().HaveCount(2);
+        result[0].Should().BeEquivalentTo(bal1);
+        result[1].Should().BeEquivalentTo(bal2);
+        response?.Dispose();
+    }
+
+    [Test]
+    public async Task Can_request_and_handle_block_access_lists_via_sync_peer_interface()
+    {
+        byte[] bal1 = [0xc1, 0x80];
+        byte[] bal2 = [0xc2, 0x01, 0x02];
+
+        BlockAccessListsMessage? response = null;
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetBlockAccessListsMessage>())).Do(call =>
+        {
+            GetBlockAccessListsMessage sent = (GetBlockAccessListsMessage)call[0];
+            response = new BlockAccessListsMessage(sent.RequestId, new ArrayPoolList<byte[]>(2) { bal1, bal2 });
+        });
+
+        HandleIncomingStatusMessage();
+        ISyncPeer syncPeer = _handler;
+        Task<IOwnedReadOnlyList<byte[]>> task = syncPeer.GetBlockAccessLists(
             new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
         _session.Received(1).DeliverMessage(Arg.Any<GetBlockAccessListsMessage>());
@@ -231,7 +261,7 @@ public class Eth71ProtocolHandlerTests
 
         _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage>(m =>
             m.RequestId == 4444 &&
-            m.AccessLists.Count == 0));
+            m.BlockAccessLists.Count == 0));
     }
 
     private void HandleIncomingStatusMessage()

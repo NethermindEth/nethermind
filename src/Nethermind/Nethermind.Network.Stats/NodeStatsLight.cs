@@ -33,6 +33,7 @@ public class NodeStatsLight : INodeStats
     private decimal? _averageBodiesTransferSpeed;
     private decimal? _averageReceiptsTransferSpeed;
     private decimal? _averageSnapRangesTransferSpeed;
+    private decimal? _averageAccessListsTransferSpeed;
     private decimal? _averageLatency;
 
     private readonly int[] _statCountersArray;
@@ -232,6 +233,9 @@ public class NodeStatsLight : INodeStats
                 case TransferSpeedType.SnapRanges:
                     UpdateValue(ref _averageSnapRangesTransferSpeed, bytesPerMillisecond);
                     break;
+                case TransferSpeedType.BlockAccessLists:
+                    UpdateValue(ref _averageAccessListsTransferSpeed, bytesPerMillisecond);
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, null);
             }
@@ -253,6 +257,7 @@ public class NodeStatsLight : INodeStats
             TransferSpeedType.Bodies => _averageBodiesTransferSpeed,
             TransferSpeedType.Receipts => _averageReceiptsTransferSpeed,
             TransferSpeedType.SnapRanges => _averageSnapRangesTransferSpeed,
+            TransferSpeedType.BlockAccessLists => _averageAccessListsTransferSpeed,
             _ => throw new ArgumentOutOfRangeException()
         });
     }
@@ -426,6 +431,7 @@ public class NodeStatsLight : INodeStats
         if (requestType == RequestType.Bodies) return _bodiesRequestSizer.RequestSize;
         if (requestType == RequestType.Receipts) return _receiptsRequestSizer.RequestSize;
         if (requestType == RequestType.SnapRanges) return _snapRequestSizer.RequestSize;
+        if (requestType == RequestType.BlockAccessLists) return GethSyncLimits.MaxBodyFetch;
         if (requestType == RequestType.Headers)
         {
             return Node.ClientType switch

@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.Reporting
             FastBlocksHeaders = new("Old Headers", logManager);
             FastBlocksBodies = new("Old Bodies ", logManager);
             FastBlocksReceipts = new("Old Receipts", logManager);
-            FastBlocksAccessLists = new("Old AccessLists", logManager);
+            FastBlocksAccessLists = new("Old Block Access Lists", logManager);
             FullSyncBlocksDownloaded = new("Downloaded", logManager);
             BeaconHeaders = new("Beacon Headers", logManager);
 
