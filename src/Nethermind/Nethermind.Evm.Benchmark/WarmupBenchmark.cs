@@ -46,7 +46,7 @@ public class WarmupBenchmark
     {
         public WarmupConfig()
         {
-            AddJob(Job.MediumRun.WithToolchain(InProcessNoEmitToolchain.Instance));
+            AddJob(Job.MediumRun.WithToolchain(InProcessNoEmitToolchain.Default));
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
             AddColumn(StatisticColumn.Median);

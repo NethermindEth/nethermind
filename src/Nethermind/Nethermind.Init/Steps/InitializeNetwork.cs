@@ -140,6 +140,7 @@ public class InitializeNetwork : IStep
         {
             SnapCapabilitySwitcher snapCapabilitySwitcher =
                 new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+            _api.DisposeStack.Push(snapCapabilitySwitcher);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
 
