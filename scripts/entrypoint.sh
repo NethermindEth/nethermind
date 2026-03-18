@@ -23,11 +23,14 @@ if [[ -z "${DOTNET_GCLargePages:-}" ]]; then
     #
     # Use 37.5% of available memory (= 75% / 2) so the 2x commit stays within 75%,
     # leaving 25% headroom for native allocations, RocksDB, stack, etc.
-    # Final value: min(32 GiB, available_memory * 37.5%, cgroup_limit * 37.5%, free_hugepages).
+    # Final value: min(free_hugepages, available_memory * 37.5%, cgroup_limit * 37.5%).
     min_useful=$((18 * 1024 * 1024 * 1024)) # 18 GiB — minimum useful GC heap for Nethermind (~48 GiB available memory)
-    max_range=$((32 * 1024 * 1024 * 1024))  # 32 GiB cap
 
-    # Read available physical memory from /proc/meminfo (bytes)
+    # Start from available hugepages — this is the absolute physical ceiling.
+    # Hugepages are unpageable: mmap(MAP_HUGETLB) fails if we exceed this.
+    max_range=$(( hugepages_free * 2 * 1024 * 1024 )) # 2 MiB per hugepage
+
+    # Cap to 37.5% of available physical memory
     if [[ -f /proc/meminfo ]]; then
       avail_kb=$(awk '/^MemAvailable:/ { print $2 }' /proc/meminfo)
       if [[ -n "$avail_kb" && "$avail_kb" -gt 0 ]]; then
@@ -36,25 +39,20 @@ if [[ -z "${DOTNET_GCLargePages:-}" ]]; then
       fi
     fi
 
-    # Read container memory limit from cgroups
+    # Cap to 37.5% of cgroup memory limit (if set)
     cgroup_limit=""
     if [[ -f /sys/fs/cgroup/memory.max ]]; then
       val=$(cat /sys/fs/cgroup/memory.max)
       [[ "$val" != "max" ]] && cgroup_limit="$val"
     elif [[ -f /sys/fs/cgroup/memory/memory.limit_in_bytes ]]; then
       val=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
-      [[ "$val" -lt 9223372036854771712 ]] && cgroup_limit="$val"
+      [[ "$val" -lt 9223372036854771712 ]] && cgroup_limit="$val" # PAGE_COUNTER_MAX = unlimited
     fi
 
     if [[ -n "$cgroup_limit" ]]; then
       cgroup_pct=$(( cgroup_limit * 375 / 1000 ))
       [[ "$cgroup_pct" -lt "$max_range" ]] && max_range="$cgroup_pct"
     fi
-
-    # Cap to available hugepages — large pages are unpageable so we can't
-    # request more than the host has pre-allocated (mmap MAP_HUGETLB fails)
-    hugepages_bytes=$(( hugepages_free * 2 * 1024 * 1024 )) # 2 MiB per hugepage
-    [[ "$hugepages_bytes" -lt "$max_range" ]] && max_range="$hugepages_bytes"
 
     if [[ "$max_range" -ge "$min_useful" ]]; then
       export DOTNET_GCLargePages=1
