@@ -1,6 +1,11 @@
 name: Hive tests
+<<<<<<< Updated upstream
    
 on: 
+=======
+
+on:
+>>>>>>> Stashed changes
   push:
     tags: ['*']
     branches: [master]
@@ -54,6 +59,18 @@ jobs:
   test:
     name: Build and run tests
     runs-on: ubuntu-latest
+<<<<<<< Updated upstream
+=======
+    strategy:
+      fail-fast: false
+      matrix:
+        test-suite: ${{ fromJson(
+            github.event_name == 'push' ||
+            (github.event_name == 'workflow_dispatch' && github.event.inputs.test-suite == 'all')) &&
+          '["ethereum/engine","ethereum/graphql","ethereum/rpc-compat","ethereum/sync"]' ||
+          format('["{0}"]', github.event.inputs.test-suite)
+          ) }}
+>>>>>>> Stashed changes
     steps:
       - name: Set up parameters
         run: |
