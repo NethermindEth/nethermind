@@ -314,7 +314,7 @@ public sealed class SnapshotBundle : IDisposable
 
         // Note: Hot path
         _trieChanged = true;
-        _changedStateNodes[new HashedKey<TreePath>(path)] = newNode;
+        _changedStateNodes[path] = newNode;
 
         // Note to self:
         // Skipping the cached resource update and doing it in background in TrieNodeCache barely make a dent
@@ -330,7 +330,7 @@ public sealed class SnapshotBundle : IDisposable
 
         // Note: Hot path
         _trieChanged = true;
-        _changedStorageNodes[new HashedKey<(Hash256, TreePath)>((addr, path))] = newNode;
+        _changedStorageNodes[(addr, path)] = newNode;
         _transientResource.UpdateStorageNode(addr, path, newNode);
     }
 
@@ -369,11 +369,11 @@ public sealed class SnapshotBundle : IDisposable
         {
             // Collect keys first to avoid modifying during iteration
             using ArrayPoolListRef<HashedKey<(Hash256, TreePath)>> storageKeysToRemove = new(16);
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in _changedStorageNodes)
+            foreach (HashedKey<(Hash256, TreePath)> key in _changedStorageNodes.Keys)
             {
-                if (kv.Key.Key.Item1 == addressHash)
+                if (key.Key.Item1 == addressHash)
                 {
-                    storageKeysToRemove.Add(kv.Key);
+                    storageKeysToRemove.Add(key);
                 }
             }
 
@@ -383,11 +383,11 @@ public sealed class SnapshotBundle : IDisposable
             }
 
             using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
-            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in _changedSlots)
+            foreach (HashedKey<(Address, UInt256)> key in _changedSlots.Keys)
             {
-                if (kv.Key.Key.Item1 == address)
+                if (key.Key.Item1 == address)
                 {
-                    slotKeysToRemove.Add(kv.Key);
+                    slotKeysToRemove.Add(key);
                 }
             }
 

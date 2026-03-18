@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Core.Collections;
 
-public readonly record struct HashedKey<T>(T Key) : IEquatable<HashedKey<T>> where T : IEquatable<T>
+public readonly record struct HashedKey<T>(T Key) where T : IEquatable<T>
 {
     private readonly int _hashCode = Key.GetHashCode();
     public bool Equals(HashedKey<T> other) => Key.Equals(other.Key);

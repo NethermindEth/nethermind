@@ -78,8 +78,8 @@ public sealed class SnapshotContent : IDisposable, IResettable
 
     public void Reset()
     {
-        foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in StateNodes) kv.Value.PrunePersistedRecursively(1);
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in StorageNodes) kv.Value.PrunePersistedRecursively(1);
+        foreach (TrieNode node in StateNodes.Values) node.PrunePersistedRecursively(1);
+        foreach (TrieNode node in StorageNodes.Values) node.PrunePersistedRecursively(1);
 
         Accounts.NoResizeClear();
         Storages.NoResizeClear();

@@ -38,7 +38,7 @@ public sealed class ReadOnlySnapshotBundle(
     private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
     private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
 
-    public Account? GetAccount(Address address) => GetAccount(address, new HashedKey<Address>(address));
+    public Account? GetAccount(Address address) => GetAccount(address, address);
 
     public Account? GetAccount(Address address, HashedKey<Address> key)
     {
@@ -83,7 +83,7 @@ public sealed class ReadOnlySnapshotBundle(
     }
 
     public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx) =>
-        GetSlot(selfDestructStateIdx, new HashedKey<(Address, UInt256)>((address, index)));
+        GetSlot(selfDestructStateIdx, (address, index));
 
     public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key)
     {
@@ -127,7 +127,7 @@ public sealed class ReadOnlySnapshotBundle(
     }
 
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
-        TryFindStateNodes(new HashedKey<TreePath>(path), out node);
+        TryFindStateNodes(path, out node);
 
     public bool TryFindStateNodes(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
@@ -151,7 +151,7 @@ public sealed class ReadOnlySnapshotBundle(
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
     // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed.
     public bool TryFindStorageNodes(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
-        TryFindStorageNodes(new HashedKey<(Hash256, TreePath)>((address, path)), out node);
+        TryFindStorageNodes((address, path), out node);
 
     public bool TryFindStorageNodes(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {

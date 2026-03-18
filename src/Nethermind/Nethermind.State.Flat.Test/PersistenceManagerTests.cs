@@ -302,7 +302,7 @@ public class PersistenceManagerTests
         // Add trie nodes
         TreePath path = TreePath.Empty;
         TrieNode node = new TrieNode(NodeType.Leaf, Keccak.Zero);
-        snapshot.Content.StateNodes[new HashedKey<TreePath>(path)] = node;
+        snapshot.Content.StateNodes[path] = node;
 
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);

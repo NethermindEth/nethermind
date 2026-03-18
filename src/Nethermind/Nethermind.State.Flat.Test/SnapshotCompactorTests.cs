@@ -115,8 +115,8 @@ public class SnapshotCompactorTests
         snapshot.Content.Storages[(address2, storageIndex2)] = slotValue2;
 
         // Add state nodes
-        snapshot.Content.StateNodes[new HashedKey<TreePath>(statePath1)] = new TrieNode(NodeType.Leaf, storageNodeHash1);
-        snapshot.Content.StateNodes[new HashedKey<TreePath>(statePath2)] = new TrieNode(NodeType.Branch, storageNodeHash2);
+        snapshot.Content.StateNodes[statePath1] = new TrieNode(NodeType.Leaf, storageNodeHash1);
+        snapshot.Content.StateNodes[statePath2] = new TrieNode(NodeType.Branch, storageNodeHash2);
 
         // Add storage nodes
         Hash256 address1Hash = address1.ToAccountPath.ToCommitment();
@@ -139,8 +139,8 @@ public class SnapshotCompactorTests
         AssertSlotValueEqual(slotValue2, compacted.Content.Storages[(address2, storageIndex2)]);
 
         Assert.That(compacted.StateNodesCount, Is.EqualTo(2));
-        Assert.That(compacted.Content.StateNodes[new HashedKey<TreePath>(statePath1)].Keccak, Is.EqualTo(storageNodeHash1));
-        Assert.That(compacted.Content.StateNodes[new HashedKey<TreePath>(statePath2)].Keccak, Is.EqualTo(storageNodeHash2));
+        Assert.That(compacted.Content.StateNodes[statePath1].Keccak, Is.EqualTo(storageNodeHash1));
+        Assert.That(compacted.Content.StateNodes[statePath2].Keccak, Is.EqualTo(storageNodeHash2));
 
         Assert.That(compacted.StorageNodesCount, Is.EqualTo(2));
     }
@@ -165,7 +165,7 @@ public class SnapshotCompactorTests
         using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot0.Content.Accounts[address1] = new Account(1, 100);
         snapshot0.Content.Storages[(address1, storageIndex1)] = slotValue1;
-        snapshot0.Content.StateNodes[new HashedKey<TreePath>(statePath1)] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        snapshot0.Content.StateNodes[statePath1] = new TrieNode(NodeType.Leaf, Keccak.Zero);
         Hash256 address1Hash = address1.ToAccountPath.ToCommitment();
         snapshot0.Content.StorageNodes[(address1Hash, storageNodePath1)] = new TrieNode(NodeType.Leaf, Keccak.Zero);
 
@@ -175,7 +175,7 @@ public class SnapshotCompactorTests
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot1.Content.Accounts[address2] = new Account(2, 200);
         snapshot1.Content.Storages[(address2, storageIndex2)] = slotValue2;
-        snapshot1.Content.StateNodes[new HashedKey<TreePath>(statePath2)] = new TrieNode(NodeType.Branch, Keccak.Zero);
+        snapshot1.Content.StateNodes[statePath2] = new TrieNode(NodeType.Branch, Keccak.Zero);
         Hash256 address2Hash = address2.ToAccountPath.ToCommitment();
         snapshot1.Content.StorageNodes[(address2Hash, storageNodePath2)] = new TrieNode(NodeType.Branch, Keccak.Zero);
 
@@ -208,7 +208,7 @@ public class SnapshotCompactorTests
         using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot0.Content.Accounts[address] = new Account(1, 100);
         snapshot0.Content.Storages[(address, storageIndex)] = slotValue1;
-        snapshot0.Content.StateNodes[new HashedKey<TreePath>(statePath)] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        snapshot0.Content.StateNodes[statePath] = new TrieNode(NodeType.Leaf, Keccak.Zero);
         Hash256 addressHash = address.ToAccountPath.ToCommitment();
         snapshot0.Content.StorageNodes[(addressHash, storageNodePath)] = new TrieNode(NodeType.Leaf, Keccak.Zero);
 
@@ -218,7 +218,7 @@ public class SnapshotCompactorTests
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot1.Content.Accounts[address] = new Account(2, 200);
         snapshot1.Content.Storages[(address, storageIndex)] = slotValue2;
-        snapshot1.Content.StateNodes[new HashedKey<TreePath>(statePath)] = new TrieNode(NodeType.Branch, Keccak.Zero);
+        snapshot1.Content.StateNodes[statePath] = new TrieNode(NodeType.Branch, Keccak.Zero);
         snapshot1.Content.StorageNodes[(addressHash, storageNodePath)] = new TrieNode(NodeType.Branch, Keccak.Zero);
 
         SnapshotPooledList snapshots = new SnapshotPooledList(2);
