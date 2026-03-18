@@ -16,25 +16,32 @@ if [[ -z "${DOTNET_GCLargePages:-}" ]]; then
 
     # With large pages the GC commits memory upfront, so cap the region range
     # to prevent CLR_E_GC_OOM (0x8013200E) when the runtime over-estimates memory.
+    # Use min(32 GiB, available_memory * 75%, cgroup_limit * 75%).
     if [[ -z "${DOTNET_GCRegionRange:-}" ]]; then
       max_range=$((32 * 1024 * 1024 * 1024)) # 32 GiB cap
 
-      # Read container memory limit from cgroups
-      mem_limit=""
-      if [[ -f /sys/fs/cgroup/memory.max ]]; then
-        val=$(cat /sys/fs/cgroup/memory.max)
-        [[ "$val" != "max" ]] && mem_limit="$val"
-      elif [[ -f /sys/fs/cgroup/memory/memory.limit_in_bytes ]]; then
-        val=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
-        [[ "$val" -lt 9223372036854771712 ]] && mem_limit="$val"
+      # Read available physical memory from /proc/meminfo (bytes)
+      if [[ -f /proc/meminfo ]]; then
+        avail_kb=$(awk '/^MemAvailable:/ { print $2 }' /proc/meminfo)
+        if [[ -n "$avail_kb" && "$avail_kb" -gt 0 ]]; then
+          avail_75=$(( avail_kb * 1024 * 75 / 100 ))
+          [[ "$avail_75" -lt "$max_range" ]] && max_range="$avail_75"
+        fi
       fi
 
-      if [[ -n "$mem_limit" ]]; then
-        pct75=$(( mem_limit * 75 / 100 ))
-        # Use the lower of 32 GiB and 75% of container memory
-        if [[ "$pct75" -lt "$max_range" ]]; then
-          max_range="$pct75"
-        fi
+      # Read container memory limit from cgroups
+      cgroup_limit=""
+      if [[ -f /sys/fs/cgroup/memory.max ]]; then
+        val=$(cat /sys/fs/cgroup/memory.max)
+        [[ "$val" != "max" ]] && cgroup_limit="$val"
+      elif [[ -f /sys/fs/cgroup/memory/memory.limit_in_bytes ]]; then
+        val=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+        [[ "$val" -lt 9223372036854771712 ]] && cgroup_limit="$val"
+      fi
+
+      if [[ -n "$cgroup_limit" ]]; then
+        cgroup_75=$(( cgroup_limit * 75 / 100 ))
+        [[ "$cgroup_75" -lt "$max_range" ]] && max_range="$cgroup_75"
       fi
 
       # Floor: 256 MiB
