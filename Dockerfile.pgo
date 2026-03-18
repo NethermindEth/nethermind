@@ -45,7 +45,7 @@ ENV DOTNET_GCLargePages=0
 ENV DOTNET_GCRegionRange=0x800000000
 ENV DOTNET_EnableEventPipe=1
 ENV DOTNET_EventPipeCircularMB=256
-ENV DOTNET_EventPipeOutputPath=/nethermind/pgo/
+ENV DOTNET_EventPipeOutputPath=/nethermind/pgo/nethermind-{pid}.nettrace
 ENV DOTNET_EventPipeConfig=Microsoft-Windows-DotNETRuntime:0x1E000080018:4
 # Write edge/block profiling data after Tier-1 compilation for branch optimization
 ENV DOTNET_TieredPGO=1
