@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -33,6 +34,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
     public static Address Address { get; } = Address.FromNumber(0x10001);
     public static string Name => "L1SLOAD";
     public static IL1StorageProvider? L1StorageProvider { get; set; }
+    public static ILogger Logger { get; set; }
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.FixedGasCost;
 
@@ -41,16 +43,29 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        if (inputData.Length != L1PrecompileConstants.ExpectedInputLength) return Errors.InvalidInputLength;
+        if (Logger.IsDebug) Logger.Debug($"L1SLOAD: precompile called, input_len={inputData.Length}");
+
+        if (inputData.Length != L1PrecompileConstants.ExpectedInputLength)
+        {
+            if (Logger.IsWarn) Logger.Warn($"L1SLOAD: rejected invalid input length {inputData.Length}, expected {L1PrecompileConstants.ExpectedInputLength}");
+            return Errors.InvalidInputLength;
+        }
 
         Address contractAddress = new(inputData.Span[..L1PrecompileConstants.AddressBytes]);
         UInt256 storageKey = new(inputData.Span[L1PrecompileConstants.AddressBytes..(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)], isBigEndian: true);
         UInt256 blockNumber = new(inputData.Span[(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)..], isBigEndian: true);
 
-        UInt256? storageValue = GetL1StorageValue(contractAddress, storageKey, blockNumber);
-        if (storageValue is null) return Errors.L1StorageAccessFailed;
+        if (Logger.IsDebug) Logger.Debug($"L1SLOAD: request contract={contractAddress}, key={storageKey}, block={blockNumber}");
 
-        // Convert storage value to output bytes
+        UInt256? storageValue = GetL1StorageValue(contractAddress, storageKey, blockNumber);
+        if (storageValue is null)
+        {
+            if (Logger.IsWarn) Logger.Warn($"L1SLOAD: storage access returned null for contract={contractAddress}, key={storageKey}, block={blockNumber}");
+            return Errors.L1StorageAccessFailed;
+        }
+
+        if (Logger.IsDebug) Logger.Debug($"L1SLOAD: success contract={contractAddress}, key={storageKey}, block={blockNumber}, value={storageValue.Value}");
+
         byte[] output = new byte[32];
         storageValue.Value.ToBigEndian().CopyTo(output.AsSpan());
 
@@ -68,10 +83,13 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
     {
         try
         {
-            return L1StorageProvider?.GetStorageValue(contractAddress, storageKey, blockNumber);
+            var result = L1StorageProvider?.GetStorageValue(contractAddress, storageKey, blockNumber);
+            if (Logger.IsTrace) Logger.Trace($"L1SLOAD: provider returned {(result is null ? "null" : result.Value.ToString())}");
+            return result;
         }
-        catch
+        catch (Exception ex)
         {
+            if (Logger.IsError) Logger.Error($"L1SLOAD: exception in GetL1StorageValue: {ex.Message}", ex);
             return null;
         }
     }

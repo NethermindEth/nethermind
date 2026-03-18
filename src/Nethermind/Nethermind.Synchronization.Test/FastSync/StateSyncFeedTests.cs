@@ -228,9 +228,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             local.CompareTrees(remote, _logger, "AFTER FIRST SYNC");
 
-            remote.StateTree.Set(TestItem.AddressA, TrieScenarios.AccountJustState0.WithChangedBalance(123.Ether()));
-            remote.StateTree.Set(TestItem.AddressB, TrieScenarios.AccountJustState1.WithChangedBalance(123.Ether()));
-            remote.StateTree.Set(TestItem.AddressC, TrieScenarios.AccountJustState2.WithChangedBalance(123.Ether()));
+            remote.StateTree.Set(TestItem.AddressA, TrieScenarios.AccountJustState0.WithChangedBalance(123.Ether));
+            remote.StateTree.Set(TestItem.AddressB, TrieScenarios.AccountJustState1.WithChangedBalance(123.Ether));
+            remote.StateTree.Set(TestItem.AddressC, TrieScenarios.AccountJustState2.WithChangedBalance(123.Ether));
 
             local.CompareTrees(remote, _logger, "BEFORE ROOT HASH UPDATE");
 

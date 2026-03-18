@@ -55,7 +55,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     public IPrecompile? Precompile { get; }
 
-    private readonly JumpDestinationAnalyzer _analyzer;
+    private readonly JumpDestinationAnalyzer? _analyzer;
 
     public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer);
     public bool IsPrecompile => Precompile is not null;
@@ -76,7 +76,11 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     {
         if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
         {
+#if ZK_EVM
+            _analyzer.Execute();
+#else
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+#endif
         }
     }
 

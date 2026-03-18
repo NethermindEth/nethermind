@@ -161,6 +161,49 @@ public class MessageQueueTests
         _recordedSends.Count.Should().Be(0);
     }
 
+    [Test]
+    public void CompleteAdding_cancels_current_request()
+    {
+        Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest();
+
+        _queue.Send(request);
+
+        _queue.CompleteAdding();
+
+        request.CompletionSource.Task.IsCanceled.Should().BeTrue();
+    }
+
+    [Test]
+    public void CompleteAdding_cancels_queued_requests()
+    {
+        Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> request1 = CreateRequest();
+        Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> request2 = CreateRequest();
+        Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> request3 = CreateRequest();
+
+        _queue.Send(request1);
+        _queue.Send(request2);
+        _queue.Send(request3);
+
+        _queue.CompleteAdding();
+
+        request1.CompletionSource.Task.IsCanceled.Should().BeTrue();
+        request2.CompletionSource.Task.IsCanceled.Should().BeTrue();
+        request3.CompletionSource.Task.IsCanceled.Should().BeTrue();
+    }
+
+    [Test]
+    public void Send_after_CompleteAdding_cancels_request()
+    {
+        _queue.CompleteAdding();
+
+        Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest();
+
+        _queue.Send(request);
+
+        request.CompletionSource.Task.IsCanceled.Should().BeTrue();
+        _recordedSends.Count.Should().Be(0);
+    }
+
     private static Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> CreateRequest()
     {
         return new(new GetBlockHeadersMessage());

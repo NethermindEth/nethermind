@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -307,7 +308,7 @@ public struct EvmPooledMemory : IEvmMemory
 
     private void UpdateSize(ulong length, bool rentIfNeeded = true)
     {
-        const int MinRentSize = 1_024;
+        const int minRentSize = 1_024;
         Length = length;
 
         if (Length > Size)
@@ -320,7 +321,7 @@ public struct EvmPooledMemory : IEvmMemory
         {
             if (_memory is null)
             {
-                _memory = ArrayPool<byte>.Shared.Rent((int)Math.Max(Size, MinRentSize));
+                _memory = ArrayPool<byte>.Shared.Rent((int)Math.Max(Size, minRentSize));
                 Array.Clear(_memory, 0, (int)Size);
             }
             else
@@ -358,7 +359,10 @@ public struct EvmPooledMemory : IEvmMemory
 
 public static class UInt256Extensions
 {
-    public static bool IsLargerThanULong(in this UInt256 value) => (value.u1 | value.u2 | value.u3) != 0;
-    public static bool IsLargerThanLong(in this UInt256 value) => value.IsLargerThanULong() || value.u0 > long.MaxValue;
-    public static long ToLong(in this UInt256 value) => value.IsLargerThanLong() ? long.MaxValue : (long)value.u0;
+    extension(in UInt256 value)
+    {
+        public bool IsLargerThanULong() => (value.u1 | value.u2 | value.u3) != 0;
+        public bool IsLargerThanLong() => value.IsLargerThanULong() || value.u0 > long.MaxValue;
+        public long ToLong() => value.IsLargerThanLong() ? long.MaxValue : (long)value.u0;
+    }
 }

@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -27,11 +28,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     /// <summary>
     /// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2481.md
     /// </summary>
-    public class Eth66ProtocolHandler : Eth65ProtocolHandler
+    public class Eth66ProtocolHandler : Eth65ProtocolHandler, IStaticProtocolInfo
     {
         private readonly MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _headersRequests66;
         private readonly MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
-        private readonly MessageDictionary<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>> _nodeDataRequests66;
+        private readonly MessageDictionary<GetNodeDataMessage, IByteArrayList> _nodeDataRequests66;
         private readonly MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests66;
 
 
@@ -49,13 +50,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
-            _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>>(Send);
+            _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, IByteArrayList>(Send);
             _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(Send);
         }
 
         public override string Name => "eth66";
 
-        public override byte ProtocolVersion => EthVersions.Eth66;
+        public static byte Version => EthVersions.Eth66;
+        public override byte ProtocolVersion => Version;
 
         public override void HandleMessage(ZeroPacket message)
         {
@@ -217,7 +219,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 token);
         }
 
-        protected override async Task<IOwnedReadOnlyList<byte[]>> SendRequest(V63.Messages.GetNodeDataMessage message, CancellationToken token)
+        protected override async Task<IByteArrayList> SendRequest(V63.Messages.GetNodeDataMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

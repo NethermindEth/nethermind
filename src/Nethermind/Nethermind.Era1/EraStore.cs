@@ -89,8 +89,8 @@ public class EraStore : IEraStore
         _trustedAccumulators = trustedAccumulators;
         _maxEraFile = maxEraSize;
         _maxOpenFile = Environment.ProcessorCount * 2;
-        if (_verifyConcurrency == 0) _verifyConcurrency = Environment.ProcessorCount;
         _verifyConcurrency = verifyConcurrency;
+        if (_verifyConcurrency == 0) _verifyConcurrency = Environment.ProcessorCount;
 
         // Geth behaviour seems to be to always read the checksum and fail when its missing.
         _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))

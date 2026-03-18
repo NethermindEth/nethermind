@@ -239,7 +239,7 @@ public class ValidateSubmissionHandler
             {
                 if (withdrawal.Address == feeRecipient)
                 {
-                    amtBeforeOrWithdrawn += withdrawal.AmountInGwei;
+                    amtBeforeOrWithdrawn += withdrawal.AmountInWei;
                 }
             }
         }

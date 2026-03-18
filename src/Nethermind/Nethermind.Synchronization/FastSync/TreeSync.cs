@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.FastSync
         private readonly IDb _codeDb;
         private readonly ITreeSyncStore _store;
         private readonly IBlockTree _blockTree;
-        private readonly StateSyncPivot _stateSyncPivot;
+        private readonly IStateSyncPivot _stateSyncPivot;
 
         // This is not exactly a lock for read and write, but a RWLock serves it well. It protects the five field
         // below which need to be cleared atomically during reset root, hence the write lock, while allowing
@@ -80,7 +80,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public event EventHandler<ITreeSync.SyncCompletedEventArgs>? SyncCompleted;
 
-        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, ITreeSyncStore store, IBlockTree blockTree, StateSyncPivot stateSyncPivot, ISyncConfig syncConfig, ILogManager logManager)
+        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, ITreeSyncStore store, IBlockTree blockTree, IStateSyncPivot stateSyncPivot, ISyncConfig syncConfig, ILogManager logManager)
         {
             _syncMode = SyncMode.StateNodes;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -221,25 +221,26 @@ namespace Nethermind.Synchronization.FastSync
                         }
 
                         /* if the peer does not have details of this particular node */
-                        byte[] currentResponseItem = batch.Responses[i];
-                        if (currentResponseItem is null)
+                        ReadOnlySpan<byte> currentResponseSpan = batch.Responses[i];
+                        if (currentResponseSpan.IsEmpty)
                         {
                             AddNodeToPending(batch.RequestedNodes[i], null, "missing", true);
                             continue;
                         }
 
                         /* node sent data that is not consistent with its hash - it happens surprisingly often */
-                        if (!ValueKeccak.Compute(currentResponseItem).BytesAsSpan
+                        if (!ValueKeccak.Compute(currentResponseSpan).BytesAsSpan
                                 .SequenceEqual(currentStateSyncItem.Hash.Bytes))
                         {
                             AddNodeToPending(currentStateSyncItem, null, "missing", true);
                             if (_logger.IsTrace)
                                 _logger.Trace(
-                                    $"Peer sent invalid data (batch {requestLength}->{responseLength}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
+                                    $"Peer sent invalid data (batch {requestLength}->{responseLength}) of length {batch.Responses[i].Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToArray().ToHexString()}) != {batch.RequestedNodes[i].Hash}");
                             invalidNodes++;
                             continue;
                         }
 
+                        byte[] currentResponseItem = currentResponseSpan.ToArray();
                         nonEmptyResponses++;
                         NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
                         if (nodeDataType == NodeDataType.Code)
@@ -743,7 +744,7 @@ namespace Nethermind.Synchronization.FastSync
         {
             DependentItem dependentItem = new DependentItem(item, value, _stateSyncPivot.UpdatedStorages.Count);
 
-            ITreeSyncVerificationContext verificationContext = _store.CreateVerificationContext(value);
+            using ITreeSyncVerificationContext verificationContext = _store.CreateVerificationContext(value);
 
             if (_logger.IsDebug) _logger.Debug($"Checking {_stateSyncPivot.UpdatedStorages.Count} updated storages");
 
@@ -949,7 +950,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
-                        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(trieNode.Value.Span);
+                        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(trieNode.Value.AsSpan());
                         (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(ref ctx);
                         if (codeHash != Keccak.OfAnEmptyString)
                         {
