@@ -302,14 +302,14 @@ public partial class EngineModuleTests
             ? errorKind switch
             {
                 BalErrorKind.IncorrectChange => "InvalidBlockLevelAccessList: Suggested block-level access list contained incorrect changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 3.",
-                BalErrorKind.MissingChange => "InvalidBlockLevelAccessList: Suggested block-level access list missing account changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 2.",
+                BalErrorKind.MissingChange => "InvalidBlockLevelAccessList: Account 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 not found in block access list when checking existence at index 2.",
                 BalErrorKind.SurplusChange => "InvalidBlockLevelAccessList: Suggested block-level access list contained surplus changes for 0x65942aaf2c32a1aca4f14e82e94fce91960893a2 at index 2.",
                 _ => "InvalidBlockLevelAccessList: Suggested block-level access list contained invalid storage reads.",
             }
             : errorKind switch
             {
                 BalErrorKind.IncorrectChange => "incorrect changes",
-                BalErrorKind.MissingChange => "missing account changes",
+                BalErrorKind.MissingChange => "not found in block access list",
                 BalErrorKind.SurplusChange => "surplus changes",
                 _ => "invalid storage reads",
             };

@@ -266,11 +266,16 @@ public class Era1ModuleTests
         await testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
 
         {
-            using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
-            foreach (var block in blocks)
+            using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>());
+            foreach (Block block in blocks)
             {
-                foreach (var item in block.Transactions)
+                foreach (Transaction item in block.Transactions)
+                {
                     item.SenderAddress = null;
+                    item.SpentGas = 0;
+                    item.BlockGasUsed = 0;
+                    item.BlockAccessIndex = 0;
+                }
                 await builder.Add(block, testBlockchain.ReceiptStorage.Get(block));
             }
 
@@ -279,7 +284,7 @@ public class Era1ModuleTests
 
         using EraReader iterator = new EraReader(tmpFile.Path);
 
-        await using var enu = iterator.GetAsyncEnumerator();
+        await using IAsyncEnumerator<(Block, TxReceipt[])> enu = iterator.GetAsyncEnumerator();
         for (int i = 0; i < numOfBlocks; i++)
         {
             Assert.That(await enu.MoveNextAsync(), Is.True, $"Expected block {i} from the iterator, but it returned false.");

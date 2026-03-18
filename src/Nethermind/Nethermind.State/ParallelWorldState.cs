@@ -36,7 +36,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
 
     public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
-    public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, message);
+    public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, "InvalidBlockLevelAccessList: " + message);
 
     private long _gasUsed;
     private readonly bool _isAura = specProvider.SealEngine == SealEngineType.AuRa;
