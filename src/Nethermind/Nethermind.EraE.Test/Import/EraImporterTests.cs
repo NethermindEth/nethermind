@@ -272,7 +272,7 @@ public class EraImporterTests
     {
         // Simulate the snap sync ancient-bodies phase: block bodies exist in the tree but were
         // inserted without TotalDifficulty (blockInfo.TD=0). Era import must re-insert the header
-        // with the correct TD from the era file.
+        // with the correct TD — either from the era file or computed via SetTotalDifficulty.
         const int chainLength = 32;
         await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
         string exportPath = sourceCtx.ResolveTempDirPath();

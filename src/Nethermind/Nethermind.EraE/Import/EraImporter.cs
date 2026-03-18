@@ -183,11 +183,12 @@ public class EraImporter(
                 : BlockTreeInsertHeaderOptions.None;
             blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, headerOptions, bodiesWriteFlags: WriteFlags.DisableWAL);
         }
-        else if (!block.Header.IsPostMerge && existing.TotalDifficulty is null && block.Header.TotalDifficulty is not null)
+        else if (!block.Header.IsPostMerge && existing.TotalDifficulty is null)
         {
             // Block body already exists (e.g. downloaded during snap sync ancient-bodies phase) but
-            // TotalDifficulty was not stored at that time. Re-insert with correct TD from the era file.
-            blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, BlockTreeInsertHeaderOptions.None, bodiesWriteFlags: WriteFlags.DisableWAL);
+            // TotalDifficulty was not stored at that time. Re-insert so the block tree stores the
+            // correct TD — either from the era file (if available) or computed via SetTotalDifficulty.
+            blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
         }
         if (!receiptStorage.HasBlock(block.Number, block.Hash!))
             receiptStorage.Insert(block, receipts, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);
