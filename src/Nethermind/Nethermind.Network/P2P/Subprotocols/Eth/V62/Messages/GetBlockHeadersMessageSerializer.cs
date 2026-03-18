@@ -10,11 +10,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class GetBlockHeadersMessageSerializer : IZeroInnerMessageSerializer<GetBlockHeadersMessage>
     {
+        private static readonly RlpLimit StartBlockRlpLimit = RlpLimit.For<GetBlockHeadersMessage>(Hash256.Size, nameof(GetBlockHeadersMessage.StartBlockHash));
+
         public static GetBlockHeadersMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             GetBlockHeadersMessage message = new();
             ctx.ReadSequenceLength();
-            byte[] startingBytes = ctx.DecodeByteArray();
+            byte[] startingBytes = ctx.DecodeByteArray(StartBlockRlpLimit);
             if (startingBytes.Length == Hash256.Size)
             {
                 message.StartBlockHash = new Hash256(startingBytes);
