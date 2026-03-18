@@ -64,15 +64,6 @@ public class TestingRpcModule(
 
             if (processedBlock is not null)
             {
-                if (_logger.IsWarn) _logger.Warn(
-                    $"testing_buildBlockV1 BAL debug: resolvedFork={resolvedFork} " +
-                    $"IsEip7928Enabled={spec.IsEip7928Enabled} " +
-                    $"BlockAccessList={processedBlock.BlockAccessList is not null} " +
-                    $"EncodedBlockAccessList={processedBlock.EncodedBlockAccessList is not null} " +
-                    $"EncodedBALLength={processedBlock.EncodedBlockAccessList?.Length} " +
-                    $"SlotNumber={processedBlock.Header.SlotNumber} " +
-                    $"BlockAccessListHash={processedBlock.Header.BlockAccessListHash}");
-
                 object getPayloadResult = CreateGetPayloadResult(processedBlock, feesTracer.Fees, resolvedFork);
 
                 if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {processedBlock.Header.ToString(BlockHeader.Format.Short)}.");
