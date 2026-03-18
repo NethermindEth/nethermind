@@ -18,9 +18,8 @@ COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \
-  cp "packages.lock.linux-${arch}.json" packages.lock.json && \
-  dotnet restore -r "linux-${arch}" --locked-mode && \
-  dotnet publish -c $BUILD_CONFIG -r "linux-${arch}" -o /publish --no-restore --no-self-contained \
+  dotnet restore --locked-mode && \
+  dotnet publish -c $BUILD_CONFIG -r "linux-${arch}" -o /publish --no-self-contained \
     -p:SourceRevisionId=$COMMIT_HASH
 
 # A temporary symlink to support the old executable name
