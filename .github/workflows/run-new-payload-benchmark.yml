@@ -1,14 +1,22 @@
-name: Run Block Processing Benchmark
+name: Run NewPayload Benchmark
 
 on:
   pull_request:
     types: [labeled]
   workflow_dispatch:
     inputs:
-      filter:
-        description: "BenchmarkDotNet filter pattern (e.g. 'ContractCall_200'). Empty runs all BlockProcessingBenchmark methods."
+      backend:
+        description: "State backend: Trie or FlatState"
         required: false
-        default: ""
+        default: "FlatState"
+      blocks:
+        description: "Number of measured blocks"
+        required: false
+        default: "50"
+      warmup:
+        description: "Number of warmup blocks"
+        required: false
+        default: "20"
 
 permissions:
   contents: read
@@ -26,12 +34,14 @@ jobs:
     if: >-
       github.event_name != 'pull_request' ||
       (github.event.action == 'labeled' &&
-       startsWith(github.event.label.name, 'block-processing-benchmark') &&
+       startsWith(github.event.label.name, 'NewPayloadBenchmark') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
-      filter: ${{ steps.resolve.outputs.filter }}
+      backend: ${{ steps.resolve.outputs.backend }}
+      blocks: ${{ steps.resolve.outputs.blocks }}
+      warmup: ${{ steps.resolve.outputs.warmup }}
     steps:
       - name: Resolve workflow inputs
         id: resolve
@@ -39,30 +49,30 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           LABEL_NAME: ${{ github.event.label.name }}
-          DISPATCH_FILTER: ${{ inputs.filter }}
+          DISPATCH_BACKEND: ${{ inputs.backend }}
+          DISPATCH_BLOCKS: ${{ inputs.blocks }}
+          DISPATCH_WARMUP: ${{ inputs.warmup }}
         run: |
           set -euo pipefail
 
           should_run="true"
-          filter=""
+          backend="FlatState"
+          blocks="50"
+          warmup="20"
 
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            filter="${DISPATCH_FILTER:-}"
+            backend="${DISPATCH_BACKEND:-FlatState}"
+            blocks="${DISPATCH_BLOCKS:-50}"
+            warmup="${DISPATCH_WARMUP:-20}"
           elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
             label="${LABEL_NAME:-}"
 
-            if [[ "${label}" == "block-processing-benchmark" ]]; then
-              filter=""
-            elif [[ "${label}" == block-processing-benchmark-* ]]; then
-              suffix="${label#block-processing-benchmark-}"
-              if [[ -z "${suffix}" ]]; then
-                filter=""
-              elif [[ "${suffix}" =~ ^[A-Za-z0-9_.*-]+$ ]]; then
-                filter="${suffix}"
-              else
-                echo "::warning::Invalid filter suffix: ${suffix}"
-                should_run="false"
-              fi
+            if [[ "${label}" == "NewPayloadBenchmark" ]]; then
+              backend="FlatState"
+            elif [[ "${label}" == "NewPayloadBenchmark-Trie" ]]; then
+              backend="Trie"
+            elif [[ "${label}" == "NewPayloadBenchmark-FlatState" ]]; then
+              backend="FlatState"
             else
               should_run="false"
             fi
@@ -70,14 +80,16 @@ jobs:
 
           {
             echo "should_run=${should_run}"
-            echo "filter=${filter}"
+            echo "backend=${backend}"
+            echo "blocks=${blocks}"
+            echo "warmup=${warmup}"
           } >> "${GITHUB_OUTPUT}"
 
   benchmark:
     needs: resolve-inputs
     if: needs.resolve-inputs.outputs.should_run == 'true'
     runs-on: benchmark
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Check out PR branch
         uses: actions/checkout@v6
@@ -95,24 +107,22 @@ jobs:
           dotnet restore ${{ env.BENCHMARK_PROJECT }}
           dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
 
-      - name: Run benchmark on PR branch
+      - name: Run NewPayload benchmark on PR branch
         id: run-pr
         continue-on-error: true
         shell: bash
         env:
-          FILTER: ${{ needs.resolve-inputs.outputs.filter }}
+          BACKEND: ${{ needs.resolve-inputs.outputs.backend }}
+          BLOCKS: ${{ needs.resolve-inputs.outputs.blocks }}
+          WARMUP: ${{ needs.resolve-inputs.outputs.warmup }}
         run: |
-          if [[ -z "${FILTER}" ]]; then
-            FILTER_ARG="*BlockProcessingBenchmark*"
-          else
-            FILTER_ARG="*${FILTER}*"
-          fi
-
           dotnet run -c Release --no-build \
             --project ${{ env.BENCHMARK_PROJECT }} \
-            -- --filter "${FILTER_ARG}" \
-               --exporters json \
-               --artifacts "${RUNNER_TEMP}/bdn-pr"
+            -- --newpayload \
+               --backend "${BACKEND}" \
+               --blocks "${BLOCKS}" \
+               --warmup "${WARMUP}" \
+            | tee "${RUNNER_TEMP}/newpayload-pr.txt"
 
       - name: Save PR benchmark files
         run: |
@@ -136,87 +146,66 @@ jobs:
           dotnet restore ${{ env.BENCHMARK_PROJECT }}
           dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
 
-      - name: Run benchmark on base branch
+      - name: Run NewPayload benchmark on base branch
         id: run-base
         continue-on-error: true
         shell: bash
         env:
-          FILTER: ${{ needs.resolve-inputs.outputs.filter }}
+          BACKEND: ${{ needs.resolve-inputs.outputs.backend }}
+          BLOCKS: ${{ needs.resolve-inputs.outputs.blocks }}
+          WARMUP: ${{ needs.resolve-inputs.outputs.warmup }}
         run: |
-          if [[ -z "${FILTER}" ]]; then
-            FILTER_ARG="*BlockProcessingBenchmark*"
-          else
-            FILTER_ARG="*${FILTER}*"
-          fi
-
           dotnet run -c Release --no-build \
             --project ${{ env.BENCHMARK_PROJECT }} \
-            -- --filter "${FILTER_ARG}" \
-               --exporters json \
-               --artifacts "${RUNNER_TEMP}/bdn-base"
+            -- --newpayload \
+               --backend "${BACKEND}" \
+               --blocks "${BLOCKS}" \
+               --warmup "${WARMUP}" \
+            | tee "${RUNNER_TEMP}/newpayload-base.txt"
 
       - name: Compare results and build comment
         id: compare
         if: always()
         shell: bash
         env:
-          BASE_ARTIFACTS: ${{ runner.temp }}/bdn-base
-          PR_ARTIFACTS: ${{ runner.temp }}/bdn-pr
+          BASE_FILE: ${{ runner.temp }}/newpayload-base.txt
+          PR_FILE: ${{ runner.temp }}/newpayload-pr.txt
           BASE_SHA: ${{ github.event.pull_request.base.sha || 'master' }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BACKEND: ${{ needs.resolve-inputs.outputs.backend }}
           BASE_OUTCOME: ${{ steps.run-base.outcome }}
           PR_OUTCOME: ${{ steps.run-pr.outcome }}
         run: |
           set -euo pipefail
 
           python3 - <<'PYEOF'
-          import json, glob, os, sys
+          import re, os, sys
 
-          def load_results(artifacts_dir):
-              pattern = os.path.join(artifacts_dir, "results", "*-report-full-compressed.json")
-              files = glob.glob(pattern)
-              if not files:
+          def parse_results(filepath):
+              if not os.path.exists(filepath):
                   return None
-              with open(files[0]) as f:
-                  data = json.load(f)
+              with open(filepath) as f:
+                  text = f.read()
               results = {}
-              for bm in data["Benchmarks"]:
-                  method = bm["Method"]
-                  params = bm.get("Parameters", "")
-                  key = f"{method}({params})" if params else method
-                  stats = bm["Statistics"]
-                  mem = bm.get("Memory", {})
-                  pcts = stats.get("Percentiles", {})
-                  results[key] = {
-                      "mean": stats["Mean"],
-                      "median": stats["Median"],
-                      "min": stats["Min"],
-                      "max": stats["Max"],
-                      "stddev": stats["StandardDeviation"],
-                      "p90": pcts.get("P90", 0),
-                      "p95": pcts.get("P95", 0),
-                      "allocated": mem.get("BytesAllocatedPerOperation", 0),
-                  }
-              return results
+              for line in text.splitlines():
+                  line = line.strip()
+                  for key in ["Mean", "Median", "StdDev", "CV", "TrimmedMean", "TrimmedSD",
+                              "TrimmedCV", "Min", "Max", "P5", "P95", "P99"]:
+                      pattern = rf"^{key}:\s+([\d.]+)\s*(ms|%)"
+                      m = re.match(pattern, line)
+                      if m:
+                          results[key] = float(m.group(1))
+                          break
+                  m = re.match(r"^Blocks:\s+(\d+)", line)
+                  if m:
+                      results["Blocks"] = int(m.group(1))
+              return results if results else None
 
-          def ns_to_us(ns):
-              return ns / 1000.0
-
-          def bytes_to_kb(b):
-              return b / 1024.0 if b else 0
-
-          def fmt_us(ns):
-              us = ns_to_us(ns)
-              if us >= 1000:
-                  return f"{us:,.1f}"
-              return f"{us:.1f}"
-
-          def fmt_kb(b):
-              kb = bytes_to_kb(b)
-              if kb >= 1000:
-                  return f"{kb:,.1f}"
-              return f"{kb:.1f}"
+          def fmt(val, unit="ms"):
+              if unit == "%":
+                  return f"{val:.1f}%"
+              return f"{val:.2f} ms"
 
           def delta_pct(pr_val, base_val):
               if base_val == 0:
@@ -229,12 +218,6 @@ jobs:
               sign = "+" if pct >= 0 else ""
               return f"{sign}{pct:.1f}%"
 
-          def fmt_cv(mean, stddev):
-              if mean == 0:
-                  return "n/a"
-              cv = (stddev / mean) * 100
-              return f"{cv:.1f}%"
-
           def indicator(pct):
               if pct is None:
                   return ""
@@ -244,15 +227,16 @@ jobs:
                   return " :arrow_up_small:"
               return ""
 
-          marker = "<!-- block-processing-benchmark-report -->"
+          marker = "<!-- newpayload-benchmark-report -->"
           run_url = os.environ["RUN_URL"]
           base_sha = os.environ["BASE_SHA"][:8]
           head_sha = os.environ["HEAD_SHA"][:8]
+          backend = os.environ["BACKEND"]
           base_outcome = os.environ["BASE_OUTCOME"]
           pr_outcome = os.environ["PR_OUTCOME"]
 
           lines = [marker]
-          lines.append("### Block Processing Benchmark Comparison")
+          lines.append(f"### engine_newPayload Benchmark Comparison ({backend})")
           lines.append("")
           lines.append(f"Run: [View workflow run]({run_url})")
           lines.append(f"Base: `{base_sha}` | Head: `{head_sha}`")
@@ -272,72 +256,40 @@ jobs:
                   f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
               sys.exit(0)
 
-          base = load_results(os.environ["BASE_ARTIFACTS"])
-          pr = load_results(os.environ["PR_ARTIFACTS"])
+          base = parse_results(os.environ["BASE_FILE"])
+          pr = parse_results(os.environ["PR_FILE"])
 
-          if not base:
-              lines.append(":warning: No base branch benchmark results found.")
+          if not base or not pr:
+              lines.append(":warning: Could not parse benchmark results from one or both branches.")
               body = "\n".join(lines)
               with open(os.environ["GITHUB_OUTPUT"], "a") as f:
                   f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
               sys.exit(0)
 
-          if not pr:
-              lines.append(":warning: No PR branch benchmark results found.")
-              body = "\n".join(lines)
-              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
-              sys.exit(0)
+          lines.append("| Metric | Base | PR | Delta |")
+          lines.append("|--------|-----:|---:|------:|")
 
-          # Build summary table
-          methods = [m for m in base if m in pr]
-          # Sort by baseline order: Baseline first, then alphabetical
-          methods.sort()
-
-          lines.append("| Method | Base (us) | PR (us) | Delta | Base CV | PR CV | Alloc Base | Alloc PR | Alloc Delta |")
-          lines.append("|--------|----------:|--------:|------:|--------:|------:|-----------:|---------:|------------:|")
-
-          for m in methods:
-              b = base[m]
-              p = pr[m]
-              mean_d = delta_pct(p["mean"], b["mean"])
-              alloc_d = delta_pct(p["allocated"], b["allocated"])
-              lines.append(
-                  f"| {m} "
-                  f"| {fmt_us(b['mean'])} "
-                  f"| {fmt_us(p['mean'])} "
-                  f"| {fmt_delta(mean_d)}{indicator(mean_d)} "
-                  f"| {fmt_cv(b['mean'], b['stddev'])} "
-                  f"| {fmt_cv(p['mean'], p['stddev'])} "
-                  f"| {fmt_kb(b['allocated'])} KB "
-                  f"| {fmt_kb(p['allocated'])} KB "
-                  f"| {fmt_delta(alloc_d)} |"
-              )
-
-          # Detailed stats in collapsible section
-          lines.append("")
-          lines.append("<details><summary>Detailed statistics</summary>")
-          lines.append("")
-          lines.append("| Method | Metric | Base | PR | Delta |")
-          lines.append("|--------|--------|-----:|---:|------:|")
-
-          for m in methods:
-              b = base[m]
-              p = pr[m]
-              for metric, key in [("Mean", "mean"), ("Median", "median"),
-                                  ("P90", "p90"), ("P95", "p95"),
-                                  ("Min", "min"), ("Max", "max"),
-                                  ("StdDev", "stddev")]:
-                  d = delta_pct(p[key], b[key])
+          for key in ["TrimmedMean", "Mean", "Median", "P95", "P99", "Min", "Max"]:
+              if key in base and key in pr:
+                  d = delta_pct(pr[key], base[key])
                   lines.append(
-                      f"| {m} | {metric} "
-                      f"| {fmt_us(b[key])} us "
-                      f"| {fmt_us(p[key])} us "
-                      f"| {fmt_delta(d)} |"
+                      f"| {key} "
+                      f"| {fmt(base[key])} "
+                      f"| {fmt(pr[key])} "
+                      f"| {fmt_delta(d)}{indicator(d)} |"
                   )
 
-          lines.append("")
-          lines.append("</details>")
+          for key in ["TrimmedCV", "CV"]:
+              if key in base and key in pr:
+                  lines.append(
+                      f"| {key} "
+                      f"| {fmt(base[key], '%')} "
+                      f"| {fmt(pr[key], '%')} "
+                      f"| |"
+                  )
+
+          if "Blocks" in base and "Blocks" in pr:
+              lines.append(f"| Blocks | {base['Blocks']} | {pr['Blocks']} | |")
 
           body = "\n".join(lines)
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
@@ -351,7 +303,7 @@ jobs:
           COMMENT_BODY: ${{ steps.compare.outputs.body }}
         with:
           script: |
-            const marker = '<!-- block-processing-benchmark-report -->';
+            const marker = '<!-- newpayload-benchmark-report -->';
             const body = process.env.COMMENT_BODY;
             if (!body) {
               console.log('No comment body produced, skipping.');
@@ -387,12 +339,12 @@ jobs:
               });
             }
 
-      - name: Upload benchmark artifacts
+      - name: Upload benchmark output
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results
+          name: newpayload-benchmark-results
           path: |
-            ${{ runner.temp }}/bdn-base/results/
-            ${{ runner.temp }}/bdn-pr/results/
+            ${{ runner.temp }}/newpayload-base.txt
+            ${{ runner.temp }}/newpayload-pr.txt
           retention-days: 30
