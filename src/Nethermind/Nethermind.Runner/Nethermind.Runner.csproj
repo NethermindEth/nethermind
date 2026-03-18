@@ -20,7 +20,6 @@
     <PublishReadyToRun>true</PublishReadyToRun>
     <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
     <OptimizationPreference>Speed</OptimizationPreference>
-    <PublishReadyToRunMibcPaths Condition="Exists('$(MSBuildProjectDirectory)/pgo/nethermind.mibc')">$(MSBuildProjectDirectory)/pgo/nethermind.mibc</PublishReadyToRunMibcPaths>
   </PropertyGroup>
 
   <PropertyGroup Label="PackagesLock">
