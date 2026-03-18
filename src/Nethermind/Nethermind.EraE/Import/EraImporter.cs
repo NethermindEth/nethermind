@@ -176,7 +176,12 @@ public class EraImporter(
     private void InsertBlockAndReceipts(Block block, TxReceipt[] receipts, long lastBlockNumber)
     {
         if (blockTree.FindBlock(block.Number) is null)
-            blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded, bodiesWriteFlags: WriteFlags.DisableWAL);
+        {
+            BlockTreeInsertHeaderOptions headerOptions = block.Header.IsPostMerge
+                ? BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded
+                : BlockTreeInsertHeaderOptions.None;
+            blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, headerOptions, bodiesWriteFlags: WriteFlags.DisableWAL);
+        }
         if (!receiptStorage.HasBlock(block.Number, block.Hash!))
             receiptStorage.Insert(block, receipts, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);
     }
