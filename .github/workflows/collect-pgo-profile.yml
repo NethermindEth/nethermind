@@ -1,11 +1,6 @@
 name: Collect PGO Profile
 
 on:
-  push:
-    branches: [ready-to-run]
-    paths:
-      - .github/workflows/collect-pgo-profile.yml
-      - Dockerfile.pgo
   workflow_dispatch:
     inputs:
       state_layout:
@@ -33,8 +28,9 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
   actions: write
+  pull-requests: write
 
 env:
   EXPB_DATA_DIR: /mnt/sda/expb-data
@@ -351,3 +347,54 @@ jobs:
           path: ${{ runner.temp }}/pgo-data/
           if-no-files-found: warn
           retention-days: 30
+
+  update-pgo-profile:
+    name: Create PR to update PGO profile
+    needs: collect-pgo
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Download .mibc artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: nethermind-pgo-profile
+          path: src/Nethermind/Nethermind.Runner/pgo/
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc; then
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            echo "No changes to PGO profile."
+          else
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            echo "PGO profile has changed."
+          fi
+
+      - name: Create pull request
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="chore/update-pgo-profile-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${branch}"
+          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc
+          git commit -m "chore(pgo): update PGO profile from weekly collection"
+          git push -u origin "${branch}"
+          gh pr create \
+            --title "chore(pgo): update PGO profile" \
+            --body "$(cat <<'EOF'
+          ## Summary
+          - Weekly automated update of the PGO (.mibc) profile used for R2R compilation
+          - Generated from 5000 mainnet blocks via EventPipe profiling
+
+          ## Test plan
+          - [ ] CI passes (R2R build uses the updated profile automatically)
+          EOF
+          )" \
+            --base master
