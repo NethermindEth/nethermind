@@ -24,8 +24,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   rid="linux-${arch}" && \
   cd src/Nethermind/Nethermind.Runner && \
   dotnet restore --locked-mode && \
-  dotnet restore -r $rid -p:PublishReadyToRun=false && \
-  dotnet publish -c $BUILD_CONFIG -r $rid -o /publish --no-restore --no-self-contained \
+  dotnet publish -c $BUILD_CONFIG -r $rid -o /publish --no-self-contained \
     -p:PublishReadyToRun=false \
     -p:SourceRevisionId=$COMMIT_HASH
 
