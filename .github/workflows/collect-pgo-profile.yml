@@ -281,12 +281,23 @@ jobs:
         run: |
           set -euo pipefail
           mibc_file="${RUNNER_TEMP}/nethermind.mibc"
-          pgo_search_roots=("${RUNNER_TEMP}/pgo-data" "${RUNNER_TEMP}/pgo-workdir")
+          candidate_roots=("${RUNNER_TEMP}/pgo-data" "${RUNNER_TEMP}/pgo-workdir")
+          pgo_search_roots=()
+          for root in "${candidate_roots[@]}"; do
+            if [[ -d "${root}" ]]; then
+              pgo_search_roots+=("${root}")
+            fi
+          done
+
+          if [[ "${#pgo_search_roots[@]}" -eq 0 ]]; then
+            echo "No extracted PGO directories found under ${RUNNER_TEMP}."
+            exit 1
+          fi
 
           # Step 1: Create .mibc from EventPipe trace (method-level hot/cold)
-          trace_file=$(find "${pgo_search_roots[@]}" -name "*.nettrace" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2-)
+          trace_file=$(find "${pgo_search_roots[@]}" -name "*.nettrace" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
           if [[ -z "${trace_file}" ]]; then
-            echo "No .nettrace file found."
+            echo "No .nettrace file found under: ${pgo_search_roots[*]}"
             exit 1
           fi
 
@@ -297,7 +308,7 @@ jobs:
             --output "${trace_mibc}"
 
           # Step 2: Merge edge/block profiling data (.jit files) if present
-          jit_files=$(find "${pgo_search_roots[@]}" -name "*.jit" -type f 2>/dev/null)
+          jit_files=$(find "${pgo_search_roots[@]}" -name "*.jit" -type f 2>/dev/null || true)
           if [[ -n "${jit_files}" ]]; then
             echo "Found edge profiling data, merging into .mibc..."
             merge_args=("--input" "${trace_mibc}")
