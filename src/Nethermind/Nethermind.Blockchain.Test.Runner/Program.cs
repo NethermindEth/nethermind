@@ -164,7 +164,7 @@ namespace Nethermind.Blockchain.Test.Runner
             WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stZeroKnowledge2", testWildcard)));
             WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmArithmeticTest", testWildcard)));
             WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmBitwiseLogicOperation", testWildcard)));
-            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmIOandFlowOperations", testWildcard))); // cspell:disable-line
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmIOandFlowOperations", testWildcard)));
             WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmLogTests", testWildcard)));
             WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmTests", testWildcard)));
         }
