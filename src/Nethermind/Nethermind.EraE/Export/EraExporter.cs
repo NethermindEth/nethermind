@@ -120,6 +120,10 @@ public class EraExporter(
                     if (block is null)
                         throw new EraException($"Could not find block {y}. The node may not have finished syncing block bodies for this range.");
 
+                    // IsPostMerge is not part of the RLP encoding and defaults to false when read from
+                    // the block store. Restore it from Difficulty (EIP-3675: post-merge Difficulty == 0).
+                    block.Header.IsPostMerge = block.Header.Difficulty == 0;
+
                     TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
                     if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
                         throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.");
