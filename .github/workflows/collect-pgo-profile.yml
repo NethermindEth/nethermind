@@ -266,10 +266,9 @@ jobs:
           git clone --depth 1 \
             https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
           cd "${RUNNER_TEMP}/dotnet-runtime"
-          # Install the SDK required by dotnet/runtime, then build only dotnet-pgo
-          . ./eng/common/tools.sh
-          InitializeDotNetCli true
-          .dotnet/dotnet build src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj -c Release
+          # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
+          ./build.sh -c Release \
+            --projects src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj
 
           dotnet_pgo_dir=$(find "${RUNNER_TEMP}/dotnet-runtime/artifacts" -type d -name "dotnet-pgo" -path "*/bin/*" | head -1)
           if [[ -z "${dotnet_pgo_dir}" ]] || [[ ! -f "${dotnet_pgo_dir}/dotnet-pgo.dll" ]]; then
