@@ -240,9 +240,6 @@ public class StartingSyncPivotUpdater : IDisposable
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-            return;
-
         _syncModeSelector.Changed -= OnSyncModeChanged;
         _cancellation.Cancel();
         _cancellation.Dispose();
