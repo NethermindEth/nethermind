@@ -14,9 +14,13 @@ if [[ -z "${DOTNET_GCLargePages:-}" ]]; then
   if [[ "$hugepages_free" -gt 0 ]]; then
     export DOTNET_GCLargePages=1
 
-    # With large pages the GC commits memory upfront, so cap the region range
-    # to prevent CLR_E_GC_OOM (0x8013200E) when the runtime over-estimates memory.
-    # Use min(32 GiB, available_memory * 75%, cgroup_limit * 75%).
+    # With large pages the GC commits memory upfront (can't lazily commit huge pages),
+    # so GCRegionRange becomes actual physical memory, not just virtual reservation.
+    # Additionally, the GC has a known double-commit bug with large pages where it
+    # commits ~2x the region range (see https://github.com/dotnet/runtime/issues/103203).
+    # Use 37.5% (half of 75%) to account for the 2x commit, leaving headroom for
+    # native allocations, RocksDB, stack, etc.
+    # Final value: min(32 GiB, available_memory * 37.5%, cgroup_limit * 37.5%).
     if [[ -z "${DOTNET_GCRegionRange:-}" ]]; then
       max_range=$((32 * 1024 * 1024 * 1024)) # 32 GiB cap
 
@@ -24,8 +28,8 @@ if [[ -z "${DOTNET_GCLargePages:-}" ]]; then
       if [[ -f /proc/meminfo ]]; then
         avail_kb=$(awk '/^MemAvailable:/ { print $2 }' /proc/meminfo)
         if [[ -n "$avail_kb" && "$avail_kb" -gt 0 ]]; then
-          avail_75=$(( avail_kb * 1024 * 75 / 100 ))
-          [[ "$avail_75" -lt "$max_range" ]] && max_range="$avail_75"
+          avail_pct=$(( avail_kb * 1024 * 375 / 1000 ))
+          [[ "$avail_pct" -lt "$max_range" ]] && max_range="$avail_pct"
         fi
       fi
 
@@ -40,8 +44,8 @@ if [[ -z "${DOTNET_GCLargePages:-}" ]]; then
       fi
 
       if [[ -n "$cgroup_limit" ]]; then
-        cgroup_75=$(( cgroup_limit * 75 / 100 ))
-        [[ "$cgroup_75" -lt "$max_range" ]] && max_range="$cgroup_75"
+        cgroup_pct=$(( cgroup_limit * 375 / 1000 ))
+        [[ "$cgroup_pct" -lt "$max_range" ]] && max_range="$cgroup_pct"
       fi
 
       # Floor: 256 MiB
