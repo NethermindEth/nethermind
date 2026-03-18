@@ -3,6 +3,7 @@
 
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Collections;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
@@ -118,13 +119,15 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             return Task.CompletedTask;
         }
 
-        Task[] tasks = new Task[discoveryApps.Length];
+        ArrayPoolListRef<Task> tasks = new(discoveryApps.Length);
         for (int i = 0; i < discoveryApps.Length; i++)
         {
-            tasks[i] = action(discoveryApps[i]);
+            tasks.Add(action(discoveryApps[i]));
         }
 
-        return Task.WhenAll(tasks);
+        Task result = Task.WhenAll(tasks.AsSpan());
+        tasks.Dispose();
+        return result;
     }
 
     public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
