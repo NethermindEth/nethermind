@@ -355,7 +355,13 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
             iterationCount = multiplicationResult + bitLength;
             if (iterationCount < multiplicationResult)
             {
+                // Overflowed
                 overflow = 1;
+            }
+            else if (iterationCount < 1)
+            {
+                // Min 1 iteration
+                iterationCount = 1;
             }
         }
 
