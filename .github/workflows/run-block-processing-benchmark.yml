@@ -5,12 +5,8 @@ on:
     types: [labeled]
   workflow_dispatch:
     inputs:
-      mode:
-        description: "Benchmark mode: 'bdn' for BenchmarkDotNet BlockProcessingBenchmark, 'newpayload' for engine_newPayload benchmark"
-        required: false
-        default: "bdn"
       filter:
-        description: "BenchmarkDotNet filter pattern (e.g. 'ContractCall_200'). Only used for bdn mode. Empty runs all."
+        description: "BenchmarkDotNet filter pattern (e.g. 'ContractCall_200'). Empty runs all BlockProcessingBenchmark methods."
         required: false
         default: ""
 
@@ -30,13 +26,11 @@ jobs:
     if: >-
       github.event_name != 'pull_request' ||
       (github.event.action == 'labeled' &&
-       (startsWith(github.event.label.name, 'block-processing-benchmark') ||
-        startsWith(github.event.label.name, 'new-payload-benchmark')) &&
+       startsWith(github.event.label.name, 'block-processing-benchmark') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
-      mode: ${{ steps.resolve.outputs.mode }}
       filter: ${{ steps.resolve.outputs.filter }}
     steps:
       - name: Resolve workflow inputs
@@ -45,26 +39,21 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           LABEL_NAME: ${{ github.event.label.name }}
-          DISPATCH_MODE: ${{ inputs.mode }}
           DISPATCH_FILTER: ${{ inputs.filter }}
         run: |
           set -euo pipefail
 
           should_run="true"
-          mode="bdn"
           filter=""
 
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            mode="${DISPATCH_MODE:-bdn}"
             filter="${DISPATCH_FILTER:-}"
           elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
             label="${LABEL_NAME:-}"
 
             if [[ "${label}" == "block-processing-benchmark" ]]; then
-              mode="bdn"
               filter=""
             elif [[ "${label}" == block-processing-benchmark-* ]]; then
-              mode="bdn"
               suffix="${label#block-processing-benchmark-}"
               if [[ -z "${suffix}" ]]; then
                 filter=""
@@ -74,8 +63,6 @@ jobs:
                 echo "::warning::Invalid filter suffix: ${suffix}"
                 should_run="false"
               fi
-            elif [[ "${label}" == new-payload-benchmark* ]]; then
-              mode="newpayload"
             else
               should_run="false"
             fi
@@ -83,7 +70,6 @@ jobs:
 
           {
             echo "should_run=${should_run}"
-            echo "mode=${mode}"
             echo "filter=${filter}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -91,7 +77,7 @@ jobs:
     needs: resolve-inputs
     if: needs.resolve-inputs.outputs.should_run == 'true'
     runs-on: benchmark
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - name: Check out PR branch
         uses: actions/checkout@v6
@@ -109,9 +95,8 @@ jobs:
           dotnet restore ${{ env.BENCHMARK_PROJECT }}
           dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
 
-      - name: Run benchmark on PR branch (BDN)
+      - name: Run benchmark on PR branch
         id: run-pr
-        if: needs.resolve-inputs.outputs.mode == 'bdn'
         continue-on-error: true
         shell: bash
         env:
@@ -128,28 +113,6 @@ jobs:
             -- --filter "${FILTER_ARG}" \
                --exporters json \
                --artifacts "${RUNNER_TEMP}/bdn-pr"
-
-      - name: Run NewPayload benchmark on PR branch (FlatState)
-        id: run-pr-np-flat
-        if: needs.resolve-inputs.outputs.mode == 'newpayload'
-        continue-on-error: true
-        shell: bash
-        run: |
-          dotnet run -c Release --no-build \
-            --project ${{ env.BENCHMARK_PROJECT }} \
-            -- --newpayload --backend FlatState --blocks 50 --warmup 20 \
-            | tee "${RUNNER_TEMP}/newpayload-pr-flat.txt"
-
-      - name: Run NewPayload benchmark on PR branch (Trie)
-        id: run-pr-np-trie
-        if: needs.resolve-inputs.outputs.mode == 'newpayload'
-        continue-on-error: true
-        shell: bash
-        run: |
-          dotnet run -c Release --no-build \
-            --project ${{ env.BENCHMARK_PROJECT }} \
-            -- --newpayload --backend Trie --blocks 50 --warmup 20 \
-            | tee "${RUNNER_TEMP}/newpayload-pr-trie.txt"
 
       - name: Save PR benchmark files
         run: |
@@ -173,9 +136,8 @@ jobs:
           dotnet restore ${{ env.BENCHMARK_PROJECT }}
           dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
 
-      - name: Run benchmark on base branch (BDN)
+      - name: Run benchmark on base branch
         id: run-base
-        if: needs.resolve-inputs.outputs.mode == 'bdn'
         continue-on-error: true
         shell: bash
         env:
@@ -193,44 +155,13 @@ jobs:
                --exporters json \
                --artifacts "${RUNNER_TEMP}/bdn-base"
 
-      - name: Run NewPayload benchmark on base branch (FlatState)
-        id: run-base-np-flat
-        if: needs.resolve-inputs.outputs.mode == 'newpayload'
-        continue-on-error: true
-        shell: bash
-        run: |
-          dotnet run -c Release --no-build \
-            --project ${{ env.BENCHMARK_PROJECT }} \
-            -- --newpayload --backend FlatState --blocks 50 --warmup 20 \
-            | tee "${RUNNER_TEMP}/newpayload-base-flat.txt"
-
-      - name: Run NewPayload benchmark on base branch (Trie)
-        id: run-base-np-trie
-        if: needs.resolve-inputs.outputs.mode == 'newpayload'
-        continue-on-error: true
-        shell: bash
-        run: |
-          dotnet run -c Release --no-build \
-            --project ${{ env.BENCHMARK_PROJECT }} \
-            -- --newpayload --backend Trie --blocks 50 --warmup 20 \
-            | tee "${RUNNER_TEMP}/newpayload-base-trie.txt"
-
       - name: Compare results and build comment
         id: compare
         if: always()
         shell: bash
         env:
-          MODE: ${{ needs.resolve-inputs.outputs.mode }}
           BASE_ARTIFACTS: ${{ runner.temp }}/bdn-base
           PR_ARTIFACTS: ${{ runner.temp }}/bdn-pr
-          NP_BASE_FLAT: ${{ runner.temp }}/newpayload-base-flat.txt
-          NP_PR_FLAT: ${{ runner.temp }}/newpayload-pr-flat.txt
-          NP_BASE_TRIE: ${{ runner.temp }}/newpayload-base-trie.txt
-          NP_PR_TRIE: ${{ runner.temp }}/newpayload-pr-trie.txt
-          NP_BASE_FLAT_OUTCOME: ${{ steps.run-base-np-flat.outcome }}
-          NP_PR_FLAT_OUTCOME: ${{ steps.run-pr-np-flat.outcome }}
-          NP_BASE_TRIE_OUTCOME: ${{ steps.run-base-np-trie.outcome }}
-          NP_PR_TRIE_OUTCOME: ${{ steps.run-pr-np-trie.outcome }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || 'master' }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -240,9 +171,7 @@ jobs:
           set -euo pipefail
 
           python3 - <<'PYEOF'
-          import json, glob, os, re, sys
-
-          mode = os.environ.get("MODE", "bdn")
+          import json, glob, os, sys
 
           def load_results(artifacts_dir):
               pattern = os.path.join(artifacts_dir, "results", "*-report-full-compressed.json")
@@ -315,146 +244,100 @@ jobs:
                   return " :arrow_up_small:"
               return ""
 
+          marker = "<!-- block-processing-benchmark-report -->"
           run_url = os.environ["RUN_URL"]
           base_sha = os.environ["BASE_SHA"][:8]
           head_sha = os.environ["HEAD_SHA"][:8]
+          base_outcome = os.environ["BASE_OUTCOME"]
+          pr_outcome = os.environ["PR_OUTCOME"]
 
-          if mode == "newpayload":
-              # ── NewPayload mode ──
-              marker = "<!-- newpayload-benchmark-report -->"
+          lines = [marker]
+          lines.append("### Block Processing Benchmark Comparison")
+          lines.append("")
+          lines.append(f"Run: [View workflow run]({run_url})")
+          lines.append(f"Base: `{base_sha}` | Head: `{head_sha}`")
+          lines.append("")
 
-              def parse_np_results(filepath):
-                  if not os.path.exists(filepath):
-                      return None
-                  with open(filepath) as f:
-                      text = f.read()
-                  results = {}
-                  for line in text.splitlines():
-                      line = line.strip()
-                      for key in ["Mean", "Median", "StdDev", "CV", "TrimmedMean", "TrimmedSD",
-                                  "TrimmedCV", "Min", "Max", "P5", "P95", "P99"]:
-                          m = re.match(rf"^{key}:\s+([\d.]+)\s*(ms|%)", line)
-                          if m:
-                              results[key] = float(m.group(1))
-                              break
-                      m = re.match(r"^Blocks:\s+(\d+)", line)
-                      if m:
-                          results["Blocks"] = int(m.group(1))
-                  return results if results else None
+          if base_outcome != "success":
+              lines.append(":x: **Base branch benchmark failed.** Check the workflow run for details.")
+              body = "\n".join(lines)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+              sys.exit(0)
 
-              def fmt_np(val, unit="ms"):
-                  return f"{val:.1f}%" if unit == "%" else f"{val:.2f} ms"
+          if pr_outcome != "success":
+              lines.append(":x: **PR branch benchmark failed.** Check the workflow run for details.")
+              body = "\n".join(lines)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+              sys.exit(0)
 
-              def build_np_table(base_r, pr_r, backend_name):
-                  section = [f"#### {backend_name}", ""]
-                  section.append("| Metric | Base | PR | Delta |")
-                  section.append("|--------|-----:|---:|------:|")
-                  for key in ["TrimmedMean", "Mean", "Median", "P95", "P99", "Min", "Max"]:
-                      if key in base_r and key in pr_r:
-                          d = delta_pct(pr_r[key], base_r[key])
-                          section.append(f"| {key} | {fmt_np(base_r[key])} | {fmt_np(pr_r[key])} | {fmt_delta(d)}{indicator(d)} |")
-                  for key in ["TrimmedCV", "CV"]:
-                      if key in base_r and key in pr_r:
-                          section.append(f"| {key} | {fmt_np(base_r[key], '%')} | {fmt_np(pr_r[key], '%')} | |")
-                  if "Blocks" in base_r and "Blocks" in pr_r:
-                      section.append(f"| Blocks | {base_r['Blocks']} | {pr_r['Blocks']} | |")
-                  return section
+          base = load_results(os.environ["BASE_ARTIFACTS"])
+          pr = load_results(os.environ["PR_ARTIFACTS"])
 
-              lines = [marker]
-              lines.append("### engine_newPayload Benchmark Comparison")
-              lines.append("")
-              lines.append(f"Run: [View workflow run]({run_url})")
-              lines.append(f"Base: `{base_sha}` | Head: `{head_sha}`")
-              lines.append("")
+          if not base:
+              lines.append(":warning: No base branch benchmark results found.")
+              body = "\n".join(lines)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+              sys.exit(0)
 
-              for backend, base_env, pr_env, base_out_env, pr_out_env in [
-                  ("FlatState", "NP_BASE_FLAT", "NP_PR_FLAT", "NP_BASE_FLAT_OUTCOME", "NP_PR_FLAT_OUTCOME"),
-                  ("Trie", "NP_BASE_TRIE", "NP_PR_TRIE", "NP_BASE_TRIE_OUTCOME", "NP_PR_TRIE_OUTCOME"),
-              ]:
-                  b_out = os.environ.get(base_out_env, "")
-                  p_out = os.environ.get(pr_out_env, "")
-                  if b_out != "success" or p_out != "success":
-                      lines.extend([f"#### {backend}", "", f":x: **{backend} benchmark failed.** (base={b_out}, pr={p_out})", ""])
-                      continue
-                  base_r = parse_np_results(os.environ.get(base_env, ""))
-                  pr_r = parse_np_results(os.environ.get(pr_env, ""))
-                  if not base_r or not pr_r:
-                      lines.extend([f"#### {backend}", "", f":warning: Could not parse {backend} results.", ""])
-                      continue
-                  lines.extend(build_np_table(base_r, pr_r, backend))
-                  lines.append("")
+          if not pr:
+              lines.append(":warning: No PR branch benchmark results found.")
+              body = "\n".join(lines)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+              sys.exit(0)
 
-          else:
-              # ── BDN mode ──
-              marker = "<!-- block-processing-benchmark-report -->"
-              base_outcome = os.environ["BASE_OUTCOME"]
-              pr_outcome = os.environ["PR_OUTCOME"]
+          # Build summary table
+          methods = [m for m in base if m in pr]
+          # Sort by baseline order: Baseline first, then alphabetical
+          methods.sort()
 
-              lines = [marker]
-              lines.append("### Block Processing Benchmark Comparison")
-              lines.append("")
-              lines.append(f"Run: [View workflow run]({run_url})")
-              lines.append(f"Base: `{base_sha}` | Head: `{head_sha}`")
-              lines.append("")
+          lines.append("| Method | Base (us) | PR (us) | Delta | Base CV | PR CV | Alloc Base | Alloc PR | Alloc Delta |")
+          lines.append("|--------|----------:|--------:|------:|--------:|------:|-----------:|---------:|------------:|")
 
-              if base_outcome != "success":
-                  lines.append(":x: **Base branch benchmark failed.** Check the workflow run for details.")
-              elif pr_outcome != "success":
-                  lines.append(":x: **PR branch benchmark failed.** Check the workflow run for details.")
-              else:
-                  base = load_results(os.environ["BASE_ARTIFACTS"])
-                  pr = load_results(os.environ["PR_ARTIFACTS"])
+          for m in methods:
+              b = base[m]
+              p = pr[m]
+              mean_d = delta_pct(p["mean"], b["mean"])
+              alloc_d = delta_pct(p["allocated"], b["allocated"])
+              lines.append(
+                  f"| {m} "
+                  f"| {fmt_us(b['mean'])} "
+                  f"| {fmt_us(p['mean'])} "
+                  f"| {fmt_delta(mean_d)}{indicator(mean_d)} "
+                  f"| {fmt_cv(b['mean'], b['stddev'])} "
+                  f"| {fmt_cv(p['mean'], p['stddev'])} "
+                  f"| {fmt_kb(b['allocated'])} KB "
+                  f"| {fmt_kb(p['allocated'])} KB "
+                  f"| {fmt_delta(alloc_d)} |"
+              )
 
-                  if not base:
-                      lines.append(":warning: No base branch benchmark results found.")
-                  elif not pr:
-                      lines.append(":warning: No PR branch benchmark results found.")
-                  else:
-                      methods = sorted(m for m in base if m in pr)
+          # Detailed stats in collapsible section
+          lines.append("")
+          lines.append("<details><summary>Detailed statistics</summary>")
+          lines.append("")
+          lines.append("| Method | Metric | Base | PR | Delta |")
+          lines.append("|--------|--------|-----:|---:|------:|")
 
-                      lines.append("| Method | Base (us) | PR (us) | Delta | Base CV | PR CV | Alloc Base | Alloc PR | Alloc Delta |")
-                      lines.append("|--------|----------:|--------:|------:|--------:|------:|-----------:|---------:|------------:|")
+          for m in methods:
+              b = base[m]
+              p = pr[m]
+              for metric, key in [("Mean", "mean"), ("Median", "median"),
+                                  ("P90", "p90"), ("P95", "p95"),
+                                  ("Min", "min"), ("Max", "max"),
+                                  ("StdDev", "stddev")]:
+                  d = delta_pct(p[key], b[key])
+                  lines.append(
+                      f"| {m} | {metric} "
+                      f"| {fmt_us(b[key])} us "
+                      f"| {fmt_us(p[key])} us "
+                      f"| {fmt_delta(d)} |"
+                  )
 
-                      for m in methods:
-                          b = base[m]
-                          p = pr[m]
-                          mean_d = delta_pct(p["mean"], b["mean"])
-                          alloc_d = delta_pct(p["allocated"], b["allocated"])
-                          lines.append(
-                              f"| {m} "
-                              f"| {fmt_us(b['mean'])} "
-                              f"| {fmt_us(p['mean'])} "
-                              f"| {fmt_delta(mean_d)}{indicator(mean_d)} "
-                              f"| {fmt_cv(b['mean'], b['stddev'])} "
-                              f"| {fmt_cv(p['mean'], p['stddev'])} "
-                              f"| {fmt_kb(b['allocated'])} KB "
-                              f"| {fmt_kb(p['allocated'])} KB "
-                              f"| {fmt_delta(alloc_d)} |"
-                          )
-
-                      lines.append("")
-                      lines.append("<details><summary>Detailed statistics</summary>")
-                      lines.append("")
-                      lines.append("| Method | Metric | Base | PR | Delta |")
-                      lines.append("|--------|--------|-----:|---:|------:|")
-
-                      for m in methods:
-                          b = base[m]
-                          p = pr[m]
-                          for metric, key in [("Mean", "mean"), ("Median", "median"),
-                                              ("P90", "p90"), ("P95", "p95"),
-                                              ("Min", "min"), ("Max", "max"),
-                                              ("StdDev", "stddev")]:
-                              d = delta_pct(p[key], b[key])
-                              lines.append(
-                                  f"| {m} | {metric} "
-                                  f"| {fmt_us(b[key])} us "
-                                  f"| {fmt_us(p[key])} us "
-                                  f"| {fmt_delta(d)} |"
-                              )
-
-                      lines.append("")
-                      lines.append("</details>")
+          lines.append("")
+          lines.append("</details>")
 
           body = "\n".join(lines)
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
@@ -466,13 +349,9 @@ jobs:
         uses: actions/github-script@v7
         env:
           COMMENT_BODY: ${{ steps.compare.outputs.body }}
-          MODE: ${{ needs.resolve-inputs.outputs.mode }}
         with:
           script: |
-            const mode = process.env.MODE || 'bdn';
-            const marker = mode === 'newpayload'
-              ? '<!-- newpayload-benchmark-report -->'
-              : '<!-- block-processing-benchmark-report -->';
+            const marker = '<!-- block-processing-benchmark-report -->';
             const body = process.env.COMMENT_BODY;
             if (!body) {
               console.log('No comment body produced, skipping.');
@@ -516,5 +395,4 @@ jobs:
           path: |
             ${{ runner.temp }}/bdn-base/results/
             ${{ runner.temp }}/bdn-pr/results/
-            ${{ runner.temp }}/newpayload-*.txt
           retention-days: 30

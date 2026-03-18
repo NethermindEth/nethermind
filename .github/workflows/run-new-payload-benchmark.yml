@@ -1,0 +1,287 @@
+name: Run NewPayload Benchmark
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      blocks:
+        description: "Number of measured blocks per backend"
+        required: false
+        default: "150"
+      warmup:
+        description: "Number of warmup blocks per backend"
+        required: false
+        default: "50"
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+  pull-requests: write
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  TERM: xterm
+  BENCHMARK_PROJECT: src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj
+
+jobs:
+  resolve-inputs:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.action == 'labeled' &&
+       startsWith(github.event.label.name, 'new-payload-benchmark') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.resolve.outputs.should_run }}
+      blocks: ${{ steps.resolve.outputs.blocks }}
+      warmup: ${{ steps.resolve.outputs.warmup }}
+    steps:
+      - name: Resolve workflow inputs
+        id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          LABEL_NAME: ${{ github.event.label.name }}
+          DISPATCH_BLOCKS: ${{ inputs.blocks }}
+          DISPATCH_WARMUP: ${{ inputs.warmup }}
+        run: |
+          set -euo pipefail
+          should_run="true"
+          blocks="150"
+          warmup="50"
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            blocks="${DISPATCH_BLOCKS:-150}"
+            warmup="${DISPATCH_WARMUP:-50}"
+          elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            if [[ "${LABEL_NAME:-}" != new-payload-benchmark* ]]; then
+              should_run="false"
+            fi
+          fi
+
+          {
+            echo "should_run=${should_run}"
+            echo "blocks=${blocks}"
+            echo "warmup=${warmup}"
+          } >> "${GITHUB_OUTPUT}"
+
+  benchmark:
+    needs: resolve-inputs
+    if: needs.resolve-inputs.outputs.should_run == 'true'
+    runs-on: benchmark
+    timeout-minutes: 60
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Build PR branch
+        run: |
+          dotnet restore ${{ env.BENCHMARK_PROJECT }}
+          dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
+
+      - name: Run NewPayload on PR (FlatState)
+        id: run-pr-flat
+        continue-on-error: true
+        run: |
+          dotnet run -c Release --no-build --project ${{ env.BENCHMARK_PROJECT }} \
+            -- --newpayload --backend FlatState \
+               --blocks ${{ needs.resolve-inputs.outputs.blocks }} \
+               --warmup ${{ needs.resolve-inputs.outputs.warmup }} \
+            | tee "${RUNNER_TEMP}/newpayload-pr-flat.txt"
+
+      - name: Run NewPayload on PR (Trie)
+        id: run-pr-trie
+        continue-on-error: true
+        run: |
+          dotnet run -c Release --no-build --project ${{ env.BENCHMARK_PROJECT }} \
+            -- --newpayload --backend Trie \
+               --blocks ${{ needs.resolve-inputs.outputs.blocks }} \
+               --warmup ${{ needs.resolve-inputs.outputs.warmup }} \
+            | tee "${RUNNER_TEMP}/newpayload-pr-trie.txt"
+
+      - name: Save PR benchmark files
+        run: |
+          cp -r src/Nethermind/Nethermind.Evm.Benchmark "${RUNNER_TEMP}/pr-bench-src"
+          cp Directory.Packages.props "${RUNNER_TEMP}/pr-Directory.Packages.props"
+
+      - name: Check out base branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha || 'master' }}
+          clean: false
+
+      - name: Overlay PR benchmark files onto base
+        run: |
+          rm -rf src/Nethermind/Nethermind.Evm.Benchmark
+          cp -r "${RUNNER_TEMP}/pr-bench-src" src/Nethermind/Nethermind.Evm.Benchmark
+          cp "${RUNNER_TEMP}/pr-Directory.Packages.props" Directory.Packages.props
+
+      - name: Build base branch
+        run: |
+          dotnet restore ${{ env.BENCHMARK_PROJECT }}
+          dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
+
+      - name: Run NewPayload on base (FlatState)
+        id: run-base-flat
+        continue-on-error: true
+        run: |
+          dotnet run -c Release --no-build --project ${{ env.BENCHMARK_PROJECT }} \
+            -- --newpayload --backend FlatState \
+               --blocks ${{ needs.resolve-inputs.outputs.blocks }} \
+               --warmup ${{ needs.resolve-inputs.outputs.warmup }} \
+            | tee "${RUNNER_TEMP}/newpayload-base-flat.txt"
+
+      - name: Run NewPayload on base (Trie)
+        id: run-base-trie
+        continue-on-error: true
+        run: |
+          dotnet run -c Release --no-build --project ${{ env.BENCHMARK_PROJECT }} \
+            -- --newpayload --backend Trie \
+               --blocks ${{ needs.resolve-inputs.outputs.blocks }} \
+               --warmup ${{ needs.resolve-inputs.outputs.warmup }} \
+            | tee "${RUNNER_TEMP}/newpayload-base-trie.txt"
+
+      - name: Compare and comment
+        id: compare
+        if: always()
+        shell: bash
+        env:
+          NP_BASE_FLAT: ${{ runner.temp }}/newpayload-base-flat.txt
+          NP_PR_FLAT: ${{ runner.temp }}/newpayload-pr-flat.txt
+          NP_BASE_TRIE: ${{ runner.temp }}/newpayload-base-trie.txt
+          NP_PR_TRIE: ${{ runner.temp }}/newpayload-pr-trie.txt
+          NP_BASE_FLAT_OUTCOME: ${{ steps.run-base-flat.outcome }}
+          NP_PR_FLAT_OUTCOME: ${{ steps.run-pr-flat.outcome }}
+          NP_BASE_TRIE_OUTCOME: ${{ steps.run-base-trie.outcome }}
+          NP_PR_TRIE_OUTCOME: ${{ steps.run-pr-trie.outcome }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || 'master' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PYEOF'
+          import re, os, sys
+
+          def parse_results(filepath):
+              if not os.path.exists(filepath):
+                  return None
+              with open(filepath) as f:
+                  text = f.read()
+              results = {}
+              for line in text.splitlines():
+                  line = line.strip()
+                  for key in ["Mean", "Median", "StdDev", "CV", "TrimmedMean", "TrimmedSD",
+                              "TrimmedCV", "Min", "Max", "P5", "P95", "P99"]:
+                      m = re.match(rf"^{key}:\s+([\d.]+)\s*(ms|%)", line)
+                      if m:
+                          results[key] = float(m.group(1))
+                          break
+                  m = re.match(r"^Blocks:\s+(\d+)", line)
+                  if m:
+                      results["Blocks"] = int(m.group(1))
+              return results if results else None
+
+          def fmt(val, unit="ms"):
+              return f"{val:.1f}%" if unit == "%" else f"{val:.2f} ms"
+
+          def delta_pct(pr_val, base_val):
+              if base_val == 0: return None
+              return ((pr_val - base_val) / base_val) * 100
+
+          def fmt_delta(pct):
+              if pct is None: return "n/a"
+              return f"{'+' if pct >= 0 else ''}{pct:.1f}%"
+
+          def indicator(pct):
+              if pct is None: return ""
+              if pct <= -3: return " :arrow_down:"
+              if pct >= 3: return " :arrow_up_small:"
+              return ""
+
+          def build_table(base_r, pr_r, name):
+              s = [f"#### {name}", ""]
+              s.append("| Metric | Base | PR | Delta |")
+              s.append("|--------|-----:|---:|------:|")
+              for key in ["TrimmedMean", "Mean", "Median", "P95", "P99", "Min", "Max"]:
+                  if key in base_r and key in pr_r:
+                      d = delta_pct(pr_r[key], base_r[key])
+                      s.append(f"| {key} | {fmt(base_r[key])} | {fmt(pr_r[key])} | {fmt_delta(d)}{indicator(d)} |")
+              for key in ["TrimmedCV", "CV"]:
+                  if key in base_r and key in pr_r:
+                      s.append(f"| {key} | {fmt(base_r[key], '%')} | {fmt(pr_r[key], '%')} | |")
+              if "Blocks" in base_r and "Blocks" in pr_r:
+                  s.append(f"| Blocks | {base_r['Blocks']} | {pr_r['Blocks']} | |")
+              return s
+
+          marker = "<!-- newpayload-benchmark-report -->"
+          run_url = os.environ["RUN_URL"]
+          base_sha = os.environ["BASE_SHA"][:8]
+          head_sha = os.environ["HEAD_SHA"][:8]
+
+          lines = [marker, "### engine_newPayload Benchmark Comparison", ""]
+          lines.append(f"Run: [View workflow run]({run_url})")
+          lines.append(f"Base: `{base_sha}` | Head: `{head_sha}`")
+          lines.append("")
+
+          for backend, base_env, pr_env, b_out_env, p_out_env in [
+              ("FlatState", "NP_BASE_FLAT", "NP_PR_FLAT", "NP_BASE_FLAT_OUTCOME", "NP_PR_FLAT_OUTCOME"),
+              ("Trie", "NP_BASE_TRIE", "NP_PR_TRIE", "NP_BASE_TRIE_OUTCOME", "NP_PR_TRIE_OUTCOME"),
+          ]:
+              b_out = os.environ.get(b_out_env, "")
+              p_out = os.environ.get(p_out_env, "")
+              if b_out != "success" or p_out != "success":
+                  lines.extend([f"#### {backend}", "", f":x: **{backend} failed.** (base={b_out}, pr={p_out})", ""])
+                  continue
+              base_r = parse_results(os.environ.get(base_env, ""))
+              pr_r = parse_results(os.environ.get(pr_env, ""))
+              if not base_r or not pr_r:
+                  lines.extend([f"#### {backend}", "", f":warning: Could not parse {backend} results.", ""])
+                  continue
+              lines.extend(build_table(base_r, pr_r, backend))
+              lines.append("")
+
+          body = "\n".join(lines)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+          PYEOF
+
+      - name: Post comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          COMMENT_BODY: ${{ steps.compare.outputs.body }}
+        with:
+          script: |
+            const marker = '<!-- newpayload-benchmark-report -->';
+            const body = process.env.COMMENT_BODY;
+            if (!body) { console.log('No body'); return; }
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newpayload-benchmark-results
+          path: ${{ runner.temp }}/newpayload-*.txt
+          retention-days: 30

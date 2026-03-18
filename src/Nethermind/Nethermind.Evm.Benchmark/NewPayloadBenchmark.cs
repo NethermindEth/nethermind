@@ -56,8 +56,8 @@ namespace Nethermind.Evm.Benchmark;
 /// </summary>
 public static class NewPayloadBenchmark
 {
-    private const int DefaultBlocks = 200;
-    private const int DefaultWarmupBlocks = 50;
+    private const int DefaultBlocks = 300;
+    private const int DefaultWarmupBlocks = 80;
 
     private static readonly Address Erc20Address = Address.FromNumber(0x1000);
     private static readonly Address SwapAddress = Address.FromNumber(0x2000);
