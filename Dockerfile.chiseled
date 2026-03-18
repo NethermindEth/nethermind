@@ -32,6 +32,10 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0.5-noble-chiseled@sha256:1191b4891ae8b1
 
 WORKDIR /nethermind
 
+# Cap GC region range to 32 GiB to prevent init failure (CLR_E_GC_OOM 0x8013200E)
+# when the runtime over-estimates available memory. Override with -e if needed.
+ENV DOTNET_GCRegionRange=0x800000000
+
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db
