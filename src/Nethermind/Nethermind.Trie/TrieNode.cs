@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -59,9 +60,9 @@ namespace Nethermind.Trie
             {
                 seqBefore = Volatile.Read(ref _rlpSeqAndLength);
                 if ((seqBefore >> 32 & 1) != 0) { spin.SpinOnce(); continue; }
-                Interlocked.MemoryBarrier();
+                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
                 array = _rlpArray;
-                Interlocked.MemoryBarrier();
+                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
                 seqAfter = Volatile.Read(ref _rlpSeqAndLength);
                 if (seqBefore == seqAfter) break;
                 spin.SpinOnce();
@@ -74,7 +75,7 @@ namespace Nethermind.Trie
         /// Atomically write _rlp using seqlock: odd sequence signals write-in-progress.
         /// CAS on even sequences only — if another writer is active (odd), spin until it completes.
         /// Last writer wins: all writers write the same resolved data for a given node.
-        /// Sequence uses bits 1-31 (30 bits, ~1 billion writes before wrap); bit 0 is the lock flag.
+        /// Sequence uses bits 1-31 (31 bits, ~2 billion writes before wrap); bit 0 is the lock flag.
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)] // CAS dominates latency; avoid code bloat at 5+ call sites
         internal void WriteRlp(CappedArray<byte> value)
@@ -100,6 +101,7 @@ namespace Nethermind.Trie
                     Volatile.Write(ref _rlpSeqAndLength, (ulong)doneSeq << 32 | (uint)value.Length);
                     return;
                 }
+                spin.SpinOnce(); // CAS failed — another writer raced; back off before retry
             }
         }
 

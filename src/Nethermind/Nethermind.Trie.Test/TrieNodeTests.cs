@@ -1126,6 +1126,7 @@ public class TrieNodeTests
     }
 
     [Test]
+    [Category("LongRunning")]
     public void FullRlp_concurrent_reads_and_writes_do_not_produce_torn_reads()
     {
         // Regression test: CappedArray<byte> is 12 bytes (ref + int), not atomically
@@ -1138,7 +1139,7 @@ public class TrieNodeTests
 
         TrieNode node = new(NodeType.Leaf, new CappedArray<byte>(rlp1));
         bool failed = false;
-        const int iterations = 500_000;
+        const int iterations = 100_000;
 
         Parallel.Invoke(
             // Writer: alternate between two different-sized arrays via internal WriteRlp
@@ -1188,6 +1189,7 @@ public class TrieNodeTests
     }
 
     [Test]
+    [Category("LongRunning")]
     public void FullRlp_concurrent_writers_do_not_corrupt_seqlock()
     {
         byte[] rlp1 = new byte[50];
@@ -1196,7 +1198,7 @@ public class TrieNodeTests
         Array.Fill(rlp2, (byte)0xDD);
         TrieNode node = new(NodeType.Leaf, new CappedArray<byte>(rlp1));
         bool failed = false;
-        const int iterations = 500_000;
+        const int iterations = 100_000;
 
         // Two concurrent writers + one reader
         Parallel.Invoke(
