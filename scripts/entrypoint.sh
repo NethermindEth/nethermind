@@ -24,7 +24,7 @@ if [[ -z "${DOTNET_GCLargePages:-}" ]]; then
     # Use 37.5% of available memory (= 75% / 2) so the 2x commit stays within 75%,
     # leaving 25% headroom for native allocations, RocksDB, stack, etc.
     # Final value: min(32 GiB, available_memory * 37.5%, cgroup_limit * 37.5%, free_hugepages).
-    min_useful=$((4 * 1024 * 1024 * 1024)) # 4 GiB — below this large pages aren't worth the constraints
+    min_useful=$((18 * 1024 * 1024 * 1024)) # 18 GiB — minimum useful GC heap for Nethermind (~48 GiB available memory)
     max_range=$((32 * 1024 * 1024 * 1024))  # 32 GiB cap
 
     # Read available physical memory from /proc/meminfo (bytes)
