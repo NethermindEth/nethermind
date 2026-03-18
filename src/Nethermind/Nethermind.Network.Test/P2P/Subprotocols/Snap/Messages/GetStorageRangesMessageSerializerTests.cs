@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -67,7 +68,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
                 StorageRange = new()
                 {
                     RootHash = TestItem.KeccakA,
-                    Accounts = Enumerable.Repeat(new PathWithAccount(TestItem.KeccakA, null), 4_097).ToPooledList(4_097),
+                    Accounts = Enumerable.Repeat(new PathWithAccount(TestItem.KeccakA, null), SnapMessageLimits.MaxRequestAccounts + 1).ToPooledList(SnapMessageLimits.MaxRequestAccounts + 1),
                     StartingHash = TestItem.KeccakB,
                     LimitHash = TestItem.KeccakC
                 },

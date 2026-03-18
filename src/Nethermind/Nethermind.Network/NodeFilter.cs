@@ -57,6 +57,12 @@ public sealed class NodeFilter
     public static bool IsLoopbackOrPrivateOrLinkLocal(IPAddress ipAddress)
         => IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(ipAddress);
 
+    public static bool IsIPv4Multicast(IPAddress ipAddress)
+    {
+        byte[] bytes = ipAddress.GetAddressBytes();
+        return bytes.Length == 4 && bytes[0] is >= 224 and <= 239;
+    }
+
     /// <summary>
     /// Checks whether <paramref name="ipAddress"/> should be accepted.
     /// Returns <c>true</c> if the address was not seen recently, <c>false</c> if it was.

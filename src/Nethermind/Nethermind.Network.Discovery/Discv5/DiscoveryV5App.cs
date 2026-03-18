@@ -210,10 +210,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         => IsDiscoveryAddressAcceptable(ipAddress, allowNonRoutable: false);
 
     private static bool IsIPv4Multicast(IPAddress ipAddress)
-    {
-        byte[] bytes = ipAddress.GetAddressBytes();
-        return bytes.Length == 4 && bytes[0] is >= 224 and <= 239;
-    }
+        => NodeFilter.IsIPv4Multicast(ipAddress);
 
     private static bool ShouldAcceptNonRoutableEnrs(IPAddress externalIp)
         => !IPAddress.Any.Equals(externalIp)

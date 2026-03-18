@@ -182,7 +182,7 @@ public class DiscoveryManager : IDiscoveryManager
 
         if (!isPersisted && !isTrusted && !_nodesFilter.TryAccept(node.Address.Address))
         {
-            if (_logger.IsTrace) LogTrace(node);
+            if (_logger.IsTrace) TraceNodeFilteredByRateLimit(node);
             return null;
         }
 
@@ -191,7 +191,7 @@ public class DiscoveryManager : IDiscoveryManager
             : _nodeLifecycleManagers.GetOrAdd(node.IdHash, _createNodeLifecycleManager, node);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogTrace(Node node) => _logger.Trace($"Node filtered from discovery manager, address: {node.Address}, id: {node.Id}");
+        void TraceNodeFilteredByRateLimit(Node node) => _logger.Trace($"Node filtered from discovery manager, address: {node.Address}, id: {node.Id}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void LogDebug(Node node) => _logger.Debug($"Node is not listening - Port 0, blocking add to discovery, id: {node.Id}");

@@ -6,6 +6,7 @@ using FluentAssertions;
 using System.Linq;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
@@ -106,14 +107,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Deserialize_Throws_On_TooMany_Path_Groups()
         {
-            PathGroup[] groups = Enumerable.Range(0, 4_097).Select(static _ => new PathGroup { Group = [TestItem.RandomDataA] }).ToArray();
+            PathGroup[] groups = Enumerable.Range(0, SnapMessageLimits.MaxRequestPathGroups + 1).Select(static _ => new PathGroup { Group = [TestItem.RandomDataA] }).ToArray();
             AssertDeserializeThrows(PathGroup.EncodeToRlpPathGroupList(groups));
         }
 
         [Test]
         public void Deserialize_Throws_On_TooMany_Paths_Per_Group()
         {
-            byte[][] paths = Enumerable.Range(0, 1_025).Select(static _ => TestItem.RandomDataA).ToArray();
+            byte[][] paths = Enumerable.Range(0, SnapMessageLimits.MaxRequestPathsPerGroup + 1).Select(static _ => TestItem.RandomDataA).ToArray();
             AssertDeserializeThrows(PathGroup.EncodeToRlpPathGroupList([new() { Group = paths }]));
         }
 
