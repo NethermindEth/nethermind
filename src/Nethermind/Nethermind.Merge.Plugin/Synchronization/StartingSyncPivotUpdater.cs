@@ -18,7 +18,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class StartingSyncPivotUpdater
+public class StartingSyncPivotUpdater : IDisposable
 {
     private const string Pivot = "pivot";
     private readonly IBlockTree _blockTree;
@@ -34,6 +34,7 @@ public class StartingSyncPivotUpdater
     private static int _maxAttempts;
     private int _attemptsLeft;
     private int _updateInProgress;
+    private int _disposed;
     private Hash256 _alreadyAnnouncedNewPivotHash = Keccak.Zero;
 
     public StartingSyncPivotUpdater(IBlockTree blockTree,
@@ -235,5 +236,15 @@ public class StartingSyncPivotUpdater
             if (_logger.IsInfo) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}");
             _alreadyAnnouncedNewPivotHash = finalizedBlockHash;
         }
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
+        _syncModeSelector.Changed -= OnSyncModeChanged;
+        _cancellation.Cancel();
+        _cancellation.Dispose();
     }
 }
