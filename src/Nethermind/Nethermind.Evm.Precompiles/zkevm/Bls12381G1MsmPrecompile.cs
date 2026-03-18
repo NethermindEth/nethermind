@@ -11,8 +11,6 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Bls12381G1MsmPrecompile
 {
-    private const int PairLength = Eip2537.LenG1 + Eip2537.LenFr;
-    private const int TrimmedPairLength = Eip2537.LenG1Trimmed + Eip2537.LenFr;
     private const int StackallocPairCountThreshold = 8;
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
@@ -26,93 +24,95 @@ public partial class Bls12381G1MsmPrecompile
     }
 
     [SkipLocalsInit]
-    private static Result<byte[]> Msm(ReadOnlySpan<byte> inputData, int pairCount)
+    private static Result<byte[]> Msm(ReadOnlySpan<byte> input, int pairCount)
     {
-        int inputLength = pairCount * TrimmedPairLength;
+        int decodedLen = pairCount * (Eip2537.LenG1Trimmed + Eip2537.LenFr);
 
         if (pairCount <= StackallocPairCountThreshold)
         {
-            Span<byte> input = stackalloc byte[inputLength];
+            Span<byte> decoded = stackalloc byte[decodedLen];
 
-            if (!TryDecodeInput(inputData, input, pairCount))
-                return Errors.InvalidFieldElementTopBytes;
-
-            Span<byte> output = stackalloc byte[Eip2537.LenG1Trimmed];
-
-            byte status = ZiskBindings.Crypto.bls12_381_g1_msm_c(output, input, (nuint)pairCount);
-
-            return HandleResult(output, status);
+            return MsmCore(input, decoded, pairCount);
         }
-
-        byte[] inputBuffer = ArrayPool<byte>.Shared.Rent(inputLength);
-
-        try
+        else
         {
-            Span<byte> input = inputBuffer.AsSpan(0, inputLength);
+            byte[] decoded = ArrayPool<byte>.Shared.Rent(decodedLen);
 
-            if (!TryDecodeInput(inputData, input, pairCount))
-                return Errors.InvalidFieldElementTopBytes;
-
-            Span<byte> output = stackalloc byte[Eip2537.LenG1Trimmed];
-
-            byte status = ZiskBindings.Crypto.bls12_381_g1_msm_c(output, input, (nuint)pairCount);
-
-            return HandleResult(output, status);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(inputBuffer);
+            try
+            {
+                return MsmCore(input, decoded, pairCount);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(decoded);
+            }
         }
     }
 
-    [SkipLocalsInit]
-    private static Result<byte[]> Mul(ReadOnlySpan<byte> inputData)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Result<byte[]> MsmCore(ReadOnlySpan<byte> input, Span<byte> decoded, int pairCount)
     {
-        Span<byte> input = stackalloc byte[Eip2537.LenG1Trimmed + Eip2537.LenFr];
-
-        if (!Eip2537.TryDecodeG1(inputData[..Eip2537.LenG1], input[..Eip2537.LenG1Trimmed]))
+        if (!TryDecodeInput(input, decoded, pairCount))
             return Errors.InvalidFieldElementTopBytes;
-
-        inputData[Eip2537.LenG1..].CopyTo(input[Eip2537.LenG1Trimmed..]);
 
         Span<byte> output = stackalloc byte[Eip2537.LenG1Trimmed];
 
-        byte status = ZiskBindings.Crypto.bls12_381_g1_msm_c(output, input, (nuint)1);
+        byte status = ZiskBindings.Crypto.bls12_381_g1_msm_c(output, decoded, (nuint)pairCount);
+
+        return HandleResult(output, status);
+    }
+
+    [SkipLocalsInit]
+    private static Result<byte[]> Mul(ReadOnlySpan<byte> input)
+    {
+        Span<byte> decoded = stackalloc byte[Eip2537.LenG1Trimmed + Eip2537.LenFr];
+
+        if (!Eip2537.TryDecodeG1(input[..Eip2537.LenG1], decoded[..Eip2537.LenG1Trimmed]))
+            return Errors.InvalidFieldElementTopBytes;
+
+        input[Eip2537.LenG1..].CopyTo(decoded[Eip2537.LenG1Trimmed..]);
+
+        Span<byte> output = stackalloc byte[Eip2537.LenG1Trimmed];
+
+        byte status = ZiskBindings.Crypto.bls12_381_g1_msm_c(output, decoded, (nuint)1);
 
         return HandleResult(output, status);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryDecodeInput(ReadOnlySpan<byte> inputData, Span<byte> packedInput, int pairCount)
+    private static bool TryDecodeInput(ReadOnlySpan<byte> input, Span<byte> decoded, int pairCount)
     {
         int srcOffset = 0;
         int dstOffset = 0;
 
         for (int i = 0; i < pairCount; i++)
         {
-            if (!Eip2537.TryDecodeG1(inputData.Slice(srcOffset, Eip2537.LenG1), packedInput.Slice(dstOffset, Eip2537.LenG1Trimmed)))
+            if (!Eip2537.TryDecodeG1(input.Slice(srcOffset, Eip2537.LenG1), decoded.Slice(dstOffset, Eip2537.LenG1Trimmed)))
                 return false;
 
-            inputData.Slice(srcOffset + Eip2537.LenG1, Eip2537.LenFr)
-                .CopyTo(packedInput.Slice(dstOffset + Eip2537.LenG1Trimmed, Eip2537.LenFr));
+            srcOffset += Eip2537.LenG1;
+            dstOffset += Eip2537.LenG1Trimmed;
 
-            srcOffset += PairLength;
-            dstOffset += TrimmedPairLength;
+            input.Slice(srcOffset, Eip2537.LenFr).CopyTo(decoded.Slice(dstOffset, Eip2537.LenFr));
+
+            srcOffset += Eip2537.LenFr;
+            dstOffset += Eip2537.LenFr;
         }
 
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static Result<byte[]> HandleResult(Span<byte> output, byte status)
     {
         if (status <= 1)
         {
-            byte[] outputData = new byte[Eip2537.LenG1];
+            byte[] encoded = new byte[Eip2537.LenG1];
 
             if (status == 0)
-                Eip2537.EncodeG1(output, outputData);
+                Eip2537.EncodeG1(output, encoded);
 
-            return outputData;
+            return encoded;
         }
 
         if (status == 3 && !Eip2537.DisableSubgroupChecks)

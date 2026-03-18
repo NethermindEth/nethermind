@@ -14,22 +14,22 @@ public partial class Bls12381Fp2ToG2Precompile
         if (!ValidateInputLength(inputData))
             return Errors.InvalidInputLength;
 
-        Span<byte> input = stackalloc byte[Eip2537.LenFpTrimmed * 2];
+        Span<byte> decoded = stackalloc byte[Eip2537.LenFpTrimmed * 2];
 
-        if (!Eip2537.TryDecodeFp2(inputData.Span, input))
+        if (!Eip2537.TryDecodeFp2(inputData.Span, decoded))
             return Errors.InvalidFieldElementTopBytes;
 
         Span<byte> output = stackalloc byte[Eip2537.LenG2Trimmed];
 
-        byte status = ZiskBindings.Crypto.bls12_381_fp2_to_g2_c(output, input);
+        byte status = ZiskBindings.Crypto.bls12_381_fp2_to_g2_c(output, decoded);
 
         if (status == 0)
         {
-            byte[] outputData = new byte[Eip2537.LenG2];
+            byte[] encoded = new byte[Eip2537.LenG2];
 
-            Eip2537.EncodeG2(output, outputData);
+            Eip2537.EncodeG2(output, encoded);
 
-            return outputData;
+            return encoded;
         }
 
         return Errors.Failed;

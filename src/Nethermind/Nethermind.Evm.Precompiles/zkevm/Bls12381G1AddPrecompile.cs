@@ -14,12 +14,12 @@ public partial class Bls12381G1AddPrecompile
         if (!ValidateInputLength(inputData))
             return Errors.InvalidInputLength;
 
-        Span<byte> input = stackalloc byte[Eip2537.LenG1Trimmed * 2];
+        Span<byte> decoded = stackalloc byte[Eip2537.LenG1Trimmed * 2];
 
-        if (!Eip2537.TryDecodeG1(inputData.Span[..Eip2537.LenG1], input[..Eip2537.LenG1Trimmed]))
+        if (!Eip2537.TryDecodeG1(inputData.Span[..Eip2537.LenG1], decoded[..Eip2537.LenG1Trimmed]))
             return Errors.InvalidFieldElementTopBytes;
 
-        if (!Eip2537.TryDecodeG1(inputData.Span[Eip2537.LenG1..], input[Eip2537.LenG1Trimmed..]))
+        if (!Eip2537.TryDecodeG1(inputData.Span[Eip2537.LenG1..], decoded[Eip2537.LenG1Trimmed..]))
             return Errors.InvalidFieldElementTopBytes;
 
         Span<byte> output = stackalloc byte[Eip2537.LenG1Trimmed];
@@ -27,16 +27,16 @@ public partial class Bls12381G1AddPrecompile
         // TODO: consider matching error codes with std implementation
 
         byte status = ZiskBindings.Crypto.bls12_381_g1_add_c(
-            output, input[..Eip2537.LenG1Trimmed], input[Eip2537.LenG1Trimmed..]);
+            output, decoded[..Eip2537.LenG1Trimmed], decoded[Eip2537.LenG1Trimmed..]);
 
         if (status <= 1)
         {
-            byte[] outputData = new byte[Eip2537.LenG1];
+            byte[] encoded = new byte[Eip2537.LenG1];
 
             if (status == 0)
-                Eip2537.EncodeG1(output, outputData);
+                Eip2537.EncodeG1(output, encoded);
 
-            return outputData;
+            return encoded;
         }
 
         return Errors.Failed;

@@ -14,22 +14,22 @@ public partial class Bls12381FpToG1Precompile
         if (!ValidateInputLength(inputData))
             return Errors.InvalidInputLength;
 
-        Span<byte> input = stackalloc byte[Eip2537.LenFpTrimmed];
+        Span<byte> decoded = stackalloc byte[Eip2537.LenFpTrimmed];
 
-        if (!Eip2537.TryDecodeFp(inputData.Span, input))
+        if (!Eip2537.TryDecodeFp(inputData.Span, decoded))
             return Errors.InvalidFieldElementTopBytes;
 
         Span<byte> output = stackalloc byte[Eip2537.LenG1Trimmed];
 
-        byte status = ZiskBindings.Crypto.bls12_381_fp_to_g1_c(output, input);
+        byte status = ZiskBindings.Crypto.bls12_381_fp_to_g1_c(output, decoded);
 
         if (status == 0)
         {
-            byte[] outputData = new byte[Eip2537.LenG1];
+            byte[] encoded = new byte[Eip2537.LenG1];
 
-            Eip2537.EncodeG1(output, outputData);
+            Eip2537.EncodeG1(output, encoded);
 
-            return outputData;
+            return encoded;
         }
 
         return Errors.Failed;
