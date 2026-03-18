@@ -249,8 +249,6 @@ jobs:
 
           echo "=== .nettrace files (EventPipe method traces) ==="
           find "${RUNNER_TEMP}/pgo-data" -name "*.nettrace" -type f -ls 2>/dev/null || true
-          echo "=== .jit files (edge/block profiling data) ==="
-          find "${RUNNER_TEMP}/pgo-data" -name "*.jit" -type f -ls 2>/dev/null || true
 
       - name: Set up .NET
         if: always()
@@ -331,9 +329,6 @@ jobs:
           fi
           dotnet-pgo create-mibc "${create_mibc_args[@]}"
 
-          # .jit files (from DOTNET_WritePGOData) use a JIT-internal text format read
-          # back via DOTNET_ReadPGOData — they can't be merged into .mibc by dotnet-pgo.
-          # They're uploaded as a separate artifact for optional runtime-level PGO.
           cp "${trace_mibc}" "${mibc_file}"
 
           echo "Generated .mibc profile:"
