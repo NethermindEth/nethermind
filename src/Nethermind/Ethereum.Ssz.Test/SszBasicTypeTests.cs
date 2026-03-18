@@ -15,8 +15,6 @@ namespace Ethereum.Ssz.Test;
 [TestFixture]
 public class SszBasicTypeTests
 {
-    // --- Boolean ---
-
     [TestCaseSource(nameof(BooleanValidCases))]
     public void Boolean_valid(string casePath)
     {
@@ -53,8 +51,6 @@ public class SszBasicTypeTests
         }
     }
 
-    // --- Uint8 ---
-
     [TestCaseSource(nameof(Uint8ValidCases))]
     public void Uint8_valid(string casePath)
     {
@@ -80,8 +76,6 @@ public class SszBasicTypeTests
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
         Assert.That(() => SszEncoder.DecodeByte(ssz.AsSpan()), Throws.InstanceOf<Exception>());
     }
-
-    // --- Uint16 ---
 
     [TestCaseSource(nameof(Uint16ValidCases))]
     public void Uint16_valid(string casePath)
@@ -109,8 +103,6 @@ public class SszBasicTypeTests
         Assert.That(() => SszEncoder.DecodeUShort(ssz.AsSpan()), Throws.InstanceOf<Exception>());
     }
 
-    // --- Uint32 ---
-
     [TestCaseSource(nameof(Uint32ValidCases))]
     public void Uint32_valid(string casePath)
     {
@@ -136,8 +128,6 @@ public class SszBasicTypeTests
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
         Assert.That(() => SszEncoder.DecodeUInt(ssz.AsSpan()), Throws.InstanceOf<Exception>());
     }
-
-    // --- Uint64 ---
 
     [TestCaseSource(nameof(Uint64ValidCases))]
     public void Uint64_valid(string casePath)
@@ -165,8 +155,6 @@ public class SszBasicTypeTests
         Assert.That(() => SszEncoder.DecodeULong(ssz.AsSpan()), Throws.InstanceOf<Exception>());
     }
 
-    // --- Uint128 ---
-
     [TestCaseSource(nameof(Uint128ValidCases))]
     public void Uint128_valid(string casePath)
     {
@@ -192,8 +180,6 @@ public class SszBasicTypeTests
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
         Assert.That(() => SszEncoder.DecodeUInt128(ssz.AsSpan()), Throws.InstanceOf<Exception>());
     }
-
-    // --- Uint256 ---
 
     [TestCaseSource(nameof(Uint256ValidCases))]
     public void Uint256_valid(string casePath)
@@ -221,8 +207,6 @@ public class SszBasicTypeTests
         Assert.That(() => SszEncoder.DecodeUInt256(ssz.AsSpan()), Throws.InstanceOf<Exception>());
     }
 
-    // --- Helpers ---
-
     private static string ReadYamlValue(string filePath)
     {
         using StreamReader reader = new(filePath);
@@ -231,11 +215,6 @@ public class SszBasicTypeTests
         YamlScalarNode rootNode = (YamlScalarNode)yaml.Documents[0].RootNode;
         return rootNode.Value!;
     }
-
-    // --- Test case sources ---
-    // Structure: handler/valid/{case_name}/ and handler/invalid/{case_name}/
-    // For uints, case names are like "uint_8_max", "uint_16_random_0", etc.
-    // We filter by prefix "uint_{bits}_" to select the right type.
 
     private static IEnumerable<TestCaseData> BooleanValidCases() => GetCases("boolean", "valid");
     private static IEnumerable<TestCaseData> BooleanInvalidCases() => GetCases("boolean", "invalid");
