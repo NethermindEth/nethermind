@@ -111,6 +111,7 @@ public class EraExporter(
 
             ValueHash256 accumulator;
             ValueHash256 sha256;
+            Hash256 lastBlockHash = Keccak.Zero;
 
             using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider, beaconRootsProvider))
             {
@@ -129,6 +130,7 @@ public class EraExporter(
                         throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.");
 
                     await eraWriter.Add(block, receipts, cancel);
+                    lastBlockHash = block.Hash!;
 
                     if ((Interlocked.Increment(ref totalProcessed) % 10000) == 0)
                     {
@@ -142,10 +144,8 @@ public class EraExporter(
 
             accumulators[(int)epochIdx] = accumulator;
             checksums[(int)epochIdx] = sha256;
-            // Pre-merge epochs: use accumulator root in filename (standard era1 convention).
-            // Post-merge epochs: accumulator is zero — use SHA-256 checksum instead (standard .era convention).
-            ValueHash256 filenameHash = accumulator == default ? sha256 : accumulator;
-            string finalName = EraPathUtils.Filename(_networkName, epoch, new Hash256(filenameHash));
+            // Filename uses the last block hash as the epoch identifier — same convention as go-ethereum execdb.
+            string finalName = EraPathUtils.Filename(_networkName, epoch, lastBlockHash);
             fileNames[(int)epochIdx] = finalName;
 
             string rename = Path.Combine(destinationPath, finalName);
