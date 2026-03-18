@@ -309,11 +309,27 @@ jobs:
             exit 1
           fi
 
+          # Extract Nethermind assemblies from the PGO image so dotnet-pgo can resolve
+          # generic method signatures against R2R tables
+          ref_dir="${RUNNER_TEMP}/nethermind-ref"
+          cid=$(docker create "nethermindeth/nethermind:${{ env.PGO_TAG }}" --entrypoint /bin/true 2>/dev/null || true)
+          if [[ -n "${cid}" ]]; then
+            docker cp "${cid}:/nethermind/" "${ref_dir}/" 2>/dev/null || true
+            docker rm "${cid}" >/dev/null 2>&1 || true
+          fi
+
           echo "Converting ${trace_file} to .mibc..."
           trace_mibc="${RUNNER_TEMP}/trace.mibc"
-          dotnet-pgo create-mibc \
-            --trace "${trace_file}" \
+          create_mibc_args=(
+            --trace "${trace_file}"
             --output "${trace_mibc}"
+          )
+          if [[ -d "${ref_dir}" ]]; then
+            for dll in "${ref_dir}"/*.dll; do
+              create_mibc_args+=(--reference "${dll}")
+            done
+          fi
+          dotnet-pgo create-mibc "${create_mibc_args[@]}"
 
           # .jit files (from DOTNET_WritePGOData) use a JIT-internal text format read
           # back via DOTNET_ReadPGOData — they can't be merged into .mibc by dotnet-pgo.
