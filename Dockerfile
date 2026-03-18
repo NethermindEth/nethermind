@@ -12,14 +12,15 @@ ARG TARGETARCH
 WORKDIR /nethermind
 
 COPY src/Nethermind src/Nethermind
-COPY Directory.*.props .
+COPY Directory.*.props Directory.Build.targets ./
 COPY global.json .
 COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \
   dotnet restore --locked-mode && \
-  dotnet publish -c $BUILD_CONFIG -a $arch -o /publish --no-restore --no-self-contained \
+  dotnet restore -r "linux-${arch}" -p:PublishReadyToRun=true && \
+  dotnet publish -c $BUILD_CONFIG -r "linux-${arch}" -o /publish --no-restore --no-self-contained \
     -p:SourceRevisionId=$COMMIT_HASH
 
 # A temporary symlink to support the old executable name
@@ -36,5 +37,6 @@ VOLUME /nethermind/nethermind_db
 EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
+COPY scripts/entrypoint.sh .
 
-ENTRYPOINT ["./nethermind"]
+ENTRYPOINT ["./entrypoint.sh"]

@@ -1,5 +1,7 @@
 <Project>
 
+  <Import Project="../../Directory.Build.targets" />
+
   <!-- Share native runtimes dir across projects during with a shared location and junctions/symlinks.
     Enable with `-p:SaveDiskSpace=true` or an environment variable. -->
   <PropertyGroup Condition="'$(SaveDiskSpace)' == 'true'">
