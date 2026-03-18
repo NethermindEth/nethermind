@@ -1,54 +1,56 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
-namespace Nethermind.Crypto
+namespace Nethermind.Crypto;
+
+public sealed class PrivateKeyGenerator : IPrivateKeyGenerator, IDisposable
 {
-    public class PrivateKeyGenerator : IPrivateKeyGenerator, IDisposable
+    private readonly ICryptoRandom _cryptoRandom;
+    private readonly bool _disposeRandom = false;
+
+    public PrivateKeyGenerator()
     {
-        private readonly ICryptoRandom _cryptoRandom;
-        private readonly bool _disposeRandom = false;
+        _cryptoRandom = new CryptoRandom();
+        _disposeRandom = true;
+    }
 
-        public PrivateKeyGenerator()
-        {
-            _cryptoRandom = new CryptoRandom();
-            _disposeRandom = true;
-        }
+    public PrivateKeyGenerator(ICryptoRandom cryptoRandom)
+    {
+        _cryptoRandom = cryptoRandom;
+    }
 
-        public PrivateKeyGenerator(ICryptoRandom cryptoRandom)
+    public PrivateKey Generate()
+    {
+        do
         {
-            _cryptoRandom = cryptoRandom;
-        }
-
-        public PrivateKey Generate()
-        {
-            return Generate(1).First();
-        }
-        public IEnumerable<PrivateKey> Generate(int number)
-        {
-            do
+            byte[] bytes = _cryptoRandom.GenerateRandomBytes(32);
+            if (SecP256k1.VerifyPrivateKey(bytes))
             {
-                var bytes = _cryptoRandom.GenerateRandomBytes(32);
-                if (SecP256k1.VerifyPrivateKey(bytes))
-                {
-                    yield return new PrivateKey(bytes);
-                    if (--number == 0)
-                    {
-                        yield break;
-                    }
-                }
-            } while (true);
-        }
-
-        public void Dispose()
-        {
-            if (_disposeRandom)
-            {
-                _cryptoRandom.Dispose();
+                return new PrivateKey(bytes);
             }
+        } while (true);
+    }
+
+    public IEnumerable<PrivateKey> Generate(int number)
+    {
+        do
+        {
+            yield return Generate();
+            if (--number == 0)
+            {
+                yield break;
+            }
+        } while (true);
+    }
+
+    public void Dispose()
+    {
+        if (_disposeRandom)
+        {
+            _cryptoRandom.Dispose();
         }
     }
 }

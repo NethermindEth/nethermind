@@ -5,6 +5,7 @@ using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -60,6 +61,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             int pwasCheck = ctx.ReadSequenceLength() + ctx.Position;
             int count = ctx.PeekNumberOfItemsRemaining(pwasCheck);
+            ctx.GuardLimit(count, SnapMessageLimits.AccountRangeEntriesRlpLimit);
             ArrayPoolList<PathWithAccount> pathsWithAccounts = new(count);
             for (int i = 0; i < count; i++)
             {
