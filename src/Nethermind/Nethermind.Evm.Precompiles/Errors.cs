@@ -8,7 +8,9 @@ public static class Errors
     public const string InvalidInputLength = "invalid input length";
     public const string InvalidFieldLength = "invalid field element length";
     public const string InvalidFieldElementTopBytes = "invalid field element top bytes";
+    public const string G1NotOnCurve = "g1 point is not on curve";
     public const string G1PointSubgroup = "g1 point is not on correct subgroup";
+    public const string G2NotOnCurve = "g2 point is not on curve";
     public const string G2PointSubgroup = "g2 point is not on correct subgroup";
 
     public const string InvalidFinalFlag = "invalid final flag";
