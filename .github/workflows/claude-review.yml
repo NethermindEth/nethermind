@@ -28,7 +28,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0
+          fetch-depth: 100
 
       - name: Run Claude Code
         id: claude
@@ -56,7 +56,7 @@ jobs:
               }
             }
           prompt: |
-            Review this pull request using a dual-review strategy:
+            When reviewing a pull request, use a dual-review strategy:
 
             1. **Dispatch subagent**: Use the Agent tool to launch a subagent that invokes the "review" skill via the Skill tool. The subagent should return ALL findings as structured text — this raw output will be included verbatim in the report.
             2. **Your own review**: In parallel, do your own independent review of the PR diff.
