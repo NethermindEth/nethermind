@@ -14,6 +14,7 @@ public static class ChainUtils
         chainId == BlockchainIds.Gnosis
             ? spec switch
             {
+                Amsterdam => Amsterdam.Instance,
                 Prague => PragueGnosis.Instance,
                 Cancun => CancunGnosis.Instance,
                 Shanghai => ShanghaiGnosis.Instance,
