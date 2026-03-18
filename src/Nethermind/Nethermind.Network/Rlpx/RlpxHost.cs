@@ -368,7 +368,7 @@ namespace Nethermind.Network.Rlpx
 
             // below comment may arise from not understanding the quiet period but the resolution is correct
             // we need to add additional timeout on our side as netty is not executing internal timeout properly, often it just hangs forever on closing
-            CancellationTokenSource delayCancellation = new();
+            using CancellationTokenSource delayCancellation = new();
             if (await Task.WhenAny(closingTask, Task.Delay(Timeouts.TcpClose, delayCancellation.Token)) != closingTask)
             {
                 if (_logger.IsDebug) _logger.Debug($"Could not close rlpx connection in {Timeouts.TcpClose.TotalSeconds} seconds");
