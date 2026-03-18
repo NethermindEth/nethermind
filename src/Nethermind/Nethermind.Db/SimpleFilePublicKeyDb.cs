@@ -60,7 +60,11 @@ namespace Nethermind.Db
             set => Set(key, value);
         }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _cacheSpan[key];
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            _cacheSpan.TryGetValue(key, out byte[]? value);
+            return value;
+        }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {

@@ -1,23 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
-using Nethermind.Core.Specs;
+namespace Nethermind.Specs.Forks;
 
-namespace Nethermind.Specs.Forks
+public class Berlin() : NamedReleaseSpec<Berlin>(MuirGlacier.Instance)
 {
-    public class Berlin : MuirGlacier
+    public override void Apply(ReleaseSpec spec)
     {
-        private static IReleaseSpec _instance;
-
-        protected Berlin()
-        {
-            Name = "Berlin";
-            IsEip2565Enabled = true;
-            IsEip2929Enabled = true;
-            IsEip2930Enabled = true;
-        }
-
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Berlin());
+        spec.Name = "Berlin";
+        spec.IsEip2565Enabled = true;
+        spec.IsEip2929Enabled = true;
+        spec.IsEip2930Enabled = true;
     }
 }

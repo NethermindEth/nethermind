@@ -39,14 +39,11 @@ public class XdcModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
-        builder.AddStep(typeof(XdcInitializeNetwork));
-
         base.Load(builder);
 
-        // Register custom RocksDb config factory that handles XdcSnapshots without validation
-        builder.AddDecorator<IRocksDbConfigFactory, XdcRocksDbConfigFactory>();
-
         builder
+            .AddDecorator<IRocksDbConfigFactory, XdcRocksDbConfigFactory>() // Register custom RocksDb config factory that handles XdcSnapshots without validation
+            .AddProtocolHandler<P2P.XdcProtocolHandler>() // Register XDC protocol handler using clean DSL (intercepts ETH protocol version 100)
             .AddStep(typeof(InitializeBlockchainXdc))
             .Intercept<ChainSpec>(XdcChainSpecLoader.ProcessChainSpec)
             .AddSingleton<ISpecProvider, XdcChainSpecBasedSpecProvider>()
