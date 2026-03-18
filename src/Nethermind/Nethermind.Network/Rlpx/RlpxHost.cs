@@ -427,7 +427,15 @@ namespace Nethermind.Network.Rlpx
             public void DetachAndDispose()
             {
                 Detach();
-                _session.Dispose();
+                try
+                {
+                    _session.MarkDisconnected(DisconnectReason.AppClosing, DisconnectType.Local, "shutdown");
+                    _session.Dispose();
+                }
+                catch (InvalidOperationException)
+                {
+                    // Session may already be disposed or in a state that doesn't allow disposal
+                }
             }
 
             private void RefreshNodeFilter(object? _, PeerEventArgs __)
