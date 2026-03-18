@@ -241,7 +241,6 @@ public class StartingSyncPivotUpdater : IDisposable
     public void Dispose()
     {
         _syncModeSelector.Changed -= OnSyncModeChanged;
-        _cancellation.Cancel();
-        _cancellation.Dispose();
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellation);
     }
 }
