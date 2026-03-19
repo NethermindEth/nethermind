@@ -66,4 +66,10 @@ if [[ -z "${DOTNET_GCLargePages:-}" ]]; then
   fi
 fi
 
+# Enable edge/block PGO if the trimmed profile exists
+if [[ -z "${DOTNET_ReadPGOData:-}" ]] && [[ -f "/nethermind/pgo/nethermind.jit" ]]; then
+  export DOTNET_ReadPGOData=1
+  export DOTNET_PGODataPath=/nethermind/pgo/nethermind.jit
+fi
+
 exec ./nethermind "$@"
