@@ -4,15 +4,14 @@
 using System.IO.Compression;
 using System.Text;
 
-// Trims DOTNET_WritePGOData .jit files by removing cold methods and noise.
+// Trims DOTNET_WritePGOData .jit files by removing cold methods.
 // Keeps methods with any block count >= threshold OR total edge count >= edgeThreshold.
-// Preserves:
+// Preserves all PGO data for kept methods:
 //   - All block/edge counts (kind 385) including zeros for cold-path signal
-//   - Type/method histograms (kind 177/195/196) that have at least one non-NULL handle
+//   - All type/method histograms (kind 177/195/196) including all-NULL (required by JIT reader)
 //   - GetLikelyClass/Method entries (kind 561/578)
 // Strips:
 //   - Cold methods below thresholds
-//   - All-NULL type/method histograms (no GDV value)
 //
 // Usage: dotnet run -- <input.jit> [output.jit.gz] [--min-block 100] [--min-edge 250]
 
@@ -64,7 +63,7 @@ int totalMethods = 0;
 int keptMethods = 0;
 long edgesKept = 0;
 long histogramsKept = 0;
-long histogramsDropped = 0;
+long histogramsAllNull = 0;
 
 // Read entire file into lines for indexed access (histograms need lookahead)
 string[] lines = File.ReadAllLines(inputPath);
@@ -117,85 +116,85 @@ while (lineIdx < lines.Length)
         switch (kind)
         {
             case 385: // BasicBlockIntCount — schema + 1 value line
-            {
-                if (lineIdx + 1 < lines.Length && long.TryParse(lines[lineIdx + 1].Trim(), out long hitCount))
                 {
-                    current.TotalEdgeCount += hitCount;
-                    if (hitCount > current.MaxBlockCount)
-                        current.MaxBlockCount = hitCount;
+                    if (lineIdx + 1 < lines.Length && long.TryParse(lines[lineIdx + 1].Trim(), out long hitCount))
+                    {
+                        current.TotalEdgeCount += hitCount;
+                        if (hitCount > current.MaxBlockCount)
+                            current.MaxBlockCount = hitCount;
 
-                    current.Entries.Add(line);
-                    current.Entries.Add(lines[lineIdx + 1]);
+                        current.Entries.Add(line);
+                        current.Entries.Add(lines[lineIdx + 1]);
+                    }
+                    lineIdx += 2;
+                    break;
                 }
-                lineIdx += 2;
-                break;
-            }
 
             case 177: // HandleHistogramIntCount — schema + 1 value line
-            {
-                // This is the hit count for a type/method profile site.
-                // Keep it if the paired histogram (195/196 at same ILOffset) has non-NULL handles.
-                // We peek ahead: if next schema is 195/196 at same offset with non-NULL handles, keep both.
-                // Otherwise defer — we'll handle it by pairing logic below.
+                {
+                    // This is the hit count for a type/method profile site.
+                    // Keep it if the paired histogram (195/196 at same ILOffset) has non-NULL handles.
+                    // We peek ahead: if next schema is 195/196 at same offset with non-NULL handles, keep both.
+                    // Otherwise defer — we'll handle it by pairing logic below.
 
-                // Always collect it; we'll decide to keep/drop when we see the paired 195/196.
-                string valueLine = lineIdx + 1 < lines.Length ? lines[lineIdx + 1] : "0";
-                current.PendingHistogramCount = (line, valueLine);
-                lineIdx += 2;
-                break;
-            }
+                    // Always collect it; we'll decide to keep/drop when we see the paired 195/196.
+                    string valueLine = lineIdx + 1 < lines.Length ? lines[lineIdx + 1] : "0";
+                    current.PendingHistogramCount = (line, valueLine);
+                    lineIdx += 2;
+                    break;
+                }
 
             case 195: // HandleHistogramTypes — schema + Count handle lines
             case 196: // HandleHistogramMethods — schema + Count handle lines
-            {
-                // Read all handle lines — must keep ALL including all-NULL
-                // because the JIT reader expects exact record counts
-                List<string> handleLines = new(count);
-                bool hasNonNull = false;
-                for (int j = 1; j <= count && lineIdx + j < lines.Length; j++)
                 {
-                    string handleLine = lines[lineIdx + j];
-                    handleLines.Add(handleLine);
-                    if (!handleLine.Contains("NULL"))
-                        hasNonNull = true;
+                    // Read all handle lines — must keep ALL including all-NULL
+                    // because the JIT reader expects exact record counts
+                    List<string> handleLines = new(count);
+                    bool hasNonNull = false;
+                    for (int j = 1; j <= count && lineIdx + j < lines.Length; j++)
+                    {
+                        string handleLine = lines[lineIdx + j];
+                        handleLines.Add(handleLine);
+                        if (!handleLine.Contains("NULL"))
+                            hasNonNull = true;
+                    }
+
+                    // Keep the paired 177 count entry if we have one pending
+                    if (current.PendingHistogramCount is var (countSchema, countValue))
+                    {
+                        current.Entries.Add(countSchema);
+                        current.Entries.Add(countValue);
+                        current.PendingHistogramCount = null;
+                    }
+
+                    // Keep this histogram (including all-NULL — required for correct parsing)
+                    current.Entries.Add(line); // schema
+                    foreach (string h in handleLines)
+                        current.Entries.Add(h);
+
+                    if (hasNonNull) histogramsKept++;
+                    else histogramsAllNull++;
+
+                    lineIdx += 1 + count;
+                    break;
                 }
-
-                // Keep the paired 177 count entry if we have one pending
-                if (current.PendingHistogramCount is var (countSchema, countValue))
-                {
-                    current.Entries.Add(countSchema);
-                    current.Entries.Add(countValue);
-                    current.PendingHistogramCount = null;
-                }
-
-                // Keep this histogram (including all-NULL — required for correct parsing)
-                current.Entries.Add(line); // schema
-                foreach (string h in handleLines)
-                    current.Entries.Add(h);
-
-                if (hasNonNull) histogramsKept++;
-                else histogramsDropped++;
-
-                lineIdx += 1 + count;
-                break;
-            }
 
             case 561: // GetLikelyClass — schema + 1 value line
             case 578: // GetLikelyMethod — schema + 1 value line
-            {
-                current.Entries.Add(line);
-                if (lineIdx + 1 < lines.Length)
-                    current.Entries.Add(lines[lineIdx + 1]);
-                lineIdx += 2;
-                break;
-            }
+                {
+                    current.Entries.Add(line);
+                    if (lineIdx + 1 < lines.Length)
+                        current.Entries.Add(lines[lineIdx + 1]);
+                    lineIdx += 2;
+                    break;
+                }
 
             default:
-            {
-                // Unknown kind — skip schema + count value lines
-                lineIdx += 1 + count;
-                break;
-            }
+                {
+                    // Unknown kind — skip schema + count value lines
+                    lineIdx += 1 + count;
+                    break;
+                }
         }
 
         continue;
@@ -265,7 +264,7 @@ Console.WriteLine($"Input:      {inputPath} ({inputSize / 1024.0 / 1024.0:F1} MB
 Console.WriteLine($"Output:     {outputPath} ({outputSize / 1024.0:F1} KB)");
 Console.WriteLine($"Methods:    {keptMethods:N0} kept / {totalMethods:N0} total ({100.0 * keptMethods / totalMethods:F1}%)");
 Console.WriteLine($"Edges:      {edgesKept:N0} block/edge entries");
-Console.WriteLine($"Histograms: {histogramsKept + histogramsDropped:N0} total ({histogramsKept:N0} with types, {histogramsDropped:N0} all-NULL)");
+Console.WriteLine($"Histograms: {histogramsKept + histogramsAllNull:N0} total ({histogramsKept:N0} with types, {histogramsAllNull:N0} all-NULL)");
 Console.WriteLine($"Filters:    min-block={minBlock}, min-edge={minEdge}");
 Console.WriteLine($"Ratio:      {100.0 * outputSize / inputSize:F2}% of original");
 
