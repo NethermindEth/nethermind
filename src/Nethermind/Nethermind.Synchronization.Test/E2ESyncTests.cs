@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -17,6 +16,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -99,68 +99,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     /// <summary>
-    /// Resets all block-number-based fork transitions to 0 so they are active from genesis.
-    /// This covers ChainSpec BlockNumber properties, ChainParameters Transition properties,
-    /// and engine-specific transitions (e.g. Ethash DifficultyBombDelays, BlockReward).
-    /// </summary>
-    private static void ActivateAllBlockTransitionsFromGenesis(ChainSpec chainSpec)
-    {
-        // Reset ChainSpec properties ending in "BlockNumber".
-        // TerminalPoWBlockNumber is excluded, mirroring the same filter in
-        // ChainSpecBasedSpecProvider.BuildTransitions — it is not a fork transition.
-        foreach (PropertyInfo prop in typeof(ChainSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (prop.Name.EndsWith("BlockNumber") && prop.Name != "TerminalPoWBlockNumber" && prop.PropertyType == typeof(long?) && prop.CanWrite)
-            {
-                prop.SetValue(chainSpec, (long?)0);
-            }
-        }
-
-        // Reset ChainParameters properties ending in "Transition" (but not "TransitionTimestamp")
-        foreach (PropertyInfo prop in typeof(ChainParameters).GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (prop.Name.EndsWith("Transition") && !prop.Name.EndsWith("TransitionTimestamp") && prop.PropertyType == typeof(long?) && prop.CanWrite)
-            {
-                if (prop.GetValue(chainSpec.Parameters) is not null)
-                {
-                    prop.SetValue(chainSpec.Parameters, (long?)0);
-                }
-            }
-        }
-
-        // Reset engine-specific block number transitions
-        foreach (IChainSpecEngineParameters engineParams in chainSpec.EngineChainSpecParametersProvider.AllChainSpecParameters)
-        {
-            foreach (PropertyInfo prop in engineParams.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
-            {
-                if (prop.Name.EndsWith("Transition") && prop.CanWrite)
-                {
-                    if (prop.PropertyType == typeof(long))
-                    {
-                        prop.SetValue(engineParams, 0L);
-                    }
-                    else if (prop.PropertyType == typeof(long?) && prop.GetValue(engineParams) is not null)
-                    {
-                        prop.SetValue(engineParams, (long?)0);
-                    }
-                }
-
-                // Clear dictionaries keyed by block number (e.g. DifficultyBombDelays, BlockReward)
-                if (prop.CanRead && prop.PropertyType.GetInterfaces().Any(i =>
-                        i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>)
-                        && i.GetGenericArguments()[0] == typeof(long)))
-                {
-                    object? dict = prop.GetValue(engineParams);
-                    if (dict is System.Collections.IDictionary d)
-                    {
-                        d.Clear();
-                    }
-                }
-            }
-        }
-    }
-
-    /// <summary>
     /// Common code for all node
     /// </summary>
     private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer)
@@ -190,10 +128,66 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         // Activate all block-number-based forks from genesis. The test builds a short chain
         // (1000 blocks) with post-merge timestamps. Without this, the chainspec has block
-        // transitions at high block numbers (e.g. London at 12,965,000), causing a legitimate
-        // "Chainspec file is misconfigured" warning when GetSpec is called with low block numbers
-        // but high timestamps.
-        ActivateAllBlockTransitionsFromGenesis(spec);
+        // transitions at high mainnet block numbers (e.g. London at 12,965,000), causing a
+        // legitimate "Chainspec file is misconfigured" warning when GetSpec is called with
+        // low block numbers but high timestamps.
+
+        // ChainSpec block-number properties (collected by BuildTransitions via EndsWith("BlockNumber"))
+        spec.HomesteadBlockNumber = 0;
+        spec.DaoForkBlockNumber = 0;
+        spec.TangerineWhistleBlockNumber = 0;
+        spec.SpuriousDragonBlockNumber = 0;
+        spec.ByzantiumBlockNumber = 0;
+        // ConstantinopleBlockNumber is null on mainnet (eip1283DisableTransition not set) - keep null
+        spec.ConstantinopleFixBlockNumber = 0;
+        spec.IstanbulBlockNumber = 0;
+        spec.BerlinBlockNumber = 0;
+        spec.LondonBlockNumber = 0;
+        spec.ArrowGlacierBlockNumber = 0;
+        spec.GrayGlacierBlockNumber = 0;
+
+        // ChainParameters block transitions (collected by BuildTransitions via EndsWith("Transition"))
+        spec.Parameters.MaxCodeSizeTransition = 0;
+        spec.Parameters.Eip150Transition = 0;
+        spec.Parameters.Eip152Transition = 0;
+        spec.Parameters.Eip160Transition = 0;
+        spec.Parameters.Eip161abcTransition = 0;
+        spec.Parameters.Eip161dTransition = 0;
+        spec.Parameters.Eip155Transition = 0;
+        spec.Parameters.Eip140Transition = 0;
+        spec.Parameters.Eip211Transition = 0;
+        spec.Parameters.Eip214Transition = 0;
+        // Always on, as the timestamp based fork activation always override block number based
+        // activation. However, the receipt message serializer does not check the block header of
+        // the receipt for timestamp, only block number therefore it will always not encode with
+        // Eip658, but the block builder always build with Eip658 as the latest fork activation
+        // uses timestamp which is < than now.
+        // TODO: Need to double check which code part does not pass in timestamp from header.
+        spec.Parameters.Eip658Transition = 0;
+        spec.Parameters.Eip145Transition = 0;
+        spec.Parameters.Eip1014Transition = 0;
+        spec.Parameters.Eip1052Transition = 0;
+        spec.Parameters.Eip1108Transition = 0;
+        spec.Parameters.Eip1344Transition = 0;
+        spec.Parameters.Eip1884Transition = 0;
+        spec.Parameters.Eip2028Transition = 0;
+        spec.Parameters.Eip2200Transition = 0;
+        spec.Parameters.Eip2565Transition = 0;
+        spec.Parameters.Eip2929Transition = 0;
+        spec.Parameters.Eip2930Transition = 0;
+        spec.Parameters.Eip1559Transition = 0;
+        spec.Parameters.Eip3198Transition = 0;
+        spec.Parameters.Eip3529Transition = 0;
+        spec.Parameters.Eip3541Transition = 0;
+
+        // Ethash engine transitions and block-keyed dictionaries
+        EthashChainSpecEngineParameters ethashParams = spec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<EthashChainSpecEngineParameters>();
+        ethashParams.HomesteadTransition = 0;
+        ethashParams.DaoHardforkTransition = 0;
+        ethashParams.Eip100bTransition = 0;
+        ethashParams.DifficultyBombDelays?.Clear();
+        ethashParams.BlockReward?.Clear();
 
         if (isPostMerge)
         {
