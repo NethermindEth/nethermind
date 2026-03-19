@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+#
+# Collects CPU sampling profile data via dotnet-trace for call graph
+# construction. The resulting .nettrace is converted to .mibc with call
+# graph edges (CallWeights) that drive Pettis-Hansen method layout.
+#
+# This image is run AFTER the main PGO collection (Dockerfile.pgo).
+# The two .mibc files are merged to combine edge/type data with call graph.
+
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49 AS build
+
+ARG BUILD_CONFIG=release
+ARG CI=true
+ARG COMMIT_HASH
+ARG SOURCE_DATE_EPOCH
+ARG TARGETARCH
+
+WORKDIR /nethermind
+
+COPY src/Nethermind src/Nethermind
+COPY Directory.*.props Directory.Build.targets ./
+COPY global.json .
+COPY nuget.config .
+
+RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
+  rid="linux-${arch}" && \
+  cd src/Nethermind/Nethermind.Runner && \
+  dotnet restore --locked-mode && \
+  dotnet publish -c $BUILD_CONFIG -r $rid -o /publish --no-self-contained \
+    -p:PublishReadyToRun=false \
+    -p:SourceRevisionId=$COMMIT_HASH
+
+# A temporary symlink to support the old executable name
+RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49
+
+WORKDIR /nethermind
+
+# Override runtimeconfig.json settings not suitable for PGO collection
+ENV DOTNET_System_Diagnostics_Tracing_EventSource_IsSupported=true
+ENV DOTNET_GCLargePages=0
+ENV DOTNET_GCRegionRange=0x800000000
+
+# No DOTNET_EnableEventPipe — dotnet-trace manages the EventPipe session.
+# No DOTNET_WritePGOData — the main PGO image handles that.
+
+VOLUME /nethermind/keystore
+VOLUME /nethermind/logs
+VOLUME /nethermind/nethermind_db
+VOLUME /nethermind/pgo
+
+EXPOSE 8545 8551 30303
+
+COPY --from=build /publish .
+
+# Install dotnet-trace and use it as the entrypoint wrapper.
+# --profile cpu-sampling enables managed thread stack sampling.
+# The .nettrace is written to /nethermind/pgo/ when the process exits.
+RUN dotnet tool install -g dotnet-trace
+ENV PATH="${PATH}:/root/.dotnet/tools"
+
+ENTRYPOINT ["dotnet-trace", "collect", \
+  "--profile", "cpu-sampling", \
+  "--output", "/nethermind/pgo/sampling", \
+  "--", "./nethermind"]
