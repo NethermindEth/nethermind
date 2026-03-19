@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using System;
 using System.Diagnostics.CodeAnalysis;
 
@@ -10,6 +11,7 @@ namespace Nethermind.Serialization.Rlp
 {
     public sealed class LogEntryDecoder : RlpValueDecoder<LogEntry>
     {
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
         public static LogEntryDecoder Instance { get; } = new();
 
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(LogEntryDecoder))]
@@ -24,11 +26,14 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int logEntryLength = decoderContext.ReadSequenceLength();
+            decoderContext.GuardLimit(logEntryLength, RlpLimit);
             int logEntryCheck = decoderContext.Position + logEntryLength;
             Address? address = decoderContext.DecodeAddress();
             int topicsLength = decoderContext.ReadSequenceLength();
             int topicsCheck = decoderContext.Position + topicsLength;
-            Hash256[] topics = new Hash256[topicsLength / Rlp.LengthOfKeccakRlp];
+            int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
+            decoderContext.GuardLimit(topicCount, RlpLimit.L4);
+            Hash256[] topics = new Hash256[topicCount];
             for (int i = 0; i < topics.Length; i++)
             {
                 topics[i] = decoderContext.DecodeKeccak();
