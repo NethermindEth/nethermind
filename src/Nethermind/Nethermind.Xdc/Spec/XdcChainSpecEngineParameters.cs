@@ -57,6 +57,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public long TipXDCX { get; set; }
     public long TIPXDCXMinerDisable { get; set; }
     public long? DynamicGasLimitBlock { get; set; }
+    public long? BlockNumberGas50x { get; set; }
 
     private static void CheckConfig(List<V2ConfigParams> list)
     {
@@ -80,6 +81,8 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             blockNumbers.Add(TipTrc21Fee.Value);
         if (TipUpgradePenalty is not null)
             blockNumbers.Add(TipUpgradePenalty.Value);
+        if (BlockNumberGas50x is not null)
+            blockNumbers.Add(BlockNumberGas50x.Value);
     }
 }
 
