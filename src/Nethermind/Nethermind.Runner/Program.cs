@@ -19,6 +19,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Init.Snapshot;
 using Nethermind.KeyStore.Config;
@@ -172,6 +173,15 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     ConfigureSeqLogger(configProvider);
     ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), initConfig);
+
+    if (parseResult.GetValue(BasicOptions.PurgeDb))
+    {
+        PurgeDatabaseDirectory(initConfig.BaseDbPath);
+    }
+    else if (parseResult.GetValue(BasicOptions.ForceResync))
+    {
+        PurgeDatabaseDirectory(initConfig.BaseDbPath, preserveNetwork: true);
+    }
 
     logger.Info("Configuration complete");
 
@@ -427,7 +437,9 @@ RootCommand CreateRootCommand()
         BasicOptions.DataDirectory,
         BasicOptions.LoggerConfigurationSource,
         BasicOptions.LogLevel,
-        BasicOptions.PluginsDirectory
+        BasicOptions.PluginsDirectory,
+        BasicOptions.ForceResync,
+        BasicOptions.PurgeDb
     ];
 
     rootCommand.Description = "Nethermind Ethereum execution client";
@@ -480,6 +492,43 @@ void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
         if (logger.IsDebug) logger.Debug($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(dbPath)}");
 
         initConfig.BaseDbPath = dbPath;
+    }
+}
+
+void PurgeDatabaseDirectory(string basePath, bool preserveNetwork = false)
+{
+    if (!Directory.Exists(basePath))
+        return;
+
+    if (preserveNetwork)
+    {
+        // Delete everything except peer and discovery databases
+        HashSet<string> preserved = new(StringComparer.OrdinalIgnoreCase)
+        {
+            DbNames.PeersDb,
+            DbNames.DiscoveryNodes,
+            DbNames.DiscoveryV5Nodes
+        };
+
+        foreach (string dir in Directory.EnumerateDirectories(basePath))
+        {
+            if (!preserved.Contains(Path.GetFileName(dir)))
+            {
+                if (logger.IsInfo) logger.Info($"Force resync: deleting {dir}");
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+
+        foreach (string file in Directory.EnumerateFiles(basePath))
+        {
+            if (logger.IsInfo) logger.Info($"Force resync: deleting {file}");
+            File.Delete(file);
+        }
+    }
+    else
+    {
+        if (logger.IsInfo) logger.Info($"Purging database directory: {basePath}");
+        Directory.Delete(basePath, recursive: true);
     }
 }
 
@@ -563,6 +612,18 @@ static class BasicOptions
             Description = "The path to the Nethermind plugins directory.",
             HelpName = "path"
         };
+
+    public static Option<bool> ForceResync { get; } = new("--force-resync")
+    {
+        Description = "Delete all database files except peer and discovery data, forcing a full resync on startup.",
+        DefaultValueFactory = _ => false
+    };
+
+    public static Option<bool> PurgeDb { get; } = new("--purge-db")
+    {
+        Description = "Delete the entire database directory including peer and discovery data.",
+        DefaultValueFactory = _ => false
+    };
 }
 
 class AsynchronousCommandLineAction(Func<ParseResult, int> action) : SynchronousCommandLineAction
