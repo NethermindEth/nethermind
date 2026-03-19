@@ -6,7 +6,6 @@ using Nethermind.Core.Caching;
 
 namespace Nethermind.Benchmarks.Core
 {
-    [EvaluateOverhead(false)]
     public class LruCacheBenchmarks
     {
         [Params(0, 4, 16, 32)]

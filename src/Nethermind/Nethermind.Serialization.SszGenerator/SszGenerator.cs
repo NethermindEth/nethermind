@@ -242,14 +242,20 @@ public partial class SszEncoding
 {Whitespace}
     public static void MerkleizeList(IList<{decl.Name}>? container, ulong limit, out UInt256 root)
     {{
-        if(container is null || container.Count is 0)
+        if(container is null)
         {{
-            root = 0;
-            Merkle.MixIn(ref root, (int)limit);
+            Merkle.Merkleize(out root, System.Array.Empty<UInt256>(), limit);
+            Merkle.MixIn(ref root, 0);
             return;
         }}
 {Whitespace}
-        MerkleizeVector(container, out root);
+        UInt256[] subRoots = new UInt256[container.Count];
+        for(int i = 0; i < container.Count; i++)
+        {{
+            Merkleize(container[i], out subRoots[i]);
+        }}
+{Whitespace}
+        Merkle.Merkleize(out root, subRoots, limit);
         Merkle.MixIn(ref root, container.Count);
     }}
 }}
@@ -451,14 +457,20 @@ public partial class SszEncoding
 {Whitespace}
     public static void MerkleizeList(IList<{decl.Name}>? container, ulong limit, out UInt256 root)
     {{
-        if(container is null || container.Count is 0)
+        if(container is null)
         {{
-            root = 0;
-            Merkle.MixIn(ref root, (int)limit);
+            Merkle.Merkleize(out root, System.Array.Empty<UInt256>(), limit);
+            Merkle.MixIn(ref root, 0);
             return;
         }}
 {Whitespace}
-        MerkleizeVector(container, out root);
+        UInt256[] subRoots = new UInt256[container.Count];
+        for(int i = 0; i < container.Count; i++)
+        {{
+            Merkleize(container[i], out subRoots[i]);
+        }}
+{Whitespace}
+        Merkle.Merkleize(out root, subRoots, limit);
         Merkle.MixIn(ref root, container.Count);
     }}
 }}
@@ -632,14 +644,20 @@ public partial class SszEncoding
 {Whitespace}
     public static void MerkleizeList(IList<{decl.Name}>? container, ulong limit, out UInt256 root)
     {{
-        if(container is null || container.Count is 0)
+        if(container is null)
         {{
-            root = 0;
-            Merkle.MixIn(ref root, (int)limit);
+            Merkle.Merkleize(out root, System.Array.Empty<UInt256>(), limit);
+            Merkle.MixIn(ref root, 0);
             return;
         }}
 {Whitespace}
-        MerkleizeVector(container, out root);
+        UInt256[] subRoots = new UInt256[container.Count];
+        for(int i = 0; i < container.Count; i++)
+        {{
+            Merkleize(container[i], out subRoots[i]);
+        }}
+{Whitespace}
+        Merkle.Merkleize(out root, subRoots, limit);
         Merkle.MixIn(ref root, container.Count);
     }}
 }}

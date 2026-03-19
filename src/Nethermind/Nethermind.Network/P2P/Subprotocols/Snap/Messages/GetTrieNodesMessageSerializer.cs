@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -116,12 +119,39 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             long requestId = ctx.DecodeLong();
             Hash256? rootHash = ctx.DecodeKeccak();
 
-            RlpPathGroupList paths = new(RlpItemList.DecodeList(ref ctx, memoryOwner));
+            IRlpItemList rawPaths = RlpItemList.DecodeList(ref ctx, memoryOwner);
+            ValidatePathGroups(rawPaths);
+            RlpPathGroupList paths = new(rawPaths);
 
             long bytes = ctx.DecodeLong();
             byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
 
             return new GetTrieNodesMessage { RequestId = requestId, RootHash = rootHash, Paths = paths, Bytes = bytes };
         }
+
+        private static void ValidatePathGroups(IRlpItemList paths)
+        {
+            if (paths.Count > SnapMessageLimits.GetTrieNodesPathGroupsRlpLimit.Limit)
+            {
+                ThrowPathGroupsLimitExceeded(paths.Count);
+            }
+
+            for (int i = 0; i < paths.Count; i++)
+            {
+                using IRlpItemList group = paths.GetNestedItemList(i);
+                if (group.Count > SnapMessageLimits.GetTrieNodesPathsPerGroupRlpLimit.Limit)
+                {
+                    ThrowPathsPerGroupLimitExceeded(group.Count);
+                }
+            }
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowPathGroupsLimitExceeded(int count)
+            => throw new RlpLimitException($"Too many trie path groups in {nameof(GetTrieNodesMessage)}: {count}, max {SnapMessageLimits.GetTrieNodesPathGroupsRlpLimit.Limit}.");
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowPathsPerGroupLimitExceeded(int count)
+            => throw new RlpLimitException($"Too many trie paths in a single {nameof(GetTrieNodesMessage)} group: {count}, max {SnapMessageLimits.GetTrieNodesPathsPerGroupRlpLimit.Limit}.");
     }
 }
