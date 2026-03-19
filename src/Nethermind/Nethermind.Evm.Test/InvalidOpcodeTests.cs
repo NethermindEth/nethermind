@@ -111,6 +111,7 @@ namespace Nethermind.Evm.Test
             OsakaInstructions.Union(
                 new Instruction[]
                 {
+                    Instruction.SLOTNUM,
                     Instruction.SWAPN,
                     Instruction.DUPN,
                     Instruction.EXCHANGE,
@@ -161,6 +162,8 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 2, MainnetSpecProvider.CancunBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 3, MainnetSpecProvider.PragueBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 4, MainnetSpecProvider.OsakaBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 10, MainnetSpecProvider.AmsterdamBlockTimestamp)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {
             ILogger logger = _logManager.GetClassLogger();
