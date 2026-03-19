@@ -273,7 +273,6 @@ public partial class EngineModuleTests
         chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.None).Should().NotBeNull();
     }
 
-
     [Test]
     public async Task block_should_not_be_canonical_after_reorg()
     {
