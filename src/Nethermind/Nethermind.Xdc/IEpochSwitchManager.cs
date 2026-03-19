@@ -14,4 +14,5 @@ public interface IEpochSwitchManager
     EpochSwitchInfo? GetEpochSwitchInfo(Hash256 blockHash);
     EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCertificate timeoutCertificate);
     BlockRoundInfo? GetBlockByEpochNumber(ulong epochNumber);
+    EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end);
 }
