@@ -23,6 +23,7 @@
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
     <ProjectReference Include="..\Nethermind.State.Flat\Nethermind.State.Flat.csproj" />
     <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
+    <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -34,7 +34,12 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Api;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Init.Modules;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
@@ -92,8 +97,9 @@ public class BlockProcessingBenchmark
     private const int N_MEDIUM = 500;
 
     /// <summary>
-    /// 20 data points per benchmark (2 launches x 10 iterations, 2 warmup each).
+    /// 10 data points per benchmark (1 launch x 10 iterations, 3 warmup).
     /// GcForce ensures a GC collection between iterations to reduce allocation noise.
+    /// Server GC and concurrent GC are disabled for deterministic collection pauses.
     /// </summary>
     private class BlockProcessingConfig : ManualConfig
     {
@@ -103,10 +109,12 @@ public class BlockProcessingBenchmark
                 .WithToolchain(InProcessNoEmitToolchain.Default)
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
-                .WithLaunchCount(2)
-                .WithWarmupCount(2)
-                .WithIterationCount(5)
-                .WithGcForce(true));
+                .WithLaunchCount(1)
+                .WithWarmupCount(3)
+                .WithIterationCount(10)
+                .WithGcForce(true)
+                .WithEnvironmentVariable("DOTNET_GCServer", "0")
+                .WithEnvironmentVariable("DOTNET_gcConcurrent", "0"));
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
             AddColumn(StatisticColumn.Median);
@@ -144,6 +152,10 @@ public class BlockProcessingBenchmark
 
     private readonly PrivateKey _senderKey = TestItem.PrivateKeyA;
     private Address _sender = null!;
+
+    // RocksDB environment — temp directory and DB lifecycle
+    private BenchmarkEnvironmentModule? _benchmarkModule;
+    private IDbProvider? _dbProvider;
 
     // DI container — built once, shared across all iterations
     private IContainer _container = null!;
@@ -226,7 +238,22 @@ public class BlockProcessingBenchmark
 
         // Single world state — BranchProcessor.Process() manages scope internally,
         // matching the live client's block processing path.
-        IDbProvider dbProvider = TestMemDbProvider.Init();
+        // Use RocksDB-backed storage to match production I/O characteristics.
+        _benchmarkModule = new BenchmarkEnvironmentModule();
+        IDbProvider dbProvider = new ContainerBuilder()
+            .AddModule(new DbModule(
+                new InitConfig { BaseDbPath = _benchmarkModule.BasePath },
+                new ReceiptConfig(),
+                new SyncConfig()
+            ))
+            .AddSingleton<IDbConfig>(new DbConfig { SharedBlockCacheSize = 256UL * 1024 * 1024 })
+            .AddSingleton<IPruningConfig>(new PruningConfig())
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo())
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<IDbProvider, ContainerOwningDbProvider>()
+            .Build()
+            .Resolve<IDbProvider>();
+        _dbProvider = dbProvider;
         IWorldStateManager wsm;
         BenchmarkFlatDbManager? flatDbManagerRef = null;
         if (Backend == StateBackend.FlatState)
@@ -378,11 +405,30 @@ public class BlockProcessingBenchmark
                 $"(txs={block.Transactions.Length}, gasPerTx={gasPerTx:N0}). Transactions are likely reverting!");
     }
 
+    [IterationSetup]
+    public void IterationSetup()
+    {
+        if (_dbProvider is not null)
+        {
+            BenchmarkEnvironmentModule.FlushAndCompact(_dbProvider);
+            BenchmarkEnvironmentModule.DisableAutoCompaction(_dbProvider);
+        }
+    }
+
+    [IterationCleanup]
+    public void IterationCleanup()
+    {
+        if (_dbProvider is not null)
+            BenchmarkEnvironmentModule.EnableAutoCompaction(_dbProvider);
+    }
+
     [GlobalCleanup]
     public void GlobalCleanup()
     {
         _processingScope.Dispose();
         _container.Dispose();
+        _dbProvider?.Dispose();
+        _benchmarkModule?.Cleanup();
     }
 
     // ── Benchmarks ────────────────────────────────────────────────────────
