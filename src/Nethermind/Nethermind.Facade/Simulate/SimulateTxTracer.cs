@@ -22,6 +22,7 @@ public sealed class SimulateTxTracer : TxTracer
     private readonly ulong _currentBlockNumber;
     private readonly ulong _currentBlockTimestamp;
     private readonly ulong _txIndex;
+    private readonly ulong _logIndexStart;
     private readonly List<LogEntry> _logs;
     private readonly Transaction _tx;
 
@@ -31,7 +32,8 @@ public sealed class SimulateTxTracer : TxTracer
         ulong currentBlockNumber,
         Hash256 currentBlockHash,
         ulong currentBlockTimestamp,
-        ulong txIndex)
+        ulong txIndex,
+        ulong logIndexStart)
     {
         // Note: Tx hash will be mutated as tx is modified while processing the block
         _tx = tx;
@@ -39,6 +41,7 @@ public sealed class SimulateTxTracer : TxTracer
         _currentBlockHash = currentBlockHash;
         _currentBlockTimestamp = currentBlockTimestamp;
         _txIndex = txIndex;
+        _logIndexStart = logIndexStart;
         IsTracingReceipt = true;
         IsTracingLogs = true;
         IsTracingActions = isTracingTransfers;
@@ -84,7 +87,7 @@ public sealed class SimulateTxTracer : TxTracer
                 Address = entry.Address,
                 Topics = entry.Topics,
                 Data = entry.Data,
-                LogIndex = _txIndex + (ulong)i,
+                LogIndex = _logIndexStart + (ulong)i,
                 TransactionHash = _tx.Hash!,
                 TransactionIndex = _txIndex,
                 BlockHash = _currentBlockHash,

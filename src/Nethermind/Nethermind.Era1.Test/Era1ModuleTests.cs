@@ -294,12 +294,12 @@ public class Era1ModuleTests
         }
     }
 
-    [TestCase(true, 0, 0, 1000, 1001, 9999)]
-    [TestCase(true, 0, 2000, 1000, 1001, 2000)]
-    [TestCase(true, 3000, 0, 5000, 5001, 9999)]
-    [TestCase(true, 0, 0, 0, null, 0)]
-    [TestCase(false, 0, 0, 0, 1, 9999)]
-    [TestCase(false, 0, 0, 2000, 2001, 9999)]
+    [TestCase(true, 0L, 0L, 1000L, 1001L, 9999L)]
+    [TestCase(true, 0L, 2000L, 1000L, 1001L, 2000L)]
+    [TestCase(true, 3000L, 0L, 5000L, 5001L, 9999L)]
+    [TestCase(true, 0L, 0L, 0L, null, 0L)]
+    [TestCase(false, 0L, 0L, 0L, 1L, 9999L)]
+    [TestCase(false, 0L, 0L, 2000L, 2001L, 9999L)]
     [CancelAfter(120_000)] // macOS ARM runners need more time for 10k-block chain
     public async Task EraExportAndImport(bool fastSync, long start, long end, long headBlockNumber, long? expectedMinSuggestedBlock, long expectedMaxSuggestedBlock, CancellationToken cancellationToken)
     {

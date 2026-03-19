@@ -55,6 +55,8 @@ internal static class XdcConstants
     public static readonly byte[] Trc21TransferFromMethod = Bytes.FromHexString("0x23b872dd");
     public const int Trc21TransferCalldataLength = 68;
     public const int Trc21TransferFromCalldataLength = 80;
+    public const long Trc21GasPrice = 250_000_000;
+    public const long Trc21GasPrice50x = 12_500_000_000;
     public static readonly UInt256 Trc21GasPriceBefore = 2500;
     public static readonly UInt256 Trc21GasPrice = 250000000;
     public static readonly UInt256 GasPrice50x = 12500000000;

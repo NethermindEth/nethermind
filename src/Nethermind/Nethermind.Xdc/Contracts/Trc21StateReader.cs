@@ -23,7 +23,7 @@ internal class Trc21StateReader(IStateReader stateReader, ISpecProvider specProv
 
     private readonly LruCache<Hash256, Dictionary<Address, UInt256>> _capacityCache = new(128, "XDC TRC21 Fee Capacity");
 
-    public Dictionary<Address, UInt256> GetFeeCapacities(XdcBlockHeader? baseBlock)
+    public IReadOnlyDictionary<Address, UInt256> GetFeeCapacities(XdcBlockHeader? baseBlock)
     {
         if (baseBlock?.StateRoot is null)
         {
@@ -36,7 +36,7 @@ internal class Trc21StateReader(IStateReader stateReader, ISpecProvider specProv
             _capacityCache.Set(baseBlock.StateRoot, cached);
         }
 
-        return Clone(cached);
+        return cached;
     }
 
     public bool ValidateTransaction(XdcBlockHeader? baseBlock, Address from, Address token, ReadOnlySpan<byte> data)
@@ -53,7 +53,7 @@ internal class Trc21StateReader(IStateReader stateReader, ISpecProvider specProv
         {
             UInt256 minFee = ReadStorage(baseBlock, token, TokenMinFeeSlot);
             UInt256 transferValue = ExtractTransferValue(data);
-            return balance >= minFee + transferValue;
+            return !UInt256.AddOverflow(minFee, transferValue, out UInt256 required) && balance >= required;
         }
 
         // When account has zero token balance, tx is accepted.
@@ -135,10 +135,5 @@ internal class Trc21StateReader(IStateReader stateReader, ISpecProvider specProv
         }
 
         return UInt256.Zero;
-    }
-
-    private static Dictionary<Address, UInt256> Clone(Dictionary<Address, UInt256> source)
-    {
-        return new Dictionary<Address, UInt256>(source);
     }
 }

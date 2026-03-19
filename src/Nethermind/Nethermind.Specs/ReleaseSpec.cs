@@ -128,7 +128,7 @@ public class ReleaseSpec : IReleaseSpec
     private FrozenSet<AddressAsKey>? _precompiles;
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
     private SpecGasCosts? _gasCosts;
-    SpecGasCosts IReleaseSpec.GasCosts => _gasCosts ??= new SpecGasCosts(this);
+    public SpecGasCosts GasCosts => _gasCosts ??= new SpecGasCosts(this);
     public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
     public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
     {
@@ -151,13 +151,13 @@ public class ReleaseSpec : IReleaseSpec
         if (IsEip4844Enabled) cache.Add(PrecompiledAddresses.PointEvaluation);
         if (IsEip2537Enabled)
         {
-            cache.Add(PrecompiledAddresses.Bls12G1Add);
-            cache.Add(PrecompiledAddresses.Bls12G1Msm);
-            cache.Add(PrecompiledAddresses.Bls12G2Add);
-            cache.Add(PrecompiledAddresses.Bls12G2Msm);
-            cache.Add(PrecompiledAddresses.Bls12PairingCheck);
-            cache.Add(PrecompiledAddresses.Bls12MapFpToG1);
-            cache.Add(PrecompiledAddresses.Bls12MapFp2ToG2);
+            cache.Add(PrecompiledAddresses.Bls12381G1Add);
+            cache.Add(PrecompiledAddresses.Bls12381G1Msm);
+            cache.Add(PrecompiledAddresses.Bls12381G2Add);
+            cache.Add(PrecompiledAddresses.Bls12381G2Msm);
+            cache.Add(PrecompiledAddresses.Bls12381PairingCheck);
+            cache.Add(PrecompiledAddresses.Bls12381FpToG1);
+            cache.Add(PrecompiledAddresses.Bls12381Fp2ToG2);
         }
 
         if (IsRip7212Enabled || IsEip7951Enabled) cache.Add(PrecompiledAddresses.P256Verify);
@@ -167,10 +167,12 @@ public class ReleaseSpec : IReleaseSpec
     }
 
     public bool IsEip7928Enabled { get; set; }
+    public bool IsEip8037Enabled { get; set; }
     public bool IsEip7778Enabled { get; set; }
     public bool IsEip7843Enabled { get; set; }
 
     public bool IsEip7708Enabled { get; set; }
+    public bool IsEip7954Enabled { get; set; }
 
     private ReleaseSpec? _systemSpec;
 

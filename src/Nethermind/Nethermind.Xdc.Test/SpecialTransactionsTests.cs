@@ -58,6 +58,7 @@ internal class SpecialTransactionsTests
             .WithSenderAddress(source.Address)
             .WithTo(destination.Address)
             .WithValue(amount)
+            .WithGasPrice((UInt256)XdcConstants.Trc21GasPrice)
             .WithType(TxType.Legacy)
             .TestObject;
 

@@ -6,6 +6,7 @@ using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.TxPool;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.TxPool;
 using System.Collections.Generic;
 
@@ -19,6 +20,8 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
     {
         _api.TxGossipPolicy.Policies.Add(new XdcTxGossipPolicy(_api.SpecProvider, chainHeadInfoProvider));
         ISnapshotManager snapshotManager = _api.Context.Resolve<ISnapshotManager>();
+        ITrc21StateReader trc21StateReader = _api.Context.Resolve<ITrc21StateReader>();
+        ITxPoolCostAndFundsProvider costAndFundsProvider = new Trc21TxPoolCostAndFundsProvider(_api.BlockTree, _api.SpecProvider, trc21StateReader);
 
         Nethermind.TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
@@ -28,9 +31,10 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
                 _api.TxGossipPolicy,
-                new SignTransactionFilter(snapshotManager, _api.BlockTree, _api.SpecProvider),
+                new XdcIncomingTxFilter(snapshotManager, _api.BlockTree, _api.SpecProvider, trc21StateReader),
                 _api.HeadTxValidator,
-                true
+                true,
+                costAndFundsProvider
             );
 
         _api.DisposeStack.Push(txPool);

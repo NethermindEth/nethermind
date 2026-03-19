@@ -648,7 +648,7 @@ namespace Nethermind.Network
 
             Interlocked.Decrement(ref _pending);
             _peerUpdateRequested.Set();
-            if (_logger.IsTrace) _logger.Trace($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_peerPool.ActivePeerCount}, CAND: {_peerPool.PeerCount}");
+            if (_logger.IsTrace) _logger.Trace($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_peerPool.ActivePeerCount}, CANDIDATES: {_peerPool.PeerCount}");
 
             if (!result)
             {

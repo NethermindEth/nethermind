@@ -10,6 +10,6 @@ namespace Nethermind.Xdc.Contracts;
 
 public interface ITrc21StateReader
 {
-    Dictionary<Address, UInt256> GetFeeCapacities(XdcBlockHeader? baseBlock);
+    IReadOnlyDictionary<Address, UInt256> GetFeeCapacities(XdcBlockHeader? baseBlock);
     bool ValidateTransaction(XdcBlockHeader? baseBlock, Address from, Address token, ReadOnlySpan<byte> data);
 }

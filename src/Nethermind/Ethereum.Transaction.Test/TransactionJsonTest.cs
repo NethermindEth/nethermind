@@ -21,7 +21,7 @@ public class TransactionJsonTest : GeneralStateTestBase
         const string lists =
             "{\"accessLists\": [[{\"address\": \"0x0001020304050607080900010203040506070809\", \"storageKeys\": [\"0x00\", \"0x01\"]}]]}";
 
-        EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+        EthereumJsonSerializer serializer = new();
         TransactionJson txJson = serializer.Deserialize<TransactionJson>(lists);
         txJson.SecretKey = TestItem.PrivateKeyA.KeyBytes;
         txJson.Value = new UInt256[1];

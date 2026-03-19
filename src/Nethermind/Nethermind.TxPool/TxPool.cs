@@ -100,6 +100,7 @@ namespace Nethermind.TxPool
         /// <param name="incomingTxFilter"></param>
         /// <param name="thereIsPriorityContract"></param>
         /// <param name="headTxValidator"></param>
+        /// <param name="costAndFundsProvider"></param>
         public TxPool(IEthereumEcdsa ecdsa,
             IBlobTxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
@@ -110,7 +111,8 @@ namespace Nethermind.TxPool
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
             [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
-            bool thereIsPriorityContract = false)
+            bool thereIsPriorityContract = false,
+            ITxPoolCostAndFundsProvider? costAndFundsProvider = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -163,8 +165,8 @@ namespace Nethermind.TxPool
                 new UnknownSenderFilter(ecdsa, _logger),
                 new TxTypeTxFilter(_transactions,
                     _blobTransactions), // has to be after UnknownSenderFilter as it uses sender
-                new BalanceZeroFilter(thereIsPriorityContract, _logger),
-                new BalanceTooLowFilter(_transactions, _blobTransactions, _logger),
+                new BalanceZeroFilter(thereIsPriorityContract, _logger, costAndFundsProvider),
+                new BalanceTooLowFilter(_transactions, _blobTransactions, _logger, costAndFundsProvider),
                 new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
@@ -368,7 +370,7 @@ namespace Nethermind.TxPool
             using ArrayPoolListRef<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
-            long notInMempoool = 0;
+            long notInMempool = 0;
             long eip1559Txs = 0;
             long eip7702Txs = 0;
             long blobTxs = 0;
@@ -419,7 +421,7 @@ namespace Nethermind.TxPool
 
                 if (!isKnown && !isPending)
                 {
-                    notInMempoool++;
+                    notInMempool++;
                 }
             }
 
@@ -437,8 +439,8 @@ namespace Nethermind.TxPool
                 Metrics.Eip7702TransactionsInBlock = eip7702Txs;
                 Metrics.BlobTransactionsInBlock = blobTxs;
                 Metrics.BlobsInBlock = blobs;
-                Metrics.TransactionsSourcedPrivateOrderFlow += notInMempoool;
-                Metrics.TransactionsSourcedMemPool += transactionsInBlock - notInMempoool;
+                Metrics.TransactionsSourcedPrivateOrderFlow += notInMempool;
+                Metrics.TransactionsSourcedMemPool += transactionsInBlock - notInMempool;
             }
         }
 
@@ -1170,4 +1172,3 @@ Db usage:
         }
     }
 }
-
