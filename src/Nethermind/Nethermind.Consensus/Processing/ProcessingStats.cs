@@ -168,7 +168,7 @@ namespace Nethermind.Consensus.Processing
             Block? block = data.Block;
             if (block is null) return;
 
-            long blockNumber = data.Block.Number;
+            long blockNumber = (long)data.Block.Number;
             double chunkMGas = (_chunkMGas += block.GasUsed / 1_000_000.0);
 
             // We want the rate here
@@ -190,8 +190,8 @@ namespace Nethermind.Consensus.Processing
             Metrics.Transactions += txs.Length;
             Metrics.TotalDifficulty = block.TotalDifficulty ?? UInt256.Zero;
             Metrics.LastDifficulty = block.Difficulty;
-            Metrics.GasUsed = block.GasUsed;
-            Metrics.GasLimit = block.GasLimit;
+            Metrics.GasUsed = (long)block.GasUsed;
+            Metrics.GasLimit = (long)block.GasLimit;
 
             long chunkOpCodes = (_opCodes += data.CurrentOpCodes - data.StartOpCodes);
             long chunkCalls = (_callOps += data.CurrentCallOps - data.StartCallOps);
@@ -298,8 +298,8 @@ namespace Nethermind.Consensus.Processing
             NewProcessingStatistics?.Invoke(this, new BlockStatistics()
             {
                 BlockCount = chunkBlocks,
-                BlockFrom = block.Number - chunkBlocks + 1,
-                BlockTo = block.Number,
+                BlockFrom = (long)block.Number - chunkBlocks + 1,
+                BlockTo = (long)block.Number,
 
                 ProcessingMs = chunkMs,
                 SlotMs = runMs,
@@ -308,7 +308,7 @@ namespace Nethermind.Consensus.Processing
                 MedianGas = Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice),
                 AveGas = Evm.Metrics.BlockAveGasPrice,
                 MaxGas = Evm.Metrics.BlockMaxGasPrice,
-                GasLimit = block.GasLimit
+                GasLimit = (long)block.GasLimit
             });
 
             _lastElapsedRunningMicroseconds = data.RunningMicroseconds;
@@ -317,7 +317,7 @@ namespace Nethermind.Consensus.Processing
             {
                 if (chunkBlocks > 1)
                 {
-                    _logger.Info($"Processed    {block.Number - chunkBlocks + 1,10}...{block.Number,9}   | {chunkMs,10:N1} ms  | slot    {runMs,11:N0} ms |{blockGas}");
+                    _logger.Info($"Processed    {(long)block.Number - chunkBlocks + 1,10}...{block.Number,9}   | {chunkMs,10:N1} ms  | slot    {runMs,11:N0} ms |{blockGas}");
                 }
                 else
                 {

@@ -81,7 +81,7 @@ public class HeaderValidatorTests
     [TestCase(-1, true, TestName = "When_gas_limit_just_correct_high")]
     public void When_gas_limit_above_parent(int adjustment, bool expectedResult)
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + adjustment;
+        _block.Header.GasLimit = _parentBlock.Header.GasLimit + (ulong)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + (ulong)adjustment;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -93,7 +93,7 @@ public class HeaderValidatorTests
     [TestCase(0, false, TestName = "When_gas_limit_is_just_too_low")]
     public void When_gas_limit_below_parent(int adjustment, bool expectedResult)
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + adjustment;
+        _block.Header.GasLimit = _parentBlock.Header.GasLimit - (ulong)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + (ulong)adjustment;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -212,13 +212,13 @@ public class HeaderValidatorTests
         TestSpecProvider specProvider = new(spec);
         _validator = new HeaderValidator(_blockTree, _ethash, specProvider, new OneLoggerLogManager(new(_testLogger)));
         _parentBlock = Build.A.Block.WithDifficulty(1)
-                        .WithGasLimit(parentGasLimit)
+                        .WithGasLimit((ulong)parentGasLimit)
                         .WithNumber(blockNumber)
                         .TestObject;
         _block = Build.A.Block.WithParent(_parentBlock)
             .WithDifficulty(131072)
             .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithNumber(_parentBlock.Number + 1)
             .WithBaseFeePerGas(BaseFeeCalculator.Calculate(_parentBlock.Header, specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))))
             .WithNonce(0).TestObject;
@@ -233,13 +233,13 @@ public class HeaderValidatorTests
     {
         _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(new(_testLogger)));
         _parentBlock = Build.A.Block.WithDifficulty(1)
-            .WithGasLimit(long.MaxValue)
+            .WithGasLimit((ulong)long.MaxValue)
             .WithNumber(5)
             .TestObject;
         _block = Build.A.Block.WithParent(_parentBlock)
             .WithDifficulty(131072)
             .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
-            .WithGasLimit(long.MaxValue)
+            .WithGasLimit((ulong)long.MaxValue)
             .WithNumber(_parentBlock.Number + 1)
             .WithNonce(0).TestObject;
         _block.Header.Hash = _block.CalculateHash();
@@ -253,10 +253,6 @@ public class HeaderValidatorTests
     {
         yield return new TestCaseData(new Action<Block>(b => b.Header.Number = -1))
             .SetName("When_block_number_is_negative");
-        yield return new TestCaseData(new Action<Block>(b => b.Header.GasUsed = -1))
-            .SetName("When_gas_used_is_negative");
-        yield return new TestCaseData(new Action<Block>(b => b.Header.GasLimit = -1))
-            .SetName("When_gas_limit_is_negative");
     }
 
     [MaxTime(Timeout.MaxTestTime)]

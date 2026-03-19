@@ -34,7 +34,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
 
-    protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <=
+    protected override bool AllHeadersDownloaded => (long)(_blockTree.LowestInsertedBeaconHeader?.Number ?? (ulong)long.MaxValue) <=
                                                     _pivot.PivotDestinationNumber || _chainMerged;
 
     protected override BlockHeader? LowestInsertedBlockHeader
@@ -93,9 +93,9 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         // In case we already have beacon sync happened before
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
-        if (lowestInserted is not null && lowestInserted.Number <= _pivotNumber)
+        if (lowestInserted is not null && (long)lowestInserted.Number <= _pivotNumber)
         {
-            startNumber = lowestInserted.Number - 1;
+            startNumber = (long)lowestInserted.Number - 1;
             SetExpectedNextHeaderToParent(lowestInserted);
         }
 
@@ -166,7 +166,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             BlockHeader header = headersToAdd[i];
 
             // Found existing block in the block tree
-            if (!_syncConfig.StrictMode && _blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
+            if (!_syncConfig.StrictMode && _blockTree.IsKnownBlock((long)header.Number, header.GetOrCalculateHash()))
             {
                 mergeWhenInserted = true;
                 if (_logger.IsTrace)

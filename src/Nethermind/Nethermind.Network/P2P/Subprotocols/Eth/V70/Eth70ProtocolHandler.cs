@@ -166,7 +166,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         ArrayPoolList<TxReceipt>? partialReceipts = null;
         ulong totalResponseSize = 0;
 
-        using ArrayPoolList<long> expectedGasUsed = new(blockHashes.Count);
+        using ArrayPoolList<ulong> expectedGasUsed = new(blockHashes.Count);
 
         for (int i = 0; i < blockHashes.Count; i++)
         {
@@ -310,7 +310,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         public bool LastBlockIncomplete { get; } = lastBlockIncomplete;
     }
 
-    private static void ValidateBlockReceipts(TxReceipt[] blockReceipts, long expectedGasUsed, int firstReceiptIndex, bool isCompleteSegment)
+    private static void ValidateBlockReceipts(TxReceipt[] blockReceipts, ulong expectedGasUsed, int firstReceiptIndex, bool isCompleteSegment)
     {
         if (blockReceipts is null)
         {
@@ -326,7 +326,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             return;
         }
 
-        long prevCumulative = firstReceiptIndex == 0 ? 0 : blockReceipts[0].GasUsedTotal;
+        ulong prevCumulative = firstReceiptIndex == 0 ? 0 : blockReceipts[0].GasUsedTotal;
         for (int i = 1; i < blockReceipts.Length; i++)
         {
             if (blockReceipts[i].GasUsedTotal < prevCumulative)
@@ -337,8 +337,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             prevCumulative = blockReceipts[i].GasUsedTotal;
         }
 
-        long blockGasUsed = blockReceipts[^1].GasUsedTotal;
-        if (blockGasUsed <= 0)
+        ulong blockGasUsed = blockReceipts[^1].GasUsedTotal;
+        if (blockGasUsed == 0)
         {
             throw new SubprotocolException("Invalid block gas used in receipts");
         }
@@ -350,12 +350,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
         long totalTxCount = checked(firstReceiptIndex + blockReceipts.Length);
         long intrinsicLowerBound = checked(totalTxCount * GasCostOf.Transaction);
-        if (intrinsicLowerBound > blockGasUsed)
+        if ((ulong)intrinsicLowerBound > blockGasUsed)
         {
             throw new SubprotocolException("Intrinsic gas lower bound exceeds block gas used");
         }
 
-        long gasUpperBound = expectedGasUsed > 0 ? expectedGasUsed : blockGasUsed;
+        ulong gasUpperBound = expectedGasUsed > 0 ? expectedGasUsed : blockGasUsed;
 
         if (isCompleteSegment)
         {
@@ -375,7 +375,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 }
             }
 
-            if (logsGas > gasUpperBound)
+            if ((ulong)logsGas > gasUpperBound)
             {
                 throw new SubprotocolException("Logs gas exceeds block gas used");
             }

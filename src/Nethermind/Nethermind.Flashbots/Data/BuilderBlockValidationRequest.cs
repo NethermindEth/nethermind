@@ -14,7 +14,7 @@ public class BuilderBlockValidationRequest
         RExecutionPayloadV3 executionPayload,
         BlobsBundleV1 blobsBundle,
         byte[] signature,
-        long registeredGasLimit,
+        ulong registeredGasLimit,
         Hash256 parentBeaconBlockRoot)
     {
         Message = message;
@@ -42,7 +42,7 @@ public class BuilderBlockValidationRequest
 
     [JsonRequired]
     [JsonPropertyName("registered_gas_limit")]
-    public long RegisteredGasLimit { get; set; }
+    public ulong RegisteredGasLimit { get; set; }
 
     /// <summary>
     /// The block hash of the parent beacon block.

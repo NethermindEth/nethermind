@@ -12,8 +12,8 @@ namespace Nethermind.EthStats.Messages.Models
         public string ParentHash { get; }
         public long Timestamp { get; }
         public string Miner { get; }
-        public long GasUsed { get; }
-        public long GasLimit { get; }
+        public ulong GasUsed { get; }
+        public ulong GasLimit { get; }
         public string Difficulty { get; }
         public string TotalDifficulty { get; }
         public IEnumerable<Transaction> Transactions { get; }
@@ -21,8 +21,8 @@ namespace Nethermind.EthStats.Messages.Models
         public string StateRoot { get; }
         public IEnumerable<Uncle> Uncles { get; }
 
-        public Block(long number, string hash, string parentHash, long timestamp, string miner, long gasUsed,
-            long gasLimit, string difficulty, string totalDifficulty, IEnumerable<Transaction> transactions,
+        public Block(long number, string hash, string parentHash, long timestamp, string miner, ulong gasUsed,
+            ulong gasLimit, string difficulty, string totalDifficulty, IEnumerable<Transaction> transactions,
             string transactionsRoot, string stateRoot, IEnumerable<Uncle> uncles)
         {
             Number = number;

@@ -56,7 +56,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
 
     private long _lastBlockNumber;
-    private long _lastBlockGasLimit;
+    private ulong _lastBlockGasLimit;
     private readonly bool _simulateBlockProduction;
 
     public NewPayloadHandler(
@@ -95,12 +95,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
 
-    private string GetGasChange(long blockGasLimit)
+    private string GetGasChange(ulong blockGasLimit)
     {
-        return (blockGasLimit - _lastBlockGasLimit) switch
+        return blockGasLimit switch
         {
-            > 0 => "👆",
-            < 0 => "👇",
+            _ when blockGasLimit > _lastBlockGasLimit => "👆",
+            _ when blockGasLimit < _lastBlockGasLimit => "👇",
             _ => "  "
         };
     }
@@ -124,8 +124,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
         {
-            _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
-            _lastBlockNumber = block.Number;
+            _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange((long)block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
+            _lastBlockNumber = (long)block.Number;
             _lastBlockGasLimit = block.Header.GasLimit;
         }
 
@@ -148,7 +148,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // because blocks would be ignored with this check:
         // block.Header.Number <= _syncConfig.PivotNumberParsed
         bool hasNeverBeenInSync = (_blockTree.Head?.Number ?? 0) == 0;
-        if (hasNeverBeenInSync && block.Header.Number <= _blockTree.SyncPivot.BlockNumber)
+        if (hasNeverBeenInSync && (long)block.Header.Number <= _blockTree.SyncPivot.BlockNumber)
         {
             if (_logger.IsInfo) _logger.Info($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
             return NewPayloadV1Result.Syncing;
@@ -201,7 +201,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
 
-            if (block.Number <= Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber) && _blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null)
+            if ((long)block.Number <= Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber) && _blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null)
             {
                 if (_logger.IsInfo) _logger.Info($"Syncing... Block already known in blockTree {block}.");
                 return NewPayloadV1Result.Syncing;
@@ -283,7 +283,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         processingOptions = _defaultProcessingOptions;
 
-        BlockInfo? parentBlockInfo = _blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Info;
+        BlockInfo? parentBlockInfo = _blockTree.GetInfo((long)parent.Number, parent.GetOrCalculateHash()).Info;
         bool parentProcessed = parentBlockInfo is { WasProcessed: true } && _stateReader.HasStateForBlock(parent);
 
         // During the transition we can have a case of NP built over a transition block that wasn't processed.
@@ -291,7 +291,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // But we don't want this to trigger when we are in beacon sync.
         // The last condition: !parentBlockInfo.IsBeaconInfo will be true for terminal blocks.
         // Checking _posSwitcher.IsTerminal might not be the best, because we're loading parentHeader with DoNotCalculateTotalDifficulty option
-        bool weHaveOnlyFewBlocksToProcess = (_blockTree.Head?.Number ?? 0) + 8 >= block.Number;
+        bool weHaveOnlyFewBlocksToProcess = (long)(_blockTree.Head?.Number ?? 0UL) + 8 >= (long)block.Number;
         bool parentIsPoWBlock = parent.Difficulty != UInt256.Zero;
         bool processTerminalBlock = !_poSSwitcher.TransitionFinished // we haven't finished transition
                                     && weHaveOnlyFewBlocksToProcess // we won't try to process too much blocks (if we are behind the transition block and still processing blocks)
@@ -364,7 +364,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // the block was processed and returned invalid but this wasn't saved anywhere or the block was
                 // processed and marked as valid.
                 // if marked as processed by the block tree then return VALID, otherwise null so that it's processed a few lines below
-                AddBlockResult.AlreadyKnown => _blockTree.WasProcessed(block.Number, block.Hash!) ? ValidationResult.Valid : null,
+                AddBlockResult.AlreadyKnown => _blockTree.WasProcessed((long)block.Number, block.Hash!) ? ValidationResult.Valid : null,
                 _ => null
             };
 
@@ -460,7 +460,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert | BlockTreeInsertHeaderOptions.MoveToBeaconMainChain;
 
-        if (!_blockTree.IsKnownBeaconBlock(block.Number, block.Hash ?? block.CalculateHash()))
+        if (!_blockTree.IsKnownBeaconBlock((long)block.Number, block.Hash ?? block.CalculateHash()))
         {
             // last block inserted is parent of current block, part of the same chain
             Block? current = block;
@@ -469,7 +469,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             {
                 stack.Push(current);
                 Hash256 currentHash = current.Hash!;
-                if (currentHash == _beaconPivot.PivotHash || _blockTree.IsKnownBeaconBlock(current.Number, currentHash))
+                if (currentHash == _beaconPivot.PivotHash || _blockTree.IsKnownBeaconBlock((long)current.Number, currentHash))
                 {
                     break;
                 }

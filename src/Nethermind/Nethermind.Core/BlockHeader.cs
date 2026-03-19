@@ -21,8 +21,8 @@ public class BlockHeader
         Hash256 unclesHash,
         Address beneficiary,
         in UInt256 difficulty,
-        long number,
-        long gasLimit,
+        ulong number,
+        ulong gasLimit,
         ulong timestamp,
         byte[] extraData,
         ulong? blobGasUsed = null,
@@ -47,7 +47,7 @@ public class BlockHeader
     }
 
     public virtual long GenesisBlockNumber => 0;
-    public bool IsGenesis => Number == GenesisBlockNumber;
+    public bool IsGenesis => Number == (ulong)GenesisBlockNumber;
     public Hash256? ParentHash { get; set; }
     public Hash256? UnclesHash { get; set; }
     public Address? Author { get; set; }
@@ -58,9 +58,9 @@ public class BlockHeader
     public Hash256? ReceiptsRoot { get; set; }
     public Bloom? Bloom { get; set; }
     public UInt256 Difficulty;
-    public long Number { get; set; }
-    public long GasUsed { get; set; }
-    public long GasLimit { get; set; }
+    public ulong Number { get; set; }
+    public ulong GasUsed { get; set; }
+    public ulong GasLimit { get; set; }
     public ulong Timestamp { get; set; }
     public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
     public byte[] ExtraData { get; set; } = [];

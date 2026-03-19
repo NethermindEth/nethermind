@@ -246,7 +246,7 @@ public abstract class VirtualMachineTestsBase
         GetLogManager().GetClassLogger().Debug("Committed initial tree");
 
         transaction ??= Build.A.Transaction
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithGasPrice(gasPrice)
             .WithValue(value)
             .WithBlobVersionedHashes(blobVersionedHashes)
@@ -293,7 +293,7 @@ public abstract class VirtualMachineTestsBase
         TestState.Commit(SpecProvider.GenesisSpec);
 
         Transaction transaction = Build.A.Transaction
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithGasPrice(1)
             .WithNonce(TestState.GetNonce(senderRecipientAndMiner.Sender))
             .WithData(input)
@@ -315,7 +315,7 @@ public abstract class VirtualMachineTestsBase
 
         Transaction transaction = Build.A.Transaction
             .WithTo(null)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithGasPrice(1)
             .WithCode(code)
             .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
@@ -337,7 +337,7 @@ public abstract class VirtualMachineTestsBase
         return Build.A.Block.WithNumber(activation.BlockNumber)
             .WithTimestamp(activation.Timestamp ?? 0)
             .WithTransactions(tx is null ? [] : new[] { tx })
-            .WithGasLimit(blockGasLimit)
+            .WithGasLimit((ulong)blockGasLimit)
             .WithBeneficiary(senderRecipientAndMiner.Miner)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)

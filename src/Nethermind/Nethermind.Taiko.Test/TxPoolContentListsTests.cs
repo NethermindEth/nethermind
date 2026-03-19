@@ -41,7 +41,7 @@ public class TxPoolContentListsTests
         txPool.GetPendingTransactionsBySender().ReturnsForAnyArgs(transactions);
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithGasLimit((long)blockGasLimit).TestObject).TestObject;
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithGasLimit(blockGasLimit).TestObject).TestObject;
         blockFinder.Head.Returns(block);
 
         BlockExecutionContext? currentContext = null;

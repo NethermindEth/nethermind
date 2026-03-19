@@ -194,7 +194,7 @@ public class CliqueBlockProducerTests
             Address beneficiary = Address.Zero;
             UInt256 difficulty = new(1);
             long number = 0L;
-            int gasLimit = 4700000;
+            ulong gasLimit = 4700000;
             ulong timestamp = _timestamper.UnixTime.Seconds - _cliqueConfig.BlockPeriod;
             string extraDataHex = "0x2249276d20646f6e652077616974696e672e2e2e20666f7220626c6f636b2066";
             extraDataHex += TestItem.PrivateKeyA.Address.ToString(false).Replace("0x", string.Empty);

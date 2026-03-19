@@ -313,7 +313,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     private static string Run(byte[] input)
     {
         long blocknr = 12965000;
-        long gas = 34218;
+        ulong gas = 34218;
         ulong ts = 123456;
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);

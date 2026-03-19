@@ -90,7 +90,7 @@ public sealed class BatchV1
                 ChainId = chainId,
                 Type = Txs.Types[(int)txIdx],
                 Nonce = Txs.Nonces[(int)txIdx],
-                GasLimit = (long)Txs.Gases[(int)txIdx],
+                GasLimit = Txs.Gases[(int)txIdx],
             };
             bool contractCreationBit = ((Txs.ContractCreationBits >> (int)txIdx) & 1) == 1;
             if (!contractCreationBit)

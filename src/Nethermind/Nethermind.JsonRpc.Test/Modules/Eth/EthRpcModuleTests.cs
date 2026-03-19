@@ -1366,7 +1366,7 @@ public partial class EthRpcModuleTests
         {
             var rpcTx = new LegacyTransactionForRpc();
             Result<Transaction> tx = rpcTx.ToTransaction();
-            toTransactionWitDefaultsGasLimit = ((Transaction)tx).GasLimit;
+            toTransactionWitDefaultsGasLimit = (long)((Transaction)tx).GasLimit;
         }
 
         long ensureDefaultsGasLimit;
@@ -1374,7 +1374,7 @@ public partial class EthRpcModuleTests
             var rpcTx = new LegacyTransactionForRpc();
             rpcTx.EnsureDefaults(gasCap);
             Result<Transaction> tx = rpcTx.ToTransaction();
-            ensureDefaultsGasLimit = ((Transaction)tx).GasLimit;
+            ensureDefaultsGasLimit = (long)((Transaction)tx).GasLimit;
         }
 
         toTransactionWitDefaultsGasLimit.Should().Be(ensureDefaultsGasLimit);

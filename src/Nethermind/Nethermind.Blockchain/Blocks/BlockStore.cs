@@ -48,7 +48,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
         // Although cpu is the main bottleneck since NettyRlpStream uses pooled memory which avoid unnecessary allocations..
         using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
 
-        blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
+        blockDb.Set((long)block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
     }
 
     public void Delete(long blockNumber, Hash256 blockHash)

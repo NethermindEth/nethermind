@@ -98,7 +98,7 @@ public class OptimismTransactionProcessor(
             }
 
             UInt256 l1Cost = _currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, header, WorldState);
-            UInt256 maxOperatorCost = costHelper.ComputeOperatorCost(tx.GasLimit, header, WorldState);
+            UInt256 maxOperatorCost = costHelper.ComputeOperatorCost((long)tx.GasLimit, header, WorldState);
 
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost + maxOperatorCost, out balanceLeft))
             {
@@ -157,7 +157,7 @@ public class OptimismTransactionProcessor(
 
             if (opSpecHelper.IsIsthmus(header))
             {
-                UInt256 operatorCostMax = costHelper.ComputeOperatorCost(tx.GasLimit, header, WorldState);
+                UInt256 operatorCostMax = costHelper.ComputeOperatorCost((long)tx.GasLimit, header, WorldState);
                 UInt256 operatorCostUsed = costHelper.ComputeOperatorCost(spentGas, header, WorldState);
 
                 if (operatorCostMax > operatorCostUsed)

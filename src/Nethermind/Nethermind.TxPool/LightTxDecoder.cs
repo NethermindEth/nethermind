@@ -55,7 +55,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             ctx.DecodeUInt256(),
             ctx.DecodeKeccak()!,
             ctx.DecodeUInt256(),
-            ctx.DecodeLong(),
+            ctx.DecodeULong(),
             ctx.DecodeUInt256(),
             ctx.DecodeUInt256(),
             ctx.DecodeUInt256(),

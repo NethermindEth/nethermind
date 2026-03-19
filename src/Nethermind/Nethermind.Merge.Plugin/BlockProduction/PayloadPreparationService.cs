@@ -104,7 +104,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         else if (_logger.IsInfo)
         {
             // Shouldn't really happen so move string construction code out of hot method
-            LogMultiStartRequest(payloadId, parentHeader.Number + 1);
+            LogMultiStartRequest(payloadId, (long)parentHeader.Number + 1);
         }
 
         return payloadId;

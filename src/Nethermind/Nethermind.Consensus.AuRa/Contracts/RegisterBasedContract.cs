@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             _registryKey = registryKey;
         }
 
-        protected override Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null)
+        protected override Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, ulong gasLimit = DefaultContractGasLimit, BlockHeader header = null)
         {
             return GenerateTransaction<T>(GetContractAddress(header), transactionData, sender, gasLimit);
         }

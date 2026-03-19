@@ -143,7 +143,7 @@ namespace Nethermind.Network
         {
             EnsureInitialized();
 
-            ForkActivation headActivation = new(head?.Number ?? 0, head?.Number == 0 ? 0 : head?.Timestamp ?? 0);
+            ForkActivation headActivation = new((long)(head?.Number ?? 0UL), head?.Number == 0UL ? 0 : head?.Timestamp ?? 0);
 
             int indexOfActive = Forks.Length - 1;
 

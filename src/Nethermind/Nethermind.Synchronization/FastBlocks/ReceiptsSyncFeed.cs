@@ -271,7 +271,7 @@ namespace Nethermind.Synchronization.FastBlocks
                             try
                             {
                                 _receiptStorage.Insert(block, prepared, ensureCanonical: true);
-                                _syncStatusList.MarkInserted(block.Number);
+                                _syncStatusList.MarkInserted((long)block.Number);
                                 validResponsesCount++;
                             }
                             catch (InvalidDataException)

@@ -60,11 +60,11 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             .WithGasLimit(0)
             .WithValue(value)
             .TestObject;
-        long gasLimit = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance).MinimalGas + _gasLimit;
+        long gasLimitLong = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance).MinimalGas + _gasLimit;
 
         Transaction createTx = Build.A.Transaction
             .WithCode(code)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimitLong)
             .WithValue(value)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
@@ -123,7 +123,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
 
         Transaction createTx = Build.A.Transaction
             .WithCode(code)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithValue(_testAccountBalance)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;

@@ -16,7 +16,7 @@ public sealed class XdcHeaderDecoder : BaseXdcHeaderDecoder<XdcBlockHeader>
         Address? beneficiary,
         UInt256 difficulty,
         long number,
-        long gasLimit,
+        ulong gasLimit,
         ulong timestamp,
         byte[]? extraData)
         => new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);

@@ -87,7 +87,7 @@ namespace Nethermind.Core.Specs
         extension(ISpecProvider specProvider)
         {
             public IReleaseSpec GetSpec(long blockNumber, ulong? timestamp) => specProvider.GetSpec(new ForkActivation(blockNumber, timestamp));
-            public IReleaseSpec GetSpec(BlockHeader blockHeader) => specProvider.GetSpec(new ForkActivation(blockHeader.Number, blockHeader.Timestamp));
+            public IReleaseSpec GetSpec(BlockHeader blockHeader) => specProvider.GetSpec(new ForkActivation((long)blockHeader.Number, blockHeader.Timestamp));
 
             /// <summary>
             /// Resolves a spec for all planned forks applied.

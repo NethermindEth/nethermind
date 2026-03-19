@@ -23,7 +23,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     private readonly Dictionary<Hash256AsKey, BlockHeader> _hashToHeader =
         headers.ToDictionary(header => (Hash256AsKey)(header.Hash ?? throw new ArgumentNullException(nameof(header.Hash))), header => header);
 
-    private readonly Dictionary<long, BlockHeader> _numberToHeader =
+    private readonly Dictionary<ulong, BlockHeader> _numberToHeader =
         headers.ToDictionary(header => header.Number, header => header);
 
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
@@ -39,10 +39,10 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
          => _hashToHeader.GetValueOrDefault(blockHash);
 
     public BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options)
-        => _numberToHeader.GetValueOrDefault(blockNumber);
+        => _numberToHeader.GetValueOrDefault((ulong)blockNumber);
 
     public Hash256? FindBlockHash(long blockNumber)
-        => _numberToHeader.GetValueOrDefault(blockNumber)?.Hash;
+        => _numberToHeader.GetValueOrDefault((ulong)blockNumber)?.Hash;
 
     public bool IsMainChain(BlockHeader blockHeader)
         => blockHeader.Hash is not null && _hashToHeader.ContainsKey(blockHeader.Hash);
@@ -217,7 +217,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public Hash256? GetHash(BlockHeader headBlock, int depth) =>
         depth == 0
             ? headBlock.Hash
-            : _numberToHeader.TryGetValue(headBlock.Number - depth, out BlockHeader? header)
+            : _numberToHeader.TryGetValue(headBlock.Number - (ulong)depth, out BlockHeader? header)
                 ? header?.Hash
                 : null;
 
@@ -228,7 +228,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         result[0] = blockHeader.Hash;
         for (int i = 1; i < length; i++)
         {
-            if (_numberToHeader.TryGetValue(blockHeader.Number - i, out BlockHeader header))
+            if (_numberToHeader.TryGetValue(blockHeader.Number - (ulong)i, out BlockHeader header))
             {
                 result[i] = header.Hash;
             }

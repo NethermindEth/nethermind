@@ -38,7 +38,7 @@ public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheSe
                     }
                 }
 
-                return currentFinalized?.Number ?? baseFinalizedStateProvider.FinalizedBlockNumber;
+                return (long?)(currentFinalized?.Number) ?? baseFinalizedStateProvider.FinalizedBlockNumber;
             }
 
             return baseFinalizedStateProvider.FinalizedBlockNumber;

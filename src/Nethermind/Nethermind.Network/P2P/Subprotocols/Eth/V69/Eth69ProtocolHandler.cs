@@ -153,9 +153,9 @@ public class Eth69ProtocolHandler(
             ProtocolVersion = ProtocolVersion,
             NetworkId = SyncServer.NetworkId,
             GenesisHash = SyncServer.Genesis.Hash!,
-            ForkId = _forkInfo.GetForkId(head.Number, head.Timestamp),
+            ForkId = _forkInfo.GetForkId((long)head.Number, head.Timestamp),
             EarliestBlock = SyncServer.LowestBlock,
-            LatestBlock = head.Number,
+            LatestBlock = (long)head.Number,
             LatestBlockHash = head.Hash!
         };
 
@@ -175,8 +175,8 @@ public class Eth69ProtocolHandler(
 
         BlockRangeUpdateMessage msg = new()
         {
-            EarliestBlock = earliest.Number,
-            LatestBlock = latest.Number,
+            EarliestBlock = (long)earliest.Number,
+            LatestBlock = (long)latest.Number,
             LatestBlockHash = latest.Hash
         };
 

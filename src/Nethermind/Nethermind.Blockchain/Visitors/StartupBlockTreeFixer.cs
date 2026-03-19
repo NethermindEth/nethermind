@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Visitors
             _stateReader = stateReader;
             _logger = logger;
 
-            long assumedHead = _blockTree.Head?.Number ?? 0;
+            long assumedHead = (long)(_blockTree.Head?.Number ?? 0UL);
             _startNumber = Math.Max(_blockTree.SyncPivot.BlockNumber, assumedHead + 1);
             _blocksToLoad = (assumedHead + 1) >= _startNumber ? (_blockTree.BestKnownNumber - _startNumber + 1) : 0;
 
@@ -148,9 +148,9 @@ namespace Nethermind.Blockchain.Visitors
 
             if (!_suggestBlocks) return BlockVisitOutcome.None;
 
-            Task waitSuggestQueue = _blockTreeSuggestPacer.WaitForQueue(block.Number, cancellationToken);
+            Task waitSuggestQueue = _blockTreeSuggestPacer.WaitForQueue((long)block.Number, cancellationToken);
 
-            long i = block.Number - StartLevelInclusive;
+            long i = (long)block.Number - StartLevelInclusive;
             if (!waitSuggestQueue.IsCompleted)
             {
                 if (_logger.IsInfo)

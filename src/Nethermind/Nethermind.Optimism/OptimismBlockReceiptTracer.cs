@@ -48,7 +48,7 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
     protected override TxReceipt BuildReceipt(Address recipient, in GasConsumed gasConsumed, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
     {
         // Update cumulative gas tracking without creating a throwaway receipt
-        long cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
+        ulong cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
 
         (ulong? depositNonce, ulong? version) = GetDepositReceiptData(Block.Header);
 
@@ -64,7 +64,7 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
             BlockHash = Block.Hash,
             BlockNumber = Block.Number,
             Index = _currentIndex,
-            GasUsed = gasConsumed.SpentGas,  // Post-refund for this tx
+            GasUsed = (ulong)gasConsumed.SpentGas,  // Post-refund for this tx
             Sender = transaction.SenderAddress,
             ContractAddress = transaction.IsContractCreation ? recipient : null,
             TxHash = transaction.Hash,

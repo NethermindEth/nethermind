@@ -258,7 +258,7 @@ namespace Nethermind.Synchronization.Peers
             BlockHeader? header = _blockTree.FindHeader(syncPeer.HeadHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is not null)
             {
-                syncPeer.HeadNumber = header.Number;
+                syncPeer.HeadNumber = (long)header.Number;
                 UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
             }
             else
@@ -643,20 +643,20 @@ namespace Nethermind.Synchronization.Peers
             if (parent is not null && (parent.TotalDifficulty ?? 0) != 0)
             {
                 UInt256 newTotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
-                bool newValueIsNotWorseThanPeer = _betterPeerStrategy.Compare((newTotalDifficulty, header.Number), syncPeer) >= 0;
+                bool newValueIsNotWorseThanPeer = _betterPeerStrategy.Compare((newTotalDifficulty, (long)header.Number), syncPeer) >= 0;
                 if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer} from {syncPeer.HeadNumber} to {header.Number} based on totalDifficulty, newValueIsNotWorseThanPeer {newValueIsNotWorseThanPeer}, newTotalDifficulty: {newTotalDifficulty}, header.Difficulty: {header.Difficulty}, Parent total difficulty: {parent.TotalDifficulty}");
                 if (newValueIsNotWorseThanPeer)
                 {
                     syncPeer.TotalDifficulty = newTotalDifficulty;
-                    syncPeer.HeadNumber = header.Number;
+                    syncPeer.HeadNumber = (long)header.Number;
                     syncPeer.HeadHash = header.Hash!;
                     PeerRefreshed?.Invoke(this, new PeerHeadRefreshedEventArgs(syncPeer, header));
                 }
             }
-            else if (header.Number > syncPeer.HeadNumber)
+            else if ((long)header.Number > syncPeer.HeadNumber)
             {
                 if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer} from {syncPeer.HeadNumber} to {header.Number} based on headNumber");
-                syncPeer.HeadNumber = header.Number;
+                syncPeer.HeadNumber = (long)header.Number;
                 syncPeer.HeadHash = header.Hash!;
             }
             syncPeer.IsInitialized = true;

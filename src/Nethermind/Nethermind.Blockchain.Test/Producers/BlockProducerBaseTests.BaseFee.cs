@@ -65,7 +65,7 @@ public partial class BlockProducerBaseTests
                         .AddSingleton<ISpecProvider>(spec)
                         .WithGenesisPostProcessor((block, state) =>
                         {
-                            block.Header.GasLimit = gasLimit;
+                            block.Header.GasLimit = (ulong)gasLimit;
                         })
                     );
                 _testRpcBlockchain.TestWallet.UnlockAccount(_address, new SecureString());
@@ -125,7 +125,7 @@ public partial class BlockProducerBaseTests
                     Data = txData,
                     To = _contractAddress,
                     SenderAddress = _address,
-                    GasLimit = gasLimit,
+                    GasLimit = (ulong)gasLimit,
                     GasPrice = gasPrice,
                     DecodedMaxFeePerGas = feeCap,
                     Nonce = nonce ?? _currentNonce++,

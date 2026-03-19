@@ -75,7 +75,7 @@ public partial class BlockTree
     {
         if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
         {
-            long blockNumber = BestPersistedState ?? BestSuggestedHeader.Number;
+            long blockNumber = BestPersistedState ?? (long)BestSuggestedHeader.Number;
             ChainLevelInfo chainLevelInfo = LoadLevel(blockNumber);
             BlockInfo? canonicalBlock = chainLevelInfo?.MainChainBlock;
             if (canonicalBlock is not null && canonicalBlock.WasProcessed)
@@ -194,9 +194,9 @@ public partial class BlockTree
 
     private void LoadBestKnown()
     {
-        long left = (Head?.Number ?? 0) == 0
-            ? Math.Max(SyncPivot.BlockNumber, LowestInsertedHeader?.Number ?? 0) - 1
-            : Head.Number;
+        long left = (Head?.Number ?? 0UL) == 0UL
+            ? Math.Max(SyncPivot.BlockNumber, (long)(LowestInsertedHeader?.Number ?? 0UL)) - 1
+            : (long)Head.Number;
 
         long right = Math.Max(0, left) + BestKnownSearchLimit;
 
@@ -243,22 +243,22 @@ public partial class BlockTree
 
     private void LoadBeaconBestKnown()
     {
-        long left = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0) - 1;
+        long left = Math.Max((long)(Head?.Number ?? 0UL), (long)(LowestInsertedBeaconHeader?.Number ?? 0UL)) - 1;
         long right = Math.Max(0, left) + BestKnownSearchLimit;
         long bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists, findBeacon: true) ?? 0;
 
         left = Math.Max(
             Math.Max(
-                Head?.Number ?? 0,
-                LowestInsertedBeaconHeader?.Number ?? 0),
-            BestSuggestedHeader?.Number ?? 0
+                (long)(Head?.Number ?? 0UL),
+                (long)(LowestInsertedBeaconHeader?.Number ?? 0UL)),
+            (long)(BestSuggestedHeader?.Number ?? 0UL)
         ) - 1;
 
         right = Math.Max(0, left) + BestKnownSearchLimit;
         long bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
 
         long? beaconPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?.AsRlpValueContext().DecodeLong();
-        left = Math.Max(Head?.Number ?? 0, beaconPivotNumber ?? 0) - 1;
+        left = Math.Max((long)(Head?.Number ?? 0UL), beaconPivotNumber ?? 0) - 1;
         right = Math.Max(0, left) + BestKnownSearchLimit;
         long bestBeaconBodyNumber = BinarySearchBlockNumber(left, right, BodyExists, findBeacon: true) ?? 0;
 
@@ -356,7 +356,7 @@ public partial class BlockTree
     {
         Block? headBlock = FindBlock(headHash, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException(
                 "An attempt to set a head block that has not been stored in the DB.");
-        ChainLevelInfo? level = LoadLevel(headBlock.Number);
+        ChainLevelInfo? level = LoadLevel((long)headBlock.Number);
         int? index = level?.FindIndex(headHash);
         if (!index.HasValue)
         {

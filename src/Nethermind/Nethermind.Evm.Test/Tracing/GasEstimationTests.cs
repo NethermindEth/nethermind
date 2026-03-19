@@ -147,8 +147,8 @@ namespace Nethermind.Evm.Test.Tracing
         {
             using TestEnvironment testEnvironment = new();
             long gasLimit = 100_000_000;
-            Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasLimit((ulong)gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit((ulong)gasLimit).TestObject;
 
             long gasLeft = gasLimit - 22000;
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
@@ -270,7 +270,7 @@ namespace Nethermind.Evm.Test.Tracing
             Transaction tx = Build.A.Transaction.TestObject;
             Block block = Build.A.Block.WithTransactions(tx).TestObject;
             EstimateGasTracer tracer = new();
-            tracer.MarkAsSuccess(Address.Zero, 1, [], []);
+            tracer.MarkAsSuccess(Address.Zero, 1L, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
             GasEstimator sut = new GasEstimator(
@@ -294,7 +294,7 @@ namespace Nethermind.Evm.Test.Tracing
             Transaction tx = Build.A.Transaction.WithGasLimit(30000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             EstimateGasTracer tracer = new();
-            tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
+            tracer.MarkAsSuccess(Address.Zero, (long)totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
             GasEstimator sut = new GasEstimator(
@@ -330,7 +330,7 @@ namespace Nethermind.Evm.Test.Tracing
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             EstimateGasTracer tracer = new();
             const int totalGas = Transaction.BaseTxGasCost;
-            tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
+            tracer.MarkAsSuccess(Address.Zero, (long)totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
             GasEstimator sut = new GasEstimator(
@@ -355,7 +355,7 @@ namespace Nethermind.Evm.Test.Tracing
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             EstimateGasTracer tracer = new();
             const int totalGas = Transaction.BaseTxGasCost;
-            tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
+            tracer.MarkAsSuccess(Address.Zero, (long)totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
             GasEstimator sut = new GasEstimator(
@@ -385,7 +385,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas);
 
-            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 500, Array.Empty<byte>(), Array.Empty<LogEntry>());
+            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 500L, Array.Empty<byte>(), Array.Empty<LogEntry>());
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
@@ -404,7 +404,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
 
-            testEnvironment.tracer.MarkAsFailed(Address.Zero, 500, Array.Empty<byte>(), "execution failed");
+            testEnvironment.tracer.MarkAsFailed(Address.Zero, 500L, Array.Empty<byte>(), "execution failed");
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
@@ -426,7 +426,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionEnd(63, Array.Empty<byte>());
             testEnvironment.tracer.ReportActionEnd(65, Array.Empty<byte>());
 
-            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 63, Array.Empty<byte>(), Array.Empty<LogEntry>());
+            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 63L, Array.Empty<byte>(), Array.Empty<LogEntry>());
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
             estimate.Should().Be(1, "Should match the Easy_one_level_case result");
@@ -448,7 +448,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             // Address.Zero has zero balance by default in test environment
             EstimateGasTracer tracer = new();
-            tracer.MarkAsFailed(Address.Zero, 0, Array.Empty<byte>(), "insufficient balance");
+            tracer.MarkAsFailed(Address.Zero, 0L, Array.Empty<byte>(), "insufficient balance");
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
@@ -470,7 +470,7 @@ namespace Nethermind.Evm.Test.Tracing
             EstimateGasTracer tracer = new();
             tracer.ReportAction(100000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
             tracer.ReportActionError(EvmExceptionType.OutOfGas);
-            tracer.MarkAsFailed(Address.Zero, 100000, Array.Empty<byte>(), "out of gas");
+            tracer.MarkAsFailed(Address.Zero, 100000L, Array.Empty<byte>(), "out of gas");
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
@@ -491,7 +491,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             EstimateGasTracer tracer = new();
             tracer.ReportAction(100000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
-            tracer.MarkAsFailed(Address.Zero, 50000, Array.Empty<byte>(), "execution reverted");
+            tracer.MarkAsFailed(Address.Zero, 50000L, Array.Empty<byte>(), "execution reverted");
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
@@ -513,7 +513,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             testEnvironment.tracer.ReportAction(100000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
             testEnvironment.tracer.ReportActionEnd(79000, Array.Empty<byte>());
-            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 21000, Array.Empty<byte>(), Array.Empty<LogEntry>());
+            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 21000L, Array.Empty<byte>(), Array.Empty<LogEntry>());
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
@@ -535,7 +535,7 @@ namespace Nethermind.Evm.Test.Tracing
             EstimateGasTracer tracer = new();
             // Simulate gas spent exceeding available limits
             tracer.ReportAction(21000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
-            tracer.MarkAsSuccess(Address.Zero, 25000, Array.Empty<byte>(), Array.Empty<LogEntry>());
+            tracer.MarkAsSuccess(Address.Zero, 25000L, Array.Empty<byte>(), Array.Empty<LogEntry>());
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
@@ -593,7 +593,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             Transaction tx = Build.A.Transaction
                 .WithData([0x00, 0x00, 0x00, 0x00])
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .WithTo(contractAddress)
                 .WithSenderAddress(TestItem.AddressA)
                 .TestObject;
@@ -619,8 +619,8 @@ namespace Nethermind.Evm.Test.Tracing
         {
             using TestEnvironment testEnvironment = new();
             long gasLimit = 100_000;
-            Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasLimit((ulong)gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit((ulong)gasLimit).TestObject;
 
             long gasLeft = gasLimit - 22000;
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
@@ -637,7 +637,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionRevert(gasLeft - 1000, Array.Empty<byte>());
             testEnvironment.tracer.ReportActionEnd(gasLeft - 500, Array.Empty<byte>());
             testEnvironment.tracer.ReportActionEnd(gasLeft, Array.Empty<byte>());
-            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 25000, Array.Empty<byte>(), Array.Empty<LogEntry>());
+            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 25000L, Array.Empty<byte>(), Array.Empty<LogEntry>());
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
@@ -652,15 +652,15 @@ namespace Nethermind.Evm.Test.Tracing
         {
             using TestEnvironment testEnvironment = new();
             long gasLimit = 100_000;
-            Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasLimit((ulong)gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit((ulong)gasLimit).TestObject;
 
             long gasLeft = gasLimit - 22000;
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
 
             testEnvironment.tracer.ReportActionRevert(gasLeft - 1000, Array.Empty<byte>());
-            testEnvironment.tracer.MarkAsFailed(Address.Zero, 25000, Array.Empty<byte>(), "execution reverted");
+            testEnvironment.tracer.MarkAsFailed(Address.Zero, 25000L, Array.Empty<byte>(), "execution reverted");
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
@@ -703,14 +703,14 @@ namespace Nethermind.Evm.Test.Tracing
 
             long gasLimit = 300_000;
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .WithTo(callerAddress)
                 .WithSenderAddress(TestItem.AddressA)
                 .TestObject;
             Block block = Build.A.Block
                 .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber + 1)
                 .WithTransactions(tx)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .TestObject;
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
@@ -764,14 +764,14 @@ namespace Nethermind.Evm.Test.Tracing
 
             long gasLimit = 500_000;
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .WithTo(factoryAddress)
                 .WithSenderAddress(TestItem.AddressA)
                 .TestObject;
             Block block = Build.A.Block
                 .WithNumber(MainnetSpecProvider.ConstantinopleFixBlockNumber + 1)
                 .WithTransactions(tx)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .TestObject;
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
@@ -823,14 +823,14 @@ namespace Nethermind.Evm.Test.Tracing
 
             long gasLimit = 500_000;
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .WithTo(callerAddress)
                 .WithSenderAddress(TestItem.AddressA)
                 .TestObject;
             Block block = Build.A.Block
                 .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber + 1)
                 .WithTransactions(tx)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .TestObject;
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
@@ -883,14 +883,14 @@ namespace Nethermind.Evm.Test.Tracing
 
             long gasLimit = 500_000;
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .WithTo(callerAddress)
                 .WithSenderAddress(TestItem.AddressA)
                 .TestObject;
             Block block = Build.A.Block
                 .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber + 1)
                 .WithTransactions(tx)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .TestObject;
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
@@ -918,14 +918,14 @@ namespace Nethermind.Evm.Test.Tracing
 
             long gasLimit = 1_100_000;
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .WithTo(contractAddress)
                 .WithSenderAddress(TestItem.AddressA)
                 .TestObject;
             Block block = Build.A.Block
                 .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber + 1)
                 .WithTransactions(tx)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .TestObject;
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
@@ -982,14 +982,14 @@ namespace Nethermind.Evm.Test.Tracing
 
             long gasLimit = 500_000;
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .WithTo(factoryAddress)
                 .WithSenderAddress(TestItem.AddressA)
                 .TestObject;
             Block block = Build.A.Block
                 .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber + 1)
                 .WithTransactions(tx)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .TestObject;
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
@@ -1025,7 +1025,7 @@ namespace Nethermind.Evm.Test.Tracing
             long gasLimit = 300_000;
             Block block = Build.A.Block
                 .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber + 1)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .TestObject;
 
             long? firstResult = null;
@@ -1037,7 +1037,7 @@ namespace Nethermind.Evm.Test.Tracing
                 freshEnv.InsertContract(callerAddress, callerCode);
 
                 Transaction tx = Build.A.Transaction
-                    .WithGasLimit(gasLimit)
+                    .WithGasLimit((ulong)gasLimit)
                     .WithTo(callerAddress)
                     .WithSenderAddress(TestItem.AddressA)
                     .TestObject;
@@ -1109,14 +1109,14 @@ namespace Nethermind.Evm.Test.Tracing
 
             long gasLimit = 500_000;
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .WithTo(addrA)
                 .WithSenderAddress(TestItem.AddressA)
                 .TestObject;
             Block block = Build.A.Block
                 .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber + 1)
                 .WithTransactions(tx)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .TestObject;
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
@@ -1167,14 +1167,14 @@ namespace Nethermind.Evm.Test.Tracing
 
             long gasLimit = 500_000;
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .WithTo(factoryAddress)
                 .WithSenderAddress(TestItem.AddressA)
                 .TestObject;
             Block block = Build.A.Block
                 .WithNumber(MainnetSpecProvider.ConstantinopleFixBlockNumber + 1)
                 .WithTransactions(tx)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .TestObject;
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
@@ -1199,14 +1199,14 @@ namespace Nethermind.Evm.Test.Tracing
 
             long gasLimit = 300_000;
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .WithTo(contractAddress)
                 .WithSenderAddress(TestItem.AddressA)
                 .TestObject;
             Block block = Build.A.Block
                 .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber + 1)
                 .WithTransactions(tx)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .TestObject;
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
@@ -1245,14 +1245,14 @@ namespace Nethermind.Evm.Test.Tracing
 
             long gasLimit = 300_000;
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .WithTo(proxyAddress)
                 .WithSenderAddress(TestItem.AddressA)
                 .TestObject;
             Block block = Build.A.Block
                 .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber + 1)
                 .WithTransactions(tx)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .TestObject;
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);

@@ -72,7 +72,7 @@ public class UnsafeStartingSyncPivotUpdater(
 
         foreach (Block block in _blockCacheService.BlockCache.Values)
         {
-            if (block.Number == potentialPivotBlockNumber && HeaderValidator.ValidateHash(block.Header))
+            if ((long)block.Number == potentialPivotBlockNumber && HeaderValidator.ValidateHash(block.Header))
             {
                 if (_logger.IsInfo) _logger.Info($"Loaded potential pivot block {potentialPivotBlockNumber} from block cache. Hash: {block.Hash}");
                 return block.Hash;

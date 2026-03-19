@@ -377,7 +377,7 @@ public class DebugRpcModule(
             return ResultWrapper<byte[][]>.Success([]);
         }
         RlpBehaviors behavior =
-            (specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ?
+            (specProvider.GetReceiptSpec((long)receipts[0].BlockNumber).IsEip658Enabled ?
                 RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
         IEnumerable<byte[]>? rlp = receipts.Select(tx => Rlp.Encode(tx, behavior).Bytes);
         return ResultWrapper<byte[][]>.Success(rlp.ToArray());
@@ -513,7 +513,7 @@ public class DebugRpcModule(
             }).ToList()
         };
 
-        BlockParameter concreteBlockParameter = new(header.Number);
+        BlockParameter concreteBlockParameter = new((long)header.Number);
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 

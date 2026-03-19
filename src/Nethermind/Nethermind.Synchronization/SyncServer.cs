@@ -125,7 +125,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public long LowestBlock => Math.Min(Head?.Number ?? 0, _blockTree.GetLowestBlock());
+        public long LowestBlock => Math.Min((long)(Head?.Number ?? 0UL), _blockTree.GetLowestBlock());
 
         public int GetPeerCount() => _pool.PeerCount;
 
@@ -167,8 +167,8 @@ namespace Nethermind.Synchronization
             // even if the block is not something that we want to include in the block tree
             // it delivers information about the peer's chain.
 
-            bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
-            bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
+            bool isBlockBeforeTheSyncPivot = (long)block.Number < _pivotNumber;
+            bool isBlockOlderThanMaxReorgAllows = (long)block.Number < (long)(_blockTree.Head?.Number ?? 0UL) - Sync.MaxReorgLength;
 
             // We skip blocks that are old
             if (isBlockBeforeTheSyncPivot || isBlockOlderThanMaxReorgAllows)
@@ -177,7 +177,7 @@ namespace Nethermind.Synchronization
             }
 
             // We skip already imported blocks
-            if (_blockTree.IsKnownBlock(block.Number, block.Hash))
+            if (_blockTree.IsKnownBlock((long)block.Number, block.Hash))
             {
                 return;
             }
@@ -247,7 +247,7 @@ namespace Nethermind.Synchronization
             // It is important that we only do that here, after we ensured that the block is
             // in the range of [Head - MaxReorganizationLength, Head].
             // Otherwise we could hint incorrect ranges and cause expensive cache recalculations.
-            _sealValidator.HintValidationRange(_sealValidatorUserGuid, block.Number - 128, block.Number + 1024);
+            _sealValidator.HintValidationRange(_sealValidatorUserGuid, (long)block.Number - 128, (long)block.Number + 1024);
             return _sealValidator.ValidateSeal(block.Header, true);
         }
 
@@ -256,7 +256,7 @@ namespace Nethermind.Synchronization
             if (syncPeer.TotalDifficulty is { } peerTD && (block.TotalDifficulty ?? UInt256.Zero) > peerTD)
             {
                 if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
-                syncPeer.HeadNumber = block.Number;
+                syncPeer.HeadNumber = (long)block.Number;
                 syncPeer.HeadHash = block.Hash;
                 syncPeer.TotalDifficulty = block.TotalDifficulty ?? syncPeer.TotalDifficulty;
             }
@@ -518,7 +518,7 @@ namespace Nethermind.Synchronization
                         return;
                     }
                     PeerInfo peerInfo = allPeers[i];
-                    if (peerInfo.ShouldNotifyNewRange(earliest.Number, latest.Number))
+                    if (peerInfo.ShouldNotifyNewRange((long)earliest.Number, (long)latest.Number))
                     {
                         NotifyOfNewRange(peerInfo, earliest, latest);
                         Interlocked.Increment(ref counter);

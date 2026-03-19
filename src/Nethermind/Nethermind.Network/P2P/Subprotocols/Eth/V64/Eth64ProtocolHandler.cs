@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
         protected override void EnrichStatusMessage(StatusMessage statusMessage)
         {
             base.EnrichStatusMessage(statusMessage);
-            statusMessage.ForkId = _forkInfo.GetForkId(SyncServer.Head!.Number, SyncServer.Head.Timestamp);
+            statusMessage.ForkId = _forkInfo.GetForkId((long)SyncServer.Head!.Number, SyncServer.Head.Timestamp);
         }
     }
 }

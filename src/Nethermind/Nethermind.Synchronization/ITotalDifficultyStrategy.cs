@@ -27,7 +27,7 @@ public sealed class FixedTotalDifficultyStrategy(
 {
     public UInt256 ParentTotalDifficulty(BlockHeader header)
     {
-        return header.Number > 0 && header.Number - 1 == fixesBlockNumber
+        return header.Number > 0 && (long)header.Number - 1 == fixesBlockNumber
             ? toTotalDifficulty
             : strategy.ParentTotalDifficulty(header);
     }

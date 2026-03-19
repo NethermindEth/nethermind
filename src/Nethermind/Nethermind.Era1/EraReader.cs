@@ -96,7 +96,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
                     throw new EraVerificationException($"Invalid block {error}");
                 }
 
-                Hash256 receiptRoot = ReceiptTrie.CalculateRoot(specProvider.GetReceiptSpec(err.Block.Number), err.Receipts, _receiptDecoder);
+                Hash256 receiptRoot = ReceiptTrie.CalculateRoot(specProvider.GetReceiptSpec((long)err.Block.Number), err.Receipts, _receiptDecoder);
                 if (err.Block.Header.ReceiptsRoot != receiptRoot)
                 {
                     throw new EraVerificationException($"Mismatched receipt root. Block number {blockNumber}.");
@@ -104,7 +104,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
 
                 // Note: Header.Hash is calculated by HeaderDecoder.
-                blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
+                blockHashes[(int)((long)err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
             }
         }, cancellation)).ToPooledList(verifyConcurrency);
         await Task.WhenAll(workers.AsSpan());

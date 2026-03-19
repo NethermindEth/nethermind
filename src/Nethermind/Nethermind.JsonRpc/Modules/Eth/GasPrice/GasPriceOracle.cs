@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 return ValueTask.FromResult(price!.Value);
             }
 
-            IEnumerable<UInt256> txGasPrices = GetGasPricesFromRecentBlocks(headBlock.Number);
+            IEnumerable<UInt256> txGasPrices = GetGasPricesFromRecentBlocks((long)headBlock.Number);
             UInt256 gasPriceEstimate = GetGasPriceAtPercentile(txGasPrices.ToList()) ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
@@ -82,7 +82,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 return price!.Value;
             }
 
-            IEnumerable<UInt256> gasPricesWithFee = GetGasPricesFromRecentBlocks(headBlock.Number,
+            IEnumerable<UInt256> gasPricesWithFee = GetGasPricesFromRecentBlocks((long)headBlock.Number,
                 EthGasPriceConstants.DefaultBlocksLimitMaxPriorityFeePerGas,
                 static (transaction, eip1559Enabled, baseFee) => transaction.CalculateMaxPriorityFeePerGas(eip1559Enabled, baseFee));
 

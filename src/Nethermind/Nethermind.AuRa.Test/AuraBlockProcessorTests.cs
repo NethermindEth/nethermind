@@ -77,7 +77,7 @@ namespace Nethermind.AuRa.Test
         public void For_normal_processing_it_should_not_fail_with_gas_remaining_rules()
         {
             BranchProcessor processor = CreateProcessor().Processor;
-            int gasLimit = 10000000;
+            ulong gasLimit = 10000000;
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(3).TestObject;
             Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] { 0, 1 })
                 .SignedAndResolved().WithChainId(105).WithGasPrice(0).WithValue(0).WithGasLimit(gasLimit + 1).TestObject;

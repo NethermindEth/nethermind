@@ -22,7 +22,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
         Address? beneficiary,
         UInt256 difficulty,
         long number,
-        long gasLimit,
+        ulong gasLimit,
         ulong timestamp,
         byte[]? extraData);
 
@@ -52,8 +52,8 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
         Bloom? bloom = decoderContext.DecodeBloom();
         UInt256 difficulty = decoderContext.DecodeUInt256();
         long number = decoderContext.DecodeLong();
-        long gasLimit = decoderContext.DecodeLong();
-        long gasUsed = decoderContext.DecodeLong();
+        ulong gasLimit = decoderContext.DecodeULong();
+        ulong gasUsed = decoderContext.DecodeULong();
         ulong timestamp = decoderContext.DecodeULong();
         byte[]? extraData = decoderContext.DecodeByteArray();
 

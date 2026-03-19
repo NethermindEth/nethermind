@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Clique
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
-            long number = header.Number;
+            long number = (long)header.Number;
             // Retrieve the snapshot needed to validate this header and cache it
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash!);
             // Resolve the authorization key and check against signers
@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Ensure that the difficulty corresponds to the turn-ness of the signer
-            bool inTurn = _snapshotManager.IsInTurn(snapshot, header.Number, signer);
+            bool inTurn = _snapshotManager.IsInTurn(snapshot, (long)header.Number, signer);
             if (inTurn && header.Difficulty != Clique.DifficultyInTurn)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be in-turn {Clique.DifficultyInTurn}");
@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.Clique
                 return false;
             }
 
-            bool isEpochTransition = IsEpochTransition(header.Number);
+            bool isEpochTransition = IsEpochTransition((long)header.Number);
             // Checkpoint blocks need to enforce zero beneficiary
             if (isEpochTransition && header.Beneficiary != Address.Zero)
             {
@@ -135,7 +135,7 @@ namespace Nethermind.Consensus.Clique
 
         private bool ValidateCascadingFields(BlockHeader parent, BlockHeader header)
         {
-            long number = header.Number;
+            long number = (long)header.Number;
             if (parent.Timestamp + _cliqueConfig.BlockPeriod > header.Timestamp)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect block timestamp ({header.Timestamp}) - should have big enough difference with parent");

@@ -290,7 +290,7 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block
                 .WithNumber(0)
                 .WithBaseFeePerGas(testCase.BaseFee)
-                .WithGasLimit(testCase.GasLimit)
+                .WithGasLimit((ulong)testCase.GasLimit)
                 .WithTransactions(txArray)
                 .TestObject;
             BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);

@@ -19,7 +19,7 @@ namespace Nethermind.JsonRpc.Modules
                 SearchResult<BlockHeader> headerResult = blockFinder.SearchForHeader(blockParameter);
                 if (!headerResult.IsError)
                 {
-                    requestedBlock = headerResult.Object.Number;
+                    requestedBlock = (long?)headerResult.Object.Number;
                 }
             }
             return requestedBlock < blockFinder.GetLowestBlock();
@@ -110,14 +110,14 @@ namespace Nethermind.JsonRpc.Modules
                 else
                 {
                     yield return startingBlock;
-                    long startingBlockNumber = startingBlock.Object.Number;
-                    long finalBlockNumber = finalBlockHeader.Object.Number;
+                    long startingBlockNumber = (long)startingBlock.Object.Number;
+                    long finalBlockNumber = (long)finalBlockHeader.Object.Number;
                     if (startingBlockNumber > finalBlockNumber)
                     {
                         yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidInput);
                     }
 
-                    for (long i = startingBlock.Object.Number + 1; i <= finalBlockHeader.Object.Number; ++i)
+                    for (long i = startingBlockNumber + 1; i <= finalBlockNumber; ++i)
                     {
                         yield return SearchForBlock(blockFinder, new BlockParameter(i));
                     }

@@ -26,15 +26,15 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
         if (!worldState.IsContract(eip2935Account)) return;
 
         Hash256 parentBlockHash = blockHeader.ParentHash;
-        UInt256 parentBlockIndex = new UInt256((ulong)((blockHeader.Number - 1) % spec.Eip2935RingBufferSize));
+        UInt256 parentBlockIndex = new UInt256((ulong)(((long)blockHeader.Number - 1) % spec.Eip2935RingBufferSize));
         StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
         worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber, IReleaseSpec spec)
     {
-        if (requiredBlockNumber >= currentHeader.Number ||
-            requiredBlockNumber + spec.Eip2935RingBufferSize < currentHeader.Number)
+        if (requiredBlockNumber >= (long)currentHeader.Number ||
+            requiredBlockNumber + spec.Eip2935RingBufferSize < (long)currentHeader.Number)
         {
             return null;
         }

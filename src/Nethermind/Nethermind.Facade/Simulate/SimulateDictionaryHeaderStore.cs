@@ -22,7 +22,7 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
     public void Insert(BlockHeader header)
     {
         _headerDict[header.Hash!] = header;
-        InsertBlockNumber(header.Hash, header.Number);
+        InsertBlockNumber(header.Hash, (long)header.Number);
     }
 
     public void BulkInsert(IReadOnlyList<BlockHeader> headers)

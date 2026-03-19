@@ -103,7 +103,7 @@ public class ValidateSubmissionHandler
         return FlashbotsResult.Valid();
     }
 
-    private bool ValidateBlock(Block block, BidTrace message, long registeredGasLimit, IReleaseSpec releaseSpec, out string? error)
+    private bool ValidateBlock(Block block, BidTrace message, ulong registeredGasLimit, IReleaseSpec releaseSpec, out string? error)
     {
         error = null;
 
@@ -190,7 +190,7 @@ public class ValidateSubmissionHandler
         return true;
     }
 
-    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, long registerGasLimit, bool useBalanceDiffProfit, bool excludeWithdrawals, IReleaseSpec releaseSpec, out string? error)
+    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, ulong registerGasLimit, bool useBalanceDiffProfit, bool excludeWithdrawals, IReleaseSpec releaseSpec, out string? error)
     {
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
 
@@ -271,7 +271,7 @@ public class ValidateSubmissionHandler
         }
     }
 
-    private bool ValidateBlockMetadata(Block block, long registerGasLimit, BlockHeader parentHeader, IReleaseSpec releaseSpec, out string? error)
+    private bool ValidateBlockMetadata(Block block, ulong registerGasLimit, BlockHeader parentHeader, IReleaseSpec releaseSpec, out string? error)
     {
         if (!_headerValidator.Validate(block.Header, parentHeader, false, out error))
         {
@@ -290,7 +290,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        long calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit, releaseSpec);
+        ulong calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit, releaseSpec);
 
         if (calculatedGasLimit != block.Header.GasLimit)
         {
@@ -301,24 +301,20 @@ public class ValidateSubmissionHandler
         return true;
     }
 
-    private long GetGasLimit(BlockHeader parentHeader, long desiredGasLimit, IReleaseSpec releaseSpec)
+    private ulong GetGasLimit(BlockHeader parentHeader, ulong desiredGasLimit, IReleaseSpec releaseSpec)
     {
-        long parentGasLimit = parentHeader.GasLimit;
+        long parentGasLimit = (long)parentHeader.GasLimit;
         long gasLimit = parentGasLimit;
-
-        long? targetGasLimit = desiredGasLimit;
+        long targetGasLimit = (long)desiredGasLimit;
         long newBlockNumber = parentHeader.Number + 1;
 
-        if (targetGasLimit is not null)
-        {
-            long maxGasLimitDifference = Math.Max(0, parentGasLimit / releaseSpec.GasLimitBoundDivisor - 1);
-            gasLimit = targetGasLimit.Value > parentGasLimit
-                ? parentGasLimit + Math.Min(targetGasLimit.Value - parentGasLimit, maxGasLimitDifference)
-                : parentGasLimit - Math.Min(parentGasLimit - targetGasLimit.Value, maxGasLimitDifference);
-        }
+        long maxGasLimitDifference = Math.Max(0, parentGasLimit / releaseSpec.GasLimitBoundDivisor - 1);
+        gasLimit = targetGasLimit > parentGasLimit
+            ? parentGasLimit + Math.Min(targetGasLimit - parentGasLimit, maxGasLimitDifference)
+            : parentGasLimit - Math.Min(parentGasLimit - targetGasLimit, maxGasLimitDifference);
 
         gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(releaseSpec, gasLimit, newBlockNumber);
-        return gasLimit;
+        return (ulong)gasLimit;
     }
 
     private bool ValidateProposerPayment(UInt256 expectedProfit, bool useBalanceDiffProfit, UInt256 feeRecipientBalanceAfter, UInt256 amtBeforeOrWithdrawn)

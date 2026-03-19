@@ -65,7 +65,7 @@ public partial class BlockProcessor(
         {
             _balBuilder.TracingEnabled = true;
             _balBuilder.GeneratedBlockAccessList.Clear();
-            _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
+            _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, (long)suggestedBlock.GasUsed);
         }
 
         ApplyDaoTransition(suggestedBlock);
@@ -288,7 +288,7 @@ public partial class BlockProcessor(
     private void ApplyDaoTransition(Block block)
     {
         long? daoBlockNumber = specProvider.DaoBlockNumber;
-        if (daoBlockNumber.HasValue && daoBlockNumber.Value == block.Header.Number)
+        if (daoBlockNumber.HasValue && (ulong)daoBlockNumber.Value == block.Header.Number)
         {
             ApplyTransition();
         }

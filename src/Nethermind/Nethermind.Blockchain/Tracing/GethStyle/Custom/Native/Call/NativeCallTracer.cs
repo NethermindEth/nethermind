@@ -41,7 +41,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         GethTraceOptions options) : base(options)
     {
         IsTracingActions = true;
-        _gasLimit = tx!.GasLimit;
+        _gasLimit = (long)tx!.GasLimit;
         _txHash = tx.Hash;
 
         _config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();

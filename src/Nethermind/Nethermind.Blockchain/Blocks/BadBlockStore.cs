@@ -23,7 +23,7 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
         }
 
         using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
-        blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
+        blockDb.Set((long)block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
 
         TruncateToMaxSize();
     }
@@ -44,7 +44,7 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
         {
             foreach (var blockToDelete in GetAll().Take(toDelete))
             {
-                Delete(blockToDelete.Number, blockToDelete.Hash);
+                Delete((long)blockToDelete.Number, blockToDelete.Hash);
             }
         }
     }

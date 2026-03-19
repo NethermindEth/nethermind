@@ -42,7 +42,7 @@ public abstract class GetPayloadBodiesByRangeHandler<TResult>(IBlockTree blockTr
 
     private IEnumerable<TResult?> GetRequests(long start, long count)
     {
-        long headNumber = blockTree.Head?.Number ?? 0;
+        long headNumber = (long)(blockTree.Head?.Number ?? 0UL);
 
         for (long i = start, c = Math.Min(start + count - 1, headNumber); i <= c; i++)
         {

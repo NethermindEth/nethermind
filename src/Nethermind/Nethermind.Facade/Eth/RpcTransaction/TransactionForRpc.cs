@@ -46,7 +46,7 @@ public abstract class TransactionForRpc
     public ulong? BlockTimestamp { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public long? Gas { get; set; }
+    public ulong? Gas { get; set; }
 
     [JsonConstructor]
     protected TransactionForRpc() { }

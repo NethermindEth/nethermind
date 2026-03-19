@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Spec
         public IReleaseSpec GetCurrentHeadSpec()
         {
             BlockHeader? header = _blockFinder.FindBestSuggestedHeader();
-            long headerNumber = header?.Number ?? 0;
+            long headerNumber = (long)(header?.Number ?? 0UL);
 
             // we are fine with potential concurrency issue here, that the spec will change
             // between this if and getting actual header spec

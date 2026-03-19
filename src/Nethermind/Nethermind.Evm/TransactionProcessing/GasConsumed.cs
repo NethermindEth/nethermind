@@ -20,4 +20,5 @@ public readonly record struct GasConsumed(long SpentGas, long OperationGas, long
 
     public static implicit operator long(GasConsumed gas) => gas.SpentGas;
     public static implicit operator GasConsumed(long spentGas) => new(spentGas, spentGas, 0);
+    public static implicit operator GasConsumed(ulong spentGas) => new((long)spentGas, (long)spentGas, 0);
 }

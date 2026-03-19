@@ -294,7 +294,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private void InsertOneBlock(Block block)
         {
             _blockTree.Insert(block, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
-            _syncStatusList.MarkInserted(block.Number);
+            _syncStatusList.MarkInserted((long)block.Number);
         }
 
         private void LogPostProcessingBatchInfo(BodiesSyncBatch batch, int validResponsesCount)

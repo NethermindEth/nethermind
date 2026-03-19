@@ -101,7 +101,7 @@ public class PowForwardHeaderProvider(
         ArrayPoolList<BlockHeader>? newResponse = null;
         for (int i = 0; i < LastResponseBatch.Count; i++)
         {
-            if (!sameFound && LastResponseBatch[i].Number != currentNumber) continue;
+            if (!sameFound && (long)LastResponseBatch[i].Number != currentNumber) continue;
             sameFound = true;
 
             newResponse ??= new ArrayPoolList<BlockHeader>(LastResponseBatch.Count - i);
@@ -198,7 +198,7 @@ public class PowForwardHeaderProvider(
 
     private bool CheckAncestorJump(PeerInfo bestPeer, BlockHeader blockBeforeZero, ref long currentNumber)
     {
-        bool parentIsKnown = blockTree.IsKnownBlock(blockBeforeZero.Number, blockBeforeZero.Hash!);
+        bool parentIsKnown = blockTree.IsKnownBlock((long)blockBeforeZero.Number, blockBeforeZero.Hash!);
         if (!parentIsKnown)
         {
             _ancestorLookupLevel++;
@@ -210,7 +210,7 @@ public class PowForwardHeaderProvider(
 
             int ancestorJump = _ancestorJumps[_ancestorLookupLevel] - _ancestorJumps[_ancestorLookupLevel - 1];
             currentNumber = currentNumber >= ancestorJump ? (currentNumber - ancestorJump) : 0L;
-            currentNumber = Math.Max((blockTree.BestSuggestedHeader?.Number ?? 0) - MaxReorganizationLength, currentNumber);
+            currentNumber = Math.Max((long)(blockTree.BestSuggestedHeader?.Number ?? 0UL) - MaxReorganizationLength, currentNumber);
             return false;
         }
         _ancestorLookupLevel = 0;

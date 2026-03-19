@@ -38,7 +38,7 @@ public class ChainLevelHelper : IChainLevelHelper
 
     private void OnMissingBeaconHeader(long blockNumber)
     {
-        if (_beaconPivot.ProcessDestination?.Number > blockNumber)
+        if ((long?)_beaconPivot.ProcessDestination?.Number > blockNumber)
         {
             // For some reason, this block number is missing when it should not.
             // anyway, lets just restart the whole sync.
@@ -159,7 +159,7 @@ public class ChainLevelHelper : IChainLevelHelper
     /// <returns></returns>
     private (long?, Hash256?) GetStartingPoint()
     {
-        long startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? long.MaxValue);
+        long startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, (long)(_beaconPivot.ProcessDestination?.Number ?? (ulong)long.MaxValue));
         bool shouldContinue;
 
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}. Best known number: {_blockTree.BestKnownNumber}, Process destination: {_beaconPivot.ProcessDestination?.Number}");
@@ -187,10 +187,10 @@ public class ChainLevelHelper : IChainLevelHelper
                 return default;
             }
 
-            parentBlockInfo = (_blockTree.GetInfo(header.Number - 1, header.ParentHash!)).Info;
+            parentBlockInfo = (_blockTree.GetInfo((long)header.Number - 1, header.ParentHash!)).Info;
             if (parentBlockInfo is null)
             {
-                OnMissingBeaconHeader(header.Number);
+                OnMissingBeaconHeader((long)header.Number);
                 return default;
             }
 

@@ -38,7 +38,7 @@ public class LightTransaction : Transaction
         UInt256 nonce,
         Hash256 hash,
         UInt256 value,
-        long gasLimit,
+        ulong gasLimit,
         UInt256 gasPrice,
         UInt256 maxFeePerGas,
         UInt256 maxFeePerBlobGas,

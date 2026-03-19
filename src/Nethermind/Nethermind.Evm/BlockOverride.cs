@@ -27,10 +27,10 @@ public class BlockOverride
             {
                 throw new OverflowException($"GasLimit value is too large, max value {ulong.MaxValue}");
             }
-            result.GasLimit = (long)GasLimit.Value;
+            result.GasLimit = (ulong)GasLimit.Value;
         }
 
-        if (Number is not null) result.Number = (long)Number.Value;
+        if (Number is not null) result.Number = (ulong)Number.Value;
         if (FeeRecipient is not null) result.Beneficiary = FeeRecipient;
         if (BaseFeePerGas is not null) result.BaseFeePerGas = BaseFeePerGas.Value;
         if (PrevRandao is not null && PrevRandao != Hash256.Zero) result.MixHash = PrevRandao;

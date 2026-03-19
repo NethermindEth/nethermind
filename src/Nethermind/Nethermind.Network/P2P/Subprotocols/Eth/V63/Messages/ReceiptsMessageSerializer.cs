@@ -62,9 +62,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                     }
 
                     // Only fetch a new spec when the block number changes
-                    if (txReceipt.BlockNumber != lastBlockNumber)
+                    if ((long)txReceipt.BlockNumber != lastBlockNumber)
                     {
-                        lastBlockNumber = txReceipt.BlockNumber;
+                        lastBlockNumber = (long)txReceipt.BlockNumber;
                         IReceiptSpec receiptSpec = _specProvider.GetReceiptSpec(lastBlockNumber);
                         behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                     }
@@ -140,9 +140,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 }
 
                 // Only fetch a new spec when block number changes
-                if (lastBlockNumber != receipt.BlockNumber)
+                if (lastBlockNumber != (long)receipt.BlockNumber)
                 {
-                    lastBlockNumber = receipt.BlockNumber;
+                    lastBlockNumber = (long)receipt.BlockNumber;
                     IReceiptSpec receiptSpec = _specProvider.GetReceiptSpec(lastBlockNumber);
                     behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                 }

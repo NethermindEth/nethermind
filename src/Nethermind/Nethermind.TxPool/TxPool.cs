@@ -293,7 +293,7 @@ namespace Nethermind.TxPool
 
                         DisposeBlockAccountChanges(args.Block);
 
-                        _lastBlockNumber = args.Block.Number;
+                        _lastBlockNumber = (long)args.Block.Number;
                         _lastBlockHash = args.Block.Hash;
 
                         ReAddReorganisedTransactions(args.PreviousBlock);
@@ -322,7 +322,7 @@ namespace Nethermind.TxPool
 
             bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
             {
-                return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
+                return accountChanges is not null && block.ParentHash == _lastBlockHash && (ulong)(_lastBlockNumber + 1) == block.Number;
             }
         }
 
@@ -345,7 +345,7 @@ namespace Nethermind.TxPool
                 }
 
                 if (_blobReorgsSupportEnabled
-                    && _blobTxStorage.TryGetBlobTransactionsFromBlock(previousBlock.Number, out Transaction[]? blobTxs)
+                    && _blobTxStorage.TryGetBlobTransactionsFromBlock((long)previousBlock.Number, out Transaction[]? blobTxs)
                     && blobTxs is not null)
                 {
                     foreach (Transaction blobTx in blobTxs)
@@ -357,7 +357,7 @@ namespace Nethermind.TxPool
                     }
                     if (_logger.IsTrace) _logger.Trace($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
-                    _blobTxStorage.DeleteBlobTransactionsFromBlock(previousBlock.Number);
+                    _blobTxStorage.DeleteBlobTransactionsFromBlock((long)previousBlock.Number);
                 }
             }
         }
@@ -425,7 +425,7 @@ namespace Nethermind.TxPool
 
             if (blobTxsToSave.Count > 0)
             {
-                _blobTxStorage.AddBlobTransactionsFromBlock(block.Number, blobTxsToSave);
+                _blobTxStorage.AddBlobTransactionsFromBlock((long)block.Number, blobTxsToSave);
             }
 
             long transactionsInBlock = blockTransactions.Length;

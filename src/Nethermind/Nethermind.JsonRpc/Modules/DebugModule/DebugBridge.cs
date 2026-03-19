@@ -178,7 +178,7 @@ public class DebugBridge : IDebugBridge
         {
             BlockHeader? header = _blockTree.FindHeader(parameter);
             if (header is null) return null;
-            return _blockStore.GetRlp(header.Number, header.GetOrCalculateHash());
+            return _blockStore.GetRlp((long)header.Number, header.GetOrCalculateHash());
         }
     }
 
@@ -253,6 +253,6 @@ public class DebugBridge : IDebugBridge
             }
         }
 
-        static GethLikeTxTrace? CreateFailTrace(long? gasLimit) => new() { Failed = true, Gas = gasLimit ?? 0, ReturnValue = [] };
+        static GethLikeTxTrace? CreateFailTrace(ulong? gasLimit) => new() { Failed = true, Gas = (long)(gasLimit ?? 0), ReturnValue = [] };
     }
 }

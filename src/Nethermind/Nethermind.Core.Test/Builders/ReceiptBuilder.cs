@@ -65,13 +65,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public ReceiptBuilder WithGasUsedTotal(long gasTotal)
+        public ReceiptBuilder WithGasUsedTotal(ulong gasTotal)
         {
             TestObjectInternal.GasUsedTotal = gasTotal;
             return this;
         }
 
-        public ReceiptBuilder WithGasUsed(long gasUsed)
+        public ReceiptBuilder WithGasUsed(ulong gasUsed)
         {
             TestObjectInternal.GasUsed = gasUsed;
             return this;

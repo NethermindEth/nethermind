@@ -28,10 +28,10 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IFullStateFinder _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
 
         public long FindBestFullState() => _fullStateFinder.FindBestFullState();
-        public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
-        public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
+        public long FindBestHeader() => (long)(_blockTree.BestSuggestedHeader?.Number ?? 0UL);
+        public long FindBestFullBlock() => Math.Min(FindBestHeader(), (long)(_blockTree.BestSuggestedBody?.Number ?? 0UL)); // avoiding any potential concurrency issue
         public bool IsLoadingBlocksFromDb() => !_blockTree.CanAcceptNewBlocks;
-        public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
+        public long FindBestProcessedBlock() => (long?)_blockTree.Head?.Number ?? -1;
         public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
 
         public UInt256? GetTotalDifficulty(Hash256 blockHash)

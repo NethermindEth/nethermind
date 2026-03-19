@@ -38,7 +38,7 @@ public class OptimismCompactReceiptStorageDecoder :
         }
 
         txReceipt.Sender = decoderContext.DecodeAddress();
-        txReceipt.GasUsedTotal = decoderContext.DecodePositiveLong();
+        txReceipt.GasUsedTotal = decoderContext.DecodeULong();
 
         int sequenceLength = decoderContext.ReadSequenceLength();
         int logEntriesCheck = sequenceLength + decoderContext.Position;
@@ -102,7 +102,7 @@ public class OptimismCompactReceiptStorageDecoder :
         }
 
         decoderContext.DecodeAddressStructRef(out item.Sender);
-        item.GasUsedTotal = decoderContext.DecodePositiveLong();
+        item.GasUsedTotal = decoderContext.DecodeULong();
 
         (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
         int logsBytes = contentLength + prefixLength;

@@ -59,7 +59,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (_minBlocksAhead is not null)
                 {
-                    if (info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0) + _minBlocksAhead)
+                    if (info.HeadNumber < (long)(blockTree.BestSuggestedHeader?.Number ?? 0UL) + _minBlocksAhead)
                     {
                         // we need to be able to download some blocks ahead
                         continue;
@@ -124,7 +124,7 @@ namespace Nethermind.Synchronization.Blocks
             else // by last block otherwise
             {
                 var bestPeerNumber = bestDiffPeer.Info.HeadNumber;
-                var localNumber = blockTree.Head?.Number ?? 0;
+                var localNumber = (long)(blockTree.Head?.Number ?? 0UL);
                 var blockDifference = bestPeerNumber > localNumber
                     ? bestPeerNumber - localNumber
                     : 0;

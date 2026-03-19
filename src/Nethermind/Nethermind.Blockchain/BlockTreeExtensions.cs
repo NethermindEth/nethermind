@@ -13,8 +13,8 @@ namespace Nethermind.Blockchain
 
         public static (bool isSyncing, long headNumber, long bestSuggested) IsSyncing(this IBlockTree blockTree, int maxDistanceForSynced = 0)
         {
-            long bestSuggestedNumber = blockTree.FindBestSuggestedHeader()?.Number ?? 0;
-            long headNumberOrZero = blockTree.Head?.Number ?? 0;
+            long bestSuggestedNumber = (long)(blockTree.FindBestSuggestedHeader()?.Number ?? 0UL);
+            long headNumberOrZero = (long)(blockTree.Head?.Number ?? 0UL);
             bool isSyncing = bestSuggestedNumber == 0 || bestSuggestedNumber > headNumberOrZero + maxDistanceForSynced;
 
             return (isSyncing, headNumberOrZero, bestSuggestedNumber);

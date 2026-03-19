@@ -125,7 +125,7 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     {
         // This is unnecessarily calculated twice - at validation and execution times.
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, releaseSpec);
-        return transaction.GasLimit < intrinsicGas.MinimalGas
+        return transaction.GasLimit < (ulong)intrinsicGas.MinimalGas
             ? TxErrorMessages.IntrinsicGasTooLow
             : ValidationResult.Success;
     }
@@ -389,8 +389,8 @@ public sealed class GasLimitCapTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
         long gasLimitCap = releaseSpec.GetTxGasLimitCap();
-        return transaction.GasLimit > gasLimitCap ?
-            TxErrorMessages.TxGasLimitCapExceeded(transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
+        return transaction.GasLimit > (ulong)gasLimitCap ?
+            TxErrorMessages.TxGasLimitCapExceeded((long)transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
     }
 }
 

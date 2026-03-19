@@ -105,7 +105,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         IWorldState stateProvider = env.WorldState;
         parent = GetParent(parent, payload, blockTree);
 
-        env.SimulateRequestState.TotalGasLeft = gasCapLimit;
+        env.SimulateRequestState.TotalGasLeft = (ulong)gasCapLimit;
 
         if (payload.BlockStateCalls is not null)
         {
@@ -126,7 +126,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     .Select((c) => c.HadGasLimitInRequest)
                     .ToArray();
 
-                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
+                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, (long)callHeader.Number, spec);
 
                 BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec);
                 Block callBlock = new Block(callHeader, body);
@@ -145,7 +145,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     spec,
                     cancellationToken);
 
-                stateProvider.CommitTree(processedBlock.Number);
+                stateProvider.CommitTree((long)processedBlock.Number);
                 blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
                 blockTree.UpdateHeadBlock(processedBlock.Hash!);
 
@@ -188,7 +188,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)
     {
         Block? latestBlock = blockTree.FindLatestBlock();
-        long latestBlockNumber = latestBlock?.Number ?? 0;
+        ulong latestBlockNumber = latestBlock?.Number ?? 0UL;
 
         if (latestBlockNumber < parent.Number)
         {
@@ -197,7 +197,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
 
-        ulong lastKnown = (ulong)latestBlockNumber;
+        ulong lastKnown = latestBlockNumber;
         if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
         {
             Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number - 1);
@@ -265,7 +265,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             RequestsHash = parent.RequestsHash,
         };
 
-        if ((ForkActivation)result.Number >= specProvider.MergeBlockNumber)
+        if ((ForkActivation)(long)result.Number >= specProvider.MergeBlockNumber)
         {
             result.Difficulty = UInt256.Zero;
             result.IsPostMerge = true;

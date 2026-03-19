@@ -114,8 +114,8 @@ namespace Nethermind.Synchronization.Blocks
                 return;
             }
 
-            _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(_syncReport.FullSyncBlocksDownloaded.TargetValue, e.Block.Number);
-            _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
+            _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(_syncReport.FullSyncBlocksDownloaded.TargetValue, (long)e.Block.Number);
+            _syncReport.FullSyncBlocksDownloaded.Update((long)(_blockTree.BestSuggestedHeader?.Number ?? 0UL));
         }
 
         public async Task<BlocksRequest?> PrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
@@ -159,7 +159,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (_logger.IsTrace) _logger.Trace($"Prepared request from block {headers[0].Number} to {headers[^1].Number}");
 
-                if (previousStartingHeaderNumber == headers[0].Number)
+                if (previousStartingHeaderNumber == (long)headers[0].Number)
                 {
                     // When the block is suggested right between a `NewPayload` and `ForkChoiceUpdatedHandler` the block is not added because it was added already
                     // by NP, but it still a beacon block because `FCU` has not happened yet. Causing this situation.
@@ -182,9 +182,9 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 }
 
-                previousStartingHeaderNumber = headers[0].Number;
+                previousStartingHeaderNumber = (long)headers[0].Number;
 
-                (bool shouldProcess, bool downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[1].Number, originalShouldProcess, originalDownloadReceiptOpts);
+                (bool shouldProcess, bool downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, (long)headers[1].Number, originalShouldProcess, originalDownloadReceiptOpts);
 
                 using var satisfiedEntry = AssembleSatisfiedEntries(headers, downloadReceipts);
 
@@ -194,7 +194,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
                 else
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Processing {satisfiedEntry.Count} entries from {satisfiedEntry[0]?.Header.Number ?? -1} to {satisfiedEntry[^1]?.Header.Number ?? -1}");
+                    if (_logger.IsDebug) _logger.Debug($"Processing {satisfiedEntry.Count} entries from {(long?)satisfiedEntry[0]?.Header.Number ?? -1} to {(long?)satisfiedEntry[^1]?.Header.Number ?? -1}");
                 }
 
                 for (int blockIndex = 0; blockIndex < satisfiedEntry.Count; blockIndex++)
@@ -227,7 +227,7 @@ namespace Nethermind.Synchronization.Blocks
                     {
                         if (shouldProcess)
                         {
-                            bestProcessedBlock = currentBlock.Number;
+                            bestProcessedBlock = (long)currentBlock.Number;
                         }
 
                         blocksSynced++;
@@ -243,7 +243,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (blocksSynced > 0)
                 {
-                    _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
+                    _syncReport.FullSyncBlocksDownloaded.Update((long)(_blockTree.BestSuggestedHeader?.Number ?? 0UL));
                 }
 
                 _syncReport.FullSyncBlocksDownloaded.CurrentQueued = _downloadRequests.Count;
@@ -596,7 +596,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (peer?.SyncPeer is not null && header.Hash is not null && header.TotalDifficulty is not null && _betterPeerStrategy.Compare(header, peer?.SyncPeer) > 0)
                 {
                     peer.SyncPeer.TotalDifficulty = header.TotalDifficulty.Value;
-                    peer.SyncPeer.HeadNumber = header.Number;
+                    peer.SyncPeer.HeadNumber = (long)header.Number;
                     peer.SyncPeer.HeadHash = header.Hash;
                 }
             }

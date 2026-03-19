@@ -128,7 +128,7 @@ public class HistoryPruner : IHistoryPruner
             }
 
             long? cutoffBlockNumber = null;
-            long to = _blockTree.Head?.Number ?? _blockTree.SyncPivot.BlockNumber;
+            ulong to = _blockTree.Head?.Number ?? (ulong)_blockTree.SyncPivot.BlockNumber;
 
             // cutoff is unchanged, can reuse
             if (_cutoffTimestamp is not null && cutoffTimestamp == _cutoffTimestamp)
@@ -147,7 +147,7 @@ public class HistoryPruner : IHistoryPruner
                     {
                         int attempts = 0;
                         long from = _cutoffPointer.Value;
-                        using ArrayPoolListRef<Block> x = GetBlocksByNumber(from, to, b =>
+                        using ArrayPoolListRef<Block> x = GetBlocksByNumber(from, (long)to, b =>
                         {
                             if (attempts >= MaxOptimisticSearchAttempts)
                             {
@@ -157,15 +157,15 @@ public class HistoryPruner : IHistoryPruner
                             bool afterCutoff = b.Timestamp >= cutoffTimestamp;
                             if (afterCutoff)
                             {
-                                cutoffBlockNumber = b.Number;
+                                cutoffBlockNumber = (long)b.Number;
                             }
                             attempts++;
                             return afterCutoff;
-                        }).ToPooledListRef((int)(to - from + 1));
+                        }).ToPooledListRef((int)((long)to - from + 1));
                     }
 
                     // if linear search fails, fallback to binary search
-                    cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, to, (n, _) =>
+                    cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, (long)to, (n, _) =>
                     {
                         BlockInfo[]? blockInfos = _chainLevelInfoRepository.LoadLevel(n)?.BlockInfos;
 
@@ -410,7 +410,7 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private bool PruningIntervalHasElapsed()
-        => _pruningInterval == 0 || _blockTree.Head!.Number % _pruningInterval == 0;
+        => _pruningInterval == 0 || _blockTree.Head!.Number % (ulong)_pruningInterval == 0;
 
     private void PruneBlocksAndReceipts(ulong? cutoffTimestamp, CancellationToken cancellationToken)
     {
@@ -424,7 +424,7 @@ public class HistoryPruner : IHistoryPruner
 
             foreach (Block block in blocks)
             {
-                long number = block.Number;
+                long number = (long)block.Number;
                 Hash256 hash = block.Hash!;
 
                 if (cancellationToken.IsCancellationRequested)

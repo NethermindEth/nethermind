@@ -48,7 +48,7 @@ public class FullStateFinder(
 
         if (bestSuggested is not null)
         {
-            if (bestFullState < bestSuggested?.Number)
+            if (bestFullState < (long?)bestSuggested?.Number)
             {
                 bestFullState = Math.Max(bestFullState, SearchForFullState(bestSuggested));
             }
@@ -68,7 +68,7 @@ public class FullStateFinder(
         long maxLookupBack = MaxLookupBack;
         if (_lastKnownState != 0)
         {
-            maxLookupBack = long.Max(maxLookupBack, startHeader.Number - _lastKnownState + 1);
+            maxLookupBack = long.Max(maxLookupBack, (long)startHeader.Number - _lastKnownState + 1);
         }
 
         for (int i = 0; i < maxLookupBack; i++)
@@ -80,7 +80,7 @@ public class FullStateFinder(
 
             if (IsFullySynced(startHeader))
             {
-                bestFullState = startHeader.Number;
+                bestFullState = (long)startHeader.Number;
                 break;
             }
 

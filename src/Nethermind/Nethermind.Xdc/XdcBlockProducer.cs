@@ -72,7 +72,7 @@ internal class XdcBlockProducer : BlockProducerBase
             blockAuthor,
             UInt256.Zero,
             parent.Number + 1,
-            gasLimit,
+            (ulong)gasLimit,
             0,
             extra);
 

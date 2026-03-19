@@ -45,7 +45,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
             {
                 if (stateOverride is not null && header is not null)
                 {
-                    _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
+                    _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), (long)header.Number);
                     header.StateRoot = _worldState.StateRoot;
                 }
 

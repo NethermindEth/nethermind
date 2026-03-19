@@ -57,7 +57,7 @@ internal class TransactionProcessorEip4844Tests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        long gasLimit = GasCostOf.Transaction;
+        ulong gasLimit = (ulong)GasCostOf.Transaction;
         Transaction blobTx = Build.A.Transaction
             .WithValue(value)
             .WithGasPrice(1)

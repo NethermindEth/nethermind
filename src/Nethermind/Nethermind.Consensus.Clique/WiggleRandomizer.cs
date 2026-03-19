@@ -32,12 +32,12 @@ namespace Nethermind.Consensus.Clique
                 return 0;
             }
 
-            if (header.Number != _lastWiggleAtNumber)
+            if ((long)header.Number != _lastWiggleAtNumber)
             {
-                int multiplier = _snapshotManager.GetOrCreateSnapshot(header.Number - 1, header.ParentHash!).Signers.Count / 2 + 1;
+                int multiplier = _snapshotManager.GetOrCreateSnapshot((long)header.Number - 1, header.ParentHash!).Signers.Count / 2 + 1;
                 int randomPart = _cryptoRandom.NextInt(multiplier * Clique.WiggleTime);
                 _lastWiggle = randomPart < _minimumWiggle ? _minimumWiggle : randomPart;
-                _lastWiggleAtNumber = header.Number;
+                _lastWiggleAtNumber = (long)header.Number;
             }
 
             return _lastWiggle;

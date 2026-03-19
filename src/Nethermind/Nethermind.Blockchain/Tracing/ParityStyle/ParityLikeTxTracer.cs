@@ -43,7 +43,7 @@ public class ParityLikeTxTracer : TxTracer
         {
             TransactionHash = tx?.Hash,
             TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx),
-            BlockNumber = block.Number,
+            BlockNumber = (long)block.Number,
             BlockHash = block.Hash!
         };
 
@@ -226,7 +226,7 @@ public class ParityLikeTxTracer : TxTracer
             To = _tx.To,
             Value = _tx.Value,
             Input = _tx.Data.AsArray(),
-            Gas = _tx.GasLimit,
+            Gas = (long)_tx.GasLimit,
             CallType = _tx.IsMessageCall ? "call" : "init",
             Error = error
         };

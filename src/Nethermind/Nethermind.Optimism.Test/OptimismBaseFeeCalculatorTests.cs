@@ -39,10 +39,10 @@ public class OptimismBaseFeeCalculatorTests
         parameters.WriteTo(extraData);
 
         BlockHeader blockHeader = Build.A.BlockHeader
-            .WithGasLimit(30_000_000)
+            .WithGasLimit(30_000_000UL)
             .WithBaseFee(10_000_000)
             .WithTimestamp(HoloceneTimestamp)
-            .WithGasUsed(gasUsed)
+            .WithGasUsed((ulong)gasUsed)
             .WithExtraData(extraData)
             .TestObject;
 
@@ -94,8 +94,8 @@ public class OptimismBaseFeeCalculatorTests
         parameters.WriteTo(extraData);
 
         BlockHeader blockHeader = Build.A.BlockHeader
-            .WithGasLimit(JovianTest.GasLimit)
-            .WithGasUsed(gasUsed)
+            .WithGasLimit((ulong)JovianTest.GasLimit)
+            .WithGasUsed((ulong)gasUsed)
             .WithBlobGasUsed((ulong)blobGasUsed)
             .WithBaseFee((UInt256)baseFee)
             .WithTimestamp((ulong)timestamp)

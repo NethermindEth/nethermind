@@ -140,9 +140,9 @@ public class OptimismHeaderValidatorTests(Fork fork)
     public void ValidateGasLimit(int gasLimit, int gasUsed, int? blobGasUsed, Valid isValid)
     {
         (BlockHeader genesis, BlockHeader header) = BuildHeaders(b => b
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithBlobGasUsed((ulong?)blobGasUsed)
-            .WithGasUsed(gasUsed)
+            .WithGasUsed((ulong)gasUsed)
         );
 
         var validator = new OptimismHeaderValidator(

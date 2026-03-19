@@ -126,7 +126,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             int blockCount = 1;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256)baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
+            BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256)baseFee).WithGasLimit((ulong)gasLimit).WithGasUsed((ulong)gasUsed).TestObject;
             BlockParameter newestBlock = new((long)0);
             Block headBlock = Build.A.Block.Genesis.WithHeader(blockHeader).TestObject;
             blockTree.FindBlock(newestBlock).Returns(headBlock);
@@ -152,7 +152,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GetFeeHistory_GasUsedRatioCalculatedCorrectly(long gasLimit, long gasUsed, double expectedGasUsedRatio)
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            BlockHeader blockHeader = Build.A.BlockHeader.WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
+            BlockHeader blockHeader = Build.A.BlockHeader.WithGasLimit((ulong)gasLimit).WithGasUsed((ulong)gasUsed).TestObject;
             Block headBlock = Build.A.Block.Genesis.WithHeader(blockHeader).TestObject;
             BlockParameter newestBlock = new((long)0);
             blockTree.Head.Returns(headBlock);
@@ -361,12 +361,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
 
             var txReceiptsArray = new TxReceipt[gasUsedArray.Length];
-            txReceiptsArray[0] = new TxReceipt() { GasUsedTotal = gasUsedArray[0] };
+            txReceiptsArray[0] = new TxReceipt() { GasUsedTotal = (ulong)gasUsedArray[0] };
             for (var i = 1; i < gasUsedArray.Length; i++)
             {
                 txReceiptsArray[i] = new TxReceipt()
                 {
-                    GasUsedTotal = txReceiptsArray[i - 1].GasUsedTotal + gasUsedArray[i]
+                    GasUsedTotal = txReceiptsArray[i - 1].GasUsedTotal + (ulong)gasUsedArray[i]
                 };
             }
             receiptStorage.Get(block).Returns(txReceiptsArray);

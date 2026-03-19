@@ -72,7 +72,7 @@ public class EraImporter(
         if (from > to && to != 0)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to})");
 
-        long headp1 = (blockTree.Head?.Number ?? 0) + 1;
+        long headp1 = (long)(blockTree.Head?.Number ?? 0UL) + 1;
         if (from > headp1)
         {
             throw new ArgumentException($"Start block ({from}) must not be after block after head ({headp1})");
@@ -109,7 +109,7 @@ public class EraImporter(
         using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024);
         long blockNumber = from;
 
-        long suggestFromBlock = (blockTree.Head?.Number ?? 0) + 1;
+        long suggestFromBlock = (long)(blockTree.Head?.Number ?? 0UL) + 1;
         if (syncConfig.FastSync && suggestFromBlock == 1)
         {
             // Its syncing right now. So no state.
@@ -177,7 +177,7 @@ public class EraImporter(
             {
                 throw new EraImportException($"Unable to find receipt for block {blockNumber}");
             }
-            if (block.Number != blockNumber)
+            if ((long)block.Number != blockNumber)
             {
                 throw new EraImportException($"Unexpected block number. Expected {blockNumber}. Got {block.Number}");
             }
@@ -192,9 +192,9 @@ public class EraImporter(
                 throw new EraImportException($"Unexpected block without a body found for block number {blockNumber}. Archive might be corrupted.");
             }
 
-            if (suggestFromBlock <= block.Number)
+            if (suggestFromBlock <= (long)block.Number)
             {
-                await pacer.WaitForQueue(block.Number, cancellation);
+                await pacer.WaitForQueue((long)block.Number, cancellation);
                 await SuggestAndProcessBlock(block);
             }
             else
@@ -211,9 +211,9 @@ public class EraImporter(
 
     private void InsertBlockAndReceipts(Block b, TxReceipt[] r, long lastBlockNumber)
     {
-        if (blockTree.FindBlock(b.Number) is null)
+        if (blockTree.FindBlock((long)b.Number) is null)
             blockTree.Insert(b, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
-        if (!receiptStorage.HasBlock(b.Number, b.Hash!))
+        if (!receiptStorage.HasBlock((long)b.Number, b.Hash!))
             receiptStorage.Insert(b, r, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);
     }
 

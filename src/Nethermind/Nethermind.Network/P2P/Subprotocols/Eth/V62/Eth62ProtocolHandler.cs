@@ -360,11 +360,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         SendNewBlock(block);
                         break;
                     case SendBlockMode.HashOnly:
-                        HintNewBlock(block.Hash, block.Number);
+                        HintNewBlock(block.Hash, (long)block.Number);
                         break;
                     default:
                         if (Logger.IsError) Logger.Error($"Unknown mode ({mode}) passed to {nameof(NotifyOfNewBlock)} - handling as {nameof(SendBlockMode.HashOnly)} mode");
-                        HintNewBlock(block.Hash, block.Number);
+                        HintNewBlock(block.Hash, (long)block.Number);
                         break;
                 }
             }

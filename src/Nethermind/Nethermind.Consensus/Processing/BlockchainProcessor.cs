@@ -636,7 +636,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             {
                 CancellationToken.ThrowIfCancellationRequested();
 
-                if (block.Hash is not null && _blockTree.WasProcessed(block.Number, block.Hash))
+                if (block.Hash is not null && _blockTree.WasProcessed((long)block.Number, block.Hash))
                 {
                     if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg or pruning: {block.ToString(Block.Format.Short)}");
                 }
@@ -820,7 +820,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     {
         /* a bit hacky way to get the invalid branch out of the processing loop */
         if (suggestedBlock.Number != 0 &&
-            !_blockTree.IsKnownBlock(suggestedBlock.Number - 1, suggestedBlock.ParentHash))
+            !_blockTree.IsKnownBlock((long)(suggestedBlock.Number - 1), suggestedBlock.ParentHash))
         {
             if (_logger.IsDebug) LogUnknownParentBlock(suggestedBlock);
             return false;

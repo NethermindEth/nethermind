@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Test
             };
             TestSpecProvider specProvider = new(spec);
             TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider, new BlocksConfig());
-            BlockHeader header = Build.A.BlockHeader.WithNumber(londonBlock - 1).WithGasLimit(gasLimit).TestObject;
+            BlockHeader header = Build.A.BlockHeader.WithNumber(londonBlock - 1).WithGasLimit((ulong)gasLimit).TestObject;
             long actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
             Assert.That(actualValue, Is.EqualTo(gasLimit * Eip1559Constants.DefaultElasticityMultiplier));
         }
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.Test
                 {
                     TargetBlockGasLimit = targetGasLimit
                 });
-            BlockHeader header = Build.A.BlockHeader.WithNumber(blockNumber - 1).WithGasLimit(gasLimit).TestObject;
+            BlockHeader header = Build.A.BlockHeader.WithNumber(blockNumber - 1).WithGasLimit((ulong)gasLimit).TestObject;
             long actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
             actualValue.Should().Be(expectedGasLimit);
         }
@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.Test
             long gasLimit = 5000;
             TestSpecProvider specProvider = new(London.Instance);
             TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider, new BlocksConfig() { TargetBlockGasLimit = 1 });
-            BlockHeader header = Build.A.BlockHeader.WithNumber(londonBlock - 1).WithGasLimit(gasLimit).TestObject;
+            BlockHeader header = Build.A.BlockHeader.WithNumber(londonBlock - 1).WithGasLimit((ulong)gasLimit).TestObject;
             long actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
             Assert.That(actualValue, Is.EqualTo(specProvider.GetSpec(new ForkActivation(5)).MinGasLimit));
         }

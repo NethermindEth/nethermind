@@ -51,7 +51,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             {
                 if (!_blocks.TryGetValue(currentHash, out currentNode))
                 {
-                    BlockHeader? currentHeader = i == 0 ? blockHeader : headerFinder.Get(currentHash, blockHeader.Number - i);
+                    BlockHeader? currentHeader = i == 0 ? blockHeader : headerFinder.Get(currentHash, (long)blockHeader.Number - i);
                     if (currentHeader is null)
                     {
                         break;
@@ -178,7 +178,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                     {
                         try
                         {
-                            PruneBefore(blockHeader.Number - MaxDepth * 2);
+                            PruneBefore((long)blockHeader.Number - MaxDepth * 2);
                         }
                         catch (Exception e)
                         {
@@ -189,7 +189,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             }
         }
 
-        bool ShouldPrune() => _minBlock + MaxDepth * 4 < blockHeader.Number && _pruningTask.IsCompleted;
+        bool ShouldPrune() => _minBlock + MaxDepth * 4 < (long)blockHeader.Number && _pruningTask.IsCompleted;
     }
 
     public int PruneBefore(long blockNumber)
@@ -262,7 +262,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
     private class CacheNode(BlockHeader blockHeader, CacheNode? parent = null)
     {
         public Hash256 Hash { get; } = blockHeader.Hash!;
-        public long Number { get; } = blockHeader.Number;
+        public long Number { get; } = (long)blockHeader.Number;
         public Hash256 ParentHash { get; } = blockHeader.ParentHash!;
         public CacheNode? Parent { get; set; } = parent;
     }

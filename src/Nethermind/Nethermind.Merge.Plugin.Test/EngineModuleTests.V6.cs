@@ -720,7 +720,7 @@ public partial class EngineModuleTests
             .WithSenderAddress(TestItem.AddressA)
             .WithValue(0)
             .WithGasPrice(gasPrice)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
@@ -730,7 +730,7 @@ public partial class EngineModuleTests
             .WithValue(0)
             .WithNonce(1)
             .WithGasPrice(gasPrice)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithCode(Eip2935TestConstants.InitCode)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
@@ -750,7 +750,7 @@ public partial class EngineModuleTests
             .WithValue(0)
             .WithNonce(2)
             .WithGasPrice(gasPrice)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithCode(code)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;

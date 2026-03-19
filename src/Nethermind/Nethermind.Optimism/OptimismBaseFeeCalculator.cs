@@ -42,11 +42,11 @@ public sealed class OptimismBaseFeeCalculator(
             if (parent.BlobGasUsed is null)
                 throw new InvalidOperationException($"{nameof(parent.BlobGasUsed)} does not store DA footprint in post-Jovian block.");
 
-            var daFootprint = (long)parent.BlobGasUsed;
+            var daFootprint = parent.BlobGasUsed;
 
             // Override gas used for calculation if the DA footprint is larger
             UInt256 baseFee = daFootprint > parent.GasUsed
-                ? CalculateWithGasUsedOverride(parent, spec, daFootprint)
+                ? CalculateWithGasUsedOverride(parent, spec, daFootprint.Value)
                 : baseFeeCalculator.Calculate(parent, spec);
 
             if (eip1559Params.MinBaseFee > 0)
@@ -58,7 +58,7 @@ public sealed class OptimismBaseFeeCalculator(
         return baseFeeCalculator.Calculate(parent, spec);
     }
 
-    private UInt256 CalculateWithGasUsedOverride(BlockHeader parent, IEip1559Spec spec, long gasOverride)
+    private UInt256 CalculateWithGasUsedOverride(BlockHeader parent, IEip1559Spec spec, ulong gasOverride)
     {
         var prevGasUsed = parent.GasUsed;
         try

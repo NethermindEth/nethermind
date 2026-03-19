@@ -638,7 +638,7 @@ public class ContractBasedValidatorTests
             .Do(args =>
                 args.Arg<ITxTracer>().MarkAsSuccess(
                     args.Arg<Transaction>().To,
-                    0,
+                    0L,
                     SetupAbiAddresses(_initialValidators),
                     []));
     }

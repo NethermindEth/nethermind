@@ -151,7 +151,7 @@ namespace Nethermind.Consensus.Ethash
 
         public (Hash256 MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
         {
-            uint epoch = GetEpoch(header.Number);
+            uint epoch = GetEpoch((long)header.Number);
             IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
             if (dataSet is null)
             {
@@ -211,12 +211,12 @@ namespace Nethermind.Consensus.Ethash
 
         public bool Validate(BlockHeader header)
         {
-            uint epoch = GetEpoch(header.Number);
+            uint epoch = GetEpoch((long)header.Number);
             IEthashDataSet? dataSet = _hintBasedCache.Get(epoch);
             if (dataSet is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
-                _hintBasedCache.Hint(_hintBasedCacheUser, header.Number, header.Number);
+                _hintBasedCache.Hint(_hintBasedCacheUser, (long)header.Number, (long)header.Number);
                 dataSet = _hintBasedCache.Get(epoch);
                 if (dataSet is null)
                 {

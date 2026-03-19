@@ -12,7 +12,7 @@ public static class BetterPeerStrategyExtensions
     public static int Compare(this IBetterPeerStrategy peerStrategy, BlockHeader? header, ISyncPeer? peerInfo)
     {
         UInt256? headerDifficulty = header?.TotalDifficulty;
-        long headerNumber = header?.Number ?? 0;
+        long headerNumber = (long)(header?.Number ?? 0UL);
 
         UInt256? peerDifficulty = peerInfo?.TotalDifficulty;
         long peerInfoHeadNumber = peerInfo?.HeadNumber ?? 0;

@@ -118,7 +118,7 @@ public class SimulateTxExecutor<TTrace>(
 
         if (call.BlockStateCalls is not null)
         {
-            long lastBlockNumber = header.Number;
+            long lastBlockNumber = (long)header.Number;
             ulong lastBlockTime = header.Timestamp;
 
             using ArrayPoolListRef<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = new(call.BlockStateCalls.Count);

@@ -57,13 +57,13 @@ namespace Nethermind.Serialization.Rlp
             }
 
             if (isStorage) txReceipt.BlockHash = decoderContext.DecodeKeccak();
-            if (isStorage) txReceipt.BlockNumber = (long)decoderContext.DecodeUInt256();
+            if (isStorage) txReceipt.BlockNumber = decoderContext.DecodeULong();
             if (isStorage) txReceipt.Index = decoderContext.DecodeInt();
             if (isStorage) txReceipt.Sender = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.Recipient = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddress();
-            if (isStorage) txReceipt.GasUsed = decoderContext.DecodePositiveLong();
-            txReceipt.GasUsedTotal = decoderContext.DecodePositiveLong();
+            if (isStorage) txReceipt.GasUsed = decoderContext.DecodeULong();
+            txReceipt.GasUsedTotal = decoderContext.DecodeULong();
             txReceipt.Bloom = decoderContext.DecodeBloom();
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
@@ -296,14 +296,14 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage)
             {
                 decoderContext.DecodeKeccakStructRef(out item.BlockHash);
-                item.BlockNumber = (long)decoderContext.DecodeUInt256();
+                item.BlockNumber = decoderContext.DecodeULong();
                 item.Index = decoderContext.DecodeInt();
                 decoderContext.DecodeAddressStructRef(out item.Sender);
                 decoderContext.DecodeAddressStructRef(out item.Recipient);
                 decoderContext.DecodeAddressStructRef(out item.ContractAddress);
-                item.GasUsed = decoderContext.DecodePositiveLong();
+                item.GasUsed = decoderContext.DecodeULong();
             }
-            item.GasUsedTotal = decoderContext.DecodePositiveLong();
+            item.GasUsedTotal = decoderContext.DecodeULong();
             decoderContext.DecodeBloomStructRef(out item.Bloom);
 
             (int PrefixLength, int ContentLength) =

@@ -51,7 +51,7 @@ public class L2Api(
         {
             NoTxPool = true,
             EIP1559Params = block.ExtraData.Length == 0 ? null : block.ExtraData[1..],
-            GasLimit = block.GasLimit,
+            GasLimit = (long)block.GasLimit,
             ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,
             PrevRandao = block.MixHash!,
             SuggestedFeeRecipient = block.Miner,
@@ -73,7 +73,7 @@ public class L2Api(
             l1BlockInfo =
                 L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(txs[0].Data.Span, block.ExtraData);
             systemConfig =
-                systemConfigDeriver.SystemConfigFromL2BlockInfo(txs[0].Data.Span, block.ExtraData, (ulong)block.GasLimit);
+                systemConfigDeriver.SystemConfigFromL2BlockInfo(txs[0].Data.Span, block.ExtraData, block.GasLimit);
         }
         else
         {

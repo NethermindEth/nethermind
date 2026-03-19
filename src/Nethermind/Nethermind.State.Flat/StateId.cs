@@ -10,7 +10,7 @@ namespace Nethermind.State.Flat;
 
 public readonly record struct StateId(long BlockNumber, in ValueHash256 StateRoot) : IComparable<StateId>
 {
-    public StateId(BlockHeader? header) : this(header?.Number ?? -1, header?.StateRoot ?? Keccak.EmptyTreeHash)
+    public StateId(BlockHeader? header) : this((long)(header?.Number ?? 0UL), header?.StateRoot ?? Keccak.EmptyTreeHash)
     {
     }
 

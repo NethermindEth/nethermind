@@ -12,5 +12,5 @@ internal static class NextBlockSpecHelper
 {
     public static IReleaseSpec GetSpec(ISpecProvider specProvider, BlockHeader parentHeader,
         PayloadAttributes? payloadAttributes, IBlocksConfig? blocksConfig)
-        => specProvider.GetSpec(parentHeader.Number + 1, payloadAttributes?.Timestamp ?? parentHeader.Timestamp + (blocksConfig?.SecondsPerSlot ?? 0));
+        => specProvider.GetSpec((long)parentHeader.Number + 1, payloadAttributes?.Timestamp ?? parentHeader.Timestamp + (blocksConfig?.SecondsPerSlot ?? 0));
 }

@@ -18,7 +18,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {
         _blockDict[block.Hash] = block;
-        _blockNumDict[block.Number] = block;
+        _blockNumDict[(long)block.Number] = block;
     }
 
     public void Delete(long blockNumber, Hash256 blockHash)

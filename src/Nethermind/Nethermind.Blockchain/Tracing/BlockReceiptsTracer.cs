@@ -79,7 +79,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     /// while receipt gas uses post-refund values (what users actually pay).
     /// </summary>
     /// <returns>The cumulative post-refund gas for receipts</returns>
-    protected long UpdateCumulativeGasTracking(in GasConsumed gasConsumed)
+    protected ulong UpdateCumulativeGasTracking(in GasConsumed gasConsumed)
     {
         // Track cumulative block gas for restore (regular + EIP-8037 state)
         (long prevRegular, long prevState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
@@ -88,10 +88,10 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         _cumulativeBlockGasPerTx.Add((cumulativeBlockGas, cumulativeBlockStateGas));
 
         // EIP-8037: block gasUsed = max(sum_regular, sum_state). Override header accumulation.
-        Block.Header.GasUsed = Math.Max(cumulativeBlockGas, cumulativeBlockStateGas);
+        Block.Header.GasUsed = (ulong)Math.Max(cumulativeBlockGas, cumulativeBlockStateGas);
 
         // Track cumulative receipt gas (post-refund)
-        _cumulativeReceiptGas += gasConsumed.SpentGas;
+        _cumulativeReceiptGas += (ulong)gasConsumed.SpentGas;
 
         Debug.Assert(_txReceipts.Count + 1 == _cumulativeBlockGasPerTx.Count,
             "Receipt and gas tracking lists must remain synchronized");
@@ -101,7 +101,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     protected virtual TxReceipt BuildReceipt(Address recipient, in GasConsumed gasConsumed, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
     {
-        long cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
+        ulong cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
 
         Transaction transaction = CurrentTx!;
         TxReceipt txReceipt = new()
@@ -115,7 +115,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             BlockHash = Block.Hash,
             BlockNumber = Block.Number,
             Index = _currentIndex,
-            GasUsed = gasConsumed.SpentGas,  // Post-refund for this tx
+            GasUsed = (ulong)gasConsumed.SpentGas,  // Post-refund for this tx
             Sender = transaction.SenderAddress,
             ContractAddress = transaction.IsContractCreation ? recipient : null,
             TxHash = transaction.Hash,
@@ -228,7 +228,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     protected int _currentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = new();
     private readonly List<(long Regular, long State)> _cumulativeBlockGasPerTx = new();  // Track pre-refund block gas for restore (regular + EIP-8037 state)
-    private long _cumulativeReceiptGas;  // Track cumulative post-refund gas for receipts
+    private ulong _cumulativeReceiptGas;  // Track cumulative post-refund gas for receipts
     protected Transaction? CurrentTx;
     public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
     public TxReceipt LastReceipt => _txReceipts[^1];
@@ -252,7 +252,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
         // Restore block gas from tracking: max(cumulative_regular, cumulative_state) for EIP-8037
         (long cumulativeRegular, long cumulativeState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
-        Block.Header.GasUsed = Math.Max(cumulativeRegular, cumulativeState);
+        Block.Header.GasUsed = (ulong)Math.Max(cumulativeRegular, cumulativeState);
 
         // Restore receipt gas from remaining receipts (post-refund)
         _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;

@@ -132,7 +132,7 @@ public class XdcGasLimitCalculatorTests
 
         if (dynamicBlockActive)
         {
-            result.Should().BeInRange(parentHeader.GasLimit - 100000, parentHeader.GasLimit + 100000);
+            result.Should().BeInRange((long)parentHeader.GasLimit - 100000, (long)parentHeader.GasLimit + 100000);
         }
         else
         {
@@ -192,7 +192,7 @@ public class XdcGasLimitCalculatorTests
     {
         return Build.A.BlockHeader
             .WithNumber(number)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithHash(TestItem.KeccakA)
             .TestObject;
     }

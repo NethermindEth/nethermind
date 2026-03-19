@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             LoadBeaconPivot();
         }
 
-        public long PivotNumber => CurrentBeaconPivot?.Number ?? _blockTree.SyncPivot.BlockNumber;
+        public long PivotNumber => (long?)(CurrentBeaconPivot?.Number) ?? _blockTree.SyncPivot.BlockNumber;
 
         public Hash256? PivotHash => CurrentBeaconPivot?.Hash ?? _blockTree.SyncPivot.BlockHash;
 
@@ -85,7 +85,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 if (_blockTree.Head is not null && _blockTree.Head?.Number != 0)
                 {
                     // However, the head may not be canon, so the destination need to be before that.
-                    long safeNumber = _blockTree.Head!.Number - Reorganization.MaxDepth + 1;
+                    long safeNumber = (long)_blockTree.Head!.Number - Reorganization.MaxDepth + 1;
                     return Math.Max(1, safeNumber);
                 }
 
@@ -108,7 +108,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     if (_logger.IsInfo) _logger.Info($"BeaconPivot was null. Setting beacon pivot to {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
                 }
 
-                if (beaconPivotExists && (PivotNumber > blockHeader.Number || blockHeader.Hash == PivotHash))
+                if (beaconPivotExists && (PivotNumber > (long)blockHeader.Number || blockHeader.Hash == PivotHash))
                 {
                     return;
                 }

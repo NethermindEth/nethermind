@@ -86,10 +86,10 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
     {
         if (Gas is not null && gasCap is not null)
         {
-            Gas = Math.Min(Gas.Value, gasCap.Value);
+            Gas = Math.Min(Gas.Value, (ulong)gasCap.Value);
         }
 
-        Gas ??= gasCap;
+        Gas ??= (ulong?)gasCap;
     }
 
     public override bool ShouldSetBaseFee() => false;

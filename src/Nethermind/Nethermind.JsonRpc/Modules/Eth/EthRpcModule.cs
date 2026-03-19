@@ -156,7 +156,7 @@ public partial class EthRpcModule(
 
     public Task<ResultWrapper<long?>> eth_blockNumber()
     {
-        long number = _blockchainBridge.HeadBlock?.Number ?? 0;
+        long number = (long)(_blockchainBridge.HeadBlock?.Number ?? 0UL);
         return Task.FromResult(ResultWrapper<long?>.Success(number));
     }
 
@@ -473,7 +473,7 @@ public partial class EthRpcModule(
         TransactionForRpcContext extraData = new(
             chainId: _specProvider.ChainId,
             blockHash: block.Hash,
-            blockNumber: block.Number,
+            blockNumber: (long)block.Number,
             txIndex: (int)positionIndex,
             blockTimestamp: block.Timestamp,
             baseFee: block.BaseFeePerGas,
@@ -607,7 +607,7 @@ public partial class EthRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        long? headNumber = _blockFinder.Head?.Number;
+        long? headNumber = (long?)_blockFinder.Head?.Number;
         if (headNumber < fromBlock.BlockNumber || headNumber < toBlock.BlockNumber)
         {
             return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);

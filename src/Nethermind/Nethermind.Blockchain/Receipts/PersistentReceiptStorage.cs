@@ -82,9 +82,9 @@ namespace Nethermind.Blockchain.Receipts
                 Block newMain = e.Block;
 
                 // Delete old tx index
-                if (_receiptConfig.TxLookupLimit > 0 && newMain.Number > _receiptConfig.TxLookupLimit.Value)
+                if (_receiptConfig.TxLookupLimit > 0 && (long)newMain.Number > _receiptConfig.TxLookupLimit.Value)
                 {
-                    Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
+                    Block newOldTx = _blockTree.FindBlock((long)newMain.Number - _receiptConfig.TxLookupLimit.Value);
                     if (newOldTx is not null)
                     {
                         RemoveBlockTx(newOldTx);
@@ -141,7 +141,7 @@ namespace Nethermind.Blockchain.Receipts
                 return receipts ?? [];
             }
 
-            Span<byte> receiptsData = GetReceiptData(block.Number, blockHash);
+            Span<byte> receiptsData = GetReceiptData((long)block.Number, blockHash);
 
             try
             {
@@ -272,7 +272,7 @@ namespace Nethermind.Blockchain.Receipts
 
             _receiptsRecovery.TryRecover(block, txReceipts, false);
 
-            var blockNumber = block.Number;
+            var blockNumber = (long)block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
             using (NettyRlpStream stream = _storageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
@@ -343,7 +343,7 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsCache.Delete(block.Hash);
 
             Span<byte> blockNumPrefixed = stackalloc byte[40];
-            GetBlockNumPrefixedKey(block.Number, block.Hash, blockNumPrefixed);
+            GetBlockNumPrefixedKey((long)block.Number, block.Hash, blockNumPrefixed);
             _receiptsDb.Remove(blockNumPrefixed);
 
             RemoveBlockTx(block);
@@ -362,10 +362,10 @@ namespace Nethermind.Blockchain.Receipts
         {
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
 
-            lastBlockNumber ??= _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+            lastBlockNumber ??= (long?)_blockTree.FindBestSuggestedHeader()?.Number ?? 0;
 
             if (_receiptConfig.TxLookupLimit == -1) return;
-            if (_receiptConfig.TxLookupLimit != 0 && block.Number <= lastBlockNumber - _receiptConfig.TxLookupLimit) return;
+            if (_receiptConfig.TxLookupLimit != 0 && (long)block.Number <= lastBlockNumber - _receiptConfig.TxLookupLimit) return;
             if (_receiptConfig.CompactTxIndex)
             {
                 byte[] blockNumber = Rlp.Encode(block.Number).Bytes;

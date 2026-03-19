@@ -43,11 +43,11 @@ namespace Nethermind.Consensus.Processing
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
-                long gasRemaining = block.Header.GasLimit - block.GasUsed;
+                ulong gasRemaining = block.Header.GasLimit - block.GasUsed;
 
                 // No more gas available in block for any transactions,
                 // the only case we have to really stop
-                if (GasCostOf.Transaction > gasRemaining)
+                if ((ulong)GasCostOf.Transaction > gasRemaining)
                 {
                     return args.Set(TxAction.Stop, "Block full");
                 }
@@ -56,7 +56,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     return args.Set(
                         // If smallest tx is too large, stop picking
-                        currentTx.GasLimit == GasCostOf.Transaction ? TxAction.Stop : TxAction.Skip,
+                        currentTx.GasLimit == (ulong)GasCostOf.Transaction ? TxAction.Stop : TxAction.Skip,
                         "Too large for CL");
                 }
 

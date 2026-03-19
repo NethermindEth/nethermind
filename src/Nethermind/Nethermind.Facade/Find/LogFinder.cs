@@ -64,13 +64,13 @@ namespace Nethermind.Facade.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!))
+            if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock((long)fromBlock.Number, fromBlock.Hash!))
             {
                 throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!))
+            if (toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock((long)toBlock.Number, toBlock.Hash!))
             {
                 throw new ResourceNotFoundException($"Receipt not available for To block {toBlock.Number}.");
             }
@@ -86,7 +86,7 @@ namespace Nethermind.Facade.Find
 
         private static bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
         {
-            long blocksToSearch = toBlock.Number - fromBlock.Number + 1;
+            long blocksToSearch = (long)(toBlock.Number - fromBlock.Number + 1);
             return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
         }
 
@@ -104,7 +104,7 @@ namespace Nethermind.Facade.Find
                 }
             }
 
-            return FilterLogsInBlocksParallel(filter, EnumerateBlockNumbers(filter, fromBlock.Number, toBlock.Number), cancellationToken);
+            return FilterLogsInBlocksParallel(filter, EnumerateBlockNumbers(filter, (long)fromBlock.Number, (long)toBlock.Number), cancellationToken);
         }
 
         protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<long> blockNumbers, CancellationToken cancellationToken)
@@ -157,7 +157,9 @@ namespace Nethermind.Facade.Find
         {
             // method is designed for convenient debugging
 
-            bool containsRange = _bloomStorage.ContainsRange(fromBlock.Number, toBlock.Number);
+            long fromBlockNumber = (long)fromBlock.Number;
+            long toBlockNumber = (long)toBlock.Number;
+            bool containsRange = _bloomStorage.ContainsRange(in fromBlockNumber, in toBlockNumber);
             if (!containsRange)
             {
                 return false;
@@ -188,7 +190,7 @@ namespace Nethermind.Facade.Find
                     yield return filterLog;
                 }
 
-                fromBlock = _blockFinder.FindHeader(fromBlock.Number + 1);
+                fromBlock = _blockFinder.FindHeader((long)fromBlock.Number + 1);
                 if (fromBlock is null) break;
 
                 count++;
@@ -197,7 +199,7 @@ namespace Nethermind.Facade.Find
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block, CancellationToken cancellationToken) =>
             filter.Matches(block.Bloom!)
-                ? FindLogsInBlock(filter, block.Hash, block.Number, block.Timestamp, cancellationToken)
+                ? FindLogsInBlock(filter, block.Hash, (long)block.Number, block.Timestamp, cancellationToken)
                 : [];
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
@@ -241,7 +243,7 @@ namespace Nethermind.Facade.Find
 
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
-                                    receipt.BlockNumber,
+                                    (long)receipt.BlockNumber,
                                     blockTimestamp,
                                     receipt.BlockHash.ToCommitment(),
                                     receipt.Index,

@@ -37,9 +37,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public Address FeeRecipient { get; set; } = Address.Zero;
 
-    public long GasLimit { get; set; }
+    public ulong GasLimit { get; set; }
 
-    public long GasUsed { get; set; }
+    public ulong GasUsed { get; set; }
 
     public Bloom LogsBloom { get; set; } = Bloom.Empty;
 
@@ -130,7 +130,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             ParentHash = block.ParentHash!,
             FeeRecipient = block.Beneficiary!,
             StateRoot = block.StateRoot!,
-            BlockNumber = block.Number,
+            BlockNumber = (long)block.Number,
             GasLimit = block.GasLimit,
             GasUsed = block.GasUsed,
             ReceiptsRoot = block.ReceiptsRoot!,
@@ -165,7 +165,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Keccak.OfAnEmptySequenceRlp,
             FeeRecipient,
             UInt256.Zero,
-            BlockNumber,
+            (ulong)BlockNumber,
             GasLimit,
             Timestamp,
             ExtraData)

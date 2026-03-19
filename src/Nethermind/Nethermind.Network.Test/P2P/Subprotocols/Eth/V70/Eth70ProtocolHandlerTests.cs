@@ -394,7 +394,7 @@ public class Eth70ProtocolHandlerTests
             int toReturn = Math.Min(7, actualRequested);
 
             TxReceipt[][] payload = Enumerable.Range(0, toReturn)
-                .Select(i => new[] { new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (i + 1), Logs = [] } })
+                .Select(i => new[] { new TxReceipt { GasUsedTotal = (ulong)(GasCostOf.Transaction * (i + 1)), Logs = [] } })
                 .ToArray();
 
             ReceiptsMessage70 response = new(sent.RequestId, new(payload.ToPooledList()), lastBlockIncomplete: false);

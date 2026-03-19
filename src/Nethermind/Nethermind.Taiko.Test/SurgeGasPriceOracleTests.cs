@@ -85,13 +85,13 @@ public class SurgeGasPriceOracleTests
 
     private void SetupBlockFinderWithBlocks(long headBlockNumber, long gasUsed = 1000000)
     {
-        Block headBlock = Build.A.Block.WithNumber(headBlockNumber).WithGasUsed(gasUsed).TestObject;
+        Block headBlock = Build.A.Block.WithNumber(headBlockNumber).WithGasUsed((ulong)gasUsed).TestObject;
         _blockFinder.Head.Returns(headBlock);
 
         for (long i = headBlockNumber; i >= Math.Max(0, headBlockNumber - _surgeConfig.L2GasUsageWindowSize + 1); i--)
         {
             _blockFinder.FindBlock(i, BlockTreeLookupOptions.RequireCanonical)
-                .Returns(Build.A.Block.WithNumber(i).WithGasUsed(gasUsed).TestObject);
+                .Returns(Build.A.Block.WithNumber(i).WithGasUsed((ulong)gasUsed).TestObject);
         }
     }
 

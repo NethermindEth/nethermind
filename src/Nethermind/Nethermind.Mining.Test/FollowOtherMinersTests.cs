@@ -22,7 +22,7 @@ namespace Nethermind.Mining.Test
         [TestCase(3000000, 3000000)]
         public void Test(long current, long expected)
         {
-            BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).TestObject;
+            BlockHeader header = Build.A.BlockHeader.WithGasLimit((ulong)current).TestObject;
             FollowOtherMiners followOtherMiners = new(MainnetSpecProvider.Instance);
             followOtherMiners.GetGasLimit(header).Should().Be(expected);
         }
@@ -39,7 +39,7 @@ namespace Nethermind.Mining.Test
                 Eip1559TransitionBlock = forkNumber
             };
             TestSpecProvider specProvider = new(spec);
-            BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).WithNumber(forkNumber - 1).TestObject;
+            BlockHeader header = Build.A.BlockHeader.WithGasLimit((ulong)current).WithNumber(forkNumber - 1).TestObject;
             FollowOtherMiners followOtherMiners = new(specProvider);
             followOtherMiners.GetGasLimit(header).Should().Be(expected);
         }

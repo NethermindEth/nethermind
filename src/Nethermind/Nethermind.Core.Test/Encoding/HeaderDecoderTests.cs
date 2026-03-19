@@ -109,15 +109,15 @@ public class HeaderDecoderTests
     {
         BlockHeader header = Build.A.BlockHeader.
             WithNumber(negativeLong).
-            WithGasUsed(negativeLong).
-            WithGasLimit(negativeLong).TestObject;
+            WithGasUsed((ulong)negativeLong).
+            WithGasLimit((ulong)negativeLong).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
 
-        blockHeader.GasUsed.Should().Be(negativeLong);
+        blockHeader.GasUsed.Should().Be((ulong)negativeLong);
         blockHeader.Number.Should().Be(negativeLong);
-        blockHeader.GasLimit.Should().Be(negativeLong);
+        blockHeader.GasLimit.Should().Be((ulong)negativeLong);
     }
 
     [TestCase(-1)]
@@ -126,15 +126,15 @@ public class HeaderDecoderTests
     {
         BlockHeader header = Build.A.BlockHeader.
             WithNumber(negativeLong).
-            WithGasUsed(negativeLong).
-            WithGasLimit(negativeLong).TestObject;
+            WithGasUsed((ulong)negativeLong).
+            WithGasLimit((ulong)negativeLong).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        blockHeader.GasUsed.Should().Be(negativeLong);
+        blockHeader.GasUsed.Should().Be((ulong)negativeLong);
         blockHeader.Number.Should().Be(negativeLong);
-        blockHeader.GasLimit.Should().Be(negativeLong);
+        blockHeader.GasLimit.Should().Be((ulong)negativeLong);
     }
 
     [TestCaseSource(nameof(CancunFieldsSource))]

@@ -67,7 +67,7 @@ public class ReceiptTrieTests
         TxReceipt[] receipts = new TxReceipt[receiptCount];
         for (int i = 0; i < receiptCount; i++)
         {
-            receipts[i] = Build.A.Receipt.WithAllFieldsFilled.WithGasUsedTotal(1000 + i).TestObject;
+            receipts[i] = Build.A.Receipt.WithAllFieldsFilled.WithGasUsedTotal((ulong)(1000 + i)).TestObject;
         }
 
         using TrackingCappedArrayPool parallelPool = new(receiptCount * 4, canBeParallel: true);

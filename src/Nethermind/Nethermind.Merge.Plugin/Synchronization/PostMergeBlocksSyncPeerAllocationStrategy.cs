@@ -39,7 +39,7 @@ public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
                     return false;
                 }
             }
-            else if (info.HeadNumber < (blockTree.BestSuggestedBody?.Number ?? 0) + (_minBlocksAhead ?? 1))
+            else if (info.HeadNumber < (long)(blockTree.BestSuggestedBody?.Number ?? 0UL) + (_minBlocksAhead ?? 1))
             {
                 return false;
             }

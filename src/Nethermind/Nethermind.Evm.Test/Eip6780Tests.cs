@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Test
         private byte[] _selfDestructCode;
         private Address _contractAddress;
         private byte[] _initCode;
-        private readonly long _gasLimit = 1000000;
+        private readonly ulong _gasLimit = 1000000;
         private readonly EthereumEcdsa _ecdsa = new(1);
 
         [SetUp]

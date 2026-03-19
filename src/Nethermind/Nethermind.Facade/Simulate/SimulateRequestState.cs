@@ -9,7 +9,7 @@ public class SimulateRequestState
 {
     public bool Validate { get; set; }
     public UInt256? BlobBaseFeeOverride { get; set; }
-    public long TotalGasLeft { get; set; }
-    public long BlockGasLeft { get; set; }
+    public ulong TotalGasLeft { get; set; }
+    public ulong BlockGasLeft { get; set; }
     public bool[] TxsWithExplicitGas { get; set; }
 }

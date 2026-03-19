@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <summary>
         /// Default gas limit of transactions generated from contract.
         /// </summary>
-        public const long DefaultContractGasLimit = 1_600_000L;
+        public const ulong DefaultContractGasLimit = 1_600_000UL;
 
         protected IAbiEncoder AbiEncoder { get; }
         public AbiDefinition AbiDefinition { get; }
@@ -50,11 +50,11 @@ namespace Nethermind.Blockchain.Contracts
             AbiDefinition = abiDefinition ?? new AbiDefinitionParser().Parse(GetType());
         }
 
-        protected virtual Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null)
+        protected virtual Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, ulong gasLimit = DefaultContractGasLimit, BlockHeader header = null)
             where T : Transaction, new() =>
             GenerateTransaction<T>(contractAddress, transactionData, sender, gasLimit);
 
-        protected Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address? sender, long gasLimit = DefaultContractGasLimit) where T : Transaction, new()
+        protected Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address? sender, ulong gasLimit = DefaultContractGasLimit) where T : Transaction, new()
         {
             var transaction = new T()
             {
@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="arguments">Arguments to the function.</param>
         /// <typeparam name="T">Type of <see cref="Transaction"/>.</typeparam>
         /// <returns>Transaction.</returns>
-        protected Transaction GenerateTransaction<T>(Address? contractAddress, string functionName, Address sender, long gasLimit, BlockHeader header, params object[] arguments) where T : Transaction, new()
+        protected Transaction GenerateTransaction<T>(Address? contractAddress, string functionName, Address sender, ulong gasLimit, BlockHeader header, params object[] arguments) where T : Transaction, new()
             => GenerateTransaction<T>(contractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit, header);
 
         /// <summary>
@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="arguments">Arguments to the function.</param>
         /// <typeparam name="T">Type of <see cref="Transaction"/>.</typeparam>
         /// <returns>Transaction.</returns>
-        protected Transaction GenerateTransaction<T>(Address? contractAddress, string functionName, Address sender, long gasLimit, params object[] arguments) where T : Transaction, new()
+        protected Transaction GenerateTransaction<T>(Address? contractAddress, string functionName, Address sender, ulong gasLimit, params object[] arguments) where T : Transaction, new()
             => GenerateTransaction<T>(contractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit);
 
         /// <summary>
@@ -141,7 +141,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="arguments">Arguments to the function.</param>
         /// <typeparam name="T">Type of <see cref="Transaction"/>.</typeparam>
         /// <returns>Transaction.</returns>
-        protected Transaction GenerateTransaction<T>(string functionName, Address sender, long gasLimit, BlockHeader header, params object[] arguments) where T : Transaction, new()
+        protected Transaction GenerateTransaction<T>(string functionName, Address sender, ulong gasLimit, BlockHeader header, params object[] arguments) where T : Transaction, new()
             => GenerateTransaction<T>(ContractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit, header);
 
         /// <summary>
@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="arguments">Arguments to the function.</param>
         /// <typeparam name="T">Type of <see cref="Transaction"/>.</typeparam>
         /// <returns>Transaction.</returns>
-        protected Transaction GenerateTransaction<T>(string functionName, Address sender, long gasLimit, params object[] arguments) where T : Transaction, new()
+        protected Transaction GenerateTransaction<T>(string functionName, Address sender, ulong gasLimit, params object[] arguments) where T : Transaction, new()
             => GenerateTransaction<T>(ContractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit);
 
         /// <summary>

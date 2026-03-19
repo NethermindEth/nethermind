@@ -233,12 +233,12 @@ namespace Nethermind.Blockchain.Filters
         private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, ulong blockTimestamp)
         {
             if (logFilter.FromBlock.Type == BlockParameterType.BlockNumber &&
-                logFilter.FromBlock.BlockNumber > txReceipt.BlockNumber)
+                logFilter.FromBlock.BlockNumber > (long)txReceipt.BlockNumber)
             {
                 return null;
             }
 
-            if (logFilter.ToBlock.Type == BlockParameterType.BlockNumber && logFilter.ToBlock.BlockNumber < txReceipt.BlockNumber)
+            if (logFilter.ToBlock.Type == BlockParameterType.BlockNumber && logFilter.ToBlock.BlockNumber < (long)txReceipt.BlockNumber)
             {
                 return null;
             }

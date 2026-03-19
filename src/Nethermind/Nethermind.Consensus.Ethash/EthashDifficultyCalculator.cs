@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Ethash
             Calculate(parent.Difficulty,
                 parent.Timestamp,
                 header.Timestamp,
-                header.Number,
+                (long)header.Number,
                 parent.UnclesHash != Keccak.OfAnEmptySequenceRlp);
 
         public UInt256 Calculate(

@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Find
                 BlockParameterType.Earliest => FindEarliestBlock(),
                 BlockParameterType.Finalized => FindFinalizedBlock(),
                 BlockParameterType.Safe => FindSafeBlock(),
-                BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber!.Value >= Head.Number
+                BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber!.Value >= (long)Head.Number
                     ? FindLatestBlock()
                     : FindBlock(blockParameter.BlockNumber!.Value,
                         blockParameter.RequireCanonical
@@ -128,7 +128,7 @@ namespace Nethermind.Blockchain.Find
                 BlockParameterType.Earliest => FindEarliestHeader(),
                 BlockParameterType.Finalized => FindFinalizedHeader(),
                 BlockParameterType.Safe => FindSafeHeader(),
-                BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber!.Value >= Head.Number
+                BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber!.Value >= (long)Head.Number
                     ? FindLatestHeader()
                     : FindHeader(blockParameter.BlockNumber!.Value,
                         blockParameter.RequireCanonical

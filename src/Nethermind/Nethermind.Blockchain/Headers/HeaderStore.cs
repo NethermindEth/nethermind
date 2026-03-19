@@ -30,8 +30,8 @@ public class HeaderStore(
     public void Insert(BlockHeader header)
     {
         using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
-        headerDb.Set(header.Number, header.Hash!, newRlp.AsSpan());
-        InsertBlockNumber(header.Hash, header.Number);
+        headerDb.Set((long)header.Number, header.Hash!, newRlp.AsSpan());
+        InsertBlockNumber(header.Hash, (long)header.Number);
     }
 
     public void BulkInsert(IReadOnlyList<BlockHeader> headers)
@@ -43,9 +43,9 @@ public class HeaderStore(
         foreach (BlockHeader header in headers)
         {
             using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
-            headerWriteBatch.Set(header.Number, header.Hash!, newRlp.AsSpan());
+            headerWriteBatch.Set((long)header.Number, header.Hash!, newRlp.AsSpan());
 
-            header.Number.WriteBigEndian(blockNumberSpan);
+            ((long)header.Number).WriteBigEndian(blockNumberSpan);
             blockNumberWriteBatch.Set(header.Hash, blockNumberSpan);
         }
     }
@@ -89,7 +89,7 @@ public class HeaderStore(
         if (blockNumber is not null) return blockNumber.Value;
 
         // Probably still hash based
-        return Get(blockHash)?.Number;
+        return (long?)Get(blockHash)?.Number;
     }
 
     private long? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)

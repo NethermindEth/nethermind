@@ -150,12 +150,12 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         Hash256 safeBlockHash = forkchoiceState.SafeBlockHash;
         Hash256 finalizedBlockHash = forkchoiceState.FinalizedBlockHash;
 
-        BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock!.Number, newHeadBlock.GetOrCalculateHash()).Info;
+        BlockInfo? blockInfo = _blockTree.GetInfo((long)newHeadBlock!.Number, newHeadBlock.GetOrCalculateHash()).Info;
 
         BlockHeader? safeBlockHeader = ValidateBlockHash(ref safeBlockHash, out string? safeBlockErrorMsg);
         BlockHeader? finalizedHeader = ValidateBlockHash(ref finalizedBlockHash, out string? finalizationErrorMsg);
 
-        string requestStr = forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number);
+        string requestStr = forkchoiceState.ToString((long)newHeadBlock.Number, (long?)safeBlockHeader?.Number, (long?)finalizedHeader?.Number);
 
         if (_logger.IsInfo) _logger.Info($"Received {requestStr}");
 
@@ -172,7 +172,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 return errorResult;
             }
 
-            BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!, blockNumber: newHeadBlock.Number - 1);
+            BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!, blockNumber: (long?)newHeadBlock.Number - 1);
             if (blockParent is null)
             {
                 if (_logger.IsInfo) _logger.Info($"Parent of block {newHeadBlock} not available. Starting new beacon header sync.");
@@ -433,13 +433,13 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     {
         if (_logger.IsInfo) _logger.Info("BeaconChain reorged during the sync or cache rebuilt");
         BlockInfo[] beaconMainChainBranch = GetBeaconChainBranch(newHeadBlock, newHeadBlockInfo);
-        _blockTree.UpdateBeaconMainChain(beaconMainChainBranch, Math.Max(_beaconPivot.ProcessDestination?.Number ?? 0, newHeadBlock.Number));
+        _blockTree.UpdateBeaconMainChain(beaconMainChainBranch, Math.Max((long)(_beaconPivot.ProcessDestination?.Number ?? 0UL), (long)newHeadBlock.Number));
         _beaconPivot.ProcessDestination = newHeadBlock.Header;
     }
 
     private BlockInfo[] GetBeaconChainBranch(Block newHeadBlock, BlockInfo newHeadBlockInfo)
     {
-        newHeadBlockInfo.BlockNumber = newHeadBlock.Number;
+        newHeadBlockInfo.BlockNumber = (long)newHeadBlock.Number;
         List<BlockInfo> blocksList = new() { newHeadBlockInfo };
         Block? predecessor = newHeadBlock;
 
@@ -451,9 +451,9 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             {
                 break;
             }
-            BlockInfo? predecessorInfo = _blockTree.GetInfo(predecessor.Number, predecessor.GetOrCalculateHash()).Info;
+            BlockInfo? predecessorInfo = _blockTree.GetInfo((long)predecessor.Number, predecessor.GetOrCalculateHash()).Info;
             if (predecessorInfo is null) break;
-            predecessorInfo.BlockNumber = predecessor.Number;
+            predecessorInfo.BlockNumber = (long)predecessor.Number;
             if (predecessorInfo.IsBeaconMainChain || !predecessorInfo.IsBeaconInfo) break;
             if (_logger.IsInfo) _logger.Info($"Reorged to beacon block ({predecessorInfo.BlockNumber}) {predecessorInfo.BlockHash} or cache rebuilt");
             blocksList.Add(predecessorInfo);

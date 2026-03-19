@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain
                 return _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
             }
 
-            long depth = currentBlock.Number - number;
+            long depth = (long)currentBlock.Number - number;
             Hash256[]? hashes = Volatile.Read(ref _hashes);
 
             return depth switch

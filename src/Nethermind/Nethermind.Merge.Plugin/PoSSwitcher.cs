@@ -130,11 +130,11 @@ namespace Nethermind.Merge.Plugin
                 return false;
             }
 
-            _terminalBlockNumber = header.Number;
+            _terminalBlockNumber = (long?)header.Number;
             _terminalBlockHash = header.Hash;
             _metadataDb.Set(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(_terminalBlockNumber.Value).Bytes);
             _metadataDb.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
-            _firstPoSBlockNumber = header.Number + 1;
+            _firstPoSBlockNumber = (long?)header.Number + 1;
             _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
 
             if (_hasEverReachedTerminalDifficulty == false)
@@ -201,7 +201,7 @@ namespace Nethermind.Merge.Plugin
             }
             else
             {
-                bool theMergeEnabled = (ForkActivation)header.Number >= _specProvider.MergeBlockNumber;
+                bool theMergeEnabled = (ForkActivation)(long)header.Number >= _specProvider.MergeBlockNumber;
                 if (TransitionFinished && theMergeEnabled || _terminalBlockExplicitSpecified && theMergeEnabled) // if transition finished or we know terminalBlock from config we can decide by blockNumber
                 {
                     isPostMerge = true;

@@ -129,7 +129,7 @@ public class TaikoHeaderValidator(
         }
 
         IEip1559Spec eip1559Spec = spec;
-        ulong parentGasTarget = (ulong)(parent.GasLimit / eip1559Spec.ElasticityMultiplier);
+        ulong parentGasTarget = parent.GasLimit / (ulong)eip1559Spec.ElasticityMultiplier;
         ulong parentAdjustedGasTarget = Math.Min(parentGasTarget * parentBlockTime / BlockTimeTarget,
             (ulong)parent.GasLimit * MaxGasTargetPercentage / 100);
 

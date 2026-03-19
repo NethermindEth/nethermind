@@ -224,7 +224,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
             }
 
             var log = new LogEntry(tx.To, [], []);
-            tracer.MarkAsSuccess(tx.To, 0, [], [log], stateRoot);
+            tracer.MarkAsSuccess(tx.To, 0L, [], [log], stateRoot);
         }
 
         return TransactionResult.Ok;

@@ -195,7 +195,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
                 if (isCensored)
                 {
                     Metrics.NumberOfPotentiallyCensoredBlocks++;
-                    Metrics.LastPotentiallyCensoredBlockNumber = block.Number;
+                    Metrics.LastPotentiallyCensoredBlockNumber = (long)block.Number;
                     DetectMultiBlockCensorship(blockNumberHash, blockCensorshipInfo);
                 }
             }
@@ -218,7 +218,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         {
             _censoredBlocks.Add(block);
             Metrics.NumberOfCensoredBlocks++;
-            Metrics.LastCensoredBlockNumber = block.Number;
+            Metrics.LastCensoredBlockNumber = (long)block.Number;
             if (_logger.IsInfo) _logger.Info($"Censorship detected for block {block.Number} with hash {block.Hash!}");
         }
 
@@ -263,7 +263,7 @@ public readonly record struct BlockCensorshipInfo(bool IsCensored, ValueHash256?
 
 public readonly record struct BlockNumberHash(long Number, ValueHash256 Hash) : IEquatable<BlockNumberHash>
 {
-    public BlockNumberHash(Block block) : this(block.Number, block.Hash ?? block.CalculateHash()) { }
+    public BlockNumberHash(Block block) : this((long)block.Number, block.Hash ?? block.CalculateHash()) { }
 }
 
 public class WrapAroundArray<T>(long maxSize = 1) : IEnumerable<T>

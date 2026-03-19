@@ -518,7 +518,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
         {
             // 1 000 000 000
-            long gasLimit = 1_000_000;
+            ulong gasLimit = 1_000_000;
 
             nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
             IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number) + 1 ?? 0, null);
@@ -535,7 +535,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         public async Task BuildBlockWithStorage(int blockNumber, CancellationToken cancellation)
         {
-            long gasLimit = 200_000;
+            ulong gasLimit = 200_000;
 
             nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
             IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number ?? 0) + 1, null);

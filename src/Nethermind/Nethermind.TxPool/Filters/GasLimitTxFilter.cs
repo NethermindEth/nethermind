@@ -19,7 +19,7 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             long gasLimit = Math.Min(chainHeadInfoProvider.BlockGasLimit ?? long.MaxValue, _configuredGasLimit);
-            if (tx.GasLimit > gasLimit)
+            if (tx.GasLimit > (ulong)gasLimit)
             {
                 Metrics.PendingTransactionsGasLimitTooHigh++;
 

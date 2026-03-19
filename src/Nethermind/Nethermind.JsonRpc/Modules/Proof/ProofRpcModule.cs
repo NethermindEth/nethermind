@@ -119,7 +119,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             TransactionForRpcContext extraData = new(
                 chainId: specProvider.ChainId,
                 blockHash: block.Hash,
-                blockNumber: block.Number,
+                blockNumber: (long)block.Number,
                 txIndex: receipt.Index,
                 blockTimestamp: block.Timestamp,
                 baseFee: block.BaseFeePerGas,

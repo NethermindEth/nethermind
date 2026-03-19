@@ -31,7 +31,7 @@ public class BlockTreeSuggestPacer : IDisposable
     {
         TaskCompletionSource? completionSource = _dbBatchProcessed;
         if (completionSource is null) return;
-        if (e.Block.Number < _blockNumberReachedToUnlock) return;
+        if ((long)e.Block.Number < _blockNumberReachedToUnlock) return;
 
         _dbBatchProcessed = null;
         completionSource.SetResult();
@@ -39,7 +39,7 @@ public class BlockTreeSuggestPacer : IDisposable
 
     public async Task WaitForQueue(long currentBlockNumber, CancellationToken token)
     {
-        long currentHeadNumber = _blockTree.Head?.Number ?? 0;
+        long currentHeadNumber = (long)(_blockTree.Head?.Number ?? 0UL);
         if (currentBlockNumber - currentHeadNumber > _stopBatchSize && _dbBatchProcessed is null)
         {
             _blockNumberReachedToUnlock = currentBlockNumber - _stopBatchSize + _resumeBatchSize;

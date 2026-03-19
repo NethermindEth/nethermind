@@ -50,5 +50,5 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
     }
 
     private long? GetBlockNumber(BlockParameter parameter) =>
-        parameter.BlockNumber ?? blockFinder.FindBlock(parameter)?.Number;
+        parameter.BlockNumber ?? (long?)blockFinder.FindBlock(parameter)?.Number;
 }

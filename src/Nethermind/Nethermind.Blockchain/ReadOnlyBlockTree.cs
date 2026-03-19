@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain
             {
                 if (Head?.Number > 0)
                 {
-                    if (Head.Number < startNumber)
+                    if ((long)Head.Number < startNumber)
                     {
                         const long searchLimit = 2;
                         long endSearch = Math.Min(bestKnownNumber, startNumber + searchLimit - 1);

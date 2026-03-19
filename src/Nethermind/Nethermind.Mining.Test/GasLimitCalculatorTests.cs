@@ -27,7 +27,7 @@ namespace Nethermind.Mining.Test
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(
                 MainnetSpecProvider.Instance, blocksConfig);
 
-            BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).TestObject;
+            BlockHeader header = Build.A.BlockHeader.WithGasLimit((ulong)current).TestObject;
             targetAdjustedGasLimitCalculator.GetGasLimit(header).Should().Be(expected);
         }
     }

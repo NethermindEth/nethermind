@@ -92,7 +92,7 @@ public class EstimateGasTracer : TxTracer
 
     internal long CalculateAdditionalGasRequired(Transaction tx, IReleaseSpec releaseSpec)
     {
-        long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
+        long intrinsicGas = (long)tx.GasLimit - IntrinsicGasAt;
         return _currentGasAndNesting.Peek().AdditionalGasRequired +
                RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund,
                    releaseSpec);

@@ -69,7 +69,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction
             .WithValue(1)
             .WithGasPrice(gasPrice)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         var extraData = new byte[32];
@@ -78,7 +78,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx)
             .WithBaseFeePerGas(gasPrice)
             .WithExtraData(extraData)
-            .WithBeneficiary(beneficiaryAddress).WithGasLimit(gasLimit).TestObject;
+            .WithBeneficiary(beneficiaryAddress).WithGasLimit((ulong)gasLimit).TestObject;
 
         _transactionProcessor!.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
         _transactionProcessor!.Execute(tx, NullTxTracer.Instance);
@@ -134,7 +134,7 @@ public class TransactionProcessorTests
             .WithGasPrice(gasPrice)
             .WithMaxFeePerGas(gasPrice)
             .WithMaxPriorityFeePerGas(tipFee)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithType(TxType.EIP1559)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
@@ -145,7 +145,7 @@ public class TransactionProcessorTests
             .WithTransactions(tx)
             .WithBaseFeePerGas(baseFee)
             .WithBeneficiary(beneficiaryAddress)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .TestObject;
 
         UInt256 initialCoinbaseBalance = _stateProvider.GetBalance(beneficiaryAddress);

@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Producers
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
-            long blockNumber = parent.Number + 1;
+            long blockNumber = (long)parent.Number + 1;
             IReleaseSpec spec = NextBlockSpecHelper.GetSpec(_specProvider, parent, payloadAttributes, blocksConfig);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions = filterSource ?
@@ -390,7 +390,7 @@ namespace Nethermind.Consensus.Producers
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
         internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, long gasLimit) =>
-            OrderCore(pendingTransactions, comparer, static tx => tx.BlockGasUsed, filter, gasLimit).Select(static tx => tx.tx);
+            OrderCore(pendingTransactions, comparer, static tx => (long)tx.BlockGasUsed, filter, gasLimit).Select(static tx => tx.tx);
 
         private static IEnumerable<(Transaction tx, long resource)> OrderCore(
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions,

@@ -469,7 +469,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         tracer.EndTxTrace();
 
-        long blockGasAfterTx1 = block.Header.GasUsed;
+        ulong blockGasAfterTx1 = block.Header.GasUsed;
         TxReceipt receipt1 = tracer.TxReceipts[0];
 
         // Prepare and execute second transaction (no refund)
@@ -575,7 +575,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         // Take snapshot after first tx
         int snapshotAfterTx1 = tracer.TakeSnapshot();
-        long blockGasAfterTx1 = block.Header.GasUsed;
+        ulong blockGasAfterTx1 = block.Header.GasUsed;
         TxReceipt receipt1 = tracer.TxReceipts[0];
 
         // Execute second transaction
@@ -631,7 +631,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         // Snapshot 1 (after tx1)
         int snapshot1 = tracer.TakeSnapshot();
-        long gasAfterTx1 = block.Header.GasUsed;
+        ulong gasAfterTx1 = block.Header.GasUsed;
 
         // Execute tx2 (call to Recipient which has code deployed)
         Transaction tx2 = Build.A.Transaction

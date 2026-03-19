@@ -91,11 +91,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             BlockHeader? lowestInsertedBeaconHeader = _blockTree.LowestInsertedBeaconHeader;
             bool chainMerged =
-                ((lowestInsertedBeaconHeader?.Number ?? 0) - 1) <= (_blockTree.BestSuggestedHeader?.Number ?? long.MaxValue) &&
+                ((long)(lowestInsertedBeaconHeader?.Number ?? 0UL) - 1) <= (long)(_blockTree.BestSuggestedHeader?.Number ?? (ulong)long.MaxValue) &&
                 lowestInsertedBeaconHeader is not null &&
-                _blockTree.IsKnownBlock(lowestInsertedBeaconHeader.Number - 1, lowestInsertedBeaconHeader.ParentHash!);
+                _blockTree.IsKnownBlock((long)lowestInsertedBeaconHeader.Number - 1, lowestInsertedBeaconHeader.ParentHash!);
             bool finished = lowestInsertedBeaconHeader is null
-                            || lowestInsertedBeaconHeader.Number <= _beaconPivot.PivotDestinationNumber
+                            || (long)lowestInsertedBeaconHeader.Number <= _beaconPivot.PivotDestinationNumber
                             || (!_syncConfig.StrictMode && chainMerged);
 
             if (_logger.IsTrace) _logger.Trace(
@@ -119,7 +119,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         /// </summary>
         /// <param name="blockHeader"></param>
         /// <returns></returns>
-        public bool IsBeaconSyncFinished(BlockHeader? blockHeader) => !_beaconPivot.BeaconPivotExists() || (blockHeader is not null && _blockTree.WasProcessed(blockHeader.Number, blockHeader.GetOrCalculateHash()));
+        public bool IsBeaconSyncFinished(BlockHeader? blockHeader) => !_beaconPivot.BeaconPivotExists() || (blockHeader is not null && _blockTree.WasProcessed((long)blockHeader.Number, blockHeader.GetOrCalculateHash()));
 
         public bool MergeTransitionFinished => _poSSwitcher.TransitionFinished;
 
@@ -127,7 +127,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             if (_beaconPivot.BeaconPivotExists())
             {
-                return _beaconPivot.ProcessDestination?.Number ?? _beaconPivot.PivotNumber;
+                return (long?)_beaconPivot.ProcessDestination?.Number ?? _beaconPivot.PivotNumber;
             }
             return null;
         }

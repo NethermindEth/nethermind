@@ -415,7 +415,7 @@ namespace Nethermind.TxPool.Test
             var config = new TxPoolConfig { GasLimit = long.MaxValue };
             _txPool = CreatePool(config, specProvider);
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+                .WithGasLimit((ulong)(Eip7825Constants.DefaultTxGasLimitCap + 1))
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
@@ -464,8 +464,8 @@ namespace Nethermind.TxPool.Test
             Transaction tx = Build.A.Transaction
                 .WithGasPrice((UInt256)gasPrice)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            tx.Value = (UInt256)(value * tx.GasLimit);
-            EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
+            tx.Value = (UInt256)((ulong)value * tx.GasLimit);
+            EnsureSenderBalance(tx.SenderAddress, (UInt256)(15UL * tx.GasLimit));
             _txPool.GetPendingTransactionsCount().Should().Be(30);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
             result.ToString().Should().Contain(expected);
@@ -507,8 +507,8 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas((UInt256)gasPremium)
                 .WithChainId(TestBlockchainIds.ChainId)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            tx.Value = (UInt256)(value * tx.GasLimit);
-            EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
+            tx.Value = (UInt256)((ulong)value * tx.GasLimit);
+            EnsureSenderBalance(tx.SenderAddress, (UInt256)(15UL * tx.GasLimit));
             _txPool.GetPendingTransactionsCount().Should().Be(30);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _txPool.GetPendingTransactionsCount().Should().Be(30);
@@ -1728,7 +1728,7 @@ namespace Nethermind.TxPool.Test
                 .WithAuthorizationCodeIfAuthorizationListTx()
                 .WithMaxFeePerGas(9.GWei)
                 .WithMaxPriorityFeePerGas(9.GWei)
-                .WithGasLimit(txType != TxType.SetCode ? GasCostOf.Transaction : GasCostOf.Transaction + GasCostOf.NewAccount)
+                .WithGasLimit((ulong)(txType != TxType.SetCode ? GasCostOf.Transaction : GasCostOf.Transaction + GasCostOf.NewAccount))
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
@@ -2282,7 +2282,7 @@ namespace Nethermind.TxPool.Test
             PrivateKey privateKey)
             => Build.A.Transaction
                 .WithNonce(nonce)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .WithGasPrice(gasPrice)
                 .WithData(data)
                 .To(to)

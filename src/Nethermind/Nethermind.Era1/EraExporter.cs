@@ -38,8 +38,8 @@ public class EraExporter(
         CancellationToken cancellation = default)
     {
         if (fileSystem.File.Exists(destinationPath)) throw new ArgumentException($"Destination already exist as a file.", nameof(destinationPath));
-        if (to == 0) to = blockTree.Head?.Number ?? 0;
-        if (to > (blockTree.Head?.Number ?? 0)) throw new ArgumentException($"Cannot export to a block after head block {blockTree.Head?.Number ?? 0}.");
+        if (to == 0) to = (long)(blockTree.Head?.Number ?? 0UL);
+        if (to > (long)(blockTree.Head?.Number ?? 0UL)) throw new ArgumentException($"Cannot export to a block after head block {blockTree.Head?.Number ?? 0UL}.");
         if (from > to) throw new ArgumentException($"Start block ({from}) must be before end ({to}) block");
 
         return DoExport(destinationPath, from, to, cancellation: cancellation);

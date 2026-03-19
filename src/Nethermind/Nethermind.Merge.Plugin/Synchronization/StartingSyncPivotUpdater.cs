@@ -136,7 +136,7 @@ public class StartingSyncPivotUpdater
             if (HeaderValidator.ValidateHash(finalizedBlock.Header))
             {
                 if (_logger.IsDebug) _logger.Debug($"Found {type} block in block cache");
-                return finalizedBlock.Header.Number;
+                return (long?)finalizedBlock.Header.Number;
             }
             if (_logger.IsDebug) _logger.Debug($"Hash of header found in block cache is {finalizedBlock.Header.Hash} when expecting {finalizedBlockHash}");
         }
@@ -153,7 +153,7 @@ public class StartingSyncPivotUpdater
             if (HeaderValidator.ValidateHash(finalizedHeader))
             {
                 if (_logger.IsDebug) _logger.Debug("Found header of pivot block in block tree");
-                return finalizedHeader.Number;
+                return (long?)finalizedHeader.Number;
             }
             if (_logger.IsDebug) _logger.Debug($"Hash of header found in block tree is {finalizedHeader.Hash} when expecting {finalizedBlockHash}");
         }
@@ -162,7 +162,7 @@ public class StartingSyncPivotUpdater
     }
 
     protected async Task<long?> TryGetFromPeers(Hash256? hash, CancellationToken cancellationToken, string type = Pivot) =>
-        (await TryGetFromPeers(hash, cancellationToken, static (peer, hash256, token) => peer.GetHeadBlockHeader(hash256, token), type))?.Number;
+        (long?)(await TryGetFromPeers(hash, cancellationToken, static (peer, hash256, token) => peer.GetHeadBlockHeader(hash256, token), type))?.Number;
 
     protected async Task<BlockHeader?> TryGetFromPeers<T>(T id, CancellationToken cancellationToken,
         Func<ISyncPeer, T, CancellationToken, Task<BlockHeader?>> getHeader, string? type = Pivot)

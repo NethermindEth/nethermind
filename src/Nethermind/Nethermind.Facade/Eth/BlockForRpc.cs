@@ -77,7 +77,7 @@ public class BlockForRpc
             }
         }
 
-        Number = block.Number;
+        Number = (long?)block.Number;
         ParentHash = block.ParentHash;
         ReceiptsRoot = block.ReceiptsRoot;
         Sha3Uncles = block.UnclesHash;
@@ -104,8 +104,8 @@ public class BlockForRpc
     public Address? Author { get; set; }
     public UInt256 Difficulty { get; set; }
     public byte[] ExtraData { get; set; }
-    public long GasLimit { get; set; }
-    public long GasUsed { get; set; }
+    public ulong GasLimit { get; set; }
+    public ulong GasUsed { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Hash256 Hash { get; set; }
@@ -187,7 +187,7 @@ public class BlockForRpc
             TransactionForRpcContext extraData = new(
                 chainId: chainId,
                 blockHash: block.Hash,
-                blockNumber: block.Number,
+                blockNumber: (long)block.Number,
                 txIndex: i,
                 blockTimestamp: block.Timestamp,
                 baseFee: block.BaseFeePerGas,
