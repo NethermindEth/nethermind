@@ -145,10 +145,12 @@ jobs:
                   data = json.load(f)
               results = {}
               for bm in data["Benchmarks"]:
+                  stats = bm.get("Statistics")
+                  if stats is None:
+                      continue
                   method = bm["Method"]
                   params = bm.get("Parameters", "")
                   key = f"{method}({params})" if params else method
-                  stats = bm["Statistics"]
                   mem = bm.get("Memory", {})
                   pcts = stats.get("Percentiles", {})
                   results[key] = {
