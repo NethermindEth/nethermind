@@ -25,7 +25,7 @@ using ILogger = Nethermind.Logging.ILogger;
 namespace Nethermind.Merge.Plugin;
 
 public class TestingRpcModule(
-    IMainProcessingContext mainProcessingContext,
+    IBlockProducerEnvFactory blockProducerEnvFactory,
     IGasLimitCalculator gasLimitCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
@@ -33,7 +33,10 @@ public class TestingRpcModule(
     : ITestingRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly IBlockchainProcessor _processor = mainProcessingContext.BlockchainProcessor;
+
+    // Use a dedicated processor with its own WorldState so we don't conflict with the main
+    // processing pipeline (which may have an open scope from TrieWarmer/prewarmer).
+    private readonly IBlockchainProcessor _processor = blockProducerEnvFactory.Create().ChainProcessor;
 
     public Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null, string? targetFork = null)
     {
