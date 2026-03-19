@@ -5,7 +5,6 @@ Building these projects requires Docker and a Linux environment with .NET instal
 ### Projects
 
 - [Executor](./Executor/) : The core stateless execution and data serialization
-- [Tester](./Tester/) : A testing playground to verify execution on RISC-V
 - [ZiskGuest](./ZiskGuest/) : The Nethermind guest app intended to run exclusively on Zisk
 
 ### Build

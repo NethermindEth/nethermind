@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  EXPECTED_BLOCK_HASH: '0x2528a96c6c16ff80a8c92b84d7202f8250d74c0dd9e520a536179467f7e284b8'
+  EXPECTED_BLOCK_HASH: "0x2528a96c6c16ff80a8c92b84d7202f8250d74c0dd9e520a536179467f7e284b8"
 
 jobs:
   test-zisk:
@@ -37,8 +37,8 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Prepare input
-        working-directory: tools/Stateless/Tester
-        run: dotnet run -c release --project Tester.csproj -- ../ZiskGuest/bin/input.bin
+        working-directory: tools/Stateless/ZiskGuest
+        run: dotnet run -c release -- bin/input.bin
 
       - name: Build Nethermind
         working-directory: tools/Stateless
@@ -59,7 +59,7 @@ jobs:
           fi
 
       - name: Upload guest binary
-        if: github.event.inputs.upload == 'true'
+        if: github.event.inputs.upload
         uses: actions/upload-artifact@v4
         with:
           name: nethermind-zisk
@@ -84,12 +84,12 @@ jobs:
 
       - name: Build Nethermind
         working-directory: tools/Stateless
-        run: make build-tester
+        run: make build-qemu
 
       - name: Test Nethermind
-        working-directory: tools/Stateless/Tester
+        working-directory: tools/Stateless/ZiskGuest
         run: |
-          docker build --platform linux/amd64 -t zkevm .
+          docker build -f Dockerfile.qemu -t zkevm .
           block_hash=$(docker run --rm zkevm)
           if [[ "$block_hash" != "$EXPECTED_BLOCK_HASH" ]]; then
             echo "::error::Unexpected block hash: $block_hash"
@@ -97,9 +97,9 @@ jobs:
           fi
 
       - name: Upload guest binary
-        if: github.event.inputs.upload == 'true'
+        if: github.event.inputs.upload
         uses: actions/upload-artifact@v4
         with:
           name: nethermind-zkevm
-          path: tools/Stateless/Tester/bin/nethermind
+          path: tools/Stateless/ZiskGuest/bin/nethermind
           if-no-files-found: error

@@ -3,8 +3,7 @@
 
 MAKEFILE_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 ARTIFACTS_DIR := $(abspath $(MAKEFILE_DIR)/../artifacts/bin)
-TESTER_DIR := $(MAKEFILE_DIR)/Tester
-ZISK_DIR := $(MAKEFILE_DIR)/ZiskGuest
+GUEST_DIR := $(MAKEFILE_DIR)/ZiskGuest
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
@@ -69,66 +68,58 @@ BFLAT_REFS := \
 DOCKER_RUN := docker run --platform linux/amd64 --rm \
   -e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
   -e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
-  -w $(SRC_DIR)
+  -w $(SRC_DIR) \
+  --mount type=bind,source="$(ARTIFACTS_DIR)/ZiskGuest/release",target=$(BIN_DIR) \
+  --mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
+  nethermindeth/bflat-riscv64:latest \
+  $(BFLAT_BUILD) \
+  $(BFLAT_REFS)
 
-build-dotnet-tester:
-	dotnet build -c release -p:EnableZkEvm=true $(TESTER_DIR)/Tester.csproj
+build-dotnet:
+	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/ZiskGuest.csproj
 
-build-dotnet-zisk:
-	dotnet build -c release -p:EnableZkEvm=true $(ZISK_DIR)/ZiskGuest.csproj
+build-qemu: build-dotnet
+	$(DOCKER_RUN) --libc zisk_sim -d ZK_EVM \
+	$(SRC_DIR)/TestProgram.cs
+	mkdir -p $(GUEST_DIR)/bin && \
+		mv -f $(GUEST_DIR)/TestProgram $(GUEST_DIR)/bin/nethermind
 
-build-tester: build-dotnet-tester
+build-zisk: build-dotnet
 	$(DOCKER_RUN) \
-		--mount type=bind,source="$(ARTIFACTS_DIR)/Tester/release",target=$(BIN_DIR) \
-		--mount type=bind,source="$(TESTER_DIR)",target=$(SRC_DIR) \
-		nethermindeth/bflat-riscv64:latest \
-		$(BFLAT_BUILD) --libc zisk_sim -d ZK_EVM $(BFLAT_REFS) \
-		$(SRC_DIR)/Program.cs
-	mkdir -p $(TESTER_DIR)/bin && \
-		mv -f $(TESTER_DIR)/Program $(TESTER_DIR)/bin/nethermind
-
-build-zisk: build-dotnet-zisk
-	$(DOCKER_RUN) \
-		--mount type=bind,source="$(ARTIFACTS_DIR)/ZiskGuest/release",target=$(BIN_DIR) \
-		--mount type=bind,source="$(ZISK_DIR)",target=$(SRC_DIR) \
-		nethermindeth/bflat-riscv64:latest \
-		$(BFLAT_BUILD) --libc zisk $(BFLAT_REFS) \
+		--libc zisk \
 		-r $(BIN_DIR)/Nethermind.ZiskBindings.dll \
 		--extra-ld $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.a \
 		--extlib $(BIN_DIR)/libziskos.bflat.manifest \
 		$(SRC_DIR)/Program.cs
-	mkdir -p $(ZISK_DIR)/bin && \
-		mv -f $(ZISK_DIR)/Program.patched $(ZISK_DIR)/bin/nethermind && \
-		rm -f $(ZISK_DIR)/Program
+	mkdir -p $(GUEST_DIR)/bin && \
+		mv -f $(GUEST_DIR)/Program.patched $(GUEST_DIR)/bin/nethermind && \
+		rm -f $(GUEST_DIR)/Program
 
-run-tester: build-tester
-	docker build --platform linux/amd64 -t nethermind-zkevm $(TESTER_DIR)
+run-qemu: build-qemu
+	docker build --platform linux/amd64 -f $(GUEST_DIR)/Dockerfile.qemu -t nethermind-zkevm $(GUEST_DIR)
 	docker run --rm -it nethermind-zkevm
 
 run-zisk: build-zisk
-	[ -f "$(ZISK_DIR)/bin/input.bin" ] || \
-		dotnet run -c release --project $(TESTER_DIR)/Tester.csproj -- $(ZISK_DIR)/bin/input.bin
+	[ -f "$(GUEST_DIR)/bin/input.bin" ] || \
+		dotnet run -c release --no-restore --project $(GUEST_DIR)/ZiskGuest.csproj -- $(GUEST_DIR)/bin/input.bin
 	docker run --rm -it -e RUST_BACKTRACE=full \
-		--mount type=bind,source="$(ZISK_DIR)/bin",target=/n \
+		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
 		nethermindeth/zisk@sha256:1b38e92264c30a4109fdb47f3b175324544085e36b9dde0abf7570c2b1e3312b \
 		ziskemu -e /n/nethermind -i /n/input.bin
 
 clean:
 	rm -rf \
-    $(TESTER_DIR)/bin/** \
-		$(TESTER_DIR)/Program \
-		$(TESTER_DIR)/Program.o \
-		$(ZISK_DIR)/bin/** \
-		$(ZISK_DIR)/Program \
-		$(ZISK_DIR)/Program.patched \
-		$(ZISK_DIR)/Program.o
+		$(GUEST_DIR)/bin/** \
+		$(GUEST_DIR)/*.o \
+		$(GUEST_DIR)/Program \
+		$(GUEST_DIR)/Program.patched \
+		$(GUEST_DIR)/TestProgram
 	dotnet clean -c release $(MAKEFILE_DIR)/Stateless.slnx
 
 .PHONY: \
-	build-dotnet-tester \
-	build-dotnet-zisk \
-	build-tester \
+	build-dotnet \
+	build-qemu \
 	build-zisk \
-	run-tester \
+	run-qemu \
 	run-zisk \
 	clean

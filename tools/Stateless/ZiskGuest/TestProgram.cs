@@ -14,9 +14,9 @@ using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Stateless.Execution;
 
-namespace Nethermind.Stateless.Tester;
+namespace Nethermind.Stateless.ZiskGuest;
 
-class Program
+class TestProgram
 {
     static void Main(
 #if !ZK_EVM
@@ -35,7 +35,7 @@ class Program
         // where the input data for the Zisk guest should be written
         if (args.Length == 1 && !string.IsNullOrWhiteSpace(args[0]))
         {
-            byte[] data = InputSerializer.Serialize(suggestedBlock, witness, (uint)specProvider.ChainId);
+            byte[] data = InputSerializer.Serialize(suggestedBlock, witness, specProvider.ChainId);
             string? dir = Path.GetDirectoryName(args[0]);
 
             if (dir is not null)
@@ -45,7 +45,7 @@ class Program
             byte[] framedData = new byte[8 + data.Length + (rem == 0 ? 0 : (8 - rem))];
 
             BinaryPrimitives.WriteUInt64LittleEndian(framedData, (ulong)data.Length);
-            Buffer.BlockCopy(data, 0, framedData, 8, data.Length);
+            Buffer.BlockCopy(data, 0, framedData, sizeof(ulong), data.Length);
 
             data = framedData;
 
