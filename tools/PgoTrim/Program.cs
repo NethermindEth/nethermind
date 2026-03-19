@@ -163,7 +163,7 @@ while (lineIdx < lines.Length)
                     }
 
                     // Keep the paired 177 count entry if we have one pending
-                    if (current.PendingHistogramCount is var (countSchema, countValue))
+                    if (current.PendingHistogramCount is (string countSchema, string countValue))
                     {
                         current.Entries.Add(countSchema);
                         current.Entries.Add(countValue);
@@ -278,7 +278,7 @@ return 0;
 
 static void FlushPending(MethodRecord method)
 {
-    if (method.PendingHistogramCount is var (cs, cv))
+    if (method.PendingHistogramCount is (string cs, string cv))
     {
         method.Entries.Add(cs);
         method.Entries.Add(cv);
