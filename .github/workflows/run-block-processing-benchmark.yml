@@ -37,12 +37,15 @@ env:
 jobs:
   benchmark:
     runs-on: benchmark
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - name: Check out PR branch
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.head_sha || github.ref }}
+
+      - name: Clean up stale benchmark temp dirs
+        run: rm -rf /tmp/nethermind-bench-*
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -357,3 +360,7 @@ jobs:
             ${{ runner.temp }}/bdn-base/results/
             ${{ runner.temp }}/bdn-pr/results/
           retention-days: 30
+
+      - name: Clean up benchmark temp dirs
+        if: always()
+        run: rm -rf /tmp/nethermind-bench-*
