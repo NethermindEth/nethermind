@@ -243,12 +243,14 @@ public class BlockProcessingBenchmark
         // matching the live client's block processing path.
         // Use RocksDB-backed storage to match production I/O characteristics.
         _benchmarkModule = new BenchmarkEnvironmentModule();
+        InitConfig initConfig = new() { BaseDbPath = _benchmarkModule.BasePath };
         IContainer dbContainer = new ContainerBuilder()
             .AddModule(new DbModule(
-                new InitConfig { BaseDbPath = _benchmarkModule.BasePath },
+                initConfig,
                 new ReceiptConfig(),
                 new SyncConfig()
             ))
+            .AddSingleton<IInitConfig>(initConfig)
             .AddSingleton<IDbConfig>(new DbConfig { SharedBlockCacheSize = 256UL * 1024 * 1024 })
             .AddSingleton<IPruningConfig>(new PruningConfig())
             .AddSingleton<IHardwareInfo>(new TestHardwareInfo())
