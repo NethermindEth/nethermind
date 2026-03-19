@@ -44,7 +44,8 @@ WORKDIR /nethermind
 # Chiseled image has no shell — large pages cannot be auto-detected.
 # To enable: docker run -e DOTNET_GCLargePages=1 -e DOTNET_GCRegionRange=0x800000000 ...
 
-# Enable edge/block PGO and profile-driven inlining if the profile was decompressed
+# Enable edge/block PGO and profile-driven inlining.
+# The JIT silently skips PGO loading when the file doesn't exist.
 ENV DOTNET_ReadPGOData=1
 ENV DOTNET_PGODataPath=/nethermind/pgo/nethermind.jit
 ENV DOTNET_JitInlinePolicyProfile=1
