@@ -3,6 +3,10 @@
   <PropertyGroup Condition="'$(PublishReadyToRun)' == 'true'">
     <NethermindPgoProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc</NethermindPgoProfile>
     <PublishReadyToRunMibcPaths Condition="Exists('$(NethermindPgoProfile)')">$(NethermindPgoProfile)</PublishReadyToRunMibcPaths>
+    <!-- Inline framework methods (Dictionary, Span, Memory, etc.) into Nethermind R2R code.
+         Safe because Docker images pin the framework version via base image hash.
+         The * wildcard enables inlining from all referenced modules. -->
+    <Crossgen2ExtraCommandLineArgs>$(Crossgen2ExtraCommandLineArgs);--opt-cross-module:*</Crossgen2ExtraCommandLineArgs>
   </PropertyGroup>
 
 </Project>
