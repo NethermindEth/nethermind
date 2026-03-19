@@ -377,7 +377,7 @@ jobs:
           retention-days: 30
 
   update-pgo-profile:
-    name: Create PR to update PGO profile
+    name: Update PGO profile
     needs: collect
     runs-on: ubuntu-latest
     if: success()
@@ -409,8 +409,18 @@ jobs:
             echo "PGO profile has changed."
           fi
 
-      - name: Create pull request
-        if: steps.diff.outputs.changed == 'true'
+      - name: Commit to branch (non-master)
+        if: steps.diff.outputs.changed == 'true' && github.ref != 'refs/heads/master'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc
+          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.jit.gz 2>/dev/null || true
+          git commit -m "chore(pgo): update PGO profile"
+          git push
+
+      - name: Create pull request (master)
+        if: steps.diff.outputs.changed == 'true' && github.ref == 'refs/heads/master'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
