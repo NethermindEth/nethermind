@@ -36,7 +36,7 @@ public class EthereumPrecompileProvider() : IPrecompileProvider
             [Bls12381FpToG1Precompile.Address] = new(Bls12381FpToG1Precompile.Instance),
             [Bls12381Fp2ToG2Precompile.Address] = new(Bls12381Fp2ToG2Precompile.Instance),
 
-            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
+            [KzgPointEvaluationPrecompile.Address] = new(KzgPointEvaluationPrecompile.Instance),
 
             [SecP256r1Precompile.Address] = new(SecP256r1Precompile.Instance),
 

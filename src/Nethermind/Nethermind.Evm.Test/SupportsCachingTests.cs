@@ -27,7 +27,7 @@ public class SupportsCachingTests
         yield return new TestCaseData(Bls12381PairingCheckPrecompile.Instance).SetName(nameof(Bls12381PairingCheckPrecompile));
         yield return new TestCaseData(Bls12381FpToG1Precompile.Instance).SetName(nameof(Bls12381FpToG1Precompile));
         yield return new TestCaseData(Bls12381Fp2ToG2Precompile.Instance).SetName(nameof(Bls12381Fp2ToG2Precompile));
-        yield return new TestCaseData(PointEvaluationPrecompile.Instance).SetName(nameof(PointEvaluationPrecompile));
+        yield return new TestCaseData(KzgPointEvaluationPrecompile.Instance).SetName(nameof(KzgPointEvaluationPrecompile));
         yield return new TestCaseData(SecP256r1Precompile.Instance).SetName(nameof(SecP256r1Precompile));
     }
 

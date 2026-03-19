@@ -37,7 +37,7 @@ public static class Extensions
 
         if (spec.IsEip4844Enabled)
         {
-            AddPrecompile<PointEvaluationPrecompile>();
+            AddPrecompile<KzgPointEvaluationPrecompile>();
         }
 
         if (spec.Bls12381Enabled)
