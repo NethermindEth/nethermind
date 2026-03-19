@@ -63,5 +63,6 @@ ENV PATH="${PATH}:/root/.dotnet/tools"
 
 ENTRYPOINT ["dotnet-trace", "collect", \
   "--profile", "cpu-sampling", \
+  "--show-child-io", \
   "--output", "/nethermind/pgo/sampling", \
   "--", "./nethermind"]
