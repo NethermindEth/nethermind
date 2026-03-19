@@ -4,8 +4,8 @@ Building these projects requires Docker and a Linux environment with .NET instal
 
 ### Projects
 
-- [Executor](./Executor/) : The core stateless execution and data serialization
-- [ZiskGuest](./ZiskGuest/) : The Nethermind guest app intended to run exclusively on Zisk
+- [Nethermind.Stateless.ZiskGuest](./) : The Nethermind guest app intended to run exclusively on Zisk
+- [Nethermind.Stateless.Executor](../Nethermind.Stateless.Executor/) : The core stateless execution and data serialization
 
 ### Build
 
@@ -15,7 +15,7 @@ To build an ELF binary for Zisk, run the following:
 make build-zisk
 ```
 
-The resulting binary can be found at `ZiskGuest/bin/nethermind`.
+The resulting binary can be found at `Nethermind.Stateless.ZiskGuest/bin/nethermind`.
 
 To execute the Nethermind guest on Zisk, run the following (invokes the previous step automatically):
 

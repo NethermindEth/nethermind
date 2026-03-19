@@ -37,15 +37,15 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Prepare input
-        working-directory: tools/Stateless/ZiskGuest
+        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
         run: dotnet run -c release -- bin/input.bin
 
       - name: Build Nethermind
-        working-directory: tools/Stateless
+        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
         run: make build-zisk
 
       - name: Test Nethermind
-        working-directory: tools/Stateless/ZiskGuest
+        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
         run: |
           block_hash=$(docker run --rm \
             --mount type=bind,source=./bin,target=/n \
@@ -63,7 +63,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nethermind-zisk
-          path: tools/Stateless/ZiskGuest/bin/nethermind
+          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin/nethermind
           if-no-files-found: error
 
   test-qemu:
@@ -83,11 +83,11 @@ jobs:
         uses: docker/setup-qemu-action@v3
 
       - name: Build Nethermind
-        working-directory: tools/Stateless
+        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
         run: make build-qemu
 
       - name: Test Nethermind
-        working-directory: tools/Stateless/ZiskGuest
+        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
         run: |
           docker build -f Dockerfile.qemu -t zkevm .
           block_hash=$(docker run --rm zkevm)
@@ -101,5 +101,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nethermind-zkevm
-          path: tools/Stateless/ZiskGuest/bin/nethermind
+          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin/nethermind
           if-no-files-found: error

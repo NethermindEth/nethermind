@@ -3,19 +3,18 @@
 
 MAKEFILE_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 ARTIFACTS_DIR := $(abspath $(MAKEFILE_DIR)/../artifacts/bin)
-GUEST_DIR := $(MAKEFILE_DIR)/ZiskGuest
+GUEST_DIR := $(MAKEFILE_DIR)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
-BFLAT_BUILD := bflat build -x --verbose \
-  --arch riscv64 \
-  --os linux \
-  --stdlib dotnet \
-  --no-pthread \
+BFLAT_BUILD := bflat build --arch riscv64 --os linux --stdlib dotnet \
   --no-pie \
-  --nostdlibrefs \
+  --no-pthread \
   --no-stacktrace-data \
-  --no-globalization
+  --no-globalization \
+  --nostdlibrefs \
+  --verbose \
+  -x
 BFLAT_REFS := \
   -r {std}/Microsoft.Win32.Primitives.dll \
   -r {std}/netstandard.dll \
@@ -69,14 +68,14 @@ DOCKER_RUN := docker run --platform linux/amd64 --rm \
   -e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
   -e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
   -w $(SRC_DIR) \
-  --mount type=bind,source="$(ARTIFACTS_DIR)/ZiskGuest/release",target=$(BIN_DIR) \
+  --mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.ZiskGuest/release",target=$(BIN_DIR) \
   --mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
   nethermindeth/bflat-riscv64:latest \
   $(BFLAT_BUILD) \
   $(BFLAT_REFS)
 
 build-dotnet:
-	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/ZiskGuest.csproj
+	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/Nethermind.Stateless.ZiskGuest.csproj
 
 build-qemu: build-dotnet
 	$(DOCKER_RUN) --libc zisk_sim -d ZK_EVM \
@@ -101,7 +100,7 @@ run-qemu: build-qemu
 
 run-zisk: build-zisk
 	[ -f "$(GUEST_DIR)/bin/input.bin" ] || \
-		dotnet run -c release --no-restore --project $(GUEST_DIR)/ZiskGuest.csproj -- $(GUEST_DIR)/bin/input.bin
+		dotnet run -c release --no-restore --project $(GUEST_DIR)/Nethermind.Stateless.ZiskGuest.csproj -- $(GUEST_DIR)/bin/input.bin
 	docker run --rm -it -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
 		nethermindeth/zisk@sha256:1b38e92264c30a4109fdb47f3b175324544085e36b9dde0abf7570c2b1e3312b \
@@ -114,7 +113,7 @@ clean:
 		$(GUEST_DIR)/Program \
 		$(GUEST_DIR)/Program.patched \
 		$(GUEST_DIR)/TestProgram
-	dotnet clean -c release $(MAKEFILE_DIR)/Stateless.slnx
+	dotnet clean -c release $(MAKEFILE_DIR)/../Stateless.slnx
 
 .PHONY: \
 	build-dotnet \
