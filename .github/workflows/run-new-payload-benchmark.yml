@@ -45,7 +45,7 @@ env:
 jobs:
   benchmark:
     runs-on: benchmark
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - name: Check out PR branch
         uses: actions/checkout@v6
