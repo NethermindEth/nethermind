@@ -307,8 +307,8 @@ jobs:
           if [[ -n "${sampling_vol}" ]]; then
             echo "Sampling volume contents:"
             ls -la "${sampling_vol}/" 2>/dev/null || true
-            # Find the sampling trace (could be sampling.nettrace or sampling.nettrace.nettrace)
-            sampling_file=$(find "${sampling_vol}" -name "sampling*nettrace" -type f | head -1 || true)
+            # Find the sampling trace (could be sampling, sampling.nettrace, etc.)
+            sampling_file=$(find "${sampling_vol}" -name "sampling*" -type f | head -1 || true)
             if [[ -n "${sampling_file}" ]]; then
               cp "${sampling_file}" "${RUNNER_TEMP}/pgo-data/sampling.nettrace"
             fi
