@@ -166,9 +166,9 @@ public class NewPayloadBenchmark
         _iterationDbPath = Path.Combine(Path.GetTempPath(), $"nethermind-newpayload-iter-{Guid.NewGuid()}");
         CopyDirectory(_templateDbPath, _iterationDbPath);
 
-        // Build a new chain from the iteration directory
+        // Build chain from existing DB — skip genesis processing since state already exists
         _iterationChain = new BenchmarkMergeBlockchain();
-        _iterationChain.BuildChain(BuildChainConfigurer(Backend, _iterationDbPath)).GetAwaiter().GetResult();
+        _iterationChain.BuildChain(BuildIterationChainConfigurer(Backend, _iterationDbPath)).GetAwaiter().GetResult();
 
         // Disable auto-compaction during measurement
         DisableAutoCompactionOnChain(_iterationChain);
@@ -382,6 +382,36 @@ public class NewPayloadBenchmark
 
             // Genesis seeding 1M accounts + 500k storage slots on RocksDB is slow — increase timeout
             builder.Intercept<IBlocksConfig>(cfg => cfg.GenesisTimeoutMs = 300_000);
+        };
+    }
+
+    /// <summary>
+    /// Configurer for iteration chains — uses existing RocksDB, skips genesis processing.
+    /// The DB already has all state from the template chain built in GlobalSetup.
+    /// </summary>
+    private static Action<ContainerBuilder> BuildIterationChainConfigurer(StateBackend backend, string dbPath)
+    {
+        return builder =>
+        {
+            builder.AddSingleton<ISpecProvider>(CreateOsakaSpecProvider());
+            // NO SeedGenesis post-processor — state already exists in DB
+            if (backend == StateBackend.Trie)
+                builder.Intercept<IFlatDbConfig>(cfg => cfg.Enabled = false);
+
+            // Override MemDbFactory with RocksDbFactory pointing at the iteration DB
+            IDbConfig dbConfig = new DbConfig { SharedBlockCacheSize = 256UL * 1024 * 1024 };
+            IPruningConfig pruningConfig = new PruningConfig();
+            IRocksDbConfigFactory rocksDbConfigFactory = new RocksDbConfigFactory(dbConfig, pruningConfig, new TestHardwareInfo(), LimboLogs.Instance);
+            HyperClockCacheWrapper sharedCache = new(dbConfig.SharedBlockCacheSize);
+            IDbFactory rocksDbFactory = new RocksDbFactory(rocksDbConfigFactory, dbConfig, sharedCache, LimboLogs.Instance, dbPath);
+            builder.AddSingleton<IDbFactory>(rocksDbFactory);
+
+            // Skip genesis processing — state is already seeded in the copied DB
+            builder.AddSingleton(new TestBlockchain.Configuration
+            {
+                SuggestGenesisOnStart = false,
+                AddBlockOnStart = false,
+            });
         };
     }
 
