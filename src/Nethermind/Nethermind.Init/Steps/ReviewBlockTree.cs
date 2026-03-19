@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -29,6 +30,20 @@ namespace Nethermind.Init.Steps
 
         public Task Execute(CancellationToken cancellationToken)
         {
+            if (initConfig.HealCanonicalChainOnStartup)
+            {
+                Hash256? startHash = blockTree.Head?.Hash;
+                if (startHash is not null)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Healing canonical chain from head {startHash} (depth {initConfig.HealCanonicalChainDepth})...");
+                    blockTree.HealCanonicalChain(startHash, initConfig.HealCanonicalChainDepth);
+                }
+                else
+                {
+                    if (_logger.IsWarn) _logger.Warn("HealCanonicalChainOnStartup requested but no head block found — skipping.");
+                }
+            }
+
             if (initConfig.ProcessingEnabled)
             {
                 return RunBlockTreeInitTasks(cancellationToken);

@@ -98,6 +98,19 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] True when in runner test. Disable some wait.", DefaultValue = "false", HiddenFromDocs = true)]
     bool InRunnerTest { get; set; }
+
+    [ConfigItem(
+        Description = "On startup, walk backward from the current head for up to `HealCanonicalChainDepth` " +
+                      "blocks via parentHash and repair any incorrect `HasBlockOnMainChain` markers left by " +
+                      "the beacon-sync path. Also clears stale canonical markers above the head. " +
+                      "Use this flag once after observing a canonical-mismatch (wrong `eth_getBlockByNumber` results).",
+        DefaultValue = "false")]
+    bool HealCanonicalChainOnStartup { get; set; }
+
+    [ConfigItem(
+        Description = "Number of blocks to walk back from the head when `HealCanonicalChain` is enabled.",
+        DefaultValue = "8192")]
+    long HealCanonicalChainDepth { get; set; }
 }
 
 public enum DiagnosticMode

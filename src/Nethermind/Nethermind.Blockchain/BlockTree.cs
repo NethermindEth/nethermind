@@ -1054,6 +1054,86 @@ namespace Nethermind.Blockchain
             OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(blocks, wereProcessed));
         }
 
+        public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth)
+        {
+            BlockHeader? start = FindHeader(startHash, BlockTreeLookupOptions.None);
+            if (start is null) return;
+
+            // BatchWrite is a write-buffered, deferred batch: PersistLevel only enqueues writes
+            // and nothing is flushed to the underlying DB until Dispose(). Both phases therefore
+            // commit atomically — a crash before Dispose leaves the DB unchanged.
+            using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
+
+            long repairedAbove = ClearStaleMarkersAbove(start.Number, batch);
+            long repairedBelow = RepairMarkersBelow(start, maxBlockDepth, batch);
+            long repaired = repairedAbove + repairedBelow;
+
+            if (Logger.IsInfo) Logger.Info($"Canonical chain heal complete: {repaired} level(s) repaired ({repairedAbove} stale above head cleared, {repairedBelow} incorrect markers fixed).");
+        }
+
+        private long ClearStaleMarkersAbove(long headNumber, BatchWrite batch)
+        {
+            long cleared = 0L;
+            for (long levelNumber = headNumber + 1; ; levelNumber++)
+            {
+                ChainLevelInfo? level = LoadLevel(levelNumber);
+                if (level is null || !level.HasBlockOnMainChain) break;
+                level.HasBlockOnMainChain = false;
+                _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                cleared++;
+            }
+            return cleared;
+        }
+
+        private long RepairMarkersBelow(BlockHeader start, long maxBlockDepth, BatchWrite batch)
+        {
+            long repairedCount = 0L;
+            long blocksWalked = 0L;
+            BlockHeader? current = start;
+
+            while (current is not null && blocksWalked < maxBlockDepth)
+            {
+                ChainLevelInfo? level = LoadLevel(current.Number);
+                if (level is not null)
+                {
+                    int? index = level.FindIndex(current.Hash!);
+                    if (index is null)
+                    {
+                        if (Logger.IsWarn) Logger.Warn($"Canonical heal: block {current.Hash} at height {current.Number} not found in any BlockInfo slot — repair halted.");
+                        break;
+                    }
+
+                    bool needsPersist = index.Value != 0 || !level.HasBlockOnMainChain;
+
+                    if (index.Value != 0)
+                        level.SwapToMain(index.Value);
+
+                    if (!level.HasBlockOnMainChain)
+                        level.HasBlockOnMainChain = true;
+
+                    if (needsPersist)
+                    {
+                        _chainLevelInfoRepository.PersistLevel(current.Number, level, batch);
+                        repairedCount++;
+                    }
+                }
+
+                if (current.IsGenesis) break;
+
+                BlockHeader? parent = FindHeader(current.ParentHash!, BlockTreeLookupOptions.None);
+                if (parent is null)
+                {
+                    if (Logger.IsWarn) Logger.Warn($"Canonical heal: parent {current.ParentHash} of block {current.Number} not found — chain may be pruned, repair halted.");
+                    break;
+                }
+
+                current = parent;
+                blocksWalked++;
+            }
+
+            return repairedCount;
+        }
+
         private void TryUpdateSyncPivot()
         {
             BlockHeader? newPivotHeader = null;
