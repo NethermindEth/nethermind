@@ -69,7 +69,7 @@ public class XdcModule : Module
                 IAbiEncoder,
                 ISpecProvider,
                 IReadOnlyTxProcessingEnvFactory>(CreateVotingContract)
-            .AddSingleton<ITrc21StateReader, IStateReader, ISpecProvider>((stateReader, specProvider) => new Trc21StateReader(stateReader, specProvider))
+            .AddSingleton<ITrc21StateReader, Trc21StateReader>()
 
             // sealer
             .AddSingleton<ISealer, XdcSealer>()
