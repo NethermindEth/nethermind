@@ -41,37 +41,11 @@ internal class Trc21StateReaderTests
         IStateReader stateReader = CreateStateReader(storage, out _);
         var sut = new Trc21StateReader(stateReader, CreateSpecProvider());
 
-        Dictionary<Address, UInt256> result = sut.GetFeeCapacities(header);
+        IReadOnlyDictionary<Address, UInt256> result = sut.GetFeeCapacities(header);
 
         Assert.That(result.Count, Is.EqualTo(2));
         Assert.That(result[tokenA], Is.EqualTo((UInt256)11));
         Assert.That(result[tokenB], Is.EqualTo((UInt256)22));
-    }
-
-    [Test]
-    public void GetFeeCapacities_UsesStateRootCacheAndReturnsCopy()
-    {
-        XdcBlockHeader header = (XdcBlockHeader)Build.A.XdcBlockHeader().WithStateRoot(Keccak.Compute("cache-root")).TestObject;
-        Address token = new("0x00000000000000000000000000000000000000a1");
-
-        Dictionary<(Address Contract, UInt256 Slot), UInt256> storage = new()
-        {
-            [(Issuer, (UInt256)1)] = 1,
-            [(Issuer, CalculateDynamicArrayElementSlot(1, 0))] = new UInt256(token.ToHash().BytesAsSpan, isBigEndian: true),
-            [(Issuer, CalculateMappingSlot(token.ToHash(), 2))] = 100,
-        };
-
-        IStateReader stateReader = CreateStateReader(storage, out ReadCounter reads);
-        var sut = new Trc21StateReader(stateReader, CreateSpecProvider());
-
-        Dictionary<Address, UInt256> first = sut.GetFeeCapacities(header);
-        int readsAfterFirst = reads.Count;
-        first[token] = 999;
-
-        Dictionary<Address, UInt256> second = sut.GetFeeCapacities(header);
-
-        Assert.That(reads.Count, Is.EqualTo(readsAfterFirst));
-        Assert.That(second[token], Is.EqualTo((UInt256)100));
     }
 
     [Test]
