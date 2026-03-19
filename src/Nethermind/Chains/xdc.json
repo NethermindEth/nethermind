@@ -193,7 +193,7 @@
     "eip6780Transition": 98802000,
     "eip7516Transition": 98802000,
 
-    "MaxCodeSizeTransition": 98800200,
+    "MaxCodeSizeTransition": 3,
     "MaxCodeSize": 24576,
     "TipTrc21Fee": 38383838
   },
