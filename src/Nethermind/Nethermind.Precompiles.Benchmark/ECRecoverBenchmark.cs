@@ -6,8 +6,8 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Precompiles.Benchmark;
 
-public class EcRecoverBenchmark : PrecompileBenchmarkBase
+public class ECRecoverBenchmark : PrecompileBenchmarkBase
 {
-    protected override IEnumerable<IPrecompile> Precompiles => new[] { EcRecoverPrecompile.Instance };
+    protected override IEnumerable<IPrecompile> Precompiles => new[] { ECRecoverPrecompile.Instance };
     protected override string InputsDirectory => "ec_recover";
 }

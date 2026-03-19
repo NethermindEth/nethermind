@@ -16,7 +16,7 @@ public class EthereumPrecompileProvider() : IPrecompileProvider
     {
         get => new Dictionary<AddressAsKey, CodeInfo>
         {
-            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
+            [ECRecoverPrecompile.Address] = new(ECRecoverPrecompile.Instance),
             [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
             [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
             [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
@@ -36,9 +36,9 @@ public class EthereumPrecompileProvider() : IPrecompileProvider
             [Bls12381FpToG1Precompile.Address] = new(Bls12381FpToG1Precompile.Instance),
             [Bls12381Fp2ToG2Precompile.Address] = new(Bls12381Fp2ToG2Precompile.Instance),
 
-            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
+            [KzgPointEvaluationPrecompile.Address] = new(KzgPointEvaluationPrecompile.Instance),
 
-            [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance),
+            [SecP256r1Precompile.Address] = new(SecP256r1Precompile.Instance),
 
             [L1SloadPrecompile.Address] = new(L1SloadPrecompile.Instance),
         }.ToFrozenDictionary();

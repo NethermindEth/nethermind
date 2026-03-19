@@ -30,7 +30,7 @@ public interface INodeRecordSigner
     /// <summary>
     /// Verifies if the public key recovered from the <see cref="Signature"/> of this record matches
     /// the one that is included in the <value>Secp256k1</value> entry.
-    /// If the <value>Secp256k1</value> entry is missing then <value>false</value> is returned.
+    /// If the <value>SecP256k1</value> entry is missing then <value>false</value> is returned.
     /// </summary>
     /// <param name="nodeRecord">A <see cref="NodeRecord"/> for which to verify the signature.</param>
     /// <returns><value>True</value> if signature has a matching public key, otherwise <value>false</value></returns>
