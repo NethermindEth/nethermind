@@ -38,6 +38,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.State.Flat;
@@ -156,6 +157,8 @@ public class BlockProcessingBenchmark
     // RocksDB environment — temp directory and DB lifecycle
     private BenchmarkEnvironmentModule? _benchmarkModule;
     private IDbProvider? _dbProvider;
+    private RocksDbPersistence? _flatPersistence;
+    private IColumnsDb<FlatDbColumns>? _flatColumnsDb;
 
     // DI container — built once, shared across all iterations
     private IContainer _container = null!;
@@ -240,7 +243,7 @@ public class BlockProcessingBenchmark
         // matching the live client's block processing path.
         // Use RocksDB-backed storage to match production I/O characteristics.
         _benchmarkModule = new BenchmarkEnvironmentModule();
-        IDbProvider dbProvider = new ContainerBuilder()
+        IContainer dbContainer = new ContainerBuilder()
             .AddModule(new DbModule(
                 new InitConfig { BaseDbPath = _benchmarkModule.BasePath },
                 new ReceiptConfig(),
@@ -251,17 +254,22 @@ public class BlockProcessingBenchmark
             .AddSingleton<IHardwareInfo>(new TestHardwareInfo())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IDbProvider, ContainerOwningDbProvider>()
-            .Build()
-            .Resolve<IDbProvider>();
+            .Build();
+        IDbProvider dbProvider = dbContainer.Resolve<IDbProvider>();
+        IDbFactory dbFactory = dbContainer.Resolve<IDbFactory>();
         _dbProvider = dbProvider;
         IWorldStateManager wsm;
         BenchmarkFlatDbManager? flatDbManagerRef = null;
         if (Backend == StateBackend.FlatState)
         {
+            _flatColumnsDb = dbFactory.CreateColumnsDb<FlatDbColumns>(
+                new DbSettings(DbNames.Flat, DbNames.Flat));
+            _flatPersistence = new RocksDbPersistence(_flatColumnsDb);
+
             FlatDbConfig flatDbConfig = new() { TrieWarmerWorkerCount = Math.Max(Environment.ProcessorCount - 1, 1) };
             ResourcePool resourcePool = new(flatDbConfig);
             TrieNodeCache trieNodeCache = new(flatDbConfig, LimboLogs.Instance);
-            BenchmarkFlatDbManager flatDbManager = new(resourcePool, trieNodeCache);
+            BenchmarkFlatDbManager flatDbManager = new(resourcePool, trieNodeCache, _flatPersistence);
             flatDbManagerRef = flatDbManager;
             BenchmarkProcessExitSource exitSource = new();
             TrieWarmer trieWarmer = new(exitSource, LimboLogs.Instance, flatDbConfig);
@@ -413,6 +421,17 @@ public class BlockProcessingBenchmark
             BenchmarkEnvironmentModule.FlushAndCompact(_dbProvider);
             BenchmarkEnvironmentModule.DisableAutoCompaction(_dbProvider);
         }
+
+        if (_flatColumnsDb is DbOnTheRocks flatRocksDb)
+        {
+            flatRocksDb.Flush();
+            flatRocksDb.Compact();
+        }
+
+        if (_flatColumnsDb is ITunableDb flatTunableDb)
+        {
+            flatTunableDb.Tune(ITunableDb.TuneType.DisableCompaction);
+        }
     }
 
     [IterationCleanup]
@@ -420,6 +439,9 @@ public class BlockProcessingBenchmark
     {
         if (_dbProvider is not null)
             BenchmarkEnvironmentModule.EnableAutoCompaction(_dbProvider);
+
+        if (_flatColumnsDb is ITunableDb flatTunableDb)
+            flatTunableDb.Tune(ITunableDb.TuneType.Default);
     }
 
     [GlobalCleanup]
@@ -427,6 +449,7 @@ public class BlockProcessingBenchmark
     {
         _processingScope.Dispose();
         _container.Dispose();
+        _flatColumnsDb?.Dispose();
         _dbProvider?.Dispose();
         _benchmarkModule?.Cleanup();
     }
@@ -746,7 +769,7 @@ public class BlockProcessingBenchmark
 
     // ── FlatState helper types ───────────────────────────────────────────
 
-    internal sealed class BenchmarkFlatDbManager(ResourcePool resourcePool, TrieNodeCache trieNodeCache) : IFlatDbManager
+    internal sealed class BenchmarkFlatDbManager(ResourcePool resourcePool, TrieNodeCache trieNodeCache, IPersistence persistence) : IFlatDbManager
     {
         private readonly Lock _lock = new();
         private readonly List<Nethermind.State.Flat.Snapshot> _snapshots = new();
@@ -774,7 +797,7 @@ public class BlockProcessingBenchmark
                     pooled.Add(_snapshots[i]);
                 }
 
-                NoopPersistenceReader persistenceReader = new();
+                IPersistence.IPersistenceReader persistenceReader = persistence.CreateReader();
                 ReadOnlySnapshotBundle roBundle = new(pooled, persistenceReader, recordDetailedMetrics: false);
                 return new SnapshotBundle(roBundle, trieNodeCache, resourcePool, usage);
             }
@@ -791,7 +814,7 @@ public class BlockProcessingBenchmark
                     pooled.Add(_snapshots[i]);
                 }
 
-                NoopPersistenceReader persistenceReader = new();
+                IPersistence.IPersistenceReader persistenceReader = persistence.CreateReader();
                 return new ReadOnlySnapshotBundle(pooled, persistenceReader, recordDetailedMetrics: false);
             }
         }
