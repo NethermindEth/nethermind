@@ -53,7 +53,7 @@ public class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluationPrecom
                    && KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof);
         }
 
-        Metrics.PointEvaluationPrecompile++;
+        Metrics.KzgPointEvaluationPrecompile++;
         return IsValid(inputData)
             ? PointEvaluationSuccessfulResponse
             : Errors.Failed;
