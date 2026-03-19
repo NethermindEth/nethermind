@@ -6,7 +6,9 @@
     <!-- Inline framework methods (Dictionary, Span, Memory, etc.) into Nethermind R2R code.
          Safe because Docker images pin the framework version via base image hash.
          The * wildcard enables inlining from all referenced modules. -->
-    <Crossgen2ExtraCommandLineArgs>$(Crossgen2ExtraCommandLineArgs);--opt-cross-module:*</Crossgen2ExtraCommandLineArgs>
+    <!-- Use Pettis-Hansen profile-guided method ordering to pack hot methods together
+         for better instruction cache locality. Requires .mibc call graph data. -->
+    <Crossgen2ExtraCommandLineArgs>$(Crossgen2ExtraCommandLineArgs);--opt-cross-module:*;--method-layout:pettishansen</Crossgen2ExtraCommandLineArgs>
   </PropertyGroup>
 
 </Project>
