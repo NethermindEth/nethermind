@@ -336,18 +336,19 @@ jobs:
           ls -lh "${mibc_file}"
           echo "mibc_file=${mibc_file}" >> "${GITHUB_OUTPUT}"
 
-          # Step 2: Trim .jit edge/block profiling data for runtime PGO
+          # Step 2: Compress .jit edge/block profiling data for runtime PGO
           # .jit files (from DOTNET_WritePGOData) use a JIT-internal text format read
           # back via DOTNET_ReadPGOData — they can't be merged into .mibc by dotnet-pgo.
+          # Keep all methods: even low-count methods carry valuable GDV type data.
           jit_file=$(find "${pgo_dir}" -name "*.jit" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
           jit_gz="${RUNNER_TEMP}/nethermind.jit.gz"
           if [[ -n "${jit_file}" ]]; then
-            echo "Trimming ${jit_file} with PgoTrim..."
+            echo "Compressing ${jit_file} with PgoTrim..."
             dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
-              "${jit_file}" "${jit_gz}" --min-block 100 --min-edge 250
+              "${jit_file}" "${jit_gz}" --min-block 0 --min-edge 0
             echo "jit_gz=${jit_gz}" >> "${GITHUB_OUTPUT}"
           else
-            echo "No .jit file found — skipping edge profiling trim."
+            echo "No .jit file found — skipping edge profiling."
           fi
 
       - name: Upload .mibc artifact
