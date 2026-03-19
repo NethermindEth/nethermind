@@ -209,6 +209,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Clean up stale lock file from cancelled runs
+          rm -f /tmp/expb.lock
+
           # Background: tail Nethermind container logs for visibility
           log_tail_pid=""
           (
@@ -286,6 +289,7 @@ jobs:
             > "${sampling_config}"
 
           echo "Running CPU sampling pass via EXPB..."
+          rm -f /tmp/expb.lock
           expb execute-scenarios \
             --config-file "${sampling_config}" \
             --per-payload-metrics \
