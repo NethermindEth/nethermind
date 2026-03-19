@@ -36,6 +36,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Api;
+using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -127,10 +128,6 @@ public class NewPayloadBenchmark
     [GlobalSetup]
     public async Task GlobalSetup()
     {
-        // Pin to a single core to reduce OS scheduler jitter
-        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
-            Process.GetCurrentProcess().ProcessorAffinity = new IntPtr(1);
-
         // Phase 1: Produce all payloads on chain A (in-memory, no RocksDB needed)
         _payloads = await ProducePayloads(TotalBlocks, Backend);
 
@@ -161,6 +158,10 @@ public class NewPayloadBenchmark
     [IterationSetup]
     public void IterationSetup()
     {
+        // Pin to a single core to reduce OS scheduler jitter (only during measurement, not setup)
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+            Process.GetCurrentProcess().ProcessorAffinity = new IntPtr(1);
+
         // Copy template DB to a fresh directory for this iteration
         _iterationDbPath = Path.Combine(Path.GetTempPath(), $"nethermind-newpayload-iter-{Guid.NewGuid()}");
         CopyDirectory(_templateDbPath, _iterationDbPath);
@@ -378,6 +379,9 @@ public class NewPayloadBenchmark
             HyperClockCacheWrapper sharedCache = new(dbConfig.SharedBlockCacheSize);
             IDbFactory rocksDbFactory = new RocksDbFactory(rocksDbConfigFactory, dbConfig, sharedCache, LimboLogs.Instance, dbPath);
             builder.AddSingleton<IDbFactory>(rocksDbFactory);
+
+            // Genesis seeding 1M accounts + 500k storage slots on RocksDB is slow — increase timeout
+            builder.Intercept<IBlocksConfig>(cfg => cfg.GenesisTimeoutMs = 300_000);
         };
     }
 
