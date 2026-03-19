@@ -73,6 +73,11 @@ if [[ -z "${DOTNET_ReadPGOData:-}" ]] && [[ -f "/nethermind/pgo/nethermind.jit" 
   # Use profile-driven inlining: inline more aggressively at hot call sites,
   # less at cold ones, based on the seeded PGO frequency data.
   export DOTNET_JitInlinePolicyProfile=1
+  # With seeded PGO and R2R covering startup, skip the default 100ms delay
+  # before installing call-counting stubs — hot methods reach Tier-1 faster.
+  if [[ -z "${DOTNET_TC_CallCountingDelayMs:-}" ]]; then
+    export DOTNET_TC_CallCountingDelayMs=0
+  fi
   echo "Edge/block PGO enabled: ${DOTNET_PGODataPath}"
 fi
 

@@ -48,6 +48,7 @@ WORKDIR /nethermind
 ENV DOTNET_ReadPGOData=1
 ENV DOTNET_PGODataPath=/nethermind/pgo/nethermind.jit
 ENV DOTNET_JitInlinePolicyProfile=1
+ENV DOTNET_TC_CallCountingDelayMs=0
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db
