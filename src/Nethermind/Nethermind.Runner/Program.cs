@@ -174,11 +174,20 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     ConfigureSeqLogger(configProvider);
     ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), initConfig);
 
-    if (parseResult.GetValue(BasicOptions.PurgeDb))
+    bool purgeDb = parseResult.GetValue(BasicOptions.PurgeDb);
+    bool forceResync = parseResult.GetValue(BasicOptions.ForceResync);
+
+    if (purgeDb && forceResync)
+    {
+        logger.Error("Cannot use --purge-db and --force-resync together. Choose one.");
+        return (int)ExitCodes.GeneralError;
+    }
+
+    if (purgeDb)
     {
         PurgeDatabaseDirectory(initConfig.BaseDbPath);
     }
-    else if (parseResult.GetValue(BasicOptions.ForceResync))
+    else if (forceResync)
     {
         PurgeDatabaseDirectory(initConfig.BaseDbPath, preserveNetwork: true);
     }
@@ -495,42 +504,8 @@ void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
     }
 }
 
-void PurgeDatabaseDirectory(string basePath, bool preserveNetwork = false)
-{
-    if (!Directory.Exists(basePath))
-        return;
-
-    if (preserveNetwork)
-    {
-        // Delete everything except peer and discovery databases
-        HashSet<string> preserved = new(StringComparer.OrdinalIgnoreCase)
-        {
-            DbNames.PeersDb,
-            DbNames.DiscoveryNodes,
-            DbNames.DiscoveryV5Nodes
-        };
-
-        foreach (string dir in Directory.EnumerateDirectories(basePath))
-        {
-            if (!preserved.Contains(Path.GetFileName(dir)))
-            {
-                if (logger.IsInfo) logger.Info($"Force resync: deleting {dir}");
-                Directory.Delete(dir, recursive: true);
-            }
-        }
-
-        foreach (string file in Directory.EnumerateFiles(basePath))
-        {
-            if (logger.IsInfo) logger.Info($"Force resync: deleting {file}");
-            File.Delete(file);
-        }
-    }
-    else
-    {
-        if (logger.IsInfo) logger.Info($"Purging database directory: {basePath}");
-        Directory.Delete(basePath, recursive: true);
-    }
-}
+void PurgeDatabaseDirectory(string basePath, bool preserveNetwork = false) =>
+    DatabasePurger.Purge(basePath, preserveNetwork, logger);
 
 void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig keyStoreConfig, ISnapshotConfig snapshotConfig)
 {
