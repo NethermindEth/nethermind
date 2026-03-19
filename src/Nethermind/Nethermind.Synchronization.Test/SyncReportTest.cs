@@ -21,6 +21,19 @@ namespace Nethermind.Synchronization.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class SyncReportTest
     {
+        private static Block CreateBlockWithTimestamp(DateTimeOffset timestamp)
+        {
+            return new Block(new BlockHeader(
+                Nethermind.Core.Crypto.Keccak.Zero,
+                Nethermind.Core.Crypto.Keccak.Zero,
+                Address.Zero,
+                0,
+                0,
+                0,
+                (ulong)timestamp.ToUnixTimeSeconds(),
+                []));
+        }
+
         [Test]
         public void Smoke(
             [Values(true, false)]
@@ -172,16 +185,7 @@ namespace Nethermind.Synchronization.Test
 
             // Set up a head block with a timestamp 10 minutes behind current time
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            Block headBlock = new(new BlockHeader(
-                Nethermind.Core.Crypto.Keccak.Zero,
-                Nethermind.Core.Crypto.Keccak.Zero,
-                Address.Zero,
-                0,
-                0,
-                0,
-                (ulong)DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds(),
-                []));
-            blockTree.Head.Returns(headBlock);
+            blockTree.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-10)));
 
             SyncConfig syncConfig = new() { FastSync = true };
 
@@ -215,16 +219,7 @@ namespace Nethermind.Synchronization.Test
 
             // Set up a head block with a timestamp only 2 minutes behind (under threshold)
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            Block headBlock = new(new BlockHeader(
-                Nethermind.Core.Crypto.Keccak.Zero,
-                Nethermind.Core.Crypto.Keccak.Zero,
-                Address.Zero,
-                0,
-                0,
-                0,
-                (ulong)DateTimeOffset.UtcNow.AddMinutes(-2).ToUnixTimeSeconds(),
-                []));
-            blockTree.Head.Returns(headBlock);
+            blockTree.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-2)));
 
             SyncConfig syncConfig = new() { FastSync = true };
 
@@ -258,16 +253,7 @@ namespace Nethermind.Synchronization.Test
 
             // Head is 10 minutes behind, but sync mode is not Full/FastSync
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            Block headBlock = new(new BlockHeader(
-                Nethermind.Core.Crypto.Keccak.Zero,
-                Nethermind.Core.Crypto.Keccak.Zero,
-                Address.Zero,
-                0,
-                0,
-                0,
-                (ulong)DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds(),
-                []));
-            blockTree.Head.Returns(headBlock);
+            blockTree.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-10)));
 
             SyncConfig syncConfig = new() { FastSync = true };
 

@@ -325,7 +325,7 @@ namespace Nethermind.Synchronization.Reporting
             string etaMessage;
             if (blocksPerSecond > 0 && blocksRemaining > 0)
             {
-                TimeSpan eta = TimeSpan.FromSeconds((double)(blocksRemaining / blocksPerSecond));
+                TimeSpan eta = TimeSpan.FromSeconds((double)blocksRemaining / (double)blocksPerSecond);
                 etaMessage = $"Estimated time to catch up: {FormatTimeSpan(eta)}";
             }
             else
