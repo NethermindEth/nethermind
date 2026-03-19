@@ -57,7 +57,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         {
             Pc = pc,
             Operation = (byte)opcode,
-            OperationName = opcode.GetName(),
+            OperationName = Enum.GetName(opcode),
             Gas = gas,
             Depth = env.GetGethTraceDepth(),
         };
