@@ -135,7 +135,7 @@ internal static partial class EvmInstructions
             !stack.PopUInt256(out UInt256 size))
             goto StackUnderflow;
 
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas));
+        TGasPolicy.ConsumeDataCopyGas(ref gas, isExternalCode: false, GasCostOf.VeryLow, GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas));
         if (outOfGas) goto OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;

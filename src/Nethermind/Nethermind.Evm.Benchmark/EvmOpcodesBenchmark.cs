@@ -418,9 +418,9 @@ public unsafe class EvmOpcodesBenchmark
     {
         Instruction.STOP or Instruction.INVALID or Instruction.JUMPDEST => (0, 0, 0),
         Instruction.POP or Instruction.SELFDESTRUCT or Instruction.JUMP => (1, 0, 0),
-        Instruction.ISZERO or Instruction.NOT or Instruction.BALANCE or Instruction.CALLDATALOAD or Instruction.EXTCODESIZE
-            or Instruction.EXTCODEHASH or Instruction.BLOCKHASH or Instruction.MLOAD or Instruction.SLOAD
-            or Instruction.BLOBHASH or Instruction.TLOAD => (1, 1, 0),
+        Instruction.ISZERO or Instruction.NOT or Instruction.CLZ or Instruction.BALANCE or Instruction.CALLDATALOAD
+            or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.BLOCKHASH or Instruction.MLOAD
+            or Instruction.SLOAD or Instruction.BLOBHASH or Instruction.TLOAD => (1, 1, 0),
         Instruction.MSTORE or Instruction.MSTORE8 or Instruction.SSTORE or Instruction.LOG0 or Instruction.REVERT
             or Instruction.TSTORE or Instruction.RETURN or Instruction.JUMPI => (2, 0, 0),
         Instruction.CALLDATACOPY or Instruction.CODECOPY or Instruction.RETURNDATACOPY or Instruction.LOG1
