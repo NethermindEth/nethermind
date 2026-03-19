@@ -14,6 +14,6 @@ public class PointEvaluationBenchmark : PrecompileBenchmarkBase
     [GlobalSetup]
     public async Task GlobalSetup() => await KzgPolynomialCommitments.InitializeAsync();
 
-    protected override IEnumerable<IPrecompile> Precompiles => new[] { PointEvaluationPrecompile.Instance };
+    protected override IEnumerable<IPrecompile> Precompiles => new[] { KzgPointEvaluationPrecompile.Instance };
     protected override string InputsDirectory => "point_evaluation";
 }
