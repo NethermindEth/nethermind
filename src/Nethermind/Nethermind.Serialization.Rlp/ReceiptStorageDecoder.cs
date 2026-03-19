@@ -58,7 +58,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (isStorage) txReceipt.BlockHash = decoderContext.DecodeKeccak();
             if (isStorage) txReceipt.BlockNumber = (long)decoderContext.DecodeUInt256();
-            if (isStorage) txReceipt.Index = decoderContext.DecodeInt();
+            if (isStorage) txReceipt.Index = (int)decoderContext.DecodeUInt();
             if (isStorage) txReceipt.Sender = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.Recipient = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddress();
@@ -297,7 +297,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 decoderContext.DecodeKeccakStructRef(out item.BlockHash);
                 item.BlockNumber = (long)decoderContext.DecodeUInt256();
-                item.Index = decoderContext.DecodeInt();
+                item.Index = (int)decoderContext.DecodeUInt();
                 decoderContext.DecodeAddressStructRef(out item.Sender);
                 decoderContext.DecodeAddressStructRef(out item.Recipient);
                 decoderContext.DecodeAddressStructRef(out item.ContractAddress);

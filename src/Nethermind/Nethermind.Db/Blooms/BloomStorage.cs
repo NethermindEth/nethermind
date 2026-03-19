@@ -109,7 +109,7 @@ namespace Nethermind.Db.Blooms
                 else
                 {
                     Rlp.ValueDecoderContext ctx = new(levelsFromDb);
-                    int[] dbBucketSizes = ctx.DecodeArray((ref Rlp.ValueDecoderContext x) => x.DecodeInt());
+                    int[] dbBucketSizes = ctx.DecodeArray((ref Rlp.ValueDecoderContext x) => (int)x.DecodeUInt());
 
                     if (!dbBucketSizes.SequenceEqual(sizes))
                     {

@@ -75,7 +75,7 @@ namespace Nethermind.Serialization.Rlp
             // if we hadn't reached the end of the stream, assume we have metadata to decode
             if (decoderContext.Position != lastCheck)
             {
-                metadata = (BlockMetadata)decoderContext.DecodeInt();
+                metadata = (BlockMetadata)decoderContext.DecodeUInt();
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)

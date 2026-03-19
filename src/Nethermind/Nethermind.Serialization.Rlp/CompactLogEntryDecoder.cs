@@ -32,7 +32,7 @@ namespace Nethermind.Serialization.Rlp
                 topics.Add(decoderContext.DecodeZeroPrefixKeccak());
             }
 
-            int zeroPrefix = decoderContext.DecodeInt();
+            int zeroPrefix = (int)decoderContext.DecodeUInt();
             ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
             byte[] data = new byte[zeroPrefix + rlpData.Length];
             rlpData.CopyTo(data.AsSpan(zeroPrefix));
@@ -56,7 +56,7 @@ namespace Nethermind.Serialization.Rlp
             var topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);
             decoderContext.SkipItem();
 
-            int zeroPrefix = decoderContext.DecodeInt();
+            int zeroPrefix = (int)decoderContext.DecodeUInt();
             ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
             byte[] data = new byte[zeroPrefix + rlpData.Length];
             rlpData.CopyTo(data.AsSpan(zeroPrefix));

@@ -26,10 +26,10 @@ namespace Nethermind.Network.Rlpx
             Rlp.ValueDecoderContext headerBodyItems = HeaderBytes.AsSpan(3, 13).AsRlpValueContext();
             int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
             int numberOfItems = headerBodyItems.PeekNumberOfItemsRemaining(headerDataEnd);
-            headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
-            int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
+            headerBodyItems.DecodeUInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
+            int? contextId = numberOfItems > 1 ? (int)headerBodyItems.DecodeUInt() : (int?)null;
             _currentContextId = contextId;
-            int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?)null;
+            int? totalPacketSize = numberOfItems > 2 ? (int)headerBodyItems.DecodeUInt() : (int?)null;
 
             ValidateTotalPacketSize(frameSize, totalPacketSize);
 

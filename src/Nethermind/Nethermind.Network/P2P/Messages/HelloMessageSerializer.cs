@@ -78,7 +78,7 @@ namespace Nethermind.Network.P2P.Messages
                 return new Capability(protocolCode, version);
             }, limit: RlpLimit.L64);
 
-            helloMessage.ListenPort = ctx.DecodeInt();
+            helloMessage.ListenPort = (int)ctx.DecodeUInt();
 
             ReadOnlySpan<byte> publicKeyBytes = ctx.DecodeByteArraySpan(RlpLimit.L64);
             if (publicKeyBytes.Length != PublicKey.LengthInBytes &&

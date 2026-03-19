@@ -49,8 +49,8 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
 
         // GetAddress(ctx.DecodeByteArray(), ctx.DecodeInt());
         ctx.DecodeByteArraySpan(IpAddressRlpLimit);
-        ctx.DecodeInt(); // UDP port (we ignore and take it from Netty)
-        ctx.DecodeInt(); // TCP port
+        ctx.DecodeUInt(); // UDP port (we ignore and take it from Netty)
+        ctx.DecodeUInt(); // TCP port
         byte[] token = ctx.DecodeByteArray();
         long expirationTime = ctx.DecodeLong();
 

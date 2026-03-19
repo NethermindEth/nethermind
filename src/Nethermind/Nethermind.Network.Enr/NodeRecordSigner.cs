@@ -85,11 +85,11 @@ public class NodeRecordSigner : INodeRecordSigner
                     nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.TcpU8):
-                    int tcpPort = ctx.DecodeInt();
+                    int tcpPort = (int)ctx.DecodeUInt();
                     nodeRecord.SetEntry(new TcpEntry(tcpPort));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.UdpU8):
-                    int udpPort = ctx.DecodeInt();
+                    int udpPort = (int)ctx.DecodeUInt();
                     nodeRecord.SetEntry(new UdpEntry(udpPort));
                     break;
                 case 9 when key.SequenceEqual(EnrContentKey.Secp256K1U8):

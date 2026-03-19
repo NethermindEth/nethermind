@@ -48,7 +48,7 @@ public sealed class IntStreamDecoder : RlpValueDecoder<int>
         Rlp.LengthOf(item);
 
     protected override int DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        decoderContext.DecodeInt();
+        (int)decoderContext.DecodeUInt();
 
     public override void Encode(RlpStream stream, int item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         stream.Encode(item);
@@ -60,7 +60,7 @@ public sealed class UIntStreamDecoder : RlpValueDecoder<uint>
         Rlp.LengthOf((long)item);
 
     protected override uint DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        (uint)decoderContext.DecodeInt();
+        decoderContext.DecodeUInt();
 
     public override void Encode(RlpStream stream, uint item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         stream.Encode(item);
