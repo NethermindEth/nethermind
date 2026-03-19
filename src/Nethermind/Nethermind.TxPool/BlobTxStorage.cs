@@ -144,6 +144,11 @@ public class BlobTxStorage : IBlobTxStorage
         if (txBytes is not null)
         {
             transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm);
+            if (transaction is null)
+            {
+                transaction = default;
+                return false;
+            }
             transaction.SenderAddress = sender;
             return true;
         }

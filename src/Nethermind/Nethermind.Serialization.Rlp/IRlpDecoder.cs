@@ -38,6 +38,22 @@ namespace Nethermind.Serialization.Rlp
             Rlp.ValueDecoderContext context = new(bytes);
             return decoder.Decode(ref context, rlpBehaviors);
         }
+
+        public static T DecodeGuardNotNull<T>(this IRlpValueDecoder<T> decoder, ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            where T : class
+            => decoder.Decode(ref context, rlpBehaviors) ?? ThrowNullDecodedValue<T>();
+
+        public static T DecodeGuardNotNull<T>(this IRlpValueDecoder<T> decoder, ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            where T : class
+        {
+            Rlp.ValueDecoderContext context = new(bytes);
+            return decoder.DecodeGuardNotNull(ref context, rlpBehaviors);
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static T ThrowNullDecodedValue<T>() where T : class
+            => throw new RlpException($"{typeof(T).Name} decoding returned null");
     }
 
     public abstract class RlpStreamEncoder<T> : IRlpStreamEncoder<T>

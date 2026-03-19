@@ -313,7 +313,7 @@ public partial class EthRpcModule(
     {
         try
         {
-            Transaction tx = Rlp.Decode<Transaction>(transaction,
+            Transaction tx = TxDecoder.Instance.DecodeGuardNotNull(transaction,
                 RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
             return await SendTx(tx);
         }

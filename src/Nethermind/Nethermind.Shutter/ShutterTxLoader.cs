@@ -190,7 +190,7 @@ public class ShutterTxLoader(
 
     private Transaction DecodeTransaction(ReadOnlySpan<byte> encoded)
     {
-        Transaction tx = TxDecoder.Instance.Decode(encoded, RlpBehaviors.SkipTypedWrapping);
+        Transaction tx = TxDecoder.Instance.DecodeGuardNotNull(encoded, RlpBehaviors.SkipTypedWrapping);
         tx.SenderAddress = ecdsa.RecoverAddress(tx, true);
         return tx;
     }
