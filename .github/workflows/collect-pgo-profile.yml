@@ -143,13 +143,9 @@ jobs:
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 720
     steps:
-      - name: Clean up stale containers and locks
+      - name: Clean up stale EXPB lock
         shell: bash
-        run: |
-          # Kill any leftover PGO containers from cancelled/failed runs
-          docker ps -q --filter "ancestor=nethermindeth/nethermind" | xargs -r docker kill 2>/dev/null || true
-          docker ps -aq --filter "ancestor=nethermindeth/nethermind" | xargs -r docker rm -f 2>/dev/null || true
-          rm -f /tmp/expb.lock
+        run: rm -f /tmp/expb.lock
 
       - name: Check out repository
         uses: actions/checkout@v6
