@@ -5,7 +5,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Crypto;
 
-public static class Secp256K1Curve
+public static class SecP256k1Curve
 {
     //public static readonly BigInteger P =
     //    BigInteger.Pow(2, 256)

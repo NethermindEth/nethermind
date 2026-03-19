@@ -21,7 +21,6 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
-        public static ReadOnlySpan<byte> EofMagic => [0xEF, 0x00];
         public const byte MaxTxType = 0x7F;
         public const int BaseTxGasCost = 21000;
 
@@ -75,8 +74,6 @@ namespace Nethermind.Core
         public Signature? Signature { get; set; }
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
-        public bool IsEofContractCreation => IsContractCreation && Data.Span.StartsWith(EofMagic);
-        public bool IsLegacyContractCreation => IsContractCreation && !IsEofContractCreation;
         public bool IsMessageCall => To is not null;
 
         [MemberNotNullWhen(true, nameof(AuthorizationList))]

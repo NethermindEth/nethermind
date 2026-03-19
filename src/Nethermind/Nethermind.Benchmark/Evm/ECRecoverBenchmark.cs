@@ -6,7 +6,7 @@ using BenchmarkDotNet.Attributes;
 
 namespace Nethermind.Benchmarks.Evm
 {
-    public class EcRecoverBenchmark
+    public class ECRecoverBenchmark
     {
         [GlobalSetup]
         public void Setup()

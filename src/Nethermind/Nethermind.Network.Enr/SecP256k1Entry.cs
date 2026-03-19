@@ -9,11 +9,11 @@ namespace Nethermind.Network.Enr;
 /// <summary>
 /// An entry storing the <see cref="CompressedPublicKey"/> of the node signer.
 /// </summary>
-public class Secp256K1Entry : EnrContentEntry<CompressedPublicKey>
+public class SecP256k1Entry : EnrContentEntry<CompressedPublicKey>
 {
-    public Secp256K1Entry(CompressedPublicKey publicKey) : base(publicKey) { }
+    public SecP256k1Entry(CompressedPublicKey publicKey) : base(publicKey) { }
 
-    public override string Key => EnrContentKey.Secp256K1;
+    public override string Key => EnrContentKey.SecP256k1;
 
     protected override int GetRlpLengthOfValue()
     {

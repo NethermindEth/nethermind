@@ -37,8 +37,8 @@ public class TxValidatorTests
         BigInteger N = BigInteger.Parse("115792089237316195423570985008687907852837564279074904382605163141518161494337");
         BigInteger HalfN = N / 2;
 
-        Secp256K1Curve.N.Convert(out BigInteger n);
-        Secp256K1Curve.HalfN.Convert(out BigInteger halfN);
+        SecP256k1Curve.N.Convert(out BigInteger n);
+        SecP256k1Curve.HalfN.Convert(out BigInteger halfN);
 
         (N == n).Should().BeTrue();
         (HalfN == halfN).Should().BeTrue();
@@ -71,7 +71,7 @@ public class TxValidatorTests
     [TestCase(1, ExpectedResult = true, TestName = "R equal to N minus one is valid")]
     public bool R_boundary_values(int subtractFromN)
     {
-        UInt256 r = Secp256K1Curve.N - (UInt256)subtractFromN;
+        UInt256 r = SecP256k1Curve.N - (UInt256)subtractFromN;
         UInt256 s = UInt256.One;
         Signature signature = new(r, s, (ulong)CalculateV());
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;

@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class PointEvaluationPrecompileTests
+public class KzgPointEvaluationPrecompileTests
 {
     private static readonly byte[] _predefinedSuccessAnswer =
         Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000100073eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001");
@@ -29,7 +29,7 @@ public class PointEvaluationPrecompileTests
     [TestCaseSource(nameof(OutputTests))]
     public bool Test_PointEvaluationPrecompile_Produces_Correct_Outputs(byte[] input)
     {
-        (ReadOnlyMemory<byte> output, bool success) = PointEvaluationPrecompile.Instance.Run(input, Cancun.Instance);
+        (ReadOnlyMemory<byte> output, bool success) = KzgPointEvaluationPrecompile.Instance.Run(input, Cancun.Instance);
         output.ToArray().Should().BeEquivalentTo(success ? _predefinedSuccessAnswer : _predefinedFailureAnswer);
         return success;
     }
@@ -57,8 +57,8 @@ public class PointEvaluationPrecompileTests
     public void Test_PointEvaluationPrecompile_Has_Specific_Constant_Gas_Cost(byte[] input)
     {
         const long fixedGasCost = 50000;
-        long gasSpent = PointEvaluationPrecompile.Instance.DataGasCost(input, Cancun.Instance) +
-                        PointEvaluationPrecompile.Instance.BaseGasCost(Cancun.Instance);
+        long gasSpent = KzgPointEvaluationPrecompile.Instance.DataGasCost(input, Cancun.Instance) +
+                        KzgPointEvaluationPrecompile.Instance.BaseGasCost(Cancun.Instance);
         gasSpent.Should().Be(fixedGasCost);
     }
 
