@@ -120,7 +120,7 @@ jobs:
   collect:
     name: Collect PGO profile via EXPB
     needs: [build-pgo-image]
-    runs-on: [self-hosted, reproducible-benchmarks]
+    runs-on: benchmark
     timeout-minutes: 720
     steps:
       - name: Check out repository
