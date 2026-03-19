@@ -339,7 +339,7 @@ jobs:
           # Step 2: Compress .jit edge/block profiling data for runtime PGO
           # .jit files (from DOTNET_WritePGOData) use a JIT-internal text format read
           # back via DOTNET_ReadPGOData — they can't be merged into .mibc by dotnet-pgo.
-          # Keep all methods: even low-count methods carry valuable GDV type data.
+          # Keep all methods with any PGO records (including low-count GDV type data).
           jit_file=$(find "${pgo_dir}" -name "*.jit" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
           jit_gz="${RUNNER_TEMP}/nethermind.jit.gz"
           if [[ -n "${jit_file}" ]]; then
@@ -359,7 +359,7 @@ jobs:
           path: ${{ steps.convert.outputs.mibc_file }}
           retention-days: 90
 
-      - name: Upload trimmed .jit.gz artifact
+      - name: Upload compressed .jit.gz artifact
         if: always() && steps.convert.outputs.jit_gz != ''
         uses: actions/upload-artifact@v7
         with:
