@@ -143,10 +143,6 @@ jobs:
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 720
     steps:
-      - name: Clean up stale EXPB lock
-        shell: bash
-        run: rm -f /tmp/expb.lock
-
       - name: Check out repository
         uses: actions/checkout@v6
 
