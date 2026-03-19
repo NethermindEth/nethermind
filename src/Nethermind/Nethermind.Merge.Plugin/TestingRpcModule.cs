@@ -34,10 +34,6 @@ public class TestingRpcModule(
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
 
-    // Use a dedicated processor with its own WorldState so we don't conflict with the main
-    // processing pipeline (which may have an open scope from TrieWarmer/prewarmer).
-    private readonly IBlockchainProcessor _processor = blockProducerEnvFactory.Create().ChainProcessor;
-
     public Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null, string? targetFork = null)
     {
         Block? parentBlock = blockFinder.FindBlock(parentBlockHash);
@@ -62,8 +58,12 @@ public class TestingRpcModule(
             header.TxRoot = TxTrie.CalculateRoot(transactions);
             Block block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
 
+            // Create a fresh processor per call with its own WorldState to avoid scope conflicts
+            // with the main processing pipeline (TrieWarmer/prewarmer may hold scopes open).
+            IBlockProducerEnv env = blockProducerEnvFactory.Create();
+            if (_logger.IsInfo) _logger.Info($"testing_buildBlockV1: factory={blockProducerEnvFactory.GetType().Name}, processor={env.ChainProcessor.GetType().Name}, worldState={env.ReadOnlyStateProvider.GetType().Name}, IsInScope={env.ReadOnlyStateProvider.IsInScope}");
             FeesTracer feesTracer = new();
-            Block? processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
+            Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
 
             if (processedBlock is not null)
             {
