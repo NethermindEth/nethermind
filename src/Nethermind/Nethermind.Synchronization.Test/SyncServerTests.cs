@@ -585,13 +585,15 @@ public class SyncServerTests
         localBlockTree.AddBranch(blocksCount * 2 / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
 
-        // Valid notification "latest" values are multiples of the frequency within the range
-        HashSet<long> validLatestValues = Enumerable.Range(startBlock + 1, blocksCount)
-            .Where(x => x % frequency == 0)
-            .Select(x => (long)x)
-            .ToHashSet();
-
+        // Derive valid notification values from the actual head after building branches,
+        // since AddBranch(branchLength, ...) only builds blocks up to branchLength - 1.
+        // frequency matches SyncServer.NewHeadBlockRangeUpdateFrequency (private const).
+        long headNumber = localBlockTree.Head!.Number;
         long expectedGenesis = localBlockTree.Genesis!.Number;
+        HashSet<long> validLatestValues = [];
+        for (long b = frequency; b <= headNumber; b += frequency)
+            validLatestValues.Add(b);
+
         long expectedFinalLatest = validLatestValues.Max();
 
         foreach (PeerInfo peerInfo in peers)
@@ -604,14 +606,23 @@ public class SyncServerTests
                         .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
                         .Select(a => (earliest: a[0], latest: a[1])).ToArray();
 
-                    // The final update (0, 96) must always be delivered since nothing cancels it.
+                    if (arr.Length == 0)
+                        return "no notifications received yet";
+
+                    if (arr[^1] != (expectedGenesis, expectedFinalLatest))
+                        return $"last notification was ({arr[^1].earliest}, {arr[^1].latest}), expected ({expectedGenesis}, {expectedFinalLatest})";
+
                     // Intermediate notifications may be coalesced by the async cancellation logic,
                     // so we only check all notifications are valid and the last one is the final update.
-                    return arr.Length > 0
-                        && arr[^1] == (expectedGenesis, expectedFinalLatest)
-                        && arr.All(x => x.earliest == expectedGenesis && validLatestValues.Contains(x.latest));
+                    (long earliest, long latest)[] invalid = arr
+                        .Where(x => x.earliest != expectedGenesis || !validLatestValues.Contains(x.latest))
+                        .ToArray();
+
+                    return invalid.Length > 0
+                        ? $"invalid notifications: {string.Join(", ", invalid.Select(x => $"({x.earliest}, {x.latest})"))}"
+                        : null;
                 },
-                Is.True.After(15000, 50)
+                Is.Null.After(15000, 50)
             );
         }
     }
