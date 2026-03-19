@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -98,6 +99,68 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     /// <summary>
+    /// Resets all block-number-based fork transitions to 0 so they are active from genesis.
+    /// This covers ChainSpec BlockNumber properties, ChainParameters Transition properties,
+    /// and engine-specific transitions (e.g. Ethash DifficultyBombDelays, BlockReward).
+    /// </summary>
+    private static void ActivateAllBlockTransitionsFromGenesis(ChainSpec chainSpec)
+    {
+        // Reset ChainSpec properties ending in "BlockNumber".
+        // TerminalPoWBlockNumber is excluded, mirroring the same filter in
+        // ChainSpecBasedSpecProvider.BuildTransitions — it is not a fork transition.
+        foreach (PropertyInfo prop in typeof(ChainSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (prop.Name.EndsWith("BlockNumber") && prop.Name != "TerminalPoWBlockNumber" && prop.PropertyType == typeof(long?) && prop.CanWrite)
+            {
+                prop.SetValue(chainSpec, (long?)0);
+            }
+        }
+
+        // Reset ChainParameters properties ending in "Transition" (but not "TransitionTimestamp")
+        foreach (PropertyInfo prop in typeof(ChainParameters).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (prop.Name.EndsWith("Transition") && !prop.Name.EndsWith("TransitionTimestamp") && prop.PropertyType == typeof(long?) && prop.CanWrite)
+            {
+                if (prop.GetValue(chainSpec.Parameters) is not null)
+                {
+                    prop.SetValue(chainSpec.Parameters, (long?)0);
+                }
+            }
+        }
+
+        // Reset engine-specific block number transitions
+        foreach (IChainSpecEngineParameters engineParams in chainSpec.EngineChainSpecParametersProvider.AllChainSpecParameters)
+        {
+            foreach (PropertyInfo prop in engineParams.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (prop.Name.EndsWith("Transition") && prop.CanWrite)
+                {
+                    if (prop.PropertyType == typeof(long))
+                    {
+                        prop.SetValue(engineParams, 0L);
+                    }
+                    else if (prop.PropertyType == typeof(long?) && prop.GetValue(engineParams) is not null)
+                    {
+                        prop.SetValue(engineParams, (long?)0);
+                    }
+                }
+
+                // Clear dictionaries keyed by block number (e.g. DifficultyBombDelays, BlockReward)
+                if (prop.CanRead && prop.PropertyType.GetInterfaces().Any(i =>
+                        i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>)
+                        && i.GetGenericArguments()[0] == typeof(long)))
+                {
+                    object? dict = prop.GetValue(engineParams);
+                    if (dict is System.Collections.IDictionary d)
+                    {
+                        d.Clear();
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Common code for all node
     /// </summary>
     private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer)
@@ -125,12 +188,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Nonce = Eip7251TestConstants.Nonce
         };
 
-        // Always on, as the timestamp based fork activation always override block number based activation. However, the receipt
-        // message serializer does not check the block header of the receipt for timestamp, only block number therefore it will
-        // always not encode with Eip658, but the block builder always build with Eip658 as the latest fork activation
-        // uses timestamp which is < than now.
-        // TODO: Need to double check which code part does not pass in timestamp from header.
-        spec.Parameters.Eip658Transition = 0;
+        // Activate all block-number-based forks from genesis. The test builds a short chain
+        // (1000 blocks) with post-merge timestamps. Without this, the chainspec has block
+        // transitions at high block numbers (e.g. London at 12,965,000), causing a legitimate
+        // "Chainspec file is misconfigured" warning when GetSpec is called with low block numbers
+        // but high timestamps.
+        ActivateAllBlockTransitionsFromGenesis(spec);
 
         if (isPostMerge)
         {
