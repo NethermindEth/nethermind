@@ -70,6 +70,7 @@ fi
 if [[ -z "${DOTNET_ReadPGOData:-}" ]] && [[ -f "/nethermind/pgo/nethermind.jit" ]]; then
   export DOTNET_ReadPGOData=1
   export DOTNET_PGODataPath=/nethermind/pgo/nethermind.jit
+  echo "Edge/block PGO enabled: ${DOTNET_PGODataPath}"
 fi
 
 exec ./nethermind "$@"

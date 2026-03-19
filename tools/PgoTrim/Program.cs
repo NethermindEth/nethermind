@@ -79,7 +79,10 @@ while (lineIdx < lines.Length)
     if (line.StartsWith("@@@ codehash"))
     {
         if (current is not null)
+        {
+            FlushPending(current);
             methods.Add(current);
+        }
 
         current = new MethodRecord { Header = line };
         totalMethods++;
@@ -211,7 +214,10 @@ while (lineIdx < lines.Length)
 }
 
 if (current is not null)
+{
+    FlushPending(current);
     methods.Add(current);
+}
 
 // Write output
 using FileStream fs = File.Create(outputPath);
@@ -269,6 +275,16 @@ Console.WriteLine($"Filters:    min-block={minBlock}, min-edge={minEdge}");
 Console.WriteLine($"Ratio:      {100.0 * outputSize / inputSize:F2}% of original");
 
 return 0;
+
+static void FlushPending(MethodRecord method)
+{
+    if (method.PendingHistogramCount is var (cs, cv))
+    {
+        method.Entries.Add(cs);
+        method.Entries.Add(cv);
+        method.PendingHistogramCount = null;
+    }
+}
 
 static string RewriteRecordsCount(string header, int newCount)
 {
