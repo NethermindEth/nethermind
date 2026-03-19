@@ -41,11 +41,17 @@ public class EncodingTest
         Assert.That(root, Is.EqualTo(decodedRoot));
     }
 
-    [Test]
-    public void MerkleizeList_UnionType_MixesInCountNotLimit()
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(100)]
+    public void MerkleizeList_UnionType_MixesInCountNotLimit(int itemCount)
     {
-        UnionTest3 item = new() { Selector = Test3Union.Test1, Test1 = 0 };
-        UnionTest3[] list = [item];
+        UnionTest3[] list = new UnionTest3[itemCount];
+
+        for (int i = 0; i < itemCount; i++)
+        {
+            list[i] = new UnionTest3 { Selector = Test3Union.Test1, Test1 = 0 };
+        }
 
         SszEncoding.MerkleizeList(list, 100, out UInt256 rootWithLimit100);
         SszEncoding.MerkleizeList(list, 200, out UInt256 rootWithLimit200);
