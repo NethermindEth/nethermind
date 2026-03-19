@@ -2232,7 +2232,7 @@ public class BlockTreeTests
         // Without RequireCanonical (old BlockParameter(long) behavior)
         Block? withoutCanonical = blockTree.FindBlock(1, BlockTreeLookupOptions.None);
 
-        // With RequireCanonical (new BlockParameter(long) behavior after Ahmad's change)
+        // With RequireCanonical (new BlockParameter(long) behavior after RequireCanonical-by-number behavior change)
         Block? withCanonical = blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical);
 
         withoutCanonical.Should().NotBeNull();
