@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Microsoft.IO;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
+using Snappier;
 namespace Nethermind.Era1;
 
 public class E2StoreWriter : IDisposable
@@ -25,12 +27,14 @@ public class E2StoreWriter : IDisposable
 
     public async Task<int> WriteEntryAsSnappy(ushort type, Memory<byte> bytes, CancellationToken cancellation = default)
     {
-        // Use block-format compression wrapped in manual framing to match golang/snappy's
-        // BufferedWriter.Reset+Write+Flush output byte-for-byte. See SnappyFrameWriter.
+        // See https://github.com/google/snappy/blob/main/framing_format.txt
         using RecyclableMemoryStream bufferedStream = RecyclableStream.GetStream(nameof(E2StoreWriter));
-        SnappyFrameWriter.Write(bytes.Span, bufferedStream);
+        using SnappyStream compressor = new(bufferedStream!, CompressionMode.Compress, true);
 
-        bool canGetBuffer = bufferedStream.TryGetBuffer(out ArraySegment<byte> arraySegment);
+        await compressor!.WriteAsync(bytes, cancellation);
+        await compressor.FlushAsync();
+
+        bool canGetBuffer = bufferedStream!.TryGetBuffer(out ArraySegment<byte> arraySegment);
         Debug.Assert(canGetBuffer);
 
         return await WriteEntry(type, arraySegment, cancellation);
