@@ -12,12 +12,12 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles;
 
-public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
+public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 {
-    public static readonly EcRecoverPrecompile Instance = new();
+    public static readonly ECRecoverPrecompile Instance = new();
     private static readonly Result<byte[]> Empty = Array.Empty<byte>();
 
-    private EcRecoverPrecompile()
+    private ECRecoverPrecompile()
     {
     }
 
@@ -33,7 +33,7 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Metrics.EcRecoverPrecompile++;
+        Metrics.ECRecoverPrecompile++;
         return inputData.Length >= 128 ? RunInternal(inputData.Span) : RunInternal(inputData);
     }
 

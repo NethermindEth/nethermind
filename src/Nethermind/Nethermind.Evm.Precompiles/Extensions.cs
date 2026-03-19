@@ -13,7 +13,7 @@ public static class Extensions
     {
         OrderedDictionary<string, Address> precompiles = [];
 
-        AddPrecompile<EcRecoverPrecompile>();
+        AddPrecompile<ECRecoverPrecompile>();
         AddPrecompile<Sha256Precompile>();
         AddPrecompile<Ripemd160Precompile>();
         AddPrecompile<IdentityPrecompile>();

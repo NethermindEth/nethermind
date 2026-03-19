@@ -12,7 +12,7 @@ public class SupportsCachingTests
 {
     public static IEnumerable<TestCaseData> PrecompilesWithCachingEnabled()
     {
-        yield return new TestCaseData(EcRecoverPrecompile.Instance).SetName(nameof(EcRecoverPrecompile));
+        yield return new TestCaseData(ECRecoverPrecompile.Instance).SetName(nameof(ECRecoverPrecompile));
         yield return new TestCaseData(Sha256Precompile.Instance).SetName(nameof(Sha256Precompile));
         yield return new TestCaseData(Ripemd160Precompile.Instance).SetName(nameof(Ripemd160Precompile));
         yield return new TestCaseData(BN254AddPrecompile.Instance).SetName(nameof(BN254AddPrecompile));

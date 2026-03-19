@@ -49,8 +49,8 @@ public class Metrics
     public static long Bls12381Fp2ToG2Precompile { get; set; }
 
     [CounterMetric]
-    [Description("Number of EC_RECOVERY precompile calls.")]
-    public static long EcRecoverPrecompile { get; set; }
+    [Description("Number of ECREC precompile calls.")]
+    public static long ECRecoverPrecompile { get; set; }
 
     [CounterMetric]
     [Description("Number of MODEXP precompile calls.")]

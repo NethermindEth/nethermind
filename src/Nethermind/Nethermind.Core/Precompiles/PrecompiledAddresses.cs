@@ -8,7 +8,7 @@ namespace Nethermind.Core.Precompiles;
 /// </summary>
 public static class PrecompiledAddresses
 {
-    public static readonly AddressAsKey EcRecover = Address.FromNumber(0x01);
+    public static readonly AddressAsKey ECRecover = Address.FromNumber(0x01);
     public static readonly AddressAsKey Sha256 = Address.FromNumber(0x02);
     public static readonly AddressAsKey Ripemd160 = Address.FromNumber(0x03);
     public static readonly AddressAsKey Identity = Address.FromNumber(0x04);

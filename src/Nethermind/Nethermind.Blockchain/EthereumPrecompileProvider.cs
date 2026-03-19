@@ -16,7 +16,7 @@ public class EthereumPrecompileProvider() : IPrecompileProvider
     {
         get => new Dictionary<AddressAsKey, CodeInfo>
         {
-            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
+            [ECRecoverPrecompile.Address] = new(ECRecoverPrecompile.Instance),
             [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
             [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
             [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),

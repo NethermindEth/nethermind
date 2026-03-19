@@ -134,7 +134,7 @@ public class ReleaseSpec : IReleaseSpec
     {
         HashSet<AddressAsKey> cache = new();
 
-        cache.Add(PrecompiledAddresses.EcRecover);
+        cache.Add(PrecompiledAddresses.ECRecover);
         cache.Add(PrecompiledAddresses.Sha256);
         cache.Add(PrecompiledAddresses.Ripemd160);
         cache.Add(PrecompiledAddresses.Identity);
