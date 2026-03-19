@@ -446,8 +446,20 @@ public class BlockchainProcessorTests
             public ProcessingTestContext BecomesNewHead()
             {
                 _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to become the new head block");
-                processingTestContext._resetEvent.WaitOne(ProcessingWait);
-                Assert.That(() => processingTestContext._blockTree.Head!.Hash, Is.EqualTo(block.Header.Hash).After(1000, 100));
+                // Loop on the auto-reset event: a single WaitOne may consume a stale or
+                // unrelated NewHeadBlock signal, so keep waiting until the expected block
+                // is the head or the overall timeout expires.
+                long deadline = Environment.TickCount64 + ProcessingWait;
+                while (processingTestContext._blockTree.Head?.Hash != block.Header.Hash)
+                {
+                    long remaining = deadline - Environment.TickCount64;
+                    if (remaining <= 0)
+                        break;
+                    processingTestContext._resetEvent.WaitOne((int)remaining);
+                }
+
+                Assert.That(processingTestContext._blockTree.Head!.Hash, Is.EqualTo(block.Header.Hash),
+                    $"Expected {block.ToString(Block.Format.Short)} to become the head");
                 return processingTestContext;
             }
 
