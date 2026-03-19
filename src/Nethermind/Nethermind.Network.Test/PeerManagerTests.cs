@@ -41,6 +41,78 @@ namespace Nethermind.Network.Test
             await ctx.PeerManager.StopAsync();
         }
 
+        [Test]
+        public async Task Will_ignore_sessions_created_after_stop()
+        {
+            await using Context ctx = new();
+            ctx.PeerManager.Start();
+
+            await ctx.PeerManager.StopAsync();
+            ctx.RlpxPeer.CreateRandomIncoming();
+
+            ctx.PeerManager.ActivePeers.Count.Should().Be(0);
+        }
+
+        [TestCase(0, 0, TestName = "Stop completes cleanly while idle")]
+        [TestCase(1, 5, TestName = "Stop completes when slots are saturated")]
+        [CancelAfter(10_000)]
+        public async Task Stop_does_not_hang(int maxActivePeers, int persistedPeers)
+        {
+            await using Context ctx = maxActivePeers > 0 ? new(maxActivePeers: maxActivePeers) : new();
+            ctx.SetupPersistedPeers(persistedPeers);
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            // Let the loop settle into its wait state
+            await Task.Delay(_delayLong);
+
+            Task stopTask = ctx.PeerManager.StopAsync();
+            bool completed = await Task.WhenAny(stopTask, Task.Delay(5000)) == stopTask;
+            completed.Should().BeTrue("StopAsync should complete within 5 seconds");
+            await stopTask;
+        }
+
+        [Test, Retry(5)]
+        public async Task Disconnect_triggers_refill_without_blocking()
+        {
+            await using Context ctx = new();
+            ctx.SetupPersistedPeers(50);
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            Assert.That(() => ctx.PeerPool.ActivePeers.Count, Is.AtLeast(25).After(_delayLong, 10));
+
+            int connectsBefore = ctx.RlpxPeer.ConnectAsyncCallsCount;
+            ctx.DisconnectAllSessions();
+
+            Assert.That(
+                () => ctx.RlpxPeer.ConnectAsyncCallsCount,
+                Is.GreaterThan(connectsBefore).After(_delayLong, 10));
+        }
+
+        [Test, Retry(5)]
+        public async Task No_slot_available_before_deadline_does_not_deadlock_refill()
+        {
+            await using Context ctx = new(maxActivePeers: 1);
+            ctx.NetworkConfig.ConnectTimeoutMs = 0;
+            ctx.SetupPersistedPeers(5);
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            // With ConnectTimeoutMs=0, the slot check may not block fast enough to prevent
+            // a second connection from being queued before the first is counted as active.
+            Assert.That(() => ctx.PeerPool.ActivePeers.Count, Is.GreaterThan(0).After(_delayLonger, 10));
+
+            await Task.Delay(Nethermind.Network.Timeouts.Handshake + TimeSpan.FromMilliseconds(_delay));
+
+            int connectsBefore = ctx.RlpxPeer.ConnectAsyncCallsCount;
+            ctx.DisconnectAllSessions();
+
+            Assert.That(
+                () => ctx.RlpxPeer.ConnectAsyncCallsCount,
+                Is.GreaterThan(connectsBefore).After(_delayLong, 10));
+        }
+
         private const string enode1String =
             "enode://22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222@51.141.78.53:30303";
 
