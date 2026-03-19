@@ -3,6 +3,7 @@
 
 using System;
 using System.Text;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
@@ -18,6 +19,7 @@ namespace Nethermind.Synchronization.Reporting
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly IPivot _pivot;
+        private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private SyncMode _currentMode = SyncMode.None;
 
@@ -28,14 +30,17 @@ namespace Nethermind.Synchronization.Reporting
         private const int NoProgressStateSyncReportFrequency = 30;
         private const int SyncAllocatedPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
+        private const int SyncBehindWarningFrequency = 6;
+        private static readonly TimeSpan SyncBehindThreshold = TimeSpan.FromMinutes(5);
         private readonly TimeSpan _defaultReportingIntervals;
 
-        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
+        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, IBlockTree blockTree, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
             _defaultReportingIntervals = TimeSpan.FromSeconds(_logger.IsDebug ? 1 : 10);
             _timer = (timerFactory ?? TimerFactory.Default).CreateTimer(_defaultReportingIntervals);
@@ -94,6 +99,11 @@ namespace Nethermind.Synchronization.Reporting
             if (_reportId % SyncReportFrequency == 0)
             {
                 WriteSyncReport();
+            }
+
+            if (_reportId % SyncBehindWarningFrequency == 0)
+            {
+                WriteSyncBehindWarning();
             }
 
             if (_reportId % SyncFullPeersReportFrequency == 0)
@@ -286,6 +296,52 @@ namespace Nethermind.Synchronization.Reporting
         {
             BeaconHeaders.LogProgress();
         }
+
+        private void WriteSyncBehindWarning()
+        {
+            if (!_logger.IsWarn) return;
+
+            SyncMode currentSyncMode = _currentMode;
+            if ((currentSyncMode & (SyncMode.Full | SyncMode.FastSync)) == 0)
+                return;
+
+            Block? head = _blockTree.Head;
+            if (head is null)
+                return;
+
+            ulong headTimestamp = head.Header.Timestamp;
+            ulong currentTimestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+            if (headTimestamp >= currentTimestamp)
+                return;
+
+            TimeSpan timeBehind = TimeSpan.FromSeconds(currentTimestamp - headTimestamp);
+            if (timeBehind <= SyncBehindThreshold)
+                return;
+
+            decimal blocksPerSecond = FullSyncBlocksDownloaded.CurrentPerSecond;
+            long blocksRemaining = FullSyncBlocksDownloaded.TargetValue - FullSyncBlocksDownloaded.CurrentValue;
+
+            string etaMessage;
+            if (blocksPerSecond > 0 && blocksRemaining > 0)
+            {
+                TimeSpan eta = TimeSpan.FromSeconds((double)(blocksRemaining / blocksPerSecond));
+                etaMessage = $"Estimated time to catch up: {FormatTimeSpan(eta)}";
+            }
+            else
+            {
+                etaMessage = "Estimated time to catch up: calculating...";
+            }
+
+            _logger.Warn($"Node is behind the head of the chain by {FormatTimeSpan(timeBehind)}. {etaMessage}");
+        }
+
+        private static string FormatTimeSpan(TimeSpan ts) => ts switch
+        {
+            { TotalDays: >= 1 } => $"{(int)ts.TotalDays}d {ts.Hours}h {ts.Minutes}m",
+            { TotalHours: >= 1 } => $"{(int)ts.TotalHours}h {ts.Minutes}m",
+            _ => $"{(int)ts.TotalMinutes}m {ts.Seconds}s"
+        };
 
         public void Dispose()
         {

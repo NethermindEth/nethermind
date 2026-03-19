@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -43,7 +45,7 @@ namespace Nethermind.Synchronization.Test
                 FastSync = fastSync,
             };
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance, timerFactory);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockTree>(), LimboLogs.Instance, timerFactory);
 
             void UpdateMode()
             {
@@ -87,7 +89,7 @@ namespace Nethermind.Synchronization.Test
                 PivotNumber = 100,
             };
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockTree>(), logManager, timerFactory);
             syncReport.FastBlocksHeaders.Reset(0, 100);
             syncReport.FastBlocksHeaders.CurrentQueued = 0;
             syncReport.FastBlocksBodies.Reset(0, 70);
@@ -135,7 +137,7 @@ namespace Nethermind.Synchronization.Test
                 syncConfig.AncientReceiptsBarrier = 35;
             }
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockTree>(), logManager, timerFactory);
             syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.FastHeaders | SyncMode.FastBodies | SyncMode.FastReceipts));
             timer.Elapsed += Raise.Event();
 
@@ -151,6 +153,134 @@ namespace Nethermind.Synchronization.Test
                 iLogger.DidNotReceive().Info("Old Bodies     0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
                 iLogger.DidNotReceive().Info("Old Receipts   0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
             }
+        }
+        [Test]
+        public void Sync_behind_warning_is_logged_when_head_is_behind()
+        {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+            pool.InitializedPeersCount.Returns(1);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            ITimer timer = Substitute.For<ITimer>();
+            timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+            ILogManager logManager = Substitute.For<ILogManager>();
+            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
+            iLogger.IsInfo.Returns(true);
+            iLogger.IsWarn.Returns(true);
+            ILogger logger = new(iLogger);
+            logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+
+            // Set up a head block with a timestamp 10 minutes behind current time
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Block headBlock = new(new BlockHeader(
+                Nethermind.Core.Crypto.Keccak.Zero,
+                Nethermind.Core.Crypto.Keccak.Zero,
+                Address.Zero,
+                0,
+                0,
+                0,
+                (ulong)DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds(),
+                []));
+            blockTree.Head.Returns(headBlock);
+
+            SyncConfig syncConfig = new() { FastSync = true };
+
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockTree, logManager, timerFactory);
+            syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.Full));
+
+            // Trigger timer 6 times to hit the SyncBehindWarningFrequency
+            for (int i = 0; i < 6; i++)
+            {
+                timer.Elapsed += Raise.Event();
+            }
+
+            iLogger.Received().Warn(Arg.Is<string>(s => s.Contains("Node is behind the head of the chain by")));
+        }
+
+        [Test]
+        public void Sync_behind_warning_is_not_logged_when_head_is_close()
+        {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+            pool.InitializedPeersCount.Returns(1);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            ITimer timer = Substitute.For<ITimer>();
+            timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+            ILogManager logManager = Substitute.For<ILogManager>();
+            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
+            iLogger.IsInfo.Returns(true);
+            iLogger.IsWarn.Returns(true);
+            ILogger logger = new(iLogger);
+            logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+
+            // Set up a head block with a timestamp only 2 minutes behind (under threshold)
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Block headBlock = new(new BlockHeader(
+                Nethermind.Core.Crypto.Keccak.Zero,
+                Nethermind.Core.Crypto.Keccak.Zero,
+                Address.Zero,
+                0,
+                0,
+                0,
+                (ulong)DateTimeOffset.UtcNow.AddMinutes(-2).ToUnixTimeSeconds(),
+                []));
+            blockTree.Head.Returns(headBlock);
+
+            SyncConfig syncConfig = new() { FastSync = true };
+
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockTree, logManager, timerFactory);
+            syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.Full));
+
+            // Trigger timer 6 times
+            for (int i = 0; i < 6; i++)
+            {
+                timer.Elapsed += Raise.Event();
+            }
+
+            iLogger.DidNotReceive().Warn(Arg.Any<string>());
+        }
+
+        [Test]
+        public void Sync_behind_warning_is_not_logged_when_not_in_forward_sync()
+        {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+            pool.InitializedPeersCount.Returns(1);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            ITimer timer = Substitute.For<ITimer>();
+            timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+            ILogManager logManager = Substitute.For<ILogManager>();
+            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
+            iLogger.IsInfo.Returns(true);
+            iLogger.IsWarn.Returns(true);
+            ILogger logger = new(iLogger);
+            logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+
+            // Head is 10 minutes behind, but sync mode is not Full/FastSync
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Block headBlock = new(new BlockHeader(
+                Nethermind.Core.Crypto.Keccak.Zero,
+                Nethermind.Core.Crypto.Keccak.Zero,
+                Address.Zero,
+                0,
+                0,
+                0,
+                (ulong)DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds(),
+                []));
+            blockTree.Head.Returns(headBlock);
+
+            SyncConfig syncConfig = new() { FastSync = true };
+
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockTree, logManager, timerFactory);
+            syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.FastHeaders));
+
+            // Trigger timer 6 times
+            for (int i = 0; i < 6; i++)
+            {
+                timer.Elapsed += Raise.Event();
+            }
+
+            iLogger.DidNotReceive().Warn(Arg.Any<string>());
         }
     }
 }
