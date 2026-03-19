@@ -47,8 +47,14 @@ public class DatabasePurgerTests
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Headers)), Is.False, "headers should be deleted");
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Receipts)), Is.False, "receipts should be deleted");
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlockInfos)), Is.False, "blockInfos should be deleted");
+        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlockNumbers)), Is.False, "blockNumbers should be deleted");
+        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlockAccessLists)), Is.False, "blockAccessLists should be deleted");
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Metadata)), Is.False, "metadata should be deleted");
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Flat)), Is.False, "flat should be deleted");
+        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Code)), Is.False, "code should be deleted");
+        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Bloom)), Is.False, "bloom should be deleted");
+        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BadBlocks)), Is.False, "badBlocks should be deleted");
+        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlobTransactions)), Is.False, "blobTransactions should be deleted");
     }
 
     [Test]

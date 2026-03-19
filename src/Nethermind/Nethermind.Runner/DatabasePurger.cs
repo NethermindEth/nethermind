@@ -26,8 +26,8 @@ internal static class DatabasePurger
     {
         string fullPath = Path.GetFullPath(basePath);
 
-        // Safety guard: refuse to delete filesystem roots or suspiciously short paths
-        if (fullPath.Length <= 3 || Path.GetPathRoot(fullPath) == fullPath)
+        // Safety guard: refuse to delete filesystem roots
+        if (Path.GetPathRoot(fullPath) == fullPath)
         {
             logger.Error($"Refusing to delete path that looks like a filesystem root: {fullPath}");
             return;
@@ -65,7 +65,7 @@ internal static class DatabasePurger
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            logger.Error($"{action} failed on {fullPath}: {ex.Message}");
+            logger.Error($"{action} failed on {fullPath}", ex);
             throw new InvalidOperationException($"Database {action.ToLowerInvariant()} failed. Some files may be locked or read-only.", ex);
         }
     }

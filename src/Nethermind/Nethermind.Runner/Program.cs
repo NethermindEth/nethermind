@@ -19,7 +19,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
-using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Init.Snapshot;
 using Nethermind.KeyStore.Config;
