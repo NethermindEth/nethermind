@@ -62,7 +62,7 @@ RUN dotnet tool install -g dotnet-trace
 ENV PATH="${PATH}:/root/.dotnet/tools"
 
 ENTRYPOINT ["dotnet-trace", "collect", \
-  "--profile", "cpu-sampling", \
+  "--profile", "dotnet-sampled-thread-time", \
   "--show-child-io", \
   "--output", "/nethermind/pgo/sampling", \
   "--", "./nethermind"]
