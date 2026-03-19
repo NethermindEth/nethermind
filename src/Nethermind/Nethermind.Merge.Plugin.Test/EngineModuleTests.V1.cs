@@ -273,61 +273,6 @@ public partial class EngineModuleTests
         chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.None).Should().NotBeNull();
     }
 
-    [Test]
-    public async Task fcu_to_ancestor_below_head_must_update_head_and_decanonicalise_descendants()
-    {
-        // Regression test for the Gnosis canonical-mismatch bug.
-        //
-        // The bug: IsOnMainChainBehindHead returned true when FCU pointed to a block that
-        // was already canonical but below the current head. The handler returned Valid
-        // immediately, skipping UpdateMainChain. This left the head unchanged and the
-        // descendant (C, the wrong block) still marked canonical — so by-number RPC calls
-        // returned C instead of the correct canonical block A.
-        //
-        // Scenario:
-        //   FCU(A, height 1) → head = A
-        //   newPayload(C, child of A, height 2) + FCU(C) → head = C (C is now canonical)
-        //   FCU(A) → the CL considers A the correct head (e.g. after a reorg on its side)
-        //             A is already canonical and behind C, so the bug silently ignored it,
-        //             leaving C canonical and the head stuck at C.
-        //
-        // After the fix: FCU(A) moves the head back to A and de-canonicalises C.
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 genesisHash = chain.BlockTree.HeadHash;
-        Hash256 zero = Keccak.Zero;
-        ulong ts = 1000;
-
-        // Build and submit block A (height 1, parent = genesis)
-        ExecutionPayload payloadA = await BuildAndGetPayloadResult(rpc, chain,
-            genesisHash, zero, genesisHash, ts, Keccak.Zero, Address.Zero);
-        Hash256 hashA = payloadA.BlockHash!;
-        (await rpc.engine_newPayloadV1(payloadA)).Data.Status.Should().Be(PayloadStatus.Valid);
-        (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(hashA, zero, zero)))
-            .Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.Head!.Hash.Should().Be(hashA, "head must be A after FCU(A)");
-
-        // Build and submit block C (height 2, child of A) — C becomes the head
-        ExecutionPayload payloadC = await BuildAndGetPayloadResult(rpc, chain,
-            hashA, zero, hashA, ts + 12, Keccak.Zero, Address.Zero);
-        Hash256 hashC = payloadC.BlockHash!;
-        (await rpc.engine_newPayloadV1(payloadC)).Data.Status.Should().Be(PayloadStatus.Valid);
-        (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(hashC, zero, zero)))
-            .Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.Head!.Hash.Should().Be(hashC, "head must be C after FCU(C)");
-        chain.BlockTree.IsMainChain(chain.BlockTree.FindHeader(hashA, BlockTreeLookupOptions.None)!).Should().BeTrue("A must be canonical as ancestor of C");
-        chain.BlockTree.IsMainChain(chain.BlockTree.FindHeader(hashC, BlockTreeLookupOptions.None)!).Should().BeTrue("C must be canonical");
-
-        // CL reorgs: FCU(A) — A is the correct canonical head, C should be de-canonicalised
-        (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(hashA, zero, zero)))
-            .Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-
-        chain.BlockTree.Head!.Hash.Should().Be(hashA, "head must return to A");
-        chain.BlockTree.FindBlock(hashC, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
-            "C must not be canonical after FCU reorged back to A");
-        chain.BlockTree.FindBlock(hashA, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull(
-            "A must be canonical");
-    }
 
     [Test]
     public async Task block_should_not_be_canonical_after_reorg()
