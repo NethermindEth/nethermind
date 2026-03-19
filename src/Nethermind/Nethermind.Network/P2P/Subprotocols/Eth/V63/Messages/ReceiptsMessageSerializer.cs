@@ -7,12 +7,15 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
     public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
+        private static readonly RlpLimit ReceiptsRlpLimit = RlpLimit.For<ReceiptsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
+        private static readonly RlpLimit BlockReceiptsRlpLimit = RlpLimit.For<TxReceipt[]>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
         private readonly ISpecProvider _specProvider;
         private readonly IRlpStreamEncoder<TxReceipt> _encoder;
         private readonly IRlpValueDecoder<TxReceipt> _decoder;
@@ -25,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _encoder = decoder;
             _decoder = decoder;
-            _decodeArrayFunc = (ref Rlp.ValueDecoderContext ctx) => ctx.DecodeArray((ref Rlp.ValueDecoderContext nestedContext) => _decoder.Decode(ref nestedContext)) ?? [];
+            _decodeArrayFunc = (ref Rlp.ValueDecoderContext ctx) => ctx.DecodeArray((ref Rlp.ValueDecoderContext nestedContext) => _decoder.Decode(ref nestedContext), limit: BlockReceiptsRlpLimit) ?? [];
         }
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
@@ -89,7 +92,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public ReceiptsMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
-            ArrayPoolList<TxReceipt[]> data = ctx.DecodeArrayPoolList(_decodeArrayFunc);
+            ArrayPoolList<TxReceipt[]> data = ctx.DecodeArrayPoolList(_decodeArrayFunc, limit: ReceiptsRlpLimit);
             ReceiptsMessage message = new(data);
 
             return message;

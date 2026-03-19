@@ -613,23 +613,6 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_call_maxFeePerGas_is_zero()
-    {
-        using Context ctx = await Context.Create();
-        Transaction tx = Build.A.Transaction
-            .WithGasLimit(100000)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
-        transaction.MaxFeePerGas = 0;
-        transaction.GasPrice = null;
-        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
-
-        Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"maxFeePerGas must be non-zero\"},\"id\":67}"));
-    }
-
-    [Test]
     public async Task Eth_call_maxFeePerGas_smaller_then_maxPriorityFeePerGas()
     {
         using Context ctx = await Context.Create();

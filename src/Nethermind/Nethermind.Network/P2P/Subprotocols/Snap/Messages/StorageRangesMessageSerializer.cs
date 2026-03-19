@@ -5,6 +5,7 @@ using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -12,6 +13,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public sealed class StorageRangesMessageSerializer : IZeroMessageSerializer<StorageRangeMessage>
     {
+        private static readonly RlpLimit StorageSlotValueRlpLimit = RlpLimit.For<PathWithStorageSlot>(33, nameof(PathWithStorageSlot.SlotRlpValue));
+
         public void Serialize(IByteBuffer byteBuffer, StorageRangeMessage message)
         {
             (int contentLength, int allSlotsLength, int[] accountSlotsLengths) = CalculateLengths(message);
@@ -70,9 +73,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 {
                     innerCtx.ReadSequenceLength();
                     Hash256 path = innerCtx.DecodeKeccak();
-                    byte[] value = innerCtx.DecodeByteArray();
+                    byte[] value = innerCtx.DecodeByteArray(StorageSlotValueRlpLimit);
                     return new PathWithStorageSlot(in path.ValueHash256, value);
-                }));
+                }, limit: SnapMessageLimits.StorageRangeSlotsPerAccountRlpLimit), limit: SnapMessageLimits.StorageRangeAccountsRlpLimit);
             message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
 
             byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
