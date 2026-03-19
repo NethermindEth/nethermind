@@ -7,7 +7,9 @@ using FluentAssertions;
 using FluentAssertions.Json;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Json;
@@ -76,7 +78,7 @@ public class OptimismEngineRpcModuleTest
 
         var handler = Substitute.For<IOptimismSignalSuperchainV1Handler>();
         handler.CurrentVersion.Returns(current);
-        IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
+        IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler, Substitute.For<IPayloadPreparationService>(), TestLogManager.Instance);
 
         _ = rpcModule.engine_signalSuperchainV1(signal);
 
@@ -94,7 +96,7 @@ public class OptimismEngineRpcModuleTest
 
         var handler = Substitute.For<IOptimismSignalSuperchainV1Handler>();
         handler.CurrentVersion.Returns(current);
-        IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
+        IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler, Substitute.For<IPayloadPreparationService>(), TestLogManager.Instance);
 
         ResultWrapper<OptimismSignalSuperchainV1Result> result = rpcModule.engine_signalSuperchainV1(signal);
 
@@ -118,7 +120,7 @@ public class OptimismEngineRpcModuleTest
     {
         var handler = Substitute.For<IOptimismSignalSuperchainV1Handler>();
         handler.CurrentVersion.Returns(testCase.Current);
-        IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
+        IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler, Substitute.For<IPayloadPreparationService>(), TestLogManager.Instance);
 
         var signal = new EthereumJsonSerializer().Deserialize<OptimismSuperchainSignal>(testCase.Signal);
         var response = await RpcTest.TestSerializedRequest(rpcModule, "engine_signalSuperchainV1", signal);
