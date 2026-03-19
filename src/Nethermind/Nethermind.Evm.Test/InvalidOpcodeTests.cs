@@ -103,24 +103,17 @@ namespace Nethermind.Evm.Test
             CancunInstructions.Union(
                 new Instruction[]
                 {
-                    Instruction.RJUMP,
-                    Instruction.RJUMPI,
-                    Instruction.RJUMPV,
-                    Instruction.CALLF,
-                    Instruction.RETF,
-                    Instruction.JUMPF,
-                    Instruction.EOFCREATE,
-                    Instruction.RETURNCODE,
-                    Instruction.DATASIZE,
-                    Instruction.DATACOPY,
-                    Instruction.DATALOAD,
-                    Instruction.DATALOADN,
+                    Instruction.CLZ,
+                }
+            ).ToArray();
+
+        private static readonly Instruction[] AmsterdamInstructions =
+            OsakaInstructions.Union(
+                new Instruction[]
+                {
                     Instruction.SWAPN,
                     Instruction.DUPN,
                     Instruction.EXCHANGE,
-                    Instruction.EXTCALL,
-                    Instruction.EXTDELEGATECALL,
-                    Instruction.EXTSTATICCALL,
                 }
             ).ToArray();
 
@@ -141,7 +134,8 @@ namespace Nethermind.Evm.Test
                 {MainnetSpecProvider.CancunActivation, CancunInstructions},
                 {MainnetSpecProvider.PragueActivation, CancunInstructions},
                 {MainnetSpecProvider.OsakaActivation, OsakaInstructions},
-                {(long.MaxValue, ulong.MaxValue), OsakaInstructions}
+                {MainnetSpecProvider.AmsterdamActivation, AmsterdamInstructions},
+                {(long.MaxValue, ulong.MaxValue), AmsterdamInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";

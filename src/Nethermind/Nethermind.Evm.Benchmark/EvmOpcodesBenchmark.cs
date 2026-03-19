@@ -87,7 +87,7 @@ public unsafe class EvmOpcodesBenchmark
     private static readonly byte[] StopCode = [(byte)Instruction.STOP];
     private static readonly Instruction[] AllValidLegacyOpcodes = Enum
         .GetValues<Instruction>()
-        .Where(static opcode => opcode.IsValid(isEofContext: false) && opcode != Instruction.INVALID)
+        .Where(static opcode => opcode.IsValid() && opcode != Instruction.INVALID)
         .ToArray();
     private static readonly Instruction[] PerRunRefreshedOpcodes =
     [

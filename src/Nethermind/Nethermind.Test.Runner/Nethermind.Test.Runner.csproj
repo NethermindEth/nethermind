@@ -26,9 +26,6 @@
     <Content Include="blockchainTest1.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="eoftest1.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Include="statetest1.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

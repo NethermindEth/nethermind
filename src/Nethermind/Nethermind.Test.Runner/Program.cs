@@ -24,8 +24,6 @@ internal class Program
         public static Option<bool> BlockTest { get; } =
             new("--blockTest", "-b") { Description = "Set test as blockTest. if not, it will be by default assumed a state test." };
 
-        public static Option<bool> EofTest { get; } =
-            new("--eofTest", "-e") { Description = "Set test as eofTest. if not, it will be by default assumed a state test." };
         public static Option<bool> TraceAlways { get; } =
             new("--trace", "-t") { Description = "Set to always trace (by default traces are only generated for failing tests)." };
 
@@ -58,7 +56,6 @@ internal class Program
             Options.Input,
             Options.Filter,
             Options.BlockTest,
-            Options.EofTest,
             Options.TraceAlways,
             Options.TraceNever,
             Options.ExcludeMemory,
@@ -102,12 +99,6 @@ internal class Program
                     !parseResult.GetValue(Options.ExcludeMemory),
                     parseResult.GetValue(Options.ExcludeStack)));
             }
-            else if (parseResult.GetValue(Options.EofTest))
-            {
-                RunEofTest(input, source => new EofTestsRunner(
-                    source,
-                    parseResult.GetValue(Options.Filter)));
-            }
             else
             {
                 RunStateTest(input, source => new StateTestsRunner(
@@ -139,14 +130,6 @@ internal class Program
             ? new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), path)
             : new TestsSourceLoader(new LoadBlockchainTestsStrategy(), path);
         await testRunnerBuilder(source).RunTestsAsync();
-    }
-
-    private static void RunEofTest(string path, Func<ITestSourceLoader, IEofTestRunner> testRunnerBuilder)
-    {
-        ITestSourceLoader source = Path.HasExtension(path)
-            ? new TestsSourceLoader(new LoadEofTestFileStrategy(), path)
-            : new TestsSourceLoader(new LoadEofTestsStrategy(), path);
-        testRunnerBuilder(source).RunTests();
     }
 
     private static void RunStateTest(string path, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)
