@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
-using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -65,8 +63,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             ArrayPoolList<PathWithAccount> pathsWithAccounts = new(count);
             for (int i = 0; i < count; i++)
             {
-                ctx.ReadSequenceLength();
+                int length = ctx.ReadSequenceLength();
+                int checkPosition = ctx.Position + length;
+
                 pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.Decode(ref ctx)));
+                ctx.Check(checkPosition);
             }
 
             message.PathsWithAccounts = pathsWithAccounts;

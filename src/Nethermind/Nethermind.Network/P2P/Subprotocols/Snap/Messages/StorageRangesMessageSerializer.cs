@@ -5,7 +5,6 @@ using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -71,9 +70,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             message.Slots = ctx.DecodeArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(static (ref Rlp.ValueDecoderContext outerCtx) =>
                 outerCtx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext innerCtx) =>
                 {
-                    innerCtx.ReadSequenceLength();
-                    Hash256 path = innerCtx.DecodeKeccak();
+                    int length = innerCtx.ReadSequenceLength();
+                    int checkPosition = innerCtx.Position + length;
+
+                    Hash256 path = innerCtx.DecodeKeccak()!;
                     byte[] value = innerCtx.DecodeByteArray(StorageSlotValueRlpLimit);
+
+                    innerCtx.Check(checkPosition);
                     return new PathWithStorageSlot(in path.ValueHash256, value);
                 }, limit: SnapMessageLimits.StorageRangeSlotsPerAccountRlpLimit), limit: SnapMessageLimits.StorageRangeAccountsRlpLimit);
             message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);

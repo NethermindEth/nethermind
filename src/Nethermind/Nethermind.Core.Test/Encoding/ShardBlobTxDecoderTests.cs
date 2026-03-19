@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using MathNet.Numerics.Random;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -128,6 +129,33 @@ public partial class ShardBlobTxDecoderTests
         };
 
         decodeByValueDecoderContext.Should().Throw<RlpLimitException>();
+    }
+
+    // Other clients validate each blob length
+    [Test]
+    public void Rejects_blob_tx_with_invalid_versioned_hash_length(
+        [Values(0, 1, 31, 33)] int invalidLength
+    )
+    {
+        Transaction tx = Build.A.Transaction
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithShardBlobTxTypeAndFields(4, false)
+            .WithBlobVersionedHashes([
+                Random.Shared.NextBytes(32),
+                Random.Shared.NextBytes(32),
+                Random.Shared.NextBytes(invalidLength),
+                Random.Shared.NextBytes(32)
+            ])
+            .SignedAndResolved()
+            .TestObject;
+
+        var rlp = _txDecoder.Encode(tx).Bytes;
+
+        Assert.That(() =>
+        {
+            Rlp.ValueDecoderContext ctx = new(rlp);
+            _txDecoder.Decode(ref ctx);
+        }, Throws.InstanceOf<RlpException>());
     }
 
     [TestCaseSource(nameof(ShardBlobTxTests))]

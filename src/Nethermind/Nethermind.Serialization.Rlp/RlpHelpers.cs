@@ -249,6 +249,10 @@ internal static class RlpHelpers
     }
 
     [DoesNotReturn, StackTraceHidden]
+    public static void ThrowUnexpectedBoolValue(byte value)
+        => throw new RlpException($"Unexpected value for a boolean {value}");
+
+    [DoesNotReturn, StackTraceHidden]
     public static void ThrowUnexpectedByteValue(int buffer0)
         => throw new RlpException($"Unexpected byte value {buffer0}");
 
@@ -274,7 +278,7 @@ internal static class RlpHelpers
 
     [DoesNotReturn, StackTraceHidden]
     public static uint ThrowNonCanonicalInteger(int position)
-        => throw new RlpException($"Non-canonical integer (leading zero bytes) at position {position}");
+        => throw new RlpException($"Non-canonical integer at position {position}");
 
     [DoesNotReturn, StackTraceHidden]
     public static uint ThrowUnexpectedIntegerLength(int length)

@@ -49,21 +49,21 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
         Rlp.ValueDecoderContext ctx = Data.AsRlpContext();
         ctx.ReadSequenceLength();
-        int version = ctx.DecodeInt();
+        int version = (int)ctx.DecodeUInt();
 
         ctx.ReadSequenceLength();
         ReadOnlySpan<byte> sourceAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
 
         // TODO: please note that we decode only one field for port and if the UDP is different from TCP then
         // our discovery messages will not be routed correctly (the fix will not be part of this commit)
-        ctx.DecodeInt(); // UDP port
-        int tcpPort = ctx.DecodeInt(); // we assume here that UDP and TCP port are same
+        ctx.DecodeUInt(); // UDP port
+        int tcpPort = (int)ctx.DecodeUInt(); // we assume here that UDP and TCP port are same
 
         IPEndPoint source = GetAddress(sourceAddress, tcpPort);
         ctx.ReadSequenceLength();
         ReadOnlySpan<byte> destinationAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
-        IPEndPoint destination = GetAddress(destinationAddress, ctx.DecodeInt());
-        ctx.DecodeInt(); // UDP port
+        IPEndPoint destination = GetAddress(destinationAddress, (int)ctx.DecodeUInt());
+        ctx.DecodeUInt(); // UDP port
 
         long expireTime = ctx.DecodeLong();
         PingMsg msg = new(FarPublicKey, expireTime, source, destination, Mdc.ToArray()) { Version = version };
@@ -91,7 +91,6 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
             GetLength(msg);
         return totalLength;
     }
-
 
     private static (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) GetLength(PingMsg msg)
     {

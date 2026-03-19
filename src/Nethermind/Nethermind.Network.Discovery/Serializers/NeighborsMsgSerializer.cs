@@ -25,10 +25,10 @@ public class NeighborsMsgSerializer(
         int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
         ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
-        IPEndPoint address = GetAddress(ip, ctx.DecodeInt());
+        IPEndPoint address = GetAddress(ip, (int)ctx.DecodeUInt());
         if (count > 3)
         {
-            ctx.DecodeInt();
+            ctx.DecodeUInt();
         }
 
         ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan(NodeIdRlpLimit);
