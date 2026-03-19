@@ -65,18 +65,9 @@ public sealed class PooledBufferLeakDetector : IDisposable
         _initialAlloc = Allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
     }
 
-    /// <summary>
-    /// Explicitly assert no leaks. Call at the end of the test body to get a clear failure
-    /// without risk of masking the original exception (as Dispose would from a finally block).
-    /// </summary>
-    public void AssertNoLeaks()
+    public void Dispose()
     {
         long active = Allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
         Assert.That(active, Is.EqualTo(_initialAlloc), _message);
-    }
-
-    public void Dispose()
-    {
-        AssertNoLeaks();
     }
 }

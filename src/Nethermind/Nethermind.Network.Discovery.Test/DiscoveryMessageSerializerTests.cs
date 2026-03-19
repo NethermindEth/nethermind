@@ -34,6 +34,7 @@ public class DiscoveryMessageSerializerTests
     private readonly IMessageSerializationService _messageSerializationService;
     private readonly ITimestamper _timestamper;
     private readonly PooledByteBufferAllocator _leakDetectionAllocator = PooledBufferLeakDetector.CreateAllocator();
+
     public DiscoveryMessageSerializerTests()
     {
         INetworkConfig networkConfig = new NetworkConfig();
@@ -48,12 +49,13 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void PingMessageTest()
     {
+        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
         PingMsg message =
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, _farAddress, _nearAddress,
                 new byte[32])
             { FarAddress = _farAddress };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
         PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(data);
 
         Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
@@ -85,13 +87,14 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void PongMessageTest()
     {
+        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
         PongMsg message =
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] { 1, 2, 3 })
             {
                 FarAddress = _farAddress
             };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
         PongMsg deserializedMessage = _messageSerializationService.Deserialize<PongMsg>(data);
 
         Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
@@ -137,9 +140,10 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void Enr_response_there_and_back()
     {
+        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
         EnrResponseMsg msg = BuildEnrResponse(_privateKey.CompressedPublicKey);
 
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg).AsDisposable();
+        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
         EnrResponseMsg deserialized = _messageSerializationService.Deserialize<EnrResponseMsg>(serialized);
         Assert.That(deserialized.NodeRecord.EnrSequence, Is.EqualTo(msg.NodeRecord.EnrSequence));
         Assert.That(deserialized.RequestKeccak, Is.EqualTo(msg.RequestKeccak));
@@ -164,89 +168,6 @@ public class DiscoveryMessageSerializerTests
     }
 
     [Test]
-    public void Enr_response_deserialize_does_not_leak_buffer_on_success()
-    {
-        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
-        EnrResponseMsg msg = BuildEnrResponse(_privateKey.CompressedPublicKey);
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
-
-        EnrResponseMsg deserialized = _messageSerializationService.Deserialize<EnrResponseMsg>(serialized);
-
-        deserialized.NodeRecord.EnrSequence.Should().Be(5);
-        deserialized.RequestKeccak.Should().Be(TestItem.KeccakA);
-    }
-
-    [Test]
-    public void Ping_deserialize_does_not_leak_buffer()
-    {
-        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
-        PingMsg msg = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
-            new IPEndPoint(IPAddress.Parse("192.168.1.1"), 30303),
-            new IPEndPoint(IPAddress.Parse("192.168.1.2"), 30303),
-            new byte[32])
-        {
-            FarAddress = _farAddress
-        };
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
-
-        _messageSerializationService.Deserialize<PingMsg>(serialized);
-    }
-
-    [Test]
-    public void Pong_deserialize_does_not_leak_buffer()
-    {
-        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
-        PongMsg msg = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] { 1, 2, 3 })
-        {
-            FarAddress = _farAddress
-        };
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
-
-        _messageSerializationService.Deserialize<PongMsg>(serialized);
-    }
-
-    [Test]
-    public void FindNode_deserialize_does_not_leak_buffer()
-    {
-        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
-        FindNodeMsg msg = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] { 1, 2, 3 })
-        {
-            FarAddress = _farAddress
-        };
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
-
-        _messageSerializationService.Deserialize<FindNodeMsg>(serialized);
-    }
-
-    [Test]
-    public void Neighbors_deserialize_does_not_leak_buffer()
-    {
-        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
-        NeighborsMsg msg = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
-            new[] { new Node(TestItem.PublicKeyA, "192.168.1.2", 1) })
-        {
-            FarAddress = _farAddress
-        };
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
-
-        _messageSerializationService.Deserialize<NeighborsMsg>(serialized);
-    }
-
-    [Test]
-    public void Neighbors_deserialize_does_not_leak_buffer_on_port_zero_rejection()
-    {
-        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
-        NeighborsMsg msg = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
-            new Node[] { new(TestItem.PublicKeyA, "192.168.1.2", 0) })
-        {
-            FarAddress = _farAddress
-        };
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
-
-        Assert.Throws<NetworkingException>(() => _messageSerializationService.Deserialize<NeighborsMsg>(serialized));
-    }
-
-    [Test]
     public void Ping_with_node_id_address_is_rejected()
     {
         string message =
@@ -268,13 +189,14 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void FindNodeMessageTest()
     {
+        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
         FindNodeMsg message =
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] { 1, 2, 3 })
             {
                 FarAddress = _farAddress
             };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
         FindNodeMsg deserializedMessage = _messageSerializationService.Deserialize<FindNodeMsg>(data);
 
         Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
@@ -299,6 +221,7 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void NeighborsMessageTest()
     {
+        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
         NeighborsMsg message =
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
                 new[]
@@ -311,7 +234,7 @@ public class DiscoveryMessageSerializerTests
                 FarAddress = _farAddress
             };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
         NeighborsMsg deserializedMessage = _messageSerializationService.Deserialize<NeighborsMsg>(data);
 
         Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
@@ -340,6 +263,7 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void NeighborsMessage_Rejects_Port_Zero()
     {
+        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
         NeighborsMsg message =
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
                 new Node[] { new(TestItem.PublicKeyA, "192.168.1.2", 0) })
@@ -347,7 +271,7 @@ public class DiscoveryMessageSerializerTests
                 FarAddress = _farAddress
             };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
         Assert.Throws<NetworkingException>(() => _messageSerializationService.Deserialize<NeighborsMsg>(data));
     }
 
