@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -195,6 +196,7 @@ namespace Nethermind.AuRa.Test
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new(
                 GnosisSpecProvider.Instance,
+                new AuRaChainSpecEngineParameters(),
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(

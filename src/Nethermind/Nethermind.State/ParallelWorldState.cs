@@ -17,6 +17,7 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -103,14 +104,9 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     public void ApplyStateChanges(IReleaseSpec spec, bool shouldComputeStateRoot)
     {
         Console.WriteLine("[parallel] starting state change application");
+
         foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
-            // todo: maybe needed for aura, investigate
-            // if (_isAura && accountChanges.Address == Address.SystemUser)
-            // {
-            //     _innerWorldState.CreateAccount(Address.SystemUser, UInt256.Zero, UInt256.Zero);
-            // }
-
             if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges.Last().BlockAccessIndex != -1)
             {
                 _innerWorldState.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
@@ -154,6 +150,16 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
         }
 
         Console.WriteLine("[parallel] completed state change application");
+    }
+
+    public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress)
+    {
+        if (_isAura && ParallelExecutionEnabled)
+        {
+            _innerWorldState.CreateAccount(Address.SystemUser, UInt256.Zero, UInt256.Zero);
+            _innerWorldState.CreateAccount(withdrawalContractAddress, UInt256.Zero, UInt256.Zero);
+            _innerWorldState.Commit(spec.ForSystemTransaction(true, false), commitRoots: false);
+        }
     }
 
     public void MergeIntermediateBalsUpTo(ushort index)
@@ -956,7 +962,6 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
     // for testing
     internal IWorldState Inner => _innerWorldState;
-
 
     private static bool HasNoChanges(in ChangeAtIndex c)
         => c.BalanceChange is null &&

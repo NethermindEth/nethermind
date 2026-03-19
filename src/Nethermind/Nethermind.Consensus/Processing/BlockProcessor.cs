@@ -4,7 +4,6 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -17,7 +16,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -27,7 +25,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
@@ -49,7 +46,7 @@ public partial class BlockProcessor(
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
+    protected readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
     protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
     private Hash256 _lastLoadedBal;
 

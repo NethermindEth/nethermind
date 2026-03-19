@@ -15,6 +15,7 @@ public interface IBlockAccessListBuilder
     public bool ParallelExecutionEnabled { get; }
     public BlockAccessList GeneratedBlockAccessList { get; set; }
     public void ApplyStateChanges(IReleaseSpec spec, bool shouldComputeStateRoot);
+    public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContract);
     public void SetupGeneratedAccessLists(ILogManager logManager, int txCount);
     public void MergeIntermediateBalsUpTo(ushort index);
     public void AddAccountRead(Address address, int? blockAccessIndex = null);

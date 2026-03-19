@@ -62,7 +62,7 @@ public class ParallelWorldStateTests
     {
         ParallelWorldState pws = CreateStateCore(parallel: true, genesisSetup, out BlockHeader baseBlock);
         IDisposable scope = pws.BeginScope(baseBlock);
-        pws.LoadSuggestedBlockAccessList(suggestedBal, gasUsed: 0);
+        pws.LoadSuggestedBlockAccessList(suggestedBal, 0);
         pws.SetupGeneratedAccessLists(Logger, txCount);
         return (pws, scope);
     }
