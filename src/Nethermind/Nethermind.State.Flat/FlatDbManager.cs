@@ -313,6 +313,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId startingBlock = snapshot.From;
         StateId endBlock = snapshot.To;
 
+        // Evict cached bundles for states superseded by this snapshot. Their persistence readers
+        // pin RocksDB snapshots and prevent compaction. Without this, cached bundles linger until
+        // the async compactor runs — which may not happen for the previous block if its compaction
+        // alignment is below minCompactSize (e.g., block 1 where 1 & -1 = 1 < 2).
+        EvictStaleBundleCache(startingBlock);
+
         if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.BlockNumber} to {endBlock.BlockNumber}");
         StateId persistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (endBlock.BlockNumber <= persistedStateId.BlockNumber)
@@ -359,6 +365,25 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         foreach (StateId stateId in statesToRemove)
         {
             if (_readonlySnapshotBundleCache.TryRemove(stateId, out ReadOnlySnapshotBundle? bundle))
+            {
+                bundle.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Evict cached <see cref="ReadOnlySnapshotBundle"/> entries for states older than <paramref name="currentFrom"/>.
+    /// These bundles hold leases on <see cref="RefCountingPersistenceReader"/> (RocksDB snapshots) that block
+    /// database compaction. Normally they are cleared by <see cref="ClearReadOnlyBundleCache"/> after compaction
+    /// or persistence, but compaction may not trigger for every block (alignment below minCompactSize). Eagerly
+    /// evicting superseded entries ensures persistence readers are released promptly.
+    /// </summary>
+    private void EvictStaleBundleCache(in StateId currentFrom)
+    {
+        foreach (KeyValuePair<StateId, ReadOnlySnapshotBundle> entry in _readonlySnapshotBundleCache)
+        {
+            if (entry.Key.BlockNumber < currentFrom.BlockNumber &&
+                _readonlySnapshotBundleCache.TryRemove(entry.Key, out ReadOnlySnapshotBundle? bundle))
             {
                 bundle.Dispose();
             }
