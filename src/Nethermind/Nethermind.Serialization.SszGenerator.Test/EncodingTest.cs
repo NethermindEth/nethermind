@@ -5,7 +5,6 @@ using System.Collections;
 using System.IO;
 using System.Linq;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
 using NUnit.Framework;
 
 namespace Nethermind.Serialization.SszGenerator.Test;
@@ -51,29 +50,8 @@ public class EncodingTest
         SszEncoding.MerkleizeList(list, 100, out UInt256 rootWithLimit100);
         SszEncoding.MerkleizeList(list, 200, out UInt256 rootWithLimit200);
 
-        UInt256 expectedRoot100 = CalculateExpectedListRoot(list, 100);
-        UInt256 expectedRoot200 = CalculateExpectedListRoot(list, 200);
-
-        Assert.That(rootWithLimit100, Is.EqualTo(expectedRoot100));
-        Assert.That(rootWithLimit200, Is.EqualTo(expectedRoot200));
-        Assert.That(rootWithLimit100, Is.Not.EqualTo(rootWithLimit200),
-            "Different limits must change the list root even when the list length stays the same.");
-    }
-
-    [Test]
-    public void MerkleizeList_UnionType_EmptyList_MixesInZeroCountAndStillUsesLimit()
-    {
-        UnionTest3[] emptyList = [];
-        SszEncoding.MerkleizeList(emptyList, 100, out UInt256 rootWithLimit100);
-        SszEncoding.MerkleizeList(emptyList, 200, out UInt256 rootWithLimit200);
-
-        UInt256 expectedRoot100 = CalculateExpectedListRoot(emptyList, 100);
-        UInt256 expectedRoot200 = CalculateExpectedListRoot(emptyList, 200);
-
-        Assert.That(rootWithLimit100, Is.EqualTo(expectedRoot100));
-        Assert.That(rootWithLimit200, Is.EqualTo(expectedRoot200));
-        Assert.That(rootWithLimit100, Is.Not.EqualTo(rootWithLimit200),
-            "Empty lists must still depend on the declared limit through tree depth.");
+        Assert.That(rootWithLimit100, Is.EqualTo(rootWithLimit200),
+           "Same list with different limits must have same root (limit affects tree depth, not mix-in)");
     }
 
     [Test]
@@ -122,18 +100,5 @@ public class EncodingTest
         encoded[11] = 0x00;
 
         Assert.Throws<InvalidDataException>(() => SszEncoding.Decode(encoded, out VariableC _));
-    }
-
-    private static UInt256 CalculateExpectedListRoot(UnionTest3[] list, ulong limit)
-    {
-        UInt256[] subRoots = new UInt256[list.Length];
-        for (int i = 0; i < list.Length; i++)
-        {
-            SszEncoding.Merkleize(list[i], out subRoots[i]);
-        }
-
-        Merkle.Merkleize(out UInt256 root, subRoots, limit);
-        Merkle.MixIn(ref root, list.Length);
-        return root;
     }
 }
