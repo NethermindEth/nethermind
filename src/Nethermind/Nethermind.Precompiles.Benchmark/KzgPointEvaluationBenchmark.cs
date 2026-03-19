@@ -9,7 +9,7 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Precompiles.Benchmark;
 
-public class PointEvaluationBenchmark : PrecompileBenchmarkBase
+public class KzgPointEvaluationBenchmark : PrecompileBenchmarkBase
 {
     [GlobalSetup]
     public async Task GlobalSetup() => await KzgPolynomialCommitments.InitializeAsync();
