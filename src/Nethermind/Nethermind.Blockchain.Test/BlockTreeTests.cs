@@ -2661,6 +2661,60 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_sync_marks_descendant_canonical_then_reorg_to_sibling_decanonalizes_it()
+    {
+        // Regression test for the Gnosis canonical-mismatch bug.
+        //
+        // BlockDownloader calls UpdateMainChain(block, wereProcessed: false) to mark synced
+        // blocks canonical without updating Head. When a reorg then arrives at the same height
+        // as the stale Head (previousHeadNumber == lastNumber), the old unmark loop
+        // (previousHeadNumber > lastNumber) is skipped, leaving the orphaned descendant
+        // wrongly canonical so eth_getBlockByNumber returns the wrong block.
+        //
+        // The fix adds an else-branch that scans upward from lastNumber+1 to clear any
+        // stale canonical markers left by the sync path.
+        //
+        // Scenario:
+        //   UpdateMainChain([A], wereProcessed: true)  — FCU(A): head = A at H=1.
+        //   UpdateMainChain([C], wereProcessed: false) — sync: C canonical at H=2, head stays at A.
+        //   UpdateMainChain([B], wereProcessed: true)  — FCU(B, H=1, sibling of A):
+        //     previousHeadNumber(1) == lastNumber(1) → else-branch fires → C at H=2 decanonalized.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        Block blockC = Build.A.Block.WithNumber(2).WithParent(blockA).TestObject;
+
+        blockTree.SuggestBlock(blockA);
+        blockTree.SuggestBlock(blockB);
+        blockTree.SuggestBlock(blockC);
+
+        // FCU(A): A becomes head at H=1.
+        blockTree.UpdateMainChain(new[] { blockA }, wereProcessed: true, forceUpdateHeadBlock: true);
+        blockTree.Head!.Hash.Should().Be(blockA.Hash!, "head must be A");
+
+        // Sync marks C canonical at H=2 without updating Head (BlockDownloader path).
+        blockTree.UpdateMainChain(new[] { blockC }, wereProcessed: false);
+        blockTree.Head!.Hash.Should().Be(blockA.Hash!, "head must stay at A — wereProcessed=false");
+        blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical)
+            .Should().NotBeNull("C must be canonical at H=2 after sync marks it");
+
+        // FCU(B): reorg to sibling at the same height as the stale Head.
+        // previousHeadNumber(1) == lastNumber(1) → old loop skipped → else-branch must clear C.
+        blockTree.UpdateMainChain(new[] { blockB }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        blockTree.Head!.Hash.Should().Be(blockB.Hash!, "head must be B after reorg");
+        blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
+            "C must not be canonical — its parent A was replaced by B");
+        blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull(
+            "B must be canonical");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Canonical_chain_walk_every_ancestor_is_IsMainChain_true()
     {
         // Walk from canonical head back to genesis via ParentHash.

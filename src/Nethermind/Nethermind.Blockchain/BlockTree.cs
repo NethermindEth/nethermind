@@ -1013,6 +1013,25 @@ namespace Nethermind.Blockchain
                     }
                 }
             }
+            else
+            {
+                // Head can be stale when BlockchainProcessor calls UpdateMainChain with
+                // forceUpdateHeadBlock=false (e.g. during newPayload processing). In that case
+                // previousHeadNumber reflects a height we already moved past, so the loop above
+                // never runs and canonical markers above lastNumber are left unreachable.
+                // Scan upward from lastNumber+1 and clear any stale canonical levels we find.
+                for (long levelNumber = lastNumber + 1; ; levelNumber++)
+                {
+                    ChainLevelInfo? level = LoadLevel(levelNumber);
+                    if (level is null || !level.HasBlockOnMainChain)
+                    {
+                        break;
+                    }
+
+                    level.HasBlockOnMainChain = false;
+                    _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                }
+            }
 
             for (int i = 0; i < blocks.Count; i++)
             {
