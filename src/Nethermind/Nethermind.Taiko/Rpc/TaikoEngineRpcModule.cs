@@ -458,7 +458,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             // Skip preconfirmation blocks
             if (l1Origin is not null && l1Origin.IsPreconfBlock)
             {
-                currentBlock = blockFinder.FindBlock(currentBlock.Number - 1);
+                currentBlock = blockFinder.FindBlock((long)(currentBlock.Number - 1));
                 continue;
             }
 
@@ -473,7 +473,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 return (UInt256)currentBlock.Number;
             }
 
-            currentBlock = blockFinder.FindBlock(currentBlock.Number - 1);
+            currentBlock = blockFinder.FindBlock((long)(currentBlock.Number - 1));
         }
 
         return null;

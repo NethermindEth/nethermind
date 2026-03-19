@@ -49,11 +49,11 @@ internal class XdcBlockTree : BlockTree
             //Weird case if re-suggesting the finalized block
             return AddBlockResult.AlreadyKnown;
         }
-        if (finalizedBlockInfo.BlockNumber >= header.Number)
+        if (finalizedBlockInfo.BlockNumber >= (long)header.Number)
         {
             return AddBlockResult.InvalidBlock;
         }
-        if (header.Number - finalizedBlockInfo.BlockNumber > MaxSearchDepth)
+        if ((long)header.Number - finalizedBlockInfo.BlockNumber > MaxSearchDepth)
         {
             //Theoretically very deep reorgs could happen, if the chain doesn't finalize for a long time
             //TODO Maybe this needs to be revisited later
@@ -61,9 +61,9 @@ internal class XdcBlockTree : BlockTree
             return AddBlockResult.InvalidBlock;
         }
         BlockHeader current = header;
-        for (long i = header.Number; i >= finalizedBlockInfo.BlockNumber; i--)
+        for (long i = (long)header.Number; i >= finalizedBlockInfo.BlockNumber; i--)
         {
-            if (finalizedBlockInfo.BlockNumber >= current.Number)
+            if (finalizedBlockInfo.BlockNumber >= (long)current.Number)
                 return AddBlockResult.InvalidBlock;
 
             if (finalizedBlockInfo.Hash == current.ParentHash)

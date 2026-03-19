@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
         {
-            if (parentHeader.Number + 1 < _contract.Activation)
+            if ((long)(parentHeader.Number + 1) < _contract.Activation)
             {
                 return AcceptTxResult.Accepted;
             }

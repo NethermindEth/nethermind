@@ -70,8 +70,8 @@ public partial class ForwardHeaderProviderTests
         int maxNHeader = Math.Min(maxHeader, peerInfo!.MaxHeadersPerRequest());
 
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(skipLastN, maxNHeader, CancellationToken.None);
-        headers?[0]?.Number.Should().Be(expectedStartNumber);
-        headers?[^1]?.Number.Should().Be(expectedEndNumber);
+        headers?[0]?.Number.Should().Be((ulong)expectedStartNumber);
+        headers?[^1]?.Number.Should().Be((ulong)expectedEndNumber);
     }
 
     [Test]
@@ -117,7 +117,7 @@ public partial class ForwardHeaderProviderTests
         {
         }, new ConfigProvider(new SyncConfig()
         {
-            PivotNumber = syncPivot.Number,
+            PivotNumber = (long)syncPivot.Number,
             PivotHash = syncPivot.Hash!.ToString(),
         }));
 
@@ -130,7 +130,7 @@ public partial class ForwardHeaderProviderTests
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
 
-        headers?[0]?.Number.Should().Be(pivotNumber);
+        headers?[0]?.Number.Should().Be((ulong)pivotNumber);
     }
 
     [Test]
@@ -171,7 +171,7 @@ public partial class ForwardHeaderProviderTests
 
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         headers?[0]?.Number.Should().Be(0);
-        headers?[^1]?.Number.Should().Be(headNumber);
+        headers?[^1]?.Number.Should().Be((ulong)headNumber);
     }
 
     [Test]
@@ -564,7 +564,7 @@ public partial class ForwardHeaderProviderTests
             _withWithdrawals = withWithdrawals;
             _flags = flags;
             BlockTree = blockTree;
-            HeadNumber = BlockTree.Head!.Number;
+            HeadNumber = (long)BlockTree.Head!.Number;
             HeadHash = BlockTree.HeadHash!;
             TotalDifficulty = peerTotalDifficulty;
         }
@@ -581,7 +581,7 @@ public partial class ForwardHeaderProviderTests
             builder = builder.OfChainLength((int)chainLength, 0, 0, _withWithdrawals);
             BlockTree = builder.TestObject;
 
-            HeadNumber = BlockTree.Head!.Number;
+            HeadNumber = (long)BlockTree.Head!.Number;
             HeadHash = BlockTree.HeadHash!;
             TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
         }
@@ -723,7 +723,7 @@ public partial class ForwardHeaderProviderTests
                     Hash256 receiptRoot = i == 1 ? Keccak.EmptyTreeHash : new Hash256("0x9904791428367d3f36f2be68daf170039dd0b3d6b23da00697de816a05fb5cc1");
                     BlockHeaderBuilder blockHeaderBuilder = consistent
                         ? Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithParent(headers[i - 1])
-                        : Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithNumber(headers[i - 1].Number + 1);
+                        : Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithNumber((long)(headers[i - 1].Number + 1));
 
                     if (withTransaction)
                     {
@@ -802,9 +802,9 @@ public partial class ForwardHeaderProviderTests
                 {
                     blockHeaders[i] = consistent
                         ? _headers[blockHashes[i]]
-                        : Build.A.BlockHeader.WithNumber(blockHeaders[i - 1].Number + 1).WithHash(blockHashes[i]).TestObject;
+                        : Build.A.BlockHeader.WithNumber((long)(blockHeaders[i - 1].Number + 1)).WithHash(blockHashes[i]).TestObject;
 
-                    _testHeaderMapping[startHeader.Number + i] = blockHeaders[i].Hash!;
+                    _testHeaderMapping[(long)startHeader.Number + i] = blockHeaders[i].Hash!;
 
                     BlockHeader header = consistent
                         ? blockHeaders[i]

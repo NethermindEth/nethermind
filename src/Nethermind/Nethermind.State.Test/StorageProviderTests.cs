@@ -475,7 +475,7 @@ public class StorageProviderTests(bool useFlat)
             provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
 
             provider.Commit(Frontier.Instance);
-            provider.CommitTree(baseBlock.Number + 1);
+            provider.CommitTree((long)baseBlock.Number + 1);
 
             baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
         }
@@ -493,7 +493,7 @@ public class StorageProviderTests(bool useFlat)
             provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
 
             provider.Commit(Frontier.Instance);
-            provider.CommitTree(baseBlock.Number + 1);
+            provider.CommitTree((long)baseBlock.Number + 1);
 
             baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
         }

@@ -1090,7 +1090,7 @@ namespace Nethermind.TxPool.Test
                     IsEip7594Enabled = true,
                     MaxBlobCount = regularMaxBlobCount,
                 },
-                ForkOnBlockNumber = _blockTree.Head!.Number + 1,
+                ForkOnBlockNumber = (long?)(_blockTree.Head!.Number + 1),
             };
 
             Block head = _blockTree.Head;
@@ -1124,7 +1124,7 @@ namespace Nethermind.TxPool.Test
                     IsEip4844Enabled = true,
                     MaxBlobCount = decreasedMaxBlobCount,
                 },
-                ForkOnBlockNumber = _blockTree.Head!.Number + 1,
+                ForkOnBlockNumber = (long?)(_blockTree.Head!.Number + 1),
             };
 
             Block head = _blockTree.Head;

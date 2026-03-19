@@ -65,7 +65,7 @@ public class TaikoEngineApiTests
         static void AddBlock(IBlockTree blockTree, Block block)
         {
             blockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(block);
-            blockTree.GetInfo(block.Number, block.Hash!).Returns((new BlockInfo(block.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
+            blockTree.GetInfo((long)block.Number, block.Hash!).Returns((new BlockInfo(block.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
             blockTree.Head.Returns(block);
             blockTree.HeadHash.Returns(block.Hash!);
         }
@@ -81,7 +81,7 @@ public class TaikoEngineApiTests
         Block headBlock = Build.A.Block.WithNumber(1).WithTimestamp(headTimestamp).TestObject;
 
         blockTree.FindBlock(headBlock.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(headBlock);
-        blockTree.GetInfo(headBlock.Number, headBlock.Hash!).Returns((new BlockInfo(headBlock.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
+        blockTree.GetInfo((long)headBlock.Number, headBlock.Hash!).Returns((new BlockInfo(headBlock.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
         blockTree.Head.Returns(headBlock);
         blockTree.HeadHash.Returns(headBlock.Hash!);
         blockTree.IsMainChain(headBlock.Header).Returns(true);

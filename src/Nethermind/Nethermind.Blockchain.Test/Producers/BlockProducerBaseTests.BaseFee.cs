@@ -167,7 +167,7 @@ public partial class BlockProducerBaseTests
                 IBlockTree blockTree = _testRpcBlockchain.BlockTree;
                 Block startingBlock = blockTree.Head!;
                 Assert.That(startingBlock.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
-                for (long i = startingBlock.Number; i < _eip1559TransitionBlock - 1; ++i)
+                for (long i = (long)startingBlock.Number; i < _eip1559TransitionBlock - 1; ++i)
                 {
                     await _testRpcBlockchain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx);
                     Block currentBlock = blockTree.Head!;

@@ -226,7 +226,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         var (block, _) = InsertBlock();
 
         _storage.ClearCache();
-        _storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
+        _storage.TryGetReceiptsIterator((long)block.Number, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
         iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
         receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
         receiptStructRef.Logs.Should().BeNullOrEmpty();
@@ -265,7 +265,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     public void HasBlock_should_returnTrueForKnownHash()
     {
         var (block, _) = InsertBlock();
-        _storage.HasBlock(block.Number, block.Hash!).Should().BeTrue();
+        _storage.HasBlock((long)block.Number, block.Hash!).Should().BeTrue();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -284,7 +284,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
 
         anotherBlock.Hash.Should().NotBe(block.Hash!);
         _storage.Insert(anotherBlock, new[] { Build.A.Receipt.TestObject }, ensureCanonical);
-        _blockTree.FindBlockHash(anotherBlock.Number).Returns(anotherBlock.Hash);
+        _blockTree.FindBlockHash((long)anotherBlock.Number).Returns(anotherBlock.Hash);
 
         Hash256 findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
         if (ensureCanonical)
@@ -453,7 +453,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             () => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes],
             Is.Null.After(1000, 100)
             );
-        Assert.That(_storage.HasBlock(receipts[0].BlockNumber, receipts[0].BlockHash!));
+        Assert.That(_storage.HasBlock((long)receipts[0].BlockNumber, receipts[0].BlockHash!));
     }
 
     private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
@@ -465,9 +465,9 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             .TestObject;
 
         _blockTree.FindBlock(block.Hash!).Returns(block);
-        _blockTree.FindBlock(block.Number).Returns(block);
-        _blockTree.FindHeader(block.Number).Returns(block.Header);
-        _blockTree.FindBlockHash(block.Number).Returns(block.Hash);
+        _blockTree.FindBlock((long)block.Number).Returns(block);
+        _blockTree.FindHeader((long)block.Number).Returns(block.Header);
+        _blockTree.FindBlockHash((long)block.Number).Returns(block.Hash);
         if (isFinalized)
         {
             BlockHeader farHead = Build.A.BlockHeader

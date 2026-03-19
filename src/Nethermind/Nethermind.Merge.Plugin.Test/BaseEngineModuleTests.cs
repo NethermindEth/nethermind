@@ -144,7 +144,7 @@ public abstract partial class BaseEngineModuleTests
         Block? head = blockTree.Head ?? throw new NotSupportedException();
         return new ExecutionPayload()
         {
-            BlockNumber = head.Number,
+            BlockNumber = (long)head.Number,
             BlockHash = head.Hash!,
             StateRoot = head.StateRoot!,
             ReceiptsRoot = head.ReceiptsRoot!,

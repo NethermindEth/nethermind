@@ -62,7 +62,7 @@ internal class XdcBlockAndHeaderStoreTests
         var block = blockBuilder.TestObject;
         // Act
         _blockStore.Insert(block);
-        Block? retrievedBlock = _blockStore.Get(block.Number, block.Hash!);
+        Block? retrievedBlock = _blockStore.Get((long)block.Number, block.Hash!);
         // Assert
         retrievedBlock.Should().BeEquivalentTo(block, options => options.Excluding(h => h.EncodedSize));
     }

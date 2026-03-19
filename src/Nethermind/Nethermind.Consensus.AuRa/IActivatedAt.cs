@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.AuRa
     {
         public static void BlockActivationCheck(this IActivatedAtBlock activatedAtBlock, BlockHeader parentHeader)
         {
-            if (parentHeader.Number + 1 < activatedAtBlock.ActivationBlock) throw new InvalidOperationException($"{activatedAtBlock.GetType().Name} is not active for block {parentHeader.Number + 1}. Its activated on block {activatedAtBlock.ActivationBlock}.");
+            if ((long)(parentHeader.Number + 1) < activatedAtBlock.ActivationBlock) throw new InvalidOperationException($"{activatedAtBlock.GetType().Name} is not active for block {parentHeader.Number + 1}. Its activated on block {activatedAtBlock.ActivationBlock}.");
         }
     }
 }

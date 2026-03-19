@@ -79,10 +79,10 @@ namespace Nethermind.Consensus.AuRa.Validators
                 return;
             }
 
-            bool isInitBlock = InitBlockNumber == block.Number;
+            bool isInitBlock = InitBlockNumber == (long)block.Number;
             bool isProducingBlock = options.ContainsFlag(ProcessingOptions.ProducingBlock);
             bool isMainChainProcessing = !ForSealing && !isProducingBlock;
-            bool isInProcessedRange = _lastProcessedBlockNumber is not null && block.Number - 1 <= _lastProcessedBlockNumber;
+            bool isInProcessedRange = _lastProcessedBlockNumber is not null && (long)(block.Number - 1) <= _lastProcessedBlockNumber;
             bool isConsecutiveBlock = _lastProcessedBlockHash is not null && block.ParentHash == _lastProcessedBlockHash;
 
             // this condition is probably redundant because whenever Validators is null, isConsecutiveBlock will be false
@@ -90,7 +90,8 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (Validators is null || (!isConsecutiveBlock && !isInitBlock))
             {
                 var parentHeader = BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-                Validators = isInitBlock || !isInProcessedRange ? LoadValidatorsFromContract(parentHeader) : ValidatorStore.GetValidators(block.Number);
+                long? blockNumberForValidators = (long?)block.Number;
+                Validators = isInitBlock || !isInProcessedRange ? LoadValidatorsFromContract(parentHeader) : ValidatorStore.GetValidators(in blockNumberForValidators);
 
                 if (isMainChainProcessing)
                 {
@@ -132,7 +133,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             FinalizePendingValidatorsIfNeeded(block.Header, isProducingBlock);
 
-            (_lastProcessedBlockNumber, _lastProcessedBlockHash) = (block.Number, block.Hash);
+            (_lastProcessedBlockNumber, _lastProcessedBlockHash) = ((long?)block.Number, block.Hash);
         }
 
         private PendingValidators TryGetInitChangeFromPastBlocks(Hash256 blockHash)
@@ -141,7 +142,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             var lastFinalized = _blockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
             var toBlock = Math.Max(lastFinalized, InitBlockNumber);
             var block = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
-            while (block?.Number >= toBlock)
+            while ((long?)block?.Number >= toBlock)
             {
                 var receipts = _receiptFinder.Get(block) ?? [];
                 if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
@@ -151,7 +152,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                         break; // TODO: why this?
                     }
 
-                    pendingValidators = new PendingValidators(block.Number, block.Hash, potentialValidators);
+                    pendingValidators = new PendingValidators((long)block.Number, block.Hash, potentialValidators);
                 }
                 block = BlockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.None);
             }
@@ -165,7 +166,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             if (block.IsGenesis)
             {
-                ValidatorStore.SetValidators(block.Number, LoadValidatorsFromContract(block.Header));
+                ValidatorStore.SetValidators((long)block.Number, LoadValidatorsFromContract(block.Header));
             }
 
             if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
@@ -176,7 +177,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 // This replicates openethereum's behaviour which can be seen as a bug.
                 if (_currentPendingValidators is null && potentialValidators.Length > 0)
                 {
-                    _currentPendingValidators = new PendingValidators(block.Number, block.Hash, potentialValidators);
+                    _currentPendingValidators = new PendingValidators((long)block.Number, block.Hash, potentialValidators);
                     if (!isProducingBlock)
                     {
                         ValidatorStore.PendingValidators = _currentPendingValidators;
@@ -190,16 +191,17 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void FinalizePendingValidatorsIfNeeded(BlockHeader block, bool isProducingBlock)
         {
-            var validatorsInfo = ValidatorStore.GetValidatorsInfo(block.Number);
+            long? blockNumForValidatorsInfo = (long?)block.Number;
+            var validatorsInfo = ValidatorStore.GetValidatorsInfo(in blockNumForValidatorsInfo);
             var isInitialValidatorSet = validatorsInfo.FinalizingBlockNumber == InitBlockNumber
                                         && validatorsInfo.PreviousFinalizingBlockNumber < InitBlockNumber;
 
-            if (InitBlockNumber == block.Number || (!isInitialValidatorSet && validatorsInfo.FinalizingBlockNumber == block.Number - 1))
+            if (InitBlockNumber == (long)block.Number || (!isInitialValidatorSet && validatorsInfo.FinalizingBlockNumber == (long)block.Number - 1))
             {
                 if (_logger.IsInfo && !isProducingBlock)
                     _logger.Info($"Applying validator set change before block {block.ToString(BlockHeader.Format.Short)}.");
 
-                if (block.Number == InitBlockNumber)
+                if ((long)block.Number == InitBlockNumber)
                     ValidatorContract.EnsureSystemAccount();
 
                 ValidatorContract.FinalizeChange(block);
@@ -231,7 +233,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (e.FinalizedBlocks.Any(header => header.Hash == _currentPendingValidators?.BlockHash))
             {
                 Validators = _currentPendingValidators.Addresses;
-                ValidatorStore.SetValidators(e.FinalizingBlock.Number, Validators);
+                ValidatorStore.SetValidators((long)e.FinalizingBlock.Number, Validators);
                 if (_logger.IsInfo)
                     _logger.Info($"Finalizing validators for transition signalled within contract at block {_currentPendingValidators.BlockNumber} after block {e.FinalizingBlock.ToString(BlockHeader.Format.Short)}.");
                 _currentPendingValidators = ValidatorStore.PendingValidators = null;

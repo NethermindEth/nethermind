@@ -79,7 +79,7 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .TestObject;
 
-        header.Number = (long)switchBlock;
+        header.Number = (ulong)switchBlock;
         // Act
         bool result = _epochSwitchManager.IsEpochSwitchAtBlock(header);
         // Assert
@@ -106,7 +106,7 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .TestObject;
 
-        header.Number = (long)switchBlock + 1;
+        header.Number = (ulong)switchBlock + 1;
         header.ExtraData = Encoding.UTF8.GetBytes("InvalidExtraData");
 
         // Act
@@ -135,10 +135,10 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader proposedHeader = Build.A.XdcBlockHeader()
             .TestObject;
 
-        proposedHeader.Number = (long)releaseSpec.SwitchBlock;
+        proposedHeader.Number = (ulong)releaseSpec.SwitchBlock;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), gapNumber);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, (long)chainHead.Number), SignerSignatures.ToArray(), gapNumber);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
@@ -166,10 +166,10 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader proposedHeader = Build.A.XdcBlockHeader()
             .TestObject;
 
-        proposedHeader.Number = (long)chainHead.Number + 1;
+        proposedHeader.Number = chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, (long)chainHead.Number), SignerSignatures.ToArray(), 1);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
@@ -198,10 +198,10 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader proposedHeader = Build.A.XdcBlockHeader()
             .TestObject;
 
-        proposedHeader.Number = (long)chainHead.Number + 1;
+        proposedHeader.Number = chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, (long)chainHead.Number), SignerSignatures.ToArray(), 1);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound - 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
@@ -230,10 +230,10 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader proposedHeader = Build.A.XdcBlockHeader()
             .TestObject;
 
-        proposedHeader.Number = (long)chainHead.Number + 1;
+        proposedHeader.Number = chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, (long)chainHead.Number), SignerSignatures.ToArray(), 1);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
@@ -263,7 +263,7 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader parentHeader = Build.A.XdcBlockHeader()
             .TestObject;
         parentHeader.Hash = headerHash;
-        parentHeader.Number = switchBlock;
+        parentHeader.Number = (ulong)switchBlock;
 
         bool result = _epochSwitchManager.IsEpochSwitchAtRound((ulong)currRound, parentHeader);
         // Assert
@@ -287,7 +287,7 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader parentHeader = Build.A.XdcBlockHeader()
             .TestObject;
         parentHeader.Hash = headerHash;
-        parentHeader.Number = (long)switchBlock - 1;
+        parentHeader.Number = (ulong)(switchBlock - 1);
         parentHeader.ExtraConsensusData = null;
 
         bool result = _epochSwitchManager.IsEpochSwitchAtRound(1, parentHeader);
@@ -335,10 +335,10 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader proposedHeader = Build.A.XdcBlockHeader()
             .TestObject;
 
-        proposedHeader.Number = (long)chainHead.Number + 1;
+        proposedHeader.Number = chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, (long)chainHead.Number), SignerSignatures.ToArray(), 1);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
@@ -374,10 +374,10 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader proposedHeader = Build.A.XdcBlockHeader()
             .TestObject;
 
-        proposedHeader.Number = (long)chainHead.Number + 1;
+        proposedHeader.Number = chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, (long)chainHead.Number), SignerSignatures.ToArray(), 1);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
@@ -413,10 +413,10 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader proposedHeader = Build.A.XdcBlockHeader()
             .TestObject;
 
-        proposedHeader.Number = (long)chainHead.Number + 1;
+        proposedHeader.Number = chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, (long)chainHead.Number), SignerSignatures.ToArray(), 1);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
@@ -476,10 +476,10 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .TestObject;
         header.Hash = hash256;
-        header.Number = blockNumber;
+        header.Number = (ulong)blockNumber;
         header.ExtraData = FillExtraDataForTests([TestItem.AddressA, TestItem.AddressB]);
 
-        _snapshotManager.GetSnapshotByBlockNumber(blockNumber, Arg.Any<IXdcReleaseSpec>()).Returns(new Snapshot(header.Number, header.Hash!, signers));
+        _snapshotManager.GetSnapshotByBlockNumber(blockNumber, Arg.Any<IXdcReleaseSpec>()).Returns(new Snapshot((long)header.Number, header.Hash!, signers));
 
         _tree.FindHeader(blockNumber).Returns(header);
         var result = _epochSwitchManager.GetEpochSwitchInfo(header);
@@ -501,8 +501,8 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 100);
         var parentHeader = (XdcBlockHeader)_tree.FindHeader(chainHead.ParentHash!)!;
 
-        EpochSwitchInfo expected = new(SignerAddresses.ToArray(), StandbyAddresses.ToArray(), PenalizedAddresses.ToArray(), new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number));
-        expected.EpochSwitchParentBlockInfo = new(parentHeader.Hash!, parentHeader.ExtraConsensusData!.BlockRound, parentHeader.Number);
+        EpochSwitchInfo expected = new(SignerAddresses.ToArray(), StandbyAddresses.ToArray(), PenalizedAddresses.ToArray(), new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, (long)chainHead.Number));
+        expected.EpochSwitchParentBlockInfo = new(parentHeader.Hash!, parentHeader.ExtraConsensusData!.BlockRound, (long)parentHeader.Number);
 
         var result = _epochSwitchManager.GetEpochSwitchInfo(chainHead.Hash!);
 
@@ -536,7 +536,7 @@ internal class EpochSwitchManagerTests
             parentHeader.PenaltiesAddress!.Value.ToArray(),
             new BlockRoundInfo(parentHeader.Hash!, parentHeader.ExtraConsensusData!.BlockRound, (long)blockNumber));
 
-        expected.EpochSwitchParentBlockInfo = new(parentHeader.ParentHash!, parentHeader.ExtraConsensusData.BlockRound - (ulong)1, parentHeader.Number - 1);
+        expected.EpochSwitchParentBlockInfo = new(parentHeader.ParentHash!, parentHeader.ExtraConsensusData.BlockRound - (ulong)1, (long)(parentHeader.Number - 1));
 
         var result = _epochSwitchManager.GetEpochSwitchInfo(chainHead.Hash!);
         Assert.That(result, Is.Not.Null);
@@ -559,7 +559,7 @@ internal class EpochSwitchManagerTests
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .TestObject;
-        header.Number = blockNumber;
+        header.Number = (ulong)blockNumber;
         header.ExtraData = FillExtraDataForTests([TestItem.AddressA, TestItem.AddressB]);
         header.Hash = TestItem.KeccakA;
 
@@ -654,11 +654,11 @@ internal class EpochSwitchManagerTests
 
             if ((block.ExtraConsensusData?.BlockRound ?? 0ul) % (ulong)spec.EpochLength == 0)
             {
-                snapManager.GetSnapshotByBlockNumber(block.Number, Arg.Any<IXdcReleaseSpec>()).Returns(new Snapshot(block.Number, block.Hash!, [.. StandbyAddresses, .. SignerAddresses]));
+                snapManager.GetSnapshotByBlockNumber((long)block.Number, Arg.Any<IXdcReleaseSpec>()).Returns(new Snapshot((long)block.Number, block.Hash!, [.. StandbyAddresses, .. SignerAddresses]));
             }
 
             tree.FindHeader(block.Hash!).Returns(block);
-            tree.FindHeader(block.Number).Returns(block);
+            tree.FindHeader((long)block.Number).Returns(block);
 
         } while (i++ < length);
 
@@ -674,7 +674,7 @@ internal class EpochSwitchManagerTests
         if (parent is not null)
         {
             newRound = 1 + (parent.ExtraConsensusData?.BlockRound ?? 0);
-            blockNumber = 1 + parent.Number;
+            blockNumber = 1 + (long)parent.Number;
             prevRound = parent.ExtraConsensusData?.BlockRound ?? 0;
             parentHash = parent.Hash;
 
@@ -682,13 +682,13 @@ internal class EpochSwitchManagerTests
         Hash256 newBlockHash = Keccak.Compute(BitConverter.GetBytes(blockNumber).PadLeft(32));
 
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(parent?.Hash ?? Keccak.Zero, prevRound, parent?.Number ?? 0), SignerSignatures.ToArray(), (ulong)spec.Gap);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(parent?.Hash ?? Keccak.Zero, prevRound, (long)(parent?.Number ?? 0)), SignerSignatures.ToArray(), (ulong)spec.Gap);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2((ulong)newRound, qc);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .TestObject;
         header.Hash = newBlockHash;
-        header.Number = blockNumber;
+        header.Number = (ulong)blockNumber;
         header.ExtraConsensusData = extraFieldsV2;
         header.ParentHash = parentHash;
 

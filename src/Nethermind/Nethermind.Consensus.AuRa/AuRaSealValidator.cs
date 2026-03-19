@@ -72,13 +72,13 @@ namespace Nethermind.Consensus.AuRa
                 if (step == parent.AuRaStep)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {step}. Block {header.Number}, hash {header.Hash} is duplicate.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary, (long)header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
                     return false;
                 }
-                else if (step < parent.AuRaStep && header.Number >= _parameters.ValidateStepTransition)
+                else if (step < parent.AuRaStep && (long)header.Number >= _parameters.ValidateStepTransition)
                 {
                     if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {step} is lesser than parents step {parent.AuRaStep}.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary, (long)header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
                     return false;
                 }
 
@@ -98,7 +98,7 @@ namespace Nethermind.Consensus.AuRa
                 if (step > currentStep + rejectedStepDrift)
                 {
                     if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {step} is from the future. Current step is {currentStep}.");
-                    ReportingValidator.ReportBenign(header.Beneficiary, header.Number, IReportingValidator.BenignCause.FutureBlock);
+                    ReportingValidator.ReportBenign(header.Beneficiary, (long)header.Number, IReportingValidator.BenignCause.FutureBlock);
                     return false;
                 }
 
@@ -121,10 +121,10 @@ namespace Nethermind.Consensus.AuRa
                 if (_receivedSteps.ContainsSiblingOrInsert(header, _validatorStore.GetValidators().Length))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {step} in block {header.Number}.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary, (long)header.Number, [], IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
                 }
 
-                if (header.Number >= _parameters.ValidateScoreTransition)
+                if ((long)header.Number >= _parameters.ValidateScoreTransition)
                 {
                     if (header.Difficulty >= AuraDifficultyCalculator.MaxDifficulty)
                     {

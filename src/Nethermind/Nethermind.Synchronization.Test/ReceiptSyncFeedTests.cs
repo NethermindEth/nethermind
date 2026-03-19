@@ -65,11 +65,11 @@ public class ReceiptSyncFeedTests
         {
             FastSync = true,
             PivotHash = _pivotBlock.Hash!.ToString(),
-            PivotNumber = _pivotBlock.Number,
+            PivotNumber = (long)_pivotBlock.Number,
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };
-        _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash);
+        _syncingToBlockTree.SyncPivot = ((long)_pivotBlock.Number, _pivotBlock.Hash);
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _historyPruner = Substitute.For<IHistoryPruner>();
@@ -120,8 +120,8 @@ public class ReceiptSyncFeedTests
     public async Task ShouldNotRedownloadExistingReceipts()
     {
         _feed.InitializeFeed();
-        _receiptStorage.HasBlock(Arg.Is(_pivotBlock.Number - 2), Arg.Any<Hash256>()).Returns(true);
-        _receiptStorage.HasBlock(Arg.Is(_pivotBlock.Number - 4), Arg.Any<Hash256>()).Returns(true);
+        _receiptStorage.HasBlock(Arg.Is((long)(_pivotBlock.Number - 2)), Arg.Any<Hash256>()).Returns(true);
+        _receiptStorage.HasBlock(Arg.Is((long)(_pivotBlock.Number - 4)), Arg.Any<Hash256>()).Returns(true);
 
         using ReceiptsSyncBatch req = (await _feed.PrepareRequest())!;
 

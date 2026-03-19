@@ -155,7 +155,7 @@ public class SyncServerTests
         };
 
         Block newBestLocalBlock = Build.A.Block
-            .WithNumber(localBlockTree.Head!.Number + 1)
+            .WithNumber((long)(localBlockTree.Head!.Number + 1))
             .WithParent(localBlockTree.Head!).WithDifficulty(10_000_002L).TestObject;
         localBlockTree.SuggestBlock(newBestLocalBlock);
 
@@ -355,7 +355,7 @@ public class SyncServerTests
         Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(10));
         ctx.LocalBlockTree.FindBlock(poWBlockPostMerge.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull();
         ctx.LocalBlockTree.BestSuggestedHeader!.Hash.Should().Be(newPostMergeBlock.Hash!);
-        ctx.LocalBlockTree.FindCanonicalBlockInfo(poWBlockPostMerge.Number).BlockHash.Should().NotBe(poWBlockPostMerge.Hash!);
+        ctx.LocalBlockTree.FindCanonicalBlockInfo((long)poWBlockPostMerge.Number).BlockHash.Should().NotBe(poWBlockPostMerge.Hash!);
     }
 
 
@@ -529,7 +529,7 @@ public class SyncServerTests
         await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
         remoteServer1.DidNotReceive().AddNewBlock(head, Arg.Any<ISyncPeer>());
         remoteServer2.DidNotReceive().AddNewBlock(head, Arg.Any<ISyncPeer>());
-        blockTree.FindLevel(head.Number)!.BlockInfos.Length.Should().Be(1);
+        blockTree.FindLevel((long)head.Number)!.BlockInfos.Length.Should().Be(1);
     }
 
     [Test]
@@ -587,7 +587,7 @@ public class SyncServerTests
 
         (long earliest, int latest)[] expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
             .Where(x => x % frequency == 0)
-            .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
+            .Select(x => (earliest: (long)localBlockTree.Genesis!.Number, latest: x))
             .ToArray()[^2..];
 
         foreach (PeerInfo peerInfo in peers)

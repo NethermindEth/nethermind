@@ -102,7 +102,7 @@ internal class SpecialTransactionsTests
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
             head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
         }
-        while (!IsTimeForOnchainSignature(blockChain.SpecProvider.GetXdcSpec(head), head.Number - 1));
+        while (!IsTimeForOnchainSignature(blockChain.SpecProvider.GetXdcSpec(head), (long)head.Number - 1));
 
         Assert.That(blockChain.BlockTree.Head.Number, Is.EqualTo(mergeSignBlockRange + 1));
 
@@ -142,7 +142,7 @@ internal class SpecialTransactionsTests
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
             head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
         }
-        while (!IsTimeForOnchainSignature(blockChain.SpecProvider.GetXdcSpec(head), head.Number + 1));
+        while (!IsTimeForOnchainSignature(blockChain.SpecProvider.GetXdcSpec(head), (long)head.Number + 1));
 
         var receipts = blockChain.TxPool.GetPendingTransactions();
 
@@ -176,7 +176,7 @@ internal class SpecialTransactionsTests
 
         for (int i = 1; i < spec.MergeSignRange + 2; i++)
         {
-            if (head!.Number == mergeSignBlockRange + 1)
+            if (head!.Number == (ulong)(mergeSignBlockRange + 1))
             {
                 var source = accounts.ElementAt(random.Next() % accounts.Length);
                 var dest = accounts.Except([source]).ElementAt(random.Next() % (accounts.Length - 1));
@@ -580,7 +580,7 @@ internal class SpecialTransactionsTests
 
         blockChain.MainWorldState.BeginScope(head);
 
-        long lowerBound = head.Number - (spec.EpochLength * 2);
+        long lowerBound = (long)head.Number - (spec.EpochLength * 2);
         UInt256 tooLowBlockNumber = (UInt256)lowerBound;
         Transaction txTooLow = SignTransactionManager.CreateTxSign(
             tooLowBlockNumber,
@@ -616,8 +616,8 @@ internal class SpecialTransactionsTests
         //   blkNumber > header.Number - (EpochLength * 2)
         //
         // Pick something comfortably in the middle of that interval.
-        long upper = head.Number - 1;
-        long lower = head.Number - (spec.EpochLength * 2) + 1;
+        long upper = (long)head.Number - 1;
+        long lower = (long)head.Number - (spec.EpochLength * 2) + 1;
         long validBlockNumber = lower + (upper - lower) / 2;
 
         Transaction tx =

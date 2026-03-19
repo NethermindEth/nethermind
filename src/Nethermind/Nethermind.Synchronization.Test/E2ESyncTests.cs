@@ -288,10 +288,10 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IBlockProcessingQueue blockProcessingQueue = _server.Resolve<IBlockProcessingQueue>();
         await blockProcessingQueue.WaitForBlockProcessing(cancellationToken);
         IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
-        long serverHeadNumber = serverBlockTree.Head!.Number;
+        long serverHeadNumber = (long)serverBlockTree.Head!.Number;
         BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
         syncConfig.PivotHash = pivot.Hash!.ToString();
-        syncConfig.PivotNumber = pivot.Number;
+        syncConfig.PivotNumber = (long)pivot.Number;
         syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
     }
 
@@ -429,7 +429,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         public async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken)
         {
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
-            Block finalizedBlock = otherBlockTree.FindBlock(otherBlockTree.Head!.Number - 250)!;
+            Block finalizedBlock = otherBlockTree.FindBlock((long)(otherBlockTree.Head!.Number - 250))!;
             Block headBlock = otherBlockTree.Head!;
             blockCacheService.BlockCache.TryAdd(new Hash256AsKey(finalizedBlock.Hash!), finalizedBlock);
             blockCacheService.BlockCache.TryAdd(new Hash256AsKey(headBlock.Hash!), headBlock);
@@ -521,7 +521,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             ulong gasLimit = 1_000_000;
 
             nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
-            IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number) + 1 ?? 0, null);
+            IReleaseSpec spec = specProvider.GetSpec((long?)blockTree.Head?.Number + 1 ?? 0, null);
             Transaction[] txs = codes.Select((byteCode) => Build.A.Transaction
                     .WithCode(byteCode)
                     .WithNonce(currentNonce++)
@@ -538,7 +538,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             ulong gasLimit = 200_000;
 
             nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
-            IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number ?? 0) + 1, null);
+            IReleaseSpec spec = specProvider.GetSpec((long)(blockTree.Head?.Number ?? 0) + 1, null);
 
             Transaction tx;
 
@@ -595,7 +595,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
             IReceiptStorage otherReceiptStorage = server.Resolve<IReceiptStorage>();
 
-            for (int i = 0; i < otherBlockTree.Head?.Number; i++)
+            for (int i = 0; i < (long?)otherBlockTree.Head?.Number; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 Block clientBlock = blockTree.FindBlock(i)!;

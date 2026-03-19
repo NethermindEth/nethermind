@@ -83,7 +83,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         private void UpdateHead()
         {
             HeadHash = HeadBlock.Hash!;
-            HeadNumber = HeadBlock.Number;
+            HeadNumber = (long)HeadBlock.Number;
             TotalDifficulty = HeadBlock.TotalDifficulty ?? 0;
         }
 
@@ -128,7 +128,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
             foreach (Block block in Blocks)
             {
-                if (block.Number == number)
+                if ((long)block.Number == number)
                 {
                     started = true;
                 }
@@ -187,7 +187,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         public void AddBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
         {
             Block block = Blocks.Last();
-            for (long j = block.Number; j < i; j++)
+            for (long j = (long)block.Number; j < i; j++)
             {
                 block = Build.A.Block.WithDifficulty(1000000).WithParent(block)
                     .WithTotalDifficulty(block.TotalDifficulty + 1000000)
@@ -201,7 +201,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         public void AddHighDifficultyBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
         {
             Block block = Blocks.Last();
-            for (long j = block.Number; j < i; j++)
+            for (long j = (long)block.Number; j < i; j++)
             {
                 block = Build.A.Block.WithParent(block).WithDifficulty(2000000)
                     .WithTotalDifficulty(block.TotalDifficulty + 2000000)
@@ -315,7 +315,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public SyncingContext BlockIsKnown()
         {
-            Assert.That(BlockTree.IsKnownBlock(_blockHeader.Number, _blockHeader.Hash!), Is.True, "block is known");
+            Assert.That(BlockTree.IsKnownBlock((long)_blockHeader.Number, _blockHeader.Hash!), Is.True, "block is known");
             return this;
         }
 
@@ -418,7 +418,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         public SyncingContext AfterHintBlockMessage(Block block, ISyncPeer peer)
         {
             _logger.Info($"HINT BLOCK MESSAGE {block.Number}");
-            SyncServer.HintBlock(block.Hash!, block.Number, peer);
+            SyncServer.HintBlock(block.Hash!, (long)block.Number, peer);
             return this;
         }
 

@@ -165,8 +165,8 @@ public class EraImporterTest
         inTree.NewBestSuggestedBlock += (sender, args) =>
         {
             if (shouldUpdateMainChain) inTree.UpdateMainChain([args.Block], true);
-            maxSuggestedBlocks = args.Block.Number;
-            if (args.Block.Number == expectedStopBlock) reachedBlock11.Set();
+            maxSuggestedBlocks = (long)args.Block.Number;
+            if ((long)args.Block.Number == expectedStopBlock) reachedBlock11.Set();
         };
 
         IEraImporter sut = inCtx.Resolve<IEraImporter>();

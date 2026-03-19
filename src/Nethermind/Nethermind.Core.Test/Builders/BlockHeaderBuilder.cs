@@ -127,7 +127,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
 
     public BlockHeaderBuilder WithNumber(long blockNumber)
     {
-        TestObjectInternal.Number = blockNumber;
+        TestObjectInternal.Number = (ulong)blockNumber;
         return this;
     }
 

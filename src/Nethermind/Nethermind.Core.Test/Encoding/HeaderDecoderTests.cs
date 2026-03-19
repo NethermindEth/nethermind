@@ -116,7 +116,7 @@ public class HeaderDecoderTests
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
 
         blockHeader.GasUsed.Should().Be((ulong)negativeLong);
-        blockHeader.Number.Should().Be(negativeLong);
+        blockHeader.Number.Should().Be((ulong)negativeLong);
         blockHeader.GasLimit.Should().Be((ulong)negativeLong);
     }
 
@@ -133,7 +133,7 @@ public class HeaderDecoderTests
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
         blockHeader.GasUsed.Should().Be((ulong)negativeLong);
-        blockHeader.Number.Should().Be(negativeLong);
+        blockHeader.Number.Should().Be((ulong)negativeLong);
         blockHeader.GasLimit.Should().Be((ulong)negativeLong);
     }
 

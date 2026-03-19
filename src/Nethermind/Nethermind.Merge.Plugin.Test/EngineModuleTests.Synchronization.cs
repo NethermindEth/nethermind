@@ -84,7 +84,7 @@ public partial class EngineModuleTests
 
         block.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = block.Header;
-        pointers.BestKnownBeaconBlock = block.Number;
+        pointers.BestKnownBeaconBlock = (long)block.Number;
         AssertBlockTreePointers(chain.BlockTree, pointers);
         AssertExecutionStatusNotChanged(chain.BlockFinder, block.Hash!, startingHead, startingHead);
     }
@@ -250,7 +250,7 @@ public partial class EngineModuleTests
 
         block.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = block.Header;
-        pointers.BestKnownBeaconBlock = block.Number;
+        pointers.BestKnownBeaconBlock = (long)block.Number;
 
         AssertBlockTreePointers(chain.BlockTree, pointers);
 
@@ -267,7 +267,7 @@ public partial class EngineModuleTests
 
         nextUnconnectedBlock.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = nextUnconnectedBlock.Header;
-        pointers.BestKnownBeaconBlock = nextUnconnectedBlock.Number;
+        pointers.BestKnownBeaconBlock = (long)nextUnconnectedBlock.Number;
 
         AssertBlockTreePointers(chain.BlockTree, pointers);
 
@@ -468,7 +468,7 @@ public partial class EngineModuleTests
         last.Should().NotBeNull();
         last!.IsGenesis.Should().BeTrue();
 
-        Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number + 1)
+        Block newBlock = Build.A.Block.WithNumber((long)(chain.BlockTree.Head!.Number + 1))
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
             .WithDifficulty(0)
@@ -477,7 +477,7 @@ public partial class EngineModuleTests
         newBlock.CalculateHash();
         await chain.BlockTree.SuggestBlockAsync(newBlock, BlockTreeSuggestOptions.None);
 
-        Block newBlock2 = Build.A.Block.WithNumber(chain.BlockTree.BestSuggestedBody!.Number + 1)
+        Block newBlock2 = Build.A.Block.WithNumber((long)(chain.BlockTree.BestSuggestedBody!.Number + 1))
             .WithParent(chain.BlockTree.BestSuggestedBody!)
             .WithNonce(0)
             .WithDifficulty(0)
@@ -503,7 +503,7 @@ public partial class EngineModuleTests
         last.Should().NotBeNull();
         last!.IsGenesis.Should().BeTrue();
 
-        Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number + 1)
+        Block newBlock = Build.A.Block.WithNumber((long)(chain.BlockTree.Head!.Number + 1))
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
             .WithDifficulty(0)
@@ -512,7 +512,7 @@ public partial class EngineModuleTests
         newBlock.CalculateHash();
         await chain.BlockTree.SuggestBlockAsync(newBlock, BlockTreeSuggestOptions.None);
 
-        Block newBlock2 = Build.A.Block.WithNumber(chain.BlockTree.BestSuggestedBody!.Number + 1)
+        Block newBlock2 = Build.A.Block.WithNumber((long)(chain.BlockTree.BestSuggestedBody!.Number + 1))
             .WithParent(chain.BlockTree.BestSuggestedBody!)
             .WithNonce(0)
             .WithDifficulty(0)
@@ -524,7 +524,7 @@ public partial class EngineModuleTests
 
         await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newBlock2.Hash!, newBlock2.Hash!, newBlock2.Hash!), null);
         chain.BlockTree.FindLevel(10)!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.None);
-        chain.BlockTree.FindLevel(newBlock2.Number)!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconMainChain | BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody);
+        chain.BlockTree.FindLevel((long)newBlock2.Number)!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconMainChain | BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody);
     }
 
 
@@ -539,7 +539,7 @@ public partial class EngineModuleTests
         last.Should().NotBeNull();
         last!.IsGenesis.Should().BeTrue();
 
-        Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number + 1)
+        Block newBlock = Build.A.Block.WithNumber((long)(chain.BlockTree.Head!.Number + 1))
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
             .WithDifficulty(0)
@@ -549,7 +549,7 @@ public partial class EngineModuleTests
         await chain.BlockTree.SuggestBlockAsync(newBlock!, BlockTreeSuggestOptions.FillBeaconBlock);
 
 
-        Block newBlock2 = Build.A.Block.WithNumber(newBlock.Number + 1)
+        Block newBlock2 = Build.A.Block.WithNumber((long)(newBlock.Number + 1))
             .WithParent(newBlock)
             .WithNonce(0)
             .WithDifficulty(0)
@@ -561,7 +561,7 @@ public partial class EngineModuleTests
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock2));
         Block? block = chain.BlockTree.FindBlock(newBlock2.GetOrCalculateHash(), BlockTreeLookupOptions.None);
         block?.TotalDifficulty.Should().NotBe((UInt256)0);
-        BlockInfo? blockInfo = chain.BlockTree.FindLevel(newBlock2.Number!)?.BlockInfos[0];
+        BlockInfo? blockInfo = chain.BlockTree.FindLevel((long)newBlock2.Number)?.BlockInfos[0];
         blockInfo?.TotalDifficulty.Should().NotBe(0);
         blockInfo?.Metadata.Should().Be(BlockMetadata.None);
     }
@@ -844,7 +844,7 @@ public partial class EngineModuleTests
             syncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = syncedBlockTree.Head?.Number ?? 0,
+                PivotNumber = (long)(syncedBlockTree.Head?.Number ?? 0),
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
                 PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
             };
@@ -872,7 +872,7 @@ public partial class EngineModuleTests
             syncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = syncedBlockTree.Head?.Number ?? 0,
+                PivotNumber = (long)(syncedBlockTree.Head?.Number ?? 0),
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
                 PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
             };
@@ -902,7 +902,7 @@ public partial class EngineModuleTests
             syncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = syncedBlockTree.Head?.Number ?? 0,
+                PivotNumber = (long)(syncedBlockTree.Head?.Number ?? 0),
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
                 PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
             };
@@ -1040,7 +1040,7 @@ public partial class EngineModuleTests
         BlockHeader peerHeader = chain.BlockTree.Head!.Header;
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.HeadHash.Returns(peerHeader.Hash);
-        syncPeer.HeadNumber.Returns(peerHeader.Number);
+        syncPeer.HeadNumber.Returns((long)peerHeader.Number);
         syncPeer.TotalDifficulty.Returns(peerHeader.TotalDifficulty ?? 0);
         syncPeer.IsInitialized.Returns(true);
         ISyncPeerPool? syncPeerPool = Substitute.For<ISyncPeerPool>();
@@ -1071,14 +1071,14 @@ public partial class EngineModuleTests
         blockTree.BestSuggestedHeader.Should().Be(pointers.BestSuggestedHeader);
         blockTree.BestSuggestedBody.Should().Be(pointers.BestSuggestedBody);
         // TODO: post merge sync change to best beacon block
-        (blockTree.BestSuggestedBeaconHeader?.Number ?? 0).Should().Be(pointers.BestKnownBeaconBlock);
+        ((long)(blockTree.BestSuggestedBeaconHeader?.Number ?? 0)).Should().Be(pointers.BestKnownBeaconBlock);
         blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(pointers.LowestInsertedBeaconHeader);
     }
 
     private void AssertBeaconPivotValues(IBeaconPivot beaconPivot, BlockHeader blockHeader)
     {
         beaconPivot.BeaconPivotExists().Should().BeTrue();
-        beaconPivot.PivotNumber.Should().Be(blockHeader.Number);
+        beaconPivot.PivotNumber.Should().Be((long)blockHeader.Number);
         beaconPivot.PivotHash.Should().Be(blockHeader.Hash ?? blockHeader.CalculateHash());
     }
 

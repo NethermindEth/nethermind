@@ -55,7 +55,8 @@ namespace Nethermind.Consensus.AuRa
                 return gasLimit;
             }
 
-            if (_contracts.TryGetForBlock(parentHeader.Number + 1, out IBlockGasLimitContract contract))
+            long parentNumberPlusOne = (long)parentHeader.Number + 1;
+            if (_contracts.TryGetForBlock(parentNumberPlusOne, out IBlockGasLimitContract contract))
             {
                 UInt256? contractLimit = GetContractGasLimit(parentHeader, contract);
                 gasLimit = contractLimit.HasValue ? (long)contractLimit.Value : (long?)null;

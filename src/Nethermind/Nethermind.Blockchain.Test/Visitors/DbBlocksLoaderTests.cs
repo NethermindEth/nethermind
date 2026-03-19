@@ -34,7 +34,7 @@ public class DbBlocksLoaderTests
             MemDb headersDb = new();
 
             BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
-            for (int i = 0; i < testTree.Head!.Number + 1; i++)
+            for (int i = 0; i < (long)testTree.Head!.Number + 1; i++)
             {
                 Block ithBlock = testTree.FindBlock(i, BlockTreeLookupOptions.None)!;
                 blockStore.Insert(ithBlock);
@@ -80,7 +80,7 @@ public class DbBlocksLoaderTests
             MemDb headersDb = new();
 
             BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
-            for (int i = 0; i < testTree.Head!.Number + 1; i++)
+            for (int i = 0; i < (long)testTree.Head!.Number + 1; i++)
             {
                 Block ithBlock = testTree.FindBlock(i, BlockTreeLookupOptions.None)!;
                 blockStore.Insert(ithBlock);
@@ -174,9 +174,9 @@ public class DbBlocksLoaderTests
         tree2.Head!.Header.Should().BeEquivalentTo(block3B.Header);
         tree2.BestSuggestedHeader.Should().BeEquivalentTo(block3B.Header);
 
-        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
-        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
-        Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
+        Assert.That(blockStore.Get((long)block1.Number, block1.Hash!), Is.Null, "block 1");
+        Assert.That(blockStore.Get((long)block2.Number, block2.Hash!), Is.Null, "block 2");
+        Assert.That(blockStore.Get((long)block3.Number, block3.Hash!), Is.Null, "block 3");
 
         Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
         Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
@@ -236,9 +236,9 @@ public class DbBlocksLoaderTests
         Assert.That(tree2.Head!.Hash, Is.EqualTo(block0.Hash), "head");
         Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block0.Hash), "suggested");
 
-        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
-        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
-        Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
+        Assert.That(blockStore.Get((long)block1.Number, block1.Hash!), Is.Null, "block 1");
+        Assert.That(blockStore.Get((long)block2.Number, block2.Hash!), Is.Null, "block 2");
+        Assert.That(blockStore.Get((long)block3.Number, block3.Hash!), Is.Null, "block 3");
 
         Assert.That(blockInfosDb.Get(1), Is.Null, "level 1");
         Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");

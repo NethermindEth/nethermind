@@ -29,7 +29,7 @@ public class OptimismPoSSwitcher(ISpecProvider specProvider, long bedrockBlockNu
 
     public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
     {
-        return (header.Number == bedrockBlockNumber - 1, header.IsPostMerge = header.Number >= bedrockBlockNumber);
+        return ((long)header.Number == bedrockBlockNumber - 1, header.IsPostMerge = (long)header.Number >= bedrockBlockNumber);
     }
 
     public bool HasEverReachedTerminalBlock() => true;

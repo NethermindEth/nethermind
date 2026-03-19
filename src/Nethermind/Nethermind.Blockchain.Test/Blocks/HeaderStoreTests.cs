@@ -28,12 +28,12 @@ public class HeaderStoreTests
 
         store.Insert(header);
         store.Get(header.Hash!)!.Hash.Should().Be(header.Hash!);
-        store.Get(header.Hash!, blockNumber: header.Number)!.Hash.Should().Be(header.Hash!);
+        store.Get(header.Hash!, blockNumber: (long?)header.Number)!.Hash.Should().Be(header.Hash!);
         store.Get(header2.Hash!).Should().BeNull();
 
         store.Insert(header2);
         store.Get(header.Hash!)!.Hash.Should().Be(header.Hash!);
-        store.Get(header2.Hash!, blockNumber: header2.Number)!.Hash.Should().Be(header2.Hash!);
+        store.Get(header2.Hash!, blockNumber: (long?)header2.Number)!.Hash.Should().Be(header2.Hash!);
     }
 
     [Test]

@@ -125,7 +125,7 @@ namespace Nethermind.Init.Steps.Migrations
             // Note, it start in decreasing order from this high number.
             long migrateToBlockNumber = _receiptStorage.MigratedBlockNumber == long.MaxValue
                 ? _syncModeSelector.Current.NotSyncing()
-                    ? _blockTree.Head?.Number ?? 0
+                    ? (long)(_blockTree.Head?.Number ?? 0UL)
                     : _blockTree.BestKnownNumber
                 : _receiptStorage.MigratedBlockNumber - 1;
 
@@ -216,7 +216,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             if (_logger.IsDebug) _logger.Debug($"Block {i} not found. Logs will not be searchable for this block.");
             Block emptyBlock = EmptyBlock.Get();
-            emptyBlock.Header.Number = i;
+            emptyBlock.Header.Number = (ulong)i;
             emptyBlock.Header.Hash = blockHash;
             return emptyBlock;
         }
@@ -298,7 +298,7 @@ namespace Nethermind.Init.Steps.Migrations
             _receiptsBlockDb.Delete(block.Hash!);
 
             // Remove old tx index
-            bool txIndexExpired = _receiptConfig.TxLookupLimit != 0 && _blockTree.Head?.Number - block.Number > _receiptConfig.TxLookupLimit;
+            bool txIndexExpired = _receiptConfig.TxLookupLimit != 0 && (long)(_blockTree.Head?.Number ?? 0UL) - (long)block.Number > _receiptConfig.TxLookupLimit;
             bool neverIndexTx = _receiptConfig.TxLookupLimit == -1;
             if (neverIndexTx || txIndexExpired)
             {
@@ -326,7 +326,7 @@ namespace Nethermind.Init.Steps.Migrations
 
             if (_receiptStorage.MigratedBlockNumber != long.MaxValue)
             {
-                long blockNumber = _blockTree.Head?.Number ?? 0;
+                long blockNumber = (long)(_blockTree.Head?.Number ?? 0UL);
                 while (blockNumber > 0)
                 {
                     ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(blockNumber);

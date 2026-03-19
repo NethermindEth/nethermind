@@ -98,7 +98,7 @@ public partial class BlockTreeTests
             .WithHeader(Build.A.BlockHeader.WithParent(block7!.Header).TestObject)
             .WithParent(block7!)
             .WithTotalDifficulty((UInt256)9999950)
-            .WithNumber(block7!.Number + 1).WithDifficulty(1999950).TestObject;
+            .WithNumber((long)(block7!.Number + 1)).WithDifficulty(1999950).TestObject;
         // current Head TD: 10000000, block7 TD: 8000000, TTD 9999900, newTerminalBlock 9999950
         tree.SuggestBlock(newTerminalBlock);
         Assert.That(newTerminalBlock.IsTerminalBlock(specProvider), Is.True);
@@ -133,7 +133,7 @@ public partial class BlockTreeTests
             .WithHeader(Build.A.BlockHeader.WithParent(tree.Head!.Header).TestObject)
             .WithParent(tree.Head.Header)
             .WithDifficulty(0)
-            .WithNumber(tree.Head!.Number + 1).TestObject;
+            .WithNumber((long)(tree.Head!.Number + 1)).TestObject;
         tree.SuggestBlock(firstPoSBlock);
         tree.UpdateMainChain(new[] { firstPoSBlock }, true, true); // simulating fcU
         Assert.That(tree.BestKnownNumber, Is.EqualTo(10));
@@ -143,7 +143,7 @@ public partial class BlockTreeTests
             .WithHeader(Build.A.BlockHeader.WithParent(block8!.Header).TestObject)
             .WithParent(block8!)
             .WithTotalDifficulty((UInt256)10000001)
-            .WithNumber(block8!.Number + 1).WithDifficulty(2000001).TestObject;
+            .WithNumber((long)(block8!.Number + 1)).WithDifficulty(2000001).TestObject;
         Assert.That(newTerminalBlock.IsTerminalBlock(specProvider), Is.True);
         tree.SuggestBlock(newTerminalBlock);
         Assert.That(tree.BestKnownNumber, Is.EqualTo(10));
@@ -421,7 +421,7 @@ public partial class BlockTreeTests
                     SyncedTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.NotOnMainChain);
 
                     BlockInfo newBlockInfo = new(blockToInsert.GetOrCalculateHash(), UInt256.Zero, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
-                    newBlockInfo.BlockNumber = blockToInsert.Number;
+                    newBlockInfo.BlockNumber = (long)blockToInsert.Number;
                     blockInfos.Add(newBlockInfo);
                     blocks.Add(blockToInsert);
                     parent = blockToInsert;
@@ -449,7 +449,7 @@ public partial class BlockTreeTests
                     newBlocks.Add(blockToInsert);
 
                     BlockInfo newBlockInfo = new(blockToInsert.GetOrCalculateHash(), UInt256.Zero, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
-                    newBlockInfo.BlockNumber = blockToInsert.Number;
+                    newBlockInfo.BlockNumber = (long)blockToInsert.Number;
                     parent = blockToInsert;
                 }
 
@@ -521,7 +521,7 @@ public partial class BlockTreeTests
                 BlockDecoder blockDecoder = new();
                 Rlp newRlp = blockDecoder.Encode(block);
                 NotSyncedTreeBuilder.BlocksDb.Set(
-                    block.Number,
+                    (long)block.Number,
                     block.GetOrCalculateHash(),
                     newRlp.Bytes);
 

@@ -52,7 +52,7 @@ internal class HeaderVerificationTests
         var invalidRoundBlock = GetLastHeader(false);
         var invalidRoundBlockParent = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(invalidRoundBlock.ParentHash!)!;
 
-        var proposedBlockInfo = new BlockRoundInfo(invalidRoundBlockParent.Hash!, invalidRoundBlockParent.ExtraConsensusData!.BlockRound, invalidRoundBlockParent.Number);
+        var proposedBlockInfo = new BlockRoundInfo(invalidRoundBlockParent.Hash!, invalidRoundBlockParent.ExtraConsensusData!.BlockRound, (long)invalidRoundBlockParent.Number);
 
         var voteForSign = new Vote(proposedBlockInfo, 1);
 
@@ -258,7 +258,7 @@ internal class HeaderVerificationTests
     {
         var invalidQcSignatureBlock = GetLastHeader(false);
         var invalidQcSignatureBlockParent = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(invalidQcSignatureBlock.ParentHash!)!;
-        var proposedBlockInfo = new BlockRoundInfo(invalidQcSignatureBlockParent!.Hash!, invalidQcSignatureBlockParent.ExtraConsensusData!.BlockRound, invalidQcSignatureBlockParent.Number);
+        var proposedBlockInfo = new BlockRoundInfo(invalidQcSignatureBlockParent!.Hash!, invalidQcSignatureBlockParent.ExtraConsensusData!.BlockRound, (long)invalidQcSignatureBlockParent.Number);
         var voteForSign = new Vote(proposedBlockInfo, 1);
         var validSigners = xdcTestBlockchain.MasterNodeCandidates
             .Where(pvKey => invalidQcSignatureBlockParent.ValidatorsAddress!.Value.Contains(pvKey.Address))

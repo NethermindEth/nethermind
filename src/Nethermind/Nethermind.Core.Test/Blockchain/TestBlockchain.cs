@@ -428,7 +428,7 @@ public class TestBlockchain : IDisposable
         {
             IReleaseSpec headReleaseSpec = SpecProvider.GetSpec(head.Header);
 
-            if (headReleaseSpec.IsEip1559Enabled && headReleaseSpec.Eip1559TransitionBlock <= head.Number)
+            if (headReleaseSpec.IsEip1559Enabled && (ulong)headReleaseSpec.Eip1559TransitionBlock <= head.Number)
             {
                 UInt256 nextFee = headReleaseSpec.BaseFeeCalculator.Calculate(head.Header, headReleaseSpec);
                 txBuilder = txBuilder

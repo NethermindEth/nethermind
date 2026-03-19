@@ -57,7 +57,7 @@ internal class TestXdcBlockProducer(
         Address[] masternodes;
         if (epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
         {
-            (masternodes, _) = masternodesCalculator.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash!, spec);
+            (masternodes, _) = masternodesCalculator.CalculateNextEpochMasternodes((long)(currentHead.Number + 1), currentHead.Hash!, spec);
         }
         else
         {

@@ -175,7 +175,7 @@ public class HealingTreeTests
 
             // Snap server check for the past 128 block in blocktree explicitly to pass hive test.
             // So need to simulate block processing..
-            mainWorldState.CommitTree((blockTree.Head?.Number ?? 0) + 1);
+            mainWorldState.CommitTree((long)(blockTree.Head?.Number ?? 0) + 1);
 
             Block block = Build.A.Block.WithStateRoot(mainWorldState.StateRoot).WithParent(blockTree.Head!).TestObject;
 

@@ -49,7 +49,7 @@ internal class XdcBlockProducerTest
 
         var xdcContext = new XdcConsensusContext();
         xdcContext.SetNewRound(1);
-        xdcContext.HighestQC = XdcTestHelper.CreateQc(new Types.BlockRoundInfo(parent.Hash!, 0, parent.Number), 0, masterNodes);
+        xdcContext.HighestQC = XdcTestHelper.CreateQc(new Types.BlockRoundInfo(parent.Hash!, 0, (long)parent.Number), 0, masterNodes);
 
         var quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         quorumCertificateManager.VerifyCertificate(Arg.Any<QuorumCertificate>(), Arg.Any<XdcBlockHeader>(), out _).Returns(true);

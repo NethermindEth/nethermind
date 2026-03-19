@@ -60,7 +60,8 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 return [];
             }
 
-            return _contracts.TryGetForBlock(block.Number, out var contract)
+            long blockNum = (long)block.Number;
+            return _contracts.TryGetForBlock(blockNum, out var contract)
                 ? CalculateRewardsWithContract(block, contract)
                 : _blockRewardCalculator.CalculateRewards(block);
         }
@@ -80,7 +81,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 for (int i = 0; i < block.Uncles.Length; i++)
                 {
                     var uncle = block.Uncles[i];
-                    if (BenefactorKind.TryGetUncle(block.Number - uncle.Number, out var kind))
+                    if (BenefactorKind.TryGetUncle((long)(block.Number - uncle.Number), out var kind))
                     {
                         beneficiariesList[i + 1] = uncle.Beneficiary;
                         kindsList[i + 1] = kind;

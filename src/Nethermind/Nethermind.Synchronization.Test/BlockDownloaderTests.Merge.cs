@@ -81,7 +81,7 @@ public partial class BlockDownloaderTests
             long expectedDownloadStart = notSyncedTreeStartingBlockNumber;
             long expectedDownloadEnd = Math.Min(headNumber, insertedBeaconBlocks - fastSyncLag);
 
-            ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd));
+            ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be((ulong)Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd));
             ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd));
 
             int receiptCount = 0;
@@ -94,11 +94,11 @@ public partial class BlockDownloaderTests
             }
 
             ctx.ReceiptStorage.Count.Should().Be(withReceipts ? receiptCount : 0);
-            ctx.BeaconPivot.ProcessDestination?.Number.Should().Be(Math.Max(insertedBeaconBlocks - fastSyncLag, beaconPivot));
+            ctx.BeaconPivot.ProcessDestination?.Number.Should().Be((ulong)Math.Max(insertedBeaconBlocks - fastSyncLag, beaconPivot));
         }
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(insertedBeaconBlocks);
+        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be((ulong)insertedBeaconBlocks);
     }
 
     [TestCase(32L, DownloaderOptions.Insert, 32, false)]
@@ -293,7 +293,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
         await ctx.FastSyncUntilNoRequest(peerInfo);
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag)));
+        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be((ulong)Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag)));
 
         syncPeerInternal.ExtendTree(chainLength * 2);
         await ctx.FullSyncUntilNoRequest(peerInfo);
@@ -385,7 +385,7 @@ public partial class BlockDownloaderTests
             // With post merge, best suggested header always follow beacon pivot but not necessarily synced.
             // But BestSuggestedBody is updated, unlike PreMerge.
             // I don't make the rules
-            BlockTree.BestSuggestedBody!.Number.Should().Be(blockNumber);
+            BlockTree.BestSuggestedBody!.Number.Should().Be((ulong)blockNumber);
         }
     }
 }

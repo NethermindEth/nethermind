@@ -25,8 +25,8 @@ public class BlockFinderExtensionsTests
         parent.TotalDifficulty.Should().BeNull(); // just to avoid the testing rig change without this test being updated
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindHeader(child.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: child.Number - 1).Returns(parent);
-        blockFinder.FindHeader(child.ParentHash!, BlockTreeLookupOptions.None, blockNumber: child.Number - 1).Returns(parentWithTotalDiff);
+        blockFinder.FindHeader(child.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: (long?)(child.Number - 1)).Returns(parent);
+        blockFinder.FindHeader(child.ParentHash!, BlockTreeLookupOptions.None, blockNumber: (long?)(child.Number - 1)).Returns(parentWithTotalDiff);
 
         blockFinder.FindParentHeader(child, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().Be(parent);
         blockFinder.FindParentHeader(child, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be((UInt256?)UInt256.One);

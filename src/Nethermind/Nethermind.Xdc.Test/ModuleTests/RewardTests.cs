@@ -61,7 +61,7 @@ public class RewardTests
         long epochLength = spec.EpochLength;
         long mergeSignRange = spec.MergeSignRange;
 
-        long initialHeadNumber = chain.BlockTree.Head!.Number;
+        long initialHeadNumber = (long)chain.BlockTree.Head!.Number;
 
         // --- Part 1: create signing tx for header (E + mergeSignRange) included in next block ---
 
@@ -74,14 +74,14 @@ public class RewardTests
         // Note: SubmitTransactionSign signs with DI `ISigner`, not necessarily `chain.Signer`
         await chain.AddBlock(BuildSigningTx(
             spec,
-            signedHeaderEPlusMerge.Number,
+            (long)signedHeaderEPlusMerge.Number,
             signedHeaderEPlusMerge.Hash ?? signedHeaderEPlusMerge.CalculateHash().ToHash256(),
             chain.Signer.Key!,
             (long)chain.ReadOnlyState.GetNonce(chain.Signer.Address)));
 
         // --- Move to header (3E - mergeSignRange) to sign it later in Part 2 ---
 
-        long blockNumberAfterIncludingSignTx = chain.BlockTree.Head!.Number;
+        long blockNumberAfterIncludingSignTx = (long)chain.BlockTree.Head!.Number;
         long targetSignedHeader3EMinusMerge = 3 * epochLength - mergeSignRange;
         await chain.AddBlocks((int)(targetSignedHeader3EMinusMerge - blockNumberAfterIncludingSignTx));
 
@@ -90,7 +90,7 @@ public class RewardTests
 
         // --- Evaluate rewards at checkpoint (3E) ---
 
-        long headBeforeCheckpoint = chain.BlockTree.Head!.Number;
+        long headBeforeCheckpoint = (long)chain.BlockTree.Head!.Number;
         long checkpoint3E = 3 * epochLength;
         await chain.AddBlocks((int)(checkpoint3E - headBeforeCheckpoint));
 
@@ -117,7 +117,7 @@ public class RewardTests
 
         // Place signing tx for the previously captured (3E - mergeSignRange) header in block (3E + mergeSignRange + 1)
         long targetIncludingBlockForSecondSign = 3 * epochLength + mergeSignRange + 1;
-        long current = chain.BlockTree.Head!.Number;
+        long current = (long)chain.BlockTree.Head!.Number;
         await chain.AddBlocks((int)(targetIncludingBlockForSecondSign - current - 1)); // move so AddBlockMayHaveExtraTx produces the target
 
         // For 4E reward calculation, the masternodes come from the second epoch switch found
@@ -134,14 +134,14 @@ public class RewardTests
 
         await chain.AddBlock(BuildSigningTx(
             spec,
-            signedHeader3EMinusMerge.Number,
+            (long)signedHeader3EMinusMerge.Number,
             signedHeader3EMinusMerge.Hash ?? signedHeader3EMinusMerge.CalculateHash().ToHash256(),
             signerForPart2,
             (long)chain.ReadOnlyState.GetNonce(signerForPart2.Address)));
 
         // --- Evaluate rewards at checkpoint (4E) ---
         long checkpoint4E = 4 * epochLength;
-        current = chain.BlockTree.Head!.Number;
+        current = (long)chain.BlockTree.Head!.Number;
         await chain.AddBlocks((int)(checkpoint4E - current));
 
         Block block4E = chain.BlockTree.Head!;
@@ -161,7 +161,7 @@ public class RewardTests
         // === Part 3: if no signing tx, reward should be empty ===
 
         long checkpoint5E = 5 * epochLength;
-        current = chain.BlockTree.Head!.Number;
+        current = (long)chain.BlockTree.Head!.Number;
         await chain.AddBlocks((int)(checkpoint5E - current));
 
         Block block5E = chain.BlockTree.Head!;
@@ -200,7 +200,7 @@ public class RewardTests
         // - Insert 2 signing txs (one for header (E + mergeSignRange), one for header (2E - mergeSignRange)) signed by signerB into block (2E - 1)
         // - Verify: rewards at (3E) split 1:2 between A:B with 90/10 owner/foundation
 
-        long initialHeadNumber = chain.BlockTree.Head!.Number;
+        long initialHeadNumber = (long)chain.BlockTree.Head!.Number;
         long targetHeaderEPlusMerge = epochLength + mergeSignRange;
         await chain.AddBlocks((int)(targetHeaderEPlusMerge - initialHeadNumber));
 
@@ -216,14 +216,14 @@ public class RewardTests
         // Insert 1 signing tx for header (E + mergeSignRange) in block (E + mergeSignRange + 1)
         Transaction txA = BuildSigningTx(
             spec,
-            headerEPlusMerge.Number,
+            (long)headerEPlusMerge.Number,
             headerEPlusMerge.Hash ?? headerEPlusMerge.CalculateHash().ToHash256(),
             signerA);
 
         await chain.AddBlock(txA); // advances by 1
 
         long targetHeader2EMinusMerge = 2 * epochLength - mergeSignRange;
-        long currentHeadNumber = chain.BlockTree.Head!.Number;
+        long currentHeadNumber = (long)chain.BlockTree.Head!.Number;
         await chain.AddBlocks((int)(targetHeader2EMinusMerge - currentHeadNumber));
 
         var header2EMinusMerge = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -233,7 +233,7 @@ public class RewardTests
         long targetBlock2EMinus1 = 2 * epochLength - 1;
         long targetBlock2EMinus2 = targetBlock2EMinus1 - 1;
 
-        currentHeadNumber = chain.BlockTree.Head!.Number;
+        currentHeadNumber = (long)chain.BlockTree.Head!.Number;
         await chain.AddBlocks((int)(targetBlock2EMinus2 - currentHeadNumber));
 
         PrivateKey signerB = chain.Signer.Key!;
@@ -243,13 +243,13 @@ public class RewardTests
 
         Transaction txBForEPlusMerge = BuildSigningTx(
             spec,
-            headerEPlusMerge.Number,
+            (long)headerEPlusMerge.Number,
             headerEPlusMerge.Hash!,
             signerB);
 
         Transaction txBFor2EMinusMerge = BuildSigningTx(
             spec,
-            header2EMinusMerge.Number,
+            (long)header2EMinusMerge.Number,
             header2EMinusMerge.Hash!,
             signerB,
             nonce: 1);
@@ -257,7 +257,7 @@ public class RewardTests
         await chain.AddBlock(txBForEPlusMerge, txBFor2EMinusMerge); // now at (2E - 1)
 
         long checkpoint3E = 3 * epochLength;
-        currentHeadNumber = chain.BlockTree.Head!.Number;
+        currentHeadNumber = (long)chain.BlockTree.Head!.Number;
         await chain.AddBlocks((int)(checkpoint3E - currentHeadNumber));
 
         Block block3E = chain.BlockTree.Head!;

@@ -141,7 +141,7 @@ namespace Nethermind.AuRa.Test
         [TestCaseSource(nameof(ValidateParamsTests))]
         public (bool, object) validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaChainSpecEngineParameters> modifyParameters, Repeat repeat, bool parentIsHead, bool isValidSealer)
         {
-            _blockTree.Head.Returns(parentIsHead ? new Block(parentBlock) : new Block(Build.A.BlockHeader.WithNumber(parentBlock.Number - 1).TestObject));
+            _blockTree.Head.Returns(parentIsHead ? new Block(parentBlock) : new Block(Build.A.BlockHeader.WithNumber((long)(parentBlock.Number - 1)).TestObject));
             _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), block.Beneficiary, block.AuRaStep.Value, out _).Returns(isValidSealer);
 
             object cause = null;
@@ -156,7 +156,7 @@ namespace Nethermind.AuRa.Test
 
             if (header?.AuRaStep > parent?.AuRaStep + 1)
             {
-                _reportingValidator.ReportBenign(header.Beneficiary, header.Number, IReportingValidator.BenignCause.SkippedStep);
+                _reportingValidator.ReportBenign(header.Beneficiary, (long)header.Number, IReportingValidator.BenignCause.SkippedStep);
             }
 
             if (repeat != Repeat.No)

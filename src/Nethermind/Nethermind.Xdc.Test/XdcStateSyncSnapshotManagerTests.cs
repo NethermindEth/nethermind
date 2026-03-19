@@ -42,7 +42,7 @@ internal class XdcStateSyncSnapshotManagerTests
 
         XdcBlockHeader pivotHeader = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(pivotNumber)!;
 
-        pivotHeader.Number.Should().Be(pivotNumber);
+        pivotHeader.Number.Should().Be((ulong)pivotNumber);
 
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
@@ -90,7 +90,7 @@ internal class XdcStateSyncSnapshotManagerTests
         switchHeader.ExtraData = XdcTestHelper.BuildV1ExtraData(masternodeAddresses);
 
         XdcBlockHeader pivotHeader = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(pivotNumber)!;
-        pivotHeader.Number.Should().Be(pivotNumber);
+        pivotHeader.Number.Should().Be((ulong)pivotNumber);
 
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();

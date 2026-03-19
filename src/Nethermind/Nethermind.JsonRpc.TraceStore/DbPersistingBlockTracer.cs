@@ -52,7 +52,7 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : BlockTracer where TTrace
     public override void StartNewBlockTrace(Block block)
     {
         _currentBlockHash = block.Hash!;
-        _currentBlockNumber = block.Number;
+        _currentBlockNumber = (long)block.Number;
         _blockTracer.StartNewBlockTrace(block);
     }
 

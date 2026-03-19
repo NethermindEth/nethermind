@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithNumber(long number)
         {
-            TestObjectInternal.Header.Number = number;
+            TestObjectInternal.Header.Number = (ulong)number;
             return this;
         }
 

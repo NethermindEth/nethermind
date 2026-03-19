@@ -47,15 +47,15 @@ internal class PenaltyTests
         Address[] masternodes = epochInfo.Masternodes;
 
         XdcBlockHeader targetHeader = (XdcBlockHeader)chain.BlockTree.FindHeader(targetHeight)!;
-        Address[] penalties = penaltyHandler.HandlePenalties(targetHeader.Number, targetHeader.ParentHash!, masternodes);
+        Address[] penalties = penaltyHandler.HandlePenalties((long)targetHeader.Number, targetHeader.ParentHash!, masternodes);
         Assert.That(penalties, Has.Length.EqualTo(1));
         PrivateKey penaltyHistorySigner = GetPenaltyHistorySigner(chain, penalties[0]);
 
-        XdcBlockHeader signedHeader = (XdcBlockHeader)chain.BlockTree.FindHeader(targetHeader.Number - spec.MergeSignRange)!;
-        Transaction tx = BuildSigningTx(spec, signedHeader.Number, signedHeader.Hash!, penaltyHistorySigner);
+        XdcBlockHeader signedHeader = (XdcBlockHeader)chain.BlockTree.FindHeader((long)targetHeader.Number - spec.MergeSignRange)!;
+        Transaction tx = BuildSigningTx(spec, (long)signedHeader.Number, signedHeader.Hash!, penaltyHistorySigner);
         signingTxCache.SetSigningTransactions(signedHeader.Hash!, [tx]);
 
-        penalties = penaltyHandler.HandlePenalties(targetHeader.Number, targetHeader.ParentHash!, masternodes);
+        penalties = penaltyHandler.HandlePenalties((long)targetHeader.Number, targetHeader.ParentHash!, masternodes);
         Assert.That(penalties, Is.Empty);
     }
 
@@ -78,7 +78,7 @@ internal class PenaltyTests
 
         XdcBlockHeader targetHeader = (XdcBlockHeader)chain.BlockTree.FindHeader(targetHeight)!;
 
-        Address[] penalties = penaltyHandler.HandlePenalties(targetHeader.Number, targetHeader.ParentHash!, masternodes);
+        Address[] penalties = penaltyHandler.HandlePenalties((long)targetHeader.Number, targetHeader.ParentHash!, masternodes);
         Assert.That(penalties, Has.Length.EqualTo(1));
     }
 
@@ -246,7 +246,7 @@ internal class PenaltyTests
         epochSwitchManager.GetEpochSwitchInfo(Arg.Any<Hash256>()).Returns(ci =>
         {
             XdcBlockHeader header = hashToHeader[(Hash256)ci.Args()[0]];
-            long switchEpoch = header.Number / EpochLength * EpochLength;
+            long switchEpoch = (long)(header.Number / EpochLength * EpochLength);
             return new EpochSwitchInfo(
                 masternodesAddress,
                 [],
@@ -270,7 +270,7 @@ internal class PenaltyTests
         XdcBlockHeader signedHeader = context.BlockHeaders[(int)signedBlockNumber];
         context.SigningTxCache.SetSigningTransactions(
             signedHeader.Hash!,
-            [BuildSigningTx(context.Spec, signedHeader.Number, signedHeader.Hash!, context.PenaltySigner, nonce)]);
+            [BuildSigningTx(context.Spec, (long)signedHeader.Number, signedHeader.Hash!, context.PenaltySigner, nonce)]);
     }
 
     private sealed record MockedPenaltyContext(

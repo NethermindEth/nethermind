@@ -21,7 +21,7 @@ internal class XdcSealValidatorTests
 {
     private static bool IsEpochSwitch(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
-        if (spec.SwitchBlock == header.Number)
+        if ((ulong)spec.SwitchBlock == header.Number)
         {
             return true;
         }

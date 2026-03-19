@@ -144,7 +144,7 @@ public class HeaderValidatorTests
 
         _block = Build.A.Block
             .WithParent(_parentBlock)
-            .WithNumber(_parentBlock.Number + 1)
+            .WithNumber((long)(_parentBlock.Number + 1))
             .WithSlotNumber(10)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
@@ -219,8 +219,8 @@ public class HeaderValidatorTests
             .WithDifficulty(131072)
             .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
             .WithGasLimit((ulong)gasLimit)
-            .WithNumber(_parentBlock.Number + 1)
-            .WithBaseFeePerGas(BaseFeeCalculator.Calculate(_parentBlock.Header, specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))))
+            .WithNumber((long)(_parentBlock.Number + 1))
+            .WithBaseFeePerGas(BaseFeeCalculator.Calculate(_parentBlock.Header, specProvider.GetSpec(new ForkActivation((long)(_parentBlock.Number + 1)))))
             .WithNonce(0).TestObject;
         _block.Header.Hash = _block.CalculateHash();
 
@@ -240,7 +240,7 @@ public class HeaderValidatorTests
             .WithDifficulty(131072)
             .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
             .WithGasLimit((ulong)long.MaxValue)
-            .WithNumber(_parentBlock.Number + 1)
+            .WithNumber((long)(_parentBlock.Number + 1))
             .WithNonce(0).TestObject;
         _block.Header.Hash = _block.CalculateHash();
 
@@ -251,7 +251,7 @@ public class HeaderValidatorTests
 
     private static IEnumerable<TestCaseData> NegativeFieldCases()
     {
-        yield return new TestCaseData(new Action<Block>(b => b.Header.Number = -1))
+        yield return new TestCaseData(new Action<Block>(b => b.Header.Number = ulong.MaxValue))
             .SetName("When_block_number_is_negative");
     }
 
@@ -365,7 +365,7 @@ public class HeaderValidatorTests
         // expectedBaseFee = 10 - 1 = 9
         UInt256 expectedBaseFee = BaseFeeCalculator.Calculate(
             _parentBlock.Header,
-            specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))
+            specProvider.GetSpec(new ForkActivation((long)(_parentBlock.Number + 1)))
         );
         Assert.That(expectedBaseFee, Is.EqualTo((UInt256)9), "Test setup: expected baseFee should be 9");
 
@@ -376,7 +376,7 @@ public class HeaderValidatorTests
             .WithBaseFeePerGas(10)  // WRONG! Should be 9
             .WithGasUsed(0)
             .WithGasLimit(300000000)
-            .WithNumber(_parentBlock.Number + 1)
+            .WithNumber((long)(_parentBlock.Number + 1))
             .TestObject;
 
         _block.Header.Hash = _block.CalculateHash();
@@ -421,7 +421,7 @@ public class HeaderValidatorTests
         // Calculate CORRECT baseFee
         UInt256 correctBaseFee = BaseFeeCalculator.Calculate(
             _parentBlock.Header,
-            specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))
+            specProvider.GetSpec(new ForkActivation((long)(_parentBlock.Number + 1)))
         );
 
         // Create block with CORRECT baseFee (9)
@@ -431,7 +431,7 @@ public class HeaderValidatorTests
             .WithBaseFeePerGas(correctBaseFee)  // CORRECT: 9
             .WithGasUsed(0)
             .WithGasLimit(300000000)
-            .WithNumber(_parentBlock.Number + 1)
+            .WithNumber((long)(_parentBlock.Number + 1))
             .TestObject;
 
         _block.Header.Hash = _block.CalculateHash();

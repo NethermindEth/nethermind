@@ -127,7 +127,7 @@ public class LogIndexBuilderTests
         _testDisposables = [];
 
         Block head = _blockTree.Head!;
-        _blockTree.SyncPivot = (head.Number, head.Hash);
+        _blockTree.SyncPivot = ((long)head.Number, head.Hash);
         _syncConfig.PivotNumber = _blockTree.SyncPivot.BlockNumber;
 
         _receiptStorage

@@ -36,12 +36,12 @@ internal class EpochSwitchManager : IEpochSwitchManager
     {
         var xdcSpec = _xdcSpecProvider.GetXdcSpec(header);
 
-        if (header.Number < xdcSpec.SwitchBlock)
+        if ((long)header.Number < xdcSpec.SwitchBlock)
         {
-            return header.Number % xdcSpec.EpochLength == 0;
+            return header.Number % (ulong)xdcSpec.EpochLength == 0;
         }
 
-        if (header.Number == xdcSpec.SwitchBlock)
+        if ((long)header.Number == xdcSpec.SwitchBlock)
         {
             return true;
         }
@@ -63,7 +63,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         if (parentRound < epochStartRound)
         {
-            _round2EpochBlockInfo.Set(round, new BlockRoundInfo(header.Hash, round, header.Number));
+            _round2EpochBlockInfo.Set(round, new BlockRoundInfo(header.Hash, round, (long)header.Number));
             return true;
         }
 
@@ -79,7 +79,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         ulong epochNumber = (ulong)xdcSpec.SwitchEpoch + currentRound / (ulong)xdcSpec.EpochLength;
 
-        if (parent.Number == xdcSpec.SwitchBlock)
+        if ((long)parent.Number == xdcSpec.SwitchBlock)
         {
             return true;
         }
@@ -115,7 +115,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         Address[] masterNodes;
 
-        if (header.Number == xdcSpec.SwitchBlock)
+        if ((long)header.Number == xdcSpec.SwitchBlock)
         {
             masterNodes = xdcSpec.GenesisMasterNodes;
         }
@@ -129,7 +129,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             masterNodes = header.ValidatorsAddress.Value.ToArray();
         }
 
-        var snap = _snapshotManager.GetSnapshotByBlockNumber(header.Number, xdcSpec);
+        var snap = _snapshotManager.GetSnapshotByBlockNumber((long)header.Number, xdcSpec);
         if (snap is null)
         {
             return null;
@@ -148,7 +148,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
                 .ToArray();
         }
 
-        epochSwitchInfo = new EpochSwitchInfo(masterNodes, standbyNodes, penalties, new BlockRoundInfo(header.Hash, header.ExtraConsensusData?.BlockRound ?? 0, header.Number));
+        epochSwitchInfo = new EpochSwitchInfo(masterNodes, standbyNodes, penalties, new BlockRoundInfo(header.Hash, header.ExtraConsensusData?.BlockRound ?? 0, (long)header.Number));
 
         if (header.ExtraConsensusData?.QuorumCert is not null)
         {
@@ -180,9 +180,9 @@ internal class EpochSwitchManager : IEpochSwitchManager
         var epochSwitchInfos = new List<EpochSwitchInfo>();
 
         Hash256 iteratorHash = end.Hash;
-        long iteratorBlockNumber = end.Number;
+        long iteratorBlockNumber = (long)end.Number;
 
-        while (iteratorBlockNumber > start.Number)
+        while (iteratorBlockNumber > (long)start.Number)
         {
             EpochSwitchInfo epochSwitchInfo;
 
@@ -199,7 +199,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             iteratorHash = epochSwitchInfo.EpochSwitchParentBlockInfo.Hash;
             iteratorBlockNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
 
-            if (iteratorBlockNumber >= start.Number)
+            if (iteratorBlockNumber >= (long)start.Number)
             {
                 epochSwitchInfos.Add(epochSwitchInfo);
             }
@@ -278,23 +278,23 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
                 if (isEpochSwitch)
                 {
-                    epochBlockInfo = new BlockRoundInfo(header.Hash, round, header.Number);
+                    epochBlockInfo = new BlockRoundInfo(header.Hash, round, (long)header.Number);
                     return true;
                 }
                 else
                 {
-                    end = header.Number;
+                    end = (long)header.Number;
                     // trick to shorten the search
                     start = Math.Max(start, end - (int)(round % epoch));
                 }
             }
             else if (epochNum > targetEpochNumber)
             {
-                end = header.Number;
+                end = (long)header.Number;
             }
             else
             {
-                long nextStart = header.Number;
+                long nextStart = (long)header.Number;
                 if (nextStart == start)
                 {
                     break;

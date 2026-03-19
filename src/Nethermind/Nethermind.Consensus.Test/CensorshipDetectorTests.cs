@@ -267,7 +267,7 @@ public class CensorshipDetectorTests
     private void BlockProcessingWorkflow(Block block)
     {
         _branchProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(block));
-        Assert.That(() => _censorshipDetector.BlockPotentiallyCensored(block.Number, block.Hash), Is.EqualTo(true).After(10, 1));
+        Assert.That(() => _censorshipDetector.BlockPotentiallyCensored((long)block.Number, block.Hash), Is.EqualTo(true).After(10, 1));
 
         foreach (Transaction tx in block.Transactions)
         {

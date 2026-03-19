@@ -306,7 +306,7 @@ public class ValidateSubmissionHandler
         long parentGasLimit = (long)parentHeader.GasLimit;
         long gasLimit = parentGasLimit;
         long targetGasLimit = (long)desiredGasLimit;
-        long newBlockNumber = parentHeader.Number + 1;
+        long newBlockNumber = (long)(parentHeader.Number + 1);
 
         long maxGasLimitDifference = Math.Max(0, parentGasLimit / releaseSpec.GasLimitBoundDivisor - 1);
         gasLimit = targetGasLimit > parentGasLimit

@@ -30,12 +30,12 @@ public class BlockStoreTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.Insert(block);
 
-        Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
+        Block? retrieved = store.Get((long)block.Number, block.Hash!, RlpBehaviors.None, cached);
         retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
 
-        store.Delete(block.Number, block.Hash!);
+        store.Delete((long)block.Number, block.Hash!);
 
-        store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached).Should().BeNull();
+        store.Get((long)block.Number, block.Hash!, RlpBehaviors.None, cached).Should().BeNull();
     }
 
     [Test]
@@ -61,7 +61,7 @@ public class BlockStoreTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
 
-        Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
+        Block? retrieved = store.Get((long)block.Number, block.Hash!, RlpBehaviors.None, cached);
         retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
     }
 
@@ -87,12 +87,12 @@ public class BlockStoreTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.Insert(block);
 
-        Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
+        Block? retrieved = store.Get((long)block.Number, block.Hash!, RlpBehaviors.None, true);
         retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
 
         db.Clear();
 
-        retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
+        retrieved = store.Get((long)block.Number, block.Hash!, RlpBehaviors.None, true);
         retrieved!.EncodedSize = null;
         retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
     }
@@ -109,7 +109,7 @@ public class BlockStoreTests
 
         store.Insert(block);
 
-        ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
+        ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock((long)block.Number, block.Hash!)!.Value;
 
         retrieved.Header.Should().BeEquivalentTo(block.Header);
         retrieved.TransactionCount.Should().Be(block.Transactions.Length);
@@ -129,7 +129,7 @@ public class BlockStoreTests
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
 
-        ReceiptRecoveryBlock? result = store.GetReceiptRecoveryBlock(block.Number, block.Hash!);
+        ReceiptRecoveryBlock? result = store.GetReceiptRecoveryBlock((long)block.Number, block.Hash!);
 
         result.Should().BeNull();
     }
@@ -144,17 +144,17 @@ public class BlockStoreTests
         store.Insert(block);
 
         // Populate cache
-        Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
+        Block? retrieved = store.Get((long)block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
         retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
 
         // Clear the DB but block should still be in cache
         db.Clear();
-        retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
+        retrieved = store.Get((long)block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
         retrieved.Should().NotBeNull();
 
         // Clear the cache - now block should not be retrievable
         (store as IClearableCache)?.ClearCache();
-        retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
+        retrieved = store.Get((long)block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
         retrieved.Should().BeNull();
     }
 }

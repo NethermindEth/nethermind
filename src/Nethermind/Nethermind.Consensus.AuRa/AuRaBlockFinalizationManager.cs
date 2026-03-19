@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.AuRa
         private void Initialize()
         {
             var hasHead = _blockTree.Head is not null;
-            var level = hasHead ? _blockTree.Head.Number + 1 : 0;
+            long level = hasHead ? (long)_blockTree.Head.Number + 1 : 0;
             ChainLevelInfo chainLevel;
             do
             {
@@ -83,16 +83,16 @@ namespace Nethermind.Consensus.AuRa
             {
                 var (chainLevel, blockInfo) = GetBlockInfo(blockHeader);
                 blockInfo.IsFinalized = false;
-                _chainLevelInfoRepository.PersistLevel(blockHeader.Number, chainLevel, batch);
+                _chainLevelInfoRepository.PersistLevel((long)blockHeader.Number, chainLevel, batch);
             }
 
             // rerunning block
             BlockHeader header = e.Blocks[0].Header;
-            if (_blockTree.WasProcessed(header.Number, header.Hash))
+            if (_blockTree.WasProcessed((long)header.Number, header.Hash))
             {
                 using var batch = _chainLevelInfoRepository.StartBatch();
                 // need to un-finalize blocks
-                var minSealersForFinalization = GetMinSealersForFinalization(header.Number);
+                var minSealersForFinalization = GetMinSealersForFinalization((long)header.Number);
                 for (int i = 1; i < minSealersForFinalization; i++)
                 {
                     header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -124,19 +124,19 @@ namespace Nethermind.Consensus.AuRa
                         ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
                         : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(static b => b.Hash))}].");
 
-                LastFinalizedBlockLevel = finalizedBlocks[^1].Number;
+                LastFinalizedBlockLevel = (long)finalizedBlocks[^1].Number;
                 BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlocks));
             }
         }
 
         private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
         {
-            if (block.Number == _twoThirdsMajorityTransition)
+            if ((long)block.Number == _twoThirdsMajorityTransition)
             {
                 if (_logger.IsInfo) _logger.Info($"Block {_twoThirdsMajorityTransition}: Transitioning to 2/3 quorum.");
             }
 
-            var minSealersForFinalization = GetMinSealersForFinalization(block.Number);
+            var minSealersForFinalization = GetMinSealersForFinalization((long)block.Number);
             var originalBlock = block;
 
             bool IsConsecutiveBlock() => originalBlock.ParentHash == _lastProcessedBlockHash;
@@ -187,12 +187,12 @@ namespace Nethermind.Consensus.AuRa
                         if (validators.Count >= minSealersForFinalization)
                         {
                             blockInfo.IsFinalized = true;
-                            _chainLevelInfoRepository.PersistLevel(block.Number, chainLevel, batch);
+                            _chainLevelInfoRepository.PersistLevel((long)block.Number, chainLevel, batch);
 
                             finalizedBlocks.Add(block);
                             if (ancestorsNotYetRemoved)
                             {
-                                _consecutiveValidatorsForNotYetFinalizedBlocks.RemoveAncestors(block.Number);
+                                _consecutiveValidatorsForNotYetFinalizedBlocks.RemoveAncestors((long)block.Number);
                                 ancestorsNotYetRemoved = false;
                             }
                         }
@@ -223,7 +223,7 @@ namespace Nethermind.Consensus.AuRa
 
         private (ChainLevelInfo parentLevel, BlockInfo parentBlockInfo) GetBlockInfo(BlockHeader blockHeader)
         {
-            var chainLevelInfo = _chainLevelInfoRepository.LoadLevel(blockHeader.Number);
+            var chainLevelInfo = _chainLevelInfoRepository.LoadLevel((long)blockHeader.Number);
             var blockInfo = chainLevelInfo.BlockInfos.First(i => i.BlockHash == blockHeader.Hash);
             return (chainLevelInfo, blockInfo);
         }
@@ -277,13 +277,13 @@ namespace Nethermind.Consensus.AuRa
         {
             var block = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
             var validators = new HashSet<Address>();
-            var minSealersForFinalization = GetMinSealersForFinalization(block.Number);
+            var minSealersForFinalization = GetMinSealersForFinalization((long)block.Number);
             while (block.Number > 0)
             {
                 validators.Add(block.Beneficiary);
                 if (validators.Count >= minSealersForFinalization)
                 {
-                    return block.Number;
+                    return (long)block.Number;
                 }
 
                 block = _blockTree.FindParentHeader(block, BlockTreeLookupOptions.None);
@@ -315,10 +315,10 @@ namespace Nethermind.Consensus.AuRa
                 validators.Add(block.Beneficiary);
                 if (validators.Count >= minSealersForFinalization)
                 {
-                    return block.Number;
+                    return (long?)block.Number;
                 }
 
-                block = _blockTree.FindHeader(block.Number + 1, BlockTreeLookupOptions.None);
+                block = _blockTree.FindHeader((long)(block.Number + 1), BlockTreeLookupOptions.None);
             }
 
             return null;
@@ -380,7 +380,7 @@ namespace Nethermind.Consensus.AuRa
                 for (int i = _blocks.Count - 1; i >= 0; i--)
                 {
                     var item = _blocks[i];
-                    if (item.Number <= blockNumber)
+                    if ((long)item.Number <= blockNumber)
                     {
                         _blocks.RemoveFromBack();
                         var setCount = _validatorCount[item.Beneficiary];

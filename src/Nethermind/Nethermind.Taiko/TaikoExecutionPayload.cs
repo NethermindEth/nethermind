@@ -40,7 +40,7 @@ public class TaikoExecutionPayload : ExecutionPayload
                 Keccak.OfAnEmptySequenceRlp,
                 FeeRecipient,
                 UInt256.Zero,
-                BlockNumber,
+                (ulong)BlockNumber,
                 GasLimit,
                 Timestamp,
                 ExtraData)

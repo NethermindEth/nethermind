@@ -65,7 +65,7 @@ internal class TestBlockTree : IBlockTree
     public BlockHeader? BestSuggestedBeaconHeader => null;
     public BlockHeader? LowestInsertedHeader { get; set; }
     public BlockHeader? LowestInsertedBeaconHeader { get; set; }
-    public long BestKnownNumber => Head?.Number ?? 0;
+    public long BestKnownNumber => (long)(Head?.Number ?? 0);
     public long BestKnownBeaconNumber => 0;
     public bool CanAcceptNewBlocks => true;
     public (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }

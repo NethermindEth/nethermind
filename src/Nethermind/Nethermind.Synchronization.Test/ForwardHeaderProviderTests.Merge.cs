@@ -55,8 +55,8 @@ public partial class ForwardHeaderProviderTests
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         ctx.ConfigureBestPeer(syncPeer);
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        headers?[0]?.Number.Should().Be(expectedFirstBlock);
-        headers?[^1]?.Number.Should().Be(expectedLastBlock);
+        headers?[0]?.Number.Should().Be((ulong)expectedFirstBlock);
+        headers?[^1]?.Number.Should().Be((ulong)expectedLastBlock);
     }
 
     [TestCase(32L, DownloaderOptions.Insert, 16, false, 16)]
@@ -92,7 +92,7 @@ public partial class ForwardHeaderProviderTests
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         ctx.ConfigureBestPeer(syncPeer);
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        headers?[^1]?.Number.Should().Be(expectedBestKnownNumber);
+        headers?[^1]?.Number.Should().Be((ulong)expectedBestKnownNumber);
 
 
     }
@@ -122,7 +122,7 @@ public partial class ForwardHeaderProviderTests
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         ctx.ConfigureBestPeer(peerInfo);
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(blocksToIgnore, 128, CancellationToken.None);
-        headers?[^1]?.Number.Should().Be(expectedBestKnownNumber);
+        headers?[^1]?.Number.Should().Be((ulong)expectedBestKnownNumber);
     }
 
     private IContainer CreateMergeNode(Action<ContainerBuilder>? configurer = null, params IConfig[] configs)

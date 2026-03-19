@@ -179,7 +179,7 @@ public class TraceRpcModuleTests
         await context.Blockchain.AddBlock(transaction);
 
         TraceFilterForRpc traceFilterRequest = new();
-        long lastBLockNumber = blockchain.BlockTree.Head!.Number;
+        long lastBLockNumber = (long)blockchain.BlockTree.Head!.Number;
         traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber);
         traceFilterRequest.ToBlock = new BlockParameter(lastBLockNumber);
         traceFilterRequest.ToAddress = new[] { TestItem.AddressA };
@@ -198,7 +198,7 @@ public class TraceRpcModuleTests
             .SignedAndResolved(blockchain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
         await context.Blockchain.AddBlock(transaction);
         await context.Blockchain.AddBlock();
-        long lastBLockNumber = blockchain.BlockTree.Head!.Number;
+        long lastBLockNumber = (long)blockchain.BlockTree.Head!.Number;
         TraceFilterForRpc traceFilterRequest = new();
         traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1);
         traceFilterRequest.ToBlock = BlockParameter.Latest;
@@ -244,7 +244,7 @@ public class TraceRpcModuleTests
             .WithGasLimit(93548).TestObject;
         await blockchain.AddBlock(transaction2);
         await blockchain.AddBlock();
-        long lastBLockNumber = blockchain.BlockTree.Head!.Number;
+        long lastBLockNumber = (long)blockchain.BlockTree.Head!.Number;
 
         TraceFilterForRpc traceFilterRequest = new();
         traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1);
@@ -274,7 +274,7 @@ public class TraceRpcModuleTests
         );
         await context.Blockchain.AddBlock();
         TraceFilterForRpc traceFilterRequest = new();
-        long lastBLockNumber = blockchain.BlockTree.Head!.Number;
+        long lastBLockNumber = (long)blockchain.BlockTree.Head!.Number;
         traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1);
         traceFilterRequest.ToBlock = BlockParameter.Latest;
         traceFilterRequest.FromAddress = new[] { TestItem.PrivateKeyA.Address };
@@ -289,7 +289,7 @@ public class TraceRpcModuleTests
         await context.Build();
         TraceFilterForRpc traceFilterRequest = new();
         TestRpcBlockchain blockchain = context.Blockchain;
-        long lastBLockNumber = blockchain.BlockTree.Head!.Number;
+        long lastBLockNumber = (long)blockchain.BlockTree.Head!.Number;
         traceFilterRequest.After = 3;
         traceFilterRequest.Count = 4;
         traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber + 1);
@@ -371,7 +371,7 @@ public class TraceRpcModuleTests
         await context.Build();
         TraceFilterForRpc traceFilterRequest = new();
         TestRpcBlockchain blockchain = context.Blockchain;
-        long lastBLockNumber = blockchain.BlockTree.Head!.Number;
+        long lastBLockNumber = (long)blockchain.BlockTree.Head!.Number;
         // traceFilterRequest.After = 3;
         // traceFilterRequest.Count = 4;
         traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber + 1);
@@ -883,7 +883,7 @@ public class TraceRpcModuleTests
 
         await blockchain.AddBlock(transaction1, transaction2);
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(new BlockParameter(blockchain.BlockFinder.FindLatestBlock()!.Number), traceTypes);
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(new BlockParameter((long)blockchain.BlockFinder.FindLatestBlock()!.Number), traceTypes);
         traces.Data.Should().HaveCount(2);
         traces.Data.ElementAt(0).Action!.From.Should().BeEquivalentTo(traces.Data.ElementAt(1).Action!.From);
         string serialized = new EthereumJsonSerializer().Serialize(traces.Data);
@@ -913,7 +913,7 @@ public class TraceRpcModuleTests
 
         await blockchain.AddBlock(tx);
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(new BlockParameter(blockchain.BlockFinder.FindLatestBlock()!.Number), traceTypes);
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(new BlockParameter((long)blockchain.BlockFinder.FindLatestBlock()!.Number), traceTypes);
         traces.Data.Should().HaveCount(1);
         var state = traces.Data.ElementAt(0).StateChanges!;
 

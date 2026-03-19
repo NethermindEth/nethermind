@@ -93,7 +93,7 @@ public class TaikoHeaderValidator(
         ulong parentBlockTime = 0;
         if (header.Number > 1)
         {
-            BlockHeader? grandParent = _blockTree?.FindHeader(parent.ParentHash!, BlockTreeLookupOptions.None, blockNumber: parent.Number - 1);
+            BlockHeader? grandParent = _blockTree?.FindHeader(parent.ParentHash!, BlockTreeLookupOptions.None, blockNumber: (long?)(parent.Number - 1));
             if (grandParent is null)
             {
                 // Skip EIP-4396 verification due to unknown ancestor

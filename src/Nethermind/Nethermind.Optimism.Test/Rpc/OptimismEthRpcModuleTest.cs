@@ -94,7 +94,7 @@ public class OptimismEthRpcModuleTest
             new(
                 chainId: 0,
                 blockHash: receipt.BlockHash!,
-                blockNumber: receipt.BlockNumber,
+                blockNumber: (long)receipt.BlockNumber,
                 txIndex: receipt.Index,
                 blockTimestamp: 0,
                 baseFee: 0,
@@ -168,7 +168,7 @@ public class OptimismEthRpcModuleTest
             new(
                 chainId: 0,
                 blockHash: receipt.BlockHash!,
-                blockNumber: receipt.BlockNumber,
+                blockNumber: (long)receipt.BlockNumber,
                 txIndex: receipt.Index,
                 blockTimestamp: 0,
                 baseFee: 0,
@@ -245,7 +245,7 @@ public class OptimismEthRpcModuleTest
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
-        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
+        blockFinder.FindBlock(new BlockParameter((long)block.Number)).Returns(block);
 
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.Get(block).Returns([receipt]);
@@ -323,7 +323,7 @@ public class OptimismEthRpcModuleTest
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
-        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
+        blockFinder.FindBlock(new BlockParameter((long)block.Number)).Returns(block);
 
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.Get(block).Returns([receipt]);
@@ -423,7 +423,7 @@ public class OptimismEthRpcModuleTest
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
-        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
+        blockFinder.FindBlock(new BlockParameter((long)block.Number)).Returns(block);
 
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.Get(block).Returns([receiptA, receiptB]);
@@ -441,7 +441,7 @@ public class OptimismEthRpcModuleTest
             .Build();
 
 
-        string serialized = await rpcBlockchain.TestEthRpc("eth_getBlockReceipts", new BlockParameter(block.Number));
+        string serialized = await rpcBlockchain.TestEthRpc("eth_getBlockReceipts", new BlockParameter((long)block.Number));
         var expected = $$"""
                          {
                             "jsonrpc":"2.0",
@@ -522,7 +522,7 @@ public class OptimismEthRpcModuleTest
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
-        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
+        blockFinder.FindBlock(new BlockParameter((long)block.Number)).Returns(block);
 
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)

@@ -66,11 +66,11 @@ public class BodiesSyncFeedTests
         {
             FastSync = true,
             PivotHash = _pivotBlock.Hash!.ToString(),
-            PivotNumber = _pivotBlock.Number,
+            PivotNumber = (long)_pivotBlock.Number,
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };
-        _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash);
+        _syncingToBlockTree.SyncPivot = ((long)_pivotBlock.Number, _pivotBlock.Hash);
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _historyPruner = Substitute.For<IHistoryPruner>();
@@ -136,8 +136,8 @@ public class BodiesSyncFeedTests
     {
         _feed.InitializeFeed();
 
-        _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(_pivotBlock.Number - 2)!);
-        _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(_pivotBlock.Number - 4)!);
+        _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock((long)(_pivotBlock.Number - 2))!);
+        _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock((long)(_pivotBlock.Number - 4))!);
 
         using BodiesSyncBatch req = (await _feed.PrepareRequest())!;
         req.Infos
@@ -192,7 +192,7 @@ public class BodiesSyncFeedTests
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
         _syncConfig.PivotNumber = AncientBarrierInConfig + 1_000_000;
-        _syncPointers.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
+        _syncPointers.LowestInsertedBodyNumber = JustStarted ? null : (long?)_pivotBlock.Number;
         if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         _feed.InitializeFeed();

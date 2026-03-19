@@ -54,7 +54,7 @@ public class XdcStateSyncPivot : IStateSyncPivot
 
     public void UpdateHeaderForcefully() { }
     public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = new();
-    public long Diff => (_blockTree.BestSuggestedHeader?.Number ?? 0) - (_pivotHeader?.Number ?? 0);
+    public long Diff => (long)(_blockTree.BestSuggestedHeader?.Number ?? 0UL) - (long)(_pivotHeader?.Number ?? 0UL);
 
     private void EnsureInitialized()
     {

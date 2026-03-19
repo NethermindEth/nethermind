@@ -39,12 +39,12 @@ public class StateSyncPivotTest
                 StateMinDistanceFromHead = minDistance,
                 StateMaxDistanceFromHead = maxDistance,
             }, LimboLogs.Instance);
-        blockTree.SyncPivot = (syncPivot, Keccak.Zero);
+        blockTree.SyncPivot = ((long)syncPivot, Keccak.Zero);
 
         blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(originalBestSuggested).TestObject);
         stateSyncPivot.GetPivotHeader().Should().NotBeNull();
 
         blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(newBestSuggested).TestObject);
-        stateSyncPivot.GetPivotHeader()?.Number.Should().Be(newPivotHeader);
+        stateSyncPivot.GetPivotHeader()?.Number.Should().Be((ulong)newPivotHeader);
     }
 }

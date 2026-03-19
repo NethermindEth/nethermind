@@ -231,7 +231,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             while (latestBlockNumber <= newestBlockNumber)
             {
                 latestBlock = parent is not null ? Build.A.Block.WithNumber(latestBlockNumber).WithParent(parent).TestObject : Build.A.Block.Genesis.TestObject;
-                blockTree.FindBlock(latestBlock.Hash!, options, latestBlock.Number).Returns(latestBlock);
+                blockTree.FindBlock(latestBlock.Hash!, options, (long?)latestBlock.Number).Returns(latestBlock);
                 blockTree.FindParent(latestBlock, BlockTreeLookupOptions.RequireCanonical).Returns(parent);
                 parent = latestBlock;
                 latestBlockNumber++;
@@ -442,7 +442,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 blockTree.FindBlock(blockParameter).Returns(secondBlock);
                 blockTree.Head.Returns(secondBlock);
                 blockTree.FindParent(secondBlock, BlockTreeLookupOptions.RequireCanonical).Returns(firstBlock);
-                blockTree.FindBlock(firstBlock.Hash!, options, firstBlock.Number).Returns(firstBlock);
+                blockTree.FindBlock(firstBlock.Hash!, options, (long?)firstBlock.Number).Returns(firstBlock);
 
                 IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
                 receiptStorage.Get(firstBlock).Returns(new TxReceipt[] { new() { GasUsed = 3 } });

@@ -18,7 +18,7 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
     private (long, IXdcReleaseSpec) GetSpecAndHeader()
     {
         XdcBlockHeader header = (XdcBlockHeader)blockTree.Head.Header;
-        long currentHeaderNumber = header.Number + 1;
+        long currentHeaderNumber = (long)header.Number + 1;
         IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(currentHeaderNumber);
 
         return (currentHeaderNumber, xdcSpec);

@@ -28,7 +28,7 @@ internal class ProposedBlockTests
         EpochSwitchInfo switchInfo = blockChain.EpochSwitchManager.GetEpochSwitchInfo(head)!;
         PrivateKey[] masternodes = blockChain.TakeRandomMasterNodes(spec, switchInfo);
 
-        BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
+        BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, (long)head.Number);
         long gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0 ? 0 : Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
         //We skip 1 vote so we are 1 under the vote threshold, proving that if the round advances the module cast a vote itself
         foreach (var key in masternodes.Skip(1))
@@ -99,7 +99,7 @@ internal class ProposedBlockTests
 
         PrivateKey[] masternodes = blockChain.TakeRandomMasterNodes(spec, switchInfo);
 
-        BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
+        BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, (long)head.Number);
         long gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0 ? 0 : Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
         //We skip 1 vote so we are 1 under the vote threshold
         foreach (var key in masternodes.Skip(1))
@@ -110,7 +110,7 @@ internal class ProposedBlockTests
 
         var beforeFinalVote = blockChain.XdcContext.HighestQC!;
         //Our highest QC should be 1 number behind head
-        beforeFinalVote.ProposedBlockInfo.BlockNumber.Should().Be(head.Number - 1);
+        beforeFinalVote.ProposedBlockInfo.BlockNumber.Should().Be((long)(head.Number - 1));
 
         var newRoundWaitHandle = new TaskCompletionSource();
         blockChain.XdcContext.NewRoundSetEvent += (s, a) => { newRoundWaitHandle.SetResult(); };
@@ -151,8 +151,8 @@ internal class ProposedBlockTests
         for (int i = 1; i <= count; i++)
         {
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
-            blockChain.BlockTree.Head.Number.Should().Be(startBlock.Number + i);
-            blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber.Should().Be(startBlock.Number + i);
+            blockChain.BlockTree.Head.Number.Should().Be(startBlock.Number + (ulong)i);
+            blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber.Should().Be((long)(startBlock.Number + (ulong)i));
             blockChain.XdcContext.HighestCommitBlock.BlockNumber.Should().Be(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber - 2);
         }
     }
@@ -177,7 +177,7 @@ internal class ProposedBlockTests
             masternodes = [.. masternodes.Where(x => x.Address != head.Beneficiary), extraMasterKey];
         }
 
-        BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
+        BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, (long)head.Number);
         long gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0 ? 0 : Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
         //We skip 1 vote so we are 1 under the vote threshold
         foreach (var key in masternodes.Skip(1))

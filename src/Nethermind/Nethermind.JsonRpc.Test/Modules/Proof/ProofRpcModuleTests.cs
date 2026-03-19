@@ -263,7 +263,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
             GasPrice = useNonZeroGasPrice ? 10.GWei : 0
         };
 
-        _proofRpcModule.proof_call(tx, new BlockParameter(block.Number));
+        _proofRpcModule.proof_call(tx, new BlockParameter((long)block.Number));
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, block.Number);
         Assert.That(response.Contains("\"result\""), Is.True);
@@ -787,7 +787,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
             GasPrice = useNonZeroGasPrice ? 10.GWei : 0
         };
 
-        CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
+        CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter((long)blockOnTop.Number)).Data;
         Assert.That(callResultWithProof.Accounts.Length, Is.GreaterThan(0));
 
         foreach (AccountProof accountProof in callResultWithProof.Accounts)
@@ -839,7 +839,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
             Nonce = 1000
         };
 
-        CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
+        CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter((long)blockOnTop.Number)).Data;
         Assert.That(callResultWithProof.Accounts.Length, Is.GreaterThan(0));
 
         foreach (AccountProof accountProof in callResultWithProof.Accounts)

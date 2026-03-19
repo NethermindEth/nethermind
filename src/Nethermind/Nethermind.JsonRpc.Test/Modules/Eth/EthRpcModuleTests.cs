@@ -1058,7 +1058,7 @@ public partial class EthRpcModuleTests
             Recipient = TestItem.AddressA,
             Sender = TestItem.AddressB,
             BlockHash = TestItem.KeccakA,
-            BlockNumber = blockNumber,
+            BlockNumber = (ulong)blockNumber,
             ContractAddress = TestItem.AddressC,
             GasUsed = 1000,
             TxHash = TestItem.KeccakA,
@@ -1074,7 +1074,7 @@ public partial class EthRpcModuleTests
             Recipient = TestItem.AddressC,
             Sender = TestItem.AddressD,
             BlockHash = TestItem.KeccakA,
-            BlockNumber = blockNumber,
+            BlockNumber = (ulong)blockNumber,
             ContractAddress = TestItem.AddressC,
             GasUsed = 1000,
             TxHash = TestItem.KeccakB,
@@ -1577,7 +1577,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_block_by_hash_pruned()
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
-        ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
+        ctx.Test.Container.Resolve<IBlockStore>().Delete((long)ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByHash", ctx.Test.BlockTree.Genesis!.Hash!.ToString(), "true");
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
     }
@@ -1586,7 +1586,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_tx_count_by_hash_pruned()
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
-        ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
+        ctx.Test.Container.Resolve<IBlockStore>().Delete((long)ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockTransactionCountByHash", ctx.Test.BlockTree.Genesis!.Hash!.ToString());
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
     }
@@ -1595,7 +1595,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_uncle_count_by_hash_pruned()
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
-        ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
+        ctx.Test.Container.Resolve<IBlockStore>().Delete((long)ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getUncleCountByBlockHash", ctx.Test.BlockTree.Genesis!.Hash!.ToString());
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
     }
@@ -1604,7 +1604,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_transaction_by_block_hash_and_index_pruned()
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
-        ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
+        ctx.Test.Container.Resolve<IBlockStore>().Delete((long)ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByBlockHashAndIndex", ctx.Test.BlockTree.Genesis!.Hash!.ToString(), "1");
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
     }

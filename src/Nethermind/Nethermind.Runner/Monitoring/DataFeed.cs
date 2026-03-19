@@ -351,7 +351,7 @@ public class DataFeed
                         GasUsed = head.GasUsed,
                         Hash = head.Hash ?? Hash256.Zero,
                         Beneficiary = head.Beneficiary ?? Address.Zero,
-                        Number = head.Number,
+                        Number = (long)head.Number,
                         Size = _blockDecoder.GetLength(head, RlpBehaviors.None),
                         Timestamp = head.Timestamp,
                         BaseFeePerGas = head.BaseFeePerGas,

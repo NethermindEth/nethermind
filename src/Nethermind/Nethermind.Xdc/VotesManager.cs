@@ -139,7 +139,7 @@ internal class VotesManager(
     }
 
     public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc) => VerifyVotingRules(roundInfo.Hash, roundInfo.BlockNumber, roundInfo.Round, qc);
-    public bool VerifyVotingRules(XdcBlockHeader header) => VerifyVotingRules(header.Hash, header.Number, header.ExtraConsensusData.BlockRound, header.ExtraConsensusData.QuorumCert);
+    public bool VerifyVotingRules(XdcBlockHeader header) => VerifyVotingRules(header.Hash, (long)header.Number, header.ExtraConsensusData.BlockRound, header.ExtraConsensusData.QuorumCert);
     public bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc)
     {
         if ((long)_ctx.CurrentRound <= _highestVotedRound)
@@ -174,7 +174,7 @@ internal class VotesManager(
     {
         var voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
         var currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
-        if (Math.Abs(voteBlockNumber - currentBlockNumber) > _maxBlockDistance)
+        if (Math.Abs(voteBlockNumber - (long)currentBlockNumber) > _maxBlockDistance)
         {
             // Discarded propagated vote, too far away
             return Task.CompletedTask;

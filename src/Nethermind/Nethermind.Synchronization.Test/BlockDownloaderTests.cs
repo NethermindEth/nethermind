@@ -102,13 +102,13 @@ public partial class BlockDownloaderTests
         if (enableFastSync)
         {
             await ctx.FastSyncUntilNoRequest(peerInfo);
-            ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - fastSynclag)));
+            ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be((ulong)Math.Max(0, Math.Min(headNumber, headNumber - fastSynclag)));
         }
 
         syncPeer.ExtendTree(chainLength * 2);
         await ctx.FullSyncUntilNoRequest(peerInfo);
 
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, peerInfo.HeadNumber));
+        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be((ulong)Math.Max(0, peerInfo.HeadNumber));
         // full sync does not set main chain, but triggers it processing which eventually set main chain
         ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader!.Hash!).Should().Be(false);
 
@@ -147,10 +147,10 @@ public partial class BlockDownloaderTests
         ctx.ConfigureBestPeer(peerInfo);
 
         List<long> newHeadSequence = new List<long>();
-        ctx.BlockTree.BlockAddedToMain += (_, b) => newHeadSequence.Add(b.Block.Number);
+        ctx.BlockTree.BlockAddedToMain += (_, b) => newHeadSequence.Add((long)b.Block.Number);
 
         await ctx.FastSyncUntilNoRequest(peerInfo);
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag)));
+        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be((ulong)Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag)));
 
         List<long> expectedNewHeadSequence = Enumerable.Range(1, (int)(chainLength - fastSyncLag - 1)).Select((i) => (long)i).ToList();
         newHeadSequence.Should().BeEquivalentTo(expectedNewHeadSequence);
@@ -287,7 +287,7 @@ public partial class BlockDownloaderTests
         }
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(peerInfo.HeadNumber);
+        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be((ulong)peerInfo.HeadNumber);
         ctx.WasSuggested(ctx.BlockTree.BestSuggestedHeader.GetOrCalculateHash());
     }
 
@@ -390,7 +390,7 @@ public partial class BlockDownloaderTests
                     blockHashes = blockHashes.Where((hash) =>
                     {
                         BlockHeader? header = ctx.ResponseBuilder.GetHeader(hash);
-                        return header is not null && header.Number <= availableBlock;
+                        return header is not null && (long)header.Number <= availableBlock;
                     }).ToList();
                     requestedHashes.AddRange(blockHashes);
                 }
@@ -424,9 +424,9 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
-        ctx.BlockTree.BestSuggestedBody!.Number.Should().Be(0);
+        ctx.BlockTree.BestSuggestedBody!.Number.Should().Be(0UL);
         await ctx.FullDispatcherSync(availableBlock, 10000);
-        ctx.BlockTree.BestSuggestedBody.Number.Should().Be(availableBlock);
+        ctx.BlockTree.BestSuggestedBody.Number.Should().Be((ulong)availableBlock);
     }
 
     [Test]
@@ -588,7 +588,7 @@ public partial class BlockDownloaderTests
         {
             FastSync = true,
             StateMinDistanceFromHead = fastSyncLag,
-            PivotNumber = syncPivot.Number,
+            PivotNumber = (long)syncPivot.Number,
             PivotHash = syncPivot.Hash!.ToString(),
         };
 
@@ -945,9 +945,9 @@ public partial class BlockDownloaderTests
             Task waitTask = Wait.ForEventCondition<BlockEventArgs>(cts.Token,
                 e => BlockTree.NewBestSuggestedBlock += e,
                 e => BlockTree.NewBestSuggestedBlock -= e,
-                (arg) => arg.Block.Number == untilBestSuggestedHeaderIs);
+                (arg) => (long)arg.Block.Number == untilBestSuggestedHeaderIs);
 
-            if (BlockTree.BestSuggestedHeader?.Number == untilBestSuggestedHeaderIs) return;
+            if ((long?)BlockTree.BestSuggestedHeader?.Number == untilBestSuggestedHeaderIs) return;
             Task dLoop = FullSyncFeedComponent.Dispatcher.Start(cts.Token);
             FullSyncFeedComponent.Feed.Activate();
 
@@ -987,7 +987,7 @@ public partial class BlockDownloaderTests
 
         public virtual void ShouldFastSyncedUntil(long blockNumber)
         {
-            BlockTree.BestSuggestedHeader!.Number.Should().Be(blockNumber);
+            BlockTree.BestSuggestedHeader!.Number.Should().Be((ulong)blockNumber);
         }
 
         public void Deconstruct(out ResponseBuilder ResponseBuilder, out SyncFeedComponent<BlocksRequest> FastSyncFeedComponent, out SyncFeedComponent<BlocksRequest> FullSyncFeedComponent, out IForwardSyncController ForwardSyncController, out IBlockTree BlockTree, out InMemoryReceiptStorage ReceiptStorage, out ISyncPeerPool PeerPool)
@@ -1032,7 +1032,7 @@ public partial class BlockDownloaderTests
             _withWithdrawals = withWithdrawals;
             _flags = flags;
             BlockTree = blockTree;
-            HeadNumber = BlockTree.Head!.Number;
+            HeadNumber = (long)BlockTree.Head!.Number;
             HeadHash = BlockTree.HeadHash!;
             TotalDifficulty = peerTotalDifficulty;
         }
@@ -1049,7 +1049,7 @@ public partial class BlockDownloaderTests
             builder = builder.OfChainLength((int)chainLength, 0, 0, _withWithdrawals);
             BlockTree = builder.TestObject;
 
-            HeadNumber = BlockTree.Head!.Number;
+            HeadNumber = (long)BlockTree.Head!.Number;
             HeadHash = BlockTree.HeadHash!;
             TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
         }
@@ -1200,7 +1200,7 @@ public partial class BlockDownloaderTests
                     Hash256 receiptRoot = i == 1 ? Keccak.EmptyTreeHash : new Hash256("0x9904791428367d3f36f2be68daf170039dd0b3d6b23da00697de816a05fb5cc1");
                     BlockHeaderBuilder blockHeaderBuilder = consistent
                         ? Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithParent(headers[i - 1])
-                        : Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithNumber(headers[i - 1].Number + 1);
+                        : Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithNumber((long)(headers[i - 1].Number + 1));
 
                     if (withTransaction)
                     {
@@ -1266,7 +1266,7 @@ public partial class BlockDownloaderTests
                 }
                 else
                 {
-                    blockHeaders[i] = Build.A.BlockHeader.WithNumber(blockHeaders[i - 1].Number + 1).WithHash(blockHashes[i]).TestObject;
+                    blockHeaders[i] = Build.A.BlockHeader.WithNumber((long)(blockHeaders[i - 1].Number + 1)).WithHash(blockHashes[i]).TestObject;
                 }
                 _headers[blockHashes[i]] = blockHeaders[i];
                 var header = blockHeaders[i];
@@ -1275,7 +1275,7 @@ public partial class BlockDownloaderTests
                     ? _bodies[blockHashes[i]]
                     : BuildBlockForHeader(header, i, withTransactions).Body;
 
-                _testHeaderMapping[header.Number] = header.Hash!;
+                _testHeaderMapping[(long)header.Number] = header.Hash!;
 
                 blockBodies[i] = body;
                 _bodies[blockHashes[i]] = blockBodies[i];
@@ -1325,7 +1325,7 @@ public partial class BlockDownloaderTests
 
                 _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                     ? Keccak.EmptyTreeHash
-                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamEncoder<TxReceipt>()!);
+                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)(long)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamEncoder<TxReceipt>()!);
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());

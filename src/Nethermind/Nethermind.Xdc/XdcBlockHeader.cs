@@ -26,7 +26,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         ulong gasLimit,
         ulong timestamp,
         byte[] extraData)
-        : base(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
+        : base(parentHash, unclesHash, beneficiary, difficulty, (ulong)number, gasLimit, timestamp, extraData)
     {
     }
 
@@ -104,7 +104,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
             src.UnclesHash,
             src.Beneficiary,
             src.Difficulty,
-            src.Number,
+            (long)src.Number,
             src.GasLimit,
             src.Timestamp,
             src.ExtraData)

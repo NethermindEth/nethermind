@@ -310,7 +310,7 @@ namespace Nethermind.Core.Test.Builders
             else
             {
                 currentBlockBuilder.WithDifficulty(BlockHeaderBuilder.DefaultDifficulty -
-                                                   (splitFrom > parent.Number ? 0 : (ulong)splitVariant));
+                                                   ((ulong)splitFrom > parent.Number ? 0 : (ulong)splitVariant));
             }
 
             if (_receiptStorage is not null && blockIndex % 3 == 0)
@@ -386,7 +386,7 @@ namespace Nethermind.Core.Test.Builders
             for (int i = 0; i < chainLength; i++)
             {
                 BlockTree.SuggestBlock(current);
-                if (current.Number < processedChainLength)
+                if (current.Number < (ulong)processedChainLength)
                 {
                     BlockTree.UpdateMainChain(current);
                 }
@@ -418,7 +418,7 @@ namespace Nethermind.Core.Test.Builders
 
             foreach (Block block in blocks)
             {
-                if (block.Number != counter++)
+                if (block.Number != (ulong)counter++)
                 {
                     throw new ArgumentException("Block numbers are not consecutively increasing.");
                 }
@@ -433,7 +433,7 @@ namespace Nethermind.Core.Test.Builders
         public static void ExtendTree(IBlockTree blockTree, long newChainLength)
         {
             Block previous = blockTree.RetrieveHeadBlock()!;
-            long initialLength = previous.Number + 1;
+            long initialLength = (long)(previous.Number + 1);
             for (long i = initialLength; i < newChainLength; i++)
             {
                 previous = Build.A.Block.WithNumber(i).WithParent(previous).TestObject;

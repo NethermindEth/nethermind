@@ -74,7 +74,7 @@ namespace Nethermind.AuRa.Test.Validators
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
 
             context.ContractBasedValidator.ValidatorContract
-                .ShouldValidatorReport(Arg.Is<BlockHeader>(h => h.Number == blockNumber - 1), NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>())
+                .ShouldValidatorReport(Arg.Is<BlockHeader>(h => h.Number == (ulong)(blockNumber - 1)), NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>())
                 .Returns(0 < validatorsToReport, Enumerable.Range(1, 15).Select(i => i < validatorsToReport).ToArray());
 
             context.ContractBasedValidator.BlockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.None, blockNumber: Arg.Any<long>())

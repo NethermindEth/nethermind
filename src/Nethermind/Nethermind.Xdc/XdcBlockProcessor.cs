@@ -28,7 +28,7 @@ internal class XdcBlockProcessor : BlockProcessor
     // Match Go's big.Int.Bytes() behavior: zero produces empty bytes, not [0x00].
     protected override BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec) =>
         BlockExecutionContext.WithPrevRandao(header, spec,
-            ValueKeccak.Compute(header.Number != 0 ? header.Number.ToBigEndianSpanWithoutLeadingZeros(out _) : default));
+            ValueKeccak.Compute(header.Number != 0 ? ((long)header.Number).ToBigEndianSpanWithoutLeadingZeros(out _) : default));
 
     protected override Block PrepareBlockForProcessing(Block suggestedBlock)
     {
@@ -39,7 +39,7 @@ internal class XdcBlockProcessor : BlockProcessor
             bh.UnclesHash,
             bh.Beneficiary,
             bh.Difficulty,
-            bh.Number,
+            (long)bh.Number,
             bh.GasLimit,
             bh.Timestamp,
             bh.ExtraData

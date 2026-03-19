@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 yield return transaction;
             }
 
-            long currentBlockNumber = parent.Number + 1;
+            long currentBlockNumber = (long)parent.Number + 1;
 
             if (_contractValidator.ForSealing && IsPosdao(currentBlockNumber))
             {
@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void ResendPersistedReports(BlockHeader blockHeader)
         {
-            var blockNumber = blockHeader.Number;
+            long blockNumber = (long)blockHeader.Number;
             if (!IsPosdao(blockNumber))
             {
                 if (_logger.IsTrace) _logger.Trace("Skipping resending of queued malicious behavior reports.");

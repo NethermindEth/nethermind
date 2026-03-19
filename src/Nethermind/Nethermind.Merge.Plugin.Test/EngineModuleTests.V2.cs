@@ -451,7 +451,7 @@ public partial class EngineModuleTests
         // Second branch
         {
             Block newBlock = Build.A.Block
-                .WithNumber(head.Number + 1)
+                .WithNumber((long)(head.Number + 1))
                 .WithParent(head)
                 .WithNonce(0)
                 .WithDifficulty(0)

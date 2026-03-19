@@ -82,7 +82,7 @@ internal class SnapshotManager : ISnapshotManager
 
     private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
     {
-        if (e.Block.Hash is null || !blockTree.WasProcessed(e.Block.Number, e.Block.Hash))
+        if (e.Block.Hash is null || !blockTree.WasProcessed((long)e.Block.Number, e.Block.Hash))
             return;
         UpdateMasterNodes((XdcBlockHeader)e.Block.Header);
     }
@@ -96,7 +96,7 @@ internal class SnapshotManager : ISnapshotManager
             round = header.ExtraConsensusData.BlockRound;
         // Could consider dropping the round parameter here, since the consensus parameters used here should not change 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(header, round);
-        if (!ISnapshotManager.IsTimeForSnapshot(header.Number, spec))
+        if (!ISnapshotManager.IsTimeForSnapshot((long)header.Number, spec))
             return;
 
         Address[] candidates;
@@ -105,7 +105,7 @@ internal class SnapshotManager : ISnapshotManager
         else
             candidates = votingContract.GetCandidatesByStake(header);
 
-        Snapshot snapshot = new(header.Number, header.Hash, candidates);
+        Snapshot snapshot = new((long)header.Number, header.Hash, candidates);
         StoreSnapshot(snapshot);
     }
 }

@@ -14,9 +14,9 @@ internal class BlockInfoTests
     public async Task VerifyGenesisV2Block()
     {
         using XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
-        XdcBlockHeader genesisBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(xdcTestBlockchain.BlockTree.Genesis!.Number + 1)!;
+        XdcBlockHeader genesisBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader((long)(xdcTestBlockchain.BlockTree.Genesis!.Number + 1))!;
 
-        BlockRoundInfo blockInfo = new BlockRoundInfo(genesisBlock.Hash!, 1, genesisBlock.Number);
+        BlockRoundInfo blockInfo = new BlockRoundInfo(genesisBlock.Hash!, 1, (long)genesisBlock.Number);
 
         var result = XdcExtensions.ValidateBlockInfo(blockInfo, genesisBlock);
 
@@ -29,7 +29,7 @@ internal class BlockInfoTests
         using XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
         XdcBlockHeader headBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header!;
 
-        BlockRoundInfo blockInfo = new BlockRoundInfo(headBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound - 1, headBlock.Number);
+        BlockRoundInfo blockInfo = new BlockRoundInfo(headBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound - 1, (long)headBlock.Number);
 
         var result = XdcExtensions.ValidateBlockInfo(blockInfo, headBlock);
 
@@ -44,7 +44,7 @@ internal class BlockInfoTests
         XdcBlockHeader headBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header!;
         XdcBlockHeader parentBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(headBlock.ParentHash!)!;
 
-        BlockRoundInfo blockInfo = new BlockRoundInfo(parentBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound, headBlock.Number);
+        BlockRoundInfo blockInfo = new BlockRoundInfo(parentBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound, (long)headBlock.Number);
 
         var result = XdcExtensions.ValidateBlockInfo(blockInfo, headBlock);
 
@@ -59,7 +59,7 @@ internal class BlockInfoTests
         XdcBlockHeader headBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header!;
         XdcBlockHeader parentBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(headBlock.ParentHash!)!;
 
-        BlockRoundInfo blockInfo = new BlockRoundInfo(headBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound, parentBlock.Number);
+        BlockRoundInfo blockInfo = new BlockRoundInfo(headBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound, (long)parentBlock.Number);
 
         var result = XdcExtensions.ValidateBlockInfo(blockInfo, headBlock);
 
@@ -73,7 +73,7 @@ internal class BlockInfoTests
         using XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
         XdcBlockHeader headBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header!;
 
-        BlockRoundInfo blockInfo = new BlockRoundInfo(headBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound, headBlock.Number);
+        BlockRoundInfo blockInfo = new BlockRoundInfo(headBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound, (long)headBlock.Number);
 
         var result = XdcExtensions.ValidateBlockInfo(blockInfo, headBlock);
 

@@ -464,7 +464,7 @@ public class LogFinderTests
     {
         if (withBloomDb)
         {
-            for (int i = 0; i <= _blockTree.Head!.Number; i++)
+            for (int i = 0; i <= (long)_blockTree.Head!.Number; i++)
             {
                 _bloomStorage.Store(i, _blockTree.FindHeader(i)!.Bloom!);
             }

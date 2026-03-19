@@ -27,7 +27,7 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
 
     public bool IsBedrock(BlockHeader header)
     {
-        return header.Number >= _bedrockBlockNumber;
+        return (long)header.Number >= _bedrockBlockNumber;
     }
 
     public bool IsCanyon(BlockHeader header)

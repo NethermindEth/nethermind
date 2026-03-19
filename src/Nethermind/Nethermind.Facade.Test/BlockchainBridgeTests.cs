@@ -119,7 +119,7 @@ public class BlockchainBridgeTests
         result.Value.ExtraData.Should().BeEquivalentTo(new TransactionForRpcContext(
             chainId: _specProvider.ChainId,
             blockHash: block.Hash,
-            blockNumber: block.Number,
+            blockNumber: (long)block.Number,
             txIndex: receipts[index].Index,
             blockTimestamp: block.Timestamp,
             baseFee: UInt256.Zero,

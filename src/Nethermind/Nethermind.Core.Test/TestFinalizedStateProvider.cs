@@ -23,7 +23,7 @@ public class TestFinalizedStateProvider(long depth) : IFinalizedStateProvider
         {
             if (_manualFinalizedPoint is not null)
             {
-                return _manualFinalizedPoint.Number;
+                return (long)_manualFinalizedPoint.Number;
             }
             return TrieStore.LatestCommittedBlockNumber - depth;
         }
@@ -31,9 +31,9 @@ public class TestFinalizedStateProvider(long depth) : IFinalizedStateProvider
 
     public Hash256? GetFinalizedStateRootAt(long blockNumber)
     {
-        if (_manualFinalizedPoint is not null && _manualFinalizedPoint.Number == blockNumber)
+        if (_manualFinalizedPoint is not null && _manualFinalizedPoint.Number == (ulong)blockNumber)
         {
-            return _manualFinalizedPoint.StateRoot;
+            return _manualFinalizedPoint!.StateRoot;
         }
         using var commitSets = TrieStore.CommitSetQueue.GetCommitSetsAtBlockNumber(blockNumber);
         if (commitSets.Count != 1) return null;

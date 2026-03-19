@@ -67,7 +67,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private bool TryGetLastValidator(long blockNum, out KeyValuePair<long, AuRaParameters.Validator> validator)
         {
-            var headNumber = _blockTree.Head?.Number ?? 0;
+            long headNumber = (long)(_blockTree.Head?.Number ?? 0);
 
             validator = default;
             bool found = false;
@@ -89,9 +89,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             for (int i = 0; i < e.FinalizedBlocks.Count; i++)
             {
                 var finalizedBlockHeader = e.FinalizedBlocks[i];
-                if (TryGetValidator(finalizedBlockHeader.Number, out var validator) && !validator.ValidatorType.CanChangeImmediately())
+                if (TryGetValidator((long)finalizedBlockHeader.Number, out var validator) && !validator.ValidatorType.CanChangeImmediately())
                 {
-                    SetCurrentValidator(e.FinalizingBlock.Number, validator, e.FinalizingBlock);
+                    SetCurrentValidator((long)e.FinalizingBlock.Number, validator, e.FinalizingBlock);
                     if (!_forSealing)
                     {
                         if (_logger.IsInfo) _logger.Info($"Applying chainspec validator change signalled at block {finalizedBlockHeader.ToString(BlockHeader.Format.Short)} at block {e.FinalizingBlock.ToString(BlockHeader.Format.Short)}.");
@@ -107,7 +107,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 bool ValidatorWasAlreadyFinalized(KeyValuePair<long, AuRaParameters.Validator> validatorInfo) => _blockFinalizationManager.LastFinalizedBlockLevel >= validatorInfo.Key;
 
                 bool isProducingBlock = options.ContainsFlag(ProcessingOptions.ProducingBlock);
-                long previousBlockNumber = block.Number - 1;
+                long previousBlockNumber = (long)block.Number - 1;
                 bool isNotConsecutive = previousBlockNumber != _lastProcessedBlock;
 
                 if (isProducingBlock || isNotConsecutive)
@@ -152,17 +152,17 @@ namespace Nethermind.Consensus.AuRa.Validators
             {
                 bool notProducing = !options.ContainsFlag(ProcessingOptions.ProducingBlock);
 
-                if (TryGetValidator(block.Number, out var validator))
+                if (TryGetValidator((long)block.Number, out var validator))
                 {
                     if (validator.ValidatorType.CanChangeImmediately())
                     {
-                        SetCurrentValidator(block.Number, validator, _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None));
+                        SetCurrentValidator((long)block.Number, validator, _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None));
                         if (_logger.IsInfo && notProducing) _logger.Info($"Immediately applying chainspec validator change signalled at block {block.ToString(Block.Format.Short)} to {validator.ValidatorType}.");
                     }
                     else if (_logger.IsInfo && notProducing) _logger.Info($"Signal for switch to chainspec {validator.ValidatorType} based validator set at block {block.ToString(Block.Format.Short)}.");
                 }
 
-                _lastProcessedBlock = block.Number;
+                _lastProcessedBlock = (long)block.Number;
             }
         }
 

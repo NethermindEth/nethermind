@@ -214,7 +214,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             INodeStorage.KeyScheme currentKeyScheme = INodeStorage.KeyScheme.HalfPath,
             INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current)
         {
-            BlockTree.OnUpdateMainChain += (_, e) => _head = e.Blocks[^1].Number;
+            BlockTree.OnUpdateMainChain += (_, e) => _head = (long)e.Blocks[^1].Number;
             _clearPrunedDb = clearPrunedDb;
             TrieDb = new TestMemDb();
             CopyDb = new TestMemDb();

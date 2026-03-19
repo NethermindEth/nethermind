@@ -173,6 +173,6 @@ internal class SnapshotManagerTests
         blockTree.WasProcessed(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(true);
 
         blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(new Block(header)));
-        snapshotManager.GetSnapshotByGapNumber(header.Number)!.HeaderHash.Should().Be(header.Hash!);
+        snapshotManager.GetSnapshotByGapNumber((long)header.Number)!.HeaderHash.Should().Be(header.Hash!);
     }
 }

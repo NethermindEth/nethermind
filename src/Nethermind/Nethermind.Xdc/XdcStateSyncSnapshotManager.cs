@@ -51,7 +51,7 @@ public class XdcStateSyncSnapshotManager
         }
 
         long gapBlockNum = Math.Max(
-            epochSwitchHeader.Number - epochSwitchHeader.Number % spec.EpochLength,
+            (long)(epochSwitchHeader.Number - epochSwitchHeader.Number % (ulong)spec.EpochLength),
             spec.EpochLength
          ) - spec.Gap;
 
@@ -62,18 +62,18 @@ public class XdcStateSyncSnapshotManager
             if (checkpointHeader is null || gapBlockHeader is null)
                 throw new InvalidOperationException($"Switch block {spec.SwitchBlock} or gap block {gapBlockNum} not found in block tree");
 
-            Snapshot snapshot = new(gapBlockHeader.Number, gapBlockHeader.Hash, checkpointHeader.ExtraData.ParseV1Masternodes());
+            Snapshot snapshot = new((long)gapBlockHeader.Number, gapBlockHeader.Hash, checkpointHeader.ExtraData.ParseV1Masternodes());
             _snapshotManager.StoreSnapshot(snapshot);
 
             gapBlockNum += spec.EpochLength;
         }
 
-        if (gapBlockNum > pivotHeader.Number)
+        if (gapBlockNum > (long)pivotHeader.Number)
         {
             return [];
         }
 
-        int count = (int)((pivotHeader.Number - gapBlockNum) / spec.EpochLength) + 1;
+        int count = (int)(((long)pivotHeader.Number - gapBlockNum) / spec.EpochLength) + 1;
         XdcBlockHeader[] gapBlockHeaders = new XdcBlockHeader[count];
 
         for (int i = 0; i < count; i++)
@@ -89,7 +89,7 @@ public class XdcStateSyncSnapshotManager
     public void StoreSnapshot(XdcBlockHeader gapBlockHeader)
     {
         Address[] candidates = _masternodeVotingContract.GetCandidatesByStake(gapBlockHeader);
-        Snapshot snapshot = new(gapBlockHeader.Number, gapBlockHeader.Hash, candidates);
+        Snapshot snapshot = new((long)gapBlockHeader.Number, gapBlockHeader.Hash, candidates);
         _snapshotManager.StoreSnapshot(snapshot);
     }
 

@@ -505,7 +505,7 @@ public class ContractBasedValidatorTests
             else
                 hashSeeds[blockNumber] = 0;
 
-            _block.Header.Number = blockNumber;
+            _block.Header.Number = (ulong)blockNumber;
             _block.Header.Beneficiary = currentValidators[blockNumber % currentValidators.Length];
             _block.Header.AuRaStep = blockNumber;
             _block.Header.Hash = Keccak.Compute((blockNumber + hashSeeds[blockNumber]).ToString());
@@ -591,8 +591,8 @@ public class ContractBasedValidatorTests
         PendingValidators pendingValidators = null;
         if (expectedBlockValidators.HasValue)
         {
-            Block block = GetAllBlocks(blockTree).First(b => b.Number == expectedBlockValidators.Value);
-            pendingValidators = new PendingValidators(block.Number, block.Hash, new[] { TestItem.Addresses[block.Number * 10] });
+            Block block = GetAllBlocks(blockTree).First(b => b.Number == (ulong)expectedBlockValidators.Value);
+            pendingValidators = new PendingValidators((long)block.Number, block.Hash, new[] { TestItem.Addresses[(int)(block.Number * 10)] });
         }
 
         _validatorStore.PendingValidators.Should().BeEquivalentTo(pendingValidators);
@@ -628,7 +628,7 @@ public class ContractBasedValidatorTests
 
         if (parentHeader is null)
         {
-            parentHeader = _parentHeader = Build.A.BlockHeader.WithNumber(header.Number - 1).TestObject;
+            parentHeader = _parentHeader = Build.A.BlockHeader.WithNumber((long)(header.Number - 1)).TestObject;
             _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.None).Returns(_parentHeader);
         }
 
@@ -690,7 +690,7 @@ public class ContractBasedValidatorTests
 
         public TxReceipt[] GetReceipts(ValidatorContract validatorContract, Block block, Address contractAddress, IAbiEncoder encoder, Func<Address[], byte[]> dataFunc)
         {
-            Address[] validators = Current.Validators?.FirstOrDefault(v => v.InitializeBlock == block.Number)?.Addresses;
+            Address[] validators = Current.Validators?.FirstOrDefault(v => v.InitializeBlock == (int)block.Number)?.Addresses;
             if (validators is null)
             {
                 return [];

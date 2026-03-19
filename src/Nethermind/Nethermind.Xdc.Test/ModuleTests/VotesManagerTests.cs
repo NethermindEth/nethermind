@@ -33,7 +33,7 @@ public class VotesManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithExtraConsensusData(new ExtraFieldsV2(currentRound, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 0, 0), null, 450)))
             .TestObject;
-        var info = new BlockRoundInfo(header.Hash!, currentRound, header.Number);
+        var info = new BlockRoundInfo(header.Hash!, currentRound, (long)header.Number);
 
         // Base case
         yield return new TestCaseData(masternodes, header, currentRound, keysForMasternodes.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray(), info, 1);
@@ -97,7 +97,7 @@ public class VotesManagerTests
             .WithExtraConsensusData(new ExtraFieldsV2(currentRound, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 0, 0), null, 450)))
             .TestObject;
 
-        var info = new BlockRoundInfo(header.Hash!, currentRound, header.Number);
+        var info = new BlockRoundInfo(header.Hash!, currentRound, (long)header.Number);
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         var epochSwitchInfo = new EpochSwitchInfo(masternodes, [], [], info);
         epochSwitchManager
@@ -255,12 +255,12 @@ public class VotesManagerTests
             return headerByHash.TryGetValue(hash, out var header) ? header : null;
         });
 
-        var blockInfo = new BlockRoundInfo(headers[2].Hash!, 5, headers[2].Number);
+        var blockInfo = new BlockRoundInfo(headers[2].Hash!, 5, (long)headers[2].Number);
 
-        var ancestorQc = new QuorumCertificate(new BlockRoundInfo(headers[0].Hash!, 3, headers[0].Number), null, 0);
+        var ancestorQc = new QuorumCertificate(new BlockRoundInfo(headers[0].Hash!, 3, (long)headers[0].Number), null, 0);
         yield return new TestCaseData(blockTree, ancestorQc, blockInfo, true);
 
-        var nonRelatedQc = new QuorumCertificate(new BlockRoundInfo(nonRelatedHeader.Hash, 3, nonRelatedHeader.Number), null, 0);
+        var nonRelatedQc = new QuorumCertificate(new BlockRoundInfo(nonRelatedHeader.Hash, 3, (long)nonRelatedHeader.Number), null, 0);
         yield return new TestCaseData(blockTree, nonRelatedQc, blockInfo, false);
     }
 

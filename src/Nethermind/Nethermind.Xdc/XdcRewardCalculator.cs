@@ -75,7 +75,7 @@ namespace Nethermind.Xdc
 
             var number = xdcHeader.Number;
             IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
-            if (number == spec.SwitchBlock + 1) return Array.Empty<BlockReward>();
+            if ((long)number == spec.SwitchBlock + 1) return Array.Empty<BlockReward>();
 
             Address foundationWalletAddr = spec.FoundationWallet;
             if (foundationWalletAddr == default || foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
@@ -100,7 +100,7 @@ namespace Nethermind.Xdc
         private (Dictionary<Address, long> Signers, long Count) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
         {
             var signers = new Dictionary<Address, long>();
-            long number = epochHeader.Number;
+            long number = (long)epochHeader.Number;
             if (number == 0) return (signers, 0);
 
             long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0, signingCount = 0;
@@ -116,7 +116,7 @@ namespace Nethermind.Xdc
                 Hash256 parentHash = h.ParentHash;
                 h = _blockTree.FindHeader(parentHash!, i) as XdcBlockHeader;
                 if (h == null) throw new InvalidOperationException($"Header with hash {parentHash} not found");
-                if (_epochSwitchManager.IsEpochSwitchAtBlock(h) && h.Number != spec.SwitchBlock + 1)
+                if (_epochSwitchManager.IsEpochSwitchAtBlock(h) && (long)h.Number != spec.SwitchBlock + 1)
                 {
                     epochCount++;
                     if (epochCount == signEpochCount) endBlockNumber = i;
@@ -124,7 +124,7 @@ namespace Nethermind.Xdc
                     {
                         startBlockNumber = i + 1;
                         // Get masternodes from epoch switch header
-                        if (h.Number <= spec.SwitchBlock)
+                        if ((long)h.Number <= spec.SwitchBlock)
                             masternodes = new HashSet<Address>(h.ExtraData.ParseV1Masternodes());
                         else
                             masternodes = new HashSet<Address>(h.ValidatorsAddress!);

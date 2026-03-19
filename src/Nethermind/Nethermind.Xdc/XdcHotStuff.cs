@@ -240,7 +240,7 @@ namespace Nethermind.Xdc
                 return;
             }
 
-            if (spec.SwitchBlock < roundParent.Number)
+            if (spec.SwitchBlock < (long)roundParent.Number)
             {
                 await CommitCertificateAndVote(roundParent, epochInfo);
             }
@@ -256,11 +256,11 @@ namespace Nethermind.Xdc
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
             }
 
-            if (_highestSignTxNumber < roundParent.Number
+            if (_highestSignTxNumber < (long)roundParent.Number
                 && IsMasternode(epochInfo, _signer.Address)
-                && ((roundParent.Number % spec.MergeSignRange == 0)))
+                && ((long)roundParent.Number % spec.MergeSignRange == 0))
             {
-                _highestSignTxNumber = roundParent.Number;
+                _highestSignTxNumber = (long)roundParent.Number;
                 await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
             }
 
@@ -358,7 +358,7 @@ namespace Nethermind.Xdc
 
             try
             {
-                BlockRoundInfo voteInfo = new BlockRoundInfo(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
+                BlockRoundInfo voteInfo = new BlockRoundInfo(head.Hash!, head.ExtraConsensusData.BlockRound, (long)head.Number);
                 _highestVotedRound = votingRound;
                 await _votesManager.CastVote(voteInfo);
                 _lastActivityTime = DateTime.UtcNow;
@@ -433,7 +433,7 @@ namespace Nethermind.Xdc
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
                 //TODO calculate master nodes based on the current round
-                (currentMasternodes, _) = _masternodesCalculator.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash, spec);
+                (currentMasternodes, _) = _masternodesCalculator.CalculateNextEpochMasternodes((long)(currentHead.Number + 1), currentHead.Hash, spec);
             }
             else
             {

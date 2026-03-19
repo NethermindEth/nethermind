@@ -71,7 +71,7 @@ internal class XdcBlockProducer : BlockProducerBase
             Keccak.OfAnEmptySequenceRlp,
             blockAuthor,
             UInt256.Zero,
-            parent.Number + 1,
+            (long)(parent.Number + 1),
             (ulong)gasLimit,
             0,
             extra);
@@ -90,7 +90,7 @@ internal class XdcBlockProducer : BlockProducerBase
 
         if (epochSwitchManager.IsEpochSwitchAtBlock(xdcBlockHeader))
         {
-            (Address[] masternodes, Address[] penalties) = masternodesCalculator.CalculateNextEpochMasternodes(xdcBlockHeader.Number, xdcBlockHeader.ParentHash, spec);
+            (Address[] masternodes, Address[] penalties) = masternodesCalculator.CalculateNextEpochMasternodes((long)xdcBlockHeader.Number, xdcBlockHeader.ParentHash, spec);
             xdcBlockHeader.Validators = new byte[masternodes.Length * Address.Size];
 
             for (int i = 0; i < masternodes.Length; i++)

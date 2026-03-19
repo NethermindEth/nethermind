@@ -49,7 +49,7 @@ namespace Nethermind.Core.Test.Builders
                 blocks.Add(block);
             }
 
-            if (branchLength > blockTree.Head!.Number)
+            if ((ulong)branchLength > blockTree.Head!.Number)
             {
                 blockTree.UpdateMainChain(blocks, true);
             }

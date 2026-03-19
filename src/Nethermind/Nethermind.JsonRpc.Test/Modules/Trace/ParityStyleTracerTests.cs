@@ -89,7 +89,7 @@ public class ParityStyleTracerTests
         (await _blockTree!.SuggestBlockAsync(block, BlockTreeSuggestOptions.None)).Should().Be(AddBlockResult.Added);
         _poSSwitcher!.IsPostMerge(Arg.Any<BlockHeader>()).Returns(isPostMerge);
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> rpcResult = _traceRpcModule.trace_block(new BlockParameter(block.Number));
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> rpcResult = _traceRpcModule.trace_block(new BlockParameter((long)block.Number));
         rpcResult.Result.Should().Be(Result.Success);
         ParityTxTraceFromStore[] result = rpcResult.Data.ToArray();
         if (isPostMerge)

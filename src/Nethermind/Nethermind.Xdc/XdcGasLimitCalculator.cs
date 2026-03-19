@@ -14,7 +14,7 @@ internal class XdcGasLimitCalculator(ISpecProvider specProvider, IBlocksConfig b
     private readonly TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new TargetAdjustedGasLimitCalculator(specProvider, blocksConfig);
     public long GetGasLimit(BlockHeader parentHeader)
     {
-        IXdcReleaseSpec spec = specProvider.GetXdcSpec(parentHeader.Number + 1);
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec((long)parentHeader.Number + 1);
         if (spec.IsDynamicGasLimitBlock)
         {
             return targetAdjustedGasLimitCalculator.GetGasLimit(parentHeader);

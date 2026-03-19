@@ -52,7 +52,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttribute, bool filterSources)
         {
-            if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
+            long parentNumberPlusOne = (long)parent.Number + 1;
+            if (_contracts.TryGetForBlock(parentNumberPlusOne, out var contract))
             {
                 Transaction? tx = GetTransaction(contract, parent);
                 if (tx is not null)

@@ -27,7 +27,7 @@ internal class MineModuleTests
         var spec = blockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header!);
 
         var oldHead = (XdcBlockHeader)tree.Head!.Header!;
-        var snapshotBefore = blockchain.SnapshotManager.GetSnapshotByBlockNumber(oldHead.Number, blockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header!));
+        var snapshotBefore = blockchain.SnapshotManager.GetSnapshotByBlockNumber((long)oldHead.Number, blockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header!));
 
         Assert.That(snapshotBefore, Is.Not.Null);
         Assert.That(snapshotBefore.NextEpochCandidates.Length, Is.EqualTo(30));
@@ -38,7 +38,7 @@ internal class MineModuleTests
 
         // mine the gap block that should trigger master node update
         var gapBlock = await blockchain.AddBlock();
-        while (!ISnapshotManager.IsTimeForSnapshot(tree.Head!.Header!.Number, spec))
+        while (!ISnapshotManager.IsTimeForSnapshot((long)tree.Head!.Header!.Number, spec))
         {
             gapBlock = await blockchain.AddBlock();
         }
@@ -46,7 +46,7 @@ internal class MineModuleTests
         var newHead = (XdcBlockHeader)tree.Head!.Header!;
         Assert.That(newHead.Number, Is.EqualTo(gapBlock.Number));
 
-        var snapshotAfter = blockchain.SnapshotManager.GetSnapshotByGapNumber(newHead.Number);
+        var snapshotAfter = blockchain.SnapshotManager.GetSnapshotByGapNumber((long)newHead.Number);
 
         Assert.That(snapshotAfter, Is.Not.Null);
         Assert.That(snapshotAfter.BlockNumber, Is.EqualTo(gapBlock.Number));
@@ -107,14 +107,14 @@ internal class MineModuleTests
 
         var header = (XdcBlockHeader)blockchain.BlockTree.Head!.Header!;
         spec = blockchain.SpecProvider.GetXdcSpec(header);
-        var snapshot = blockchain.SnapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        var snapshot = blockchain.SnapshotManager.GetSnapshotByBlockNumber((long)header.Number, spec);
 
         Assert.That(snapshot, Is.Not.Null);
         Assert.That(snapshot.BlockNumber, Is.EqualTo(0));
         Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(30));
 
         var gapBlock = await blockchain.AddBlock();
-        while (!ISnapshotManager.IsTimeForSnapshot(tree.Head!.Header!.Number, spec))
+        while (!ISnapshotManager.IsTimeForSnapshot((long)tree.Head!.Header!.Number, spec))
         {
             gapBlock = await blockchain.AddBlock();
         }
@@ -123,7 +123,7 @@ internal class MineModuleTests
 
         header = (XdcBlockHeader)gapBlock.Header!;
         spec = blockchain.SpecProvider.GetXdcSpec(header);
-        snapshot = blockchain.SnapshotManager.GetSnapshotByGapNumber(header.Number);
+        snapshot = blockchain.SnapshotManager.GetSnapshotByGapNumber((long)header.Number);
 
         Assert.That(snapshot, Is.Not.Null);
         Assert.That(snapshot.BlockNumber, Is.EqualTo(gapBlock.Number));

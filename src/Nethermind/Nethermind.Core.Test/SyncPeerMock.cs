@@ -36,7 +36,7 @@ namespace Nethermind.Core.Test
 
             _remoteTree = remoteTree;
             Block remoteTreeHead = _remoteTree.Head!;
-            HeadNumber = remoteTreeHead.Number;
+            HeadNumber = (long)remoteTreeHead.Number;
             HeadHash = remoteTreeHead.Hash!;
             TotalDifficulty = remoteTreeHead.TotalDifficulty ?? 0;
 
@@ -88,7 +88,7 @@ namespace Nethermind.Core.Test
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
         {
             ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
-            long? firstNumber = _remoteTree.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical)?.Number;
+            long? firstNumber = (long?)_remoteTree.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical)?.Number;
             if (!firstNumber.HasValue)
             {
                 return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(result);
@@ -105,7 +105,7 @@ namespace Nethermind.Core.Test
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
             ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
-            long? firstNumber = _remoteTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical)?.Number;
+            long? firstNumber = (long?)_remoteTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical)?.Number;
             if (!firstNumber.HasValue)
             {
                 return Task.FromResult<IOwnedReadOnlyList<BlockHeader>>(result)!;
@@ -114,7 +114,7 @@ namespace Nethermind.Core.Test
             for (int i = 0; i < maxBlocks; i++)
             {
                 long blockNumber = firstNumber.Value + i + skip;
-                if (blockNumber > (_remoteTree.Head?.Number ?? 0))
+                if (blockNumber > (long)(_remoteTree.Head?.Number ?? 0))
                 {
                     result[i] = null!;
                 }
@@ -142,7 +142,7 @@ namespace Nethermind.Core.Test
             }
             else
             {
-                HintNewBlock(block.Hash!, block.Number);
+                HintNewBlock(block.Hash!, (long)block.Number);
             }
         }
 

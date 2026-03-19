@@ -87,7 +87,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
             Hash256 expectedFinalizedHash = _externalPeerBlockTree!.HeadHash;
-            long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
+            long expectedPivotBlockNumber = (long)_externalPeerBlockTree!.Head!.Number;
             _beaconSyncStrategy!.GetFinalizedHash().Returns(expectedFinalizedHash);
 
             _syncModeSelector!.Changed += Raise.EventWith(args);
@@ -116,7 +116,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
             Hash256 expectedHeadBlockHash = _externalPeerBlockTree!.HeadHash;
-            long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number - 64;
+            long expectedPivotBlockNumber = (long)_externalPeerBlockTree!.Head!.Number - 64;
             Hash256 expectedPivotBlockHash = _externalPeerBlockTree!.FindLevel(expectedPivotBlockNumber)!.BlockInfos[0].BlockHash;
             _beaconSyncStrategy!.GetHeadBlockHash().Returns(expectedHeadBlockHash);
 

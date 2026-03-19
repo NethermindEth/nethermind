@@ -667,7 +667,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Block blockTreeHead = chain.BlockTree.Head!;
-        Block block = Build.A.Block.WithNumber(blockTreeHead.Number + 1).WithParent(blockTreeHead).WithNonce(0).WithDifficulty(0).TestObject;
+        Block block = Build.A.Block.WithNumber((long)(blockTreeHead.Number + 1)).WithParent(blockTreeHead).WithNonce(0).WithDifficulty(0).TestObject;
 
         chain.ThrottleBlockProcessor(1000);
         ManualResetEventSlim processingStarted = new(false);
@@ -675,7 +675,7 @@ public partial class EngineModuleTests
 
         // Directly enqueue a block to occupy the processor (bypasses the RPC semaphore),
         // ensuring subsequent blocks route through the recovery queue (slow path)
-        Block occupyBlock = Build.A.Block.WithNumber(blockTreeHead.Number + 1).WithParent(blockTreeHead)
+        Block occupyBlock = Build.A.Block.WithNumber((long)(blockTreeHead.Number + 1)).WithParent(blockTreeHead)
             .WithNonce(0).WithDifficulty(0).WithStateRoot(blockTreeHead.StateRoot!).TestObject;
         occupyBlock.Header.TotalDifficulty = blockTreeHead.TotalDifficulty;
         _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
@@ -706,7 +706,7 @@ public partial class EngineModuleTests
         Block? head = chain.BlockTree.Head!;
 
         Block? b4 = Build.A.Block
-            .WithNumber(head.Number + 1)
+            .WithNumber((long)(head.Number + 1))
             .WithParent(head)
             .WithNonce(0)
             .WithDifficulty(0)
@@ -717,7 +717,7 @@ public partial class EngineModuleTests
         (await rpc.engine_newPayloadV1(ExecutionPayload.Create(b4))).Data.Status.Should().Be(PayloadStatus.Valid);
 
         Block? b5 = Build.A.Block
-            .WithNumber(b4.Number + 1)
+            .WithNumber((long)(b4.Number + 1))
             .WithParent(b4)
             .WithNonce(0)
             .WithDifficulty(0)
@@ -746,7 +746,7 @@ public partial class EngineModuleTests
         // it is invalid because after you process its transactions, the root of the state trie
         // doesn't match the state root in the block
         Block? block = Build.A.Block
-            .WithNumber(head.Number + 1)
+            .WithNumber((long)(head.Number + 1))
             .WithParent(head)
             .WithNonce(0)
             .WithDifficulty(0)
@@ -767,7 +767,7 @@ public partial class EngineModuleTests
 
         // Directly enqueue a block to occupy the processor (bypasses the RPC semaphore),
         // ensuring subsequent blocks route through the recovery queue (slow path)
-        Block occupyBlock = Build.A.Block.WithNumber(head.Number + 1).WithParent(head)
+        Block occupyBlock = Build.A.Block.WithNumber((long)(head.Number + 1)).WithParent(head)
             .WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
         occupyBlock.Header.TotalDifficulty = head.TotalDifficulty;
         _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
@@ -852,14 +852,14 @@ public partial class EngineModuleTests
             TerminalTotalDifficulty = $"{1900000}"
         });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
+        Block newBlock = Build.A.Block.WithNumber((long)chain.BlockTree.Head!.Number)
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
             .WithDifficulty(1000000)
             .WithTotalDifficulty(2000000L)
             .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
         newBlock.CalculateHash();
-        Block oneMoreTerminalBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
+        Block oneMoreTerminalBlock = Build.A.Block.WithNumber((long)chain.BlockTree.Head!.Number)
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
             .WithDifficulty(900000)
@@ -879,7 +879,7 @@ public partial class EngineModuleTests
         await chain.BlockTree.SuggestBlockAsync(oneMoreTerminalBlock);
 
         Block firstPoSBlock = Build.A.Block.WithParent(oneMoreTerminalBlock).
-            WithNumber(oneMoreTerminalBlock.Number + 1)
+            WithNumber((long)(oneMoreTerminalBlock.Number + 1))
             .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
             .WithDifficulty(0).WithNonce(0).TestObject;
         firstPoSBlock.CalculateHash();
@@ -898,14 +898,14 @@ public partial class EngineModuleTests
             TerminalTotalDifficulty = $"{1900000}"
         });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
+        Block newBlock = Build.A.Block.WithNumber((long)chain.BlockTree.Head!.Number)
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
             .WithDifficulty(1000000)
             .WithTotalDifficulty(2000000L)
             .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
         newBlock.CalculateHash();
-        Block oneMoreTerminalBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
+        Block oneMoreTerminalBlock = Build.A.Block.WithNumber((long)chain.BlockTree.Head!.Number)
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
             .WithDifficulty(900000)
@@ -925,7 +925,7 @@ public partial class EngineModuleTests
         await chain.BlockTree.SuggestBlockAsync(oneMoreTerminalBlock);
 
         Block firstPoSBlock = Build.A.Block.WithParent(oneMoreTerminalBlock).
-            WithNumber(oneMoreTerminalBlock.Number + 1)
+            WithNumber((long)(oneMoreTerminalBlock.Number + 1))
             .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
             .WithDifficulty(0).WithNonce(0).TestObject;
         firstPoSBlock.CalculateHash();
@@ -1008,7 +1008,7 @@ public partial class EngineModuleTests
             result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             result.Data.PayloadId.Should().Be(null);
             testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
-            testChain.BlockTree.Head!.Number.Should().Be(block.BlockNumber);
+            testChain.BlockTree.Head!.Number.Should().Be((ulong)block.BlockNumber);
         }
 
         async Task CanReorganizeToLastBlock(MergeTestBlockchain testChain,
@@ -1039,7 +1039,7 @@ public partial class EngineModuleTests
             result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             result.Data.PayloadId.Should().Be(null);
             testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
-            testChain.BlockTree.Head!.Number.Should().Be(block.BlockNumber);
+            testChain.BlockTree.Head!.Number.Should().Be((ulong)block.BlockNumber);
         }
 
         IReadOnlyList<ExecutionPayload> branch1 = await ProduceBranchV1(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true);

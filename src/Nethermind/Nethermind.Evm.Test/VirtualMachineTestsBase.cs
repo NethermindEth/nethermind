@@ -256,7 +256,7 @@ public abstract class VirtualMachineTestsBase
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas, slotNumber);
-        BlockNumber = block.Header.Number;
+        BlockNumber = (long)block.Header.Number;
         Timestamp = block.Header.Timestamp;
         return (block, transaction);
     }

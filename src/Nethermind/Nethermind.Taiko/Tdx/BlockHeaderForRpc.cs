@@ -24,7 +24,7 @@ public class BlockHeaderForRpc
         ReceiptsRoot = header.ReceiptsRoot;
         LogsBloom = header.Bloom;
         Difficulty = header.Difficulty;
-        Number = header.Number;
+        Number = (long)header.Number;
         GasLimit = header.GasLimit;
         GasUsed = header.GasUsed;
         Timestamp = (UInt256)header.Timestamp;

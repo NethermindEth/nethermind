@@ -97,7 +97,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
 
     public new XdcBlockHeaderBuilder WithNumber(long blockNumber)
     {
-        TestObjectInternal.Number = blockNumber;
+        TestObjectInternal.Number = (ulong)blockNumber;
         return this;
     }
 

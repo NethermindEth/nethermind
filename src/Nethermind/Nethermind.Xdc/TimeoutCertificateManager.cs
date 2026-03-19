@@ -208,7 +208,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         var currentHeader = currentBlock.Header as XdcBlockHeader;
         var currentBlockNumber = currentBlock.Number;
         var epochLength = _specProvider.GetXdcSpec(currentHeader, timeout.Round).EpochLength;
-        if (Math.Abs((long)timeout.GapNumber - currentBlockNumber) > 3 * epochLength)
+        if (Math.Abs((long)timeout.GapNumber - (long)currentBlockNumber) > 3 * epochLength)
         {
             // Discarded propagated timeout, too far away
             return Task.CompletedTask;
@@ -246,7 +246,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, _consensusContext.CurrentRound);
         if (_epochSwitchManager.IsEpochSwitchAtRound(_consensusContext.CurrentRound, currentHeader))
         {
-            var currentNumber = currentHeader.Number + 1;
+            long currentNumber = (long)currentHeader.Number + 1;
             gapNumber = Math.Max(0, currentNumber - currentNumber % spec.EpochLength - spec.Gap);
         }
         else

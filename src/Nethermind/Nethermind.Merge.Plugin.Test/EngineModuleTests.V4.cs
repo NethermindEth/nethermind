@@ -184,7 +184,7 @@ public partial class EngineModuleTests
           .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
         Block invalidBlock = Build.A.Block
-            .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithNumber((long)(chain.BlockTree.Head!.Number + 1))
             .WithTimestamp(chain.BlockTree.Head!.Timestamp + 12)
             .WithTransactions([invalidSetCodeTx])
             .WithParentBeaconBlockRoot(chain.BlockTree.Head!.ParentBeaconBlockRoot)
@@ -208,7 +208,7 @@ public partial class EngineModuleTests
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
 
-        Block TestBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number + 1).TestObject;
+        Block TestBlock = Build.A.Block.WithNumber((long)(chain.BlockTree.Head!.Number + 1)).TestObject;
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(TestBlock);
 
         // must reject if execution requests types are not in ascending order

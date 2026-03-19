@@ -47,7 +47,7 @@ public class ShutterTxLoader(
 
     public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeys keys)
     {
-        using ArrayPoolList<SequencedTransaction> sequencedTransactions = new(_maxTransactions, GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0));
+        using ArrayPoolList<SequencedTransaction> sequencedTransactions = new(_maxTransactions, GetNextTransactions(keys.Eon, keys.TxPointer, (long)(head?.Number ?? 0UL)));
 
         long offset = time.GetCurrentOffsetMs(keys.Slot);
         Metrics.ShutterKeysReceivedTimeOffset = offset;
@@ -79,7 +79,7 @@ public class ShutterTxLoader(
         {
             if (_loadFromReceipts && head is not null)
             {
-                IEnumerable<ISequencerContract.TransactionSubmitted> events = _logScanner.ScanReceipts(head.Number, receipts);
+                IEnumerable<ISequencerContract.TransactionSubmitted> events = _logScanner.ScanReceipts((long)head.Number, receipts);
                 _events.EnqueueEvents(events, eon);
             }
         }

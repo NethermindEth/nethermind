@@ -81,7 +81,7 @@ public class ShutterApiSimulator(
                 .WithLogs([logs[i]])
                 .WithTransactionHash(new(h))
                 .WithBlockHash(block.Hash)
-                .WithBlockNumber(block.Number)
+                .WithBlockNumber((long)block.Number)
                 .TestObject;
         }
 

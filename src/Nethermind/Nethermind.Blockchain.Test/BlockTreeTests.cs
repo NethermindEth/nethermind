@@ -256,9 +256,9 @@ public class BlockTreeTests
         Assert.That(tree2.BestKnownNumber, Is.EqualTo(0L), "best known");
         Assert.That(tree2.Head?.Number, Is.EqualTo(0), "head");
         Assert.That(tree2.BestSuggestedHeader!.Number, Is.EqualTo(0L), "suggested");
-        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
-        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
-        Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
+        Assert.That(blockStore.Get((long)block1.Number, block1.Hash!), Is.Null, "block 1");
+        Assert.That(blockStore.Get((long)block2.Number, block2.Hash!), Is.Null, "block 2");
+        Assert.That(blockStore.Get((long)block3.Number, block3.Hash!), Is.Null, "block 3");
         Assert.That(blockInfosDb.Get(1), Is.Null, "level 1");
         Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
         Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
@@ -302,9 +302,9 @@ public class BlockTreeTests
         Assert.That(tree2.Head?.Number, Is.EqualTo(0), "head");
         Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block3B.Hash), "suggested");
 
-        blockStore.Get(block1.Number, block1.Hash!).Should().BeNull("block 1");
-        blockStore.Get(block2.Number, block2.Hash!).Should().BeNull("block 2");
-        blockStore.Get(block3.Number, block3.Hash!).Should().BeNull("block 3");
+        blockStore.Get((long)block1.Number, block1.Hash!).Should().BeNull("block 1");
+        blockStore.Get((long)block2.Number, block2.Hash!).Should().BeNull("block 2");
+        blockStore.Get((long)block3.Number, block3.Hash!).Should().BeNull("block 3");
 
         Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
         Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
@@ -844,9 +844,9 @@ public class BlockTreeTests
         BlockTree blockTree = BuildBlockTree();
         blockTree.SuggestBlock(block0);
         blockTree.SuggestBlock(block1);
-        Assert.That(blockTree.WasProcessed(block1.Number, block1.Hash!), Is.False, "before");
+        Assert.That(blockTree.WasProcessed((long)block1.Number, block1.Hash!), Is.False, "before");
         blockTree.UpdateMainChain(new[] { block0, block1 }, true);
-        Assert.That(blockTree.WasProcessed(block1.Number, block1.Hash!), Is.True, "after");
+        Assert.That(blockTree.WasProcessed((long)block1.Number, block1.Hash!), Is.True, "after");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -993,9 +993,9 @@ public class BlockTreeTests
         Assert.That(tree.Head!.Number, Is.EqualTo(1L), "head");
         Assert.That(tree.BestSuggestedHeader!.Number, Is.EqualTo(1L), "suggested");
 
-        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Not.Null, "block 1");
-        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
-        Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
+        Assert.That(blockStore.Get((long)block1.Number, block1.Hash!), Is.Not.Null, "block 1");
+        Assert.That(blockStore.Get((long)block2.Number, block2.Hash!), Is.Null, "block 2");
+        Assert.That(blockStore.Get((long)block3.Number, block3.Hash!), Is.Null, "block 3");
 
         Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
         Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
@@ -1041,12 +1041,12 @@ public class BlockTreeTests
         Assert.That(tree.Head!.Number, Is.EqualTo(1L), "head");
         Assert.That(tree.BestSuggestedHeader!.Number, Is.EqualTo(1L), "suggested");
 
-        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Not.Null, "block 1");
-        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Not.Null, "block 2");
-        Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Not.Null, "block 3");
-        Assert.That(blockStore.Get(block1b.Number, block1b.Hash!), Is.Null, "block 1b");
-        Assert.That(blockStore.Get(block2b.Number, block2b.Hash!), Is.Null, "block 2b");
-        Assert.That(blockStore.Get(block3b.Number, block3b.Hash!), Is.Null, "block 3b");
+        Assert.That(blockStore.Get((long)block1.Number, block1.Hash!), Is.Not.Null, "block 1");
+        Assert.That(blockStore.Get((long)block2.Number, block2.Hash!), Is.Not.Null, "block 2");
+        Assert.That(blockStore.Get((long)block3.Number, block3.Hash!), Is.Not.Null, "block 3");
+        Assert.That(blockStore.Get((long)block1b.Number, block1b.Hash!), Is.Null, "block 1b");
+        Assert.That(blockStore.Get((long)block2b.Number, block2b.Hash!), Is.Null, "block 2b");
+        Assert.That(blockStore.Get((long)block3b.Number, block3b.Hash!), Is.Null, "block 3b");
 
         Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
         Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
@@ -1490,8 +1490,8 @@ public class BlockTreeTests
             tree.Insert(block.Header);
             Received.InOrder(() =>
             {
-                bloomStorage.Store(block.Header.Number, block.Bloom!);
-                chainLevelInfoRepository.PersistLevel(block.Header.Number, Arg.Any<ChainLevelInfo>(), Arg.Any<BatchWrite>());
+                bloomStorage.Store((long)block.Header.Number, block.Bloom!);
+                chainLevelInfoRepository.PersistLevel((long)block.Header.Number, Arg.Any<ChainLevelInfo>(), Arg.Any<BatchWrite>());
             });
         }
     }
@@ -1552,7 +1552,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block1A);
         blockTree.UpdateMainChain(block1A);
 
-        bloomStorage.Received().Store(block1A.Number, block1A.Bloom!);
+        bloomStorage.Received().Store((long)block1A.Number, block1A.Bloom!);
     }
 
 
@@ -1826,7 +1826,7 @@ public class BlockTreeTests
         AddToMain(blockTree, block0);
 
         long blockAddedToMainHeadNumber = 0;
-        blockTree.BlockAddedToMain += (_, _) => { blockAddedToMainHeadNumber = blockTree.Head!.Header.Number; };
+        blockTree.BlockAddedToMain += (_, _) => { blockAddedToMainHeadNumber = (long)blockTree.Head!.Header.Number; };
 
         AddToMain(blockTree, block1);
 
@@ -2098,7 +2098,7 @@ public class BlockTreeTests
             tree.SuggestBlock(block);
             tree.UpdateMainChain(block);
             tree.ForkChoiceUpdated(block.Hash, block.Hash);
-            tree.SyncPivot.Should().Be((persistedStateHeader.Number, persistedStateHeader.Hash!));
+            tree.SyncPivot.Should().Be(((long)persistedStateHeader.Number, persistedStateHeader.Hash!));
         }
     }
 
@@ -2140,11 +2140,11 @@ public class BlockTreeTests
             tree.ForkChoiceUpdated(header.Hash, header.Hash);
             if (header.Number < persistedStateHeader.Number)
             {
-                tree.SyncPivot.Should().Be((header.Number, header.Hash!));
+                tree.SyncPivot.Should().Be(((long)header.Number, header.Hash!));
             }
             else
             {
-                tree.SyncPivot.Should().Be((persistedStateHeader.Number, persistedStateHeader.Hash!));
+                tree.SyncPivot.Should().Be(((long)persistedStateHeader.Number, persistedStateHeader.Hash!));
             }
         }
     }
@@ -2192,12 +2192,12 @@ public class BlockTreeTests
                 .TestObject;
             tree.SuggestBlock(block);
             tree.UpdateMainChain(block);
-            tree.BestPersistedState = block.Number;
+            tree.BestPersistedState = (long?)block.Number;
 
-            if (block.Number > pivotNumber + Reorganization.MaxDepth)
+            if ((long)block.Number > pivotNumber + Reorganization.MaxDepth)
             {
-                BlockHeader reorgDepthHeader = tree.FindHeader(block.Number - Reorganization.MaxDepth, BlockTreeLookupOptions.RequireCanonical)!;
-                tree.SyncPivot.Should().Be((reorgDepthHeader.Number, reorgDepthHeader.Hash!));
+                BlockHeader reorgDepthHeader = tree.FindHeader((long)block.Number - Reorganization.MaxDepth, BlockTreeLookupOptions.RequireCanonical)!;
+                tree.SyncPivot.Should().Be(((long)reorgDepthHeader.Number, reorgDepthHeader.Hash!));
             }
         }
     }

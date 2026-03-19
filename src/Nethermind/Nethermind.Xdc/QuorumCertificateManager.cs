@@ -61,7 +61,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, _context.CurrentRound);
 
         //Can only look for a QC in proposed block after the switch block
-        if (proposedBlockHeader.Number > spec.SwitchBlock)
+        if ((long)proposedBlockHeader.Number > spec.SwitchBlock)
         {
             QuorumCertificate? parentQc = proposedBlockHeader.ExtraConsensusData?.QuorumCert;
             if (parentQc is null)
@@ -91,7 +91,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
         //Can only commit a QC if the proposed block is at least 2 blocks after the switch block, since we want to check grandparent of proposed QC
 
-        if ((proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
+        if ((long)(proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
         {
             error = $"Proposed block ({proposedBlockHeader.Number}) is too close or before genesis block ({spec.SwitchBlock})";
             return false;
@@ -126,13 +126,13 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        if (_context.HighestCommitBlock is not null && (_context.HighestCommitBlock.Round >= parentHeader.ExtraConsensusData.BlockRound || _context.HighestCommitBlock.BlockNumber > grandParentHeader.Number))
+        if (_context.HighestCommitBlock is not null && (_context.HighestCommitBlock.Round >= parentHeader.ExtraConsensusData.BlockRound || _context.HighestCommitBlock.BlockNumber > (long)grandParentHeader.Number))
         {
             error = $"Committed block ({_context.HighestCommitBlock.Hash}) has higher round or block number.";
             return false;
         }
 
-        _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, parentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
+        _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, parentHeader.ExtraConsensusData.BlockRound, (long)grandParentHeader.Number);
 
         //Mark grand parent as finalized
         _blockTree.ForkChoiceUpdated(grandParentHeader.Hash, grandParentHeader.Hash);
@@ -210,10 +210,10 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        if (certificateTarget.Number == spec.SwitchBlock)
+        if ((long)certificateTarget.Number == spec.SwitchBlock)
         {
             //Do not check round info on genesis block
-            if (qc.ProposedBlockInfo.BlockNumber != certificateTarget.Number || qc.ProposedBlockInfo.Hash != certificateTarget.Hash)
+            if (qc.ProposedBlockInfo.BlockNumber != (long)certificateTarget.Number || qc.ProposedBlockInfo.Hash != certificateTarget.Hash)
             {
                 error = "QC genesis block data does not match header data.";
                 return false;
@@ -239,10 +239,10 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(current);
         QuorumCertificate latestQc;
-        if (current.Number == spec.SwitchBlock)
+        if ((long)current.Number == spec.SwitchBlock)
         {
-            latestQc = new QuorumCertificate(new BlockRoundInfo(current.Hash, 0, current.Number), Array.Empty<Signature>(),
-                    (ulong)Math.Max(0, current.Number - spec.Gap));
+            latestQc = new QuorumCertificate(new BlockRoundInfo(current.Hash, 0, (long)current.Number), Array.Empty<Signature>(),
+                    (ulong)Math.Max(0L, (long)current.Number - spec.Gap));
             _context.HighestQC = latestQc;
             _context.SetNewRound(1);
         }

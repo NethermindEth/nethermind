@@ -39,7 +39,7 @@ public partial class DebugRpcModuleTests
         // Create a few blocks for stateless reprocessing
         // Especially, blocks that touch sensitive opcodes relevant to stateless processing
         Block transferTxBlock = await CreateTransferTx(blockchain);
-        Address contractAddress = await CreateDeployTx(blockchain, transferTxBlock.Number);
+        Address contractAddress = await CreateDeployTx(blockchain, (long)transferTxBlock.Number);
         await CreateContractCallTx(blockchain, contractAddress);
 
         Block? block = blockchain.BlockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);

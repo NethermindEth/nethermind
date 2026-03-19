@@ -341,8 +341,8 @@ public class Era1ModuleTests
         long maxSuggestedBlock = 0;
         inTree.NewBestSuggestedBlock += (sender, args) =>
         {
-            minSuggestedNumber ??= args.Block.Number;
-            maxSuggestedBlock = args.Block.Number;
+            minSuggestedNumber ??= (long?)args.Block.Number;
+            maxSuggestedBlock = (long)args.Block.Number;
             inTree.UpdateMainChain([args.Block], true);
         };
 

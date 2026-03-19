@@ -59,7 +59,7 @@ public class BeaconPivotTests
         BlockHeader pivotHeader = blockTree.FindHeader(10, BlockTreeLookupOptions.AllowInvalid)!;
         pivot.EnsurePivot(pivotHeader);
         pivot.PivotHash.Should().Be(pivotHeader.GetOrCalculateHash());
-        pivot.PivotNumber.Should().Be(pivotHeader.Number);
+        pivot.PivotNumber.Should().Be((long)pivotHeader.Number);
         pivot.PivotDestinationNumber.Should().Be(expectedPivotDestinationNumber);
     }
 }
