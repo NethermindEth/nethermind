@@ -91,6 +91,8 @@ public class BlockProcessingBenchmark
     /// where higher rep counts amortize OS scheduling noise and prewarmer
     /// thread contention, keeping iteration time above BDN's 100 ms minimum.
     /// </summary>
+    private const int N_XLARGE = 20_000;
+
     private const int N_LARGE = 5000;
 
     private const int N_SMALL = 200;
@@ -458,11 +460,11 @@ public class BlockProcessingBenchmark
 
     // ── Benchmarks ────────────────────────────────────────────────────────
 
-    [Benchmark(OperationsPerInvoke = N_LARGE)]
+    [Benchmark(OperationsPerInvoke = N_XLARGE)]
     public Block[] EmptyBlock()
     {
         Block[] result = null!;
-        for (int i = 0; i < N_LARGE; i++)
+        for (int i = 0; i < N_XLARGE; i++)
             result = _branchProcessor.Process(_parentHeader, [_emptyBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
@@ -518,11 +520,11 @@ public class BlockProcessingBenchmark
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N_LARGE)]
+    [Benchmark(OperationsPerInvoke = N_XLARGE)]
     public Block[] ContractDeploy_10()
     {
         Block[] result = null!;
-        for (int i = 0; i < N_LARGE; i++)
+        for (int i = 0; i < N_XLARGE; i++)
             result = _branchProcessor.Process(_parentHeader, [_contractDeploy10Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
