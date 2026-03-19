@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Benchmark;
 public class NewPayloadBenchmark
 {
     private const int WarmupBlocks = 30;
-    private const int MeasuredBlocks = 50;
+    private const int MeasuredBlocks = 500;
     private const int TotalBlocks = WarmupBlocks + MeasuredBlocks;
 
     [Params(StateBackend.Trie, StateBackend.FlatState)]
