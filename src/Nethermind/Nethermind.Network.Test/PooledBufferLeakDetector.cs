@@ -39,7 +39,7 @@ namespace Nethermind.Network.Test;
 public sealed class PooledBufferLeakDetector : IDisposable
 {
     private readonly string _message;
-    private readonly long _intialAlloc;
+    private readonly long _initialAlloc;
 
     /// <summary>
     /// The allocator tracked by this instance. Tests should allocate buffers from this
@@ -62,7 +62,7 @@ public sealed class PooledBufferLeakDetector : IDisposable
     {
         Allocator = allocator ?? CreateAllocator();
         _message = message ?? "Pooled buffer leak: buffer was allocated from the pool but never released back";
-        _intialAlloc = Allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
+        _initialAlloc = Allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
     }
 
     /// <summary>
@@ -72,7 +72,7 @@ public sealed class PooledBufferLeakDetector : IDisposable
     public void AssertNoLeaks()
     {
         long active = Allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
-        Assert.That(active, Is.EqualTo(_intialAlloc), _message);
+        Assert.That(active, Is.EqualTo(_initialAlloc), _message);
     }
 
     public void Dispose()

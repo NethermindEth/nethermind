@@ -146,15 +146,12 @@ public class DiscoveryMessageSerializerTests
         Assert.That(deserialized.NodeRecord.Signature, Is.EqualTo(msg.NodeRecord.Signature));
     }
 
-    /// <summary>
-    /// Verifies that deserializing an EnrResponse with an invalid ENR signature does not
-    /// leak internally-allocated pooled buffers. Before the fix, the error path used
-    /// <c>ReadBytes(n)</c> which allocates a new pooled buffer that was never released.
-    /// Uses an isolated allocator so any unreleased buffer is detected on dispose.
-    /// </summary>
     [Test]
     public void Enr_response_deserialize_does_not_leak_buffer_on_invalid_signature()
     {
+        // ENR with mismatched signature: Secp256K1 entry uses differentKey, but ENR is
+        // signed with _privateKey. The outer Discovery envelope is valid, but the inner
+        // ENR signature verification fails because the recovered signer doesn't match.
         using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
         PrivateKey differentKey = new("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
         EnrResponseMsg msg = BuildEnrResponse(differentKey.CompressedPublicKey);
@@ -166,9 +163,6 @@ public class DiscoveryMessageSerializerTests
             .Where(ex => ex.Message.Contains("Invalid ENR signature"));
     }
 
-    /// <summary>
-    /// Verifies that deserializing a valid EnrResponse does not leak pooled buffers.
-    /// </summary>
     [Test]
     public void Enr_response_deserialize_does_not_leak_buffer_on_success()
     {
@@ -182,9 +176,6 @@ public class DiscoveryMessageSerializerTests
         deserialized.RequestKeccak.Should().Be(TestItem.KeccakA);
     }
 
-    /// <summary>
-    /// Verifies that deserializing a Ping message does not leak pooled buffers.
-    /// </summary>
     [Test]
     public void Ping_deserialize_does_not_leak_buffer()
     {
@@ -201,9 +192,6 @@ public class DiscoveryMessageSerializerTests
         _messageSerializationService.Deserialize<PingMsg>(serialized);
     }
 
-    /// <summary>
-    /// Verifies that deserializing a Pong message does not leak pooled buffers.
-    /// </summary>
     [Test]
     public void Pong_deserialize_does_not_leak_buffer()
     {
@@ -217,9 +205,6 @@ public class DiscoveryMessageSerializerTests
         _messageSerializationService.Deserialize<PongMsg>(serialized);
     }
 
-    /// <summary>
-    /// Verifies that deserializing a FindNode message does not leak pooled buffers.
-    /// </summary>
     [Test]
     public void FindNode_deserialize_does_not_leak_buffer()
     {
@@ -233,9 +218,6 @@ public class DiscoveryMessageSerializerTests
         _messageSerializationService.Deserialize<FindNodeMsg>(serialized);
     }
 
-    /// <summary>
-    /// Verifies that deserializing a Neighbors message does not leak pooled buffers.
-    /// </summary>
     [Test]
     public void Neighbors_deserialize_does_not_leak_buffer()
     {
@@ -250,10 +232,6 @@ public class DiscoveryMessageSerializerTests
         _messageSerializationService.Deserialize<NeighborsMsg>(serialized);
     }
 
-    /// <summary>
-    /// Verifies that deserializing a Neighbors message with port zero (which throws)
-    /// does not leak pooled buffers on the error path.
-    /// </summary>
     [Test]
     public void Neighbors_deserialize_does_not_leak_buffer_on_port_zero_rejection()
     {
