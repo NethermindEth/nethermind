@@ -374,7 +374,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
             if (authorizationTuple.Authority is null
-                || s > Secp256K1Curve.HalfN
+                || s > SecP256k1Curve.HalfN
                 //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
                 || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
             {

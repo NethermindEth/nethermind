@@ -346,7 +346,7 @@ namespace Nethermind.Core.Specs
         bool IsEip4844FeeCollectorEnabled { get; }
 
         /// <summary>
-        /// Secp256r1 precompile
+        /// SecP256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
         bool IsEip7951Enabled { get; }

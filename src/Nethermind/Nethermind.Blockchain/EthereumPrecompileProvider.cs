@@ -38,7 +38,7 @@ public class EthereumPrecompileProvider() : IPrecompileProvider
 
             [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
 
-            [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance),
+            [SecP256r1Precompile.Address] = new(SecP256r1Precompile.Instance),
 
             [L1SloadPrecompile.Address] = new(L1SloadPrecompile.Instance),
         }.ToFrozenDictionary();

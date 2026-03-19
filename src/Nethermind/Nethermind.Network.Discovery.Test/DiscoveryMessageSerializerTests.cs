@@ -142,7 +142,7 @@ public class DiscoveryMessageSerializerTests
     public void Enr_response_there_and_back()
     {
         NodeRecord nodeRecord = new();
-        nodeRecord.SetEntry(new Secp256K1Entry(_privateKey.CompressedPublicKey));
+        nodeRecord.SetEntry(new SecP256k1Entry(_privateKey.CompressedPublicKey));
         nodeRecord.EnrSequence = 5;
         NodeRecordSigner signer = new(new Ecdsa(), _privateKey);
         signer.Sign(nodeRecord);

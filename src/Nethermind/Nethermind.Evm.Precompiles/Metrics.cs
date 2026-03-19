@@ -65,8 +65,8 @@ public class Metrics
     public static long Sha256Precompile { get; set; }
 
     [CounterMetric]
-    [Description("Number of Secp256r1 precompile calls.")]
-    public static long Secp256r1Precompile { get; set; }
+    [Description("Number of SecP256r1 precompile calls.")]
+    public static long SecP256r1Precompile { get; set; }
 
     [CounterMetric]
     [Description("Number of Point Evaluation precompile calls.")]

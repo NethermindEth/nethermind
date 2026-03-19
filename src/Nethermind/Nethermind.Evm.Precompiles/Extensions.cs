@@ -53,7 +53,7 @@ public static class Extensions
 
         if (spec.IsEip7951Enabled)
         {
-            AddPrecompile<Secp256r1Precompile>();
+            AddPrecompile<SecP256r1Precompile>();
         }
 
         if (spec.IsRip7728Enabled)
