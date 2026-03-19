@@ -12,7 +12,6 @@ namespace Nethermind.Serialization.Rlp
     [Rlp.SkipGlobalRegistration]
     public class CompactLogEntryDecoder : IRlpDecoder<LogEntry>
     {
-
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
         public static CompactLogEntryDecoder Instance { get; } = new();
 
