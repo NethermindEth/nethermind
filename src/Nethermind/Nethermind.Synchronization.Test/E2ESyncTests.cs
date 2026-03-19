@@ -99,6 +99,32 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     /// <summary>
+    /// Replace all entries in a block-keyed dictionary with a single entry at block 0
+    /// whose value is the sum of all original values. This preserves the cumulative effect
+    /// while ensuring the dictionary keys don't inflate biggestBlockTransition.
+    /// </summary>
+    private static void RekeyDictionaryToGenesis(IDictionary<long, long>? dict)
+    {
+        if (dict is null or { Count: 0 }) return;
+        long total = dict.Values.Sum();
+        dict.Clear();
+        dict[0] = total;
+    }
+
+    /// <summary>
+    /// Replace all entries in a block reward dictionary with a single entry at block 0
+    /// using the last (highest-block) reward value. This preserves the final block reward
+    /// while ensuring the dictionary keys don't inflate biggestBlockTransition.
+    /// </summary>
+    private static void RekeyBlockRewardToGenesis(SortedDictionary<long, UInt256>? dict)
+    {
+        if (dict is null or { Count: 0 }) return;
+        UInt256 lastReward = dict.Values.Last();
+        dict.Clear();
+        dict[0] = lastReward;
+    }
+
+    /// <summary>
     /// Common code for all node
     /// </summary>
     private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer)
@@ -134,7 +160,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         // ChainSpec block-number properties (collected by BuildTransitions via EndsWith("BlockNumber"))
         spec.HomesteadBlockNumber = 0;
-        spec.DaoForkBlockNumber = 0;
+        spec.DaoForkBlockNumber = null; // Disable DAO fork — it requires specific extra data in headers
         spec.TangerineWhistleBlockNumber = 0;
         spec.SpuriousDragonBlockNumber = 0;
         spec.ByzantiumBlockNumber = 0;
@@ -184,10 +210,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         EthashChainSpecEngineParameters ethashParams = spec.EngineChainSpecParametersProvider
             .GetChainSpecParameters<EthashChainSpecEngineParameters>();
         ethashParams.HomesteadTransition = 0;
-        ethashParams.DaoHardforkTransition = 0;
+        ethashParams.DaoHardforkTransition = null; // Disable DAO fork — it requires specific extra data in headers
         ethashParams.Eip100bTransition = 0;
-        ethashParams.DifficultyBombDelays?.Clear();
-        ethashParams.BlockReward?.Clear();
+        // Re-key block-number-keyed dictionaries to block 0 so they don't inflate
+        // biggestBlockTransition. Keep the values — clearing them breaks block rewards.
+        RekeyDictionaryToGenesis(ethashParams.DifficultyBombDelays);
+        RekeyBlockRewardToGenesis(ethashParams.BlockReward);
 
         if (isPostMerge)
         {
