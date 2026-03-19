@@ -12,24 +12,7 @@ on:
       pr_number:
         type: number
         required: true
-      blocks:
-        type: string
-        required: false
-        default: "150"
-      warmup:
-        type: string
-        required: false
-        default: "50"
-  workflow_dispatch:
-    inputs:
-      blocks:
-        description: "Number of measured blocks per backend"
-        required: false
-        default: "150"
-      warmup:
-        description: "Number of warmup blocks per backend"
-        required: false
-        default: "50"
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -45,12 +28,15 @@ env:
 jobs:
   benchmark:
     runs-on: benchmark
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - name: Check out PR branch
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.head_sha || github.ref }}
+
+      - name: Clean temp dirs
+        run: rm -rf /tmp/nethermind-bench-*
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -63,32 +49,23 @@ jobs:
           dotnet restore ${{ env.BENCHMARK_PROJECT }}
           dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
 
-      - name: Run NewPayload on PR (FlatState)
-        id: run-pr-flat
+      - name: Run benchmark on PR branch
+        id: run-pr
         continue-on-error: true
+        shell: bash
         run: |
-          dotnet run -c Release --no-build --project ${{ env.BENCHMARK_PROJECT }} \
-            -- --newpayload --backend FlatState \
-               --blocks ${{ inputs.blocks }} \
-               --warmup ${{ inputs.warmup }} \
-            | tee "${RUNNER_TEMP}/newpayload-pr-flat.txt"
-
-      - name: Run NewPayload on PR (Trie)
-        id: run-pr-trie
-        continue-on-error: true
-        run: |
-          dotnet run -c Release --no-build --project ${{ env.BENCHMARK_PROJECT }} \
-            -- --newpayload --backend Trie \
-               --blocks ${{ inputs.blocks }} \
-               --warmup ${{ inputs.warmup }} \
-            | tee "${RUNNER_TEMP}/newpayload-pr-trie.txt"
+          dotnet run -c Release --no-build \
+            --project ${{ env.BENCHMARK_PROJECT }} \
+            -- --filter "*NewPayloadBenchmark*" \
+               --exporters json \
+               --artifacts "${RUNNER_TEMP}/bdn-pr"
 
       - name: Save PR benchmark files
         run: |
           cp -r src/Nethermind/Nethermind.Evm.Benchmark "${RUNNER_TEMP}/pr-bench-src"
           cp Directory.Packages.props "${RUNNER_TEMP}/pr-Directory.Packages.props"
 
-      - name: Check out base branch
+      - name: Check out base branch (master)
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.base_sha || 'master' }}
@@ -105,132 +82,206 @@ jobs:
           dotnet restore ${{ env.BENCHMARK_PROJECT }}
           dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
 
-      - name: Run NewPayload on base (FlatState)
-        id: run-base-flat
+      - name: Run benchmark on base branch
+        id: run-base
         continue-on-error: true
+        shell: bash
         run: |
-          dotnet run -c Release --no-build --project ${{ env.BENCHMARK_PROJECT }} \
-            -- --newpayload --backend FlatState \
-               --blocks ${{ inputs.blocks }} \
-               --warmup ${{ inputs.warmup }} \
-            | tee "${RUNNER_TEMP}/newpayload-base-flat.txt"
+          dotnet run -c Release --no-build \
+            --project ${{ env.BENCHMARK_PROJECT }} \
+            -- --filter "*NewPayloadBenchmark*" \
+               --exporters json \
+               --artifacts "${RUNNER_TEMP}/bdn-base"
 
-      - name: Run NewPayload on base (Trie)
-        id: run-base-trie
-        continue-on-error: true
-        run: |
-          dotnet run -c Release --no-build --project ${{ env.BENCHMARK_PROJECT }} \
-            -- --newpayload --backend Trie \
-               --blocks ${{ inputs.blocks }} \
-               --warmup ${{ inputs.warmup }} \
-            | tee "${RUNNER_TEMP}/newpayload-base-trie.txt"
-
-      - name: Compare and comment
+      - name: Compare results and build comment
         id: compare
         if: always()
         shell: bash
         env:
-          NP_BASE_FLAT: ${{ runner.temp }}/newpayload-base-flat.txt
-          NP_PR_FLAT: ${{ runner.temp }}/newpayload-pr-flat.txt
-          NP_BASE_TRIE: ${{ runner.temp }}/newpayload-base-trie.txt
-          NP_PR_TRIE: ${{ runner.temp }}/newpayload-pr-trie.txt
-          NP_BASE_FLAT_OUTCOME: ${{ steps.run-base-flat.outcome }}
-          NP_PR_FLAT_OUTCOME: ${{ steps.run-pr-flat.outcome }}
-          NP_BASE_TRIE_OUTCOME: ${{ steps.run-base-trie.outcome }}
-          NP_PR_TRIE_OUTCOME: ${{ steps.run-pr-trie.outcome }}
+          BASE_ARTIFACTS: ${{ runner.temp }}/bdn-base
+          PR_ARTIFACTS: ${{ runner.temp }}/bdn-pr
           BASE_SHA: ${{ inputs.base_sha || 'master' }}
           HEAD_SHA: ${{ inputs.head_sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BASE_OUTCOME: ${{ steps.run-base.outcome }}
+          PR_OUTCOME: ${{ steps.run-pr.outcome }}
         run: |
           set -euo pipefail
 
           python3 - <<'PYEOF'
-          import re, os, sys
+          import json, glob, os, sys
 
-          def parse_results(filepath):
-              if not os.path.exists(filepath):
+          def load_results(artifacts_dir):
+              pattern = os.path.join(artifacts_dir, "results", "*-report-full-compressed.json")
+              files = glob.glob(pattern)
+              if not files:
                   return None
-              with open(filepath) as f:
-                  text = f.read()
+              with open(files[0]) as f:
+                  data = json.load(f)
               results = {}
-              for line in text.splitlines():
-                  line = line.strip()
-                  for key in ["Mean", "Median", "StdDev", "CV", "TrimmedMean", "TrimmedSD",
-                              "TrimmedCV", "Min", "Max", "P5", "P95", "P99"]:
-                      m = re.match(rf"^{key}:\s+([\d.]+)\s*(ms|%)", line)
-                      if m:
-                          results[key] = float(m.group(1))
-                          break
-                  m = re.match(r"^Blocks:\s+(\d+)", line)
-                  if m:
-                      results["Blocks"] = int(m.group(1))
-              return results if results else None
+              for bm in data["Benchmarks"]:
+                  method = bm["Method"]
+                  params = bm.get("Parameters", "")
+                  key = f"{method}({params})" if params else method
+                  stats = bm["Statistics"]
+                  mem = bm.get("Memory", {})
+                  pcts = stats.get("Percentiles", {})
+                  results[key] = {
+                      "mean": stats["Mean"],
+                      "median": stats["Median"],
+                      "min": stats["Min"],
+                      "max": stats["Max"],
+                      "stddev": stats["StandardDeviation"],
+                      "p90": pcts.get("P90", 0),
+                      "p95": pcts.get("P95", 0),
+                      "allocated": mem.get("BytesAllocatedPerOperation", 0),
+                  }
+              return results
 
-          def fmt(val, unit="ms"):
-              return f"{val:.1f}%" if unit == "%" else f"{val:.2f} ms"
+          def ns_to_us(ns):
+              return ns / 1000.0
+
+          def bytes_to_kb(b):
+              return b / 1024.0 if b else 0
+
+          def fmt_us(ns):
+              us = ns_to_us(ns)
+              if us >= 1000:
+                  return f"{us:,.1f}"
+              return f"{us:.1f}"
+
+          def fmt_kb(b):
+              kb = bytes_to_kb(b)
+              if kb >= 1000:
+                  return f"{kb:,.1f}"
+              return f"{kb:.1f}"
 
           def delta_pct(pr_val, base_val):
-              if base_val == 0: return None
+              if base_val == 0:
+                  return None
               return ((pr_val - base_val) / base_val) * 100
 
           def fmt_delta(pct):
-              if pct is None: return "n/a"
-              return f"{'+' if pct >= 0 else ''}{pct:.1f}%"
+              if pct is None:
+                  return "n/a"
+              sign = "+" if pct >= 0 else ""
+              return f"{sign}{pct:.1f}%"
+
+          def fmt_cv(mean, stddev):
+              if mean == 0:
+                  return "n/a"
+              cv = (stddev / mean) * 100
+              return f"{cv:.1f}%"
 
           def indicator(pct):
-              if pct is None: return ""
-              if pct <= -3: return " :arrow_down:"
-              if pct >= 3: return " :arrow_up_small:"
+              if pct is None:
+                  return ""
+              if pct <= -3:
+                  return " :arrow_down:"
+              elif pct >= 3:
+                  return " :arrow_up_small:"
               return ""
-
-          def build_table(base_r, pr_r, name):
-              s = [f"#### {name}", ""]
-              s.append("| Metric | Base | PR | Delta |")
-              s.append("|--------|-----:|---:|------:|")
-              for key in ["TrimmedMean", "Mean", "Median", "P95", "P99", "Min", "Max"]:
-                  if key in base_r and key in pr_r:
-                      d = delta_pct(pr_r[key], base_r[key])
-                      s.append(f"| {key} | {fmt(base_r[key])} | {fmt(pr_r[key])} | {fmt_delta(d)}{indicator(d)} |")
-              for key in ["TrimmedCV", "CV"]:
-                  if key in base_r and key in pr_r:
-                      s.append(f"| {key} | {fmt(base_r[key], '%')} | {fmt(pr_r[key], '%')} | |")
-              if "Blocks" in base_r and "Blocks" in pr_r:
-                  s.append(f"| Blocks | {base_r['Blocks']} | {pr_r['Blocks']} | |")
-              return s
 
           marker = "<!-- newpayload-benchmark-report -->"
           run_url = os.environ["RUN_URL"]
           base_sha = os.environ["BASE_SHA"][:8]
           head_sha = os.environ["HEAD_SHA"][:8]
+          base_outcome = os.environ["BASE_OUTCOME"]
+          pr_outcome = os.environ["PR_OUTCOME"]
 
-          lines = [marker, "### engine_newPayload Benchmark Comparison", ""]
+          lines = [marker]
+          lines.append("### engine_newPayload Benchmark Comparison")
+          lines.append("")
           lines.append(f"Run: [View workflow run]({run_url})")
           lines.append(f"Base: `{base_sha}` | Head: `{head_sha}`")
           lines.append("")
 
-          for backend, base_env, pr_env, b_out_env, p_out_env in [
-              ("FlatState", "NP_BASE_FLAT", "NP_PR_FLAT", "NP_BASE_FLAT_OUTCOME", "NP_PR_FLAT_OUTCOME"),
-              ("Trie", "NP_BASE_TRIE", "NP_PR_TRIE", "NP_BASE_TRIE_OUTCOME", "NP_PR_TRIE_OUTCOME"),
-          ]:
-              b_out = os.environ.get(b_out_env, "")
-              p_out = os.environ.get(p_out_env, "")
-              if b_out != "success" or p_out != "success":
-                  lines.extend([f"#### {backend}", "", f":x: **{backend} failed.** (base={b_out}, pr={p_out})", ""])
-                  continue
-              base_r = parse_results(os.environ.get(base_env, ""))
-              pr_r = parse_results(os.environ.get(pr_env, ""))
-              if not base_r or not pr_r:
-                  lines.extend([f"#### {backend}", "", f":warning: Could not parse {backend} results.", ""])
-                  continue
-              lines.extend(build_table(base_r, pr_r, backend))
-              lines.append("")
+          if base_outcome != "success":
+              lines.append(":x: **Base branch benchmark failed.** Check the workflow run for details.")
+              body = "\n".join(lines)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+              sys.exit(0)
+
+          if pr_outcome != "success":
+              lines.append(":x: **PR branch benchmark failed.** Check the workflow run for details.")
+              body = "\n".join(lines)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+              sys.exit(0)
+
+          base = load_results(os.environ["BASE_ARTIFACTS"])
+          pr = load_results(os.environ["PR_ARTIFACTS"])
+
+          if not base:
+              lines.append(":warning: No base branch benchmark results found.")
+              body = "\n".join(lines)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+              sys.exit(0)
+
+          if not pr:
+              lines.append(":warning: No PR branch benchmark results found.")
+              body = "\n".join(lines)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
+              sys.exit(0)
+
+          # Build summary table
+          methods = [m for m in base if m in pr]
+          methods.sort()
+
+          lines.append("| Method | Base (us) | PR (us) | Delta | Base CV | PR CV | Alloc Base | Alloc PR | Alloc Delta |")
+          lines.append("|--------|----------:|--------:|------:|--------:|------:|-----------:|---------:|------------:|")
+
+          for m in methods:
+              b = base[m]
+              p = pr[m]
+              mean_d = delta_pct(p["mean"], b["mean"])
+              alloc_d = delta_pct(p["allocated"], b["allocated"])
+              lines.append(
+                  f"| {m} "
+                  f"| {fmt_us(b['mean'])} "
+                  f"| {fmt_us(p['mean'])} "
+                  f"| {fmt_delta(mean_d)}{indicator(mean_d)} "
+                  f"| {fmt_cv(b['mean'], b['stddev'])} "
+                  f"| {fmt_cv(p['mean'], p['stddev'])} "
+                  f"| {fmt_kb(b['allocated'])} KB "
+                  f"| {fmt_kb(p['allocated'])} KB "
+                  f"| {fmt_delta(alloc_d)} |"
+              )
+
+          # Detailed stats in collapsible section
+          lines.append("")
+          lines.append("<details><summary>Detailed statistics</summary>")
+          lines.append("")
+          lines.append("| Method | Metric | Base | PR | Delta |")
+          lines.append("|--------|--------|-----:|---:|------:|")
+
+          for m in methods:
+              b = base[m]
+              p = pr[m]
+              for metric, key in [("Mean", "mean"), ("Median", "median"),
+                                  ("P90", "p90"), ("P95", "p95"),
+                                  ("Min", "min"), ("Max", "max"),
+                                  ("StdDev", "stddev")]:
+                  d = delta_pct(p[key], b[key])
+                  lines.append(
+                      f"| {m} | {metric} "
+                      f"| {fmt_us(b[key])} us "
+                      f"| {fmt_us(p[key])} us "
+                      f"| {fmt_delta(d)} |"
+                  )
+
+          lines.append("")
+          lines.append("</details>")
 
           body = "\n".join(lines)
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"body<<GHEOF\n{body}\nGHEOF\n")
           PYEOF
 
-      - name: Post comment
+      - name: Post benchmark comparison comment
         if: always() && inputs.pr_number != ''
         uses: actions/github-script@v7
         env:
@@ -240,23 +291,50 @@ jobs:
           script: |
             const marker = '<!-- newpayload-benchmark-report -->';
             const body = process.env.COMMENT_BODY;
-            if (!body) { console.log('No body'); return; }
+            if (!body) {
+              console.log('No comment body produced, skipping.');
+              return;
+            }
             const { owner, repo } = context.repo;
             const issue_number = Number(process.env.PR_NUMBER);
+
             const comments = await github.paginate(github.rest.issues.listComments, {
-              owner, repo, issue_number, per_page: 100,
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
             });
-            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            const existing = comments.find((comment) =>
+              comment.body && comment.body.includes(marker),
+            );
+
             if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
             } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
             }
 
-      - name: Upload artifacts
+      - name: Upload benchmark artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: newpayload-benchmark-results
-          path: ${{ runner.temp }}/newpayload-*.txt
+          path: |
+            ${{ runner.temp }}/bdn-base/results/
+            ${{ runner.temp }}/bdn-pr/results/
           retention-days: 30
+
+      - name: Clean temp dirs
+        if: always()
+        run: rm -rf /tmp/nethermind-bench-*
