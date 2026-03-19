@@ -159,7 +159,6 @@ public class ChainSpecParamsJson
     public Address Eip7251ContractAddress { get; set; }
     public ulong? Eip7951TransitionTimestamp { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
-    public ulong? Eip7692TransitionTimestamp { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? Eip7883TransitionTimestamp { get; set; }
     public ulong? Eip7823TransitionTimestamp { get; set; }

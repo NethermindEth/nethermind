@@ -8,7 +8,7 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles;
 
-public partial class EcRecoverPrecompile
+public partial class ECRecoverPrecompile
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Result<byte[]> Recover(

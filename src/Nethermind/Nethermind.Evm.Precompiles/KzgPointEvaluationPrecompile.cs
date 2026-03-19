@@ -12,9 +12,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles;
 
-public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
+public class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluationPrecompile>
 {
-    public static readonly PointEvaluationPrecompile Instance = new();
+    public static readonly KzgPointEvaluationPrecompile Instance = new();
 
     private static readonly byte[] PointEvaluationSuccessfulResponse =
         ((UInt256)Ckzg.FieldElementsPerBlob).ToBigEndian()
@@ -53,7 +53,7 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
                    && KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof);
         }
 
-        Metrics.PointEvaluationPrecompile++;
+        Metrics.KzgPointEvaluationPrecompile++;
         return IsValid(inputData)
             ? PointEvaluationSuccessfulResponse
             : Errors.Failed;

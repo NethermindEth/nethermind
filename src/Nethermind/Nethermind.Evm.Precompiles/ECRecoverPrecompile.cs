@@ -9,12 +9,12 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
 
-public partial class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
+public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 {
-    public static readonly EcRecoverPrecompile Instance = new();
+    public static readonly ECRecoverPrecompile Instance = new();
     private static readonly Result<byte[]> Empty = Array.Empty<byte>();
 
-    private EcRecoverPrecompile() { }
+    private ECRecoverPrecompile() { }
 
     public static Address Address { get; } = Address.FromNumber(1);
 
@@ -29,7 +29,7 @@ public partial class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
 #if !ZK_EVM
-        Metrics.EcRecoverPrecompile++;
+        Metrics.ECRecoverPrecompile++;
 #endif
         return inputData.Length >= 128 ? RunInternal(inputData.Span) : RunInternal(inputData);
     }

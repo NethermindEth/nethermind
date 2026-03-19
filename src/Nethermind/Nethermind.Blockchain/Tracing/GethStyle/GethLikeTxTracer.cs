@@ -52,8 +52,6 @@ public abstract class GethLikeTxTracer : TxTracer
             EvmExceptionType.StackOverflow => "StackOverflow",
             EvmExceptionType.StackUnderflow => "StackUnderflow",
             EvmExceptionType.OutOfGas => "OutOfGas",
-            EvmExceptionType.InvalidSubroutineEntry => "InvalidSubroutineEntry",
-            EvmExceptionType.InvalidSubroutineReturn => "InvalidSubroutineReturn",
             EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
             EvmExceptionType.AccessViolation => "AccessViolation",
             EvmExceptionType.StaticCallViolation => "StaticCallViolation",
@@ -71,7 +69,7 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
     protected GethLikeTxTracer(GethTraceOptions options) : base(options) { }
     private bool _gasCostAlreadySetForCurrentOp;
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         if (CurrentTraceEntry is not null)
         {
@@ -81,10 +79,8 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
         CurrentTraceEntry = CreateTraceEntry(opcode);
         CurrentTraceEntry.Depth = env.GetGethTraceDepth();
         CurrentTraceEntry.Gas = gas;
-        CurrentTraceEntry.Opcode = opcode.GetName();
+        CurrentTraceEntry.Opcode = Enum.GetName(opcode);
         CurrentTraceEntry.ProgramCounter = pc;
-        // skip codeSection
-        // skip functionDepth
         _gasCostAlreadySetForCurrentOp = false;
     }
 
