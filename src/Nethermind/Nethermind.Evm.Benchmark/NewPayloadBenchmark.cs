@@ -8,10 +8,15 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Columns;
+using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Exporters.Json;
+using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -32,6 +37,9 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Api;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
@@ -49,15 +57,41 @@ namespace Nethermind.Evm.Benchmark;
 /// <summary>
 /// Measures engine_newPayload end-to-end latency through the full handler pipeline.
 /// Produces blocks on chain A (setup), then replays on fresh chain B (measurement).
-/// Only the engine_newPayloadV4 call is timed — block production is excluded.
-///
-/// Usage:
-///   dotnet run -c Release -- --newpayload [--backend Trie|FlatState] [--blocks 200] [--warmup 50]
+/// Each BDN iteration replays the measured blocks on a fresh copy of the template DB.
 /// </summary>
-public static class NewPayloadBenchmark
+[Config(typeof(NewPayloadConfig))]
+[MemoryDiagnoser]
+[JsonExporterAttribute.FullCompressed]
+public class NewPayloadBenchmark
 {
-    private const int DefaultBlocks = 300;
-    private const int DefaultWarmupBlocks = 80;
+    private const int WarmupBlocks = 30;
+    private const int MeasuredBlocks = 50;
+    private const int TotalBlocks = WarmupBlocks + MeasuredBlocks;
+
+    [Params(StateBackend.Trie, StateBackend.FlatState)]
+    public StateBackend Backend { get; set; }
+
+    private class NewPayloadConfig : ManualConfig
+    {
+        public NewPayloadConfig()
+        {
+            AddJob(Job.Default
+                .WithToolchain(InProcessNoEmitToolchain.Default)
+                .WithInvocationCount(1)
+                .WithUnrollFactor(1)
+                .WithLaunchCount(1)
+                .WithWarmupCount(3)
+                .WithIterationCount(10)
+                .WithGcForce(true)
+                .WithEnvironmentVariable("DOTNET_GCServer", "0")
+                .WithEnvironmentVariable("DOTNET_gcConcurrent", "0"));
+            AddColumn(StatisticColumn.Min);
+            AddColumn(StatisticColumn.Max);
+            AddColumn(StatisticColumn.Median);
+            AddColumn(StatisticColumn.P90);
+            AddColumn(StatisticColumn.P95);
+        }
+    }
 
     private static readonly Address Erc20Address = Address.FromNumber(0x1000);
     private static readonly Address SwapAddress = Address.FromNumber(0x2000);
@@ -80,52 +114,102 @@ public static class NewPayloadBenchmark
 
     private record PayloadData(ExecutionPayloadV3 Payload, byte[][]? ExecutionRequests);
 
-    public static async Task Run(string[] args)
+    // Produced payloads from chain A
+    private PayloadData[] _payloads = null!;
+
+    // Template DB directory (chain B after warmup, flushed + compacted)
+    private string _templateDbPath = null!;
+
+    // Per-iteration state
+    private string _iterationDbPath = null!;
+    private BenchmarkMergeBlockchain? _iterationChain;
+
+    [GlobalSetup]
+    public async Task GlobalSetup()
     {
-        StateBackend backend = StateBackend.Trie;
-        int blockCount = DefaultBlocks;
-        int warmupBlocks = DefaultWarmupBlocks;
+        // Pin to a single core to reduce OS scheduler jitter
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+            Process.GetCurrentProcess().ProcessorAffinity = new IntPtr(1);
 
-        for (int i = 0; i < args.Length; i++)
+        // Phase 1: Produce all payloads on chain A (in-memory, no RocksDB needed)
+        _payloads = await ProducePayloads(TotalBlocks, Backend);
+
+        // Phase 2: Build template chain B with RocksDB, replay warmup blocks, flush+compact
+        _templateDbPath = Path.Combine(Path.GetTempPath(), $"nethermind-newpayload-template-{Guid.NewGuid()}");
+        Directory.CreateDirectory(_templateDbPath);
+
+        using (BenchmarkMergeBlockchain templateChain = new())
         {
-            switch (args[i])
+            await templateChain.BuildChain(BuildChainConfigurer(Backend, _templateDbPath));
+
+            IEngineRpcModule rpc = templateChain.EngineRpcModule;
+
+            // Replay warmup blocks to build up state
+            for (int i = 0; i < WarmupBlocks && i < _payloads.Length; i++)
             {
-                case "--backend" when i + 1 < args.Length:
-                    backend = Enum.Parse<StateBackend>(args[++i], ignoreCase: true);
-                    break;
-                case "--blocks" when i + 1 < args.Length:
-                    blockCount = int.Parse(args[++i]);
-                    break;
-                case "--warmup" when i + 1 < args.Length:
-                    warmupBlocks = int.Parse(args[++i]);
-                    break;
+                ExecutionPayloadV3 p = _payloads[i].Payload;
+                await rpc.engine_newPayloadV4(p, Array.Empty<byte[]?>(), p.ParentBeaconBlockRoot, _payloads[i].ExecutionRequests);
+                await rpc.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(p.BlockHash, p.BlockHash, p.BlockHash));
             }
+
+            // Flush and compact so template DB is clean
+            FlushAndCompactChain(templateChain);
         }
-
-        int totalBlocks = warmupBlocks + blockCount;
-        Console.WriteLine($"NewPayload Benchmark: backend={backend}, measured={blockCount}, warmup={warmupBlocks}");
-        Console.WriteLine();
-
-        // Phase 1: Produce all payloads on chain A (same backend — state roots must match)
-        Console.WriteLine("Phase 1: Producing payloads...");
-        PayloadData[] payloads = await ProducePayloads(totalBlocks, backend);
-        Console.WriteLine($"  Produced {payloads.Length} payloads");
-
-        // Phase 2: Replay on fresh chain B — only engine_newPayloadV4 is timed
-        Console.WriteLine($"Phase 2: Replaying on fresh {backend} chain...");
-        double[] timingsMs = await Replay(payloads, backend, warmupBlocks);
-
-        ReportStatistics(timingsMs);
+        // Template chain is disposed, DB files remain on disk
     }
 
-    // ── Phase 1: Produce payloads ────────────────────────────────────────
+    [IterationSetup]
+    public void IterationSetup()
+    {
+        // Copy template DB to a fresh directory for this iteration
+        _iterationDbPath = Path.Combine(Path.GetTempPath(), $"nethermind-newpayload-iter-{Guid.NewGuid()}");
+        CopyDirectory(_templateDbPath, _iterationDbPath);
+
+        // Build a new chain from the iteration directory
+        _iterationChain = new BenchmarkMergeBlockchain();
+        _iterationChain.BuildChain(BuildChainConfigurer(Backend, _iterationDbPath)).GetAwaiter().GetResult();
+
+        // Disable auto-compaction during measurement
+        DisableAutoCompactionOnChain(_iterationChain);
+    }
+
+    [Benchmark(OperationsPerInvoke = MeasuredBlocks)]
+    public async Task ReplayMeasuredBlocks()
+    {
+        IEngineRpcModule rpc = _iterationChain!.EngineRpcModule;
+
+        for (int i = WarmupBlocks; i < _payloads.Length; i++)
+        {
+            ExecutionPayloadV3 p = _payloads[i].Payload;
+            await rpc.engine_newPayloadV4(p, Array.Empty<byte[]?>(), p.ParentBeaconBlockRoot, _payloads[i].ExecutionRequests);
+            await rpc.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(p.BlockHash, p.BlockHash, p.BlockHash));
+        }
+    }
+
+    [IterationCleanup]
+    public void IterationCleanup()
+    {
+        _iterationChain?.Dispose();
+        _iterationChain = null;
+
+        TryDeleteDirectory(_iterationDbPath);
+    }
+
+    [GlobalCleanup]
+    public void GlobalCleanup()
+    {
+        TryDeleteDirectory(_templateDbPath);
+    }
+
+    // -- Phase 1: Produce payloads on chain A ---------------------------------
 
     private static async Task<PayloadData[]> ProducePayloads(int blockCount, StateBackend backend)
     {
         PrivateKey senderKey = TestItem.PrivateKeyA;
 
+        // Chain A uses in-memory DB — no RocksDB path needed
         using BenchmarkMergeBlockchain chain = new();
-        await chain.BuildChain(BuildChainConfigurer(backend));
+        await chain.BuildChain(BuildInMemoryChainConfigurer(backend));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 headHash = chain.BlockTree.HeadHash;
@@ -156,10 +240,7 @@ public static class NewPayloadBenchmark
             ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult =
                 await rpc.engine_forkchoiceUpdatedV3(fcState, attrs);
             if (fcuResult.Data?.PayloadId is null)
-            {
-                Console.WriteLine($"  FCU failed at block {b + 1}. Status={fcuResult.Data?.PayloadStatus?.Status} Error={fcuResult.ErrorCode} Head=#{chain.BlockTree.Head?.Number}");
                 break;
-            }
 
             await Task.Delay(200);
             ResultWrapper<GetPayloadV5Result?> getResult =
@@ -181,10 +262,7 @@ public static class NewPayloadBenchmark
             }
 
             if (chain.BlockTree.Head?.Number < b + 1)
-            {
-                Console.WriteLine($"  Timeout waiting for block {b + 1} to process. Head=#{chain.BlockTree.Head?.Number}");
                 break;
-            }
 
             headHash = chain.BlockTree.HeadHash;
 
@@ -192,75 +270,12 @@ public static class NewPayloadBenchmark
             nonce = (int)chainNonce;
 
             payloads.Add(new PayloadData(payload, execRequests));
-
-            if (b == 0)
-                Console.WriteLine($"  Block 1: gasUsed={payload.GasUsed}");
-            if ((b + 1) % 25 == 0)
-                Console.WriteLine($"  Produced {b + 1}/{blockCount}");
         }
 
         return payloads.ToArray();
     }
 
-    // ── Phase 2: Replay and measure ──────────────────────────────────────
-
-    private static async Task<double[]> Replay(PayloadData[] payloads, StateBackend backend, int warmupBlocks)
-    {
-        using BenchmarkMergeBlockchain chain = new();
-        await chain.BuildChain(BuildChainConfigurer(backend));
-
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        // Warmup: replay first N blocks without timing
-        for (int i = 0; i < warmupBlocks && i < payloads.Length; i++)
-        {
-            ExecutionPayloadV3 p = payloads[i].Payload;
-            await rpc.engine_newPayloadV4(p, Array.Empty<byte[]?>(), p.ParentBeaconBlockRoot, payloads[i].ExecutionRequests);
-            await rpc.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(p.BlockHash, p.BlockHash, p.BlockHash));
-        }
-
-        Console.WriteLine($"  Warmup done ({warmupBlocks} blocks). Head=#{chain.BlockTree.Head?.Number}");
-
-        // Force GC and switch to low-latency mode
-        GC.Collect(2, GCCollectionMode.Aggressive, true, true);
-        GC.WaitForPendingFinalizers();
-        GCLatencyMode oldMode = GCSettings.LatencyMode;
-        GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
-
-        // Pin to single core to reduce OS scheduler jitter
-        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
-            Process.GetCurrentProcess().ProcessorAffinity = new IntPtr(1);
-
-        // Measure — only engine_newPayloadV4 is timed, not forkchoiceUpdated
-        List<double> timings = new(Math.Max(0, payloads.Length - warmupBlocks));
-
-        for (int i = warmupBlocks; i < payloads.Length; i++)
-        {
-            ExecutionPayloadV3 p = payloads[i].Payload;
-
-            // ── TIMED: only newPayloadV4 ──
-            long sw = Stopwatch.GetTimestamp();
-            ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV4(
-                p, Array.Empty<byte[]?>(), p.ParentBeaconBlockRoot, payloads[i].ExecutionRequests);
-            double elapsedMs = Stopwatch.GetElapsedTime(sw).TotalMilliseconds;
-
-            // Advance head (untimed)
-            await rpc.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(p.BlockHash, p.BlockHash, p.BlockHash));
-
-            string status = result.Data?.Status ?? "null";
-            timings.Add(elapsedMs);
-
-            if (i == warmupBlocks || (i + 1) % 50 == 0 || i == payloads.Length - 1)
-                Console.WriteLine($"  [MEASURE] Block {i + 1}/{payloads.Length}: {elapsedMs:F2}ms status={status} gasUsed={p.GasUsed} head=#{chain.BlockTree.Head?.Number}");
-        }
-
-        GCSettings.LatencyMode = oldMode;
-        Console.WriteLine($"  Final head=#{chain.BlockTree.Head?.Number} (expected #{payloads.Length})");
-
-        return timings.ToArray();
-    }
-
-    // ── Genesis seeding ──────────────────────────────────────────────────
+    // -- Genesis seeding ------------------------------------------------------
 
     private static void SeedGenesis(Block block, IWorldState ws, ISpecProvider specProvider)
     {
@@ -269,7 +284,6 @@ public static class NewPayloadBenchmark
 
         ws.AddToBalanceAndCreateIfNotExists(TestItem.PrivateKeyA.Address, UInt256.MaxValue / 2, spec);
 
-        Console.Write("    Seeding state...");
         Random rng = new(42);
         byte[] addrBuf = new byte[20];
         byte[] valBuf = new byte[32];
@@ -292,7 +306,6 @@ public static class NewPayloadBenchmark
                 ws.Set(new StorageCell(addr, (UInt256)rng.NextInt64()), valBuf.ToArray());
             }
         }
-        Console.WriteLine(" done (1M accounts, 500k storage slots)");
 
         ws.CreateAccount(SimpleContractAddress, UInt256.Zero);
         ws.InsertCode(SimpleContractAddress, SimpleContractCode, spec);
@@ -343,9 +356,35 @@ public static class NewPayloadBenchmark
         ws.Set(new StorageCell(addr, (UInt256)slot), bytes);
     }
 
-    // ── Chain configuration ──────────────────────────────────────────────
+    // -- Chain configuration --------------------------------------------------
 
-    private static Action<ContainerBuilder> BuildChainConfigurer(StateBackend backend)
+    /// <summary>
+    /// Configurer for chain B (measurement) — uses RocksDB at the given path.
+    /// </summary>
+    private static Action<ContainerBuilder> BuildChainConfigurer(StateBackend backend, string dbPath)
+    {
+        return builder =>
+        {
+            builder.AddSingleton<ISpecProvider>(CreateOsakaSpecProvider());
+            builder.WithGenesisPostProcessor(SeedGenesis);
+            if (backend == StateBackend.Trie)
+                builder.Intercept<IFlatDbConfig>(cfg => cfg.Enabled = false);
+
+            // Override MemDbFactory (registered by TestEnvironmentModule) with RocksDbFactory.
+            // In Autofac, last-registration-wins, and configurer runs after ConfigureContainer.
+            IDbConfig dbConfig = new DbConfig { SharedBlockCacheSize = 256UL * 1024 * 1024 };
+            IPruningConfig pruningConfig = new PruningConfig();
+            IRocksDbConfigFactory rocksDbConfigFactory = new RocksDbConfigFactory(dbConfig, pruningConfig, new TestHardwareInfo(), LimboLogs.Instance);
+            HyperClockCacheWrapper sharedCache = new(dbConfig.SharedBlockCacheSize);
+            IDbFactory rocksDbFactory = new RocksDbFactory(rocksDbConfigFactory, dbConfig, sharedCache, LimboLogs.Instance, dbPath);
+            builder.AddSingleton<IDbFactory>(rocksDbFactory);
+        };
+    }
+
+    /// <summary>
+    /// Configurer for chain A (payload production) — uses in-memory DB.
+    /// </summary>
+    private static Action<ContainerBuilder> BuildInMemoryChainConfigurer(StateBackend backend)
     {
         return builder =>
         {
@@ -365,7 +404,7 @@ public static class NewPayloadBenchmark
         return provider;
     }
 
-    // ── Transaction building ─────────────────────────────────────────────
+    // -- Transaction building -------------------------------------------------
 
     private static (List<Transaction> txs, int nextNonce) BuildMixedTransactions(PrivateKey senderKey, int nonce, int blockIndex)
     {
@@ -435,57 +474,46 @@ public static class NewPayloadBenchmark
         return builder.SignedAndResolved(key).TestObject;
     }
 
-    // ── Reporting ────────────────────────────────────────────────────────
+    // -- RocksDB helpers ------------------------------------------------------
 
-    private static void ReportStatistics(double[] timingsMs)
+    private static void FlushAndCompactChain(BenchmarkMergeBlockchain chain)
     {
-        if (timingsMs.Length == 0) { Console.WriteLine("No timings."); return; }
-
-        Array.Sort(timingsMs);
-        double mean = timingsMs.Average();
-        double median = Percentile(timingsMs, 50);
-        double stddev = Math.Sqrt(timingsMs.Select(t => (t - mean) * (t - mean)).Average());
-        double cv = mean > 0 ? (stddev / mean) * 100 : 0;
-
-        int trimCount = (int)(timingsMs.Length * 0.05);
-        double[] trimmed = timingsMs.Skip(trimCount).Take(timingsMs.Length - 2 * trimCount).ToArray();
-        double trimmedMean = trimmed.Length > 0 ? trimmed.Average() : mean;
-        double trimmedStddev = trimmed.Length > 1
-            ? Math.Sqrt(trimmed.Select(t => (t - trimmedMean) * (t - trimmedMean)).Average()) : 0;
-        double trimmedCv = trimmedMean > 0 ? (trimmedStddev / trimmedMean) * 100 : 0;
-
-        Console.WriteLine();
-        Console.WriteLine("═══════════════════════════════════════════════════════");
-        Console.WriteLine("  engine_newPayload Benchmark Results");
-        Console.WriteLine("═══════════════════════════════════════════════════════");
-        Console.WriteLine($"  Blocks:       {timingsMs.Length}");
-        Console.WriteLine($"  Mean:         {mean:F3} ms");
-        Console.WriteLine($"  Median:       {median:F3} ms");
-        Console.WriteLine($"  StdDev:       {stddev:F3} ms");
-        Console.WriteLine($"  CV:           {cv:F1}%");
-        Console.WriteLine($"  ─── Trimmed (5%-95%) ───");
-        Console.WriteLine($"  TrimmedMean:  {trimmedMean:F3} ms");
-        Console.WriteLine($"  TrimmedSD:    {trimmedStddev:F3} ms");
-        Console.WriteLine($"  TrimmedCV:    {trimmedCv:F1}%");
-        Console.WriteLine($"  ─── Distribution ───");
-        Console.WriteLine($"  Min:          {timingsMs[0]:F3} ms");
-        Console.WriteLine($"  P5:           {Percentile(timingsMs, 5):F3} ms");
-        Console.WriteLine($"  P95:          {Percentile(timingsMs, 95):F3} ms");
-        Console.WriteLine($"  P99:          {Percentile(timingsMs, 99):F3} ms");
-        Console.WriteLine($"  Max:          {timingsMs[^1]:F3} ms");
-        Console.WriteLine("═══════════════════════════════════════════════════════");
+        IDbProvider dbProvider = chain.Container.Resolve<IDbProvider>();
+        BenchmarkEnvironmentModule.FlushAndCompact(dbProvider);
     }
 
-    private static double Percentile(double[] sorted, double percentile)
+    private static void DisableAutoCompactionOnChain(BenchmarkMergeBlockchain chain)
     {
-        double index = (percentile / 100.0) * (sorted.Length - 1);
-        int lower = (int)Math.Floor(index);
-        int upper = Math.Min(lower + 1, sorted.Length - 1);
-        double frac = index - lower;
-        return sorted[lower] * (1 - frac) + sorted[upper] * frac;
+        IDbProvider dbProvider = chain.Container.Resolve<IDbProvider>();
+        BenchmarkEnvironmentModule.DisableAutoCompaction(dbProvider);
     }
 
-    // ── Helper types ─────────────────────────────────────────────────────
+    // -- Directory helpers ----------------------------------------------------
+
+    private static void CopyDirectory(string source, string dest)
+    {
+        Directory.CreateDirectory(dest);
+        foreach (string dir in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(dir.Replace(source, dest));
+        foreach (string file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
+            File.Copy(file, file.Replace(source, dest), true);
+    }
+
+    private static void TryDeleteDirectory(string? path)
+    {
+        if (path is null) return;
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+        catch (Exception)
+        {
+            // Best-effort cleanup
+        }
+    }
+
+    // -- Helper types ---------------------------------------------------------
 
     private sealed class BenchmarkMergeBlockchain : BaseEngineModuleTests.MergeTestBlockchain
     {
