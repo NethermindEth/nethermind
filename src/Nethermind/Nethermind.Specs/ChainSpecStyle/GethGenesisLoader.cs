@@ -240,32 +240,28 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         bool isEip4844Enabled = gethGenesisJson.Config.CancunTime is not null && genesisHeader.Timestamp >= gethGenesisJson.Config.CancunTime;
         bool withdrawalsEnabled = gethGenesisJson.Config.ShanghaiTime is not null && genesisHeader.Timestamp >= gethGenesisJson.Config.ShanghaiTime;
-        bool depositsEnabled = gethGenesisJson.Config.PragueTime is not null && genesisHeader.Timestamp >= gethGenesisJson.Config.PragueTime;
-        bool withdrawalRequestsEnabled = gethGenesisJson.Config.PragueTime is not null && genesisHeader.Timestamp >= gethGenesisJson.Config.PragueTime;
-        bool consolidationRequestsEnabled = gethGenesisJson.Config.PragueTime is not null && genesisHeader.Timestamp >= gethGenesisJson.Config.PragueTime;
+        bool executionRequestsEnabled = gethGenesisJson.Config.PragueTime is not null && genesisHeader.Timestamp >= gethGenesisJson.Config.PragueTime;
 
         if (withdrawalsEnabled)
+        {
             genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
+        }
 
-        var requestsEnabled = depositsEnabled || withdrawalRequestsEnabled || consolidationRequestsEnabled;
-        if (requestsEnabled)
+        if (executionRequestsEnabled)
+        {
             genesisHeader.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+        }
 
         if (isEip4844Enabled)
         {
-            genesisHeader.BlobGasUsed = gethGenesisJson.BlobGasUsed;
-            genesisHeader.ExcessBlobGas = gethGenesisJson.ExcessBlobGas;
+            genesisHeader.BlobGasUsed = gethGenesisJson.BlobGasUsed ?? 0;
+            genesisHeader.ExcessBlobGas = gethGenesisJson.ExcessBlobGas ?? 0;
         }
 
         bool isEip4788Enabled = gethGenesisJson.Config.CancunTime is not null && genesisHeader.Timestamp >= gethGenesisJson.Config.CancunTime;
         if (isEip4788Enabled)
         {
-            genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
-        }
-
-        if (requestsEnabled)
-        {
-            genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
+            genesisHeader.ParentBeaconBlockRoot = gethGenesisJson.ParentBeaconBlockRoot ?? Keccak.Zero;
         }
 
         chainSpec.Bootnodes = [];
@@ -312,6 +308,14 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.OsakaTimestamp = chainSpec.Parameters.Eip7594TransitionTimestamp;
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
         chainSpec.TerminalTotalDifficulty = chainSpec.Parameters.TerminalTotalDifficulty;
+
+        if (chainSpec.EngineChainSpecParametersProvider is not null)
+        {
+            foreach (IChainSpecEngineParameters chainSpecEngineParameters in chainSpec.EngineChainSpecParametersProvider.AllChainSpecParameters)
+            {
+                chainSpecEngineParameters.ApplyToChainSpec(chainSpec);
+            }
+        }
     }
 }
 

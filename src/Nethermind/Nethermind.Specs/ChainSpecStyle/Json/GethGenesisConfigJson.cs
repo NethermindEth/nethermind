@@ -60,10 +60,6 @@ public class GethGenesisConfigJson
 
     public ulong? AmsterdamTime { get; set; }
 
-    public ulong? Eip7692Time { get; set; }
-
-    public ulong? Eip7907Time { get; set; }
-
     public ulong? Bpo1Time { get; set; }
 
     public ulong? Bpo2Time { get; set; }
@@ -80,14 +76,5 @@ public class GethGenesisConfigJson
 
     public Address? DepositContractAddress { get; set; }
 
-    public Dictionary<string, GethBlobScheduleEntry> BlobSchedule { get; set; }
-}
-
-public class GethBlobScheduleEntry
-{
-    public ulong Target { get; set; }
-
-    public ulong Max { get; set; }
-
-    public ulong BaseFeeUpdateFraction { get; set; }
+    public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
 }

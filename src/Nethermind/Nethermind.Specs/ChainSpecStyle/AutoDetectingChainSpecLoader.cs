@@ -44,17 +44,24 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
             using JsonDocument document = JsonDocument.Parse(stream, new JsonDocumentOptions { AllowTrailingCommas = true });
             JsonElement root = document.RootElement;
 
-            if (root.TryGetProperty("config", out JsonElement config) ||
-                root.TryGetProperty("alloc", out _))
+            bool looksLikeGeth = root.TryGetProperty("config", out _) ||
+                root.TryGetProperty("alloc", out _);
+            if (looksLikeGeth)
             {
                 result = GenesisFormat.Geth;
             }
 
-            if (root.TryGetProperty("engine", out _) ||
+            bool looksLikeParity = root.TryGetProperty("engine", out _) ||
                 root.TryGetProperty("params", out _) ||
-                root.TryGetProperty("accounts", out _))
+                root.TryGetProperty("accounts", out _);
+            if (looksLikeParity)
             {
                 result = GenesisFormat.Parity;
+            }
+
+            if (looksLikeGeth && looksLikeParity && _logger.IsWarn)
+            {
+                _logger.Warn("Genesis file contains both Geth-like and Parity-like markers. Defaulting to Parity-like style.");
             }
         }
         catch (Exception e)

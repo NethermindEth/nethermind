@@ -6,6 +6,7 @@ using System.IO;
 using System.Reflection;
 using System.Text;
 using FluentAssertions;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -96,10 +97,20 @@ public class GethGenesisLoaderTests
 
         chainSpec.ChainId.Should().Be(12345);
         chainSpec.NetworkId.Should().Be(12345);
+        chainSpec.SealEngineType.Should().Be(SealEngineType.Ethash);
         chainSpec.Genesis.Header.GasLimit.Should().Be(0x8000000);
         chainSpec.Genesis.Header.Difficulty.Should().Be(UInt256.One);
         chainSpec.Allocations.Should().HaveCount(1);
         chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000001")].Balance.Should().Be(1);
+
+        EthashChainSpecEngineParameters ethashParameters = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<EthashChainSpecEngineParameters>();
+        ethashParameters.DifficultyBoundDivisor.Should().Be(0x800);
+        ethashParameters.BlockReward.Should().ContainKey(0);
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec genesisSpec = provider.GetSpec(new ForkActivation(0));
+        genesisSpec.DifficultyBoundDivisor.Should().Be(0x800);
+        genesisSpec.BlockReward.Should().Be(new UInt256(5_000_000_000_000_000_000ul));
     }
 
     [Test]
@@ -419,5 +430,7 @@ public class GethGenesisLoaderTests
         provider.ChainId.Should().Be(hardCodedSpec.ChainId);
         provider.NetworkId.Should().Be(hardCodedSpec.NetworkId);
         provider.TerminalTotalDifficulty.Should().Be(hardCodedSpec.TerminalTotalDifficulty);
+        actualSpec.DifficultyBoundDivisor.Should().Be(expectedSpec.DifficultyBoundDivisor);
+        actualSpec.BlockReward.Should().Be(expectedSpec.BlockReward);
     }
 }
