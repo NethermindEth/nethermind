@@ -364,7 +364,7 @@ jobs:
           fi
 
           # Step 1: Create .mibc from EventPipe trace (method-level hot/cold)
-          trace_file=$(find "${pgo_dir}" -name "*.nettrace" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
+          trace_file=$(find "${pgo_dir}" -name "*.nettrace" -not -name "sampling*" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
           if [[ -z "${trace_file}" ]]; then
             echo "No .nettrace file found under: ${pgo_dir}"
             ls -laR "${pgo_dir}"
@@ -410,13 +410,25 @@ jobs:
             dotnet-pgo create-mibc "${sampling_args[@]}" || true
 
             if [[ -f "${sampling_mibc}" ]]; then
-              echo "Merging main + sampling .mibc profiles..."
-              dotnet-pgo merge \
-                --input "${trace_mibc}" \
-                --input "${sampling_mibc}" \
-                --output "${mibc_file}"
-              echo "Merged .mibc profile:"
-              ls -lh "${mibc_file}"
+              # Check if the sampling .mibc is larger than the main one —
+              # if it's much smaller, it has no useful data and merging
+              # would dilute the main profile. Only merge if it adds value.
+              main_size=$(stat -c%s "${trace_mibc}" 2>/dev/null || echo 0)
+              sampling_size=$(stat -c%s "${sampling_mibc}" 2>/dev/null || echo 0)
+              echo "Main .mibc: ${main_size} bytes, Sampling .mibc: ${sampling_size} bytes"
+
+              if [[ "${sampling_size}" -gt "${main_size}" ]]; then
+                echo "Merging main + sampling .mibc profiles..."
+                dotnet-pgo merge \
+                  --input "${trace_mibc}" \
+                  --input "${sampling_mibc}" \
+                  --output "${mibc_file}"
+                echo "Merged .mibc profile:"
+                ls -lh "${mibc_file}"
+              else
+                echo "Sampling .mibc has no additional data — using main trace only."
+                cp "${trace_mibc}" "${mibc_file}"
+              fi
             else
               echo "Sampling .mibc creation failed — using main trace only."
               cp "${trace_mibc}" "${mibc_file}"
