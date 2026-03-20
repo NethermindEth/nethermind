@@ -59,37 +59,33 @@ COPY --from=build /publish .
 RUN dotnet tool install -g dotnet-trace
 ENV PATH="${PATH}:/root/.dotnet/tools"
 
-# Use collect-linux with perf_events for real kernel CPU sampling
-# with native call stacks. Requires kernel >= 6.4 and root.
-# collect-linux doesn't support -- child mode, so we start Nethermind
-# first, then attach, and stop tracing when Nethermind exits.
-COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
-#!/bin/sh
-set -e
-
-# Start Nethermind in background
-./nethermind "$@" &
-child=$!
-
-# Give it a moment to start up and register with EventPipe
-sleep 2
-
-# Start tracing (traces all .NET processes in the container)
-dotnet-trace collect-linux \
+# Nethermind is PID 1 so it receives EXPB's stop signal directly.
+# A background script attaches dotnet-trace for a timed collection.
+# Using --duration ensures dotnet-trace finalizes the trace cleanly
+# before EXPB stops the container (which only gives 10s grace period).
+COPY <<'SCRIPT' /nethermind/start-trace.sh
+#!/bin/bash
+sleep 10
+pid=$(pgrep -f "^./nethermind" || true)
+if [ -z "$pid" ]; then
+  echo "trace: Nethermind not found, skipping"
+  exit 0
+fi
+echo "trace: attaching to PID $pid for 2 minutes"
+dotnet-trace collect \
+  --profile dotnet-sampled-thread-time \
   --output /nethermind/pgo/sampling \
-  -p $child &
-trace_pid=$!
+  -p $pid \
+  --duration 00:02:00 || true
+echo "trace: collection complete"
+SCRIPT
+RUN chmod +x /nethermind/start-trace.sh
 
-# Wait for Nethermind to exit
-wait $child
-nethermind_exit=$?
-
-# Give dotnet-trace a moment to flush, then signal it to stop
-sleep 3
-kill -INT $trace_pid 2>/dev/null || true
-wait $trace_pid 2>/dev/null || true
-
-exit $nethermind_exit
+# Launch trace collection in background, then exec Nethermind as PID 1
+COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
+#!/bin/bash
+/nethermind/start-trace.sh &
+exec ./nethermind "$@"
 SCRIPT
 RUN chmod +x /nethermind/trace-entrypoint.sh
 
