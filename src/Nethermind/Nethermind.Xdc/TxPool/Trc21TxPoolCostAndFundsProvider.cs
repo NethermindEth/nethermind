@@ -26,7 +26,7 @@ internal sealed class Trc21TxPoolCostAndFundsProvider(
             return UInt256.Zero;
 
 
-        Dictionary<Address, UInt256> feeCapacities = trc21StateReader.GetFeeCapacities(currentHead);
+        IReadOnlyDictionary<Address, UInt256> feeCapacities = trc21StateReader.GetFeeCapacities(currentHead);
         return feeCapacities.TryGetValue(tx.To!, out UInt256 capacity)
             ? capacity
             : UInt256.Zero;
@@ -41,8 +41,8 @@ internal sealed class Trc21TxPoolCostAndFundsProvider(
         }
 
         UInt256 gasPrice = number >= spec.BlockNumberGas50x
-            ? (UInt256)XdcConstants.Trc21GasPrice50x
-            : (UInt256)XdcConstants.Trc21GasPrice;
+            ? XdcConstants.Trc21GasPrice50x
+            : XdcConstants.Trc21GasPrice;
 
         bool overflow = UInt256.MultiplyOverflow(gasPrice, (UInt256)tx.GasLimit, out UInt256 gasCost);
         overflow |= UInt256.AddOverflow(gasCost, tx.ValueRef, out txCost);
@@ -54,7 +54,7 @@ internal sealed class Trc21TxPoolCostAndFundsProvider(
         if (tx.To is null || tx.SenderAddress is null || !spec.IsTipTrc21FeeEnabled)
             return false;
 
-        Dictionary<Address, UInt256> feeCapacities = trc21StateReader.GetFeeCapacities(currentHead);
+        IReadOnlyDictionary<Address, UInt256> feeCapacities = trc21StateReader.GetFeeCapacities(currentHead);
         return feeCapacities.ContainsKey(tx.To);
     }
 }

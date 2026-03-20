@@ -29,13 +29,14 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.Trc21IssuerContract = chainSpecEngineParameters.Trc21IssuerContract;
         releaseSpec.BlockSignerContract = chainSpecEngineParameters.BlockSignerContract;
 
+        releaseSpec.TipTrc21FeeBlock = chainSpecEngineParameters.TipTrc21Fee ?? 0;
+        releaseSpec.BlockNumberGas50x = chainSpecEngineParameters.BlockNumberGas50x ?? long.MaxValue;
         releaseSpec.IsTipTrc21FeeEnabled = (chainSpecEngineParameters.TipTrc21Fee ?? 0) <= releaseStartBlock;
         releaseSpec.IsBlackListingEnabled = chainSpecEngineParameters.BlackListHFNumber <= releaseStartBlock;
         releaseSpec.IsTIP2019 = chainSpecEngineParameters.TIP2019Block <= releaseStartBlock;
         releaseSpec.IsTIPXDCXMiner = chainSpecEngineParameters.TipXDCX <= releaseStartBlock && releaseStartBlock < chainSpecEngineParameters.TIPXDCXMinerDisable;
         releaseSpec.IsDynamicGasLimitBlock = chainSpecEngineParameters.DynamicGasLimitBlock <= releaseStartBlock;
         releaseSpec.IsTipUpgradePenaltyEnabled = (chainSpecEngineParameters.TipUpgradePenalty ?? long.MaxValue) <= releaseStartBlock;
-        releaseSpec.BlockNumberGas50x = chainSpecEngineParameters.BlockNumberGas50x ?? long.MaxValue;
 
         releaseSpec.MergeSignRange = chainSpecEngineParameters.MergeSignRange;
         releaseSpec.BlackListedAddresses = new(chainSpecEngineParameters.BlackListedAddresses ?? []);

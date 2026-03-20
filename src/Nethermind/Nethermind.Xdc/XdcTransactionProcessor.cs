@@ -20,6 +20,7 @@ namespace Nethermind.Xdc;
 internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
 {
     private readonly IMasternodeVotingContract _masternodeVotingContract;
+    private readonly ITrc21StateReader _trc21StateReader;
 
     public XdcTransactionProcessor(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
@@ -28,7 +29,8 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager,
-        IMasternodeVotingContract masternodeVotingContract)
+        IMasternodeVotingContract masternodeVotingContract,
+        ITrc21StateReader trc21StateReader)
         : base(
             blobBaseFeeCalculator,
             specProvider,
@@ -38,6 +40,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
             logManager)
     {
         _masternodeVotingContract = masternodeVotingContract;
+        _trc21StateReader = trc21StateReader;
     }
 
     protected override void PayFees(
@@ -79,19 +82,46 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
         out UInt256 blobBaseFee)
     {
-        if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec) || tx.IsSpecialTransaction((XdcReleaseSpec)spec))
-        {
-            premiumPerGas = 0;
-            senderReservedGasPayment = 0;
-            blobBaseFee = 0;
+        premiumPerGas = UInt256.Zero;
+        senderReservedGasPayment = UInt256.Zero;
+        blobBaseFee = UInt256.Zero;
+
+        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)spec;
+        if (tx.RequiresSpecialHandling(xdcSpec) || tx.IsSpecialTransaction(xdcSpec))
             return TransactionResult.Ok;
+
+        XdcBlockHeader header = (XdcBlockHeader)VirtualMachine.BlockExecutionContext.Header;
+        if (!TryGetTrc21FeeBalance(tx, header, xdcSpec, out UInt256 tokenFeeBalance))
+            return base.BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
+
+        bool validate = ShouldValidateGas(tx, opts);
+        if (validate && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
+        {
+            TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
+            return TransactionResult.MinerPremiumNegative;
         }
-        return base.BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
+
+        UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
+        if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out _))
+        {
+            TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
+            return TransactionResult.InsufficientSenderBalance;
+        }
+
+        bool overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out UInt256 totalGasPayment);
+
+        if (overflows || tokenFeeBalance < totalGasPayment)
+        {
+            TraceLogInvalidTx(tx, $"INSUFFICIENT_TOKEN_FEE_BALANCE: ({tx.SenderAddress})_BALANCE = {tokenFeeBalance}");
+            return TransactionResult.InsufficientSenderBalance;
+        }
+
+        return TransactionResult.Ok;
     }
 
     protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
-        var xdcSpec = spec as XdcReleaseSpec;
+        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)spec;
         Address target = tx.To;
         Address sender = tx.SenderAddress;
 
@@ -160,6 +190,18 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         return base.ValidateGas(tx, header, minGasRequired);
     }
 
+    protected override void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
+    {
+        BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
+        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)GetSpec(header);
+        if (TryGetTrc21FeeBalance(tx, header, xdcSpec, out _))
+        {
+            return;
+        }
+
+        base.PayRefund(tx, refundAmount, spec);
+    }
+
     protected override UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
     {
         // IMPORTANT: if we override the effective gas price to 0, we must also set opcodeGasPrice to 0.
@@ -173,6 +215,13 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         {
             opcodeGasPrice = UInt256.Zero;
             return UInt256.Zero;
+        }
+
+        XdcBlockHeader header = (XdcBlockHeader)VirtualMachine.BlockExecutionContext.Header;
+        if (TryGetTrc21FeeBalance(tx, header, xdcSpec, out _))
+        {
+            opcodeGasPrice = GetTrc21GasPriceForBlock(header.Number, xdcSpec);
+            return opcodeGasPrice;
         }
 
         return base.CalculateEffectiveGasPrice(tx, eip1559Enabled, in baseFee, out opcodeGasPrice);
@@ -228,5 +277,38 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         }
 
         return TransactionResult.Ok;
+    }
+
+    private bool TryGetTrc21FeeBalance(Transaction tx, BlockHeader header, IXdcReleaseSpec xdcSpec, out UInt256 tokenFeeBalance)
+    {
+        tokenFeeBalance = UInt256.Zero;
+        if (!xdcSpec.IsTipTrc21FeeEnabled || tx.To is null || tx.SenderAddress is null)
+        {
+            return false;
+        }
+
+        Address token = tx.To;
+        XdcBlockHeader xdcHeader = (XdcBlockHeader)header;
+        if (!_trc21StateReader.GetFeeCapacities(xdcHeader).TryGetValue(token, out tokenFeeBalance))
+        {
+            return false;
+        }
+
+        return _trc21StateReader.ValidateTransaction(xdcHeader, tx.SenderAddress, token, tx.Data.Span);
+    }
+
+    private static UInt256 GetTrc21GasPriceForBlock(long blockNumber, IXdcReleaseSpec spec)
+    {
+        if (blockNumber >= spec.BlockNumberGas50x)
+        {
+            return XdcConstants.Trc21GasPrice50x;
+        }
+
+        if (blockNumber > spec.TipTrc21FeeBlock)
+        {
+            return XdcConstants.Trc21GasPrice;
+        }
+
+        return XdcConstants.Trc21GasPriceBefore;
     }
 }

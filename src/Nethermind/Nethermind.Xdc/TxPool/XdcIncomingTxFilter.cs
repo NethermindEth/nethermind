@@ -21,8 +21,8 @@ internal sealed class XdcIncomingTxFilter(
     ISpecProvider specProvider,
     ITrc21StateReader trc21StateReader) : IIncomingTxFilter
 {
-    private static readonly UInt256 MinGasPrice = (UInt256)XdcConstants.Trc21GasPrice;
-    private static readonly UInt256 MinGasPrice50x = (UInt256)XdcConstants.Trc21GasPrice50x;
+    private static readonly UInt256 MinGasPrice = XdcConstants.Trc21GasPrice;
+    private static readonly UInt256 MinGasPrice50x = XdcConstants.Trc21GasPrice50x;
 
     private AcceptTxResult ValidateSignTransaction(Transaction tx, long headerNumber, IXdcReleaseSpec xdcSpec)
     {
@@ -76,7 +76,7 @@ internal sealed class XdcIncomingTxFilter(
 
         if (spec.IsTipTrc21FeeEnabled && tx.To is not null && tx.SenderAddress is not null)
         {
-            Dictionary<Address, UInt256> feeCapacities = trc21StateReader.GetFeeCapacities(currentHead);
+            IReadOnlyDictionary<Address, UInt256> feeCapacities = trc21StateReader.GetFeeCapacities(currentHead);
             if (feeCapacities.ContainsKey(tx.To) &&
                 !trc21StateReader.ValidateTransaction(currentHead, tx.SenderAddress, tx.To, tx.Data.Span))
             {

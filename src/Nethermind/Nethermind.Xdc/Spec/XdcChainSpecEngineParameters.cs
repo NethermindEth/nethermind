@@ -49,6 +49,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         }
     }
     public long? TipTrc21Fee { get; set; }
+    public long? BlockNumberGas50x { get; set; }
     public long TIP2019Block { get; set; }
     public long? TipUpgradePenalty { get; set; }
     public long MergeSignRange { get; set; }
@@ -57,7 +58,6 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public long TipXDCX { get; set; }
     public long TIPXDCXMinerDisable { get; set; }
     public long? DynamicGasLimitBlock { get; set; }
-    public long? BlockNumberGas50x { get; set; }
 
     private static void CheckConfig(List<V2ConfigParams> list)
     {
@@ -79,10 +79,10 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     {
         if (TipTrc21Fee is not null)
             blockNumbers.Add(TipTrc21Fee.Value);
-        if (TipUpgradePenalty is not null)
-            blockNumbers.Add(TipUpgradePenalty.Value);
         if (BlockNumberGas50x is not null)
             blockNumbers.Add(BlockNumberGas50x.Value);
+        if (TipUpgradePenalty is not null)
+            blockNumbers.Add(TipUpgradePenalty.Value);
     }
 }
 
