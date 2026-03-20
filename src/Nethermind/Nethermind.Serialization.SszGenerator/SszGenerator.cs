@@ -640,7 +640,7 @@ public partial class SszEncoding
         }}
 {Whitespace}
         MerkleizeVector(container, out root);
-        Merkle.MixIn(ref root, (int)limit);
+        Merkle.MixIn(ref root, container.Count);
     }}
 }}
 ");
