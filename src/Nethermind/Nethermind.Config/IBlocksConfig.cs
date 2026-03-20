@@ -70,6 +70,6 @@ public interface IBlocksConfig : IConfig
         Description = "The threshold in milliseconds for logging slow block diagnostics. " +
                       "Blocks processed slower than this value are logged with detailed JSON metrics. " +
                       "Set to `0` to log all blocks. Set to `-1` to disable slow block logging entirely.",
-        DefaultValue = "1000")]
+        DefaultValue = "-1")]
     long SlowBlockThresholdMs { get; set; }
 }
