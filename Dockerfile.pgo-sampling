@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Collects CPU sampling profile data via perf for call graph construction.
-# The resulting perf.data is converted to .nettrace via perfcollect, then
-# to .mibc with call graph edges (CallWeights) for Pettis-Hansen method layout.
+# Collects CPU sampling profile data via perf + LTTng for call graph
+# construction. perfcollect produces .trace.zip which dotnet-pgo converts
+# to .mibc with CallWeights for Pettis-Hansen method layout.
 #
 # This image is run AFTER the main PGO collection (Dockerfile.pgo).
 # The two .mibc files are merged to combine edge/type data with call graph.
@@ -43,18 +43,14 @@ ENV DOTNET_System_Diagnostics_Tracing_EventSource_IsSupported=true
 ENV DOTNET_GCLargePages=0
 ENV DOTNET_GCRegionRange=0x800000000
 
-# No DOTNET_EnableEventPipe — perfcollect manages the trace session.
-# No DOTNET_WritePGOData — the main PGO image handles that.
-
-# Install perf for kernel CPU sampling
+# Install perf for CPU sampling. Ubuntu Noble ships LTTng 2.13 which has a
+# breaking change vs the .NET runtime (supports 2.12). Use -nolttng flag
+# with perfcollect and rely on DOTNET_PerfMapEnabled for symbol resolution.
 RUN apt-get update && \
   apt-get install -y --no-install-recommends linux-tools-generic && \
   rm -rf /var/lib/apt/lists/* && \
-  # perfcollect script from Microsoft
   curl -sL https://aka.ms/perfcollect -o /usr/local/bin/perfcollect && \
-  chmod +x /usr/local/bin/perfcollect && \
-  # Install perfcollect prerequisites (LTTng for CLR events)
-  perfcollect install -force
+  chmod +x /usr/local/bin/perfcollect
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
@@ -65,23 +61,39 @@ EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
 
-# Enable crossgen/R2R symbol resolution for perf
+# Enable perf map generation for managed symbol resolution
 ENV DOTNET_PerfMapEnabled=1
 ENV DOTNET_EnableEventLog=1
 
-# Nethermind is PID 1 so it receives EXPB's stop signal directly.
-# perfcollect runs in background collecting CPU samples via perf.
-# After --duration, perfcollect stops and converts to .nettrace.
+# Start perfcollect before Nethermind to capture from startup.
+# Cannot use exec — it would kill the background perfcollect.
+# Nethermind runs in foreground; when it exits (EXPB stop signal),
+# we stop perfcollect which then post-processes the trace.
 COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
 #!/bin/bash
 mkdir -p /nethermind/pgo
 
-echo "trace: starting perfcollect for 3 minutes"
-perfcollect collect /nethermind/pgo/sampling -collectsec 180 &
+echo "trace: starting perfcollect"
+perfcollect collect /nethermind/pgo/sampling -collectsec 180 -nolttng &
 trace_pid=$!
 
-sleep 1
-exec ./nethermind "$@"
+# Give perf/LTTng a moment to set up
+sleep 2
+
+echo "trace: starting Nethermind"
+./nethermind "$@"
+nethermind_exit=$?
+
+# Stop perfcollect early if it's still running (triggers post-processing)
+if kill -0 $trace_pid 2>/dev/null; then
+  echo "trace: stopping perfcollect"
+  kill -INT $trace_pid 2>/dev/null || true
+  wait $trace_pid 2>/dev/null || true
+fi
+
+echo "trace: done"
+ls -lh /nethermind/pgo/sampling* 2>/dev/null || true
+exit $nethermind_exit
 SCRIPT
 RUN chmod +x /nethermind/trace-entrypoint.sh
 
