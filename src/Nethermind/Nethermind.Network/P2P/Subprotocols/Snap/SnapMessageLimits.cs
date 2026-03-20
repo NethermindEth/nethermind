@@ -14,8 +14,8 @@ internal static class SnapMessageLimits
     public const int MaxRequestAccounts = 4_096;
     public const int MaxRequestPathGroups = 4_096;
     public const int MaxRequestPathsPerGroup = 1_024;
-    public const int MaxResponseAccounts = 16_384;
-    public const int MaxResponseSlotsPerAccount = 16_384;
+    public const int MaxResponseAccounts = 131_072;
+    public const int MaxResponseSlotsPerAccount = 131_072;
     public const long MaxResponseBytes = 3_145_728; // 3 MiB
 
     public static readonly RlpLimit GetByteCodesHashesRlpLimit = RlpLimit.For<GetByteCodesMessage>(MaxRequestHashes, nameof(GetByteCodesMessage.Hashes));
