@@ -50,8 +50,7 @@ namespace Nethermind.State
         /// <param name="newValue">Value to store</param>
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
-            // Track storage write for execution metrics
-            EvmMetrics.ThreadExecutionMetrics.StorageWrites++;
+            EvmMetrics.IncrementStorageWrites();
             PushUpdate(in storageCell, newValue);
         }
 

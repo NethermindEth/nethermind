@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -110,112 +109,106 @@ public class Metrics
     public static long ThreadLocalContractsAnalysed => _contractsAnalysed.ThreadLocalValue;
     public static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();
 
-    // Consolidated execution metrics accumulator.
-    private static readonly ThreadLocal<ExecutionMetricsAccumulator> _executionMetrics =
-        new(static () => new ExecutionMetricsAccumulator(), trackAllValues: true);
+    // Cross-client execution metrics — same ZeroContentionCounter pattern as existing metrics.
+    // Each counter is a single ThreadLocal<BoxedLong>; Increment() is just _threadLocal.Value!._value += 1.
 
-    /// <summary>
-    /// Per-thread accumulator for execution metrics. Access fields directly for low-overhead increments.
-    /// </summary>
-    internal static ExecutionMetricsAccumulator ThreadExecutionMetrics => _executionMetrics.Value!;
-
-    private static long SumExecutionMetric(Func<ExecutionMetricsAccumulator, long> selector)
-    {
-        long total = 0;
-        foreach (ExecutionMetricsAccumulator acc in _executionMetrics.Values)
-            total += selector(acc);
-        return total;
-    }
-
-    // State access metrics for cross-client execution metrics standardization
     [CounterMetric]
     [Description("Number of account reads during execution.")]
-    public static long AccountReads => SumExecutionMetric(static a => a.AccountReads);
-    [Description("Number of account reads on thread.")]
-    internal static long ThreadLocalAccountReads => ThreadExecutionMetrics.AccountReads;
+    public static long AccountReads => _accountReads.GetTotalValue();
+    private static readonly ZeroContentionCounter _accountReads = new();
+    internal static long ThreadLocalAccountReads => _accountReads.ThreadLocalValue;
+    internal static void IncrementAccountReads() => _accountReads.Increment();
 
     [CounterMetric]
     [Description("Number of storage slot reads during execution.")]
-    public static long StorageReads => SumExecutionMetric(static a => a.StorageReads);
-    [Description("Number of storage slot reads on thread.")]
-    internal static long ThreadLocalStorageReads => ThreadExecutionMetrics.StorageReads;
+    public static long StorageReads => _storageReads.GetTotalValue();
+    private static readonly ZeroContentionCounter _storageReads = new();
+    internal static long ThreadLocalStorageReads => _storageReads.ThreadLocalValue;
+    internal static void IncrementStorageReads() => _storageReads.Increment();
 
     [CounterMetric]
     [Description("Number of code reads during execution.")]
-    public static long CodeReads => SumExecutionMetric(static a => a.CodeReads);
-    [Description("Number of code reads on thread.")]
-    internal static long ThreadLocalCodeReads => ThreadExecutionMetrics.CodeReads;
+    public static long CodeReads => _codeReads.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeReads = new();
+    internal static long ThreadLocalCodeReads => _codeReads.ThreadLocalValue;
+    internal static void IncrementCodeReads() => _codeReads.Increment();
 
     [CounterMetric]
     [Description("Total bytes of code read during execution.")]
-    public static long CodeBytesRead => SumExecutionMetric(static a => a.CodeBytesRead);
-    [Description("Total bytes of code read on thread.")]
-    internal static long ThreadLocalCodeBytesRead => ThreadExecutionMetrics.CodeBytesRead;
+    public static long CodeBytesRead => _codeBytesRead.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeBytesRead = new();
+    internal static long ThreadLocalCodeBytesRead => _codeBytesRead.ThreadLocalValue;
+    internal static void IncrementCodeBytesRead(int bytes) => _codeBytesRead.Increment(bytes);
 
     [CounterMetric]
     [Description("Number of account writes during execution.")]
-    public static long AccountWrites => SumExecutionMetric(static a => a.AccountWrites);
-    [Description("Number of account writes on thread.")]
-    internal static long ThreadLocalAccountWrites => ThreadExecutionMetrics.AccountWrites;
+    public static long AccountWrites => _accountWrites.GetTotalValue();
+    private static readonly ZeroContentionCounter _accountWrites = new();
+    internal static long ThreadLocalAccountWrites => _accountWrites.ThreadLocalValue;
+    internal static void IncrementAccountWrites() => _accountWrites.Increment();
 
     [CounterMetric]
     [Description("Number of accounts deleted during execution.")]
-    public static long AccountDeleted => SumExecutionMetric(static a => a.AccountDeleted);
-    [Description("Number of accounts deleted on thread.")]
-    internal static long ThreadLocalAccountDeleted => ThreadExecutionMetrics.AccountDeleted;
+    public static long AccountDeleted => _accountDeleted.GetTotalValue();
+    private static readonly ZeroContentionCounter _accountDeleted = new();
+    internal static long ThreadLocalAccountDeleted => _accountDeleted.ThreadLocalValue;
+    internal static void IncrementAccountDeleted() => _accountDeleted.Increment();
 
     [CounterMetric]
     [Description("Number of storage slot writes during execution.")]
-    public static long StorageWrites => SumExecutionMetric(static a => a.StorageWrites);
-    [Description("Number of storage slot writes on thread.")]
-    internal static long ThreadLocalStorageWrites => ThreadExecutionMetrics.StorageWrites;
+    public static long StorageWrites => _storageWrites.GetTotalValue();
+    private static readonly ZeroContentionCounter _storageWrites = new();
+    internal static long ThreadLocalStorageWrites => _storageWrites.ThreadLocalValue;
+    internal static void IncrementStorageWrites() => _storageWrites.Increment();
 
     [CounterMetric]
     [Description("Number of storage slots deleted during execution.")]
-    public static long StorageDeleted => SumExecutionMetric(static a => a.StorageDeleted);
-    [Description("Number of storage slots deleted on thread.")]
-    internal static long ThreadLocalStorageDeleted => ThreadExecutionMetrics.StorageDeleted;
+    public static long StorageDeleted => _storageDeleted.GetTotalValue();
+    private static readonly ZeroContentionCounter _storageDeleted = new();
+    internal static long ThreadLocalStorageDeleted => _storageDeleted.ThreadLocalValue;
+    internal static void IncrementStorageDeleted() => _storageDeleted.Increment();
 
     [CounterMetric]
     [Description("Number of code writes during execution.")]
-    public static long CodeWrites => SumExecutionMetric(static a => a.CodeWrites);
-    [Description("Number of code writes on thread.")]
-    internal static long ThreadLocalCodeWrites => ThreadExecutionMetrics.CodeWrites;
+    public static long CodeWrites => _codeWrites.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeWrites = new();
+    internal static long ThreadLocalCodeWrites => _codeWrites.ThreadLocalValue;
+    internal static void IncrementCodeWrites() => _codeWrites.Increment();
 
     [CounterMetric]
     [Description("Total bytes of code written during execution.")]
-    public static long CodeBytesWritten => SumExecutionMetric(static a => a.CodeBytesWritten);
-    [Description("Total bytes of code written on thread.")]
-    internal static long ThreadLocalCodeBytesWritten => ThreadExecutionMetrics.CodeBytesWritten;
+    public static long CodeBytesWritten => _codeBytesWritten.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeBytesWritten = new();
+    internal static long ThreadLocalCodeBytesWritten => _codeBytesWritten.ThreadLocalValue;
+    internal static void IncrementCodeBytesWritten(int bytes) => _codeBytesWritten.Increment(bytes);
 
-    // EIP-7702 delegation tracking for cross-client execution metrics standardization
     [CounterMetric]
     [Description("Number of EIP-7702 delegations set during execution.")]
-    public static long Eip7702DelegationsSet => SumExecutionMetric(static a => a.Eip7702DelegationsSet);
-    [Description("Number of EIP-7702 delegations set on thread.")]
-    internal static long ThreadLocalEip7702DelegationsSet => ThreadExecutionMetrics.Eip7702DelegationsSet;
+    public static long Eip7702DelegationsSet => _eip7702DelegationsSet.GetTotalValue();
+    private static readonly ZeroContentionCounter _eip7702DelegationsSet = new();
+    internal static long ThreadLocalEip7702DelegationsSet => _eip7702DelegationsSet.ThreadLocalValue;
+    internal static void IncrementEip7702DelegationsSet() => _eip7702DelegationsSet.Increment();
 
     [CounterMetric]
     [Description("Number of EIP-7702 delegations cleared during execution.")]
-    public static long Eip7702DelegationsCleared => SumExecutionMetric(static a => a.Eip7702DelegationsCleared);
-    [Description("Number of EIP-7702 delegations cleared on thread.")]
-    internal static long ThreadLocalEip7702DelegationsCleared => ThreadExecutionMetrics.Eip7702DelegationsCleared;
+    public static long Eip7702DelegationsCleared => _eip7702DelegationsCleared.GetTotalValue();
+    private static readonly ZeroContentionCounter _eip7702DelegationsCleared = new();
+    internal static long ThreadLocalEip7702DelegationsCleared => _eip7702DelegationsCleared.ThreadLocalValue;
+    internal static void IncrementEip7702DelegationsCleared() => _eip7702DelegationsCleared.Increment();
 
-    // Timing metrics for cross-client execution metrics standardization (in ticks for precision)
-    [Description("Time spent reading state during execution (ticks).")]
-    public static long StateReadTime => SumExecutionMetric(static a => a.StateReadTimeTicks);
-    [Description("Time spent reading state on thread (ticks).")]
-    internal static long ThreadLocalStateReadTime => ThreadExecutionMetrics.StateReadTimeTicks;
-
+    // Timing metrics — accumulated via ZeroContentionCounter(long) in coarse-grained paths only
+    // (WorldStateMetricsDecorator Commit/RecalculateStateRoot/CommitTree, NOT per-read).
     [Description("Time spent on state hashing/merkleization (ticks).")]
-    public static long StateHashTime => SumExecutionMetric(static a => a.StateHashTimeTicks);
-    [Description("Time spent on state hashing on thread (ticks).")]
-    internal static long ThreadLocalStateHashTime => ThreadExecutionMetrics.StateHashTimeTicks;
+    public static long StateHashTime => _stateHashTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _stateHashTime = new();
+    internal static long ThreadLocalStateHashTime => _stateHashTime.ThreadLocalValue;
+    internal static void IncrementStateHashTime(long ticks) => _stateHashTime.Increment(ticks);
 
     [Description("Time spent committing state to storage (ticks).")]
-    public static long CommitTime => SumExecutionMetric(static a => a.CommitTimeTicks);
-    [Description("Time spent committing state on thread (ticks).")]
-    internal static long ThreadLocalCommitTime => ThreadExecutionMetrics.CommitTimeTicks;
+    public static long CommitTime => _commitTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _commitTime = new();
+    internal static long ThreadLocalCommitTime => _commitTime.ThreadLocalValue;
+    internal static void IncrementCommitTime(long ticks) => _commitTime.Increment(ticks);
 
     [GaugeMetric]
     [Description("The number of tasks currently scheduled in the background.")]
@@ -333,34 +326,4 @@ public class Metrics
         BlockEstMedianGasPrice = 0.0f;
         BlockMinGasPrice = float.MaxValue;
     }
-}
-
-/// <summary>
-/// Accumulates execution metrics per-thread. All fields are accessed directly for minimal overhead.
-/// A single ThreadLocal instance holds this.
-/// </summary>
-internal sealed class ExecutionMetricsAccumulator
-{
-    // State reads
-    public long AccountReads;
-    public long StorageReads;
-    public long CodeReads;
-    public long CodeBytesRead;
-
-    // State writes
-    public long AccountWrites;
-    public long AccountDeleted;
-    public long StorageWrites;
-    public long StorageDeleted;
-    public long CodeWrites;
-    public long CodeBytesWritten;
-
-    // EIP-7702
-    public long Eip7702DelegationsSet;
-    public long Eip7702DelegationsCleared;
-
-    // Timing (ticks)
-    public long StateReadTimeTicks;
-    public long StateHashTimeTicks;
-    public long CommitTimeTicks;
 }

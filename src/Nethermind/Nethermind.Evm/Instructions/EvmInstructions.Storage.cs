@@ -402,7 +402,7 @@ internal static partial class EvmInstructions
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
             if (newIsZero)
             {
-                Metrics.ThreadExecutionMetrics.StorageDeleted++;
+                Metrics.IncrementStorageDeleted();
             }
         }
 
@@ -573,7 +573,7 @@ internal static partial class EvmInstructions
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
             if (newIsZero)
             {
-                Metrics.ThreadExecutionMetrics.StorageDeleted++;
+                Metrics.IncrementStorageDeleted();
             }
         }
 

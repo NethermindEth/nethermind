@@ -136,9 +136,8 @@ namespace Nethermind.State
                 _blockCodeInsertFilter.Set(codeHash);
                 inserted = true;
 
-                // Track code write for execution metrics
-                EvmMetrics.ThreadExecutionMetrics.CodeWrites++;
-                EvmMetrics.ThreadExecutionMetrics.CodeBytesWritten += code.Length;
+                EvmMetrics.IncrementCodeWrites();
+                EvmMetrics.IncrementCodeBytesWritten(code.Length);
             }
 
             Account? account = GetThroughCache(address) ?? ThrowIfNull(address);
@@ -717,12 +716,9 @@ namespace Nethermind.State
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
             if (!exists)
             {
-                long start = Stopwatch.GetTimestamp();
                 Metrics.IncrementStateTreeReads();
-                // Track account read for execution metrics (DB reads only, not cache hits)
-                EvmMetrics.ThreadExecutionMetrics.AccountReads++;
+                EvmMetrics.IncrementAccountReads();
                 Account? account = _tree.Get(address);
-                EvmMetrics.ThreadExecutionMetrics.StateReadTimeTicks += Stopwatch.GetElapsedTime(start).Ticks;
 
                 accountChanges = new(account, account);
             }
@@ -735,11 +731,10 @@ namespace Nethermind.State
 
         internal void SetState(Address address, Account? account)
         {
-            // Track account write for execution metrics
-            EvmMetrics.ThreadExecutionMetrics.AccountWrites++;
+            EvmMetrics.IncrementAccountWrites();
             if (account is null)
             {
-                EvmMetrics.ThreadExecutionMetrics.AccountDeleted++;
+                EvmMetrics.IncrementAccountDeleted();
             }
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
             accountChanges.After = account;

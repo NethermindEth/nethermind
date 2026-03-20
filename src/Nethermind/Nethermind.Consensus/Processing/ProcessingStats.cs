@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
@@ -14,6 +16,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using DbMetrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -40,7 +43,14 @@ namespace Nethermind.Consensus.Processing
         public event EventHandler<BlockStatistics>? NewProcessingStatistics;
         protected readonly IStateReader _stateReader;
         protected readonly ILogger _logger;
+        private readonly ILogger _slowBlockLogger;
         private readonly Stopwatch _runStopwatch = new();
+
+        /// <summary>
+        /// Threshold in milliseconds for slow block logging (default: 1000ms).
+        /// Set to 0 to log all blocks.
+        /// </summary>
+        private readonly long _slowBlockThresholdMs;
 
         private bool _showBlobs;
         private long _lastElapsedRunningMicroseconds;
@@ -54,6 +64,26 @@ namespace Nethermind.Consensus.Processing
         private long _startCreateOps;
         private long _startContractsAnalyzed;
         private long _startCachedContractsUsed;
+        private long _startAccountReads;
+        private long _startStorageReads;
+        private long _startCodeReads;
+        private long _startCodeBytesRead;
+        private long _startAccountWrites;
+        private long _startAccountDeleted;
+        private long _startStorageWrites;
+        private long _startStorageDeleted;
+        private long _startCodeWrites;
+        private long _startCodeBytesWritten;
+        private long _startStateHashTime;
+        private long _startCommitTime;
+        private long _startAccountCacheHits;
+        private long _startAccountCacheMisses;
+        private long _startStorageCacheHits;
+        private long _startStorageCacheMisses;
+        private long _startCodeCacheHits;
+        private long _startCodeCacheMisses;
+        private long _startEip7702DelegationsSet;
+        private long _startEip7702DelegationsCleared;
         private double _chunkMGas;
         private long _chunkProcessingMicroseconds;
         private long _chunkTx;
@@ -70,11 +100,18 @@ namespace Nethermind.Consensus.Processing
         private long _cachedContractsUsed;
 
         public ProcessingStats(IStateReader stateReader, ILogManager logManager)
+            : this(stateReader, logManager.GetClassLogger(), logManager.GetClassLogger("SlowBlocks"), slowBlockThresholdMs: 1000)
+        {
+        }
+
+        public ProcessingStats(IStateReader stateReader, ILogger logger, ILogger? slowBlockLogger = null, long slowBlockThresholdMs = 1000)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
 
             _stateReader = stateReader;
-            _logger = logManager.GetClassLogger();
+            _logger = logger;
+            _slowBlockLogger = slowBlockLogger ?? logger;
+            _slowBlockThresholdMs = slowBlockThresholdMs;
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
@@ -94,6 +131,26 @@ namespace Nethermind.Consensus.Processing
             _startCreateOps = Evm.Metrics.ThreadLocalCreates;
             _startSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
             _startOpCodes = Evm.Metrics.ThreadLocalOpCodes;
+            _startAccountReads = Evm.Metrics.ThreadLocalAccountReads;
+            _startStorageReads = Evm.Metrics.ThreadLocalStorageReads;
+            _startCodeReads = Evm.Metrics.ThreadLocalCodeReads;
+            _startCodeBytesRead = Evm.Metrics.ThreadLocalCodeBytesRead;
+            _startAccountWrites = Evm.Metrics.ThreadLocalAccountWrites;
+            _startAccountDeleted = Evm.Metrics.ThreadLocalAccountDeleted;
+            _startStorageWrites = Evm.Metrics.ThreadLocalStorageWrites;
+            _startStorageDeleted = Evm.Metrics.ThreadLocalStorageDeleted;
+            _startCodeWrites = Evm.Metrics.ThreadLocalCodeWrites;
+            _startCodeBytesWritten = Evm.Metrics.ThreadLocalCodeBytesWritten;
+            _startStateHashTime = Evm.Metrics.ThreadLocalStateHashTime;
+            _startCommitTime = Evm.Metrics.ThreadLocalCommitTime;
+            _startAccountCacheHits = DbMetrics.ThreadLocalStateTreeCacheHits;
+            _startAccountCacheMisses = DbMetrics.ThreadLocalStateTreeReads;
+            _startStorageCacheHits = DbMetrics.ThreadLocalStorageTreeCacheHits;
+            _startStorageCacheMisses = DbMetrics.ThreadLocalStorageTreeReads;
+            _startCodeCacheHits = Evm.Metrics.ThreadLocalCodeDbCache;
+            _startCodeCacheMisses = Evm.Metrics.ThreadLocalCodeReads;
+            _startEip7702DelegationsSet = Evm.Metrics.ThreadLocalEip7702DelegationsSet;
+            _startEip7702DelegationsCleared = Evm.Metrics.ThreadLocalEip7702DelegationsCleared;
         }
 
         public void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
@@ -124,6 +181,28 @@ namespace Nethermind.Consensus.Processing
             blockData.CurrentContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
             blockData.CurrentCreatesOps = Evm.Metrics.ThreadLocalCreates;
             blockData.CurrentSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
+
+            // Pre-compute deltas for slow block logging (done here on the block-processing thread)
+            blockData.DeltaAccountReads = Evm.Metrics.ThreadLocalAccountReads - _startAccountReads;
+            blockData.DeltaStorageReads = Evm.Metrics.ThreadLocalStorageReads - _startStorageReads;
+            blockData.DeltaCodeReads = Evm.Metrics.ThreadLocalCodeReads - _startCodeReads;
+            blockData.DeltaCodeBytesRead = Evm.Metrics.ThreadLocalCodeBytesRead - _startCodeBytesRead;
+            blockData.DeltaAccountWrites = Evm.Metrics.ThreadLocalAccountWrites - _startAccountWrites;
+            blockData.DeltaAccountDeleted = Evm.Metrics.ThreadLocalAccountDeleted - _startAccountDeleted;
+            blockData.DeltaStorageWrites = Evm.Metrics.ThreadLocalStorageWrites - _startStorageWrites;
+            blockData.DeltaStorageDeleted = Evm.Metrics.ThreadLocalStorageDeleted - _startStorageDeleted;
+            blockData.DeltaCodeWrites = Evm.Metrics.ThreadLocalCodeWrites - _startCodeWrites;
+            blockData.DeltaCodeBytesWritten = Evm.Metrics.ThreadLocalCodeBytesWritten - _startCodeBytesWritten;
+            blockData.DeltaStateHashTime = Evm.Metrics.ThreadLocalStateHashTime - _startStateHashTime;
+            blockData.DeltaCommitTime = Evm.Metrics.ThreadLocalCommitTime - _startCommitTime;
+            blockData.DeltaAccountCacheHits = DbMetrics.ThreadLocalStateTreeCacheHits - _startAccountCacheHits;
+            blockData.DeltaAccountCacheMisses = DbMetrics.ThreadLocalStateTreeReads - _startAccountCacheMisses;
+            blockData.DeltaStorageCacheHits = DbMetrics.ThreadLocalStorageTreeCacheHits - _startStorageCacheHits;
+            blockData.DeltaStorageCacheMisses = DbMetrics.ThreadLocalStorageTreeReads - _startStorageCacheMisses;
+            blockData.DeltaCodeCacheHits = Evm.Metrics.ThreadLocalCodeDbCache - _startCodeCacheHits;
+            blockData.DeltaCodeCacheMisses = Evm.Metrics.ThreadLocalCodeReads - _startCodeCacheMisses;
+            blockData.DeltaEip7702DelegationsSet = Evm.Metrics.ThreadLocalEip7702DelegationsSet - _startEip7702DelegationsSet;
+            blockData.DeltaEip7702DelegationsCleared = Evm.Metrics.ThreadLocalEip7702DelegationsCleared - _startEip7702DelegationsCleared;
 
             CaptureReportData(blockData);
         }
@@ -174,8 +253,16 @@ namespace Nethermind.Consensus.Processing
             // We want the rate here
             double mgas = block.GasUsed / 1_000_000.0;
             double timeSec = data.ProcessingMicroseconds / 1_000_000.0;
-            Metrics.BlockMGasPerSec.Observe(mgas / timeSec);
+            double mgasPerSec = timeSec > 0 ? mgas / timeSec : 0;
+            Metrics.BlockMGasPerSec.Observe(mgasPerSec);
             Metrics.BlockProcessingTimeMicros.Observe(data.ProcessingMicroseconds);
+
+            // Log slow blocks in JSON format for cross-client performance analysis
+            long processingMs = data.ProcessingMicroseconds / 1000;
+            if (processingMs >= _slowBlockThresholdMs)
+            {
+                LogSlowBlock(block, data, mgasPerSec);
+            }
 
             Metrics.Mgas += block.GasUsed / 1_000_000.0;
             Transaction[] txs = block.Transactions;
@@ -413,6 +500,103 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
+        private void LogSlowBlock(Block block, BlockData data, double mgasPerSec)
+        {
+            if (!_slowBlockLogger.IsWarn) return;
+            try
+            {
+                double stateHashMs = data.DeltaStateHashTime / (double)TimeSpan.TicksPerMillisecond;
+                double commitMs = data.DeltaCommitTime / (double)TimeSpan.TicksPerMillisecond;
+                double totalMs = data.ProcessingMicroseconds / 1000.0;
+                double executionMs = totalMs - stateHashMs - commitMs;
+                if (executionMs < 0) executionMs = totalMs;
+
+                double accountHitRate = CalculateHitRate(data.DeltaAccountCacheHits, data.DeltaAccountCacheMisses);
+                double storageHitRate = CalculateHitRate(data.DeltaStorageCacheHits, data.DeltaStorageCacheMisses);
+                double codeHitRate = CalculateHitRate(data.DeltaCodeCacheHits, data.DeltaCodeCacheMisses);
+
+                ArrayBufferWriter<byte> buffer = new(512);
+                using (Utf8JsonWriter writer = new(buffer))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("level", "warn");
+                    writer.WriteString("msg", "Slow block");
+
+                    writer.WriteStartObject("block");
+                    writer.WriteNumber("number", block.Number);
+                    writer.WriteString("hash", block.Hash?.ToString() ?? "0x");
+                    writer.WriteNumber("gas_used", block.GasUsed);
+                    writer.WriteNumber("tx_count", block.Transactions.Length);
+                    writer.WriteEndObject();
+
+                    writer.WriteStartObject("timing");
+                    writer.WriteNumber("execution_ms", Math.Round(executionMs, 3));
+                    writer.WriteNumber("state_hash_ms", Math.Round(stateHashMs, 3));
+                    writer.WriteNumber("commit_ms", Math.Round(commitMs, 3));
+                    writer.WriteNumber("total_ms", Math.Round(totalMs, 3));
+                    writer.WriteEndObject();
+
+                    writer.WriteStartObject("throughput");
+                    writer.WriteNumber("mgas_per_sec", Math.Round(mgasPerSec, 2));
+                    writer.WriteEndObject();
+
+                    writer.WriteStartObject("state_reads");
+                    writer.WriteNumber("accounts", data.DeltaAccountReads);
+                    writer.WriteNumber("storage_slots", data.DeltaStorageReads);
+                    writer.WriteNumber("code", data.DeltaCodeReads);
+                    writer.WriteNumber("code_bytes", data.DeltaCodeBytesRead);
+                    writer.WriteEndObject();
+
+                    writer.WriteStartObject("state_writes");
+                    writer.WriteNumber("accounts", data.DeltaAccountWrites);
+                    writer.WriteNumber("accounts_deleted", data.DeltaAccountDeleted);
+                    writer.WriteNumber("storage_slots", data.DeltaStorageWrites);
+                    writer.WriteNumber("storage_slots_deleted", data.DeltaStorageDeleted);
+                    writer.WriteNumber("code", data.DeltaCodeWrites);
+                    writer.WriteNumber("code_bytes", data.DeltaCodeBytesWritten);
+                    writer.WriteNumber("eip7702_delegations_set", data.DeltaEip7702DelegationsSet);
+                    writer.WriteNumber("eip7702_delegations_cleared", data.DeltaEip7702DelegationsCleared);
+                    writer.WriteEndObject();
+
+                    writer.WriteStartObject("cache");
+                    WriteCacheEntry(writer, "account", data.DeltaAccountCacheHits, data.DeltaAccountCacheMisses, accountHitRate);
+                    WriteCacheEntry(writer, "storage", data.DeltaStorageCacheHits, data.DeltaStorageCacheMisses, storageHitRate);
+                    WriteCacheEntry(writer, "code", data.DeltaCodeCacheHits, data.DeltaCodeCacheMisses, codeHitRate);
+                    writer.WriteEndObject();
+
+                    writer.WriteStartObject("evm");
+                    writer.WriteNumber("sload", data.CurrentSLoadOps - data.StartSLoadOps);
+                    writer.WriteNumber("sstore", data.CurrentSStoreOps - data.StartSStoreOps);
+                    writer.WriteNumber("calls", data.CurrentCallOps - data.StartCallOps);
+                    writer.WriteNumber("creates", data.CurrentCreatesOps - data.StartCreateOps);
+                    writer.WriteEndObject();
+
+                    writer.WriteEndObject();
+                }
+
+                _slowBlockLogger.Warn(System.Text.Encoding.UTF8.GetString(buffer.WrittenSpan));
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Error logging slow block: {ex.Message}");
+            }
+
+            static void WriteCacheEntry(Utf8JsonWriter writer, string name, long hits, long misses, double hitRate)
+            {
+                writer.WriteStartObject(name);
+                writer.WriteNumber("hits", hits);
+                writer.WriteNumber("misses", misses);
+                writer.WriteNumber("hit_rate", hitRate);
+                writer.WriteEndObject();
+            }
+        }
+
+        private static double CalculateHitRate(long hits, long misses)
+        {
+            long total = hits + misses;
+            return total > 0 ? Math.Round((double)hits / total * 100.0, 2) : 0.0;
+        }
+
         public void Start()
         {
             if (!_runStopwatch.IsRunning)
@@ -468,6 +652,27 @@ namespace Nethermind.Consensus.Processing
             public long StartCallOps;
             public long StartSStoreOps;
             public long StartSLoadOps;
+            // Pre-computed deltas for slow block logging
+            public long DeltaAccountReads;
+            public long DeltaStorageReads;
+            public long DeltaCodeReads;
+            public long DeltaCodeBytesRead;
+            public long DeltaAccountWrites;
+            public long DeltaAccountDeleted;
+            public long DeltaStorageWrites;
+            public long DeltaStorageDeleted;
+            public long DeltaCodeWrites;
+            public long DeltaCodeBytesWritten;
+            public long DeltaStateHashTime;
+            public long DeltaCommitTime;
+            public long DeltaAccountCacheHits;
+            public long DeltaAccountCacheMisses;
+            public long DeltaStorageCacheHits;
+            public long DeltaStorageCacheMisses;
+            public long DeltaCodeCacheHits;
+            public long DeltaCodeCacheMisses;
+            public long DeltaEip7702DelegationsSet;
+            public long DeltaEip7702DelegationsCleared;
         }
     }
 }
