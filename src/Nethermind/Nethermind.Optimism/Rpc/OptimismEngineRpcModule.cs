@@ -6,7 +6,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
@@ -17,14 +16,12 @@ namespace Nethermind.Optimism.Rpc;
 public class OptimismEngineRpcModule(
     IEngineRpcModule engineRpcModule,
     IOptimismSignalSuperchainV1Handler signalSuperchainHandler,
-    IPayloadPreparationService payloadPreparationService,
-    ILogManager logManager
+    IPayloadPreparationService payloadPreparationService
 ) : IOptimismEngineRpcModule
 {
     private readonly IEngineRpcModule _engineRpcModule = engineRpcModule;
     private readonly IOptimismSignalSuperchainV1Handler _signalSuperchainHandler = signalSuperchainHandler;
     private readonly IPayloadPreparationService _payloadPreparationService = payloadPreparationService;
-    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, OptimismPayloadAttributes? payloadAttributes = null)
     {
@@ -76,7 +73,6 @@ public class OptimismEngineRpcModule(
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(OptimismExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes,
         Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
     {
-        if (_logger.IsInfo) _logger.Info($"engine_newPayloadV4 block={executionPayload.BlockNumber} hash={executionPayload.BlockHash} withdrawalsRoot={executionPayload.WithdrawalsRoot} extraData={executionPayload.ExtraData.ToHexString(true)}");
         return _engineRpcModule.engine_newPayloadV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
     }
 
@@ -91,9 +87,7 @@ public class OptimismEngineRpcModule(
     {
         string payloadStr = payloadId.ToHexString(true);
         IBlockProductionContext? context = await _payloadPreparationService.GetPayload(payloadStr, skipCancel: true);
-        Hash256? root = context?.CurrentBestBlock?.Header.WithdrawalsRoot;
-        if (_logger.IsInfo) _logger.Info($"GetWithdrawalsRoot payloadId={payloadStr} block={context?.CurrentBestBlock?.Number} withdrawalsRoot={root}");
-        return root;
+        return context?.CurrentBestBlock?.Header.WithdrawalsRoot;
     }
 
     public ResultWrapper<OptimismSignalSuperchainV1Result> engine_signalSuperchainV1(OptimismSuperchainSignal signal)

@@ -127,7 +127,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _api.LogManager);
 
         IPayloadPreparationService payloadPreparationService = _api.Context.Resolve<IPayloadPreparationService>();
-        IOptimismEngineRpcModule opEngine = new OptimismEngineRpcModule(engineRpcModule, signalHandler, payloadPreparationService, _api.LogManager);
+        IOptimismEngineRpcModule opEngine = new OptimismEngineRpcModule(engineRpcModule, signalHandler, payloadPreparationService);
 
         _api.RpcModuleProvider.RegisterSingle(opEngine);
 
