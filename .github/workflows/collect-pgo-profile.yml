@@ -296,6 +296,9 @@ jobs:
           set -euo pipefail
           sampling_tag="${{ env.PGO_TAG }}-sampling"
 
+          # Allow perf_event_open inside containers (host-level sysctl)
+          sudo sysctl -w kernel.perf_event_paranoid=-1 || true
+
           # Clean up containers/networks left by the main PGO collection step
           cids=$(docker ps -aq --filter "name=expb-executor" 2>/dev/null || true)
           cids+=" $(docker ps -aq --filter "ancestor=nethermindeth/nethermind" 2>/dev/null || true)"
