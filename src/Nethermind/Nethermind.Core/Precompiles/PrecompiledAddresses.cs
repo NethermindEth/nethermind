@@ -31,4 +31,5 @@ public static class PrecompiledAddresses
 
     // Other precompiles
     public static readonly AddressAsKey L1Sload = Address.FromNumber(0x10001);
+    public static readonly AddressAsKey L1StaticCall = Address.FromNumber(0x10002);
 }
