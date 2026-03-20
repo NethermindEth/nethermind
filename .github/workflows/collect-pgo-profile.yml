@@ -205,6 +205,8 @@ jobs:
             a\        bind: /nethermind/pgo
             a\        mode: rw
           }' "${rendered}"
+          # Single iteration — PGO collection should not retry on failure
+          python3 -c "import yaml,sys;p=sys.argv[1];c=yaml.safe_load(open(p));[s.update({'warmup':0,'amount':1}) for s in c.get('scenarios',{}).values()];yaml.safe_dump(c,open(p,'w'),default_flow_style=False,sort_keys=False)" "${rendered}"
           echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
           echo "Rendered config:"
           cat "${rendered}"
