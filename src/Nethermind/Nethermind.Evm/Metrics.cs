@@ -197,8 +197,8 @@ public class Metrics
     internal static void IncrementEip7702DelegationsCleared() => _eip7702DelegationsCleared.Increment();
 
     // Timing metrics — accumulated via ZeroContentionCounter(long) in coarse-grained paths only
-    // (WorldStateMetricsDecorator Commit/RecalculateStateRoot/CommitTree, NOT per-read).
-    [Description("Time spent on state hashing/merkleization (ticks).")]
+    // (WorldStateMetricsDecorator, BlockProcessor — NOT per-read hot paths).
+    [Description("Time spent on state hashing/merkleization (ticks). Sum of storage merkle + state root.")]
     public static long StateHashTime => _stateHashTime.GetTotalValue();
     private static readonly ZeroContentionCounter _stateHashTime = new();
     internal static long ThreadLocalStateHashTime => _stateHashTime.ThreadLocalValue;
@@ -209,6 +209,30 @@ public class Metrics
     private static readonly ZeroContentionCounter _commitTime = new();
     internal static long ThreadLocalCommitTime => _commitTime.ThreadLocalValue;
     internal static void IncrementCommitTime(long ticks) => _commitTime.Increment(ticks);
+
+    [Description("Time spent on storage trie merkleization — Commit(commitRoots: true) (ticks).")]
+    public static long StorageMerkleTime => _storageMerkleTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _storageMerkleTime = new();
+    internal static long ThreadLocalStorageMerkleTime => _storageMerkleTime.ThreadLocalValue;
+    internal static void IncrementStorageMerkleTime(long ticks) => _storageMerkleTime.Increment(ticks);
+
+    [Description("Time spent on state root recalculation + commit tree (ticks).")]
+    public static long StateRootTime => _stateRootTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _stateRootTime = new();
+    internal static long ThreadLocalStateRootTime => _stateRootTime.ThreadLocalValue;
+    internal static void IncrementStateRootTime(long ticks) => _stateRootTime.Increment(ticks);
+
+    [Description("Time spent calculating bloom filters (ticks).")]
+    public static long BloomsTime => _bloomsTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _bloomsTime = new();
+    internal static long ThreadLocalBloomsTime => _bloomsTime.ThreadLocalValue;
+    internal static void IncrementBloomsTime(long ticks) => _bloomsTime.Increment(ticks);
+
+    [Description("Time spent calculating receipts root (ticks).")]
+    public static long ReceiptsRootTime => _receiptsRootTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _receiptsRootTime = new();
+    internal static long ThreadLocalReceiptsRootTime => _receiptsRootTime.ThreadLocalValue;
+    internal static void IncrementReceiptsRootTime(long ticks) => _receiptsRootTime.Increment(ticks);
 
     [GaugeMetric]
     [Description("The number of tasks currently scheduled in the background.")]

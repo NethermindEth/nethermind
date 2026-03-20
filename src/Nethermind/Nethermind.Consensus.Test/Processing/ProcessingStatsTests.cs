@@ -125,5 +125,31 @@ public class ProcessingStatsTests
         Assert.That(entry.Timing.ExecutionMs, Is.GreaterThanOrEqualTo(0));
         Assert.That(entry.Timing.StateHashMs, Is.GreaterThanOrEqualTo(0));
         Assert.That(entry.Timing.CommitMs, Is.GreaterThanOrEqualTo(0));
+        Assert.That(entry.Timing.BloomsMs, Is.GreaterThanOrEqualTo(0));
+        Assert.That(entry.Timing.ReceiptsRootMs, Is.GreaterThanOrEqualTo(0));
+        Assert.That(entry.Timing.StorageMerkleMs, Is.GreaterThanOrEqualTo(0));
+        Assert.That(entry.Timing.StateRootMs, Is.GreaterThanOrEqualTo(0));
+    }
+
+    [Test]
+    public void Extended_block_and_evm_fields_present()
+    {
+        ProcessingStats stats = CreateStats();
+        SlowBlockLogEntry? entry = EmitAndParse(stats, Build.A.Block.WithNumber(1).WithGasLimit(30_000_000).TestObject, 100_000);
+        string json = _slowBlockLogger.LogList.Last();
+
+        Assert.That(entry, Is.Not.Null);
+        Assert.That(entry!.Block.GasLimit, Is.EqualTo(30_000_000));
+        Assert.That(entry.Block.BlobCount, Is.GreaterThanOrEqualTo(0));
+        Assert.That(json, Does.Contain("opcodes"));
+        Assert.That(json, Does.Contain("empty_calls"));
+        Assert.That(json, Does.Contain("self_destructs"));
+        Assert.That(json, Does.Contain("contracts_analyzed"));
+        Assert.That(json, Does.Contain("cached_contracts_used"));
+        Assert.That(json, Does.Contain("evm_ms"));
+        Assert.That(json, Does.Contain("blooms_ms"));
+        Assert.That(json, Does.Contain("receipts_root_ms"));
+        Assert.That(json, Does.Contain("storage_merkle_ms"));
+        Assert.That(json, Does.Contain("state_root_ms"));
     }
 }

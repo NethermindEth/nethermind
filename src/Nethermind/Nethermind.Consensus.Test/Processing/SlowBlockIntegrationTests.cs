@@ -230,7 +230,9 @@ public class SlowBlockIntegrationTests
         SlowBlockLogEntry log = Execute(tx, block);
 
         Assert.That(log.Block.Number, Is.EqualTo(12345));
+        Assert.That(log.Block.GasLimit, Is.EqualTo(30_000_000));
         Assert.That(log.Block.TxCount, Is.EqualTo(1));
+        Assert.That(log.Block.BlobCount, Is.EqualTo(0));
         Assert.That(log.Block.Hash, Does.StartWith("0x"));
     }
 }

@@ -26,14 +26,21 @@ public record SlowBlockLogEntry
         [JsonPropertyName("number")] public long Number { get; init; }
         [JsonPropertyName("hash")] public string Hash { get; init; } = string.Empty;
         [JsonPropertyName("gas_used")] public long GasUsed { get; init; }
+        [JsonPropertyName("gas_limit")] public long GasLimit { get; init; }
         [JsonPropertyName("tx_count")] public int TxCount { get; init; }
+        [JsonPropertyName("blob_count")] public int BlobCount { get; init; }
     }
 
     public record TimingInfo
     {
         [JsonPropertyName("execution_ms")] public double ExecutionMs { get; init; }
-        [JsonPropertyName("state_hash_ms")] public double StateHashMs { get; init; }
+        [JsonPropertyName("evm_ms")] public double EvmMs { get; init; }
+        [JsonPropertyName("blooms_ms")] public double BloomsMs { get; init; }
+        [JsonPropertyName("receipts_root_ms")] public double ReceiptsRootMs { get; init; }
         [JsonPropertyName("commit_ms")] public double CommitMs { get; init; }
+        [JsonPropertyName("storage_merkle_ms")] public double StorageMerkleMs { get; init; }
+        [JsonPropertyName("state_root_ms")] public double StateRootMs { get; init; }
+        [JsonPropertyName("state_hash_ms")] public double StateHashMs { get; init; }
         [JsonPropertyName("total_ms")] public double TotalMs { get; init; }
     }
 
@@ -75,9 +82,14 @@ public record SlowBlockLogEntry
 
     public record EvmInfo
     {
+        [JsonPropertyName("opcodes")] public long Opcodes { get; init; }
         [JsonPropertyName("sload")] public long Sload { get; init; }
         [JsonPropertyName("sstore")] public long Sstore { get; init; }
         [JsonPropertyName("calls")] public long Calls { get; init; }
+        [JsonPropertyName("empty_calls")] public long EmptyCalls { get; init; }
         [JsonPropertyName("creates")] public long Creates { get; init; }
+        [JsonPropertyName("self_destructs")] public long SelfDestructs { get; init; }
+        [JsonPropertyName("contracts_analyzed")] public long ContractsAnalyzed { get; init; }
+        [JsonPropertyName("cached_contracts_used")] public long CachedContractsUsed { get; init; }
     }
 }

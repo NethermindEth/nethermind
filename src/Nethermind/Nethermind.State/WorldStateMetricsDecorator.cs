@@ -27,6 +27,7 @@ public class WorldStateMetricsDecorator(IWorldState innerWorldState) : WrappedWo
         long ticks = Stopwatch.GetElapsedTime(start).Ticks;
         StateMerkleizationTime += ticks / (double)TimeSpan.TicksPerMillisecond;
         EvmMetrics.IncrementStateHashTime(ticks);
+        EvmMetrics.IncrementStateRootTime(ticks);
     }
 
     public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
@@ -38,6 +39,7 @@ public class WorldStateMetricsDecorator(IWorldState innerWorldState) : WrappedWo
         {
             StateMerkleizationTime += ticks / (double)TimeSpan.TicksPerMillisecond;
             EvmMetrics.IncrementStateHashTime(ticks);
+            EvmMetrics.IncrementStorageMerkleTime(ticks);
         }
         else
         {
@@ -52,5 +54,6 @@ public class WorldStateMetricsDecorator(IWorldState innerWorldState) : WrappedWo
         long ticks = Stopwatch.GetElapsedTime(start).Ticks;
         StateMerkleizationTime += ticks / (double)TimeSpan.TicksPerMillisecond;
         EvmMetrics.IncrementStateHashTime(ticks);
+        EvmMetrics.IncrementStateRootTime(ticks);
     }
 }
