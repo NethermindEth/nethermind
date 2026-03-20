@@ -197,9 +197,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool ConsumeStorageWrite(ref EthereumGasPolicy gas, bool isSlotCreation, long cost, IReleaseSpec spec)
+    public static bool ConsumeStorageWrite<TEip8037>(ref EthereumGasPolicy gas, bool isSlotCreation, IReleaseSpec spec) where TEip8037 : struct, IFlag
     {
-        return UpdateGas(ref gas, cost);
+        return TEip8037.IsActive switch
+        {
+            true => ConsumeStateGas(ref gas, GasCostOf.SSetState) && UpdateGas(ref gas, GasCostOf.SSetRegular),
+            false => isSlotCreation ? UpdateGas(ref gas, GasCostOf.SSet) : UpdateGas(ref gas, spec.GasCosts.SStoreResetCost)
+        };
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -244,7 +248,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             false => UpdateGas(ref gas, GasCostOf.NewAccount)
         };
     }
-        
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeLogEmission(ref EthereumGasPolicy gas, long topicCount, long dataSize)
