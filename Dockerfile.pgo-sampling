@@ -43,11 +43,14 @@ ENV DOTNET_System_Diagnostics_Tracing_EventSource_IsSupported=true
 ENV DOTNET_GCLargePages=0
 ENV DOTNET_GCRegionRange=0x800000000
 
-# Install perf for CPU sampling. Ubuntu Noble ships LTTng 2.13 which has a
-# breaking change vs the .NET runtime (supports 2.12). Use -nolttng flag
-# with perfcollect and rely on DOTNET_PerfMapEnabled for symbol resolution.
+# Install perf + LTTng for perfcollect.
+# Noble ships LTTng 2.13; the .NET 10 runtime in the SDK base image
+# is compiled for Noble so should be compatible.
 RUN apt-get update && \
-  apt-get install -y --no-install-recommends linux-tools-generic && \
+  apt-get install -y --no-install-recommends \
+    linux-tools-generic \
+    lttng-tools \
+    liblttng-ust-dev && \
   rm -rf /var/lib/apt/lists/* && \
   curl -sL https://aka.ms/perfcollect -o /usr/local/bin/perfcollect && \
   chmod +x /usr/local/bin/perfcollect
@@ -74,7 +77,7 @@ COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
 mkdir -p /nethermind/pgo
 
 echo "trace: starting perfcollect"
-perfcollect collect /nethermind/pgo/sampling -collectsec 180 -nolttng &
+perfcollect collect /nethermind/pgo/sampling -collectsec 180 &
 trace_pid=$!
 
 # Give perf/LTTng a moment to set up
