@@ -63,21 +63,18 @@ ENV PATH="${PATH}:/root/.dotnet/tools"
 # collect-linux uses perf_events for real kernel CPU sampling with native
 # call stacks. Requires kernel >= 6.4 and root (both satisfied here).
 # Uses --duration so the trace finalizes cleanly before EXPB stops the container.
-COPY <<'SCRIPT' /nethermind/start-trace.sh
-#!/bin/bash
-sleep 1
-echo "trace: starting collect-linux for 2:30"
-dotnet-trace collect-linux \
-  --output /nethermind/pgo/sampling \
-  --duration 00:02:30 || true
-echo "trace: collection complete"
-SCRIPT
-RUN chmod +x /nethermind/start-trace.sh
-
-# Launch trace collection in background, then exec Nethermind as PID 1
+# Start collect-linux first (sets up perf_events), then launch Nethermind.
+# collect-linux traces all .NET processes that start during its duration.
 COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
 #!/bin/bash
-/nethermind/start-trace.sh &
+echo "trace: starting collect-linux for 3:00"
+dotnet-trace collect-linux \
+  --output /nethermind/pgo/sampling \
+  --duration 00:03:00 &
+trace_pid=$!
+
+# Give perf_events a moment to set up
+sleep 1
 exec ./nethermind "$@"
 SCRIPT
 RUN chmod +x /nethermind/trace-entrypoint.sh
