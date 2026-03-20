@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Text;
+using System.Text.Json;
 using FluentAssertions;
 using MathNet.Numerics;
 using Nethermind.Core;
@@ -680,5 +681,55 @@ public class AbiTests
             Encoding.ASCII.GetBytes("1234567890"),
             Encoding.ASCII.GetBytes("Hello, world!"));
         encoded.ToHexString().Should().BeEquivalentTo(expectedValue.ToHexString());
+    }
+
+    [Test]
+    public void AbiTypeConverter_Parses_TupleArray_Correctly()
+    {
+        // Test that "tuple[]" produces AbiArray(AbiTuple) not plain AbiTuple
+        string json = "\"tuple[]\"";
+        AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
+
+        result.Should().BeOfType<AbiArray>();
+        var arrayType = (AbiArray)result;
+        arrayType.ElementType.Should().BeOfType<AbiTuple>();
+        // Empty tuple since we don't have components at this level
+        arrayType.Name.Should().Be("()[]");
+    }
+
+    [Test]
+    public void AbiTypeConverter_Parses_FixedTupleArray_Correctly()
+    {
+        // Test that "tuple[3]" produces AbiFixedLengthArray(AbiTuple, 3)
+        string json = "\"tuple[3]\"";
+        AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
+
+        result.Should().BeOfType<AbiFixedLengthArray>();
+        var arrayType = (AbiFixedLengthArray)result;
+        arrayType.ElementType.Should().BeOfType<AbiTuple>();
+        arrayType.Length.Should().Be(3);
+        arrayType.Name.Should().Be("()[3]");
+    }
+
+    [Test]
+    public void AbiTypeConverter_Parses_PlainTuple_Correctly()
+    {
+        // Test that "tuple" still produces AbiTuple (not array)
+        string json = "\"tuple\"";
+        AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
+
+        result.Should().BeOfType<AbiTuple>();
+        result.Name.Should().Be("()");
+    }
+
+    [Test]
+    public void AbiTuple_Name_Reflects_Elements()
+    {
+        // Test that AbiTuple with elements has correct Name for signature generation
+        var tuple = new AbiTuple(AbiType.UInt8, AbiType.UInt64);
+        tuple.Name.Should().Be("(uint8,uint64)");
+
+        var tupleArray = new AbiArray(tuple);
+        tupleArray.Name.Should().Be("(uint8,uint64)[]");
     }
 }
