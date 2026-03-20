@@ -45,7 +45,8 @@ RUN apt-get update && \
   apt-get install -y --no-install-recommends \
     linux-tools-generic \
     lttng-tools \
-    liblttng-ust-dev && \
+    liblttng-ust-dev \
+    zip && \
   curl -sSL https://aka.ms/perfcollect -o /usr/local/bin/perfcollect && \
   chmod +x /usr/local/bin/perfcollect && \
   rm -rf /var/lib/apt/lists/*
