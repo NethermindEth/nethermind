@@ -42,10 +42,11 @@ jobs:
           token: ${{ steps.gh-app.outputs.token }}
           clean: true
 
-      - name: Install requirements
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y make build-essential jq zip
+      - name: Cache apt packages
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: make build-essential jq zip
+          version: 1.0
 
       - name: Setup Go environment
         uses: actions/setup-go@v6
@@ -59,7 +60,15 @@ jobs:
         with:
           python-version: "3.X"
 
+      - name: Cache Sedge binary
+        id: cache-sedge
+        uses: actions/cache@v4
+        with:
+          path: sedge/build/sedge
+          key: sedge-core-${{ runner.arch }}
+
       - name: Install Sedge
+        if: steps.cache-sedge.outputs.cache-hit != 'true'
         run: |
           git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
           cd sedge
