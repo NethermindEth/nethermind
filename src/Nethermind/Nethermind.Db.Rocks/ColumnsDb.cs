@@ -183,7 +183,6 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             // ReadOptions in RocksDbSharp has a finalizer but no IDisposable — creating many
             // short-lived instances causes Gen1/Gen2 GC pressure from finalizer queue buildup.
             _sharedReadOptions = CreateReadOptions(columnsDb, snapshot);
-
             _sharedCacheMissReadOptions = CreateReadOptions(columnsDb, snapshot);
             _sharedCacheMissReadOptions.SetFillCache(false);
 
@@ -191,40 +190,68 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             // Note: each GetViewBetween call still creates a new ReadOptions with a finalizer;
             // that is pre-existing behavior not addressed by this PR.
             Func<ReadOptions> readOptionsFactory = () => CreateReadOptions(columnsDb, snapshot);
+            T[] keys = CreateKeyCache(columnsDb);
+            columnsDb._cachedMaxOrdinal = GetCachedMaxOrdinal(columnsDb, keys);
+            _readers = CreateReaders();
+
+            static ReadOptions CreateReadOptions(ColumnsDb<T> columnsDb, Snapshot snapshot)
+            {
+                ReadOptions options = new ReadOptions();
+                options.SetVerifyChecksums(columnsDb.VerifyChecksum);
+                options.SetSnapshot(snapshot);
+                return options;
+            }
 
             // Cache column keys and max ordinal on the parent ColumnsDb to avoid per-snapshot
             // recomputation. The race is benign (both threads compute identical results) and
             // volatile ensures visibility across cores.
-            T[]? keys = columnsDb._cachedColumnKeys;
-            if (keys is null)
+            static T[] CreateKeyCache(ColumnsDb<T> columnsDb)
             {
-                IDictionary<T, ColumnDb> columnDbs = columnsDb._columnDbs;
-                keys = new T[columnDbs.Count];
-                int idx = 0;
-                foreach (T key in columnDbs.Keys)
-                    keys[idx++] = key;
-                columnsDb._cachedColumnKeys = keys;
-            }
+                T[]? keys = columnsDb._cachedColumnKeys;
+                if (keys is null)
+                {
+                    IDictionary<T, ColumnDb> columnDbs = columnsDb._columnDbs;
+                    keys = new T[columnDbs.Count];
+                    int idx = 0;
+                    foreach (T key in columnDbs.Keys)
+                    {
+                        keys[idx++] = key;
+                    }
 
-            if (columnsDb._cachedMaxOrdinal < 0)
+                    columnsDb._cachedColumnKeys = keys;
+                }
+
+                return keys;
+            }
+            static int GetCachedMaxOrdinal(ColumnsDb<T> columnsDb, T[] keys)
             {
+                if (columnsDb._cachedMaxOrdinal >= 0) return columnsDb._cachedMaxOrdinal;
+
                 int max = 0;
                 for (int i = 0; i < keys.Length; i++)
+                {
                     max = Math.Max(max, EnumToInt(keys[i]));
-                columnsDb._cachedMaxOrdinal = max;
+                }
+
+                return max;
             }
 
             // Build flat array of readers indexed by column ordinal
-            _readers = new RocksDbReader[columnsDb._cachedMaxOrdinal + 1];
-            for (int i = 0; i < keys.Length; i++)
+            RocksDbReader[] CreateReaders()
             {
-                T k = keys[i];
-                _readers[EnumToInt(k)] = new RocksDbReader(
-                    columnsDb,
-                    _sharedReadOptions,
-                    _sharedCacheMissReadOptions,
-                    readOptionsFactory,
-                    columnFamily: columnsDb._columnDbs[k]._columnFamily);
+                RocksDbReader[] readers = new RocksDbReader[columnsDb._cachedMaxOrdinal + 1];
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    T k = keys[i];
+                    readers[EnumToInt(k)] = new RocksDbReader(
+                        columnsDb,
+                        _sharedReadOptions,
+                        _sharedCacheMissReadOptions,
+                        readOptionsFactory,
+                        columnFamily: columnsDb._columnDbs[k]._columnFamily);
+                }
+
+                return readers;
             }
         }
 
@@ -240,14 +267,6 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             DestroyReadOptions(_sharedCacheMissReadOptions);
 
             _snapshot.Dispose();
-        }
-
-        private static ReadOptions CreateReadOptions(ColumnsDb<T> columnsDb, Snapshot snapshot)
-        {
-            ReadOptions options = new ReadOptions();
-            options.SetVerifyChecksums(columnsDb.VerifyChecksum);
-            options.SetSnapshot(snapshot);
-            return options;
         }
 
         private static void DestroyReadOptions(ReadOptions options)
