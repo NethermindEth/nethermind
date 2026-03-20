@@ -843,30 +843,40 @@ public partial class EngineModuleTests
         resultWrapper.Data.PayloadStatus.LatestValidHash.Should().Be(Keccak.Zero);
     }
 
-    [Test]
+    [TestCase(false)]
     [CancelAfter(5000)]
-    public async Task executePayloadV1_on_top_of_terminal_block(CancellationToken cancellationToken)
+    public virtual async Task executePayloadV1_on_top_of_terminal_block(bool isAura, CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
         {
             TerminalTotalDifficulty = $"{1900000}"
         });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
+
+        BlockBuilder newBlockBuilder = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
             .WithDifficulty(1000000)
             .WithTotalDifficulty(2000000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
-            .WithAura(0, []).TestObject;
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
+        if (isAura)
+        {
+            newBlockBuilder.WithAura(0, []);
+        }
+        Block newBlock = newBlockBuilder.TestObject;
         newBlock.CalculateHash();
-        Block oneMoreTerminalBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
+
+        BlockBuilder oneMoreTerminalBlockBuilder = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
             .WithDifficulty(900000)
             .WithTotalDifficulty(1900000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
-            .WithAura(0, []).TestObject;
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
+        if (isAura)
+        {
+            oneMoreTerminalBlockBuilder.WithAura(0, []);
+        }
+        Block oneMoreTerminalBlock = oneMoreTerminalBlockBuilder.TestObject;
 
         using SemaphoreSlim bestBlockProcessed = new(0);
         chain.BlockTree.NewHeadBlock += (s, e) =>
@@ -891,30 +901,40 @@ public partial class EngineModuleTests
         ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload, o => o.IgnoringCyclicReferences());
     }
 
-    [Test]
+    [TestCase(false)]
     [CancelAfter(5000)]
-    public async Task executePayloadV1_on_top_of_not_processed_invalid_terminal_block(CancellationToken cancellationToken)
+    public virtual async Task executePayloadV1_on_top_of_not_processed_invalid_terminal_block(bool isAura, CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
         {
             TerminalTotalDifficulty = $"{1900000}"
         });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
+
+        BlockBuilder newBlockBuilder = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
             .WithDifficulty(1000000)
             .WithTotalDifficulty(2000000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
-            .WithAura(0, []).TestObject;
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
+        if (isAura)
+        {
+            newBlockBuilder.WithAura(0, []);
+        }
+        Block newBlock = newBlockBuilder.TestObject;
         newBlock.CalculateHash();
-        Block oneMoreTerminalBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
+
+        BlockBuilder oneMoreTerminalBlockBuilder = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
             .WithDifficulty(900000)
             .WithTotalDifficulty(1900000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bfba4ccf1702fabf02d8ad7a20b454edb6fd2f")) //incorrect state root
-            .WithAura(0, []).TestObject;
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bfba4ccf1702fabf02d8ad7a20b454edb6fd2f")); //incorrect state root
+        if (isAura)
+        {
+            oneMoreTerminalBlockBuilder.WithAura(0, []);
+        }
+        Block oneMoreTerminalBlock = oneMoreTerminalBlockBuilder.TestObject;
 
         using SemaphoreSlim bestBlockProcessed = new(0);
         chain.BlockTree.NewHeadBlock += (s, e) =>

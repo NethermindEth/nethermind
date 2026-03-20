@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -41,6 +42,16 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
     protected override Hash256 ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
     private const string _auraWithdrawalContractAddress = "0xbabe2bed00000000000000000000000000000003";
+
+    [TestCase(true)]
+    [CancelAfter(5000)]
+    public override async Task executePayloadV1_on_top_of_terminal_block(bool isAura, CancellationToken cancellationToken)
+        => await base.executePayloadV1_on_top_of_terminal_block(isAura, cancellationToken);
+
+    [TestCase(true)]
+    [CancelAfter(5000)]
+    public override async Task executePayloadV1_on_top_of_not_processed_invalid_terminal_block(bool isAura, CancellationToken cancellationToken)
+        => await base.executePayloadV1_on_top_of_not_processed_invalid_terminal_block(isAura, cancellationToken);
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
     public override Task forkchoiceUpdatedV2_should_validate_withdrawals((IReleaseSpec Spec,
